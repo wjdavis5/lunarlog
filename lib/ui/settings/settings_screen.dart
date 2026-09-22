@@ -39,6 +39,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/material.dart';
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
+import 'package:lunarlog/domain/health/health_deviation.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
@@ -257,31 +258,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// Issue #153's health-sync section (iOS-only, gated at the call site by
+  /// Issue #153's health-sync section (gated at the call site by
   /// [AppConfig.hasHealthSync] plus non-null repositories).
   Widget _healthSection(
     AppLocalizations l10n,
     ProfilesRepository profilesRepository,
     ProfileGuardiansRepository guardiansRepository,
-  ) =>
-      SettingsSection(
-        id: 'health',
-        title: l10n.settingsHealthHeader,
-        children: [
-          ListTile(
-            key: const ValueKey('health-sync-tile'),
-            leading: const Icon(Icons.favorite_outline),
-            title: Text(l10n.settingsHealthSyncTitle),
-            subtitle: Text(l10n.settingsHealthSyncSubtitle),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _openHealthSync(
-              context,
-              profilesRepository,
-              guardiansRepository,
-            ),
+  ) {
+    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+    final sourceTitle = isAndroid ? 'Health Connect' : 'Health app';
+    final source = isAndroid ? 'Health Connect' : 'the Health app';
+    return SettingsSection(
+      id: 'health',
+      title: l10n.settingsHealthHeader,
+      children: [
+        ListTile(
+          key: const ValueKey('health-sync-tile'),
+          leading: const Icon(Icons.favorite_outline),
+          title: Text(l10n.settingsHealthSyncTitle(sourceTitle)),
+          subtitle: Text(l10n.settingsHealthSyncSubtitle(source)),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _openHealthSync(
+            context,
+            profilesRepository,
+            guardiansRepository,
           ),
-        ],
-      );
+        ),
+      ],
+    );
+  }
 
   /// The Reminders section's children (gated at the call site on either
   /// half of the section existing): the per-profile reminder configuration
@@ -490,6 +495,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           binding: HealthSyncBinding(context.read<SettingsStore>()),
           signedInUserId: signedInUserId,
           importer: Provider.of<HealthImportRunner?>(context, listen: false),
+          // Issue #799: refreshes the overview's deviation snapshot after a
+          // pass. Null on a build with no health sync, in which case the
+          // import simply skips it.
+          deviationInsights: Provider.of<HealthDeviationInsights?>(
+            context,
+            listen: false,
+          ),
           // Issue #959: the OS permission status line reads this narrow
           // probe (never the write port). Null on a build with no native
           // permission surface, in which case the screen renders no line.

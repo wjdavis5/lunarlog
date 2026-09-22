@@ -1719,11 +1719,8 @@ class _DaySheetState extends State<DaySheet> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(l10n.daySheetDiscardTitle),
-        content: const SingleChildScrollView(
-          child: Text(
-            "The last change couldn't be saved. Discarding removes it from "
-            'this device.',
-          ),
+        content: SingleChildScrollView(
+          child: Text(l10n.daySheetDiscardFailedBody),
         ),
         actions: [
           TextButton(

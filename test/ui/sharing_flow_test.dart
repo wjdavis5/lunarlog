@@ -522,6 +522,8 @@ void main() {
         'profile copy instead of assuming a minor', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: AcceptInviteSheet(
               rawToken: 'test-raw-token',
@@ -553,6 +555,8 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: Scaffold(
               body: AcceptInviteSheet(
                 rawToken: 'test-raw-token',
@@ -622,6 +626,8 @@ void main() {
 
           await tester.pumpWidget(
             MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
               home: Scaffold(
                 body: AcceptInviteSheet(
                   rawToken: 'dead-token',
@@ -655,6 +661,8 @@ void main() {
 
           await tester.pumpWidget(
             MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
               home: Scaffold(
                 body: AcceptInviteSheet(
                   rawToken: 'test-raw-token',
@@ -1272,7 +1280,9 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Remove'));
+        // Issue #1003: the caller's own row leaves, so the confirm reads
+        // "Leave" rather than "Remove".
+        await tester.tap(find.widgetWithText(FilledButton, 'Leave'));
         await tester.pumpAndSettle();
 
         expect(

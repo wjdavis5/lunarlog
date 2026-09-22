@@ -199,7 +199,7 @@ abstract class AppLocalizations {
   /// Legend entry for a predicted (hatched) day band.
   ///
   /// In en, this message translates to:
-  /// **'Predicted day'**
+  /// **'Estimated day'**
   String get calendarLegendPredicted;
 
   /// Legend entry for the predicted premenstrual badge.
@@ -247,7 +247,7 @@ abstract class AppLocalizations {
   /// Strip shown on quiet months while no estimate is active.
   ///
   /// In en, this message translates to:
-  /// **'Keep logging — predicted bands appear once a few cycles are recorded.'**
+  /// **'Keep logging — estimated bands appear once a few cycles are recorded.'**
   String get calendarKeepLogging;
 
   /// The date half of a calendar day cell's screen-reader label, e.g. 'Wednesday, September 9'.
@@ -313,7 +313,7 @@ abstract class AppLocalizations {
   /// Screen-reader fragment for a forecast bleed day — deliberately distinct from any logged-day fragment so predicted and logged never sound alike.
   ///
   /// In en, this message translates to:
-  /// **'predicted period day'**
+  /// **'estimated period day'**
   String get calendarCellPredictedPeriod;
 
   /// Screen-reader fragment for a predicted bleed day's cycle-day numeral.
@@ -325,25 +325,25 @@ abstract class AppLocalizations {
   /// Screen-reader fragment for a non-bleed future day counted within the first predicted cycle.
   ///
   /// In en, this message translates to:
-  /// **'cycle day {day} of the first predicted cycle'**
+  /// **'cycle day {day} of the first estimated cycle'**
   String calendarCellCycleDayFirstCycle(int day);
 
   /// Screen-reader fragment for a day carrying the PMS badge.
   ///
   /// In en, this message translates to:
-  /// **'predicted premenstrual window'**
+  /// **'estimated premenstrual window'**
   String get calendarCellPmsWindow;
 
   /// Screen-reader fragment for a day carrying the cramps badge.
   ///
   /// In en, this message translates to:
-  /// **'predicted cramps window'**
+  /// **'estimated cramps window'**
   String get calendarCellCrampsWindow;
 
   /// Screen-reader fragment for a future day whose forecast cell carries no marker.
   ///
   /// In en, this message translates to:
-  /// **'no prediction for this date'**
+  /// **'no estimate for this date'**
   String get calendarCellNoPrediction;
 
   /// InlineError message (announced as a screen-reader live region) when the calendar's prediction stream errors. Issue #602.
@@ -505,43 +505,43 @@ abstract class AppLocalizations {
   /// Future-day explainer body when no estimate exists at all.
   ///
   /// In en, this message translates to:
-  /// **'No estimates yet — keep logging. Predicted bands appear on the calendar once a few cycles are recorded.'**
+  /// **'No estimates yet — keep logging. Estimated bands appear on the calendar once a few cycles are recorded.'**
   String get futureExplainerNoEstimate;
 
   /// Future-day explainer body when nothing is predicted for the date.
   ///
   /// In en, this message translates to:
-  /// **'No prediction for this date. Days can be logged once they arrive.'**
+  /// **'No estimate for this date. Days can be logged once they arrive.'**
   String get futureExplainerNone;
 
   /// Future-day explainer body for a predicted bleed day with no cycle-day numeral.
   ///
   /// In en, this message translates to:
-  /// **'Predicted period day. The date may shift by about {count} {count, plural, =1{day} other{days}} either way as new periods are logged.'**
+  /// **'Estimated period day. The date may shift by about {count} {count, plural, =1{day} other{days}} either way as new periods are logged.'**
   String futureExplainerBand(int count);
 
   /// Future-day explainer body for a predicted bleed day inside the first predicted cycle.
   ///
   /// In en, this message translates to:
-  /// **'Predicted period day — cycle day {day} of the first predicted cycle. The date may shift by about {count} {count, plural, =1{day} other{days}} either way as new periods are logged.'**
+  /// **'Estimated period day — cycle day {day} of the first estimated cycle. The date may shift by about {count} {count, plural, =1{day} other{days}} either way as new periods are logged.'**
   String futureExplainerBandWithCycleDay(int day, int count);
 
   /// Future-day explainer body for a day in the predicted PMS window.
   ///
   /// In en, this message translates to:
-  /// **'Inside the predicted premenstrual window — symptoms like mood shifts and bloating often show up in the week before a period.'**
+  /// **'Inside the estimated premenstrual window — symptoms like mood shifts and bloating often show up in the week before a period.'**
   String get futureExplainerPms;
 
   /// Future-day explainer body for a day in the predicted cramps window.
   ///
   /// In en, this message translates to:
-  /// **'Inside the predicted cramps window — cramps commonly occur within two days of a period start.'**
+  /// **'Inside the estimated cramps window — cramps commonly occur within two days of a period start.'**
   String get futureExplainerCramps;
 
   /// Future-day explainer body for a counted future cycle day that is not a predicted bleed day.
   ///
   /// In en, this message translates to:
-  /// **'Cycle day {day} of the first predicted cycle. Only the first predicted cycle is counted day by day — estimates compound too much further out.'**
+  /// **'Cycle day {day} of the first estimated cycle. Only the first estimated cycle is counted day by day — estimates compound too much further out.'**
   String futureExplainerNumeral(int day);
 
   /// Future-day explainer confidence line, e.g. 'Estimate confidence: high.'.
@@ -1079,7 +1079,7 @@ abstract class AppLocalizations {
   /// Body of the overview's unusually-long-cycle prompt.
   ///
   /// In en, this message translates to:
-  /// **'It has run well past a typical cycle for this profile. You can exclude it from future averages, or turn off predictions if long cycles are common for this profile.'**
+  /// **'It has run well past a typical cycle for this profile. You can exclude it from future averages, or turn off estimates if long cycles are common for this profile.'**
   String get overviewLongCycleBody;
 
   /// Action excluding the open cycle from future averages.
@@ -1091,7 +1091,7 @@ abstract class AppLocalizations {
   /// Action navigating to Settings to manage or turn off predictions (issue #225).
   ///
   /// In en, this message translates to:
-  /// **'Turn off predictions'**
+  /// **'Turn off estimates'**
   String get overviewLongCyclePredictionsOff;
 
   /// Issue #859: title of the overview card shown when the last logged period is far too old for predictions to mean anything.
@@ -1103,7 +1103,7 @@ abstract class AppLocalizations {
   /// Issue #859: calm, non-alarming body of the stale-history overview card.
   ///
   /// In en, this message translates to:
-  /// **'It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick predictions back up. You can also turn predictions off.'**
+  /// **'It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick estimates back up. You can also turn estimates off.'**
   String get overviewStaleHistoryBody;
 
   /// Issue #859: primary action on the stale-history card, logging a period start for today.
@@ -1338,17 +1338,17 @@ abstract class AppLocalizations {
   /// **'Health'**
   String get settingsHealthHeader;
 
-  /// Settings tile opening per-profile Health app sync.
+  /// Settings tile opening per-profile health sync.
   ///
   /// In en, this message translates to:
-  /// **'Health app sync'**
-  String get settingsHealthSyncTitle;
+  /// **'{source} sync'**
+  String settingsHealthSyncTitle(String source);
 
   /// Subtitle of the health-sync tile.
   ///
   /// In en, this message translates to:
-  /// **'Choose which profile\'s data may sync to this phone\'s Health app'**
-  String get settingsHealthSyncSubtitle;
+  /// **'Choose which profile\'s data may sync to {source}'**
+  String settingsHealthSyncSubtitle(String source);
 
   /// Android-only health-sync copy (Issue #238): Health Connect has no symptom category types, so symptom tags are never exported there. This documents the permanent platform limitation rather than hiding it.
   ///
@@ -1356,7 +1356,7 @@ abstract class AppLocalizations {
   /// **'Symptoms (cramps, headaches, mood, and more) can\'t be written to Health Connect — it has no symptom categories. Days logged with symptoms still sync their flow and spotting; the symptoms themselves stay in lunarlog.'**
   String get settingsHealthSyncSymptomsAndroidLimitation;
 
-  /// Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is 'Apple Health' or 'Health Connect'.
+  /// Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is 'the Health app' or 'Health Connect'.
   ///
   /// In en, this message translates to:
   /// **'{source} access: granted'**
@@ -1410,23 +1410,59 @@ abstract class AppLocalizations {
   /// **'Kept your own logged value on {count, plural, =1{1 day} other{{count} days}}.'**
   String healthSyncImportKeptManual(int count);
 
-  /// Health import summary (Issue #902): samples the source recorded no zone for, placed on a civil date from this phone's own offset. Deliberately says placed, never skipped, so an inferred date is not reported as one the source recorded.
+  /// Health import summary (Issue #902): entries the source recorded no zone for, dated on a civil date from this phone's own offset. Deliberately says dated, never skipped, so an inferred date is not reported as one the source recorded.
   ///
   /// In en, this message translates to:
-  /// **'Placed {count, plural, =1{1 sample} other{{count} samples}} using the time zone of this phone.'**
+  /// **'Dated {count, plural, =1{1 entry} other{{count} entries}} using the time zone of this phone.'**
   String healthSyncImportPlacedDeviceZone(int count);
 
-  /// Health import summary: samples that could not be placed at all (no zone and no device-zone fallback).
+  /// Health import summary: entries that could not be placed at all (no zone and no device-zone fallback).
   ///
   /// In en, this message translates to:
-  /// **'Skipped {count, plural, =1{1 sample} other{{count} samples}} with no recorded time zone.'**
+  /// **'Skipped {count, plural, =1{1 entry} other{{count} entries}} with no recorded time zone.'**
   String healthSyncImportSkippedNoZone(int count);
 
-  /// Health import summary: samples whose flow value has no lunarlog equivalent.
+  /// Health import summary: entries whose flow value has no lunarlog equivalent.
   ///
   /// In en, this message translates to:
-  /// **'Skipped {count, plural, =1{1 sample} other{{count} samples}} with no matching flow level.'**
+  /// **'Skipped {count, plural, =1{1 entry} other{{count} entries}} with no matching flow level.'**
   String healthSyncImportSkippedUnsupported(int count);
+
+  /// Health import completion summary headline (Issue #992): {imported} days gained or refreshed an imported value, {skipped} days were left alone because a value was already there (hand-logged or already imported).
+  ///
+  /// In en, this message translates to:
+  /// **'Imported {imported, plural, =1{1 day} other{{imported} days}}, skipped {skipped, plural, =1{1 already logged} other{{skipped} already logged}}.'**
+  String healthSyncImportSummaryHeadline(int imported, int skipped);
+
+  /// Health import completion headline (Issue #1017) for a pass that imported no days: says plainly that nothing was new because the days were already logged, rather than the pre-#1017 'Imported 0 days'.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing new — {skipped, plural, =1{1 day} other{{skipped} days}} already logged.'**
+  String healthSyncImportSummaryNothingNew(int skipped);
+
+  /// Health sync screen import tile subtitle (Issue #992): the import is no longer bounded to a recent window, it reads the whole available history.
+  ///
+  /// In en, this message translates to:
+  /// **'Bring in all available menstrual flow and spotting.'**
+  String get healthSyncImportTileSubtitle;
+
+  /// Shown while a full-history health import runs (Issue #992): the running sample count, so a long pass shows progress rather than a bare spinner.
+  ///
+  /// In en, this message translates to:
+  /// **'Importing… {samples, plural, =1{1 sample} other{{samples} samples}} read so far.'**
+  String healthSyncImportProgress(int samples);
+
+  /// Health sync screen scope note (Issue #992): reads are full-history now; background reads remain deferred.
+  ///
+  /// In en, this message translates to:
+  /// **'Imports everything the health store makes available, not a recent window. Background sync is not available yet.'**
+  String get healthSyncFullHistoryNote;
+
+  /// Health import summary (Issue #992): the pass hit the page cap or saw a repeated cursor, so it stopped rather than spin. Days read so far were still merged; re-running continues safely.
+  ///
+  /// In en, this message translates to:
+  /// **'The import stopped early after an unusual amount of data. The days already read were kept — run the import again to continue.'**
+  String get healthSyncImportStoppedEarly;
 
   /// Confirm dialog title for unbinding a health-sync profile (Issue #893), mirroring the bind confirmation.
   ///
@@ -1437,14 +1473,14 @@ abstract class AppLocalizations {
   /// Confirm dialog body for unbinding on a platform where both write and import are wired (iOS, Issue #893).
   ///
   /// In en, this message translates to:
-  /// **'This phone will stop writing data for {name} to its Health app and stop importing from it. Nothing already logged in lunarlog, or already written to the Health app, is deleted.'**
-  String healthSyncUnbindDialogWriteBody(String name);
+  /// **'This phone will stop writing data for {name} to {source} and stop importing from it. Nothing already logged in lunarlog, or already written to {source}, is deleted.'**
+  String healthSyncUnbindDialogWriteBody(String name, String source);
 
   /// Confirm dialog body for unbinding on an import-only platform (Android, Issue #893).
   ///
   /// In en, this message translates to:
-  /// **'This phone will stop importing data for {name} from its Health app. Nothing already logged is deleted.'**
-  String healthSyncUnbindDialogImportBody(String name);
+  /// **'This phone will stop importing data for {name} from {source}. Nothing already logged is deleted.'**
+  String healthSyncUnbindDialogImportBody(String name, String source);
 
   /// Confirm action of the health-sync unbind dialog (Issue #893).
   ///
@@ -1479,7 +1515,7 @@ abstract class AppLocalizations {
   /// Body of the in-app privacy policy dialog; mirrors PRIVACY.md's summary.
   ///
   /// In en, this message translates to:
-  /// **'lunarlog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device\'s own operating system encryption and shown only behind your device\'s passcode or biometrics.\n• Works Offline: Logging, viewing, and predictions keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Guardian Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md'**
+  /// **'lunarlog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device\'s own operating system encryption and shown only behind your device\'s passcode or biometrics.\n• Works Offline: Logging, viewing, and estimates keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Guardian Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md'**
   String get settingsPrivacyDialogBody;
 
   /// Close action of the settings dialogs.
@@ -1689,7 +1725,7 @@ abstract class AppLocalizations {
   /// Body of the identity/value card: the differentiators stated plainly (family co-management, offline-first, no ads/tracking, no paywalled predictions).
   ///
   /// In en, this message translates to:
-  /// **'Guardians can share a profile and log it together. Everything works offline. No ads, no data selling, no behavioral tracking — and predictions are never paywalled.'**
+  /// **'Guardians can share a profile and log it together. Everything works offline. No ads, no data selling, no behavioral tracking — and estimates are never paywalled.'**
   String get firstRunValueBody;
 
   /// Title of the second onboarding card (what a profile and a guardian are).
@@ -2103,7 +2139,7 @@ abstract class AppLocalizations {
   /// Overview line naming the predicted PMS band and the 6-cycle averages behind it as one sentence (Issue #220, #1000; merged into one line by Issue #874). range is the localized start-end date span. Only rendered once at least three PMS intervals have been logged.
   ///
   /// In en, this message translates to:
-  /// **'Predicted PMS: {range} — usually starts about {days} {days, plural, =1{day} other{days}} before your period and lasts about {length} {length, plural, =1{day} other{days}}.'**
+  /// **'Estimated PMS: {range} — usually starts about {days} {days, plural, =1{day} other{days}} before your period and lasts about {length} {length, plural, =1{day} other{days}}.'**
   String overviewPmsBandLabel(String range, int days, int length);
 
   /// Overview line naming the predicted PMS band's confidence tier when it differs from the period estimate's own tier (Issue #874). The subject ('PMS estimate:') distinguishes it from the period estimate's tier caption above; the line is omitted entirely when the two tiers are equal, which is the common case.
@@ -2115,31 +2151,31 @@ abstract class AppLocalizations {
   /// Title of the overview/Analysis state shown when a profile's in-effect birth-control method is a continuous one (IUD, implant, shot, continuous pill): period prediction is deliberately off (Issue #233).
   ///
   /// In en, this message translates to:
-  /// **'Predictions are suppressed'**
+  /// **'Estimates paused'**
   String get predictionsSuppressedTitle;
 
   /// Body of the suppressed-prediction state naming the recorded continuous method ({method}) and explaining why predictions are off (Issue #233).
   ///
   /// In en, this message translates to:
-  /// **'Because {method} typically stops or irregularly affects periods, period predictions are turned off while it is active. The method will resume ordinary prediction once it is switched or cleared.'**
+  /// **'Because {method} typically stops or irregularly affects periods, period estimates are paused while it is active. The method will resume ordinary estimates once it is switched or cleared.'**
   String predictionsSuppressedBody(String method);
 
   /// Body of the suppressed-prediction state naming the profile's current life-stage mode ({mode}: Pregnancy, Postpartum, or Perimenopause) and explaining why period predictions are off (Issue #528). Shares predictionsSuppressedTitle with the birth-control reason.
   ///
   /// In en, this message translates to:
-  /// **'Because this profile is set to {mode} mode, period predictions are turned off — the ordinary cycle averages this app estimates from don\'t apply right now. Switch back to Period Tracking mode from Edit profile to resume ordinary prediction.'**
+  /// **'Because this profile is set to {mode} mode, period estimates are paused — the ordinary cycle averages this app estimates from don\'t apply right now. Switch back to Period Tracking mode from Edit profile to resume ordinary estimates.'**
   String predictionsSuppressedByModeBody(String mode);
 
   /// Title of the card displayed when predictions are disabled for the profile (issue #225).
   ///
   /// In en, this message translates to:
-  /// **'Predictions turned off'**
+  /// **'Estimates off'**
   String get predictionsDisabledTitle;
 
   /// Body of the card explaining that predictions are disabled while tracking remains active (issue #225).
   ///
   /// In en, this message translates to:
-  /// **'Estimates, calendar prediction bands, and prediction reminders are paused for this profile. Your cycle history and tracking continue unchanged.'**
+  /// **'Estimates, calendar estimate bands, and estimate reminders are paused for this profile. Your cycle history and tracking continue unchanged.'**
   String get predictionsDisabledBody;
 
   /// Button on predictions-disabled card opening Settings (issue #225).
@@ -2151,19 +2187,19 @@ abstract class AppLocalizations {
   /// Title of the prediction toggle in Settings when only one profile exists (issue #225).
   ///
   /// In en, this message translates to:
-  /// **'Show predictions'**
+  /// **'Show estimates'**
   String get settingsPredictionsTitle;
 
   /// Title of the prediction toggle in Settings for a specific profile (issue #225).
   ///
   /// In en, this message translates to:
-  /// **'Show predictions ({profileName})'**
+  /// **'Show estimates ({profileName})'**
   String settingsPredictionsProfileTitle(String profileName);
 
   /// Subtitle describing the predictions toggle in Settings (issue #225).
   ///
   /// In en, this message translates to:
-  /// **'Show cycle estimates, fertile window, and prediction reminders'**
+  /// **'Show cycle estimates, fertile window, and estimate reminders'**
   String get settingsPredictionsSubtitle;
 
   /// Subtitle of the settings predictions toggle when the profile's life-stage mode suppresses predictions ({mode}: Pregnancy, Postpartum, or Perimenopause); the toggle is disabled and the mode name comes from LifecycleMode.label, the same source the suppressed-prediction card uses (Issue #877).
@@ -2187,7 +2223,7 @@ abstract class AppLocalizations {
   /// Body of the dismissible suggestion banner for irregular cycles (issue #225).
   ///
   /// In en, this message translates to:
-  /// **'Predictions may be less useful when cycles vary widely. You can turn off cycle estimates while continuing to track normally.'**
+  /// **'Estimates may be less useful when cycles vary widely. You can turn off cycle estimates while continuing to track normally.'**
   String get overviewIrregularSuggestionBody;
 
   /// Action on the irregular suggestion banner opening Settings (issue #225).
@@ -2241,7 +2277,7 @@ abstract class AppLocalizations {
   /// The period-due reminder's settings row subtitle (Issue #178 localization of the existing copy).
   ///
   /// In en, this message translates to:
-  /// **'A heads-up before the predicted period starts'**
+  /// **'A heads-up before the estimated period starts'**
   String get reminderKindPeriodDueSubtitle;
 
   /// The PMS-watch reminder's settings row title (Issue #178 localization of the existing copy).
@@ -2277,7 +2313,7 @@ abstract class AppLocalizations {
   /// The fertile-window-soon reminder's settings row subtitle (Issue #178).
   ///
   /// In en, this message translates to:
-  /// **'A heads-up before the predicted fertile window'**
+  /// **'A heads-up before the estimated fertile window'**
   String get reminderKindFertileWindowSoonSubtitle;
 
   /// The cycle-statistic-change reminder's settings row title (Issue #178; Clue catalogue item 5).
@@ -2307,19 +2343,19 @@ abstract class AppLocalizations {
   /// Lead-days row title for the period-anchored reminder types (Issue #178 localization of the existing copy).
   ///
   /// In en, this message translates to:
-  /// **'Days before predicted start'**
+  /// **'Days before estimated start'**
   String get reminderLeadDaysBeforeStart;
 
   /// Lead-days row title for the PMS-watch reminder (Issue #178 localization of the existing copy).
   ///
   /// In en, this message translates to:
-  /// **'Days before predicted PMS window'**
+  /// **'Days before estimated PMS window'**
   String get reminderLeadDaysBeforePms;
 
   /// Lead-days row title for the fertile-window-soon reminder (Issue #178).
   ///
   /// In en, this message translates to:
-  /// **'Days before predicted fertile window'**
+  /// **'Days before estimated fertile window'**
   String get reminderLeadDaysBeforeFertileWindow;
 
   /// The birth-control reminders explainer row title, shown when the profile has no method-cadence reminder to configure (Issue #183).
@@ -2808,10 +2844,10 @@ abstract class AppLocalizations {
   /// **'That sign-in method already belongs to another account.'**
   String get authFailureIdentityTaken;
 
-  /// AuthSignUpClosedFailure copy.
+  /// AuthSignUpClosedFailure copy. Issue #1003: the old line blocked an invitee with no next step; this names who can invite them.
   ///
   /// In en, this message translates to:
-  /// **'New accounts for this app are set up by the account owner.'**
+  /// **'New accounts are created by invitation. Ask the person who set up your family\'s lunarlog to invite you.'**
   String get authFailureSignUpClosed;
 
   /// AuthLastSignInMethodFailure copy.
@@ -2979,7 +3015,7 @@ abstract class AppLocalizations {
   /// Issue #241: the one-line cycle status on a ProfileCard row for a profile whose operator turned predictions off in settings (issue #225's PredictionsDisabled state).
   ///
   /// In en, this message translates to:
-  /// **'Period predictions off'**
+  /// **'Period estimates off'**
   String get profileStatusPredictionsOff;
 
   /// Issue #982: the one-line cycle status on a ProfileCard row for a stale-history profile (ActivePrediction.staleHistory, issue #859) — a neutral line replacing the rolled 'Cycle day N' count the same way the overview's stale card replaces it.
@@ -3435,7 +3471,7 @@ abstract class AppLocalizations {
   /// Body of the pregnancy-exit exclusion dialog (Issue #192); deliberately states data is kept, only the average skips it.
   ///
   /// In en, this message translates to:
-  /// **'Cycles logged during the pregnancy can distort the averages future predictions use. Excluding them keeps the cycle history intact — the pregnancy span is just left out of the math. Individual cycles can also be excluded later from cycle history.'**
+  /// **'Cycles logged during the pregnancy can distort the averages future estimates use. Excluding them keeps the cycle history intact — the pregnancy span is just left out of the math. Individual cycles can also be excluded later from cycle history.'**
   String get pregnancyExitExclusionBody;
 
   /// Accept action of the pregnancy-exit exclusion dialog: writes the cycle_overrides exclusion rows (Issue #192).
@@ -3495,7 +3531,7 @@ abstract class AppLocalizations {
   /// Body of the postpartum cycles-have-returned offer: explains the switch, and that leaving the mode offers to exclude the postpartum interval (Issue #455).
   ///
   /// In en, this message translates to:
-  /// **'You logged a period during Postpartum mode. Switching to Period Tracking resumes ordinary predictions and lets the app start rebuilding cycle averages from your new cycles.'**
+  /// **'You logged a period during Postpartum mode. Switching to Period Tracking resumes ordinary estimates and lets the app start rebuilding cycle averages from your new cycles.'**
   String get postpartumReturnBody;
 
   /// Action of the postpartum cycles-have-returned offer; switches the profile's life-stage mode to tracking and then offers the interval exclusion (Issue #455).
@@ -3513,7 +3549,7 @@ abstract class AppLocalizations {
   /// Body of the postpartum-exit exclusion dialog (Issue #455); deliberately states data is kept, only the average skips it.
   ///
   /// In en, this message translates to:
-  /// **'Bleeding logged during the postpartum interval can distort the averages future predictions use. Excluding it keeps your cycle history intact — the postpartum span is just left out of the math. You can also exclude individual cycles later from cycle history.'**
+  /// **'Bleeding logged during the postpartum interval can distort the averages future estimates use. Excluding it keeps your cycle history intact — the postpartum span is just left out of the math. You can also exclude individual cycles later from cycle history.'**
   String get postpartumExitExclusionBody;
 
   /// Accept action of the postpartum-exit exclusion dialog: writes the cycle_overrides exclusion rows (Issue #455).
@@ -3696,16 +3732,16 @@ abstract class AppLocalizations {
   /// **'Update note'**
   String get guardianNotesUpdate;
 
-  /// Invite dialog (Issue #802): the 'her own profile' preset choice, offered when the profile's relationship is daughter/son/child or the profile is a minor's. Grants the caregiver role plus the subject marker.
+  /// Invite dialog (Issue #802): the 'their own profile' preset choice, offered when the profile's relationship is daughter/son/child or the profile is a minor's. Grants the caregiver role plus the subject marker. Issue #1003: gender-neutral — the preset is offered for daughter/son/child, so 'her' was wrong.
   ///
   /// In en, this message translates to:
-  /// **'Invite {name} to log her own profile'**
+  /// **'Invite {name} to log their own profile'**
   String inviteSubjectOption(String name);
 
-  /// Invite dialog (Issue #802): the consequence line under the subject preset choice, naming what it grants without the caregiver mislabel.
+  /// Invite dialog (Issue #802): the consequence line under the subject preset choice, naming what it grants without the caregiver mislabel. Issue #1003: gender-neutral.
   ///
   /// In en, this message translates to:
-  /// **'Caregiver access - this is {name}\'s own profile, listed as hers on her device'**
+  /// **'Caregiver access - this is {name}\'s own profile, listed as theirs on their device'**
   String inviteSubjectOptionDetail(String name);
 
   /// Invite dialog, generated state: what to do with a helper invitation link.
@@ -3714,10 +3750,10 @@ abstract class AppLocalizations {
   /// **'Share this single-use link with the guardian for {profile}:'**
   String inviteCreatedShareGuardian(String profile);
 
-  /// Invite dialog, generated state (Issue #802): what to do with a 'her own profile' invitation link.
+  /// Invite dialog, generated state (Issue #802): what to do with a 'their own profile' invitation link. Issue #1003: gender-neutral.
   ///
   /// In en, this message translates to:
-  /// **'Share this single-use link with {name} - she\'ll use it to join and log her own profile:'**
+  /// **'Share this single-use link with {name} - they\'ll use it to join and log their own profile:'**
   String inviteCreatedShareSubject(String name);
 
   /// Accept sheet (Issue #802, per #800's plain-language decision): the intro shown when the invitation carries the 'her own profile' preset.
@@ -3923,6 +3959,3626 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t confirm it\'s you — try again'**
   String get accountReauthFailed;
+
+  /// Issue #799: title of the overview's read-only, dismissible card surfacing Apple's four computed cycle-deviation types. Deliberately soft ('noticed…'), never alarming.
+  ///
+  /// In en, this message translates to:
+  /// **'Apple Health noticed…'**
+  String get healthDeviationCardTitle;
+
+  /// Issue #799: the second-opinion label. Apple computes its deviations from whatever was logged in Apple Health, which can differ from lunarlog's history, so the two can legitimately disagree and are never merged.
+  ///
+  /// In en, this message translates to:
+  /// **'These are Apple\'s own estimates from your Health data — separate from lunarlog\'s own estimate.'**
+  String get healthDeviationCardSubtitle;
+
+  /// Issue #799: tooltip on the deviation card's dismiss button.
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get healthDeviationDismiss;
+
+  /// Issue #799: label for Apple's irregularMenstrualCycles deviation.
+  ///
+  /// In en, this message translates to:
+  /// **'irregular cycles'**
+  String get healthDeviationKindIrregular;
+
+  /// Issue #799: label for Apple's infrequentMenstrualCycles deviation.
+  ///
+  /// In en, this message translates to:
+  /// **'infrequent cycles'**
+  String get healthDeviationKindInfrequent;
+
+  /// Issue #799: label for Apple's prolongedMenstrualPeriods deviation.
+  ///
+  /// In en, this message translates to:
+  /// **'prolonged periods'**
+  String get healthDeviationKindProlonged;
+
+  /// Issue #799: label for Apple's persistentIntermenstrualBleeding deviation.
+  ///
+  /// In en, this message translates to:
+  /// **'bleeding between periods'**
+  String get healthDeviationKindPersistentIntermenstrualBleeding;
+
+  /// Issue #799: one deviation line on the card, e.g. 'Possible irregular cycles (Aug 1 – Aug 30)'.
+  ///
+  /// In en, this message translates to:
+  /// **'Possible {kind} ({range})'**
+  String healthDeviationLine(String kind, String range);
+
+  /// Issue #799: the date span of a deviation interval; both placeholders are already-formatted local dates.
+  ///
+  /// In en, this message translates to:
+  /// **'{start} – {end}'**
+  String healthDeviationRange(String start, String end);
+
+  /// Issue #799: a deviation whose interval starts and ends on the same civil day; the placeholder is an already-formatted local date.
+  ///
+  /// In en, this message translates to:
+  /// **'{date}'**
+  String healthDeviationRangeSingle(String date);
+
+  /// Issue #1003: delete-account dialog body — plain language, no 'server rows' jargon.
+  ///
+  /// In en, this message translates to:
+  /// **'This permanently deletes your account, everything stored in it, and the copy on this device. This cannot be undone.'**
+  String get accountDeleteDialogBody;
+
+  /// Issue #1003: Settings delete-account tile subtitle — plain language, no 'server rows' jargon.
+  ///
+  /// In en, this message translates to:
+  /// **'Deletes the account, everything in it, and this device\'s copy.'**
+  String get accountDeleteTileSubtitle;
+
+  /// Issue #1003: the sign-out-everywhere confirmation body — plainer and shorter than the previous 'Ends every session…' copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Signs this account out on every device. Other devices may keep working for up to an hour. The copy on this device is removed; everything stays in your account.'**
+  String get accountSignOutEverywhereBody;
+
+  /// Issue #1003: transfer-ownership confirmation body. Names the canonical 'Primary Guardian' role and the continuing role the arming parent chose.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} will become the Primary Guardian of this profile. You\'ll keep access as {role}, and they can remove that access at any time.'**
+  String transferOwnershipConfirmBody(String name, String role);
+
+  /// Issue #1003: transfer-ownership 'What changes' bullet — 'Primary Guardian', not 'owner'.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} becomes this profile\'s Primary Guardian.'**
+  String transferOwnershipBecomesGuardian(String name);
+
+  /// Issue #1003: transfer-ownership post-transfer role description for the co_parent role — the canonical 'Co-Parent' label, not 'Co-manager'.
+  ///
+  /// In en, this message translates to:
+  /// **'Co-Parent: keep logging entries and managing this profile.'**
+  String get transferOwnershipRoleCoParent;
+
+  /// Issue #1003: transfer-ownership post-transfer role description for the viewer role.
+  ///
+  /// In en, this message translates to:
+  /// **'Viewer: read-only access to their calendar and entries.'**
+  String get transferOwnershipRoleViewer;
+
+  /// Issue #1003: the revoke confirmation dialog title when the caller is removing their own row — 'Leave', not 'Remove <name>'.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave {profile}\'s profile?'**
+  String manageGuardiansLeaveProfileDialogTitle(String profile);
+
+  /// Issue #1003: the confirm button on the caller's own leave dialog — 'Leave', not 'Remove'.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave'**
+  String get manageGuardiansLeaveProfileConfirm;
+
+  /// Issue #1003: pending prediction-connection tile title with no recipient label — plain language, not 'code redemption'.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for them to open the link'**
+  String get manageGuardiansWaitingForRedemption;
+
+  /// Issue #1003: the confirm action of the 'Sync {name} to this phone?' dialog — matches the title verb, not 'Bind'.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync'**
+  String get healthSyncConfirmSyncAction;
+
+  /// Issue #1003: the recipient's manual-entry dialog title — says 'link' to match what the sharer copies.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a connection link'**
+  String get predictionEnterLinkTitle;
+
+  /// Issue #1003: the recipient's manual-entry field hint — says 'link' to match what the sharer copies.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste the link you received'**
+  String get predictionEnterLinkHint;
+
+  /// Issue #1003: the recipient's manual-entry FAB label — says 'link' to match what the sharer copies.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter link'**
+  String get predictionEnterLinkAction;
+
+  /// Issue #1003: the sharer's copy action — sentence case and one term ('link') with the recipient's entry point.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy link'**
+  String get sharePredictionsCopyLink;
+
+  /// Issue #1003: the sharer's expiry note — says 'link', matching the copied artifact and the recipient's wording.
+  ///
+  /// In en, this message translates to:
+  /// **'The link expires in 72 hours and can be used once.'**
+  String get sharePredictionsLinkExpiry;
+
+  /// Issue #1003: the claim-transfer confirm button — names the canonical 'Primary Guardian' role, not 'Owner'.
+  ///
+  /// In en, this message translates to:
+  /// **'Become Primary Guardian'**
+  String get claimProfileBecomeGuardianAction;
+
+  /// Issue #1003: the claim-transfer intro — names the canonical 'Primary Guardian' role, not 'owner'.
+  ///
+  /// In en, this message translates to:
+  /// **'Claiming this link makes you this profile\'s Primary Guardian. The parent who shared it keeps the role they chose, and every past entry stays with whoever originally logged it.'**
+  String get claimProfileBody;
+
+  /// Issue #1004 (tranche 1): shared catch-all error copy in the sharing flows (accept invite, accept prediction connection, claim profile, redeem prediction code). Moved verbatim from the literals it replaces.
+  ///
+  /// In en, this message translates to:
+  /// **'An unexpected error occurred.'**
+  String get sharingUnexpectedError;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet personalized intro when the invite preview resolved.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'ve been invited to join {profileName}\'s shared profile as {roleLabel}. Accepting will sync its cycle calendar and health logs to this device.'**
+  String sharingAcceptInvitePreviewIntro(String profileName, String roleLabel);
+
+  /// Issue #1004 (tranche 1): accept-invite sheet neutral intro used while the preview loads or is unavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'ve been invited to a shared profile in lunarlog. Accepting will sync its cycle calendar and health logs to this device.'**
+  String get sharingAcceptInviteNeutralIntro;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet preview status while loading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading invite details…'**
+  String get sharingAcceptInvitePreviewLoading;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet preview status on a fetch error.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load invite details, but you can still continue.'**
+  String get sharingAcceptInvitePreviewError;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet preview status when the token returns no preview.
+  ///
+  /// In en, this message translates to:
+  /// **'This invite link may have expired or already been used.'**
+  String get sharingAcceptInvitePreviewUnavailable;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet title.
+  ///
+  /// In en, this message translates to:
+  /// **'Join Shared Profile'**
+  String get sharingAcceptInviteTitle;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet decline button.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline'**
+  String get sharingAcceptInviteDecline;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet accept button.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept & Sync'**
+  String get sharingAcceptInviteAccept;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet display-name field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Your display name (e.g. Dad, Mom, Grandma)'**
+  String get sharingAcceptInviteNameLabel;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet display-name field hint.
+  ///
+  /// In en, this message translates to:
+  /// **'Shows when you log entries'**
+  String get sharingAcceptInviteNameHint;
+
+  /// Issue #1004 (tranche 1): accept-prediction-connection sheet title.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect to cycle predictions'**
+  String get sharingAcceptPredictionTitle;
+
+  /// Issue #1004 (tranche 1): accept-prediction-connection sheet body.
+  ///
+  /// In en, this message translates to:
+  /// **'Accepting adds a read-only calendar of their estimated period, fertile, ovulation, and PMS days. No notes, tags, or logs are ever shared or synced to this device.'**
+  String get sharingAcceptPredictionBody;
+
+  /// Issue #1004 (tranche 1): accept-prediction-connection sheet decline button.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline'**
+  String get sharingAcceptPredictionDecline;
+
+  /// Issue #1004 (tranche 1): accept-prediction-connection sheet connect button.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect'**
+  String get sharingAcceptPredictionConnect;
+
+  /// Issue #1004 (tranche 1): claim-profile sheet title.
+  ///
+  /// In en, this message translates to:
+  /// **'Become the Owner'**
+  String get sharingClaimProfileTitle;
+
+  /// Issue #1004 (tranche 1): claim-profile sheet decline button.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline'**
+  String get sharingClaimProfileDecline;
+
+  /// Issue #1004 (tranche 1): claim-profile sheet child-name field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Child\'s display name (optional)'**
+  String get sharingClaimProfileChildNameLabel;
+
+  /// Issue #1004 (tranche 1): claim-profile sheet child-name field hint.
+  ///
+  /// In en, this message translates to:
+  /// **'Shows on the profile'**
+  String get sharingClaimProfileChildNameHint;
+
+  /// Issue #1004 (tranche 1): claim-profile sheet parent-label field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Label for the parent (optional)'**
+  String get sharingClaimProfileParentLabelLabel;
+
+  /// Issue #1004 (tranche 1): claim-profile sheet parent-label field hint.
+  ///
+  /// In en, this message translates to:
+  /// **'Shows when they log entries'**
+  String get sharingClaimProfileParentLabelHint;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog unexpected create failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to generate invite. Please check your connection and try again.'**
+  String get sharingInviteGuardianGenerateFailed;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog preset picker label.
+  ///
+  /// In en, this message translates to:
+  /// **'Role:'**
+  String get sharingInviteGuardianRoleLabel;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog co-parent preset choice.
+  ///
+  /// In en, this message translates to:
+  /// **'Co-Parent (Can log, edit profile & invite)'**
+  String get sharingInviteGuardianPresetCoParent;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog caregiver preset choice.
+  ///
+  /// In en, this message translates to:
+  /// **'Caregiver (Can log symptoms & periods)'**
+  String get sharingInviteGuardianPresetCaregiver;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog viewer preset choice.
+  ///
+  /// In en, this message translates to:
+  /// **'Viewer (Read-only access)'**
+  String get sharingInviteGuardianPresetViewer;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog generated-state title.
+  ///
+  /// In en, this message translates to:
+  /// **'Invitation Created'**
+  String get sharingInviteGuardianCreatedTitle;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog generated-state expiry note.
+  ///
+  /// In en, this message translates to:
+  /// **'Expires in 48 hours. Can be redeemed once.'**
+  String get sharingInviteGuardianExpiry;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog in-dialog copy confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied to clipboard'**
+  String get sharingInviteGuardianCopied;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog done button.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get sharingInviteGuardianDone;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog copy-link button.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy Link'**
+  String get sharingInviteGuardianCopyLink;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog share button.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get sharingInviteGuardianShare;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite guardian to {profileName}'**
+  String sharingInviteGuardianTitle(String profileName);
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog nickname field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Nickname / Label (Optional)'**
+  String get sharingInviteGuardianNicknameLabel;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog nickname field hint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. Dad, Grandma, School Nurse'**
+  String get sharingInviteGuardianNicknameHint;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog help-card link label.
+  ///
+  /// In en, this message translates to:
+  /// **'How do invitations work?'**
+  String get sharingInviteGuardianHelpLabel;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get sharingInviteGuardianCancel;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog create-link button.
+  ///
+  /// In en, this message translates to:
+  /// **'Create Link'**
+  String get sharingInviteGuardianCreateLink;
+
+  /// Issue #1004 (tranche 1): manage-guardians screen generic cancel action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get sharingManageGuardiansCancel;
+
+  /// Issue #1004 (tranche 1): confirm dialog title for revoking a prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'End prediction sharing?'**
+  String get sharingManageGuardiansEndPredictionTitle;
+
+  /// Issue #1004 (tranche 1): confirm dialog body for revoking a prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'They will immediately lose the shared predictions calendar. You can create a new connection any time.'**
+  String get sharingManageGuardiansEndPredictionBody;
+
+  /// Issue #1004 (tranche 1): destructive confirm action for revoking a prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'End sharing'**
+  String get sharingManageGuardiansEndSharing;
+
+  /// Issue #1004 (tranche 1): snackbar after a prediction connection is revoked.
+  ///
+  /// In en, this message translates to:
+  /// **'Prediction sharing ended'**
+  String get sharingManageGuardiansPredictionSharingEnded;
+
+  /// Issue #1004 (tranche 1): snackbar when revoking a prediction connection fails.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to end sharing. Check connection.'**
+  String get sharingManageGuardiansEndSharingFailed;
+
+  /// Issue #1004 (tranche 1): first delete-profile confirmation title.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete {profileName} permanently?'**
+  String sharingManageGuardiansDeleteProfileTitle(String profileName);
+
+  /// Issue #1004 (tranche 1): first delete-profile confirmation body.
+  ///
+  /// In en, this message translates to:
+  /// **'This permanently erases every day entry, care note, and visit-prep item on this profile, and removes every guardian\'s access to it — including your own. Synced copies on every device are erased too.'**
+  String get sharingManageGuardiansDeleteProfileStep1Body;
+
+  /// Issue #1004 (tranche 1): first delete-profile confirmation continue action.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get sharingManageGuardiansContinue;
+
+  /// Issue #1004 (tranche 1): second delete-profile confirmation title.
+  ///
+  /// In en, this message translates to:
+  /// **'Are you absolutely sure?'**
+  String get sharingManageGuardiansDeleteProfileStep2Title;
+
+  /// Issue #1004 (tranche 1): second delete-profile confirmation body.
+  ///
+  /// In en, this message translates to:
+  /// **'{profileName}\'s history will be gone permanently, for every guardian on this profile. There is no undo.'**
+  String sharingManageGuardiansDeleteProfileStep2Body(String profileName);
+
+  /// Issue #1004 (tranche 1): final destructive delete-profile action.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete permanently'**
+  String get sharingManageGuardiansDeletePermanently;
+
+  /// Issue #1004 (tranche 1): delete-profile failure while offline.
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t delete while offline. Check your connection and try again.'**
+  String get sharingManageGuardiansDeleteOffline;
+
+  /// Issue #1004 (tranche 1): generic delete-profile failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to delete profile. Check connection and try again.'**
+  String get sharingManageGuardiansDeleteFailed;
+
+  /// Issue #1004 (tranche 1): error when the sole primary guardian tries to leave.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'re now the only primary guardian, so you can\'t leave. Add another primary guardian first, then try again.'**
+  String get sharingManageGuardiansSolePrimaryLeave;
+
+  /// Issue #1004 (tranche 1): generic revoke-guardian failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to remove guardian. Check connection.'**
+  String get sharingManageGuardiansRemoveFailed;
+
+  /// Issue #1004 (tranche 1): confirm dialog title for revoking a guardian or leaving.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {name}?'**
+  String sharingManageGuardiansRemoveTitle(String name);
+
+  /// Issue #1004 (tranche 1): confirm dialog body when the caller removes herself.
+  ///
+  /// In en, this message translates to:
+  /// **'You will leave this profile and no longer receive updates or sync its entries.'**
+  String get sharingManageGuardiansLeaveBody;
+
+  /// Issue #1004 (tranche 1): confirm dialog body when removing another guardian.
+  ///
+  /// In en, this message translates to:
+  /// **'This guardian will lose access to {profileName}\'s calendar and entries.'**
+  String sharingManageGuardiansRemoveBody(String profileName);
+
+  /// Issue #1004 (tranche 1): destructive remove-guardian action.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get sharingManageGuardiansRemove;
+
+  /// Issue #1004 (tranche 1): snackbar after a guardian is removed.
+  ///
+  /// In en, this message translates to:
+  /// **'Removed {name}'**
+  String sharingManageGuardiansRemoved(String name);
+
+  /// Issue #1004 (tranche 1): confirm dialog title for cancelling a pending invitation.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel invitation for {name}?'**
+  String sharingManageGuardiansCancelInviteTitle(String name);
+
+  /// Issue #1004 (tranche 1): confirm dialog body for cancelling a pending invitation.
+  ///
+  /// In en, this message translates to:
+  /// **'The invite link will stop working immediately. You can send a new one any time.'**
+  String get sharingManageGuardiansCancelInviteBody;
+
+  /// Issue #1004 (tranche 1): decline action for the cancel-invitation dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep Invitation'**
+  String get sharingManageGuardiansKeepInvitation;
+
+  /// Issue #1004 (tranche 1): destructive confirm action for cancelling an invitation.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel Invitation'**
+  String get sharingManageGuardiansCancelInvitation;
+
+  /// Issue #1004 (tranche 1): snackbar when cancelling an invitation fails.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to cancel invitation. Check connection.'**
+  String get sharingManageGuardiansCancelInviteFailed;
+
+  /// Issue #1004 (tranche 1): inline error when the pending-invitations list fails to load.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load pending invitations.'**
+  String get sharingManageGuardiansPendingLoadError;
+
+  /// Issue #1004 (tranche 1): empty state for the pending-invitations section.
+  ///
+  /// In en, this message translates to:
+  /// **'No pending invitations'**
+  String get sharingManageGuardiansNoPending;
+
+  /// Issue #1004 (tranche 1): pending-invitations section heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Pending invitations'**
+  String get sharingManageGuardiansPendingTitle;
+
+  /// Issue #1004 (tranche 1): pending-invitation row subtitle for an expired invitation.
+  ///
+  /// In en, this message translates to:
+  /// **'{kindLabel} • Expired'**
+  String sharingManageGuardiansPendingSubtitleExpired(String kindLabel);
+
+  /// Issue #1004 (tranche 1): pending-invitation row subtitle with the live expiry label.
+  ///
+  /// In en, this message translates to:
+  /// **'{kindLabel} • {expiry}'**
+  String sharingManageGuardiansPendingSubtitle(String kindLabel, String expiry);
+
+  /// Issue #1004 (tranche 1): resend action on an expired pending invitation.
+  ///
+  /// In en, this message translates to:
+  /// **'Resend'**
+  String get sharingManageGuardiansResend;
+
+  /// Issue #1004 (tranche 1): expiry label once an invitation has lapsed.
+  ///
+  /// In en, this message translates to:
+  /// **'expired'**
+  String get sharingManageGuardiansExpiryExpired;
+
+  /// Issue #1004 (tranche 1): expiry label rounded to hours.
+  ///
+  /// In en, this message translates to:
+  /// **'expires in {hours}h'**
+  String sharingManageGuardiansExpiryHours(int hours);
+
+  /// Issue #1004 (tranche 1): expiry label rounded to minutes.
+  ///
+  /// In en, this message translates to:
+  /// **'expires in {minutes}m'**
+  String sharingManageGuardiansExpiryMinutes(int minutes);
+
+  /// Issue #1004 (tranche 1): manage-guardians app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'{profileName} Guardians'**
+  String sharingManageGuardiansScreenTitle(String profileName);
+
+  /// Issue #1004 (tranche 1): invite-guardian floating action label.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite guardian'**
+  String get sharingManageGuardiansInviteAction;
+
+  /// Issue #1004 (tranche 1): empty guardian list title.
+  ///
+  /// In en, this message translates to:
+  /// **'No guardians linked yet'**
+  String get sharingManageGuardiansNoGuardiansTitle;
+
+  /// Issue #1004 (tranche 1): empty guardian list body.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite another guardian to sync and share tracking.'**
+  String get sharingManageGuardiansNoGuardiansBody;
+
+  /// Issue #1004 (tranche 1): prediction-connection section heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Predictions-only sharing'**
+  String get sharingManageGuardiansPredictionsSectionTitle;
+
+  /// Issue #1004 (tranche 1): prediction-connection section explanatory copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Shares estimated period, fertile, ovulation, and PMS days on a read-only calendar - never notes or logs. One connection.'**
+  String get sharingManageGuardiansPredictionsSectionBody;
+
+  /// Issue #1004 (tranche 1): prediction-connection notice on a minor's profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Prediction sharing is not available for a minor\'s profile.'**
+  String get sharingManageGuardiansPredictionsMinor;
+
+  /// Issue #1004 (tranche 1): primary-guardian action to arm a prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'Share predictions only...'**
+  String get sharingManageGuardiansSharePredictionsAction;
+
+  /// Issue #1004 (tranche 1): notice for a non-primary guardian on the prediction section.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the primary guardian can share predictions.'**
+  String get sharingManageGuardiansPredictionsPrimaryOnly;
+
+  /// Issue #1004 (tranche 1): prediction-connection tile title once active.
+  ///
+  /// In en, this message translates to:
+  /// **'Sharing predictions'**
+  String get sharingManageGuardiansSharingPredictions;
+
+  /// Issue #1004 (tranche 1): inline pending marker on the prediction-connection tile.
+  ///
+  /// In en, this message translates to:
+  /// **'pending'**
+  String get sharingManageGuardiansPendingBadge;
+
+  /// Issue #1004 (tranche 1): prediction-connection tile subtitle once active.
+  ///
+  /// In en, this message translates to:
+  /// **'Phases-only calendar • not a guardian'**
+  String get sharingManageGuardiansPhasesOnlyCalendar;
+
+  /// Issue #1004 (tranche 1): danger-zone section heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Danger zone'**
+  String get sharingManageGuardiansDangerZoneTitle;
+
+  /// Issue #1004 (tranche 1): danger-zone section explanatory copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Permanently erases this profile and everything logged on it, for every guardian. This cannot be undone.'**
+  String get sharingManageGuardiansDangerZoneBody;
+
+  /// Issue #1004 (tranche 1): danger-zone delete-profile action.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete profile permanently'**
+  String get sharingManageGuardiansDeleteProfileAction;
+
+  /// Issue #1004 (tranche 1): generic role-update failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to update role. Check connection.'**
+  String get sharingManageGuardiansRoleUpdateFailed;
+
+  /// Issue #1004 (tranche 1): confirm dialog title for a role change.
+  ///
+  /// In en, this message translates to:
+  /// **'Change role to {newRoleLabel}?'**
+  String sharingManageGuardiansChangeRoleTitle(String newRoleLabel);
+
+  /// Issue #1004 (tranche 1): confirm dialog body for a role change. The consequence sentence is supplied by roleChangeConsequence.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} currently has {currentRoleLabel} access. {consequence} No new invitation is needed — the new role applies on their next sync.'**
+  String sharingManageGuardiansChangeRoleBody(
+    String name,
+    String currentRoleLabel,
+    String consequence,
+  );
+
+  /// Issue #1004 (tranche 1): confirm action for a role change.
+  ///
+  /// In en, this message translates to:
+  /// **'Change role'**
+  String get sharingManageGuardiansChangeRoleAction;
+
+  /// Issue #1004 (tranche 1): snackbar after a role change.
+  ///
+  /// In en, this message translates to:
+  /// **'Role updated to {newRoleLabel}'**
+  String sharingManageGuardiansRoleUpdated(String newRoleLabel);
+
+  /// Issue #1004 (tranche 1): suffix marking the caller's own guardian row.
+  ///
+  /// In en, this message translates to:
+  /// **'(you)'**
+  String get sharingManageGuardiansYouSuffix;
+
+  /// Issue #1004 (tranche 1): notification-preferences app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications'**
+  String get sharingNotificationPreferencesTitle;
+
+  /// Issue #1004 (tranche 1): confirm dialog title when saving despite an unrecognised time zone.
+  ///
+  /// In en, this message translates to:
+  /// **'Save without time zone?'**
+  String get sharingNotificationPreferencesSaveWithoutTzTitle;
+
+  /// Issue #1004 (tranche 1): confirm dialog body when saving despite an unrecognised time zone.
+  ///
+  /// In en, this message translates to:
+  /// **'Your quiet hours will not adjust for your local time zone until this is resolved. Continue anyway?'**
+  String get sharingNotificationPreferencesSaveWithoutTzBody;
+
+  /// Issue #1004 (tranche 1): notification-preferences dialog cancel action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get sharingNotificationPreferencesCancel;
+
+  /// Issue #1004 (tranche 1): save action that accepts the UTC-fallback time zone.
+  ///
+  /// In en, this message translates to:
+  /// **'Save without time zone'**
+  String get sharingNotificationPreferencesSaveWithoutTz;
+
+  /// Issue #1004 (tranche 1): cadence selector title for log alerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Log alert delivery'**
+  String get sharingNotificationPreferencesLogDeliveryTitle;
+
+  /// Issue #1004 (tranche 1): cadence selector subtitle for log alerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Immediate, once a day, or off - extra alerts never exceed a daily limit and roll into the digest'**
+  String get sharingNotificationPreferencesLogDeliverySubtitle;
+
+  /// Issue #1004 (tranche 1): cadence selector title for cycle-start alerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle-start alert delivery'**
+  String get sharingNotificationPreferencesCycleStartDelivery;
+
+  /// Issue #1004 (tranche 1): cadence selector title for high-severity alerts.
+  ///
+  /// In en, this message translates to:
+  /// **'High-severity alert delivery'**
+  String get sharingNotificationPreferencesHighSeverityDelivery;
+
+  /// Issue #1004 (tranche 1): digest-time tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Digest time'**
+  String get sharingNotificationPreferencesDigestTimeTitle;
+
+  /// Issue #1004 (tranche 1): digest-time tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'When daily digests are delivered in your time zone'**
+  String get sharingNotificationPreferencesDigestTimeSubtitle;
+
+  /// Issue #1004 (tranche 1): inline error when notification preferences fail to load.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load your notification settings.'**
+  String get sharingNotificationPreferencesLoadError;
+
+  /// Issue #1004 (tranche 1): discretion note at the top of notification preferences.
+  ///
+  /// In en, this message translates to:
+  /// **'Alerts never show what was logged - just a generic reminder to open lunarlog.'**
+  String get sharingNotificationPreferencesDiscretion;
+
+  /// Issue #1004 (tranche 1): master alert toggle label.
+  ///
+  /// In en, this message translates to:
+  /// **'Notify me when {profileName} logs an entry'**
+  String sharingNotificationPreferencesNotifyOnLog(String profileName);
+
+  /// Issue #1004 (tranche 1): narrowing toggle for cycle-start alerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Only notify on cycle start'**
+  String get sharingNotificationPreferencesCycleStartOnly;
+
+  /// Issue #1004 (tranche 1): narrowing toggle for high-severity alerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Notify on high-severity days'**
+  String get sharingNotificationPreferencesHighSeverity;
+
+  /// Issue #1004 (tranche 1): missed-entry threshold tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Missed-entry reminder'**
+  String get sharingNotificationPreferencesMissedEntryTitle;
+
+  /// Issue #1004 (tranche 1): missed-entry threshold tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Check in when no entry has been logged for a while'**
+  String get sharingNotificationPreferencesMissedEntrySubtitle;
+
+  /// Issue #1004 (tranche 1): off option in the notification-preferences dropdowns.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get sharingNotificationPreferencesOff;
+
+  /// Issue #1004 (tranche 1): one-day missed-entry threshold option.
+  ///
+  /// In en, this message translates to:
+  /// **'1 day'**
+  String get sharingNotificationPreferencesOneDay;
+
+  /// Issue #1004 (tranche 1): two-day missed-entry threshold option.
+  ///
+  /// In en, this message translates to:
+  /// **'2 days'**
+  String get sharingNotificationPreferencesTwoDays;
+
+  /// Issue #1004 (tranche 1): three-day missed-entry threshold option.
+  ///
+  /// In en, this message translates to:
+  /// **'3 days'**
+  String get sharingNotificationPreferencesThreeDays;
+
+  /// Issue #1004 (tranche 1): quiet-hours start tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Quiet hours start'**
+  String get sharingNotificationPreferencesQuietStart;
+
+  /// Issue #1004 (tranche 1): quiet-hours end tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Quiet hours end'**
+  String get sharingNotificationPreferencesQuietEnd;
+
+  /// Issue #1004 (tranche 1): clear-quiet-hours action.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear quiet hours'**
+  String get sharingNotificationPreferencesClearQuietHours;
+
+  /// Issue #1004 (tranche 1): incoming prediction-connections app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared with me'**
+  String get sharingPredictionConnectionsTitle;
+
+  /// Issue #1004 (tranche 1): confirm dialog title for leaving a received prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop receiving these predictions?'**
+  String get sharingPredictionConnectionsStopTitle;
+
+  /// Issue #1004 (tranche 1): confirm dialog body for leaving a received prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'You will stop seeing this profile\'s shared cycle calendar. The sharer can invite you again at any time.'**
+  String get sharingPredictionConnectionsStopBody;
+
+  /// Issue #1004 (tranche 1): prediction-connections generic cancel action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get sharingPredictionConnectionsCancel;
+
+  /// Issue #1004 (tranche 1): destructive action to leave a received prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop receiving'**
+  String get sharingPredictionConnectionsStopAction;
+
+  /// Issue #1004 (tranche 1): snackbar after leaving a received prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'Stopped receiving predictions'**
+  String get sharingPredictionConnectionsStopped;
+
+  /// Issue #1004 (tranche 1): snackbar when leaving a prediction connection fails.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not stop receiving. Check connection.'**
+  String get sharingPredictionConnectionsStopFailed;
+
+  /// Issue #1004 (tranche 1): snackbar when redeeming a prediction code fails without a typed reason.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection failed.'**
+  String get sharingPredictionConnectionsFailed;
+
+  /// Issue #1004 (tranche 1): inline error when incoming connections fail to load.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load connections.'**
+  String get sharingPredictionConnectionsLoadError;
+
+  /// Issue #1004 (tranche 1): empty incoming-connections title.
+  ///
+  /// In en, this message translates to:
+  /// **'No shared predictions yet'**
+  String get sharingPredictionConnectionsEmptyTitle;
+
+  /// Issue #1004 (tranche 1): empty incoming-connections body.
+  ///
+  /// In en, this message translates to:
+  /// **'When someone shares their cycle predictions with you, their calendar appears here.'**
+  String get sharingPredictionConnectionsEmptyBody;
+
+  /// Issue #1004 (tranche 1): incoming connection row title and calendar fallback name.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle predictions'**
+  String get sharingPredictionConnectionsCyclePredictions;
+
+  /// Issue #1004 (tranche 1): incoming connection row subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared {date} • phases only'**
+  String sharingPredictionConnectionsSharedSubtitle(String date);
+
+  /// Issue #1004 (tranche 1): tooltip on the leave-connection icon.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop receiving'**
+  String get sharingPredictionConnectionsStopTooltip;
+
+  /// Issue #1004 (tranche 1): manual code entry confirm action.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect'**
+  String get sharingPredictionConnectionsConnect;
+
+  /// Issue #1004 (tranche 1): inline error when the shared predictions fail to load.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load the shared predictions.'**
+  String get sharingPredictionCalendarLoadError;
+
+  /// Issue #1004 (tranche 1): phase calendar waiting state title.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the first update'**
+  String get sharingPredictionCalendarWaitingTitle;
+
+  /// Issue #1004 (tranche 1): phase calendar waiting state body.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'re connected, but {profileName}\'s app hasn\'t shared its first predictions yet. They appear here automatically once it does - tap refresh to check again.'**
+  String sharingPredictionCalendarWaitingBody(String profileName);
+
+  /// Issue #1004 (tranche 1): phase calendar ended state title.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection ended'**
+  String get sharingPredictionCalendarEndedTitle;
+
+  /// Issue #1004 (tranche 1): phase calendar ended state body.
+  ///
+  /// In en, this message translates to:
+  /// **'This prediction connection is no longer active.'**
+  String get sharingPredictionCalendarEndedBody;
+
+  /// Issue #1004 (tranche 1): confidence tier line in the phase calendar disclaimer banner.
+  ///
+  /// In en, this message translates to:
+  /// **'Estimate confidence: {tierLabel}'**
+  String sharingPredictionCalendarConfidence(String tierLabel);
+
+  /// Issue #1004 (tranche 1): phase legend entry for period days.
+  ///
+  /// In en, this message translates to:
+  /// **'Period'**
+  String get sharingPredictionCalendarLegendPeriod;
+
+  /// Issue #1004 (tranche 1): phase legend entry for fertile days.
+  ///
+  /// In en, this message translates to:
+  /// **'Fertile'**
+  String get sharingPredictionCalendarLegendFertile;
+
+  /// Issue #1004 (tranche 1): phase legend entry for ovulation days.
+  ///
+  /// In en, this message translates to:
+  /// **'Ovulation'**
+  String get sharingPredictionCalendarLegendOvulation;
+
+  /// Issue #1004 (tranche 1): phase legend entry for PMS days.
+  ///
+  /// In en, this message translates to:
+  /// **'PMS'**
+  String get sharingPredictionCalendarLegendPms;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog unexpected create failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to create the connection. Please check your connection and try again.'**
+  String get sharingSharePredictionsCreateFailed;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog generated-state title.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection created'**
+  String get sharingSharePredictionsCreatedTitle;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog generated-state share line.
+  ///
+  /// In en, this message translates to:
+  /// **'Send this single-use link to the person who should see {profileName}\'s predictions:'**
+  String sharingSharePredictionsSendLink(String profileName);
+
+  /// Issue #1004 (tranche 1): share-predictions dialog generated-state body.
+  ///
+  /// In en, this message translates to:
+  /// **'They will see estimated period, fertile, ovulation, and PMS days on a read-only calendar — no notes or logs. {expiry}'**
+  String sharingSharePredictionsCreatedBody(String expiry);
+
+  /// Issue #1004 (tranche 1): share-predictions dialog in-dialog copy confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied to clipboard'**
+  String get sharingSharePredictionsCopied;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog done action.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get sharingSharePredictionsDone;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Share predictions of {profileName}'**
+  String sharingSharePredictionsTitle(String profileName);
+
+  /// Issue #1004 (tranche 1): share-predictions dialog explanatory body.
+  ///
+  /// In en, this message translates to:
+  /// **'Creates a read-only connection that sees estimated period, fertile, ovulation, and PMS days — never notes, tags, or logs. One connection per profile.'**
+  String get sharingSharePredictionsBody;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog nickname field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Nickname / Label (Optional)'**
+  String get sharingSharePredictionsNicknameLabel;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog nickname field hint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. Partner, Aunt'**
+  String get sharingSharePredictionsNicknameHint;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog cancel action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get sharingSharePredictionsCancel;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog create-link action.
+  ///
+  /// In en, this message translates to:
+  /// **'Create Link'**
+  String get sharingSharePredictionsCreateLink;
+
+  /// Issue #1004 (tranche 1): transfer-ownership app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer {profileName}\'s Profile'**
+  String sharingTransferOwnershipScreenTitle(String profileName);
+
+  /// Issue #1004 (tranche 1): confirm dialog title before arming a transfer.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer ownership?'**
+  String get sharingTransferOwnershipConfirmTitle;
+
+  /// Issue #1004 (tranche 1): transfer-ownership generic cancel action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get sharingTransferOwnershipCancel;
+
+  /// Issue #1004 (tranche 1): destructive confirm action for arming a transfer.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer'**
+  String get sharingTransferOwnershipTransferAction;
+
+  /// Issue #1004 (tranche 1): snackbar after cancelling an orphaned transfer.
+  ///
+  /// In en, this message translates to:
+  /// **'Pending transfer cancelled'**
+  String get sharingTransferOwnershipPendingCancelled;
+
+  /// Issue #1004 (tranche 1): snackbar after cancelling a generated transfer.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer cancelled'**
+  String get sharingTransferOwnershipCancelled;
+
+  /// Issue #1004 (tranche 1): snackbar after copying a transfer link.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer link copied to clipboard'**
+  String get sharingTransferOwnershipLinkCopied;
+
+  /// Issue #1004 (tranche 1): armable-state section heading.
+  ///
+  /// In en, this message translates to:
+  /// **'What changes'**
+  String get sharingTransferOwnershipWhatChanges;
+
+  /// Issue #1004 (tranche 1): armable-state bullet.
+  ///
+  /// In en, this message translates to:
+  /// **'You keep the role you choose below.'**
+  String get sharingTransferOwnershipBulletKeepRole;
+
+  /// Issue #1004 (tranche 1): armable-state bullet.
+  ///
+  /// In en, this message translates to:
+  /// **'They can remove your access at any time.'**
+  String get sharingTransferOwnershipBulletRemoveAccess;
+
+  /// Issue #1004 (tranche 1): armable-state bullet.
+  ///
+  /// In en, this message translates to:
+  /// **'If they later delete their account, this profile\'s history goes with it.'**
+  String get sharingTransferOwnershipBulletDeleteAccount;
+
+  /// Issue #1004 (tranche 1): transfer help-card link label.
+  ///
+  /// In en, this message translates to:
+  /// **'How does the transfer work?'**
+  String get sharingTransferOwnershipHelpLabel;
+
+  /// Issue #1004 (tranche 1): post-transfer role picker heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Your role after the transfer'**
+  String get sharingTransferOwnershipRoleAfterTitle;
+
+  /// Issue #1004 (tranche 1): recipient label field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Recipient label (optional)'**
+  String get sharingTransferOwnershipRecipientLabel;
+
+  /// Issue #1004 (tranche 1): recipient label field hint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. Sam'**
+  String get sharingTransferOwnershipRecipientHint;
+
+  /// Issue #1004 (tranche 1): arm-transfer action.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer Ownership'**
+  String get sharingTransferOwnershipAction;
+
+  /// Issue #1004 (tranche 1): orphaned-transfer state title.
+  ///
+  /// In en, this message translates to:
+  /// **'A Transfer Is Already Pending'**
+  String get sharingTransferOwnershipPendingTitle;
+
+  /// Issue #1004 (tranche 1): orphaned-transfer state body.
+  ///
+  /// In en, this message translates to:
+  /// **'A transfer for {profileName} is already pending, but its link is not available on this screen (it may have been created earlier or on another device). Cancel it to start a new one.'**
+  String sharingTransferOwnershipPendingBody(String profileName);
+
+  /// Issue #1004 (tranche 1): transfer expiry line.
+  ///
+  /// In en, this message translates to:
+  /// **'Expires {date}'**
+  String sharingTransferOwnershipExpires(String date);
+
+  /// Issue #1004 (tranche 1): cancel an orphaned transfer action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel Pending Transfer'**
+  String get sharingTransferOwnershipCancelPending;
+
+  /// Issue #1004 (tranche 1): generated-transfer state title.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer Ready'**
+  String get sharingTransferOwnershipReadyTitle;
+
+  /// Issue #1004 (tranche 1): generated-transfer state share line.
+  ///
+  /// In en, this message translates to:
+  /// **'Share this single-use link with {profileName}:'**
+  String sharingTransferOwnershipShareLink(String profileName);
+
+  /// Issue #1004 (tranche 1): copy-transfer-link action.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy Link'**
+  String get sharingTransferOwnershipCopyLink;
+
+  /// Issue #1004 (tranche 1): share-transfer-link action.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get sharingTransferOwnershipShare;
+
+  /// Issue #1004 (tranche 1): cancel a generated transfer action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel transfer'**
+  String get sharingTransferOwnershipCancelTransfer;
+
+  /// Issue #1004 (tranche 1): activity-feed app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'{profileName} Activity'**
+  String sharingActivityFeedScreenTitle(String profileName);
+
+  /// Issue #1004 (tranche 1): single-guardian empty-state title.
+  ///
+  /// In en, this message translates to:
+  /// **'Just you for now'**
+  String get sharingActivityFeedJustYouTitle;
+
+  /// Issue #1004 (tranche 1): single-guardian empty-state body.
+  ///
+  /// In en, this message translates to:
+  /// **'This profile has one guardian, so there is no shared activity to review. When a second guardian joins, both of your changes appear here.'**
+  String get sharingActivityFeedJustYouBody;
+
+  /// Issue #1004 (tranche 1): no-activity empty-state title.
+  ///
+  /// In en, this message translates to:
+  /// **'No activity yet'**
+  String get sharingActivityFeedNoActivityTitle;
+
+  /// Issue #1004 (tranche 1): no-activity empty-state body.
+  ///
+  /// In en, this message translates to:
+  /// **'Changes either guardian makes to this profile will appear here.'**
+  String get sharingActivityFeedNoActivityBody;
+
+  /// Issue #1004 (tranche 1): activity-feed list caption.
+  ///
+  /// In en, this message translates to:
+  /// **'Newest first. Each row shows a day’s latest change — earlier edits by the same guardian are not recorded separately.'**
+  String get sharingActivityFeedCaption;
+
+  /// Issue #1004 (tranche 1): activity row verb for a logged entry.
+  ///
+  /// In en, this message translates to:
+  /// **'Logged'**
+  String get sharingActivityFeedVerbLogged;
+
+  /// Issue #1004 (tranche 1): activity row verb for an updated entry.
+  ///
+  /// In en, this message translates to:
+  /// **'Updated'**
+  String get sharingActivityFeedVerbUpdated;
+
+  /// Issue #1004 (tranche 1): activity row verb for a removed entry.
+  ///
+  /// In en, this message translates to:
+  /// **'Removed'**
+  String get sharingActivityFeedVerbRemoved;
+
+  /// Issue #1004 (tranche 1): activity row title with an attributed actor.
+  ///
+  /// In en, this message translates to:
+  /// **'{verb} by {actor}'**
+  String sharingActivityFeedByLineActor(String verb, String actor);
+
+  /// Issue #1004 (tranche 1): activity row title for an unattributed entry.
+  ///
+  /// In en, this message translates to:
+  /// **'Entry {verb}'**
+  String sharingActivityFeedByLineNoActor(String verb);
+
+  /// Issue #1004 (tranche 1): merge-outcome row title without an actor.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync merge kept one version'**
+  String get sharingActivityFeedMergeKeptOne;
+
+  /// Issue #1004 (tranche 1): merge-outcome row title with a possessive actor.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync merge kept {possessive} version'**
+  String sharingActivityFeedMergeKeptPossessive(String possessive);
+
+  /// Issue #1004 (tranche 1): access-removed row title without an actor.
+  ///
+  /// In en, this message translates to:
+  /// **'A guardian no longer has access'**
+  String get sharingActivityFeedAccessRemovedNoActor;
+
+  /// Issue #1004 (tranche 1): access-removed row title with an actor.
+  ///
+  /// In en, this message translates to:
+  /// **'{actor} no longer has access'**
+  String sharingActivityFeedAccessRemovedActor(String actor);
+
+  /// Issue #1004 (tranche 1): access-removed row subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Access to this profile was removed'**
+  String get sharingActivityFeedAccessRemovedSubtitle;
+
+  /// Issue #1004 (tranche 1): entry subtitle date fragment.
+  ///
+  /// In en, this message translates to:
+  /// **'for {date}'**
+  String sharingActivityFeedForDate(String date);
+
+  /// Issue #1004 (tranche 1): entry subtitle original-logger fragment.
+  ///
+  /// In en, this message translates to:
+  /// **'logged by {actor}'**
+  String sharingActivityFeedLoggedBy(String actor);
+
+  /// Issue #1004 (tranche 1): entry subtitle tag-count fragment.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 tag} other{{count} tags}}'**
+  String sharingActivityFeedTagCount(int count);
+
+  /// Issue #1004 (tranche 1): entry subtitle note-presence fragment.
+  ///
+  /// In en, this message translates to:
+  /// **'note'**
+  String get sharingActivityFeedNote;
+
+  /// Issue #1004 (tranche 1): fallback actor label for a merge-outcome row.
+  ///
+  /// In en, this message translates to:
+  /// **'one guardian'**
+  String get sharingActivityFeedOneGuardian;
+
+  /// Issue #1004 (tranche 1): merge-outcome subtitle fragment.
+  ///
+  /// In en, this message translates to:
+  /// **'flow and note values were'**
+  String get sharingActivityFeedDiscardedFlowAndNote;
+
+  /// Issue #1004 (tranche 1): merge-outcome subtitle fragment.
+  ///
+  /// In en, this message translates to:
+  /// **'note was'**
+  String get sharingActivityFeedDiscardedNote;
+
+  /// Issue #1004 (tranche 1): merge-outcome subtitle fragment.
+  ///
+  /// In en, this message translates to:
+  /// **'flow value was'**
+  String get sharingActivityFeedDiscardedFlow;
+
+  /// Issue #1004 (tranche 1): merge-outcome row subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{possessive} {what} discarded in a same-date merge'**
+  String sharingActivityFeedMergeDiscarded(String possessive, String what);
+
+  /// Issue #1004 (tranche 1): New chip on an unseen activity row.
+  ///
+  /// In en, this message translates to:
+  /// **'New'**
+  String get sharingActivityFeedNewBadge;
+
+  /// Issue #1004 (tranche 1): possessive form when the actor is the current user.
+  ///
+  /// In en, this message translates to:
+  /// **'your'**
+  String get sharingActivityFeedPossessiveYou;
+
+  /// Issue #1004 (tranche 1): possessive form for a named actor.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}\'s'**
+  String sharingActivityFeedPossessiveName(String name);
+
+  /// Issue #1004 (tranche 1): co-managed indicator tooltip on a profile sharing row.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared · {count} guardians'**
+  String sharingProfileSharingSharedTooltip(int count);
+
+  /// Issue #1004 (tranche 1): pending-invitation badge tooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 pending invitation} other{{count} pending invitations}}'**
+  String sharingPendingInviteBadgePendingCount(int count);
+
+  /// Issue #1004 (tranche 1): expired-invitation badge tooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 invitation expired} other{{count} invitations expired}}'**
+  String sharingPendingInviteBadgeExpiredCount(int count);
+
+  /// Issue #1004 (tranche 3): the lock screen's nested MaterialApp title.
+  ///
+  /// In en, this message translates to:
+  /// **'lunarlog'**
+  String get gateLockScreenAppTitle;
+
+  /// Issue #1004 (tranche 3): headline on the locked screen.
+  ///
+  /// In en, this message translates to:
+  /// **'lunarlog is locked'**
+  String get gateLockScreenTitle;
+
+  /// Issue #1004 (tranche 3): body under the locked headline.
+  ///
+  /// In en, this message translates to:
+  /// **'Everything logged on this device stays protected. Unlock to continue.'**
+  String get gateLockScreenProtectedBody;
+
+  /// Issue #1004 (tranche 3): shown when the device-credential prompt was declined.
+  ///
+  /// In en, this message translates to:
+  /// **'Not unlocked. The profiles on this device stay hidden until the device credential is accepted.'**
+  String get gateLockScreenDeniedBody;
+
+  /// Issue #1004 (tranche 3): primary unlock action on the locked screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock'**
+  String get gateLockScreenUnlockButton;
+
+  /// Issue #1004 (tranche 3): body shown when no device credential is enrolled.
+  ///
+  /// In en, this message translates to:
+  /// **'This device has no screen lock set. lunarlog protects your family\'s data using your device\'s own screen lock, so it can\'t open until you add one — a passcode, PIN, pattern, or biometric lock all work.'**
+  String get gateLockScreenNoCredentialBody;
+
+  /// Issue #1004 (tranche 3): action opening the platform device settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Open device settings'**
+  String get gateLockScreenOpenDeviceSettings;
+
+  /// Issue #1004 (tranche 3): retry action on the locked screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get gateLockScreenTryAgain;
+
+  /// Issue #1004 (tranche 3): alternate action in the current-PIN authorization dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Use device credential instead'**
+  String get gatePinAuthorizationUseDeviceCredential;
+
+  /// Issue #1004 (tranche 3): cancel action in the current-PIN authorization dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get gatePinAuthorizationCancel;
+
+  /// Issue #1004 (tranche 3): cancel action in the turn-off-PIN confirmation dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get gatePinSettingsRemoveCancel;
+
+  /// Issue #1004 (tranche 3): title of the screenshot consent dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Attach a screenshot?'**
+  String get feedbackAttachmentConsentTitle;
+
+  /// Issue #1004 (tranche 3): body of the screenshot consent dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Screenshots of this app usually contain cycle data for a family member. Only attach one if it helps explain the issue.'**
+  String get feedbackAttachmentConsentBody;
+
+  /// Issue #1004 (tranche 3): cancel action of the screenshot consent dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get feedbackAttachmentConsentCancel;
+
+  /// Issue #1004 (tranche 3): continue action of the screenshot consent dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get feedbackAttachmentConsentContinue;
+
+  /// Issue #1004 (tranche 3): button that opens the screenshot consent flow.
+  ///
+  /// In en, this message translates to:
+  /// **'Add screenshot'**
+  String get feedbackAttachmentAddScreenshot;
+
+  /// Issue #1004 (tranche 3): app-bar title of the feedback screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Send feedback'**
+  String get feedbackScreenTitle;
+
+  /// Issue #1004 (tranche 3): label above the feedback category chips.
+  ///
+  /// In en, this message translates to:
+  /// **'Category'**
+  String get feedbackScreenCategoryLabel;
+
+  /// Issue #1004 (tranche 3): label of the feedback message field.
+  ///
+  /// In en, this message translates to:
+  /// **'What happened?'**
+  String get feedbackScreenMessageLabel;
+
+  /// Issue #1004 (tranche 3): label of the feedback reply-email field.
+  ///
+  /// In en, this message translates to:
+  /// **'Reply email'**
+  String get feedbackScreenReplyEmailLabel;
+
+  /// Issue #1004 (tranche 3): title of the diagnostics toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Include diagnostics'**
+  String get feedbackScreenDiagnosticsTitle;
+
+  /// Issue #1004 (tranche 3): subtitle of the diagnostics toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'App version, OS, device model, and recent activity.'**
+  String get feedbackScreenDiagnosticsSubtitle;
+
+  /// Issue #1004 (tranche 3): toggle revealing the diagnostics preview.
+  ///
+  /// In en, this message translates to:
+  /// **'See what will be attached'**
+  String get feedbackScreenDiagnosticsPreview;
+
+  /// Issue #1004 (tranche 3): submit button of the feedback screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Send feedback'**
+  String get feedbackScreenSendButton;
+
+  /// Issue #1004 (tranche 3): validation error for an over-long feedback message.
+  ///
+  /// In en, this message translates to:
+  /// **'Message must be 4000 characters or fewer.'**
+  String get feedbackScreenMessageTooLong;
+
+  /// Issue #1004 (tranche 3): validation error for an invalid reply email.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid reply email address.'**
+  String get feedbackScreenReplyEmailInvalid;
+
+  /// Issue #1004 (tranche 3): confirmation shown after a feedback submission.
+  ///
+  /// In en, this message translates to:
+  /// **'Thanks — we\'ll get back to you at {email}.'**
+  String feedbackScreenThanks(String email);
+
+  /// Issue #1004 (tranche 3): app-bar title of the support history screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Support history'**
+  String get supportHistoryTitle;
+
+  /// Issue #1004 (tranche 3): empty-state title of the support history screen.
+  ///
+  /// In en, this message translates to:
+  /// **'No feedback yet'**
+  String get supportHistoryEmptyTitle;
+
+  /// Issue #1004 (tranche 3): empty-state body of the support history screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Reports you send from Settings appear here.'**
+  String get supportHistoryEmptyBody;
+
+  /// Issue #1004 (tranche 3): retry action after a support history load failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get supportHistoryRetry;
+
+  /// Issue #1004 (tranche 3): label of the reply field on a support ticket.
+  ///
+  /// In en, this message translates to:
+  /// **'Reply'**
+  String get supportHistoryReplyLabel;
+
+  /// Issue #1004 (tranche 3): send action on a support ticket reply.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get supportHistorySend;
+
+  /// Issue #1004 (tranche 3): unarchive action on an archived profile detail.
+  ///
+  /// In en, this message translates to:
+  /// **'Unarchive'**
+  String get profileDetailUnarchive;
+
+  /// Issue #1004 (tranche 3): label of the profile detail overview tab.
+  ///
+  /// In en, this message translates to:
+  /// **'Overview'**
+  String get profileDetailOverviewTab;
+
+  /// Issue #1004 (tranche 3): label of the profile detail calendar tab.
+  ///
+  /// In en, this message translates to:
+  /// **'Calendar'**
+  String get profileDetailCalendarTab;
+
+  /// Issue #1004 (tranche 3): suffix appended to an archived profile's title.
+  ///
+  /// In en, this message translates to:
+  /// **' (archived)'**
+  String get profileDetailArchivedSuffix;
+
+  /// Issue #1004 (tranche 3): co-managed indicator chip label.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared · {count} guardians'**
+  String profileDetailSharedGuardians(int count);
+
+  /// Issue #1004 (tranche 3): app-bar title of the profile picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Profiles'**
+  String get profilePickerTitle;
+
+  /// Issue #1004 (tranche 3): empty-state title of the profile picker.
+  ///
+  /// In en, this message translates to:
+  /// **'No profiles yet'**
+  String get profilePickerEmptyTitle;
+
+  /// Issue #1004 (tranche 3): empty-state body of the profile picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a profile to start tracking.'**
+  String get profilePickerEmptyBody;
+
+  /// Issue #1004 (tranche 3): empty-state primary action of the profile picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Add profile'**
+  String get profilePickerEmptyAddAction;
+
+  /// Issue #1004 (tranche 3): archived section header on the profile picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Archived ({count})'**
+  String profilePickerArchivedHeader(int count);
+
+  /// Issue #1004 (tranche 3): profile row subtitle naming the creation date.
+  ///
+  /// In en, this message translates to:
+  /// **'Created {date}'**
+  String profilePickerCreated(String date);
+
+  /// Issue #1004 (tranche 3): section header for owned profiles.
+  ///
+  /// In en, this message translates to:
+  /// **'My profiles'**
+  String get profilePickerMyProfilesHeader;
+
+  /// Issue #1004 (tranche 3): section header for profiles shared with the operator.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared with me'**
+  String get profilePickerSharedWithMeHeader;
+
+  /// Issue #1004 (tranche 3): profile row menu item opening Manage Guardians.
+  ///
+  /// In en, this message translates to:
+  /// **'Guardians'**
+  String get profilePickerMenuGuardians;
+
+  /// Issue #1004 (tranche 3): archive action on a profile row and its confirmation dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive'**
+  String get profileArchive;
+
+  /// Issue #1004 (tranche 3): derived minor status in the profile edit dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Counts as a minor (derived from birth year)'**
+  String get profileDialogCountsAsMinor;
+
+  /// Issue #1004 (tranche 3): derived adult status in the profile edit dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Counts as an adult (derived from birth year)'**
+  String get profileDialogCountsAsAdult;
+
+  /// Issue #1004 (tranche 3): title of the create-profile dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Add profile'**
+  String get profileDialogAddTitle;
+
+  /// Issue #1004 (tranche 3): label of the optional birth-year field.
+  ///
+  /// In en, this message translates to:
+  /// **'Birth year (optional)'**
+  String get profileDialogBirthYearLabel;
+
+  /// Issue #1004 (tranche 3): empty option in the relationship dropdown.
+  ///
+  /// In en, this message translates to:
+  /// **'None'**
+  String get profileDialogRelationshipNone;
+
+  /// Issue #1004 (tranche 3): cancel action of the profile edit dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get profileDialogCancel;
+
+  /// Issue #1004 (tranche 3): create action of the profile edit dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Create'**
+  String get profileDialogCreate;
+
+  /// Issue #1004 (tranche 3): save action of the profile edit dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get profileDialogSave;
+
+  /// Issue #1004 (tranche 3): title of the archive-profile confirmation dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive {name}?'**
+  String profileArchiveConfirmTitle(String name);
+
+  /// Issue #1004 (tranche 3): body of the archive-profile confirmation dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'The profile moves to the archived list and out of everyday use. Its history stays on this device and can be restored at any time.'**
+  String get profileArchiveConfirmBody;
+
+  /// Issue #1004 (tranche 3): cancel action of the archive-profile confirmation dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get profileArchiveConfirmCancel;
+
+  /// Issue #1004 (tranche 3): confirm action of the archive-profile confirmation dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive'**
+  String get profileArchiveConfirmButton;
+
+  /// Issue #1004 (tranche 3): error shown when first-run profile creation fails.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not create the profile. Please try again.'**
+  String get firstRunCreateError;
+
+  /// Issue #1004 (tranche 3): app-bar title of the care notes screen.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} Care'**
+  String careNotesTitle(String name);
+
+  /// Issue #1004 (tranche 3): read-only reason on an archived profile's care notes.
+  ///
+  /// In en, this message translates to:
+  /// **'This profile is archived.'**
+  String get careNotesReadOnlyArchived;
+
+  /// Issue #1004 (tranche 3): section header of the care notes list.
+  ///
+  /// In en, this message translates to:
+  /// **'Care notes'**
+  String get careNotesSectionTitle;
+
+  /// Issue #1004 (tranche 3): empty state of the care notes list.
+  ///
+  /// In en, this message translates to:
+  /// **'No care notes yet.'**
+  String get careNotesEmpty;
+
+  /// Issue #1004 (tranche 3): label of the add-care-note field.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a care note'**
+  String get careNotesAddLabel;
+
+  /// Issue #1004 (tranche 3): hint of the add-care-note field.
+  ///
+  /// In en, this message translates to:
+  /// **'Standing notes for everyone caring for this profile'**
+  String get careNotesAddHint;
+
+  /// Issue #1004 (tranche 3): add-care-note action.
+  ///
+  /// In en, this message translates to:
+  /// **'Add note'**
+  String get careNotesAddButton;
+
+  /// Issue #1004 (tranche 3): title of the delete-care-note confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this care note?'**
+  String get careNotesDeleteTitle;
+
+  /// Issue #1004 (tranche 3): body of the delete-care-note confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Every guardian with access to this profile can see this note. Deleting it removes it for everyone and cannot be undone.'**
+  String get careNotesDeleteBody;
+
+  /// Issue #1004 (tranche 3): cancel action of the delete-care-note confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get careNotesDeleteCancel;
+
+  /// Issue #1004 (tranche 3): confirm action of the delete-care-note confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get careNotesDeleteConfirm;
+
+  /// Issue #1004 (tranche 3): lowercase attribution for the current operator.
+  ///
+  /// In en, this message translates to:
+  /// **'you'**
+  String get careNotesActorYou;
+
+  /// Issue #1004 (tranche 3): fallback attribution for an unknown guardian.
+  ///
+  /// In en, this message translates to:
+  /// **'Guardian'**
+  String get careNotesActorGuardian;
+
+  /// Issue #1004 (tranche 3): error after a failed care-note save.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save the care note.'**
+  String get careNotesSaveError;
+
+  /// Issue #1004 (tranche 3): error after a failed prep-item add.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not add the prep item.'**
+  String get careNotesAddPrepError;
+
+  /// Issue #1004 (tranche 3): error after a failed supply-item add.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not add the supply item.'**
+  String get careNotesAddSupplyError;
+
+  /// Issue #1004 (tranche 3): error after a failed prep-item update.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not update the prep item.'**
+  String get careNotesUpdatePrepError;
+
+  /// Issue #1004 (tranche 3): error after a failed prep-item removal.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not remove the prep item.'**
+  String get careNotesRemovePrepError;
+
+  /// Issue #1004 (tranche 3): error after a failed care-note removal.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not remove the care note.'**
+  String get careNotesRemoveNoteError;
+
+  /// Issue #1004 (tranche 3): error after a failed clear-checked action.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not clear the checked items.'**
+  String get careNotesClearCheckedError;
+
+  /// Issue #1004 (tranche 3): error after a failed clear-stocked action.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not clear the stocked items.'**
+  String get careNotesClearStockedError;
+
+  /// Issue #1004 (tranche 3): section header of the visit-prep checklist.
+  ///
+  /// In en, this message translates to:
+  /// **'Visit prep'**
+  String get careVisitPrepSectionTitle;
+
+  /// Issue #1004 (tranche 3): empty state of the visit-prep checklist.
+  ///
+  /// In en, this message translates to:
+  /// **'No prep items yet.'**
+  String get careVisitPrepEmpty;
+
+  /// Issue #1004 (tranche 3): action clearing checked visit-prep items.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear checked ({count})'**
+  String careVisitPrepClearChecked(int count);
+
+  /// Issue #1004 (tranche 3): label of the add-prep-item field.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a prep item'**
+  String get careVisitPrepAddLabel;
+
+  /// Issue #1004 (tranche 3): hint of the add-prep-item field.
+  ///
+  /// In en, this message translates to:
+  /// **'A question or to-bring for the next appointment'**
+  String get careVisitPrepAddHint;
+
+  /// Issue #1004 (tranche 3): add-prep-item action.
+  ///
+  /// In en, this message translates to:
+  /// **'Add item'**
+  String get careVisitPrepAddButton;
+
+  /// Issue #1004 (tranche 3): attribution verb for a checked prep item.
+  ///
+  /// In en, this message translates to:
+  /// **'Checked by'**
+  String get careVisitPrepCheckedVerb;
+
+  /// Issue #1004 (tranche 3): section header of the household supplies list.
+  ///
+  /// In en, this message translates to:
+  /// **'Supplies'**
+  String get careSuppliesSectionTitle;
+
+  /// Issue #1004 (tranche 3): empty state of the household supplies list.
+  ///
+  /// In en, this message translates to:
+  /// **'No supplies tracked yet.'**
+  String get careSuppliesEmpty;
+
+  /// Issue #1004 (tranche 3): action clearing stocked supply items.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear stocked ({count})'**
+  String careSuppliesClearStocked(int count);
+
+  /// Issue #1004 (tranche 3): label of the add-supply-item field.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a supply item'**
+  String get careSuppliesAddLabel;
+
+  /// Issue #1004 (tranche 3): hint of the add-supply-item field.
+  ///
+  /// In en, this message translates to:
+  /// **'Something to keep stocked, e.g. liners'**
+  String get careSuppliesAddHint;
+
+  /// Issue #1004 (tranche 3): add-supply-item action.
+  ///
+  /// In en, this message translates to:
+  /// **'Add supply'**
+  String get careSuppliesAddButton;
+
+  /// Issue #1004 (tranche 3): attribution verb for a stocked supply item.
+  ///
+  /// In en, this message translates to:
+  /// **'Stocked by'**
+  String get careSuppliesStockedVerb;
+
+  /// Issue #1004 (tranche 3): restock nudge title naming the due date.
+  ///
+  /// In en, this message translates to:
+  /// **'Restock before {date}'**
+  String careRestockBefore(String date);
+
+  /// Issue #1004 (tranche 3): label of the guardian-note field.
+  ///
+  /// In en, this message translates to:
+  /// **'Your note for this day'**
+  String get guardianNotesFieldLabel;
+
+  /// Issue #1004 (tranche 3): fallback author name for a guardian note.
+  ///
+  /// In en, this message translates to:
+  /// **'Guardian'**
+  String get guardianNotesGuardianFallback;
+
+  /// Web banner for a build with sync off (LUNARLOG_WEB_SYNC unset): no account, no token, not for real data. Epic #831.
+  ///
+  /// In en, this message translates to:
+  /// **'Development build — not for real data.'**
+  String get webBannerDevCopy;
+
+  /// Web banner when LUNARLOG_WEB_SYNC=true made web a first-class client (epic #831): the browser holds synced family data unencrypted alongside the session. Deliberately never says 'not for real data'.
+  ///
+  /// In en, this message translates to:
+  /// **'Browser build — this browser stores a copy of the signed-in profiles\' data unencrypted, plus your sign-in. Signing out clears it.'**
+  String get webBannerSyncedCopy;
+
+  /// Tooltip/label on the browser-build notice's per-session dismiss button (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get webBrowserNoticeDismissTooltip;
+
+  /// Action on the web banner opening the confirm-guarded local wipe (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Wipe local data'**
+  String get webWipeAction;
+
+  /// Title of the web banner's local-wipe confirmation (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Erase all local data?'**
+  String get webWipeConfirmTitle;
+
+  /// Local-wipe confirmation body for a sync-off web build (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Erases all data stored in this browser. This cannot be undone.'**
+  String get webWipeConfirmDevBody;
+
+  /// Local-wipe confirmation body for a sync-enabled web build, naming that the account copy is not touched (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Erases all data stored in this browser and signs out. This cannot be undone here; data already in your account stays there.'**
+  String get webWipeConfirmSyncedBody;
+
+  /// Cancel action of the web local-wipe confirmation (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get webWipeCancel;
+
+  /// Confirm action of the web local-wipe confirmation (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Erase everything'**
+  String get webWipeConfirmAction;
+
+  /// Snackbar after the web local wipe completes (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'All local data erased.'**
+  String get webWipeDone;
+
+  /// Title of the one-time web first-run acknowledgement for a sync-off build (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Development build'**
+  String get webFirstRunDevTitle;
+
+  /// Body of the one-time web first-run acknowledgement for a sync-off build (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'This is a development build, not for real data. Data in this browser is not encrypted and not backed up.'**
+  String get webFirstRunDevBody;
+
+  /// Title of the one-time web first-run acknowledgement when the build is a first-class (sync-enabled) client (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Using lunarlog in this browser'**
+  String get webFirstRunSyncedTitle;
+
+  /// Body of the one-time web first-run acknowledgement when LUNARLOG_WEB_SYNC=true; the honest browser-storage story that replaces the old 'not for real data' wording (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'This browser keeps an unencrypted copy of the profiles you can see — including synced family data — and your sign-in. Anyone who uses this browser can read it. Signing out removes the copy from this browser; your account\'s data stays in your account and can sync again later.'**
+  String get webFirstRunSyncedBody;
+
+  /// Acknowledge button of the one-time web first-run acknowledgement (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'I understand'**
+  String get webFirstRunAcknowledge;
+
+  /// Issue #1004 (tranche 2): account-mismatch screen app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'Different account'**
+  String get accountMismatchTitle;
+
+  /// Issue #1004 (tranche 2): account-mismatch body when no email is known.
+  ///
+  /// In en, this message translates to:
+  /// **'This device holds data that belongs to a different account than the one you just signed in to.'**
+  String get accountMismatchBodyNoEmail;
+
+  /// Issue #1004 (tranche 2): account-mismatch body naming the signed-in email.
+  ///
+  /// In en, this message translates to:
+  /// **'This device holds data that belongs to a different account than {email}.'**
+  String accountMismatchBodyWithEmail(String email);
+
+  /// Issue #1004 (tranche 2): account-mismatch explainer paragraph.
+  ///
+  /// In en, this message translates to:
+  /// **'This device is set up for a different account. This happens when Apple\'s Hide My Email created a new account, or when you chose a different Google account. Nothing has been uploaded or changed.'**
+  String get accountMismatchExplainer;
+
+  /// Issue #1004 (tranche 2): account-mismatch non-destructive exit button.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch account'**
+  String get accountMismatchSwitchAccount;
+
+  /// Issue #1004 (tranche 2): account-mismatch switch-account subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Signs out and keeps everything on this device.'**
+  String get accountMismatchSwitchAccountSubtitle;
+
+  /// Issue #1004 (tranche 2): account-mismatch destructive exit button.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove this device\'s data'**
+  String get accountMismatchRemoveData;
+
+  /// Issue #1004 (tranche 2): account-mismatch confirmation dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove this device\'s data?'**
+  String get accountMismatchRemoveDialogTitle;
+
+  /// Issue #1004 (tranche 2): account-mismatch confirmation dialog body.
+  ///
+  /// In en, this message translates to:
+  /// **'Erases every profile and entry stored on this device and signs out. The data stays in the account it belongs to; it is not deleted there.'**
+  String get accountMismatchRemoveDialogBody;
+
+  /// Issue #1004 (tranche 2): account-mismatch confirmation cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get accountMismatchCancel;
+
+  /// Issue #1004 (tranche 2): account-mismatch confirmation destructive button.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove and sign out'**
+  String get accountMismatchRemoveConfirm;
+
+  /// Issue #1004 (tranche 2): account-mismatch switch-account failure copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not switch accounts. Please try again.'**
+  String get accountMismatchSwitchError;
+
+  /// Issue #1004 (tranche 2): account-mismatch remove-data failure copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not remove this device\'s data. Please try again.'**
+  String get accountMismatchRemoveError;
+
+  /// Issue #1004 (tranche 2): upload-consent screen app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload to your account?'**
+  String get accountUploadConsentTitle;
+
+  /// Issue #1004 (tranche 2): upload-consent body with counts of this device's rows.
+  ///
+  /// In en, this message translates to:
+  /// **'This device holds {profileCount, plural, =1{1 profile} other{{profileCount} profiles}} and {entryCount, plural, =1{1 entry} other{{entryCount} entries}} that are not in your account yet. Uploading copies them to the account, deletions included, and keeps this device in sync from now on.'**
+  String accountUploadConsentBody(int profileCount, int entryCount);
+
+  /// Issue #1004 (tranche 2): upload-consent body while the row counts load.
+  ///
+  /// In en, this message translates to:
+  /// **'This device holds data that is not in your account yet.'**
+  String get accountUploadConsentLoadingBody;
+
+  /// Issue #1004 (tranche 2): upload-consent duplicate-profile note.
+  ///
+  /// In en, this message translates to:
+  /// **'If another device also created the same person while offline, you will see two profiles after the upload; archive the one you do not want.'**
+  String get accountUploadConsentDuplicateNote;
+
+  /// Issue #1004 (tranche 2): upload-consent upload button.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload to my account'**
+  String get accountUploadConsentUploadAction;
+
+  /// Issue #1004 (tranche 2): upload-consent defer button.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get accountUploadConsentNotNow;
+
+  /// Issue #1004 (tranche 2): empty-device restore progress label.
+  ///
+  /// In en, this message translates to:
+  /// **'Restoring your data…'**
+  String get accountRestoringScreenBody;
+
+  /// Issue #1004 (tranche 2): restore-failure screen heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Unable to restore data'**
+  String get accountRestoreErrorTitle;
+
+  /// Issue #1004 (tranche 2): restore-failure screen default body.
+  ///
+  /// In en, this message translates to:
+  /// **'We could not restore your account data from the cloud. Please check your internet connection and try again.'**
+  String get accountRestoreErrorBody;
+
+  /// Issue #1004 (tranche 2): restore-failure retry button.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get accountRestoreErrorRetry;
+
+  /// Issue #1004 (tranche 2): restore-failure continue-without-sync button.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue without syncing'**
+  String get accountRestoreErrorContinue;
+
+  /// Issue #1004 (tranche 2): restore-failure sign-out button.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out'**
+  String get accountRestoreErrorSignOut;
+
+  /// Issue #1004 (tranche 2): password-recovery screen app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'Set a new password'**
+  String get accountPasswordRecoveryTitle;
+
+  /// Issue #1004 (tranche 2): password-recovery intro paragraph.
+  ///
+  /// In en, this message translates to:
+  /// **'You opened a password reset link. Choose a new password for your account.'**
+  String get accountPasswordRecoveryIntro;
+
+  /// Issue #1004 (tranche 2): password-recovery new-password field label.
+  ///
+  /// In en, this message translates to:
+  /// **'New password'**
+  String get accountPasswordRecoveryNewLabel;
+
+  /// Issue #1004 (tranche 2): password-recovery length helper text.
+  ///
+  /// In en, this message translates to:
+  /// **'At least {length} characters'**
+  String accountPasswordRecoveryLengthHelper(int length);
+
+  /// Issue #1004 (tranche 2): password-recovery confirm-password field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm password'**
+  String get accountPasswordRecoveryConfirmLabel;
+
+  /// Issue #1004 (tranche 2): password-recovery reveal toggle tooltip (shown).
+  ///
+  /// In en, this message translates to:
+  /// **'Show password'**
+  String get accountPasswordRecoveryShow;
+
+  /// Issue #1004 (tranche 2): password-recovery reveal toggle tooltip (hidden).
+  ///
+  /// In en, this message translates to:
+  /// **'Hide password'**
+  String get accountPasswordRecoveryHide;
+
+  /// Issue #1004 (tranche 2): password-recovery too-short error.
+  ///
+  /// In en, this message translates to:
+  /// **'Use at least {length} characters for the password.'**
+  String accountPasswordRecoveryLengthError(int length);
+
+  /// Issue #1004 (tranche 2): password-recovery mismatch error.
+  ///
+  /// In en, this message translates to:
+  /// **'Passwords do not match.'**
+  String get accountPasswordRecoveryMismatchError;
+
+  /// Issue #1004 (tranche 2): password-recovery save button.
+  ///
+  /// In en, this message translates to:
+  /// **'Save password'**
+  String get accountPasswordRecoverySave;
+
+  /// Issue #1004 (tranche 2): password-recovery defer button.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get accountPasswordRecoveryNotNow;
+
+  /// Issue #1004 (tranche 2): MFA remove-factor confirmation cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get accountMfaSettingsCancel;
+
+  /// Issue #1004 (tranche 2): MFA step-up dialog cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get accountMfaStepUpCancel;
+
+  /// Issue #1004 (tranche 2): sync-status tile subtitle when entries were rejected.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap to retry'**
+  String get accountSyncStatusTapToRetry;
+
+  /// Issue #1004 (tranche 2): sync-status snackbar action opening Settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get accountSyncStatusSettingsAction;
+
+  /// Issue #1004 (tranche 2): sign-in screen first-run embedded intro.
+  ///
+  /// In en, this message translates to:
+  /// **'An account keeps a copy of this device\'s data so it can be restored on another device. You can also keep everything on this device only.'**
+  String get accountSignInEmbeddedIntro;
+
+  /// Issue #1004 (tranche 2): sign-in screen passkey button.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in with a passkey'**
+  String get accountSignInPasskeyAction;
+
+  /// Issue #1004 (tranche 2): sign-in screen provider/passwordless divider label.
+  ///
+  /// In en, this message translates to:
+  /// **'or'**
+  String get accountSignInOr;
+
+  /// Issue #1004 (tranche 2): sign-in screen email field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get accountSignInEmailLabel;
+
+  /// Issue #1030: sign-in screen local error when the email field is empty and the action would otherwise send an empty address.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your email address.'**
+  String get accountSignInEmailRequired;
+
+  /// Issue #1030: sign-in screen local error when the email field is non-empty but not shaped like an address.
+  ///
+  /// In en, this message translates to:
+  /// **'That doesn\'t look like an email address.'**
+  String get accountSignInEmailInvalid;
+
+  /// Issue #1004 (tranche 2): sign-in screen password field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Password'**
+  String get accountSignInPasswordLabel;
+
+  /// Issue #1004 (tranche 2): sign-in screen create-account primary button.
+  ///
+  /// In en, this message translates to:
+  /// **'Create account'**
+  String get accountSignInCreateAccountAction;
+
+  /// Issue #1004 (tranche 2): sign-in screen sign-in primary button.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in'**
+  String get accountSignInAction;
+
+  /// Issue #1004 (tranche 2): sign-in screen forgot-password button.
+  ///
+  /// In en, this message translates to:
+  /// **'Forgot password'**
+  String get accountSignInForgotPasswordAction;
+
+  /// Issue #1004 (tranche 2): sign-in screen email-code field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Code from the email'**
+  String get accountSignInCodeLabel;
+
+  /// Issue #1004 (tranche 2): sign-in screen email-code field hint.
+  ///
+  /// In en, this message translates to:
+  /// **'6-10 digits'**
+  String get accountSignInCodeHint;
+
+  /// Issue #1004 (tranche 2): sign-in screen verify-code button.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in with code'**
+  String get accountSignInVerifyCodeAction;
+
+  /// Issue #1004 (tranche 2): sign-in screen first-run defer button.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get accountSignInNotNow;
+
+  /// Issue #1004 (tranche 2): sign-in screen app-bar title in sign-in mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in'**
+  String get accountSignInTitle;
+
+  /// Issue #1004 (tranche 2): sign-in screen app-bar title in create mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Create an account'**
+  String get accountSignInTitleCreate;
+
+  /// Issue #1004 (tranche 2): sign-in screen create-mode short-password error.
+  ///
+  /// In en, this message translates to:
+  /// **'Use at least {length} characters for the password.'**
+  String accountSignInUseAtLeast(int length);
+
+  /// Issue #1004 (tranche 2): sign-in screen post-signup confirmation info.
+  ///
+  /// In en, this message translates to:
+  /// **'Check your email to confirm the account, then open the link on this device.'**
+  String get accountSignInConfirmEmailInfo;
+
+  /// Issue #1004 (tranche 2): sign-in screen post-reset-request info.
+  ///
+  /// In en, this message translates to:
+  /// **'If an account exists for that email, a reset link is on its way. Open it on this device. If you request another email, only the newest link works — an earlier one stops working (issue #32).'**
+  String get accountSignInResetInfo;
+
+  /// Issue #1004 (tranche 2): sign-in screen post-magic-link info.
+  ///
+  /// In en, this message translates to:
+  /// **'Check your email for a sign-in link or code.'**
+  String get accountSignInMagicLinkInfo;
+
+  /// Issue #1004 (tranche 2): sign-in screen create-mode length helper text.
+  ///
+  /// In en, this message translates to:
+  /// **'At least {length} characters'**
+  String accountSignInPasswordLengthHelper(int length);
+
+  /// Issue #1004 (tranche 2): sign-in screen password reveal toggle tooltip (shown).
+  ///
+  /// In en, this message translates to:
+  /// **'Show password'**
+  String get accountSignInShowPassword;
+
+  /// Issue #1004 (tranche 2): sign-in screen password reveal toggle tooltip (hidden).
+  ///
+  /// In en, this message translates to:
+  /// **'Hide password'**
+  String get accountSignInHidePassword;
+
+  /// Issue #1004 (tranche 2): sign-in screen mode toggle (create mode active).
+  ///
+  /// In en, this message translates to:
+  /// **'I already have an account'**
+  String get accountSignInToggleHaveAccount;
+
+  /// Issue #1004 (tranche 2): sign-in screen mode toggle (sign-in mode active).
+  ///
+  /// In en, this message translates to:
+  /// **'Create an account instead'**
+  String get accountSignInToggleCreateInstead;
+
+  /// Issue #1004 (tranche 2): sign-in screen magic-link button in create mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Email me a link to create my account'**
+  String get accountSignInMagicLinkCreate;
+
+  /// Issue #1004 (tranche 2): sign-in screen magic-link button in sign-in mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Email me a sign-in link'**
+  String get accountSignInMagicLinkSignIn;
+
+  /// Issue #1004 (tranche 2): delete-account confirmation dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete account?'**
+  String get accountDeleteDialogTitle;
+
+  /// Issue #1004 (tranche 2): delete-account dialog guardian-entry note.
+  ///
+  /// In en, this message translates to:
+  /// **'Entries you logged as a guardian on someone else\'s profile are kept and re-attributed to its owner, not deleted. Apple Health / Health Connect writes this device already made stay in the device\'s own health store - account deletion does not remove them.'**
+  String get accountDeleteDialogGuardianNote;
+
+  /// Issue #1004 (tranche 2): delete-account dialog blast-radius acknowledgement checkbox.
+  ///
+  /// In en, this message translates to:
+  /// **'I understand this removes access for other guardians and deletes any minor profiles I own.'**
+  String get accountDeleteDialogAck;
+
+  /// Issue #1004 (tranche 2): delete-account dialog cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get accountDeleteDialogCancel;
+
+  /// Issue #1004 (tranche 2): delete-account dialog transfer-ownership escape hatch.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer ownership first'**
+  String get accountDeleteDialogTransferFirst;
+
+  /// Issue #1004 (tranche 2): delete-account dialog export-first button.
+  ///
+  /// In en, this message translates to:
+  /// **'Export first'**
+  String get accountDeleteDialogExportFirst;
+
+  /// Issue #1004 (tranche 2): delete-account dialog destructive confirm button.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete account'**
+  String get accountDeleteDialogConfirm;
+
+  /// Issue #1004 (tranche 2): delete-account dialog export failure copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not export your data. Please try again.'**
+  String get accountDeleteDialogExportError;
+
+  /// Issue #1004 (tranche 2): delete-account blast radius with no other guardians.
+  ///
+  /// In en, this message translates to:
+  /// **'This will also permanently delete {count, plural, =1{1 profile} other{{count} profiles}} you own ({names}).'**
+  String accountDeleteDialogBlastRadiusProfiles(int count, String names);
+
+  /// Issue #1004 (tranche 2): delete-account blast radius naming other guardians.
+  ///
+  /// In en, this message translates to:
+  /// **'This will also permanently delete {count, plural, =1{1 profile} other{{count} profiles}} you own ({names}) and remove access for {guardianCount, plural, =1{1 other guardian} other{{guardianCount} other guardians}}.'**
+  String accountDeleteDialogBlastRadiusGuardians(
+    int count,
+    String names,
+    int guardianCount,
+  );
+
+  /// Issue #1004 (tranche 2): Settings Account section heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Account'**
+  String get accountSectionTitle;
+
+  /// Issue #1004 (tranche 2): account identity tile subtitle listing sign-in methods.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign-in methods: {methods}'**
+  String accountSectionSignInMethods(String methods);
+
+  /// Issue #1004 (tranche 2): account identity tile title with no known email.
+  ///
+  /// In en, this message translates to:
+  /// **'Signed in'**
+  String get accountSectionSignedIn;
+
+  /// Issue #1004 (tranche 2): account identity tile title naming the email.
+  ///
+  /// In en, this message translates to:
+  /// **'Signed in as {email}'**
+  String accountSectionSignedInAs(String email);
+
+  /// Issue #1004 (tranche 2): account add-Apple tile label.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Apple'**
+  String get accountSectionAddApple;
+
+  /// Issue #1004 (tranche 2): account add-Google tile label.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Google'**
+  String get accountSectionAddGoogle;
+
+  /// Issue #1004 (tranche 2): account add-passkey tile label.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a passkey'**
+  String get accountSectionAddPasskey;
+
+  /// Issue #1004 (tranche 2): account sign-in tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync this device\'s data to an account.'**
+  String get accountSectionSyncSubtitle;
+
+  /// Issue #1004 (tranche 2): account sign-in tile title when the session expired.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in again'**
+  String get accountSectionSignInAgain;
+
+  /// Issue #1004 (tranche 2): account sign-in tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in'**
+  String get accountSectionSignIn;
+
+  /// Issue #1004 (tranche 2): account sync-now tile and dialog button.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync now'**
+  String get accountSectionSyncNow;
+
+  /// Issue #1004 (tranche 2): account sign-out tile and confirm button.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out'**
+  String get accountSectionSignOut;
+
+  /// Issue #1004 (tranche 2): account sign-out tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Removes the data from this device.'**
+  String get accountSectionSignOutSubtitle;
+
+  /// Issue #1004 (tranche 2): account sign-out-everywhere tile and confirm button.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out everywhere'**
+  String get accountSectionSignOutEverywhere;
+
+  /// Issue #1004 (tranche 2): account sign-out-everywhere tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Signs out all devices, though others may take up to an hour to notice.'**
+  String get accountSectionSignOutEverywhereSubtitle;
+
+  /// Issue #1004 (tranche 2): account delete tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete account'**
+  String get accountSectionDelete;
+
+  /// Issue #1004 (tranche 2): account add-method tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to this account another way.'**
+  String get accountSectionLinkSubtitle;
+
+  /// Issue #1004 (tranche 2): account remove-method tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {provider}'**
+  String accountSectionRemoveProvider(String provider);
+
+  /// Issue #1004 (tranche 2): account remove-method tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop using this to sign in to this account.'**
+  String get accountSectionRemoveSubtitle;
+
+  /// Issue #1004 (tranche 2): account remove-method confirmation title.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {provider}?'**
+  String accountSectionRemoveTitle(String provider);
+
+  /// Issue #1004 (tranche 2): account remove-method confirmation body.
+  ///
+  /// In en, this message translates to:
+  /// **'You will no longer be able to sign in to this account with {provider}. Your data and your other sign-in methods are unchanged.'**
+  String accountSectionRemoveBody(String provider);
+
+  /// Issue #1004 (tranche 2): account section dialog cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get accountSectionCancel;
+
+  /// Issue #1004 (tranche 2): account remove-method confirm button.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get accountSectionRemove;
+
+  /// Issue #1004 (tranche 2): sign-out-with-unsynced-rows dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Unsynced changes'**
+  String get accountSectionUnsyncedTitle;
+
+  /// Issue #1004 (tranche 2): sign-out-with-unsynced-rows dialog body.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 change on this device has not been uploaded yet, deletions included. Sync first, or discard it and sign out.} other{{count} changes on this device have not been uploaded yet, deletions included. Sync first, or discard them and sign out.}}'**
+  String accountSectionUnsyncedBody(int count);
+
+  /// Issue #1004 (tranche 2): sign-out-with-unsynced-rows discard button.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard unsynced changes and sign out'**
+  String get accountSectionDiscardAndSignOut;
+
+  /// Issue #1004 (tranche 2): sign-out confirmation dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out?'**
+  String get accountSectionSignOutTitle;
+
+  /// Issue #1004 (tranche 2): sign-out-everywhere confirmation dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out everywhere?'**
+  String get accountSectionSignOutEverywhereTitle;
+
+  /// Issue #1004 (tranche 2): sign-out confirmation dialog body.
+  ///
+  /// In en, this message translates to:
+  /// **'This removes the data from this device. It stays in your account.'**
+  String get accountSectionSignOutBody;
+
+  /// Issue #1004 (tranche 2): sign-out-everywhere partial-failure snackbar suffix.
+  ///
+  /// In en, this message translates to:
+  /// **'{failureCopy} Other devices were not signed out.'**
+  String accountSectionOtherDevicesNotSignedOut(String failureCopy);
+
+  /// Issue #1004 (tranche 2): export-range picker sheet title.
+  ///
+  /// In en, this message translates to:
+  /// **'Export range'**
+  String get settingsExportRangeTitle;
+
+  /// Issue #1004 (tranche 2): export-range picker cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get settingsExportRangeCancel;
+
+  /// Issue #1004 (tranche 2): export-range picker confirm button.
+  ///
+  /// In en, this message translates to:
+  /// **'Export'**
+  String get settingsExportRangeConfirm;
+
+  /// Issue #1004 (tranche 2): export-range custom start-date button.
+  ///
+  /// In en, this message translates to:
+  /// **'Start date'**
+  String get settingsExportRangeStartDate;
+
+  /// Issue #1004 (tranche 2): export-range custom end-date button.
+  ///
+  /// In en, this message translates to:
+  /// **'End date'**
+  String get settingsExportRangeEndDate;
+
+  /// Issue #1004 (tranche 2): FHIR clinical-export tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Export clinical summary (FHIR)'**
+  String get settingsClinicalExportFhirTitle;
+
+  /// Issue #1004 (tranche 2): CSV export tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Export as CSV'**
+  String get settingsCsvExportTitle;
+
+  /// Issue #1004 (tranche 2): CSV export profile-chooser dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Export CSV data for'**
+  String get settingsCsvExportForTitle;
+
+  /// Issue #1004 (tranche 2): health-sync bind confirmation dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync {name} to this phone?'**
+  String healthSyncBindTitle(String name);
+
+  /// health-sync bind confirmation body for a write direction.
+  ///
+  /// In en, this message translates to:
+  /// **'Only {name}\'s data will ever be written to {source}. This phone can sync one profile at a time — choosing a different profile later replaces this one.'**
+  String healthSyncBindWriteBody(String name, String source);
+
+  /// health-sync bind confirmation body for an import-only direction.
+  ///
+  /// In en, this message translates to:
+  /// **'Only {name}\'s data will ever be imported from {source}. This phone can sync one profile at a time — choosing a different profile later replaces this one.'**
+  String healthSyncBindImportBody(String name, String source);
+
+  /// Issue #1004 (tranche 2): health-sync bind confirmation cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get healthSyncBindCancel;
+
+  /// Issue #1004 (tranche 2): health-sync bind failure snackbar.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t sync {name} — try again.'**
+  String healthSyncSyncFailed(String name);
+
+  /// Issue #1004 (tranche 2): health-sync import failure line.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t finish the import. Please try again.'**
+  String get healthSyncImportFailed;
+
+  /// Issue #1004 (tranche 2): health-sync profile-load failure line.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load profiles for health sync.'**
+  String get healthSyncLoadFailed;
+
+  /// Issue #1004 (tranche 2): health-sync retry button.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get healthSyncRetry;
+
+  /// Issue #1004 (tranche 2): health-sync import progress line before the first page reports.
+  ///
+  /// In en, this message translates to:
+  /// **'Importing from {source}…'**
+  String healthSyncImporting(String source);
+
+  /// Issue #1004 (tranche 2): health-sync lossy flow-mapping disclosure.
+  ///
+  /// In en, this message translates to:
+  /// **'Super heavy days are written to the Health app as Heavy. Spotting logged inside a period is written as Light bleeding; spotting between periods is written as intermenstrual bleeding.'**
+  String get healthSyncFlowCollapseNote;
+
+  /// Issue #1004 (tranche 2): health-sync revocation/off disclosure.
+  ///
+  /// In en, this message translates to:
+  /// **'Turning sync off, or later revoking this phone\'s Health app permission, leaves everything already written in the Health app in place. To remove it, delete it in the Health app itself.'**
+  String get healthSyncRevocationNote;
+
+  /// Issue #1004 (tranche 2): health-sync import tile title naming the source.
+  ///
+  /// In en, this message translates to:
+  /// **'Import from {source}'**
+  String healthSyncImportFrom(String source);
+
+  /// Issue #1004 (tranche 2): health-sync unbind tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop syncing to this phone'**
+  String get healthSyncUnbindAction;
+
+  /// Issue #1004 (tranche 2): import screen app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'Import from file'**
+  String get importScreenTitle;
+
+  /// Issue #1004 (tranche 2): import screen file-pick body.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a file: a JSON backup this app exported (Settings > Your data > Export my data), or the .zip Clue emailed you. Your data is added to this device — nothing already here is ever deleted.'**
+  String get importScreenPickBody;
+
+  /// Issue #1004 (tranche 2): import screen file-pick button.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose file'**
+  String get importScreenChooseFileAction;
+
+  /// Issue #1004 (tranche 2): import screen preview confirm button.
+  ///
+  /// In en, this message translates to:
+  /// **'Import'**
+  String get importScreenImportAction;
+
+  /// Issue #1004 (tranche 2): import screen preview cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get importScreenCancel;
+
+  /// Issue #1004 (tranche 2): import screen result done button.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get importScreenDone;
+
+  /// Issue #1004 (tranche 2): reminder settings empty state.
+  ///
+  /// In en, this message translates to:
+  /// **'Create a profile to set up reminders.'**
+  String get reminderNoProfile;
+
+  /// Issue #1004 (tranche 2): reminder settings lock-screen privacy note.
+  ///
+  /// In en, this message translates to:
+  /// **'Reminders never show a name, date, or any health detail on the lock screen. Logging from a notification waits until the app is unlocked.'**
+  String get reminderPrivacyNote;
+
+  /// Issue #1004 (tranche 2): reminder settings profile row title.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile'**
+  String get reminderProfileLabel;
+
+  /// Issue #1004 (tranche 2): reminder settings cadence row title.
+  ///
+  /// In en, this message translates to:
+  /// **'Cadence'**
+  String get reminderCadenceLabel;
+
+  /// Issue #1004 (tranche 2): reminder settings time row title.
+  ///
+  /// In en, this message translates to:
+  /// **'Time'**
+  String get reminderTimeLabel;
+
+  /// Issue #1004 (tranche 2): reminder settings quiet-hours switch title.
+  ///
+  /// In en, this message translates to:
+  /// **'Quiet hours'**
+  String get reminderQuietHoursTitle;
+
+  /// Issue #1004 (tranche 2): reminder settings quiet-hours switch subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'A reminder that lands inside the window waits until it ends'**
+  String get reminderQuietHoursSubtitle;
+
+  /// Issue #1004 (tranche 2): reminder settings quiet-hours start row.
+  ///
+  /// In en, this message translates to:
+  /// **'Starts'**
+  String get reminderQuietStart;
+
+  /// Issue #1004 (tranche 2): reminder settings quiet-hours end row.
+  ///
+  /// In en, this message translates to:
+  /// **'Ends'**
+  String get reminderQuietEnd;
+
+  /// Issue #1004 (tranche 2): Your data export tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Export my data'**
+  String get yourDataExportTitle;
+
+  /// Issue #1004 (tranche 2): Your data export tile subtitle when signed in.
+  ///
+  /// In en, this message translates to:
+  /// **'Save your profiles, day entries, care notes, and visit-prep lists as a JSON file, including your account\'s server data.'**
+  String get yourDataExportSubtitleSignedIn;
+
+  /// Issue #1004 (tranche 2): Your data export tile subtitle when local-only.
+  ///
+  /// In en, this message translates to:
+  /// **'Save your profiles, day entries, care notes, and visit-prep lists as a JSON file.'**
+  String get yourDataExportSubtitleLocal;
+
+  /// Issue #1004 (tranche 2): Your data import tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Import from file'**
+  String get yourDataImportTitle;
+
+  /// Issue #1004 (tranche 2): Your data import tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore from a JSON backup, or bring in a Clue export (.zip).'**
+  String get yourDataImportSubtitle;
+
+  /// Issue #1004 (tranche 2): purge-imported-data tile and dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Purge imported data'**
+  String get yourDataPurgeTitle;
+
+  /// Issue #1004 (tranche 2): purge-imported-data tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove only the entries a specific import brought in — manually logged data is never touched.'**
+  String get yourDataPurgeSubtitle;
+
+  /// Issue #1004 (tranche 2): purge success snackbar naming the import source.
+  ///
+  /// In en, this message translates to:
+  /// **'Purged {source} data'**
+  String yourDataPurgedSnack(String source);
+
+  /// Issue #1004 (tranche 2): purge-imported-data dialog body.
+  ///
+  /// In en, this message translates to:
+  /// **'Only entries and observations tagged with the chosen import source are removed. Manually logged data, and the profile itself, are never touched. If this purge leaves the profile with no entries at all, its saved cycle details (last period start and typical cycle length) are cleared too, since they may have come from the import.'**
+  String get yourDataPurgeDialogBody;
+
+  /// Issue #1004 (tranche 2): purge-imported-data dialog profile field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile'**
+  String get yourDataPurgeProfileLabel;
+
+  /// Issue #1004 (tranche 2): purge-imported-data dialog cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get yourDataPurgeCancel;
+
+  /// Issue #1004 (tranche 2): purge-imported-data dialog confirm button.
+  ///
+  /// In en, this message translates to:
+  /// **'Purge'**
+  String get yourDataPurgeConfirm;
+
+  /// Issue #1004 (tranche 2): purge-imported-data dialog import-source field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Import source'**
+  String get yourDataImportSourceLabel;
+
+  /// Issue #1004 (tranche 4b): estimated reading time on a cycle literacy article sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes} min read'**
+  String cycleLiteracyReadingTimeMinutes(int minutes);
+
+  /// Issue #1004 (tranche 4b): provenance block heading on a cycle literacy article sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Source & Review'**
+  String get cycleLiteracySourceHeading;
+
+  /// Issue #1004 (tranche 4b): provenance source line on a cycle literacy article sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Source: {source}'**
+  String cycleLiteracySourceLine(String source);
+
+  /// Issue #1004 (tranche 4b): provenance review date on a cycle literacy article sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Last reviewed: {date}'**
+  String cycleLiteracyLastReviewedLine(String date);
+
+  /// Issue #1004 (tranche 4b): app-bar title of the standalone cycle literacy library.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle Literacy Library'**
+  String get cycleLiteracyLibraryTitle;
+
+  /// Issue #1004 (tranche 4b): intro paragraph atop the cycle literacy library.
+  ///
+  /// In en, this message translates to:
+  /// **'Evidence-based educational guides to understand your body, hormones, and cycle rhythms.'**
+  String get cycleLiteracyLibraryIntro;
+
+  /// Issue #1004 (tranche 4b): provenance source line on a bundled help card.
+  ///
+  /// In en, this message translates to:
+  /// **'Source: {source}'**
+  String helpCardSourceLine(String source);
+
+  /// Issue #1004 (tranche 4b): provenance review date on a bundled help card.
+  ///
+  /// In en, this message translates to:
+  /// **'Reviewed: {date}'**
+  String helpCardReviewedLine(String date);
+
+  /// Issue #1004 (tranche 4b): OS task-switcher title of the fail-closed startup app.
+  ///
+  /// In en, this message translates to:
+  /// **'lunarlog'**
+  String get failClosedAppTitle;
+
+  /// Issue #1004 (tranche 4b): the fail-closed screen's single Close action.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get failClosedClose;
+
+  /// Issue #1004 (tranche 4b): label above the raw error on the fail-closed screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Technical detail (for the device owner):'**
+  String get failClosedTechnicalDetail;
+
+  /// Issue #1004 (tranche 4b): fail-closed title for a quarantined database.
+  ///
+  /// In en, this message translates to:
+  /// **'lunarlog could not open your data'**
+  String get failClosedQuarantineTitle;
+
+  /// Issue #1004 (tranche 4b): fail-closed body for a quarantined database.
+  ///
+  /// In en, this message translates to:
+  /// **'The data saved on this device could not be opened. Nothing was changed and nothing was deleted — the data file was left exactly as it was, untouched.'**
+  String get failClosedQuarantineBody;
+
+  /// Issue #1004 (tranche 4b): fail-closed title for a generic startup failure.
+  ///
+  /// In en, this message translates to:
+  /// **'lunarlog could not start'**
+  String get failClosedStartTitle;
+
+  /// Issue #1004 (tranche 4b): fail-closed body for a generic startup failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong before any data was opened. Nothing on this device was changed.'**
+  String get failClosedStartBody;
+
+  /// Issue #1004 (tranche 4b): body of the day sheet's discard-after-failed-save confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'The last change couldn\'t be saved. Discarding removes it from this device.'**
+  String get daySheetDiscardFailedBody;
+
+  /// Issue #1004 (tranche 4b): fertile-window explainer body on a future calendar day, prefixed by the mode's own fertile-window label.
+  ///
+  /// In en, this message translates to:
+  /// **'{label} — the days around estimated ovulation, back-calculated from the estimated period date.'**
+  String monthCalendarFertileWindowExplainer(String label);
+
+  /// Issue #1004 (tranche 4b): tooltip on the day sheet merge notice's dismiss button.
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get mergeNoticeDismissTooltip;
+
+  /// Issue #1004 (tranche 4b): fallback author name in the day sheet merge notice.
+  ///
+  /// In en, this message translates to:
+  /// **'another guardian'**
+  String get mergeNoticeAnotherGuardian;
+
+  /// Issue #1004 (tranche 4b): possessive fallback author name in the day sheet merge notice.
+  ///
+  /// In en, this message translates to:
+  /// **'another guardian\'s'**
+  String get mergeNoticeAnotherGuardianPossessive;
+
+  /// Issue #1004 (tranche 4b): the signed-in user as a merge-notice author.
+  ///
+  /// In en, this message translates to:
+  /// **'you'**
+  String get mergeNoticeYou;
+
+  /// Issue #1004 (tranche 4b): possessive form of the signed-in user in a merge-notice sentence.
+  ///
+  /// In en, this message translates to:
+  /// **'your'**
+  String get mergeNoticeYour;
+
+  /// Issue #1004 (tranche 4b): merge-notice sentence for a discarded note.
+  ///
+  /// In en, this message translates to:
+  /// **'Two entries for this date were merged; {winner} note was kept and {loser} note was discarded.'**
+  String mergeNoticeNoteBody(String winner, String loser);
+
+  /// Issue #1004 (tranche 4b): merge-notice sentence for a discarded flow level.
+  ///
+  /// In en, this message translates to:
+  /// **'Two entries for this date were merged; {winner} flow level was kept and {loser} was discarded.'**
+  String mergeNoticeFlowBody(String winner, String loser);
+
+  /// Issue #1004 (tranche 4b): merge-notice sentence for a replaced guardian note.
+  ///
+  /// In en, this message translates to:
+  /// **'A guardian note for this date was replaced on sync.'**
+  String get mergeNoticeGuardianNoteBody;
+
+  /// Issue #1004 (tranche 4b): restore action for a discarded note.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore my note'**
+  String get mergeNoticeRestoreNote;
+
+  /// Issue #1004 (tranche 4b): restore action for a discarded flow level.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore my flow level'**
+  String get mergeNoticeRestoreFlow;
+
+  /// Issue #1004 (tranche 4b): the signed-in user in a caregiver-attribution badge.
+  ///
+  /// In en, this message translates to:
+  /// **'you'**
+  String get caregiverAttributionYou;
+
+  /// Issue #1004 (tranche 4b): fallback guardian name in a caregiver-attribution badge.
+  ///
+  /// In en, this message translates to:
+  /// **'Guardian'**
+  String get caregiverAttributionGuardianFallback;
+
+  /// Issue #1004 (tranche 4b): attribution verb naming who logged an entry.
+  ///
+  /// In en, this message translates to:
+  /// **'Logged by {name}'**
+  String caregiverAttributionLoggedBy(String name);
+
+  /// Issue #1004 (tranche 4b): attribution verb naming who last modified an entry.
+  ///
+  /// In en, this message translates to:
+  /// **'Modified by {name}'**
+  String caregiverAttributionModifiedBy(String name);
+
+  /// Issue #1004 (tranche 4b): import-source badge for a Clue import.
+  ///
+  /// In en, this message translates to:
+  /// **'Imported from Clue'**
+  String get caregiverAttributionImportedClue;
+
+  /// Issue #1004 (tranche 4b): import-source badge for an Apple Health / HealthKit import.
+  ///
+  /// In en, this message translates to:
+  /// **'Imported from Health'**
+  String get caregiverAttributionImportedHealth;
+
+  /// Issue #1004 (tranche 4b): import-source badge for a Health Connect import.
+  ///
+  /// In en, this message translates to:
+  /// **'Imported from Health Connect'**
+  String get caregiverAttributionImportedHealthConnect;
+
+  /// Issue #1004 (tranche 4b): import-source badge for a file import.
+  ///
+  /// In en, this message translates to:
+  /// **'Imported from file'**
+  String get caregiverAttributionImportedFile;
+
+  /// Issue #1004 (tranche 4b): import-source badge for a wearable import.
+  ///
+  /// In en, this message translates to:
+  /// **'Imported from wearable'**
+  String get caregiverAttributionImportedWearable;
+
+  /// Issue #1004 (tranche 4b): generic import-source badge for an unrecognised source.
+  ///
+  /// In en, this message translates to:
+  /// **'Imported'**
+  String get caregiverAttributionImportedGeneric;
+
+  /// Issue #1004 (tranche 4a): shared retry action label (inline errors and the sync-failure banner).
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get commonRetry;
+
+  /// Issue #1004 (tranche 4a): Today destination label in the app shell's navigation bar.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get appShellTabToday;
+
+  /// Issue #1004 (tranche 4a): Calendar destination label in the app shell's navigation bar.
+  ///
+  /// In en, this message translates to:
+  /// **'Calendar'**
+  String get appShellTabCalendar;
+
+  /// Issue #1004 (tranche 4a): Insights destination label in the app shell's navigation bar.
+  ///
+  /// In en, this message translates to:
+  /// **'Insights'**
+  String get appShellTabInsights;
+
+  /// Issue #1004 (tranche 4a): More destination label in the app shell's navigation bar.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get appShellTabMore;
+
+  /// Issue #1004 (tranche 4a): sync-failure banner action that switches to the Settings tab.
+  ///
+  /// In en, this message translates to:
+  /// **'Go to Settings'**
+  String get appShellSyncBannerGoToSettings;
+
+  /// Issue #1004 (tranche 4a): tooltip on the Today card's quick-log button, naming the flow level it writes.
+  ///
+  /// In en, this message translates to:
+  /// **'Logs a {level}-flow period start for today'**
+  String todayCardLogsFlowTooltip(String level);
+
+  /// Issue #1004 (tranche 4a): heading of the cycle-history section.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle history'**
+  String get cycleHistoryTitle;
+
+  /// Issue #1004 (tranche 4a): note under the cycle-history list explaining that omissions sync.
+  ///
+  /// In en, this message translates to:
+  /// **'Omissions sync across your devices.'**
+  String get cycleHistorySyncNote;
+
+  /// Issue #1004 (tranche 4a): label of the average-cycle-length statistic.
+  ///
+  /// In en, this message translates to:
+  /// **'Avg cycle'**
+  String get cycleHistoryAvgCycle;
+
+  /// Issue #1004 (tranche 4a): label of the average-period-length statistic.
+  ///
+  /// In en, this message translates to:
+  /// **'Avg period'**
+  String get cycleHistoryAvgPeriod;
+
+  /// Issue #1004 (tranche 4a): label of the cycle-length variation statistic.
+  ///
+  /// In en, this message translates to:
+  /// **'Variation'**
+  String get cycleHistoryVariation;
+
+  /// Issue #1004 (tranche 4a): subtitle marking a cycle excluded automatically as an outlier.
+  ///
+  /// In en, this message translates to:
+  /// **'Outlier — never averaged'**
+  String get cycleHistoryOutlier;
+
+  /// Issue #1004 (tranche 4a): title of the open cycle row, naming its start date.
+  ///
+  /// In en, this message translates to:
+  /// **'Current cycle — started {date}'**
+  String cycleHistoryCurrentCycleStarted(String date);
+
+  /// Issue #1004 (tranche 4a): subtitle of an open cycle the operator skipped.
+  ///
+  /// In en, this message translates to:
+  /// **'Skipped — excluded from averages'**
+  String get cycleHistorySkippedExcluded;
+
+  /// Issue #1004 (tranche 4a): action restoring a previously omitted cycle to the averages.
+  ///
+  /// In en, this message translates to:
+  /// **'Include'**
+  String get cycleHistoryInclude;
+
+  /// Issue #1004 (tranche 4a): action excluding a cycle from the averages.
+  ///
+  /// In en, this message translates to:
+  /// **'Omit'**
+  String get cycleHistoryOmit;
+
+  /// Issue #1004 (tranche 4a): action undoing a skipped open cycle.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo'**
+  String get cycleHistoryUndo;
+
+  /// Issue #1004 (tranche 4a): snoozed late-resolver line naming the date it resumes.
+  ///
+  /// In en, this message translates to:
+  /// **'We will check back on {date}.'**
+  String lateResolverSnoozedUntil(String date);
+
+  /// Issue #1004 (tranche 4a): action ending a late-resolution snooze early.
+  ///
+  /// In en, this message translates to:
+  /// **'Show options'**
+  String get lateResolverShowOptions;
+
+  /// Issue #1004 (tranche 4a): late-resolver title naming the day count, pluralised.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 day late} other{{count} days late}}'**
+  String lateResolverDaysLate(int count);
+
+  /// Issue #1004 (tranche 4a): late-resolver fallback line, where {days} is an already-localized day count.
+  ///
+  /// In en, this message translates to:
+  /// **'No period logged for {days}'**
+  String lateResolverNoPeriodLoggedFor(String days);
+
+  /// Issue #1004 (tranche 4a): late-resolver prompt after a snooze expired.
+  ///
+  /// In en, this message translates to:
+  /// **'Still nothing logged — what would you like to do?'**
+  String get lateResolverPromptStillNothing;
+
+  /// Issue #1004 (tranche 4a): late-resolver prompt.
+  ///
+  /// In en, this message translates to:
+  /// **'What would you like to do?'**
+  String get lateResolverPrompt;
+
+  /// Issue #1004 (tranche 4a): late-resolver action opening the day sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Log it'**
+  String get lateResolverLogIt;
+
+  /// Issue #1004 (tranche 4a): late-resolver action omitting the open cycle.
+  ///
+  /// In en, this message translates to:
+  /// **'Skip this cycle'**
+  String get lateResolverSkipCycle;
+
+  /// Issue #1004 (tranche 4a): late-resolver action snoozing for three days.
+  ///
+  /// In en, this message translates to:
+  /// **'Remind me in 3 days'**
+  String get lateResolverRemindMe;
+
+  /// Issue #1004 (tranche 4a): late-resolver link to the late-period help card.
+  ///
+  /// In en, this message translates to:
+  /// **'Why is it late?'**
+  String get lateResolverWhyLate;
+
+  /// Issue #1004 (tranche 4a): label of the help-card link explaining the three-cycle threshold.
+  ///
+  /// In en, this message translates to:
+  /// **'Why three completed cycles?'**
+  String get overviewWhyThreeCompletedCycles;
+
+  /// Issue #1004 (tranche 4a): error shown when the analysis tab's prediction stream fails.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load your cycle analysis.'**
+  String get analysisLoadError;
+
+  /// Issue #1004 (tranche 4a): heading of the analysis tab.
+  ///
+  /// In en, this message translates to:
+  /// **'Analysis'**
+  String get analysisTitle;
+
+  /// Issue #1004 (tranche 4a): title of the BBT chart card.
+  ///
+  /// In en, this message translates to:
+  /// **'BBT by cycle day'**
+  String get analysisBbtChartTitle;
+
+  /// Issue #1004 (tranche 4a): title of the headline cycle-statistics card.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle statistics'**
+  String get analysisStatsTitle;
+
+  /// Issue #1004 (tranche 4a): label of the mean cycle-length statistic.
+  ///
+  /// In en, this message translates to:
+  /// **'Average cycle length'**
+  String get analysisMeanCycleLength;
+
+  /// Issue #1004 (tranche 4a): label of the mean period-length statistic.
+  ///
+  /// In en, this message translates to:
+  /// **'Average period length'**
+  String get analysisMeanPeriodLength;
+
+  /// Issue #1004 (tranche 4a): label of the cycle-length variability statistic.
+  ///
+  /// In en, this message translates to:
+  /// **'Variability'**
+  String get analysisVariability;
+
+  /// Issue #1004 (tranche 4a): variability value, the spread from the mean in days.
+  ///
+  /// In en, this message translates to:
+  /// **'±{days} days'**
+  String analysisSpreadDays(int days);
+
+  /// Issue #1004 (tranche 4a): empty-state title of the BBT chart.
+  ///
+  /// In en, this message translates to:
+  /// **'No BBT logged yet'**
+  String get bbtChartEmptyTitle;
+
+  /// Issue #1004 (tranche 4a): empty-state body of the BBT chart.
+  ///
+  /// In en, this message translates to:
+  /// **'Log a basal body temperature reading in the day sheet to see your curve here, plotted against cycle day.'**
+  String get bbtChartEmptyBody;
+
+  /// Issue #1004 (tranche 4a): BBT chart caption, naming the cycle count and the temperature range.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 cycle shown} other{{count} cycles shown}} · {range}'**
+  String bbtChartCaption(int count, String range);
+
+  /// Issue #1004 (tranche 4a): label introducing a subphase's what-to-track guidance.
+  ///
+  /// In en, this message translates to:
+  /// **'Helpful to track:'**
+  String get phaseInsightsHelpfulToTrack;
+
+  /// Issue #1004 (tranche 4a): button opening the subphase's context article, naming its title.
+  ///
+  /// In en, this message translates to:
+  /// **'Read: {title}'**
+  String phaseInsightsReadArticle(String title);
+
+  /// Issue #1004 (tranche 4a): provenance footnote naming the subphase content's source and review date.
+  ///
+  /// In en, this message translates to:
+  /// **'Source: {source} · Rev: {date}'**
+  String phaseInsightsSource(String source, String date);
+
+  /// Issue #1004 (tranche 4a): heading of the symptom-trends section.
+  ///
+  /// In en, this message translates to:
+  /// **'Symptom Trends & Patterns'**
+  String get symptomTrendsTitle;
+
+  /// Issue #1004 (tranche 4a): title of the recurring-symptoms card.
+  ///
+  /// In en, this message translates to:
+  /// **'Recurring Symptoms'**
+  String get symptomTrendsRecurring;
+
+  /// Issue #1004 (tranche 4a): empty state of the recurring-symptoms card.
+  ///
+  /// In en, this message translates to:
+  /// **'Log symptoms across at least 3 completed cycles to uncover recurring patterns and trends.'**
+  String get symptomTrendsEmpty;
+
+  /// Issue #1004 (tranche 4a): disclaimer under the recurring-symptoms list.
+  ///
+  /// In en, this message translates to:
+  /// **'Patterns reflect descriptive logs only and are not clinical diagnostics.'**
+  String get symptomTrendsDisclaimer;
+
+  /// Issue #1004 (tranche 4a): title of the flow-distribution summary.
+  ///
+  /// In en, this message translates to:
+  /// **'Typical Bleed Rhythm'**
+  String get symptomTrendsFlowTitle;
+
+  /// Issue #1004 (tranche 4a): flow summary subtitle naming the typical peak cycle day and flow level.
+  ///
+  /// In en, this message translates to:
+  /// **'Peak flow typically falls on Cycle Day {day} ({flow}).'**
+  String symptomTrendsFlowSubtitle(int day, String flow);
+
+  /// Issue #1004 (tranche 4a): title of the cycle-literacy library call to action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle Literacy Library'**
+  String get symptomTrendsLibraryTitle;
+
+  /// Issue #1004 (tranche 4a): subtitle of the cycle-literacy library call to action.
+  ///
+  /// In en, this message translates to:
+  /// **'Evidence-based guides on hormones, cycle phases, and body signals.'**
+  String get symptomTrendsLibrarySubtitle;
+
+  /// Issue #1004 (tranche 4a): title of the cramp-prediction card.
+  ///
+  /// In en, this message translates to:
+  /// **'Anticipated Cramp Window'**
+  String get crampPredictionTitle;
+
+  /// Issue #1004 (tranche 4a): cramp-prediction line naming the predicted dates.
+  ///
+  /// In en, this message translates to:
+  /// **'Estimated dates: {dates}'**
+  String crampPredictionDates(String dates);
+
+  /// Issue #1004 (tranche 4a): cramp-prediction line naming how many cycles the pattern was observed in.
+  ///
+  /// In en, this message translates to:
+  /// **'Observed in {observed} of {total} recorded cycles.'**
+  String crampPredictionObserved(int observed, int total);
+
+  /// Issue #1004 (tranche 4a): per-pattern line naming its occurrence and cycle counts.
+  ///
+  /// In en, this message translates to:
+  /// **'Logged {occurrences} times across {cycles} cycles'**
+  String symptomTrendsLogged(int occurrences, int cycles);
 }
 
 class _AppLocalizationsDelegate

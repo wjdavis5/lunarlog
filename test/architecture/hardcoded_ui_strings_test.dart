@@ -45,71 +45,89 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'hardcoded_ui_strings_scanner.dart';
 
+/// The named-argument identifiers every fully-migrated directory check
+/// (issue #1004) treats as user-facing copy. The global backlog scan leaves
+/// this empty; the directory-specific tests opt in so `labelText:`,
+/// `hintText:`, `title:`, `subtitle:`, `label:`, `message:`,
+/// `semanticLabel:` and friends cannot hide a literal the positional
+/// `Text(`/`Tooltip(` scanner never looks at.
+const Set<String> _migratedNamedUiArgs = {
+  'labelText',
+  'hintText',
+  'helperText',
+  'errorText',
+  'semanticLabel',
+  'semanticsLabel',
+  'label',
+  'title',
+  'subtitle',
+  'message',
+  'tooltip',
+  'header',
+  'hint',
+};
+
 /// The backlog this guard landed with (issue #460). Decrement it with
 /// every burn-down PR; the assertion below keeps it equal to the sum of
 /// the per-file entries so both stay honest.
-const int _initialAllowlistSize = 370;
+///
+/// Issue #1004 burned `lib/ui/sharing/` (tranche 1), `lib/ui/account/` and
+/// `lib/ui/settings/` (tranche 2), `lib/ui/profiles/`, `lib/ui/feedback/`,
+/// `lib/ui/gate/`, `lib/ui/care/` (tranche 3), `lib/ui/logging/`,
+/// `lib/ui/help/`, `lib/ui/content/`, `lib/ui/startup/`, `lib/ui/web/`
+/// (tranche 4b), and `lib/ui/components/`, `lib/ui/overview/`,
+/// `lib/ui/insights/` (tranche 4a) down to zero, so every entry is gone and
+/// the recorded size dropped to 0: 355 (main, after the widget/health/#1003
+/// work) - 134 (tranche 1) - 113 (tranche 2) - 56 (tranche 3) - 8 (epic #831
+/// moved `lib/ui/web/dev_banner.dart` onto `AppLocalizations`) - 13
+/// (tranche 4b) - 31 (tranche 4a) = 0. The allowlist is now empty — any new
+/// hardcoded literal under `lib/ui/` fails this guard.
+const int _initialAllowlistSize = 0;
 
 /// Exact per-file counts of allowed hardcoded UI string literals under
 /// `lib/ui/`, derived by scanning `main` at accd0ee2 (2026-09-14, issue
-/// #460). Keys are repo-relative POSIX-style paths.
-const Map<String, int> _allowedHardcodedUiLiterals = {
-  'lib/ui/account/account_mismatch_screen.dart': 9,
-  'lib/ui/account/account_section.dart': 29,
-  'lib/ui/account/delete_account_dialog.dart': 8,
-  'lib/ui/account/mfa_settings_section.dart': 1,
-  'lib/ui/account/mfa_step_up_dialog.dart': 1,
-  'lib/ui/account/password_recovery_screen.dart': 4,
-  'lib/ui/account/restore_error_screen.dart': 4,
-  'lib/ui/account/restoring_screen.dart': 1,
-  'lib/ui/account/sign_in_screen.dart': 9,
-  'lib/ui/account/upload_consent_screen.dart': 6,
-  'lib/ui/account/sync_status_tile.dart': 1,
-  'lib/ui/care/care_notes_screen.dart': 14,
-  'lib/ui/components/app_shell.dart': 2,
-  'lib/ui/components/inline_error.dart': 1,
-  'lib/ui/components/today_log_fab.dart': 1,
-  'lib/ui/content/cycle_literacy_article_sheet.dart': 4,
-  'lib/ui/content/cycle_literacy_library_screen.dart': 2,
-  'lib/ui/feedback/attachment_field.dart': 5,
-  'lib/ui/feedback/feedback_screen.dart': 6,
-  'lib/ui/feedback/support_history_screen.dart': 5,
-  'lib/ui/gate/lock_screen.dart': 5,
-  'lib/ui/gate/pin_authorization_dialog.dart': 2,
-  'lib/ui/gate/pin_settings_screen.dart': 1,
-  'lib/ui/help/help_card_view.dart': 2,
-  'lib/ui/help/help_library_screen.dart': 1,
-  'lib/ui/insights/analysis_tab.dart': 3,
-  'lib/ui/insights/phase_insights_card.dart': 3,
-  'lib/ui/insights/symptom_trends_section.dart': 12,
-  'lib/ui/logging/day_sheet.dart': 1,
-  'lib/ui/logging/month_calendar.dart': 1,
-  'lib/ui/overview/cycle_history_section.dart': 7,
-  'lib/ui/overview/late_resolver.dart': 2,
-  'lib/ui/profiles/profile_detail_screen.dart': 4,
-  'lib/ui/profiles/profile_dialogs.dart': 9,
-  'lib/ui/profiles/profile_picker_screen.dart': 5,
-  'lib/ui/settings/clinical_export_tile.dart': 2,
-  'lib/ui/settings/csv_export_tile.dart': 2,
-  'lib/ui/settings/export_range_picker_sheet.dart': 3,
-  'lib/ui/settings/health_sync_screen.dart': 14,
-  'lib/ui/settings/import_screen.dart': 4,
-  'lib/ui/settings/reminder_settings_screen.dart': 10,
-  'lib/ui/settings/your_data_section.dart': 12,
-  'lib/ui/sharing/accept_invite_sheet.dart': 5,
-  'lib/ui/sharing/accept_prediction_connection_sheet.dart': 4,
-  'lib/ui/sharing/activity_feed_screen.dart': 3,
-  'lib/ui/sharing/claim_profile_sheet.dart': 4,
-  'lib/ui/sharing/invite_guardian_dialog.dart': 13,
-  'lib/ui/sharing/manage_guardians_screen.dart': 46,
-  'lib/ui/sharing/notification_preferences_screen.dart': 20,
-  'lib/ui/sharing/prediction_connection_calendar_screen.dart': 1,
-  'lib/ui/sharing/prediction_connections_screen.dart': 15,
-  'lib/ui/sharing/share_predictions_dialog.dart': 10,
-  'lib/ui/sharing/transfer_ownership_screen.dart': 21,
-  'lib/ui/startup/fail_closed_screen.dart': 2,
-  'lib/ui/web/dev_banner.dart': 8,
-};
+/// #460). Keys are repo-relative POSIX-style paths. Empty as of issue #1004
+/// tranche 4a: every directory is fully localized.
+const Map<String, int> _allowedHardcodedUiLiterals = {};
+
+/// Asserts [directory] has no user-facing literals left, under both the
+/// positional `Text(`/`Tooltip(` scan and [\_migratedNamedUiArgs], and that
+/// none of its files reappeared in the allowlist.
+void expectDirectoryFullyLocalized(String directory, String label) {
+  final files = Directory(directory)
+      .listSync(recursive: true)
+      .whereType<File>()
+      .where((f) => f.path.endsWith('.dart'))
+      .toList();
+  expect(files, isNotEmpty, reason: 'scanned zero files under $directory');
+
+  final problems = <String>[];
+  for (final file in files) {
+    final path = file.path.replaceAll('\\', '/');
+    final found = scanHardcodedUiStrings(
+      file.readAsStringSync(),
+      namedArgs: _migratedNamedUiArgs,
+    );
+    problems.addAll(found.map((h) => '$path:${h.line}: ${h.value}'));
+  }
+
+  final allowlistEntries =
+      _allowedHardcodedUiLiterals.keys.where((k) => k.startsWith('$directory/'));
+  expect(
+    problems,
+    isEmpty,
+    reason: '$directory must read every user-facing literal from '
+        'AppLocalizations (lib/l10n/app_en.arb + `flutter gen-l10n`). '
+        'Problems:\n${problems.join('\n')}',
+  );
+  expect(
+    allowlistEntries,
+    isEmpty,
+    reason: '$directory is fully migrated — do not re-allowlist a $label '
+        'file; add an ARB key instead. Entries:\n'
+        '${allowlistEntries.join('\n')}',
+  );
+}
 
 void main() {
   test('allowlist size is recorded and matches its entries', () {
@@ -186,6 +204,62 @@ void main() {
     );
   });
 
+  // Issue #1004: each fully-migrated directory is held to a stricter bar
+  // than the rest of `lib/ui/`. The global scan above only sees positional
+  // `Text(`/`Tooltip(` literals; this one also catches named-argument copy
+  // the scanner's default mode ignores (`labelText:`, `hintText:`, `title:`,
+  // `subtitle:`, `label:`, `message:`, `semanticLabel:`), and it forbids the
+  // directory from reappearing in the allowlist at all — so a new literal
+  // fails even if someone tries to re-allowlist the file instead of adding
+  // an ARB key. Tranche 1 did `lib/ui/sharing/`; tranche 2 did `account/`
+  // and `settings/`; tranche 3 did `profiles/`, `feedback/`, `gate/`, and
+  // `care/`; tranche 4b did `logging/`, `help/`, `content/`, `startup/`, and
+  // `web/`; tranche 4a did `components/`, `overview/`, and `insights/`.
+  test('lib/ui/sharing stays fully localized (issue #1004 tranche 1)',
+      () => expectDirectoryFullyLocalized('lib/ui/sharing', 'sharing'));
+
+  test('lib/ui/account stays fully localized (issue #1004 tranche 2)',
+      () => expectDirectoryFullyLocalized('lib/ui/account', 'account'));
+
+  test('lib/ui/settings stays fully localized (issue #1004 tranche 2)',
+      () => expectDirectoryFullyLocalized('lib/ui/settings', 'settings'));
+
+  test('lib/ui/profiles stays fully localized (issue #1004 tranche 3)',
+      () => expectDirectoryFullyLocalized('lib/ui/profiles', 'profiles'));
+
+  test('lib/ui/feedback stays fully localized (issue #1004 tranche 3)',
+      () => expectDirectoryFullyLocalized('lib/ui/feedback', 'feedback'));
+
+  test('lib/ui/gate stays fully localized (issue #1004 tranche 3)',
+      () => expectDirectoryFullyLocalized('lib/ui/gate', 'gate'));
+
+  test('lib/ui/care stays fully localized (issue #1004 tranche 3)',
+      () => expectDirectoryFullyLocalized('lib/ui/care', 'care'));
+
+  test('lib/ui/logging stays fully localized (issue #1004 tranche 4b)',
+      () => expectDirectoryFullyLocalized('lib/ui/logging', 'logging'));
+
+  test('lib/ui/help stays fully localized (issue #1004 tranche 4b)',
+      () => expectDirectoryFullyLocalized('lib/ui/help', 'help'));
+
+  test('lib/ui/content stays fully localized (issue #1004 tranche 4b)',
+      () => expectDirectoryFullyLocalized('lib/ui/content', 'content'));
+
+  test('lib/ui/startup stays fully localized (issue #1004 tranche 4b)',
+      () => expectDirectoryFullyLocalized('lib/ui/startup', 'startup'));
+
+  test('lib/ui/web stays fully localized (issue #1004 tranche 4b)',
+      () => expectDirectoryFullyLocalized('lib/ui/web', 'web'));
+
+  test('lib/ui/components stays fully localized (issue #1004 tranche 4a)',
+      () => expectDirectoryFullyLocalized('lib/ui/components', 'components'));
+
+  test('lib/ui/overview stays fully localized (issue #1004 tranche 4a)',
+      () => expectDirectoryFullyLocalized('lib/ui/overview', 'overview'));
+
+  test('lib/ui/insights stays fully localized (issue #1004 tranche 4a)',
+      () => expectDirectoryFullyLocalized('lib/ui/insights', 'insights'));
+
   // Falsification coverage for the detector itself, same posture as
   // `theme_wiring_test.dart`'s "detects the forms a layering violation
   // can take": without this, a scanner that silently stopped matching
@@ -260,6 +334,45 @@ Widget build(BuildContext context) {
       expect(found, hasLength(1));
       expect(found.single.line, 1);
       expect(found.single.value, 'line one\nline two');
+    });
+
+    test('namedArgs records named-argument and map-entry literals', () {
+      const source = '''
+TextField(decoration: InputDecoration(labelText: 'Name', hintText: 'e.g. Sam'));
+Column(children: [Text('already covered')]);
+final map = {label: 'Note'};
+''';
+      final found = scanHardcodedUiStrings(
+        source,
+        namedArgs: {'labelText', 'hintText', 'label', 'title'},
+      );
+      final values = found.map((h) => h.value).toList();
+      expect(values, contains('Name'));
+      expect(values, contains('e.g. Sam'));
+      expect(values, contains('Note'));
+      expect(values, contains('already covered'));
+      expect(values, hasLength(4));
+    });
+
+    test('namedArgs is off by default and ignores dynamic values', () {
+      const source = '''
+InputDecoration(labelText: 'Name', hintText: someVariable);
+ListTile(title: l10n.somethingLocalized, subtitle: 'literal');
+''';
+      expect(
+        scanHardcodedUiStrings(source),
+        isEmpty,
+        reason: 'the global backlog scan must not start seeing named args',
+      );
+      final found = scanHardcodedUiStrings(
+        source,
+        namedArgs: {'labelText', 'hintText', 'title', 'subtitle'},
+      );
+      final values = found.map((h) => h.value).toList();
+      expect(values, contains('Name'));
+      expect(values, contains('literal'));
+      expect(values, hasLength(2),
+          reason: 'a dynamic value is not copy; only literals count');
     });
   });
 }

@@ -63,6 +63,13 @@ JWT are CLI defaults) and says nothing about the cloud project.
       (issue #18/#972). Both the confirmation and the
       reset email link through it (`ios/Runner/Info.plist` `CFBundleURLSchemes`
       and the Android `VIEW` intent filter register the scheme).
+- [ ] Web auth callback added to the redirect allow-list (epic #831 slice 2):
+      `https://app.lunarlog.app/auth/callback`. A browser cannot open the
+      `lunarlog://auth-callback` custom scheme, so a `LUNARLOG_WEB_SYNC=true`
+      web build sends its confirmation, passwordless, and reset mail here and
+      exchanges the returned `?code=` from the initial `Uri.base`. See
+      `docs/web/security-posture.md` §4. Any other origin the web build is
+      served from needs its own `/auth/callback` entry too.
 - [ ] TOTP multi-factor authentication enabled (issue #268): Authentication →
       Providers → Multi-Factor Authentication → "Authenticator App (TOTP)" on.
       `supabase/config.toml`'s `[auth.mfa.totp]` stays `enroll_enabled = false`/
@@ -74,6 +81,33 @@ JWT are CLI defaults) and says nothing about the cloud project.
       flow (`AuthService.enrollTotp`) fails with a generic `AuthUnknownFailure`
       from the client's perspective, and the "Set up two-factor
       authentication" tile in the Account section simply won't complete.
+
+### Web hosting (epic #831, slice 3)
+
+The first-class web client's deploy path is in code
+(`.github/workflows/web-deploy.yml`): on push to `main` (or a manual
+dispatch) it builds the sync-enabled web release, verifies the output carries
+the CSP `_headers` and the SPA `_redirects`, and publishes to Cloudflare
+Pages. These are the owner steps that make it live; until they are done the
+workflow builds and verifies but the upload is skipped. Rationale and the
+deferred PWA/offline decision: `docs/web/security-posture.md` section 8.
+
+- [ ] Cloudflare Pages project `lunarlog-app` created (Workers & Pages →
+      Create → Pages → **Direct Upload**; no Git connection needed — CI
+      uploads the build).
+- [ ] Repository secrets `CLOUDFLARE_API_TOKEN` (account-scoped, with
+      **Cloudflare Pages: Edit**) and `CLOUDFLARE_ACCOUNT_ID` set. The
+      deploy step is gated on both; missing either makes the workflow print
+      a `::warning::` and skip the deploy, never fail.
+- [ ] `app.lunarlog.app` pointed at the Pages project (Custom domains →
+      Set up a custom domain). The apex stays for the marketing site
+      (#830).
+- [ ] `https://app.lunarlog.app/auth/callback` added to the Auth redirect
+      allow-list (Authentication → URL Configuration) — the same step
+      recorded under "Supabase Auth" above, repeated here so the web deploy
+      checklist is complete. A browser cannot open the
+      `lunarlog://auth-callback` custom scheme, so the slice-2 email links
+      land here and `web/_redirects` serves the app for that path.
 
 ### Social logins and passwordless (issue #2)
 

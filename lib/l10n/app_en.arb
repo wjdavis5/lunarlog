@@ -76,7 +76,7 @@
   "@calendarLegendToday": {
     "description": "Legend entry for today's ring marker."
   },
-  "calendarLegendPredicted": "Predicted day",
+  "calendarLegendPredicted": "Estimated day",
   "@calendarLegendPredicted": {
     "description": "Legend entry for a predicted (hatched) day band."
   },
@@ -113,7 +113,7 @@
   "@calendarHideSymptomLayers": {
     "description": "Tooltip collapsing the symptom-layers chip panel."
   },
-  "calendarKeepLogging": "Keep logging — predicted bands appear once a few cycles are recorded.",
+  "calendarKeepLogging": "Keep logging — estimated bands appear once a few cycles are recorded.",
   "@calendarKeepLogging": {
     "description": "Strip shown on quiet months while no estimate is active."
   },
@@ -173,7 +173,7 @@
   "@calendarCellReadOnly": {
     "description": "Screen-reader fragment marking a past calendar cell whose day sheet opens read-only (viewer role)."
   },
-  "calendarCellPredictedPeriod": "predicted period day",
+  "calendarCellPredictedPeriod": "estimated period day",
   "@calendarCellPredictedPeriod": {
     "description": "Screen-reader fragment for a forecast bleed day — deliberately distinct from any logged-day fragment so predicted and logged never sound alike."
   },
@@ -186,7 +186,7 @@
       }
     }
   },
-  "calendarCellCycleDayFirstCycle": "cycle day {day} of the first predicted cycle",
+  "calendarCellCycleDayFirstCycle": "cycle day {day} of the first estimated cycle",
   "@calendarCellCycleDayFirstCycle": {
     "description": "Screen-reader fragment for a non-bleed future day counted within the first predicted cycle.",
     "placeholders": {
@@ -195,15 +195,15 @@
       }
     }
   },
-  "calendarCellPmsWindow": "predicted premenstrual window",
+  "calendarCellPmsWindow": "estimated premenstrual window",
   "@calendarCellPmsWindow": {
     "description": "Screen-reader fragment for a day carrying the PMS badge."
   },
-  "calendarCellCrampsWindow": "predicted cramps window",
+  "calendarCellCrampsWindow": "estimated cramps window",
   "@calendarCellCrampsWindow": {
     "description": "Screen-reader fragment for a day carrying the cramps badge."
   },
-  "calendarCellNoPrediction": "no prediction for this date",
+  "calendarCellNoPrediction": "no estimate for this date",
   "@calendarCellNoPrediction": {
     "description": "Screen-reader fragment for a future day whose forecast cell carries no marker."
   },
@@ -336,15 +336,15 @@
   "@monthPickerNextYear": {
     "description": "Tooltip on the month/year picker's forward-year chevron."
   },
-  "futureExplainerNoEstimate": "No estimates yet — keep logging. Predicted bands appear on the calendar once a few cycles are recorded.",
+  "futureExplainerNoEstimate": "No estimates yet — keep logging. Estimated bands appear on the calendar once a few cycles are recorded.",
   "@futureExplainerNoEstimate": {
     "description": "Future-day explainer body when no estimate exists at all."
   },
-  "futureExplainerNone": "No prediction for this date. Days can be logged once they arrive.",
+  "futureExplainerNone": "No estimate for this date. Days can be logged once they arrive.",
   "@futureExplainerNone": {
     "description": "Future-day explainer body when nothing is predicted for the date."
   },
-  "futureExplainerBand": "Predicted period day. The date may shift by about {count} {count, plural, =1{day} other{days}} either way as new periods are logged.",
+  "futureExplainerBand": "Estimated period day. The date may shift by about {count} {count, plural, =1{day} other{days}} either way as new periods are logged.",
   "@futureExplainerBand": {
     "description": "Future-day explainer body for a predicted bleed day with no cycle-day numeral.",
     "placeholders": {
@@ -353,7 +353,7 @@
       }
     }
   },
-  "futureExplainerBandWithCycleDay": "Predicted period day — cycle day {day} of the first predicted cycle. The date may shift by about {count} {count, plural, =1{day} other{days}} either way as new periods are logged.",
+  "futureExplainerBandWithCycleDay": "Estimated period day — cycle day {day} of the first estimated cycle. The date may shift by about {count} {count, plural, =1{day} other{days}} either way as new periods are logged.",
   "@futureExplainerBandWithCycleDay": {
     "description": "Future-day explainer body for a predicted bleed day inside the first predicted cycle.",
     "placeholders": {
@@ -365,15 +365,15 @@
       }
     }
   },
-  "futureExplainerPms": "Inside the predicted premenstrual window — symptoms like mood shifts and bloating often show up in the week before a period.",
+  "futureExplainerPms": "Inside the estimated premenstrual window — symptoms like mood shifts and bloating often show up in the week before a period.",
   "@futureExplainerPms": {
     "description": "Future-day explainer body for a day in the predicted PMS window."
   },
-  "futureExplainerCramps": "Inside the predicted cramps window — cramps commonly occur within two days of a period start.",
+  "futureExplainerCramps": "Inside the estimated cramps window — cramps commonly occur within two days of a period start.",
   "@futureExplainerCramps": {
     "description": "Future-day explainer body for a day in the predicted cramps window."
   },
-  "futureExplainerNumeral": "Cycle day {day} of the first predicted cycle. Only the first predicted cycle is counted day by day — estimates compound too much further out.",
+  "futureExplainerNumeral": "Cycle day {day} of the first estimated cycle. Only the first estimated cycle is counted day by day — estimates compound too much further out.",
   "@futureExplainerNumeral": {
     "description": "Future-day explainer body for a counted future cycle day that is not a predicted bleed day.",
     "placeholders": {
@@ -749,7 +749,7 @@
   "@overviewLongCycleTitle": {
     "description": "Title of the overview's unusually-long-cycle prompt."
   },
-  "overviewLongCycleBody": "It has run well past a typical cycle for this profile. You can exclude it from future averages, or turn off predictions if long cycles are common for this profile.",
+  "overviewLongCycleBody": "It has run well past a typical cycle for this profile. You can exclude it from future averages, or turn off estimates if long cycles are common for this profile.",
   "@overviewLongCycleBody": {
     "description": "Body of the overview's unusually-long-cycle prompt."
   },
@@ -757,7 +757,7 @@
   "@overviewLongCycleExclude": {
     "description": "Action excluding the open cycle from future averages."
   },
-  "overviewLongCyclePredictionsOff": "Turn off predictions",
+  "overviewLongCyclePredictionsOff": "Turn off estimates",
   "@overviewLongCyclePredictionsOff": {
     "description": "Action navigating to Settings to manage or turn off predictions (issue #225)."
   },
@@ -765,7 +765,7 @@
   "@overviewStaleHistoryTitle": {
     "description": "Issue #859: title of the overview card shown when the last logged period is far too old for predictions to mean anything."
   },
-  "overviewStaleHistoryBody": "It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick predictions back up. You can also turn predictions off.",
+  "overviewStaleHistoryBody": "It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick estimates back up. You can also turn estimates off.",
   "@overviewStaleHistoryBody": {
     "description": "Issue #859: calm, non-alarming body of the stale-history overview card."
   },
@@ -1003,13 +1003,23 @@
   "@settingsHealthHeader": {
     "description": "Section header above the health-sync settings tile."
   },
-  "settingsHealthSyncTitle": "Health app sync",
+  "settingsHealthSyncTitle": "{source} sync",
   "@settingsHealthSyncTitle": {
-    "description": "Settings tile opening per-profile Health app sync."
+    "description": "Settings tile opening per-profile health sync.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
   },
-  "settingsHealthSyncSubtitle": "Choose which profile's data may sync to this phone's Health app",
+  "settingsHealthSyncSubtitle": "Choose which profile's data may sync to {source}",
   "@settingsHealthSyncSubtitle": {
-    "description": "Subtitle of the health-sync tile."
+    "description": "Subtitle of the health-sync tile.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
   },
   "settingsHealthSyncSymptomsAndroidLimitation": "Symptoms (cramps, headaches, mood, and more) can't be written to Health Connect — it has no symptom categories. Days logged with symptoms still sync their flow and spotting; the symptoms themselves stay in lunarlog.",
   "@settingsHealthSyncSymptomsAndroidLimitation": {
@@ -1017,7 +1027,7 @@
   },
   "healthSyncPermissionGranted": "{source} access: granted",
   "@healthSyncPermissionGranted": {
-    "description": "Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is 'Apple Health' or 'Health Connect'.",
+    "description": "Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is 'the Health app' or 'Health Connect'.",
     "placeholders": {
       "source": {
         "type": "String"
@@ -1097,32 +1107,74 @@
       }
     }
   },
-  "healthSyncImportPlacedDeviceZone": "Placed {count, plural, =1{1 sample} other{{count} samples}} using the time zone of this phone.",
+  "healthSyncImportPlacedDeviceZone": "Dated {count, plural, =1{1 entry} other{{count} entries}} using the time zone of this phone.",
   "@healthSyncImportPlacedDeviceZone": {
-    "description": "Health import summary (Issue #902): samples the source recorded no zone for, placed on a civil date from this phone's own offset. Deliberately says placed, never skipped, so an inferred date is not reported as one the source recorded.",
+    "description": "Health import summary (Issue #902): entries the source recorded no zone for, dated on a civil date from this phone's own offset. Deliberately says dated, never skipped, so an inferred date is not reported as one the source recorded.",
     "placeholders": {
       "count": {
         "type": "int"
       }
     }
   },
-  "healthSyncImportSkippedNoZone": "Skipped {count, plural, =1{1 sample} other{{count} samples}} with no recorded time zone.",
+  "healthSyncImportSkippedNoZone": "Skipped {count, plural, =1{1 entry} other{{count} entries}} with no recorded time zone.",
   "@healthSyncImportSkippedNoZone": {
-    "description": "Health import summary: samples that could not be placed at all (no zone and no device-zone fallback).",
+    "description": "Health import summary: entries that could not be placed at all (no zone and no device-zone fallback).",
     "placeholders": {
       "count": {
         "type": "int"
       }
     }
   },
-  "healthSyncImportSkippedUnsupported": "Skipped {count, plural, =1{1 sample} other{{count} samples}} with no matching flow level.",
+  "healthSyncImportSkippedUnsupported": "Skipped {count, plural, =1{1 entry} other{{count} entries}} with no matching flow level.",
   "@healthSyncImportSkippedUnsupported": {
-    "description": "Health import summary: samples whose flow value has no lunarlog equivalent.",
+    "description": "Health import summary: entries whose flow value has no lunarlog equivalent.",
     "placeholders": {
       "count": {
         "type": "int"
       }
     }
+  },
+  "healthSyncImportSummaryHeadline": "Imported {imported, plural, =1{1 day} other{{imported} days}}, skipped {skipped, plural, =1{1 already logged} other{{skipped} already logged}}.",
+  "@healthSyncImportSummaryHeadline": {
+    "description": "Health import completion summary headline (Issue #992): {imported} days gained or refreshed an imported value, {skipped} days were left alone because a value was already there (hand-logged or already imported).",
+    "placeholders": {
+      "imported": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "healthSyncImportSummaryNothingNew": "Nothing new — {skipped, plural, =1{1 day} other{{skipped} days}} already logged.",
+  "@healthSyncImportSummaryNothingNew": {
+    "description": "Health import completion headline (Issue #1017) for a pass that imported no days: says plainly that nothing was new because the days were already logged, rather than the pre-#1017 'Imported 0 days'.",
+    "placeholders": {
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "healthSyncImportTileSubtitle": "Bring in all available menstrual flow and spotting.",
+  "@healthSyncImportTileSubtitle": {
+    "description": "Health sync screen import tile subtitle (Issue #992): the import is no longer bounded to a recent window, it reads the whole available history."
+  },
+  "healthSyncImportProgress": "Importing… {samples, plural, =1{1 sample} other{{samples} samples}} read so far.",
+  "@healthSyncImportProgress": {
+    "description": "Shown while a full-history health import runs (Issue #992): the running sample count, so a long pass shows progress rather than a bare spinner.",
+    "placeholders": {
+      "samples": {
+        "type": "int"
+      }
+    }
+  },
+  "healthSyncFullHistoryNote": "Imports everything the health store makes available, not a recent window. Background sync is not available yet.",
+  "@healthSyncFullHistoryNote": {
+    "description": "Health sync screen scope note (Issue #992): reads are full-history now; background reads remain deferred."
+  },
+  "healthSyncImportStoppedEarly": "The import stopped early after an unusual amount of data. The days already read were kept — run the import again to continue.",
+  "@healthSyncImportStoppedEarly": {
+    "description": "Health import summary (Issue #992): the pass hit the page cap or saw a repeated cursor, so it stopped rather than spin. Days read so far were still merged; re-running continues safely."
   },
   "healthSyncUnbindDialogTitle": "Stop syncing {name} to this phone?",
   "@healthSyncUnbindDialogTitle": {
@@ -1133,20 +1185,26 @@
       }
     }
   },
-  "healthSyncUnbindDialogWriteBody": "This phone will stop writing data for {name} to its Health app and stop importing from it. Nothing already logged in lunarlog, or already written to the Health app, is deleted.",
+  "healthSyncUnbindDialogWriteBody": "This phone will stop writing data for {name} to {source} and stop importing from it. Nothing already logged in lunarlog, or already written to {source}, is deleted.",
   "@healthSyncUnbindDialogWriteBody": {
     "description": "Confirm dialog body for unbinding on a platform where both write and import are wired (iOS, Issue #893).",
     "placeholders": {
       "name": {
         "type": "String"
+      },
+      "source": {
+        "type": "String"
       }
     }
   },
-  "healthSyncUnbindDialogImportBody": "This phone will stop importing data for {name} from its Health app. Nothing already logged is deleted.",
+  "healthSyncUnbindDialogImportBody": "This phone will stop importing data for {name} from {source}. Nothing already logged is deleted.",
   "@healthSyncUnbindDialogImportBody": {
     "description": "Confirm dialog body for unbinding on an import-only platform (Android, Issue #893).",
     "placeholders": {
       "name": {
+        "type": "String"
+      },
+      "source": {
         "type": "String"
       }
     }
@@ -1171,7 +1229,7 @@
   "@settingsPrivacyDialogTitle": {
     "description": "Title of the in-app privacy policy dialog."
   },
-  "settingsPrivacyDialogBody": "lunarlog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device's own operating system encryption and shown only behind your device's passcode or biometrics.\n• Works Offline: Logging, viewing, and predictions keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Guardian Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md",
+  "settingsPrivacyDialogBody": "lunarlog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device's own operating system encryption and shown only behind your device's passcode or biometrics.\n• Works Offline: Logging, viewing, and estimates keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Guardian Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md",
   "@settingsPrivacyDialogBody": {
     "description": "Body of the in-app privacy policy dialog; mirrors PRIVACY.md's summary."
   },
@@ -1326,7 +1384,7 @@
   "@firstRunValueHeadline": {
     "description": "Headline of the first onboarding card (identity/value)."
   },
-  "firstRunValueBody": "Guardians can share a profile and log it together. Everything works offline. No ads, no data selling, no behavioral tracking — and predictions are never paywalled.",
+  "firstRunValueBody": "Guardians can share a profile and log it together. Everything works offline. No ads, no data selling, no behavioral tracking — and estimates are never paywalled.",
   "@firstRunValueBody": {
     "description": "Body of the identity/value card: the differentiators stated plainly (family co-management, offline-first, no ads/tracking, no paywalled predictions)."
   },
@@ -1607,7 +1665,7 @@
   "@daySheetIntensityClear": {
     "description": "The clear affordance on a pain-code intensity selector (Issue #256): removes the recorded intensity, leaving the row ungraded ('no severity recorded'), never 'low'."
   },
-  "overviewPmsBandLabel": "Predicted PMS: {range} — usually starts about {days} {days, plural, =1{day} other{days}} before your period and lasts about {length} {length, plural, =1{day} other{days}}.",
+  "overviewPmsBandLabel": "Estimated PMS: {range} — usually starts about {days} {days, plural, =1{day} other{days}} before your period and lasts about {length} {length, plural, =1{day} other{days}}.",
   "@overviewPmsBandLabel": {
     "description": "Overview line naming the predicted PMS band and the 6-cycle averages behind it as one sentence (Issue #220, #1000; merged into one line by Issue #874). range is the localized start-end date span. Only rendered once at least three PMS intervals have been logged.",
     "placeholders": {
@@ -1631,11 +1689,11 @@
       }
     }
   },
-  "predictionsSuppressedTitle": "Predictions are suppressed",
+  "predictionsSuppressedTitle": "Estimates paused",
   "@predictionsSuppressedTitle": {
     "description": "Title of the overview/Analysis state shown when a profile's in-effect birth-control method is a continuous one (IUD, implant, shot, continuous pill): period prediction is deliberately off (Issue #233)."
   },
-  "predictionsSuppressedBody": "Because {method} typically stops or irregularly affects periods, period predictions are turned off while it is active. The method will resume ordinary prediction once it is switched or cleared.",
+  "predictionsSuppressedBody": "Because {method} typically stops or irregularly affects periods, period estimates are paused while it is active. The method will resume ordinary estimates once it is switched or cleared.",
   "@predictionsSuppressedBody": {
     "description": "Body of the suppressed-prediction state naming the recorded continuous method ({method}) and explaining why predictions are off (Issue #233).",
     "placeholders": {
@@ -1644,7 +1702,7 @@
       }
     }
   },
-  "predictionsSuppressedByModeBody": "Because this profile is set to {mode} mode, period predictions are turned off — the ordinary cycle averages this app estimates from don't apply right now. Switch back to Period Tracking mode from Edit profile to resume ordinary prediction.",
+  "predictionsSuppressedByModeBody": "Because this profile is set to {mode} mode, period estimates are paused — the ordinary cycle averages this app estimates from don't apply right now. Switch back to Period Tracking mode from Edit profile to resume ordinary estimates.",
   "@predictionsSuppressedByModeBody": {
     "description": "Body of the suppressed-prediction state naming the profile's current life-stage mode ({mode}: Pregnancy, Postpartum, or Perimenopause) and explaining why period predictions are off (Issue #528). Shares predictionsSuppressedTitle with the birth-control reason.",
     "placeholders": {
@@ -1653,11 +1711,11 @@
       }
     }
   },
-  "predictionsDisabledTitle": "Predictions turned off",
+  "predictionsDisabledTitle": "Estimates off",
   "@predictionsDisabledTitle": {
     "description": "Title of the card displayed when predictions are disabled for the profile (issue #225)."
   },
-  "predictionsDisabledBody": "Estimates, calendar prediction bands, and prediction reminders are paused for this profile. Your cycle history and tracking continue unchanged.",
+  "predictionsDisabledBody": "Estimates, calendar estimate bands, and estimate reminders are paused for this profile. Your cycle history and tracking continue unchanged.",
   "@predictionsDisabledBody": {
     "description": "Body of the card explaining that predictions are disabled while tracking remains active (issue #225)."
   },
@@ -1665,11 +1723,11 @@
   "@predictionsDisabledAction": {
     "description": "Button on predictions-disabled card opening Settings (issue #225)."
   },
-  "settingsPredictionsTitle": "Show predictions",
+  "settingsPredictionsTitle": "Show estimates",
   "@settingsPredictionsTitle": {
     "description": "Title of the prediction toggle in Settings when only one profile exists (issue #225)."
   },
-  "settingsPredictionsProfileTitle": "Show predictions ({profileName})",
+  "settingsPredictionsProfileTitle": "Show estimates ({profileName})",
   "@settingsPredictionsProfileTitle": {
     "description": "Title of the prediction toggle in Settings for a specific profile (issue #225).",
     "placeholders": {
@@ -1678,7 +1736,7 @@
       }
     }
   },
-  "settingsPredictionsSubtitle": "Show cycle estimates, fertile window, and prediction reminders",
+  "settingsPredictionsSubtitle": "Show cycle estimates, fertile window, and estimate reminders",
   "@settingsPredictionsSubtitle": {
     "description": "Subtitle describing the predictions toggle in Settings (issue #225)."
   },
@@ -1704,7 +1762,7 @@
   "@overviewIrregularSuggestionTitle": {
     "description": "Title of the suggestion banner offered when cycle variation is irregular (issue #225)."
   },
-  "overviewIrregularSuggestionBody": "Predictions may be less useful when cycles vary widely. You can turn off cycle estimates while continuing to track normally.",
+  "overviewIrregularSuggestionBody": "Estimates may be less useful when cycles vary widely. You can turn off cycle estimates while continuing to track normally.",
   "@overviewIrregularSuggestionBody": {
     "description": "Body of the dismissible suggestion banner for irregular cycles (issue #225)."
   },
@@ -1740,7 +1798,7 @@
   "@reminderKindPeriodDue": {
     "description": "The period-due reminder's settings row title (the existing upcoming kind, now localized; Issue #178)."
   },
-  "reminderKindPeriodDueSubtitle": "A heads-up before the predicted period starts",
+  "reminderKindPeriodDueSubtitle": "A heads-up before the estimated period starts",
   "@reminderKindPeriodDueSubtitle": {
     "description": "The period-due reminder's settings row subtitle (Issue #178 localization of the existing copy)."
   },
@@ -1764,7 +1822,7 @@
   "@reminderKindFertileWindowSoon": {
     "description": "The fertile-window-soon reminder's settings row title (Issue #178; Clue catalogue item 4)."
   },
-  "reminderKindFertileWindowSoonSubtitle": "A heads-up before the predicted fertile window",
+  "reminderKindFertileWindowSoonSubtitle": "A heads-up before the estimated fertile window",
   "@reminderKindFertileWindowSoonSubtitle": {
     "description": "The fertile-window-soon reminder's settings row subtitle (Issue #178)."
   },
@@ -1784,15 +1842,15 @@
   "@reminderKindLogNudgeSubtitle": {
     "description": "The daily log nudge's settings row subtitle (Issue #178 localization of the existing copy)."
   },
-  "reminderLeadDaysBeforeStart": "Days before predicted start",
+  "reminderLeadDaysBeforeStart": "Days before estimated start",
   "@reminderLeadDaysBeforeStart": {
     "description": "Lead-days row title for the period-anchored reminder types (Issue #178 localization of the existing copy)."
   },
-  "reminderLeadDaysBeforePms": "Days before predicted PMS window",
+  "reminderLeadDaysBeforePms": "Days before estimated PMS window",
   "@reminderLeadDaysBeforePms": {
     "description": "Lead-days row title for the PMS-watch reminder (Issue #178 localization of the existing copy)."
   },
-  "reminderLeadDaysBeforeFertileWindow": "Days before predicted fertile window",
+  "reminderLeadDaysBeforeFertileWindow": "Days before estimated fertile window",
   "@reminderLeadDaysBeforeFertileWindow": {
     "description": "Lead-days row title for the fertile-window-soon reminder (Issue #178)."
   },
@@ -2177,9 +2235,9 @@
   "@authFailureIdentityTaken": {
     "description": "AuthIdentityTakenFailure copy."
   },
-  "authFailureSignUpClosed": "New accounts for this app are set up by the account owner.",
+  "authFailureSignUpClosed": "New accounts are created by invitation. Ask the person who set up your family's lunarlog to invite you.",
   "@authFailureSignUpClosed": {
-    "description": "AuthSignUpClosedFailure copy."
+    "description": "AuthSignUpClosedFailure copy. Issue #1003: the old line blocked an invitee with no next step; this names who can invite them."
   },
   "authFailureLastSignInMethod": "That is the only way left to sign in to this account. Add another method first.",
   "@authFailureLastSignInMethod": {
@@ -2289,7 +2347,7 @@
   "@profileStatusPredictionsSuppressed": {
     "description": "Issue #241: the one-line cycle status on a ProfileCard row for a profile whose predictions are suppressed (a continuous birth-control method in effect, or a pregnancy/postpartum/perimenopause life-stage mode). Issue #1005: 'paused', not 'off' — nothing was toggled off and the mode pauses it."
   },
-  "profileStatusPredictionsOff": "Period predictions off",
+  "profileStatusPredictionsOff": "Period estimates off",
   "@profileStatusPredictionsOff": {
     "description": "Issue #241: the one-line cycle status on a ProfileCard row for a profile whose operator turned predictions off in settings (issue #225's PredictionsDisabled state)."
   },
@@ -2657,7 +2715,7 @@
   "@pregnancyExitExclusionTitle": {
     "description": "Title of the dialog offered when leaving Pregnancy mode (Issue #192)."
   },
-  "pregnancyExitExclusionBody": "Cycles logged during the pregnancy can distort the averages future predictions use. Excluding them keeps the cycle history intact — the pregnancy span is just left out of the math. Individual cycles can also be excluded later from cycle history.",
+  "pregnancyExitExclusionBody": "Cycles logged during the pregnancy can distort the averages future estimates use. Excluding them keeps the cycle history intact — the pregnancy span is just left out of the math. Individual cycles can also be excluded later from cycle history.",
   "@pregnancyExitExclusionBody": {
     "description": "Body of the pregnancy-exit exclusion dialog (Issue #192); deliberately states data is kept, only the average skips it."
   },
@@ -2707,7 +2765,7 @@
   "@postpartumReturnTitle": {
     "description": "Title of the postpartum overview offer shown once a bleed has been logged during Postpartum mode (Issue #455)."
   },
-  "postpartumReturnBody": "You logged a period during Postpartum mode. Switching to Period Tracking resumes ordinary predictions and lets the app start rebuilding cycle averages from your new cycles.",
+  "postpartumReturnBody": "You logged a period during Postpartum mode. Switching to Period Tracking resumes ordinary estimates and lets the app start rebuilding cycle averages from your new cycles.",
   "@postpartumReturnBody": {
     "description": "Body of the postpartum cycles-have-returned offer: explains the switch, and that leaving the mode offers to exclude the postpartum interval (Issue #455)."
   },
@@ -2719,7 +2777,7 @@
   "@postpartumExitExclusionTitle": {
     "description": "Title of the dialog offered when leaving Postpartum mode (Issue #455)."
   },
-  "postpartumExitExclusionBody": "Bleeding logged during the postpartum interval can distort the averages future predictions use. Excluding it keeps your cycle history intact — the postpartum span is just left out of the math. You can also exclude individual cycles later from cycle history.",
+  "postpartumExitExclusionBody": "Bleeding logged during the postpartum interval can distort the averages future estimates use. Excluding it keeps your cycle history intact — the postpartum span is just left out of the math. You can also exclude individual cycles later from cycle history.",
   "@postpartumExitExclusionBody": {
     "description": "Body of the postpartum-exit exclusion dialog (Issue #455); deliberately states data is kept, only the average skips it."
   },
@@ -2869,18 +2927,18 @@
   "@guardianNotesUpdate": {
     "description": "Day sheet: button that saves an edit to an existing guardian note (Issue #801)."
   },
-  "inviteSubjectOption": "Invite {name} to log her own profile",
+  "inviteSubjectOption": "Invite {name} to log their own profile",
   "@inviteSubjectOption": {
-    "description": "Invite dialog (Issue #802): the 'her own profile' preset choice, offered when the profile's relationship is daughter/son/child or the profile is a minor's. Grants the caregiver role plus the subject marker.",
+    "description": "Invite dialog (Issue #802): the 'their own profile' preset choice, offered when the profile's relationship is daughter/son/child or the profile is a minor's. Grants the caregiver role plus the subject marker. Issue #1003: gender-neutral — the preset is offered for daughter/son/child, so 'her' was wrong.",
     "placeholders": {
       "name": {
         "type": "String"
       }
     }
   },
-  "inviteSubjectOptionDetail": "Caregiver access - this is {name}'s own profile, listed as hers on her device",
+  "inviteSubjectOptionDetail": "Caregiver access - this is {name}'s own profile, listed as theirs on their device",
   "@inviteSubjectOptionDetail": {
-    "description": "Invite dialog (Issue #802): the consequence line under the subject preset choice, naming what it grants without the caregiver mislabel.",
+    "description": "Invite dialog (Issue #802): the consequence line under the subject preset choice, naming what it grants without the caregiver mislabel. Issue #1003: gender-neutral.",
     "placeholders": {
       "name": {
         "type": "String"
@@ -2896,9 +2954,9 @@
       }
     }
   },
-  "inviteCreatedShareSubject": "Share this single-use link with {name} - she'll use it to join and log her own profile:",
+  "inviteCreatedShareSubject": "Share this single-use link with {name} - they'll use it to join and log their own profile:",
   "@inviteCreatedShareSubject": {
-    "description": "Invite dialog, generated state (Issue #802): what to do with a 'her own profile' invitation link.",
+    "description": "Invite dialog, generated state (Issue #802): what to do with a 'their own profile' invitation link. Issue #1003: gender-neutral.",
     "placeholders": {
       "name": {
         "type": "String"
@@ -3128,5 +3186,2979 @@
   "accountReauthFailed": "Couldn't confirm it's you — try again",
   "@accountReauthFailed": {
     "description": "Issue #984: shown under the identity tile when a device-credential re-auth for adding or removing a sign-in method fails (declined, unavailable, or a genuine walk-away). The failing action used to return with no copy at all, which read as an endless Face ID loop."
-  }
+  },
+  "healthDeviationCardTitle": "Apple Health noticed…",
+  "@healthDeviationCardTitle": {
+    "description": "Issue #799: title of the overview's read-only, dismissible card surfacing Apple's four computed cycle-deviation types. Deliberately soft ('noticed…'), never alarming."
+  },
+  "healthDeviationCardSubtitle": "These are Apple's own estimates from your Health data — separate from lunarlog's own estimate.",
+  "@healthDeviationCardSubtitle": {
+    "description": "Issue #799: the second-opinion label. Apple computes its deviations from whatever was logged in Apple Health, which can differ from lunarlog's history, so the two can legitimately disagree and are never merged."
+  },
+  "healthDeviationDismiss": "Dismiss",
+  "@healthDeviationDismiss": {
+    "description": "Issue #799: tooltip on the deviation card's dismiss button."
+  },
+  "healthDeviationKindIrregular": "irregular cycles",
+  "@healthDeviationKindIrregular": {
+    "description": "Issue #799: label for Apple's irregularMenstrualCycles deviation."
+  },
+  "healthDeviationKindInfrequent": "infrequent cycles",
+  "@healthDeviationKindInfrequent": {
+    "description": "Issue #799: label for Apple's infrequentMenstrualCycles deviation."
+  },
+  "healthDeviationKindProlonged": "prolonged periods",
+  "@healthDeviationKindProlonged": {
+    "description": "Issue #799: label for Apple's prolongedMenstrualPeriods deviation."
+  },
+  "healthDeviationKindPersistentIntermenstrualBleeding": "bleeding between periods",
+  "@healthDeviationKindPersistentIntermenstrualBleeding": {
+    "description": "Issue #799: label for Apple's persistentIntermenstrualBleeding deviation."
+  },
+  "healthDeviationLine": "Possible {kind} ({range})",
+  "@healthDeviationLine": {
+    "description": "Issue #799: one deviation line on the card, e.g. 'Possible irregular cycles (Aug 1 – Aug 30)'.",
+    "placeholders": {
+      "kind": {
+        "type": "String"
+      },
+      "range": {
+        "type": "String"
+      }
+    }
+  },
+  "healthDeviationRange": "{start} – {end}",
+  "@healthDeviationRange": {
+    "description": "Issue #799: the date span of a deviation interval; both placeholders are already-formatted local dates.",
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
+  "healthDeviationRangeSingle": "{date}",
+  "@healthDeviationRangeSingle": {
+    "description": "Issue #799: a deviation whose interval starts and ends on the same civil day; the placeholder is an already-formatted local date.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "accountDeleteDialogBody": "This permanently deletes your account, everything stored in it, and the copy on this device. This cannot be undone.",
+  "@accountDeleteDialogBody": {
+    "description": "Issue #1003: delete-account dialog body — plain language, no 'server rows' jargon."
+  },
+  "accountDeleteTileSubtitle": "Deletes the account, everything in it, and this device's copy.",
+  "@accountDeleteTileSubtitle": {
+    "description": "Issue #1003: Settings delete-account tile subtitle — plain language, no 'server rows' jargon."
+  },
+  "accountSignOutEverywhereBody": "Signs this account out on every device. Other devices may keep working for up to an hour. The copy on this device is removed; everything stays in your account.",
+  "@accountSignOutEverywhereBody": {
+    "description": "Issue #1003: the sign-out-everywhere confirmation body — plainer and shorter than the previous 'Ends every session…' copy."
+  },
+  "transferOwnershipConfirmBody": "{name} will become the Primary Guardian of this profile. You'll keep access as {role}, and they can remove that access at any time.",
+  "@transferOwnershipConfirmBody": {
+    "description": "Issue #1003: transfer-ownership confirmation body. Names the canonical 'Primary Guardian' role and the continuing role the arming parent chose.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "role": {
+        "type": "String"
+      }
+    }
+  },
+  "transferOwnershipBecomesGuardian": "{name} becomes this profile's Primary Guardian.",
+  "@transferOwnershipBecomesGuardian": {
+    "description": "Issue #1003: transfer-ownership 'What changes' bullet — 'Primary Guardian', not 'owner'.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "transferOwnershipRoleCoParent": "Co-Parent: keep logging entries and managing this profile.",
+  "@transferOwnershipRoleCoParent": {
+    "description": "Issue #1003: transfer-ownership post-transfer role description for the co_parent role — the canonical 'Co-Parent' label, not 'Co-manager'."
+  },
+  "transferOwnershipRoleViewer": "Viewer: read-only access to their calendar and entries.",
+  "@transferOwnershipRoleViewer": {
+    "description": "Issue #1003: transfer-ownership post-transfer role description for the viewer role."
+  },
+  "manageGuardiansLeaveProfileDialogTitle": "Leave {profile}'s profile?",
+  "@manageGuardiansLeaveProfileDialogTitle": {
+    "description": "Issue #1003: the revoke confirmation dialog title when the caller is removing their own row — 'Leave', not 'Remove <name>'.",
+    "placeholders": {
+      "profile": {
+        "type": "String"
+      }
+    }
+  },
+  "manageGuardiansLeaveProfileConfirm": "Leave",
+  "@manageGuardiansLeaveProfileConfirm": {
+    "description": "Issue #1003: the confirm button on the caller's own leave dialog — 'Leave', not 'Remove'."
+  },
+  "manageGuardiansWaitingForRedemption": "Waiting for them to open the link",
+  "@manageGuardiansWaitingForRedemption": {
+    "description": "Issue #1003: pending prediction-connection tile title with no recipient label — plain language, not 'code redemption'."
+  },
+  "healthSyncConfirmSyncAction": "Sync",
+  "@healthSyncConfirmSyncAction": {
+    "description": "Issue #1003: the confirm action of the 'Sync {name} to this phone?' dialog — matches the title verb, not 'Bind'."
+  },
+  "predictionEnterLinkTitle": "Enter a connection link",
+  "@predictionEnterLinkTitle": {
+    "description": "Issue #1003: the recipient's manual-entry dialog title — says 'link' to match what the sharer copies."
+  },
+  "predictionEnterLinkHint": "Paste the link you received",
+  "@predictionEnterLinkHint": {
+    "description": "Issue #1003: the recipient's manual-entry field hint — says 'link' to match what the sharer copies."
+  },
+  "predictionEnterLinkAction": "Enter link",
+  "@predictionEnterLinkAction": {
+    "description": "Issue #1003: the recipient's manual-entry FAB label — says 'link' to match what the sharer copies."
+  },
+  "sharePredictionsCopyLink": "Copy link",
+  "@sharePredictionsCopyLink": {
+    "description": "Issue #1003: the sharer's copy action — sentence case and one term ('link') with the recipient's entry point."
+  },
+  "sharePredictionsLinkExpiry": "The link expires in 72 hours and can be used once.",
+  "@sharePredictionsLinkExpiry": {
+    "description": "Issue #1003: the sharer's expiry note — says 'link', matching the copied artifact and the recipient's wording."
+  },
+  "claimProfileBecomeGuardianAction": "Become Primary Guardian",
+  "@claimProfileBecomeGuardianAction": {
+    "description": "Issue #1003: the claim-transfer confirm button — names the canonical 'Primary Guardian' role, not 'Owner'."
+  },
+  "claimProfileBody": "Claiming this link makes you this profile's Primary Guardian. The parent who shared it keeps the role they chose, and every past entry stays with whoever originally logged it.",
+  "@claimProfileBody": {
+    "description": "Issue #1003: the claim-transfer intro — names the canonical 'Primary Guardian' role, not 'owner'."
+  },
+    "sharingUnexpectedError": "An unexpected error occurred.",
+    "@sharingUnexpectedError": {
+      "description": "Issue #1004 (tranche 1): shared catch-all error copy in the sharing flows (accept invite, accept prediction connection, claim profile, redeem prediction code). Moved verbatim from the literals it replaces."
+    },
+    "sharingAcceptInvitePreviewIntro": "You've been invited to join {profileName}'s shared profile as {roleLabel}. Accepting will sync its cycle calendar and health logs to this device.",
+    "@sharingAcceptInvitePreviewIntro": {
+      "description": "Issue #1004 (tranche 1): accept-invite sheet personalized intro when the invite preview resolved.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        },
+        "roleLabel": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingAcceptInviteNeutralIntro": "You've been invited to a shared profile in lunarlog. Accepting will sync its cycle calendar and health logs to this device.",
+    "@sharingAcceptInviteNeutralIntro": {
+      "description": "Issue #1004 (tranche 1): accept-invite sheet neutral intro used while the preview loads or is unavailable."
+    },
+    "sharingAcceptInvitePreviewLoading": "Loading invite details…",
+    "@sharingAcceptInvitePreviewLoading": {
+      "description": "Issue #1004 (tranche 1): accept-invite sheet preview status while loading."
+    },
+    "sharingAcceptInvitePreviewError": "Couldn't load invite details, but you can still continue.",
+    "@sharingAcceptInvitePreviewError": {
+      "description": "Issue #1004 (tranche 1): accept-invite sheet preview status on a fetch error."
+    },
+    "sharingAcceptInvitePreviewUnavailable": "This invite link may have expired or already been used.",
+    "@sharingAcceptInvitePreviewUnavailable": {
+      "description": "Issue #1004 (tranche 1): accept-invite sheet preview status when the token returns no preview."
+    },
+    "sharingAcceptInviteTitle": "Join Shared Profile",
+    "@sharingAcceptInviteTitle": {
+      "description": "Issue #1004 (tranche 1): accept-invite sheet title."
+    },
+    "sharingAcceptInviteDecline": "Decline",
+    "@sharingAcceptInviteDecline": {
+      "description": "Issue #1004 (tranche 1): accept-invite sheet decline button."
+    },
+    "sharingAcceptInviteAccept": "Accept & Sync",
+    "@sharingAcceptInviteAccept": {
+      "description": "Issue #1004 (tranche 1): accept-invite sheet accept button."
+    },
+    "sharingAcceptInviteNameLabel": "Your display name (e.g. Dad, Mom, Grandma)",
+    "@sharingAcceptInviteNameLabel": {
+      "description": "Issue #1004 (tranche 1): accept-invite sheet display-name field label."
+    },
+    "sharingAcceptInviteNameHint": "Shows when you log entries",
+    "@sharingAcceptInviteNameHint": {
+      "description": "Issue #1004 (tranche 1): accept-invite sheet display-name field hint."
+    },
+    "sharingAcceptPredictionTitle": "Connect to cycle predictions",
+    "@sharingAcceptPredictionTitle": {
+      "description": "Issue #1004 (tranche 1): accept-prediction-connection sheet title."
+    },
+    "sharingAcceptPredictionBody": "Accepting adds a read-only calendar of their estimated period, fertile, ovulation, and PMS days. No notes, tags, or logs are ever shared or synced to this device.",
+    "@sharingAcceptPredictionBody": {
+      "description": "Issue #1004 (tranche 1): accept-prediction-connection sheet body."
+    },
+    "sharingAcceptPredictionDecline": "Decline",
+    "@sharingAcceptPredictionDecline": {
+      "description": "Issue #1004 (tranche 1): accept-prediction-connection sheet decline button."
+    },
+    "sharingAcceptPredictionConnect": "Connect",
+    "@sharingAcceptPredictionConnect": {
+      "description": "Issue #1004 (tranche 1): accept-prediction-connection sheet connect button."
+    },
+    "sharingClaimProfileTitle": "Become the Owner",
+    "@sharingClaimProfileTitle": {
+      "description": "Issue #1004 (tranche 1): claim-profile sheet title."
+    },
+    "sharingClaimProfileDecline": "Decline",
+    "@sharingClaimProfileDecline": {
+      "description": "Issue #1004 (tranche 1): claim-profile sheet decline button."
+    },
+    "sharingClaimProfileChildNameLabel": "Child's display name (optional)",
+    "@sharingClaimProfileChildNameLabel": {
+      "description": "Issue #1004 (tranche 1): claim-profile sheet child-name field label."
+    },
+    "sharingClaimProfileChildNameHint": "Shows on the profile",
+    "@sharingClaimProfileChildNameHint": {
+      "description": "Issue #1004 (tranche 1): claim-profile sheet child-name field hint."
+    },
+    "sharingClaimProfileParentLabelLabel": "Label for the parent (optional)",
+    "@sharingClaimProfileParentLabelLabel": {
+      "description": "Issue #1004 (tranche 1): claim-profile sheet parent-label field label."
+    },
+    "sharingClaimProfileParentLabelHint": "Shows when they log entries",
+    "@sharingClaimProfileParentLabelHint": {
+      "description": "Issue #1004 (tranche 1): claim-profile sheet parent-label field hint."
+    },
+    "sharingInviteGuardianGenerateFailed": "Failed to generate invite. Please check your connection and try again.",
+    "@sharingInviteGuardianGenerateFailed": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog unexpected create failure."
+    },
+    "sharingInviteGuardianRoleLabel": "Role:",
+    "@sharingInviteGuardianRoleLabel": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog preset picker label."
+    },
+    "sharingInviteGuardianPresetCoParent": "Co-Parent (Can log, edit profile & invite)",
+    "@sharingInviteGuardianPresetCoParent": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog co-parent preset choice."
+    },
+    "sharingInviteGuardianPresetCaregiver": "Caregiver (Can log symptoms & periods)",
+    "@sharingInviteGuardianPresetCaregiver": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog caregiver preset choice."
+    },
+    "sharingInviteGuardianPresetViewer": "Viewer (Read-only access)",
+    "@sharingInviteGuardianPresetViewer": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog viewer preset choice."
+    },
+    "sharingInviteGuardianCreatedTitle": "Invitation Created",
+    "@sharingInviteGuardianCreatedTitle": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog generated-state title."
+    },
+    "sharingInviteGuardianExpiry": "Expires in 48 hours. Can be redeemed once.",
+    "@sharingInviteGuardianExpiry": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog generated-state expiry note."
+    },
+    "sharingInviteGuardianCopied": "Copied to clipboard",
+    "@sharingInviteGuardianCopied": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog in-dialog copy confirmation."
+    },
+    "sharingInviteGuardianDone": "Done",
+    "@sharingInviteGuardianDone": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog done button."
+    },
+    "sharingInviteGuardianCopyLink": "Copy Link",
+    "@sharingInviteGuardianCopyLink": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog copy-link button."
+    },
+    "sharingInviteGuardianShare": "Share",
+    "@sharingInviteGuardianShare": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog share button."
+    },
+    "sharingInviteGuardianTitle": "Invite guardian to {profileName}",
+    "@sharingInviteGuardianTitle": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog title.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingInviteGuardianNicknameLabel": "Nickname / Label (Optional)",
+    "@sharingInviteGuardianNicknameLabel": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog nickname field label."
+    },
+    "sharingInviteGuardianNicknameHint": "e.g. Dad, Grandma, School Nurse",
+    "@sharingInviteGuardianNicknameHint": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog nickname field hint."
+    },
+    "sharingInviteGuardianHelpLabel": "How do invitations work?",
+    "@sharingInviteGuardianHelpLabel": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog help-card link label."
+    },
+    "sharingInviteGuardianCancel": "Cancel",
+    "@sharingInviteGuardianCancel": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog cancel button."
+    },
+    "sharingInviteGuardianCreateLink": "Create Link",
+    "@sharingInviteGuardianCreateLink": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog create-link button."
+    },
+    "sharingManageGuardiansCancel": "Cancel",
+    "@sharingManageGuardiansCancel": {
+      "description": "Issue #1004 (tranche 1): manage-guardians screen generic cancel action."
+    },
+    "sharingManageGuardiansEndPredictionTitle": "End prediction sharing?",
+    "@sharingManageGuardiansEndPredictionTitle": {
+      "description": "Issue #1004 (tranche 1): confirm dialog title for revoking a prediction connection."
+    },
+    "sharingManageGuardiansEndPredictionBody": "They will immediately lose the shared predictions calendar. You can create a new connection any time.",
+    "@sharingManageGuardiansEndPredictionBody": {
+      "description": "Issue #1004 (tranche 1): confirm dialog body for revoking a prediction connection."
+    },
+    "sharingManageGuardiansEndSharing": "End sharing",
+    "@sharingManageGuardiansEndSharing": {
+      "description": "Issue #1004 (tranche 1): destructive confirm action for revoking a prediction connection."
+    },
+    "sharingManageGuardiansPredictionSharingEnded": "Prediction sharing ended",
+    "@sharingManageGuardiansPredictionSharingEnded": {
+      "description": "Issue #1004 (tranche 1): snackbar after a prediction connection is revoked."
+    },
+    "sharingManageGuardiansEndSharingFailed": "Failed to end sharing. Check connection.",
+    "@sharingManageGuardiansEndSharingFailed": {
+      "description": "Issue #1004 (tranche 1): snackbar when revoking a prediction connection fails."
+    },
+    "sharingManageGuardiansDeleteProfileTitle": "Delete {profileName} permanently?",
+    "@sharingManageGuardiansDeleteProfileTitle": {
+      "description": "Issue #1004 (tranche 1): first delete-profile confirmation title.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansDeleteProfileStep1Body": "This permanently erases every day entry, care note, and visit-prep item on this profile, and removes every guardian's access to it — including your own. Synced copies on every device are erased too.",
+    "@sharingManageGuardiansDeleteProfileStep1Body": {
+      "description": "Issue #1004 (tranche 1): first delete-profile confirmation body."
+    },
+    "sharingManageGuardiansContinue": "Continue",
+    "@sharingManageGuardiansContinue": {
+      "description": "Issue #1004 (tranche 1): first delete-profile confirmation continue action."
+    },
+    "sharingManageGuardiansDeleteProfileStep2Title": "Are you absolutely sure?",
+    "@sharingManageGuardiansDeleteProfileStep2Title": {
+      "description": "Issue #1004 (tranche 1): second delete-profile confirmation title."
+    },
+    "sharingManageGuardiansDeleteProfileStep2Body": "{profileName}'s history will be gone permanently, for every guardian on this profile. There is no undo.",
+    "@sharingManageGuardiansDeleteProfileStep2Body": {
+      "description": "Issue #1004 (tranche 1): second delete-profile confirmation body.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansDeletePermanently": "Delete permanently",
+    "@sharingManageGuardiansDeletePermanently": {
+      "description": "Issue #1004 (tranche 1): final destructive delete-profile action."
+    },
+    "sharingManageGuardiansDeleteOffline": "Can't delete while offline. Check your connection and try again.",
+    "@sharingManageGuardiansDeleteOffline": {
+      "description": "Issue #1004 (tranche 1): delete-profile failure while offline."
+    },
+    "sharingManageGuardiansDeleteFailed": "Failed to delete profile. Check connection and try again.",
+    "@sharingManageGuardiansDeleteFailed": {
+      "description": "Issue #1004 (tranche 1): generic delete-profile failure."
+    },
+    "sharingManageGuardiansSolePrimaryLeave": "You're now the only primary guardian, so you can't leave. Add another primary guardian first, then try again.",
+    "@sharingManageGuardiansSolePrimaryLeave": {
+      "description": "Issue #1004 (tranche 1): error when the sole primary guardian tries to leave."
+    },
+    "sharingManageGuardiansRemoveFailed": "Failed to remove guardian. Check connection.",
+    "@sharingManageGuardiansRemoveFailed": {
+      "description": "Issue #1004 (tranche 1): generic revoke-guardian failure."
+    },
+    "sharingManageGuardiansRemoveTitle": "Remove {name}?",
+    "@sharingManageGuardiansRemoveTitle": {
+      "description": "Issue #1004 (tranche 1): confirm dialog title for revoking a guardian or leaving.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansLeaveBody": "You will leave this profile and no longer receive updates or sync its entries.",
+    "@sharingManageGuardiansLeaveBody": {
+      "description": "Issue #1004 (tranche 1): confirm dialog body when the caller removes herself."
+    },
+    "sharingManageGuardiansRemoveBody": "This guardian will lose access to {profileName}'s calendar and entries.",
+    "@sharingManageGuardiansRemoveBody": {
+      "description": "Issue #1004 (tranche 1): confirm dialog body when removing another guardian.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansRemove": "Remove",
+    "@sharingManageGuardiansRemove": {
+      "description": "Issue #1004 (tranche 1): destructive remove-guardian action."
+    },
+    "sharingManageGuardiansRemoved": "Removed {name}",
+    "@sharingManageGuardiansRemoved": {
+      "description": "Issue #1004 (tranche 1): snackbar after a guardian is removed.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansCancelInviteTitle": "Cancel invitation for {name}?",
+    "@sharingManageGuardiansCancelInviteTitle": {
+      "description": "Issue #1004 (tranche 1): confirm dialog title for cancelling a pending invitation.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansCancelInviteBody": "The invite link will stop working immediately. You can send a new one any time.",
+    "@sharingManageGuardiansCancelInviteBody": {
+      "description": "Issue #1004 (tranche 1): confirm dialog body for cancelling a pending invitation."
+    },
+    "sharingManageGuardiansKeepInvitation": "Keep Invitation",
+    "@sharingManageGuardiansKeepInvitation": {
+      "description": "Issue #1004 (tranche 1): decline action for the cancel-invitation dialog."
+    },
+    "sharingManageGuardiansCancelInvitation": "Cancel Invitation",
+    "@sharingManageGuardiansCancelInvitation": {
+      "description": "Issue #1004 (tranche 1): destructive confirm action for cancelling an invitation."
+    },
+    "sharingManageGuardiansCancelInviteFailed": "Failed to cancel invitation. Check connection.",
+    "@sharingManageGuardiansCancelInviteFailed": {
+      "description": "Issue #1004 (tranche 1): snackbar when cancelling an invitation fails."
+    },
+    "sharingManageGuardiansPendingLoadError": "Could not load pending invitations.",
+    "@sharingManageGuardiansPendingLoadError": {
+      "description": "Issue #1004 (tranche 1): inline error when the pending-invitations list fails to load."
+    },
+    "sharingManageGuardiansNoPending": "No pending invitations",
+    "@sharingManageGuardiansNoPending": {
+      "description": "Issue #1004 (tranche 1): empty state for the pending-invitations section."
+    },
+    "sharingManageGuardiansPendingTitle": "Pending invitations",
+    "@sharingManageGuardiansPendingTitle": {
+      "description": "Issue #1004 (tranche 1): pending-invitations section heading."
+    },
+    "sharingManageGuardiansPendingSubtitleExpired": "{kindLabel} • Expired",
+    "@sharingManageGuardiansPendingSubtitleExpired": {
+      "description": "Issue #1004 (tranche 1): pending-invitation row subtitle for an expired invitation.",
+      "placeholders": {
+        "kindLabel": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansPendingSubtitle": "{kindLabel} • {expiry}",
+    "@sharingManageGuardiansPendingSubtitle": {
+      "description": "Issue #1004 (tranche 1): pending-invitation row subtitle with the live expiry label.",
+      "placeholders": {
+        "kindLabel": {
+          "type": "String"
+        },
+        "expiry": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansResend": "Resend",
+    "@sharingManageGuardiansResend": {
+      "description": "Issue #1004 (tranche 1): resend action on an expired pending invitation."
+    },
+    "sharingManageGuardiansExpiryExpired": "expired",
+    "@sharingManageGuardiansExpiryExpired": {
+      "description": "Issue #1004 (tranche 1): expiry label once an invitation has lapsed."
+    },
+    "sharingManageGuardiansExpiryHours": "expires in {hours}h",
+    "@sharingManageGuardiansExpiryHours": {
+      "description": "Issue #1004 (tranche 1): expiry label rounded to hours.",
+      "placeholders": {
+        "hours": {
+          "type": "int"
+        }
+      }
+    },
+    "sharingManageGuardiansExpiryMinutes": "expires in {minutes}m",
+    "@sharingManageGuardiansExpiryMinutes": {
+      "description": "Issue #1004 (tranche 1): expiry label rounded to minutes.",
+      "placeholders": {
+        "minutes": {
+          "type": "int"
+        }
+      }
+    },
+    "sharingManageGuardiansScreenTitle": "{profileName} Guardians",
+    "@sharingManageGuardiansScreenTitle": {
+      "description": "Issue #1004 (tranche 1): manage-guardians app-bar title.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansInviteAction": "Invite guardian",
+    "@sharingManageGuardiansInviteAction": {
+      "description": "Issue #1004 (tranche 1): invite-guardian floating action label."
+    },
+    "sharingManageGuardiansNoGuardiansTitle": "No guardians linked yet",
+    "@sharingManageGuardiansNoGuardiansTitle": {
+      "description": "Issue #1004 (tranche 1): empty guardian list title."
+    },
+    "sharingManageGuardiansNoGuardiansBody": "Invite another guardian to sync and share tracking.",
+    "@sharingManageGuardiansNoGuardiansBody": {
+      "description": "Issue #1004 (tranche 1): empty guardian list body."
+    },
+    "sharingManageGuardiansPredictionsSectionTitle": "Predictions-only sharing",
+    "@sharingManageGuardiansPredictionsSectionTitle": {
+      "description": "Issue #1004 (tranche 1): prediction-connection section heading."
+    },
+    "sharingManageGuardiansPredictionsSectionBody": "Shares estimated period, fertile, ovulation, and PMS days on a read-only calendar - never notes or logs. One connection.",
+    "@sharingManageGuardiansPredictionsSectionBody": {
+      "description": "Issue #1004 (tranche 1): prediction-connection section explanatory copy."
+    },
+    "sharingManageGuardiansPredictionsMinor": "Prediction sharing is not available for a minor's profile.",
+    "@sharingManageGuardiansPredictionsMinor": {
+      "description": "Issue #1004 (tranche 1): prediction-connection notice on a minor's profile."
+    },
+    "sharingManageGuardiansSharePredictionsAction": "Share predictions only...",
+    "@sharingManageGuardiansSharePredictionsAction": {
+      "description": "Issue #1004 (tranche 1): primary-guardian action to arm a prediction connection."
+    },
+    "sharingManageGuardiansPredictionsPrimaryOnly": "Only the primary guardian can share predictions.",
+    "@sharingManageGuardiansPredictionsPrimaryOnly": {
+      "description": "Issue #1004 (tranche 1): notice for a non-primary guardian on the prediction section."
+    },
+    "sharingManageGuardiansSharingPredictions": "Sharing predictions",
+    "@sharingManageGuardiansSharingPredictions": {
+      "description": "Issue #1004 (tranche 1): prediction-connection tile title once active."
+    },
+    "sharingManageGuardiansPendingBadge": "pending",
+    "@sharingManageGuardiansPendingBadge": {
+      "description": "Issue #1004 (tranche 1): inline pending marker on the prediction-connection tile."
+    },
+    "sharingManageGuardiansPhasesOnlyCalendar": "Phases-only calendar • not a guardian",
+    "@sharingManageGuardiansPhasesOnlyCalendar": {
+      "description": "Issue #1004 (tranche 1): prediction-connection tile subtitle once active."
+    },
+    "sharingManageGuardiansDangerZoneTitle": "Danger zone",
+    "@sharingManageGuardiansDangerZoneTitle": {
+      "description": "Issue #1004 (tranche 1): danger-zone section heading."
+    },
+    "sharingManageGuardiansDangerZoneBody": "Permanently erases this profile and everything logged on it, for every guardian. This cannot be undone.",
+    "@sharingManageGuardiansDangerZoneBody": {
+      "description": "Issue #1004 (tranche 1): danger-zone section explanatory copy."
+    },
+    "sharingManageGuardiansDeleteProfileAction": "Delete profile permanently",
+    "@sharingManageGuardiansDeleteProfileAction": {
+      "description": "Issue #1004 (tranche 1): danger-zone delete-profile action."
+    },
+    "sharingManageGuardiansRoleUpdateFailed": "Failed to update role. Check connection.",
+    "@sharingManageGuardiansRoleUpdateFailed": {
+      "description": "Issue #1004 (tranche 1): generic role-update failure."
+    },
+    "sharingManageGuardiansChangeRoleTitle": "Change role to {newRoleLabel}?",
+    "@sharingManageGuardiansChangeRoleTitle": {
+      "description": "Issue #1004 (tranche 1): confirm dialog title for a role change.",
+      "placeholders": {
+        "newRoleLabel": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansChangeRoleBody": "{name} currently has {currentRoleLabel} access. {consequence} No new invitation is needed — the new role applies on their next sync.",
+    "@sharingManageGuardiansChangeRoleBody": {
+      "description": "Issue #1004 (tranche 1): confirm dialog body for a role change. The consequence sentence is supplied by roleChangeConsequence.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        },
+        "currentRoleLabel": {
+          "type": "String"
+        },
+        "consequence": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansChangeRoleAction": "Change role",
+    "@sharingManageGuardiansChangeRoleAction": {
+      "description": "Issue #1004 (tranche 1): confirm action for a role change."
+    },
+    "sharingManageGuardiansRoleUpdated": "Role updated to {newRoleLabel}",
+    "@sharingManageGuardiansRoleUpdated": {
+      "description": "Issue #1004 (tranche 1): snackbar after a role change.",
+      "placeholders": {
+        "newRoleLabel": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansYouSuffix": "(you)",
+    "@sharingManageGuardiansYouSuffix": {
+      "description": "Issue #1004 (tranche 1): suffix marking the caller's own guardian row."
+    },
+    "sharingNotificationPreferencesTitle": "Notifications",
+    "@sharingNotificationPreferencesTitle": {
+      "description": "Issue #1004 (tranche 1): notification-preferences app-bar title."
+    },
+    "sharingNotificationPreferencesSaveWithoutTzTitle": "Save without time zone?",
+    "@sharingNotificationPreferencesSaveWithoutTzTitle": {
+      "description": "Issue #1004 (tranche 1): confirm dialog title when saving despite an unrecognised time zone."
+    },
+    "sharingNotificationPreferencesSaveWithoutTzBody": "Your quiet hours will not adjust for your local time zone until this is resolved. Continue anyway?",
+    "@sharingNotificationPreferencesSaveWithoutTzBody": {
+      "description": "Issue #1004 (tranche 1): confirm dialog body when saving despite an unrecognised time zone."
+    },
+    "sharingNotificationPreferencesCancel": "Cancel",
+    "@sharingNotificationPreferencesCancel": {
+      "description": "Issue #1004 (tranche 1): notification-preferences dialog cancel action."
+    },
+    "sharingNotificationPreferencesSaveWithoutTz": "Save without time zone",
+    "@sharingNotificationPreferencesSaveWithoutTz": {
+      "description": "Issue #1004 (tranche 1): save action that accepts the UTC-fallback time zone."
+    },
+    "sharingNotificationPreferencesLogDeliveryTitle": "Log alert delivery",
+    "@sharingNotificationPreferencesLogDeliveryTitle": {
+      "description": "Issue #1004 (tranche 1): cadence selector title for log alerts."
+    },
+    "sharingNotificationPreferencesLogDeliverySubtitle": "Immediate, once a day, or off - extra alerts never exceed a daily limit and roll into the digest",
+    "@sharingNotificationPreferencesLogDeliverySubtitle": {
+      "description": "Issue #1004 (tranche 1): cadence selector subtitle for log alerts."
+    },
+    "sharingNotificationPreferencesCycleStartDelivery": "Cycle-start alert delivery",
+    "@sharingNotificationPreferencesCycleStartDelivery": {
+      "description": "Issue #1004 (tranche 1): cadence selector title for cycle-start alerts."
+    },
+    "sharingNotificationPreferencesHighSeverityDelivery": "High-severity alert delivery",
+    "@sharingNotificationPreferencesHighSeverityDelivery": {
+      "description": "Issue #1004 (tranche 1): cadence selector title for high-severity alerts."
+    },
+    "sharingNotificationPreferencesDigestTimeTitle": "Digest time",
+    "@sharingNotificationPreferencesDigestTimeTitle": {
+      "description": "Issue #1004 (tranche 1): digest-time tile title."
+    },
+    "sharingNotificationPreferencesDigestTimeSubtitle": "When daily digests are delivered in your time zone",
+    "@sharingNotificationPreferencesDigestTimeSubtitle": {
+      "description": "Issue #1004 (tranche 1): digest-time tile subtitle."
+    },
+    "sharingNotificationPreferencesLoadError": "Could not load your notification settings.",
+    "@sharingNotificationPreferencesLoadError": {
+      "description": "Issue #1004 (tranche 1): inline error when notification preferences fail to load."
+    },
+    "sharingNotificationPreferencesDiscretion": "Alerts never show what was logged - just a generic reminder to open lunarlog.",
+    "@sharingNotificationPreferencesDiscretion": {
+      "description": "Issue #1004 (tranche 1): discretion note at the top of notification preferences."
+    },
+    "sharingNotificationPreferencesNotifyOnLog": "Notify me when {profileName} logs an entry",
+    "@sharingNotificationPreferencesNotifyOnLog": {
+      "description": "Issue #1004 (tranche 1): master alert toggle label.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingNotificationPreferencesCycleStartOnly": "Only notify on cycle start",
+    "@sharingNotificationPreferencesCycleStartOnly": {
+      "description": "Issue #1004 (tranche 1): narrowing toggle for cycle-start alerts."
+    },
+    "sharingNotificationPreferencesHighSeverity": "Notify on high-severity days",
+    "@sharingNotificationPreferencesHighSeverity": {
+      "description": "Issue #1004 (tranche 1): narrowing toggle for high-severity alerts."
+    },
+    "sharingNotificationPreferencesMissedEntryTitle": "Missed-entry reminder",
+    "@sharingNotificationPreferencesMissedEntryTitle": {
+      "description": "Issue #1004 (tranche 1): missed-entry threshold tile title."
+    },
+    "sharingNotificationPreferencesMissedEntrySubtitle": "Check in when no entry has been logged for a while",
+    "@sharingNotificationPreferencesMissedEntrySubtitle": {
+      "description": "Issue #1004 (tranche 1): missed-entry threshold tile subtitle."
+    },
+    "sharingNotificationPreferencesOff": "Off",
+    "@sharingNotificationPreferencesOff": {
+      "description": "Issue #1004 (tranche 1): off option in the notification-preferences dropdowns."
+    },
+    "sharingNotificationPreferencesOneDay": "1 day",
+    "@sharingNotificationPreferencesOneDay": {
+      "description": "Issue #1004 (tranche 1): one-day missed-entry threshold option."
+    },
+    "sharingNotificationPreferencesTwoDays": "2 days",
+    "@sharingNotificationPreferencesTwoDays": {
+      "description": "Issue #1004 (tranche 1): two-day missed-entry threshold option."
+    },
+    "sharingNotificationPreferencesThreeDays": "3 days",
+    "@sharingNotificationPreferencesThreeDays": {
+      "description": "Issue #1004 (tranche 1): three-day missed-entry threshold option."
+    },
+    "sharingNotificationPreferencesQuietStart": "Quiet hours start",
+    "@sharingNotificationPreferencesQuietStart": {
+      "description": "Issue #1004 (tranche 1): quiet-hours start tile title."
+    },
+    "sharingNotificationPreferencesQuietEnd": "Quiet hours end",
+    "@sharingNotificationPreferencesQuietEnd": {
+      "description": "Issue #1004 (tranche 1): quiet-hours end tile title."
+    },
+    "sharingNotificationPreferencesClearQuietHours": "Clear quiet hours",
+    "@sharingNotificationPreferencesClearQuietHours": {
+      "description": "Issue #1004 (tranche 1): clear-quiet-hours action."
+    },
+    "sharingPredictionConnectionsTitle": "Shared with me",
+    "@sharingPredictionConnectionsTitle": {
+      "description": "Issue #1004 (tranche 1): incoming prediction-connections app-bar title."
+    },
+    "sharingPredictionConnectionsStopTitle": "Stop receiving these predictions?",
+    "@sharingPredictionConnectionsStopTitle": {
+      "description": "Issue #1004 (tranche 1): confirm dialog title for leaving a received prediction connection."
+    },
+    "sharingPredictionConnectionsStopBody": "You will stop seeing this profile's shared cycle calendar. The sharer can invite you again at any time.",
+    "@sharingPredictionConnectionsStopBody": {
+      "description": "Issue #1004 (tranche 1): confirm dialog body for leaving a received prediction connection."
+    },
+    "sharingPredictionConnectionsCancel": "Cancel",
+    "@sharingPredictionConnectionsCancel": {
+      "description": "Issue #1004 (tranche 1): prediction-connections generic cancel action."
+    },
+    "sharingPredictionConnectionsStopAction": "Stop receiving",
+    "@sharingPredictionConnectionsStopAction": {
+      "description": "Issue #1004 (tranche 1): destructive action to leave a received prediction connection."
+    },
+    "sharingPredictionConnectionsStopped": "Stopped receiving predictions",
+    "@sharingPredictionConnectionsStopped": {
+      "description": "Issue #1004 (tranche 1): snackbar after leaving a received prediction connection."
+    },
+    "sharingPredictionConnectionsStopFailed": "Could not stop receiving. Check connection.",
+    "@sharingPredictionConnectionsStopFailed": {
+      "description": "Issue #1004 (tranche 1): snackbar when leaving a prediction connection fails."
+    },
+    "sharingPredictionConnectionsFailed": "Connection failed.",
+    "@sharingPredictionConnectionsFailed": {
+      "description": "Issue #1004 (tranche 1): snackbar when redeeming a prediction code fails without a typed reason."
+    },
+    "sharingPredictionConnectionsLoadError": "Could not load connections.",
+    "@sharingPredictionConnectionsLoadError": {
+      "description": "Issue #1004 (tranche 1): inline error when incoming connections fail to load."
+    },
+    "sharingPredictionConnectionsEmptyTitle": "No shared predictions yet",
+    "@sharingPredictionConnectionsEmptyTitle": {
+      "description": "Issue #1004 (tranche 1): empty incoming-connections title."
+    },
+    "sharingPredictionConnectionsEmptyBody": "When someone shares their cycle predictions with you, their calendar appears here.",
+    "@sharingPredictionConnectionsEmptyBody": {
+      "description": "Issue #1004 (tranche 1): empty incoming-connections body."
+    },
+    "sharingPredictionConnectionsCyclePredictions": "Cycle predictions",
+    "@sharingPredictionConnectionsCyclePredictions": {
+      "description": "Issue #1004 (tranche 1): incoming connection row title and calendar fallback name."
+    },
+    "sharingPredictionConnectionsSharedSubtitle": "Shared {date} • phases only",
+    "@sharingPredictionConnectionsSharedSubtitle": {
+      "description": "Issue #1004 (tranche 1): incoming connection row subtitle.",
+      "placeholders": {
+        "date": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingPredictionConnectionsStopTooltip": "Stop receiving",
+    "@sharingPredictionConnectionsStopTooltip": {
+      "description": "Issue #1004 (tranche 1): tooltip on the leave-connection icon."
+    },
+    "sharingPredictionConnectionsConnect": "Connect",
+    "@sharingPredictionConnectionsConnect": {
+      "description": "Issue #1004 (tranche 1): manual code entry confirm action."
+    },
+    "sharingPredictionCalendarLoadError": "Could not load the shared predictions.",
+    "@sharingPredictionCalendarLoadError": {
+      "description": "Issue #1004 (tranche 1): inline error when the shared predictions fail to load."
+    },
+    "sharingPredictionCalendarWaitingTitle": "Waiting for the first update",
+    "@sharingPredictionCalendarWaitingTitle": {
+      "description": "Issue #1004 (tranche 1): phase calendar waiting state title."
+    },
+    "sharingPredictionCalendarWaitingBody": "You're connected, but {profileName}'s app hasn't shared its first predictions yet. They appear here automatically once it does - tap refresh to check again.",
+    "@sharingPredictionCalendarWaitingBody": {
+      "description": "Issue #1004 (tranche 1): phase calendar waiting state body.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingPredictionCalendarEndedTitle": "Connection ended",
+    "@sharingPredictionCalendarEndedTitle": {
+      "description": "Issue #1004 (tranche 1): phase calendar ended state title."
+    },
+    "sharingPredictionCalendarEndedBody": "This prediction connection is no longer active.",
+    "@sharingPredictionCalendarEndedBody": {
+      "description": "Issue #1004 (tranche 1): phase calendar ended state body."
+    },
+    "sharingPredictionCalendarConfidence": "Estimate confidence: {tierLabel}",
+    "@sharingPredictionCalendarConfidence": {
+      "description": "Issue #1004 (tranche 1): confidence tier line in the phase calendar disclaimer banner.",
+      "placeholders": {
+        "tierLabel": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingPredictionCalendarLegendPeriod": "Period",
+    "@sharingPredictionCalendarLegendPeriod": {
+      "description": "Issue #1004 (tranche 1): phase legend entry for period days."
+    },
+    "sharingPredictionCalendarLegendFertile": "Fertile",
+    "@sharingPredictionCalendarLegendFertile": {
+      "description": "Issue #1004 (tranche 1): phase legend entry for fertile days."
+    },
+    "sharingPredictionCalendarLegendOvulation": "Ovulation",
+    "@sharingPredictionCalendarLegendOvulation": {
+      "description": "Issue #1004 (tranche 1): phase legend entry for ovulation days."
+    },
+    "sharingPredictionCalendarLegendPms": "PMS",
+    "@sharingPredictionCalendarLegendPms": {
+      "description": "Issue #1004 (tranche 1): phase legend entry for PMS days."
+    },
+    "sharingSharePredictionsCreateFailed": "Failed to create the connection. Please check your connection and try again.",
+    "@sharingSharePredictionsCreateFailed": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog unexpected create failure."
+    },
+    "sharingSharePredictionsCreatedTitle": "Connection created",
+    "@sharingSharePredictionsCreatedTitle": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog generated-state title."
+    },
+    "sharingSharePredictionsSendLink": "Send this single-use link to the person who should see {profileName}'s predictions:",
+    "@sharingSharePredictionsSendLink": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog generated-state share line.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingSharePredictionsCreatedBody": "They will see estimated period, fertile, ovulation, and PMS days on a read-only calendar — no notes or logs. {expiry}",
+    "@sharingSharePredictionsCreatedBody": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog generated-state body.",
+      "placeholders": {
+        "expiry": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingSharePredictionsCopied": "Copied to clipboard",
+    "@sharingSharePredictionsCopied": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog in-dialog copy confirmation."
+    },
+    "sharingSharePredictionsDone": "Done",
+    "@sharingSharePredictionsDone": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog done action."
+    },
+    "sharingSharePredictionsTitle": "Share predictions of {profileName}",
+    "@sharingSharePredictionsTitle": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog title.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingSharePredictionsBody": "Creates a read-only connection that sees estimated period, fertile, ovulation, and PMS days — never notes, tags, or logs. One connection per profile.",
+    "@sharingSharePredictionsBody": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog explanatory body."
+    },
+    "sharingSharePredictionsNicknameLabel": "Nickname / Label (Optional)",
+    "@sharingSharePredictionsNicknameLabel": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog nickname field label."
+    },
+    "sharingSharePredictionsNicknameHint": "e.g. Partner, Aunt",
+    "@sharingSharePredictionsNicknameHint": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog nickname field hint."
+    },
+    "sharingSharePredictionsCancel": "Cancel",
+    "@sharingSharePredictionsCancel": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog cancel action."
+    },
+    "sharingSharePredictionsCreateLink": "Create Link",
+    "@sharingSharePredictionsCreateLink": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog create-link action."
+    },
+    "sharingTransferOwnershipScreenTitle": "Transfer {profileName}'s Profile",
+    "@sharingTransferOwnershipScreenTitle": {
+      "description": "Issue #1004 (tranche 1): transfer-ownership app-bar title.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingTransferOwnershipConfirmTitle": "Transfer ownership?",
+    "@sharingTransferOwnershipConfirmTitle": {
+      "description": "Issue #1004 (tranche 1): confirm dialog title before arming a transfer."
+    },
+    "sharingTransferOwnershipCancel": "Cancel",
+    "@sharingTransferOwnershipCancel": {
+      "description": "Issue #1004 (tranche 1): transfer-ownership generic cancel action."
+    },
+    "sharingTransferOwnershipTransferAction": "Transfer",
+    "@sharingTransferOwnershipTransferAction": {
+      "description": "Issue #1004 (tranche 1): destructive confirm action for arming a transfer."
+    },
+    "sharingTransferOwnershipPendingCancelled": "Pending transfer cancelled",
+    "@sharingTransferOwnershipPendingCancelled": {
+      "description": "Issue #1004 (tranche 1): snackbar after cancelling an orphaned transfer."
+    },
+    "sharingTransferOwnershipCancelled": "Transfer cancelled",
+    "@sharingTransferOwnershipCancelled": {
+      "description": "Issue #1004 (tranche 1): snackbar after cancelling a generated transfer."
+    },
+    "sharingTransferOwnershipLinkCopied": "Transfer link copied to clipboard",
+    "@sharingTransferOwnershipLinkCopied": {
+      "description": "Issue #1004 (tranche 1): snackbar after copying a transfer link."
+    },
+    "sharingTransferOwnershipWhatChanges": "What changes",
+    "@sharingTransferOwnershipWhatChanges": {
+      "description": "Issue #1004 (tranche 1): armable-state section heading."
+    },
+    "sharingTransferOwnershipBulletKeepRole": "You keep the role you choose below.",
+    "@sharingTransferOwnershipBulletKeepRole": {
+      "description": "Issue #1004 (tranche 1): armable-state bullet."
+    },
+    "sharingTransferOwnershipBulletRemoveAccess": "They can remove your access at any time.",
+    "@sharingTransferOwnershipBulletRemoveAccess": {
+      "description": "Issue #1004 (tranche 1): armable-state bullet."
+    },
+    "sharingTransferOwnershipBulletDeleteAccount": "If they later delete their account, this profile's history goes with it.",
+    "@sharingTransferOwnershipBulletDeleteAccount": {
+      "description": "Issue #1004 (tranche 1): armable-state bullet."
+    },
+    "sharingTransferOwnershipHelpLabel": "How does the transfer work?",
+    "@sharingTransferOwnershipHelpLabel": {
+      "description": "Issue #1004 (tranche 1): transfer help-card link label."
+    },
+    "sharingTransferOwnershipRoleAfterTitle": "Your role after the transfer",
+    "@sharingTransferOwnershipRoleAfterTitle": {
+      "description": "Issue #1004 (tranche 1): post-transfer role picker heading."
+    },
+    "sharingTransferOwnershipRecipientLabel": "Recipient label (optional)",
+    "@sharingTransferOwnershipRecipientLabel": {
+      "description": "Issue #1004 (tranche 1): recipient label field label."
+    },
+    "sharingTransferOwnershipRecipientHint": "e.g. Sam",
+    "@sharingTransferOwnershipRecipientHint": {
+      "description": "Issue #1004 (tranche 1): recipient label field hint."
+    },
+    "sharingTransferOwnershipAction": "Transfer Ownership",
+    "@sharingTransferOwnershipAction": {
+      "description": "Issue #1004 (tranche 1): arm-transfer action."
+    },
+    "sharingTransferOwnershipPendingTitle": "A Transfer Is Already Pending",
+    "@sharingTransferOwnershipPendingTitle": {
+      "description": "Issue #1004 (tranche 1): orphaned-transfer state title."
+    },
+    "sharingTransferOwnershipPendingBody": "A transfer for {profileName} is already pending, but its link is not available on this screen (it may have been created earlier or on another device). Cancel it to start a new one.",
+    "@sharingTransferOwnershipPendingBody": {
+      "description": "Issue #1004 (tranche 1): orphaned-transfer state body.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingTransferOwnershipExpires": "Expires {date}",
+    "@sharingTransferOwnershipExpires": {
+      "description": "Issue #1004 (tranche 1): transfer expiry line.",
+      "placeholders": {
+        "date": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingTransferOwnershipCancelPending": "Cancel Pending Transfer",
+    "@sharingTransferOwnershipCancelPending": {
+      "description": "Issue #1004 (tranche 1): cancel an orphaned transfer action."
+    },
+    "sharingTransferOwnershipReadyTitle": "Transfer Ready",
+    "@sharingTransferOwnershipReadyTitle": {
+      "description": "Issue #1004 (tranche 1): generated-transfer state title."
+    },
+    "sharingTransferOwnershipShareLink": "Share this single-use link with {profileName}:",
+    "@sharingTransferOwnershipShareLink": {
+      "description": "Issue #1004 (tranche 1): generated-transfer state share line.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingTransferOwnershipCopyLink": "Copy Link",
+    "@sharingTransferOwnershipCopyLink": {
+      "description": "Issue #1004 (tranche 1): copy-transfer-link action."
+    },
+    "sharingTransferOwnershipShare": "Share",
+    "@sharingTransferOwnershipShare": {
+      "description": "Issue #1004 (tranche 1): share-transfer-link action."
+    },
+    "sharingTransferOwnershipCancelTransfer": "Cancel transfer",
+    "@sharingTransferOwnershipCancelTransfer": {
+      "description": "Issue #1004 (tranche 1): cancel a generated transfer action."
+    },
+    "sharingActivityFeedScreenTitle": "{profileName} Activity",
+    "@sharingActivityFeedScreenTitle": {
+      "description": "Issue #1004 (tranche 1): activity-feed app-bar title.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingActivityFeedJustYouTitle": "Just you for now",
+    "@sharingActivityFeedJustYouTitle": {
+      "description": "Issue #1004 (tranche 1): single-guardian empty-state title."
+    },
+    "sharingActivityFeedJustYouBody": "This profile has one guardian, so there is no shared activity to review. When a second guardian joins, both of your changes appear here.",
+    "@sharingActivityFeedJustYouBody": {
+      "description": "Issue #1004 (tranche 1): single-guardian empty-state body."
+    },
+    "sharingActivityFeedNoActivityTitle": "No activity yet",
+    "@sharingActivityFeedNoActivityTitle": {
+      "description": "Issue #1004 (tranche 1): no-activity empty-state title."
+    },
+    "sharingActivityFeedNoActivityBody": "Changes either guardian makes to this profile will appear here.",
+    "@sharingActivityFeedNoActivityBody": {
+      "description": "Issue #1004 (tranche 1): no-activity empty-state body."
+    },
+    "sharingActivityFeedCaption": "Newest first. Each row shows a day’s latest change — earlier edits by the same guardian are not recorded separately.",
+    "@sharingActivityFeedCaption": {
+      "description": "Issue #1004 (tranche 1): activity-feed list caption."
+    },
+    "sharingActivityFeedVerbLogged": "Logged",
+    "@sharingActivityFeedVerbLogged": {
+      "description": "Issue #1004 (tranche 1): activity row verb for a logged entry."
+    },
+    "sharingActivityFeedVerbUpdated": "Updated",
+    "@sharingActivityFeedVerbUpdated": {
+      "description": "Issue #1004 (tranche 1): activity row verb for an updated entry."
+    },
+    "sharingActivityFeedVerbRemoved": "Removed",
+    "@sharingActivityFeedVerbRemoved": {
+      "description": "Issue #1004 (tranche 1): activity row verb for a removed entry."
+    },
+    "sharingActivityFeedByLineActor": "{verb} by {actor}",
+    "@sharingActivityFeedByLineActor": {
+      "description": "Issue #1004 (tranche 1): activity row title with an attributed actor.",
+      "placeholders": {
+        "verb": {
+          "type": "String"
+        },
+        "actor": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingActivityFeedByLineNoActor": "Entry {verb}",
+    "@sharingActivityFeedByLineNoActor": {
+      "description": "Issue #1004 (tranche 1): activity row title for an unattributed entry.",
+      "placeholders": {
+        "verb": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingActivityFeedMergeKeptOne": "Sync merge kept one version",
+    "@sharingActivityFeedMergeKeptOne": {
+      "description": "Issue #1004 (tranche 1): merge-outcome row title without an actor."
+    },
+    "sharingActivityFeedMergeKeptPossessive": "Sync merge kept {possessive} version",
+    "@sharingActivityFeedMergeKeptPossessive": {
+      "description": "Issue #1004 (tranche 1): merge-outcome row title with a possessive actor.",
+      "placeholders": {
+        "possessive": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingActivityFeedAccessRemovedNoActor": "A guardian no longer has access",
+    "@sharingActivityFeedAccessRemovedNoActor": {
+      "description": "Issue #1004 (tranche 1): access-removed row title without an actor."
+    },
+    "sharingActivityFeedAccessRemovedActor": "{actor} no longer has access",
+    "@sharingActivityFeedAccessRemovedActor": {
+      "description": "Issue #1004 (tranche 1): access-removed row title with an actor.",
+      "placeholders": {
+        "actor": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingActivityFeedAccessRemovedSubtitle": "Access to this profile was removed",
+    "@sharingActivityFeedAccessRemovedSubtitle": {
+      "description": "Issue #1004 (tranche 1): access-removed row subtitle."
+    },
+    "sharingActivityFeedForDate": "for {date}",
+    "@sharingActivityFeedForDate": {
+      "description": "Issue #1004 (tranche 1): entry subtitle date fragment.",
+      "placeholders": {
+        "date": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingActivityFeedLoggedBy": "logged by {actor}",
+    "@sharingActivityFeedLoggedBy": {
+      "description": "Issue #1004 (tranche 1): entry subtitle original-logger fragment.",
+      "placeholders": {
+        "actor": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingActivityFeedTagCount": "{count, plural, =1{1 tag} other{{count} tags}}",
+    "@sharingActivityFeedTagCount": {
+      "description": "Issue #1004 (tranche 1): entry subtitle tag-count fragment.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "sharingActivityFeedNote": "note",
+    "@sharingActivityFeedNote": {
+      "description": "Issue #1004 (tranche 1): entry subtitle note-presence fragment."
+    },
+    "sharingActivityFeedOneGuardian": "one guardian",
+    "@sharingActivityFeedOneGuardian": {
+      "description": "Issue #1004 (tranche 1): fallback actor label for a merge-outcome row."
+    },
+    "sharingActivityFeedDiscardedFlowAndNote": "flow and note values were",
+    "@sharingActivityFeedDiscardedFlowAndNote": {
+      "description": "Issue #1004 (tranche 1): merge-outcome subtitle fragment."
+    },
+    "sharingActivityFeedDiscardedNote": "note was",
+    "@sharingActivityFeedDiscardedNote": {
+      "description": "Issue #1004 (tranche 1): merge-outcome subtitle fragment."
+    },
+    "sharingActivityFeedDiscardedFlow": "flow value was",
+    "@sharingActivityFeedDiscardedFlow": {
+      "description": "Issue #1004 (tranche 1): merge-outcome subtitle fragment."
+    },
+    "sharingActivityFeedMergeDiscarded": "{possessive} {what} discarded in a same-date merge",
+    "@sharingActivityFeedMergeDiscarded": {
+      "description": "Issue #1004 (tranche 1): merge-outcome row subtitle.",
+      "placeholders": {
+        "possessive": {
+          "type": "String"
+        },
+        "what": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingActivityFeedNewBadge": "New",
+    "@sharingActivityFeedNewBadge": {
+      "description": "Issue #1004 (tranche 1): New chip on an unseen activity row."
+    },
+    "sharingActivityFeedPossessiveYou": "your",
+    "@sharingActivityFeedPossessiveYou": {
+      "description": "Issue #1004 (tranche 1): possessive form when the actor is the current user."
+    },
+    "sharingActivityFeedPossessiveName": "{name}'s",
+    "@sharingActivityFeedPossessiveName": {
+      "description": "Issue #1004 (tranche 1): possessive form for a named actor.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingProfileSharingSharedTooltip": "Shared · {count} guardians",
+    "@sharingProfileSharingSharedTooltip": {
+      "description": "Issue #1004 (tranche 1): co-managed indicator tooltip on a profile sharing row.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "sharingPendingInviteBadgePendingCount": "{count, plural, =1{1 pending invitation} other{{count} pending invitations}}",
+    "@sharingPendingInviteBadgePendingCount": {
+      "description": "Issue #1004 (tranche 1): pending-invitation badge tooltip.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "sharingPendingInviteBadgeExpiredCount": "{count, plural, =1{1 invitation expired} other{{count} invitations expired}}",
+    "@sharingPendingInviteBadgeExpiredCount": {
+      "description": "Issue #1004 (tranche 1): expired-invitation badge tooltip.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "gateLockScreenAppTitle": "lunarlog",
+    "@gateLockScreenAppTitle": {
+      "description": "Issue #1004 (tranche 3): the lock screen's nested MaterialApp title."
+    },
+    "gateLockScreenTitle": "lunarlog is locked",
+    "@gateLockScreenTitle": {
+      "description": "Issue #1004 (tranche 3): headline on the locked screen."
+    },
+    "gateLockScreenProtectedBody": "Everything logged on this device stays protected. Unlock to continue.",
+    "@gateLockScreenProtectedBody": {
+      "description": "Issue #1004 (tranche 3): body under the locked headline."
+    },
+    "gateLockScreenDeniedBody": "Not unlocked. The profiles on this device stay hidden until the device credential is accepted.",
+    "@gateLockScreenDeniedBody": {
+      "description": "Issue #1004 (tranche 3): shown when the device-credential prompt was declined."
+    },
+    "gateLockScreenUnlockButton": "Unlock",
+    "@gateLockScreenUnlockButton": {
+      "description": "Issue #1004 (tranche 3): primary unlock action on the locked screen."
+    },
+    "gateLockScreenNoCredentialBody": "This device has no screen lock set. lunarlog protects your family's data using your device's own screen lock, so it can't open until you add one — a passcode, PIN, pattern, or biometric lock all work.",
+    "@gateLockScreenNoCredentialBody": {
+      "description": "Issue #1004 (tranche 3): body shown when no device credential is enrolled."
+    },
+    "gateLockScreenOpenDeviceSettings": "Open device settings",
+    "@gateLockScreenOpenDeviceSettings": {
+      "description": "Issue #1004 (tranche 3): action opening the platform device settings."
+    },
+    "gateLockScreenTryAgain": "Try again",
+    "@gateLockScreenTryAgain": {
+      "description": "Issue #1004 (tranche 3): retry action on the locked screen."
+    },
+    "gatePinAuthorizationUseDeviceCredential": "Use device credential instead",
+    "@gatePinAuthorizationUseDeviceCredential": {
+      "description": "Issue #1004 (tranche 3): alternate action in the current-PIN authorization dialog."
+    },
+    "gatePinAuthorizationCancel": "Cancel",
+    "@gatePinAuthorizationCancel": {
+      "description": "Issue #1004 (tranche 3): cancel action in the current-PIN authorization dialog."
+    },
+    "gatePinSettingsRemoveCancel": "Cancel",
+    "@gatePinSettingsRemoveCancel": {
+      "description": "Issue #1004 (tranche 3): cancel action in the turn-off-PIN confirmation dialog."
+    },
+    "feedbackAttachmentConsentTitle": "Attach a screenshot?",
+    "@feedbackAttachmentConsentTitle": {
+      "description": "Issue #1004 (tranche 3): title of the screenshot consent dialog."
+    },
+    "feedbackAttachmentConsentBody": "Screenshots of this app usually contain cycle data for a family member. Only attach one if it helps explain the issue.",
+    "@feedbackAttachmentConsentBody": {
+      "description": "Issue #1004 (tranche 3): body of the screenshot consent dialog."
+    },
+    "feedbackAttachmentConsentCancel": "Cancel",
+    "@feedbackAttachmentConsentCancel": {
+      "description": "Issue #1004 (tranche 3): cancel action of the screenshot consent dialog."
+    },
+    "feedbackAttachmentConsentContinue": "Continue",
+    "@feedbackAttachmentConsentContinue": {
+      "description": "Issue #1004 (tranche 3): continue action of the screenshot consent dialog."
+    },
+    "feedbackAttachmentAddScreenshot": "Add screenshot",
+    "@feedbackAttachmentAddScreenshot": {
+      "description": "Issue #1004 (tranche 3): button that opens the screenshot consent flow."
+    },
+    "feedbackScreenTitle": "Send feedback",
+    "@feedbackScreenTitle": {
+      "description": "Issue #1004 (tranche 3): app-bar title of the feedback screen."
+    },
+    "feedbackScreenCategoryLabel": "Category",
+    "@feedbackScreenCategoryLabel": {
+      "description": "Issue #1004 (tranche 3): label above the feedback category chips."
+    },
+    "feedbackScreenMessageLabel": "What happened?",
+    "@feedbackScreenMessageLabel": {
+      "description": "Issue #1004 (tranche 3): label of the feedback message field."
+    },
+    "feedbackScreenReplyEmailLabel": "Reply email",
+    "@feedbackScreenReplyEmailLabel": {
+      "description": "Issue #1004 (tranche 3): label of the feedback reply-email field."
+    },
+    "feedbackScreenDiagnosticsTitle": "Include diagnostics",
+    "@feedbackScreenDiagnosticsTitle": {
+      "description": "Issue #1004 (tranche 3): title of the diagnostics toggle."
+    },
+    "feedbackScreenDiagnosticsSubtitle": "App version, OS, device model, and recent activity.",
+    "@feedbackScreenDiagnosticsSubtitle": {
+      "description": "Issue #1004 (tranche 3): subtitle of the diagnostics toggle."
+    },
+    "feedbackScreenDiagnosticsPreview": "See what will be attached",
+    "@feedbackScreenDiagnosticsPreview": {
+      "description": "Issue #1004 (tranche 3): toggle revealing the diagnostics preview."
+    },
+    "feedbackScreenSendButton": "Send feedback",
+    "@feedbackScreenSendButton": {
+      "description": "Issue #1004 (tranche 3): submit button of the feedback screen."
+    },
+    "feedbackScreenMessageTooLong": "Message must be 4000 characters or fewer.",
+    "@feedbackScreenMessageTooLong": {
+      "description": "Issue #1004 (tranche 3): validation error for an over-long feedback message."
+    },
+    "feedbackScreenReplyEmailInvalid": "Enter a valid reply email address.",
+    "@feedbackScreenReplyEmailInvalid": {
+      "description": "Issue #1004 (tranche 3): validation error for an invalid reply email."
+    },
+    "feedbackScreenThanks": "Thanks — we'll get back to you at {email}.",
+    "@feedbackScreenThanks": {
+      "description": "Issue #1004 (tranche 3): confirmation shown after a feedback submission.",
+      "placeholders": {
+        "email": {
+          "type": "String"
+        }
+      }
+    },
+    "supportHistoryTitle": "Support history",
+    "@supportHistoryTitle": {
+      "description": "Issue #1004 (tranche 3): app-bar title of the support history screen."
+    },
+    "supportHistoryEmptyTitle": "No feedback yet",
+    "@supportHistoryEmptyTitle": {
+      "description": "Issue #1004 (tranche 3): empty-state title of the support history screen."
+    },
+    "supportHistoryEmptyBody": "Reports you send from Settings appear here.",
+    "@supportHistoryEmptyBody": {
+      "description": "Issue #1004 (tranche 3): empty-state body of the support history screen."
+    },
+    "supportHistoryRetry": "Retry",
+    "@supportHistoryRetry": {
+      "description": "Issue #1004 (tranche 3): retry action after a support history load failure."
+    },
+    "supportHistoryReplyLabel": "Reply",
+    "@supportHistoryReplyLabel": {
+      "description": "Issue #1004 (tranche 3): label of the reply field on a support ticket."
+    },
+    "supportHistorySend": "Send",
+    "@supportHistorySend": {
+      "description": "Issue #1004 (tranche 3): send action on a support ticket reply."
+    },
+    "profileDetailUnarchive": "Unarchive",
+    "@profileDetailUnarchive": {
+      "description": "Issue #1004 (tranche 3): unarchive action on an archived profile detail."
+    },
+    "profileDetailOverviewTab": "Overview",
+    "@profileDetailOverviewTab": {
+      "description": "Issue #1004 (tranche 3): label of the profile detail overview tab."
+    },
+    "profileDetailCalendarTab": "Calendar",
+    "@profileDetailCalendarTab": {
+      "description": "Issue #1004 (tranche 3): label of the profile detail calendar tab."
+    },
+    "profileDetailArchivedSuffix": " (archived)",
+    "@profileDetailArchivedSuffix": {
+      "description": "Issue #1004 (tranche 3): suffix appended to an archived profile's title."
+    },
+    "profileDetailSharedGuardians": "Shared · {count} guardians",
+    "@profileDetailSharedGuardians": {
+      "description": "Issue #1004 (tranche 3): co-managed indicator chip label.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "profilePickerTitle": "Profiles",
+    "@profilePickerTitle": {
+      "description": "Issue #1004 (tranche 3): app-bar title of the profile picker."
+    },
+    "profilePickerEmptyTitle": "No profiles yet",
+    "@profilePickerEmptyTitle": {
+      "description": "Issue #1004 (tranche 3): empty-state title of the profile picker."
+    },
+    "profilePickerEmptyBody": "Add a profile to start tracking.",
+    "@profilePickerEmptyBody": {
+      "description": "Issue #1004 (tranche 3): empty-state body of the profile picker."
+    },
+    "profilePickerEmptyAddAction": "Add profile",
+    "@profilePickerEmptyAddAction": {
+      "description": "Issue #1004 (tranche 3): empty-state primary action of the profile picker."
+    },
+    "profilePickerArchivedHeader": "Archived ({count})",
+    "@profilePickerArchivedHeader": {
+      "description": "Issue #1004 (tranche 3): archived section header on the profile picker.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "profilePickerCreated": "Created {date}",
+    "@profilePickerCreated": {
+      "description": "Issue #1004 (tranche 3): profile row subtitle naming the creation date.",
+      "placeholders": {
+        "date": {
+          "type": "String"
+        }
+      }
+    },
+    "profilePickerMyProfilesHeader": "My profiles",
+    "@profilePickerMyProfilesHeader": {
+      "description": "Issue #1004 (tranche 3): section header for owned profiles."
+    },
+    "profilePickerSharedWithMeHeader": "Shared with me",
+    "@profilePickerSharedWithMeHeader": {
+      "description": "Issue #1004 (tranche 3): section header for profiles shared with the operator."
+    },
+    "profilePickerMenuGuardians": "Guardians",
+    "@profilePickerMenuGuardians": {
+      "description": "Issue #1004 (tranche 3): profile row menu item opening Manage Guardians."
+    },
+    "profileArchive": "Archive",
+    "@profileArchive": {
+      "description": "Issue #1004 (tranche 3): archive action on a profile row and its confirmation dialog."
+    },
+    "profileDialogCountsAsMinor": "Counts as a minor (derived from birth year)",
+    "@profileDialogCountsAsMinor": {
+      "description": "Issue #1004 (tranche 3): derived minor status in the profile edit dialog."
+    },
+    "profileDialogCountsAsAdult": "Counts as an adult (derived from birth year)",
+    "@profileDialogCountsAsAdult": {
+      "description": "Issue #1004 (tranche 3): derived adult status in the profile edit dialog."
+    },
+    "profileDialogAddTitle": "Add profile",
+    "@profileDialogAddTitle": {
+      "description": "Issue #1004 (tranche 3): title of the create-profile dialog."
+    },
+    "profileDialogBirthYearLabel": "Birth year (optional)",
+    "@profileDialogBirthYearLabel": {
+      "description": "Issue #1004 (tranche 3): label of the optional birth-year field."
+    },
+    "profileDialogRelationshipNone": "None",
+    "@profileDialogRelationshipNone": {
+      "description": "Issue #1004 (tranche 3): empty option in the relationship dropdown."
+    },
+    "profileDialogCancel": "Cancel",
+    "@profileDialogCancel": {
+      "description": "Issue #1004 (tranche 3): cancel action of the profile edit dialog."
+    },
+    "profileDialogCreate": "Create",
+    "@profileDialogCreate": {
+      "description": "Issue #1004 (tranche 3): create action of the profile edit dialog."
+    },
+    "profileDialogSave": "Save",
+    "@profileDialogSave": {
+      "description": "Issue #1004 (tranche 3): save action of the profile edit dialog."
+    },
+    "profileArchiveConfirmTitle": "Archive {name}?",
+    "@profileArchiveConfirmTitle": {
+      "description": "Issue #1004 (tranche 3): title of the archive-profile confirmation dialog.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "profileArchiveConfirmBody": "The profile moves to the archived list and out of everyday use. Its history stays on this device and can be restored at any time.",
+    "@profileArchiveConfirmBody": {
+      "description": "Issue #1004 (tranche 3): body of the archive-profile confirmation dialog."
+    },
+    "profileArchiveConfirmCancel": "Cancel",
+    "@profileArchiveConfirmCancel": {
+      "description": "Issue #1004 (tranche 3): cancel action of the archive-profile confirmation dialog."
+    },
+    "profileArchiveConfirmButton": "Archive",
+    "@profileArchiveConfirmButton": {
+      "description": "Issue #1004 (tranche 3): confirm action of the archive-profile confirmation dialog."
+    },
+    "firstRunCreateError": "Could not create the profile. Please try again.",
+    "@firstRunCreateError": {
+      "description": "Issue #1004 (tranche 3): error shown when first-run profile creation fails."
+    },
+    "careNotesTitle": "{name} Care",
+    "@careNotesTitle": {
+      "description": "Issue #1004 (tranche 3): app-bar title of the care notes screen.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "careNotesReadOnlyArchived": "This profile is archived.",
+    "@careNotesReadOnlyArchived": {
+      "description": "Issue #1004 (tranche 3): read-only reason on an archived profile's care notes."
+    },
+    "careNotesSectionTitle": "Care notes",
+    "@careNotesSectionTitle": {
+      "description": "Issue #1004 (tranche 3): section header of the care notes list."
+    },
+    "careNotesEmpty": "No care notes yet.",
+    "@careNotesEmpty": {
+      "description": "Issue #1004 (tranche 3): empty state of the care notes list."
+    },
+    "careNotesAddLabel": "Add a care note",
+    "@careNotesAddLabel": {
+      "description": "Issue #1004 (tranche 3): label of the add-care-note field."
+    },
+    "careNotesAddHint": "Standing notes for everyone caring for this profile",
+    "@careNotesAddHint": {
+      "description": "Issue #1004 (tranche 3): hint of the add-care-note field."
+    },
+    "careNotesAddButton": "Add note",
+    "@careNotesAddButton": {
+      "description": "Issue #1004 (tranche 3): add-care-note action."
+    },
+    "careNotesDeleteTitle": "Delete this care note?",
+    "@careNotesDeleteTitle": {
+      "description": "Issue #1004 (tranche 3): title of the delete-care-note confirmation."
+    },
+    "careNotesDeleteBody": "Every guardian with access to this profile can see this note. Deleting it removes it for everyone and cannot be undone.",
+    "@careNotesDeleteBody": {
+      "description": "Issue #1004 (tranche 3): body of the delete-care-note confirmation."
+    },
+    "careNotesDeleteCancel": "Cancel",
+    "@careNotesDeleteCancel": {
+      "description": "Issue #1004 (tranche 3): cancel action of the delete-care-note confirmation."
+    },
+    "careNotesDeleteConfirm": "Delete",
+    "@careNotesDeleteConfirm": {
+      "description": "Issue #1004 (tranche 3): confirm action of the delete-care-note confirmation."
+    },
+    "careNotesActorYou": "you",
+    "@careNotesActorYou": {
+      "description": "Issue #1004 (tranche 3): lowercase attribution for the current operator."
+    },
+    "careNotesActorGuardian": "Guardian",
+    "@careNotesActorGuardian": {
+      "description": "Issue #1004 (tranche 3): fallback attribution for an unknown guardian."
+    },
+    "careNotesSaveError": "Could not save the care note.",
+    "@careNotesSaveError": {
+      "description": "Issue #1004 (tranche 3): error after a failed care-note save."
+    },
+    "careNotesAddPrepError": "Could not add the prep item.",
+    "@careNotesAddPrepError": {
+      "description": "Issue #1004 (tranche 3): error after a failed prep-item add."
+    },
+    "careNotesAddSupplyError": "Could not add the supply item.",
+    "@careNotesAddSupplyError": {
+      "description": "Issue #1004 (tranche 3): error after a failed supply-item add."
+    },
+    "careNotesUpdatePrepError": "Could not update the prep item.",
+    "@careNotesUpdatePrepError": {
+      "description": "Issue #1004 (tranche 3): error after a failed prep-item update."
+    },
+    "careNotesRemovePrepError": "Could not remove the prep item.",
+    "@careNotesRemovePrepError": {
+      "description": "Issue #1004 (tranche 3): error after a failed prep-item removal."
+    },
+    "careNotesRemoveNoteError": "Could not remove the care note.",
+    "@careNotesRemoveNoteError": {
+      "description": "Issue #1004 (tranche 3): error after a failed care-note removal."
+    },
+    "careNotesClearCheckedError": "Could not clear the checked items.",
+    "@careNotesClearCheckedError": {
+      "description": "Issue #1004 (tranche 3): error after a failed clear-checked action."
+    },
+    "careNotesClearStockedError": "Could not clear the stocked items.",
+    "@careNotesClearStockedError": {
+      "description": "Issue #1004 (tranche 3): error after a failed clear-stocked action."
+    },
+    "careVisitPrepSectionTitle": "Visit prep",
+    "@careVisitPrepSectionTitle": {
+      "description": "Issue #1004 (tranche 3): section header of the visit-prep checklist."
+    },
+    "careVisitPrepEmpty": "No prep items yet.",
+    "@careVisitPrepEmpty": {
+      "description": "Issue #1004 (tranche 3): empty state of the visit-prep checklist."
+    },
+    "careVisitPrepClearChecked": "Clear checked ({count})",
+    "@careVisitPrepClearChecked": {
+      "description": "Issue #1004 (tranche 3): action clearing checked visit-prep items.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "careVisitPrepAddLabel": "Add a prep item",
+    "@careVisitPrepAddLabel": {
+      "description": "Issue #1004 (tranche 3): label of the add-prep-item field."
+    },
+    "careVisitPrepAddHint": "A question or to-bring for the next appointment",
+    "@careVisitPrepAddHint": {
+      "description": "Issue #1004 (tranche 3): hint of the add-prep-item field."
+    },
+    "careVisitPrepAddButton": "Add item",
+    "@careVisitPrepAddButton": {
+      "description": "Issue #1004 (tranche 3): add-prep-item action."
+    },
+    "careVisitPrepCheckedVerb": "Checked by",
+    "@careVisitPrepCheckedVerb": {
+      "description": "Issue #1004 (tranche 3): attribution verb for a checked prep item."
+    },
+    "careSuppliesSectionTitle": "Supplies",
+    "@careSuppliesSectionTitle": {
+      "description": "Issue #1004 (tranche 3): section header of the household supplies list."
+    },
+    "careSuppliesEmpty": "No supplies tracked yet.",
+    "@careSuppliesEmpty": {
+      "description": "Issue #1004 (tranche 3): empty state of the household supplies list."
+    },
+    "careSuppliesClearStocked": "Clear stocked ({count})",
+    "@careSuppliesClearStocked": {
+      "description": "Issue #1004 (tranche 3): action clearing stocked supply items.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "careSuppliesAddLabel": "Add a supply item",
+    "@careSuppliesAddLabel": {
+      "description": "Issue #1004 (tranche 3): label of the add-supply-item field."
+    },
+    "careSuppliesAddHint": "Something to keep stocked, e.g. liners",
+    "@careSuppliesAddHint": {
+      "description": "Issue #1004 (tranche 3): hint of the add-supply-item field."
+    },
+    "careSuppliesAddButton": "Add supply",
+    "@careSuppliesAddButton": {
+      "description": "Issue #1004 (tranche 3): add-supply-item action."
+    },
+    "careSuppliesStockedVerb": "Stocked by",
+    "@careSuppliesStockedVerb": {
+      "description": "Issue #1004 (tranche 3): attribution verb for a stocked supply item."
+    },
+    "careRestockBefore": "Restock before {date}",
+    "@careRestockBefore": {
+      "description": "Issue #1004 (tranche 3): restock nudge title naming the due date.",
+      "placeholders": {
+        "date": {
+          "type": "String"
+        }
+      }
+    },
+    "guardianNotesFieldLabel": "Your note for this day",
+    "@guardianNotesFieldLabel": {
+      "description": "Issue #1004 (tranche 3): label of the guardian-note field."
+    },
+    "guardianNotesGuardianFallback": "Guardian",
+    "@guardianNotesGuardianFallback": {
+      "description": "Issue #1004 (tranche 3): fallback author name for a guardian note."
+    },
+  "webBannerDevCopy": "Development build — not for real data.",
+  "@webBannerDevCopy": {
+    "description": "Web banner for a build with sync off (LUNARLOG_WEB_SYNC unset): no account, no token, not for real data. Epic #831."
+  },
+  "webBannerSyncedCopy": "Browser build — this browser stores a copy of the signed-in profiles' data unencrypted, plus your sign-in. Signing out clears it.",
+  "@webBannerSyncedCopy": {
+    "description": "Web banner when LUNARLOG_WEB_SYNC=true made web a first-class client (epic #831): the browser holds synced family data unencrypted alongside the session. Deliberately never says 'not for real data'."
+  },
+  "webBrowserNoticeDismissTooltip": "Dismiss",
+  "@webBrowserNoticeDismissTooltip": {
+    "description": "Tooltip/label on the browser-build notice's per-session dismiss button (epic #831)."
+  },
+  "webWipeAction": "Wipe local data",
+  "@webWipeAction": {
+    "description": "Action on the web banner opening the confirm-guarded local wipe (epic #831)."
+  },
+  "webWipeConfirmTitle": "Erase all local data?",
+  "@webWipeConfirmTitle": {
+    "description": "Title of the web banner's local-wipe confirmation (epic #831)."
+  },
+  "webWipeConfirmDevBody": "Erases all data stored in this browser. This cannot be undone.",
+  "@webWipeConfirmDevBody": {
+    "description": "Local-wipe confirmation body for a sync-off web build (epic #831)."
+  },
+  "webWipeConfirmSyncedBody": "Erases all data stored in this browser and signs out. This cannot be undone here; data already in your account stays there.",
+  "@webWipeConfirmSyncedBody": {
+    "description": "Local-wipe confirmation body for a sync-enabled web build, naming that the account copy is not touched (epic #831)."
+  },
+  "webWipeCancel": "Cancel",
+  "@webWipeCancel": {
+    "description": "Cancel action of the web local-wipe confirmation (epic #831)."
+  },
+  "webWipeConfirmAction": "Erase everything",
+  "@webWipeConfirmAction": {
+    "description": "Confirm action of the web local-wipe confirmation (epic #831)."
+  },
+  "webWipeDone": "All local data erased.",
+  "@webWipeDone": {
+    "description": "Snackbar after the web local wipe completes (epic #831)."
+  },
+  "webFirstRunDevTitle": "Development build",
+  "@webFirstRunDevTitle": {
+    "description": "Title of the one-time web first-run acknowledgement for a sync-off build (epic #831)."
+  },
+  "webFirstRunDevBody": "This is a development build, not for real data. Data in this browser is not encrypted and not backed up.",
+  "@webFirstRunDevBody": {
+    "description": "Body of the one-time web first-run acknowledgement for a sync-off build (epic #831)."
+  },
+  "webFirstRunSyncedTitle": "Using lunarlog in this browser",
+  "@webFirstRunSyncedTitle": {
+    "description": "Title of the one-time web first-run acknowledgement when the build is a first-class (sync-enabled) client (epic #831)."
+  },
+  "webFirstRunSyncedBody": "This browser keeps an unencrypted copy of the profiles you can see — including synced family data — and your sign-in. Anyone who uses this browser can read it. Signing out removes the copy from this browser; your account's data stays in your account and can sync again later.",
+  "@webFirstRunSyncedBody": {
+    "description": "Body of the one-time web first-run acknowledgement when LUNARLOG_WEB_SYNC=true; the honest browser-storage story that replaces the old 'not for real data' wording (epic #831)."
+  },
+  "webFirstRunAcknowledge": "I understand",
+  "@webFirstRunAcknowledge": {
+    "description": "Acknowledge button of the one-time web first-run acknowledgement (epic #831)."
+  },
+    "accountMismatchTitle": "Different account",
+    "@accountMismatchTitle": {
+      "description": "Issue #1004 (tranche 2): account-mismatch screen app-bar title."
+    },
+    "accountMismatchBodyNoEmail": "This device holds data that belongs to a different account than the one you just signed in to.",
+    "@accountMismatchBodyNoEmail": {
+      "description": "Issue #1004 (tranche 2): account-mismatch body when no email is known."
+    },
+    "accountMismatchBodyWithEmail": "This device holds data that belongs to a different account than {email}.",
+    "@accountMismatchBodyWithEmail": {
+      "description": "Issue #1004 (tranche 2): account-mismatch body naming the signed-in email.",
+      "placeholders": {
+        "email": {
+          "type": "String"
+        }
+      }
+    },
+    "accountMismatchExplainer": "This device is set up for a different account. This happens when Apple's Hide My Email created a new account, or when you chose a different Google account. Nothing has been uploaded or changed.",
+    "@accountMismatchExplainer": {
+      "description": "Issue #1004 (tranche 2): account-mismatch explainer paragraph."
+    },
+    "accountMismatchSwitchAccount": "Switch account",
+    "@accountMismatchSwitchAccount": {
+      "description": "Issue #1004 (tranche 2): account-mismatch non-destructive exit button."
+    },
+    "accountMismatchSwitchAccountSubtitle": "Signs out and keeps everything on this device.",
+    "@accountMismatchSwitchAccountSubtitle": {
+      "description": "Issue #1004 (tranche 2): account-mismatch switch-account subtitle."
+    },
+    "accountMismatchRemoveData": "Remove this device's data",
+    "@accountMismatchRemoveData": {
+      "description": "Issue #1004 (tranche 2): account-mismatch destructive exit button."
+    },
+    "accountMismatchRemoveDialogTitle": "Remove this device's data?",
+    "@accountMismatchRemoveDialogTitle": {
+      "description": "Issue #1004 (tranche 2): account-mismatch confirmation dialog title."
+    },
+    "accountMismatchRemoveDialogBody": "Erases every profile and entry stored on this device and signs out. The data stays in the account it belongs to; it is not deleted there.",
+    "@accountMismatchRemoveDialogBody": {
+      "description": "Issue #1004 (tranche 2): account-mismatch confirmation dialog body."
+    },
+    "accountMismatchCancel": "Cancel",
+    "@accountMismatchCancel": {
+      "description": "Issue #1004 (tranche 2): account-mismatch confirmation cancel button."
+    },
+    "accountMismatchRemoveConfirm": "Remove and sign out",
+    "@accountMismatchRemoveConfirm": {
+      "description": "Issue #1004 (tranche 2): account-mismatch confirmation destructive button."
+    },
+    "accountMismatchSwitchError": "Could not switch accounts. Please try again.",
+    "@accountMismatchSwitchError": {
+      "description": "Issue #1004 (tranche 2): account-mismatch switch-account failure copy."
+    },
+    "accountMismatchRemoveError": "Could not remove this device's data. Please try again.",
+    "@accountMismatchRemoveError": {
+      "description": "Issue #1004 (tranche 2): account-mismatch remove-data failure copy."
+    },
+    "accountUploadConsentTitle": "Upload to your account?",
+    "@accountUploadConsentTitle": {
+      "description": "Issue #1004 (tranche 2): upload-consent screen app-bar title."
+    },
+    "accountUploadConsentBody": "This device holds {profileCount, plural, =1{1 profile} other{{profileCount} profiles}} and {entryCount, plural, =1{1 entry} other{{entryCount} entries}} that are not in your account yet. Uploading copies them to the account, deletions included, and keeps this device in sync from now on.",
+    "@accountUploadConsentBody": {
+      "description": "Issue #1004 (tranche 2): upload-consent body with counts of this device's rows.",
+      "placeholders": {
+        "profileCount": {
+          "type": "int"
+        },
+        "entryCount": {
+          "type": "int"
+        }
+      }
+    },
+    "accountUploadConsentLoadingBody": "This device holds data that is not in your account yet.",
+    "@accountUploadConsentLoadingBody": {
+      "description": "Issue #1004 (tranche 2): upload-consent body while the row counts load."
+    },
+    "accountUploadConsentDuplicateNote": "If another device also created the same person while offline, you will see two profiles after the upload; archive the one you do not want.",
+    "@accountUploadConsentDuplicateNote": {
+      "description": "Issue #1004 (tranche 2): upload-consent duplicate-profile note."
+    },
+    "accountUploadConsentUploadAction": "Upload to my account",
+    "@accountUploadConsentUploadAction": {
+      "description": "Issue #1004 (tranche 2): upload-consent upload button."
+    },
+    "accountUploadConsentNotNow": "Not now",
+    "@accountUploadConsentNotNow": {
+      "description": "Issue #1004 (tranche 2): upload-consent defer button."
+    },
+    "accountRestoringScreenBody": "Restoring your data…",
+    "@accountRestoringScreenBody": {
+      "description": "Issue #1004 (tranche 2): empty-device restore progress label."
+    },
+    "accountRestoreErrorTitle": "Unable to restore data",
+    "@accountRestoreErrorTitle": {
+      "description": "Issue #1004 (tranche 2): restore-failure screen heading."
+    },
+    "accountRestoreErrorBody": "We could not restore your account data from the cloud. Please check your internet connection and try again.",
+    "@accountRestoreErrorBody": {
+      "description": "Issue #1004 (tranche 2): restore-failure screen default body."
+    },
+    "accountRestoreErrorRetry": "Retry",
+    "@accountRestoreErrorRetry": {
+      "description": "Issue #1004 (tranche 2): restore-failure retry button."
+    },
+    "accountRestoreErrorContinue": "Continue without syncing",
+    "@accountRestoreErrorContinue": {
+      "description": "Issue #1004 (tranche 2): restore-failure continue-without-sync button."
+    },
+    "accountRestoreErrorSignOut": "Sign out",
+    "@accountRestoreErrorSignOut": {
+      "description": "Issue #1004 (tranche 2): restore-failure sign-out button."
+    },
+    "accountPasswordRecoveryTitle": "Set a new password",
+    "@accountPasswordRecoveryTitle": {
+      "description": "Issue #1004 (tranche 2): password-recovery screen app-bar title."
+    },
+    "accountPasswordRecoveryIntro": "You opened a password reset link. Choose a new password for your account.",
+    "@accountPasswordRecoveryIntro": {
+      "description": "Issue #1004 (tranche 2): password-recovery intro paragraph."
+    },
+    "accountPasswordRecoveryNewLabel": "New password",
+    "@accountPasswordRecoveryNewLabel": {
+      "description": "Issue #1004 (tranche 2): password-recovery new-password field label."
+    },
+    "accountPasswordRecoveryLengthHelper": "At least {length} characters",
+    "@accountPasswordRecoveryLengthHelper": {
+      "description": "Issue #1004 (tranche 2): password-recovery length helper text.",
+      "placeholders": {
+        "length": {
+          "type": "int"
+        }
+      }
+    },
+    "accountPasswordRecoveryConfirmLabel": "Confirm password",
+    "@accountPasswordRecoveryConfirmLabel": {
+      "description": "Issue #1004 (tranche 2): password-recovery confirm-password field label."
+    },
+    "accountPasswordRecoveryShow": "Show password",
+    "@accountPasswordRecoveryShow": {
+      "description": "Issue #1004 (tranche 2): password-recovery reveal toggle tooltip (shown)."
+    },
+    "accountPasswordRecoveryHide": "Hide password",
+    "@accountPasswordRecoveryHide": {
+      "description": "Issue #1004 (tranche 2): password-recovery reveal toggle tooltip (hidden)."
+    },
+    "accountPasswordRecoveryLengthError": "Use at least {length} characters for the password.",
+    "@accountPasswordRecoveryLengthError": {
+      "description": "Issue #1004 (tranche 2): password-recovery too-short error.",
+      "placeholders": {
+        "length": {
+          "type": "int"
+        }
+      }
+    },
+    "accountPasswordRecoveryMismatchError": "Passwords do not match.",
+    "@accountPasswordRecoveryMismatchError": {
+      "description": "Issue #1004 (tranche 2): password-recovery mismatch error."
+    },
+    "accountPasswordRecoverySave": "Save password",
+    "@accountPasswordRecoverySave": {
+      "description": "Issue #1004 (tranche 2): password-recovery save button."
+    },
+    "accountPasswordRecoveryNotNow": "Not now",
+    "@accountPasswordRecoveryNotNow": {
+      "description": "Issue #1004 (tranche 2): password-recovery defer button."
+    },
+    "accountMfaSettingsCancel": "Cancel",
+    "@accountMfaSettingsCancel": {
+      "description": "Issue #1004 (tranche 2): MFA remove-factor confirmation cancel button."
+    },
+    "accountMfaStepUpCancel": "Cancel",
+    "@accountMfaStepUpCancel": {
+      "description": "Issue #1004 (tranche 2): MFA step-up dialog cancel button."
+    },
+    "accountSyncStatusTapToRetry": "Tap to retry",
+    "@accountSyncStatusTapToRetry": {
+      "description": "Issue #1004 (tranche 2): sync-status tile subtitle when entries were rejected."
+    },
+    "accountSyncStatusSettingsAction": "Settings",
+    "@accountSyncStatusSettingsAction": {
+      "description": "Issue #1004 (tranche 2): sync-status snackbar action opening Settings."
+    },
+    "accountSignInEmbeddedIntro": "An account keeps a copy of this device's data so it can be restored on another device. You can also keep everything on this device only.",
+    "@accountSignInEmbeddedIntro": {
+      "description": "Issue #1004 (tranche 2): sign-in screen first-run embedded intro."
+    },
+    "accountSignInPasskeyAction": "Sign in with a passkey",
+    "@accountSignInPasskeyAction": {
+      "description": "Issue #1004 (tranche 2): sign-in screen passkey button."
+    },
+    "accountSignInOr": "or",
+    "@accountSignInOr": {
+      "description": "Issue #1004 (tranche 2): sign-in screen provider/passwordless divider label."
+    },
+    "accountSignInEmailLabel": "Email",
+    "@accountSignInEmailLabel": {
+      "description": "Issue #1004 (tranche 2): sign-in screen email field label."
+    },
+    "accountSignInEmailRequired": "Enter your email address.",
+    "@accountSignInEmailRequired": {
+      "description": "Issue #1030: sign-in screen local error when the email field is empty and the action would otherwise send an empty address."
+    },
+    "accountSignInEmailInvalid": "That doesn't look like an email address.",
+    "@accountSignInEmailInvalid": {
+      "description": "Issue #1030: sign-in screen local error when the email field is non-empty but not shaped like an address."
+    },
+    "accountSignInPasswordLabel": "Password",
+    "@accountSignInPasswordLabel": {
+      "description": "Issue #1004 (tranche 2): sign-in screen password field label."
+    },
+    "accountSignInCreateAccountAction": "Create account",
+    "@accountSignInCreateAccountAction": {
+      "description": "Issue #1004 (tranche 2): sign-in screen create-account primary button."
+    },
+    "accountSignInAction": "Sign in",
+    "@accountSignInAction": {
+      "description": "Issue #1004 (tranche 2): sign-in screen sign-in primary button."
+    },
+    "accountSignInForgotPasswordAction": "Forgot password",
+    "@accountSignInForgotPasswordAction": {
+      "description": "Issue #1004 (tranche 2): sign-in screen forgot-password button."
+    },
+    "accountSignInCodeLabel": "Code from the email",
+    "@accountSignInCodeLabel": {
+      "description": "Issue #1004 (tranche 2): sign-in screen email-code field label."
+    },
+    "accountSignInCodeHint": "6-10 digits",
+    "@accountSignInCodeHint": {
+      "description": "Issue #1004 (tranche 2): sign-in screen email-code field hint."
+    },
+    "accountSignInVerifyCodeAction": "Sign in with code",
+    "@accountSignInVerifyCodeAction": {
+      "description": "Issue #1004 (tranche 2): sign-in screen verify-code button."
+    },
+    "accountSignInNotNow": "Not now",
+    "@accountSignInNotNow": {
+      "description": "Issue #1004 (tranche 2): sign-in screen first-run defer button."
+    },
+    "accountSignInTitle": "Sign in",
+    "@accountSignInTitle": {
+      "description": "Issue #1004 (tranche 2): sign-in screen app-bar title in sign-in mode."
+    },
+    "accountSignInTitleCreate": "Create an account",
+    "@accountSignInTitleCreate": {
+      "description": "Issue #1004 (tranche 2): sign-in screen app-bar title in create mode."
+    },
+    "accountSignInUseAtLeast": "Use at least {length} characters for the password.",
+    "@accountSignInUseAtLeast": {
+      "description": "Issue #1004 (tranche 2): sign-in screen create-mode short-password error.",
+      "placeholders": {
+        "length": {
+          "type": "int"
+        }
+      }
+    },
+    "accountSignInConfirmEmailInfo": "Check your email to confirm the account, then open the link on this device.",
+    "@accountSignInConfirmEmailInfo": {
+      "description": "Issue #1004 (tranche 2): sign-in screen post-signup confirmation info."
+    },
+    "accountSignInResetInfo": "If an account exists for that email, a reset link is on its way. Open it on this device. If you request another email, only the newest link works — an earlier one stops working (issue #32).",
+    "@accountSignInResetInfo": {
+      "description": "Issue #1004 (tranche 2): sign-in screen post-reset-request info."
+    },
+    "accountSignInMagicLinkInfo": "Check your email for a sign-in link or code.",
+    "@accountSignInMagicLinkInfo": {
+      "description": "Issue #1004 (tranche 2): sign-in screen post-magic-link info."
+    },
+    "accountSignInPasswordLengthHelper": "At least {length} characters",
+    "@accountSignInPasswordLengthHelper": {
+      "description": "Issue #1004 (tranche 2): sign-in screen create-mode length helper text.",
+      "placeholders": {
+        "length": {
+          "type": "int"
+        }
+      }
+    },
+    "accountSignInShowPassword": "Show password",
+    "@accountSignInShowPassword": {
+      "description": "Issue #1004 (tranche 2): sign-in screen password reveal toggle tooltip (shown)."
+    },
+    "accountSignInHidePassword": "Hide password",
+    "@accountSignInHidePassword": {
+      "description": "Issue #1004 (tranche 2): sign-in screen password reveal toggle tooltip (hidden)."
+    },
+    "accountSignInToggleHaveAccount": "I already have an account",
+    "@accountSignInToggleHaveAccount": {
+      "description": "Issue #1004 (tranche 2): sign-in screen mode toggle (create mode active)."
+    },
+    "accountSignInToggleCreateInstead": "Create an account instead",
+    "@accountSignInToggleCreateInstead": {
+      "description": "Issue #1004 (tranche 2): sign-in screen mode toggle (sign-in mode active)."
+    },
+    "accountSignInMagicLinkCreate": "Email me a link to create my account",
+    "@accountSignInMagicLinkCreate": {
+      "description": "Issue #1004 (tranche 2): sign-in screen magic-link button in create mode."
+    },
+    "accountSignInMagicLinkSignIn": "Email me a sign-in link",
+    "@accountSignInMagicLinkSignIn": {
+      "description": "Issue #1004 (tranche 2): sign-in screen magic-link button in sign-in mode."
+    },
+    "accountDeleteDialogTitle": "Delete account?",
+    "@accountDeleteDialogTitle": {
+      "description": "Issue #1004 (tranche 2): delete-account confirmation dialog title."
+    },
+    "accountDeleteDialogGuardianNote": "Entries you logged as a guardian on someone else's profile are kept and re-attributed to its owner, not deleted. Apple Health / Health Connect writes this device already made stay in the device's own health store - account deletion does not remove them.",
+    "@accountDeleteDialogGuardianNote": {
+      "description": "Issue #1004 (tranche 2): delete-account dialog guardian-entry note."
+    },
+    "accountDeleteDialogAck": "I understand this removes access for other guardians and deletes any minor profiles I own.",
+    "@accountDeleteDialogAck": {
+      "description": "Issue #1004 (tranche 2): delete-account dialog blast-radius acknowledgement checkbox."
+    },
+    "accountDeleteDialogCancel": "Cancel",
+    "@accountDeleteDialogCancel": {
+      "description": "Issue #1004 (tranche 2): delete-account dialog cancel button."
+    },
+    "accountDeleteDialogTransferFirst": "Transfer ownership first",
+    "@accountDeleteDialogTransferFirst": {
+      "description": "Issue #1004 (tranche 2): delete-account dialog transfer-ownership escape hatch."
+    },
+    "accountDeleteDialogExportFirst": "Export first",
+    "@accountDeleteDialogExportFirst": {
+      "description": "Issue #1004 (tranche 2): delete-account dialog export-first button."
+    },
+    "accountDeleteDialogConfirm": "Delete account",
+    "@accountDeleteDialogConfirm": {
+      "description": "Issue #1004 (tranche 2): delete-account dialog destructive confirm button."
+    },
+    "accountDeleteDialogExportError": "Could not export your data. Please try again.",
+    "@accountDeleteDialogExportError": {
+      "description": "Issue #1004 (tranche 2): delete-account dialog export failure copy."
+    },
+    "accountDeleteDialogBlastRadiusProfiles": "This will also permanently delete {count, plural, =1{1 profile} other{{count} profiles}} you own ({names}).",
+    "@accountDeleteDialogBlastRadiusProfiles": {
+      "description": "Issue #1004 (tranche 2): delete-account blast radius with no other guardians.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        },
+        "names": {
+          "type": "String"
+        }
+      }
+    },
+    "accountDeleteDialogBlastRadiusGuardians": "This will also permanently delete {count, plural, =1{1 profile} other{{count} profiles}} you own ({names}) and remove access for {guardianCount, plural, =1{1 other guardian} other{{guardianCount} other guardians}}.",
+    "@accountDeleteDialogBlastRadiusGuardians": {
+      "description": "Issue #1004 (tranche 2): delete-account blast radius naming other guardians.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        },
+        "names": {
+          "type": "String"
+        },
+        "guardianCount": {
+          "type": "int"
+        }
+      }
+    },
+    "accountSectionTitle": "Account",
+    "@accountSectionTitle": {
+      "description": "Issue #1004 (tranche 2): Settings Account section heading."
+    },
+    "accountSectionSignInMethods": "Sign-in methods: {methods}",
+    "@accountSectionSignInMethods": {
+      "description": "Issue #1004 (tranche 2): account identity tile subtitle listing sign-in methods.",
+      "placeholders": {
+        "methods": {
+          "type": "String"
+        }
+      }
+    },
+    "accountSectionSignedIn": "Signed in",
+    "@accountSectionSignedIn": {
+      "description": "Issue #1004 (tranche 2): account identity tile title with no known email."
+    },
+    "accountSectionSignedInAs": "Signed in as {email}",
+    "@accountSectionSignedInAs": {
+      "description": "Issue #1004 (tranche 2): account identity tile title naming the email.",
+      "placeholders": {
+        "email": {
+          "type": "String"
+        }
+      }
+    },
+    "accountSectionAddApple": "Add Apple",
+    "@accountSectionAddApple": {
+      "description": "Issue #1004 (tranche 2): account add-Apple tile label."
+    },
+    "accountSectionAddGoogle": "Add Google",
+    "@accountSectionAddGoogle": {
+      "description": "Issue #1004 (tranche 2): account add-Google tile label."
+    },
+    "accountSectionAddPasskey": "Add a passkey",
+    "@accountSectionAddPasskey": {
+      "description": "Issue #1004 (tranche 2): account add-passkey tile label."
+    },
+    "accountSectionSyncSubtitle": "Sync this device's data to an account.",
+    "@accountSectionSyncSubtitle": {
+      "description": "Issue #1004 (tranche 2): account sign-in tile subtitle."
+    },
+    "accountSectionSignInAgain": "Sign in again",
+    "@accountSectionSignInAgain": {
+      "description": "Issue #1004 (tranche 2): account sign-in tile title when the session expired."
+    },
+    "accountSectionSignIn": "Sign in",
+    "@accountSectionSignIn": {
+      "description": "Issue #1004 (tranche 2): account sign-in tile title."
+    },
+    "accountSectionSyncNow": "Sync now",
+    "@accountSectionSyncNow": {
+      "description": "Issue #1004 (tranche 2): account sync-now tile and dialog button."
+    },
+    "accountSectionSignOut": "Sign out",
+    "@accountSectionSignOut": {
+      "description": "Issue #1004 (tranche 2): account sign-out tile and confirm button."
+    },
+    "accountSectionSignOutSubtitle": "Removes the data from this device.",
+    "@accountSectionSignOutSubtitle": {
+      "description": "Issue #1004 (tranche 2): account sign-out tile subtitle."
+    },
+    "accountSectionSignOutEverywhere": "Sign out everywhere",
+    "@accountSectionSignOutEverywhere": {
+      "description": "Issue #1004 (tranche 2): account sign-out-everywhere tile and confirm button."
+    },
+    "accountSectionSignOutEverywhereSubtitle": "Signs out all devices, though others may take up to an hour to notice.",
+    "@accountSectionSignOutEverywhereSubtitle": {
+      "description": "Issue #1004 (tranche 2): account sign-out-everywhere tile subtitle."
+    },
+    "accountSectionDelete": "Delete account",
+    "@accountSectionDelete": {
+      "description": "Issue #1004 (tranche 2): account delete tile title."
+    },
+    "accountSectionLinkSubtitle": "Sign in to this account another way.",
+    "@accountSectionLinkSubtitle": {
+      "description": "Issue #1004 (tranche 2): account add-method tile subtitle."
+    },
+    "accountSectionRemoveProvider": "Remove {provider}",
+    "@accountSectionRemoveProvider": {
+      "description": "Issue #1004 (tranche 2): account remove-method tile title.",
+      "placeholders": {
+        "provider": {
+          "type": "String"
+        }
+      }
+    },
+    "accountSectionRemoveSubtitle": "Stop using this to sign in to this account.",
+    "@accountSectionRemoveSubtitle": {
+      "description": "Issue #1004 (tranche 2): account remove-method tile subtitle."
+    },
+    "accountSectionRemoveTitle": "Remove {provider}?",
+    "@accountSectionRemoveTitle": {
+      "description": "Issue #1004 (tranche 2): account remove-method confirmation title.",
+      "placeholders": {
+        "provider": {
+          "type": "String"
+        }
+      }
+    },
+    "accountSectionRemoveBody": "You will no longer be able to sign in to this account with {provider}. Your data and your other sign-in methods are unchanged.",
+    "@accountSectionRemoveBody": {
+      "description": "Issue #1004 (tranche 2): account remove-method confirmation body.",
+      "placeholders": {
+        "provider": {
+          "type": "String"
+        }
+      }
+    },
+    "accountSectionCancel": "Cancel",
+    "@accountSectionCancel": {
+      "description": "Issue #1004 (tranche 2): account section dialog cancel button."
+    },
+    "accountSectionRemove": "Remove",
+    "@accountSectionRemove": {
+      "description": "Issue #1004 (tranche 2): account remove-method confirm button."
+    },
+    "accountSectionUnsyncedTitle": "Unsynced changes",
+    "@accountSectionUnsyncedTitle": {
+      "description": "Issue #1004 (tranche 2): sign-out-with-unsynced-rows dialog title."
+    },
+    "accountSectionUnsyncedBody": "{count, plural, =1{1 change on this device has not been uploaded yet, deletions included. Sync first, or discard it and sign out.} other{{count} changes on this device have not been uploaded yet, deletions included. Sync first, or discard them and sign out.}}",
+    "@accountSectionUnsyncedBody": {
+      "description": "Issue #1004 (tranche 2): sign-out-with-unsynced-rows dialog body.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "accountSectionDiscardAndSignOut": "Discard unsynced changes and sign out",
+    "@accountSectionDiscardAndSignOut": {
+      "description": "Issue #1004 (tranche 2): sign-out-with-unsynced-rows discard button."
+    },
+    "accountSectionSignOutTitle": "Sign out?",
+    "@accountSectionSignOutTitle": {
+      "description": "Issue #1004 (tranche 2): sign-out confirmation dialog title."
+    },
+    "accountSectionSignOutEverywhereTitle": "Sign out everywhere?",
+    "@accountSectionSignOutEverywhereTitle": {
+      "description": "Issue #1004 (tranche 2): sign-out-everywhere confirmation dialog title."
+    },
+    "accountSectionSignOutBody": "This removes the data from this device. It stays in your account.",
+    "@accountSectionSignOutBody": {
+      "description": "Issue #1004 (tranche 2): sign-out confirmation dialog body."
+    },
+    "accountSectionOtherDevicesNotSignedOut": "{failureCopy} Other devices were not signed out.",
+    "@accountSectionOtherDevicesNotSignedOut": {
+      "description": "Issue #1004 (tranche 2): sign-out-everywhere partial-failure snackbar suffix.",
+      "placeholders": {
+        "failureCopy": {
+          "type": "String"
+        }
+      }
+    },
+    "settingsExportRangeTitle": "Export range",
+    "@settingsExportRangeTitle": {
+      "description": "Issue #1004 (tranche 2): export-range picker sheet title."
+    },
+    "settingsExportRangeCancel": "Cancel",
+    "@settingsExportRangeCancel": {
+      "description": "Issue #1004 (tranche 2): export-range picker cancel button."
+    },
+    "settingsExportRangeConfirm": "Export",
+    "@settingsExportRangeConfirm": {
+      "description": "Issue #1004 (tranche 2): export-range picker confirm button."
+    },
+    "settingsExportRangeStartDate": "Start date",
+    "@settingsExportRangeStartDate": {
+      "description": "Issue #1004 (tranche 2): export-range custom start-date button."
+    },
+    "settingsExportRangeEndDate": "End date",
+    "@settingsExportRangeEndDate": {
+      "description": "Issue #1004 (tranche 2): export-range custom end-date button."
+    },
+    "settingsClinicalExportFhirTitle": "Export clinical summary (FHIR)",
+    "@settingsClinicalExportFhirTitle": {
+      "description": "Issue #1004 (tranche 2): FHIR clinical-export tile title."
+    },
+    "settingsCsvExportTitle": "Export as CSV",
+    "@settingsCsvExportTitle": {
+      "description": "Issue #1004 (tranche 2): CSV export tile title."
+    },
+    "settingsCsvExportForTitle": "Export CSV data for",
+    "@settingsCsvExportForTitle": {
+      "description": "Issue #1004 (tranche 2): CSV export profile-chooser dialog title."
+    },
+    "healthSyncBindTitle": "Sync {name} to this phone?",
+    "@healthSyncBindTitle": {
+      "description": "Issue #1004 (tranche 2): health-sync bind confirmation dialog title.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "healthSyncBindWriteBody": "Only {name}'s data will ever be written to {source}. This phone can sync one profile at a time — choosing a different profile later replaces this one.",
+    "@healthSyncBindWriteBody": {
+      "description": "health-sync bind confirmation body for a write direction.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        },
+        "source": {
+          "type": "String"
+        }
+      }
+    },
+    "healthSyncBindImportBody": "Only {name}'s data will ever be imported from {source}. This phone can sync one profile at a time — choosing a different profile later replaces this one.",
+    "@healthSyncBindImportBody": {
+      "description": "health-sync bind confirmation body for an import-only direction.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        },
+        "source": {
+          "type": "String"
+        }
+      }
+    },
+    "healthSyncBindCancel": "Cancel",
+    "@healthSyncBindCancel": {
+      "description": "Issue #1004 (tranche 2): health-sync bind confirmation cancel button."
+    },
+    "healthSyncSyncFailed": "Couldn't sync {name} — try again.",
+    "@healthSyncSyncFailed": {
+      "description": "Issue #1004 (tranche 2): health-sync bind failure snackbar.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "healthSyncImportFailed": "Couldn't finish the import. Please try again.",
+    "@healthSyncImportFailed": {
+      "description": "Issue #1004 (tranche 2): health-sync import failure line."
+    },
+    "healthSyncLoadFailed": "Couldn't load profiles for health sync.",
+    "@healthSyncLoadFailed": {
+      "description": "Issue #1004 (tranche 2): health-sync profile-load failure line."
+    },
+    "healthSyncRetry": "Retry",
+    "@healthSyncRetry": {
+      "description": "Issue #1004 (tranche 2): health-sync retry button."
+    },
+    "healthSyncImporting": "Importing from {source}…",
+    "@healthSyncImporting": {
+      "description": "Issue #1004 (tranche 2): health-sync import progress line before the first page reports.",
+      "placeholders": {
+        "source": {
+          "type": "String"
+        }
+      }
+    },
+    "healthSyncFlowCollapseNote": "Super heavy days are written to the Health app as Heavy. Spotting logged inside a period is written as Light bleeding; spotting between periods is written as intermenstrual bleeding.",
+    "@healthSyncFlowCollapseNote": {
+      "description": "Issue #1004 (tranche 2): health-sync lossy flow-mapping disclosure."
+    },
+    "healthSyncRevocationNote": "Turning sync off, or later revoking this phone's Health app permission, leaves everything already written in the Health app in place. To remove it, delete it in the Health app itself.",
+    "@healthSyncRevocationNote": {
+      "description": "Issue #1004 (tranche 2): health-sync revocation/off disclosure."
+    },
+    "healthSyncImportFrom": "Import from {source}",
+    "@healthSyncImportFrom": {
+      "description": "Issue #1004 (tranche 2): health-sync import tile title naming the source.",
+      "placeholders": {
+        "source": {
+          "type": "String"
+        }
+      }
+    },
+    "healthSyncUnbindAction": "Stop syncing to this phone",
+    "@healthSyncUnbindAction": {
+      "description": "Issue #1004 (tranche 2): health-sync unbind tile title."
+    },
+    "importScreenTitle": "Import from file",
+    "@importScreenTitle": {
+      "description": "Issue #1004 (tranche 2): import screen app-bar title."
+    },
+    "importScreenPickBody": "Choose a file: a JSON backup this app exported (Settings > Your data > Export my data), or the .zip Clue emailed you. Your data is added to this device — nothing already here is ever deleted.",
+    "@importScreenPickBody": {
+      "description": "Issue #1004 (tranche 2): import screen file-pick body."
+    },
+    "importScreenChooseFileAction": "Choose file",
+    "@importScreenChooseFileAction": {
+      "description": "Issue #1004 (tranche 2): import screen file-pick button."
+    },
+    "importScreenImportAction": "Import",
+    "@importScreenImportAction": {
+      "description": "Issue #1004 (tranche 2): import screen preview confirm button."
+    },
+    "importScreenCancel": "Cancel",
+    "@importScreenCancel": {
+      "description": "Issue #1004 (tranche 2): import screen preview cancel button."
+    },
+    "importScreenDone": "Done",
+    "@importScreenDone": {
+      "description": "Issue #1004 (tranche 2): import screen result done button."
+    },
+    "reminderNoProfile": "Create a profile to set up reminders.",
+    "@reminderNoProfile": {
+      "description": "Issue #1004 (tranche 2): reminder settings empty state."
+    },
+    "reminderPrivacyNote": "Reminders never show a name, date, or any health detail on the lock screen. Logging from a notification waits until the app is unlocked.",
+    "@reminderPrivacyNote": {
+      "description": "Issue #1004 (tranche 2): reminder settings lock-screen privacy note."
+    },
+    "reminderProfileLabel": "Profile",
+    "@reminderProfileLabel": {
+      "description": "Issue #1004 (tranche 2): reminder settings profile row title."
+    },
+    "reminderCadenceLabel": "Cadence",
+    "@reminderCadenceLabel": {
+      "description": "Issue #1004 (tranche 2): reminder settings cadence row title."
+    },
+    "reminderTimeLabel": "Time",
+    "@reminderTimeLabel": {
+      "description": "Issue #1004 (tranche 2): reminder settings time row title."
+    },
+    "reminderQuietHoursTitle": "Quiet hours",
+    "@reminderQuietHoursTitle": {
+      "description": "Issue #1004 (tranche 2): reminder settings quiet-hours switch title."
+    },
+    "reminderQuietHoursSubtitle": "A reminder that lands inside the window waits until it ends",
+    "@reminderQuietHoursSubtitle": {
+      "description": "Issue #1004 (tranche 2): reminder settings quiet-hours switch subtitle."
+    },
+    "reminderQuietStart": "Starts",
+    "@reminderQuietStart": {
+      "description": "Issue #1004 (tranche 2): reminder settings quiet-hours start row."
+    },
+    "reminderQuietEnd": "Ends",
+    "@reminderQuietEnd": {
+      "description": "Issue #1004 (tranche 2): reminder settings quiet-hours end row."
+    },
+    "yourDataExportTitle": "Export my data",
+    "@yourDataExportTitle": {
+      "description": "Issue #1004 (tranche 2): Your data export tile title."
+    },
+    "yourDataExportSubtitleSignedIn": "Save your profiles, day entries, care notes, and visit-prep lists as a JSON file, including your account's server data.",
+    "@yourDataExportSubtitleSignedIn": {
+      "description": "Issue #1004 (tranche 2): Your data export tile subtitle when signed in."
+    },
+    "yourDataExportSubtitleLocal": "Save your profiles, day entries, care notes, and visit-prep lists as a JSON file.",
+    "@yourDataExportSubtitleLocal": {
+      "description": "Issue #1004 (tranche 2): Your data export tile subtitle when local-only."
+    },
+    "yourDataImportTitle": "Import from file",
+    "@yourDataImportTitle": {
+      "description": "Issue #1004 (tranche 2): Your data import tile title."
+    },
+    "yourDataImportSubtitle": "Restore from a JSON backup, or bring in a Clue export (.zip).",
+    "@yourDataImportSubtitle": {
+      "description": "Issue #1004 (tranche 2): Your data import tile subtitle."
+    },
+    "yourDataPurgeTitle": "Purge imported data",
+    "@yourDataPurgeTitle": {
+      "description": "Issue #1004 (tranche 2): purge-imported-data tile and dialog title."
+    },
+    "yourDataPurgeSubtitle": "Remove only the entries a specific import brought in — manually logged data is never touched.",
+    "@yourDataPurgeSubtitle": {
+      "description": "Issue #1004 (tranche 2): purge-imported-data tile subtitle."
+    },
+    "yourDataPurgedSnack": "Purged {source} data",
+    "@yourDataPurgedSnack": {
+      "description": "Issue #1004 (tranche 2): purge success snackbar naming the import source.",
+      "placeholders": {
+        "source": {
+          "type": "String"
+        }
+      }
+    },
+    "yourDataPurgeDialogBody": "Only entries and observations tagged with the chosen import source are removed. Manually logged data, and the profile itself, are never touched. If this purge leaves the profile with no entries at all, its saved cycle details (last period start and typical cycle length) are cleared too, since they may have come from the import.",
+    "@yourDataPurgeDialogBody": {
+      "description": "Issue #1004 (tranche 2): purge-imported-data dialog body."
+    },
+    "yourDataPurgeProfileLabel": "Profile",
+    "@yourDataPurgeProfileLabel": {
+      "description": "Issue #1004 (tranche 2): purge-imported-data dialog profile field label."
+    },
+    "yourDataPurgeCancel": "Cancel",
+    "@yourDataPurgeCancel": {
+      "description": "Issue #1004 (tranche 2): purge-imported-data dialog cancel button."
+    },
+    "yourDataPurgeConfirm": "Purge",
+    "@yourDataPurgeConfirm": {
+      "description": "Issue #1004 (tranche 2): purge-imported-data dialog confirm button."
+    },
+    "yourDataImportSourceLabel": "Import source",
+    "@yourDataImportSourceLabel": {
+      "description": "Issue #1004 (tranche 2): purge-imported-data dialog import-source field label."
+    },
+  "cycleLiteracyReadingTimeMinutes": "{minutes} min read",
+  "@cycleLiteracyReadingTimeMinutes": {
+    "description": "Issue #1004 (tranche 4b): estimated reading time on a cycle literacy article sheet.",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "cycleLiteracySourceHeading": "Source & Review",
+  "@cycleLiteracySourceHeading": {
+    "description": "Issue #1004 (tranche 4b): provenance block heading on a cycle literacy article sheet."
+  },
+  "cycleLiteracySourceLine": "Source: {source}",
+  "@cycleLiteracySourceLine": {
+    "description": "Issue #1004 (tranche 4b): provenance source line on a cycle literacy article sheet.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "cycleLiteracyLastReviewedLine": "Last reviewed: {date}",
+  "@cycleLiteracyLastReviewedLine": {
+    "description": "Issue #1004 (tranche 4b): provenance review date on a cycle literacy article sheet.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "cycleLiteracyLibraryTitle": "Cycle Literacy Library",
+  "@cycleLiteracyLibraryTitle": {
+    "description": "Issue #1004 (tranche 4b): app-bar title of the standalone cycle literacy library."
+  },
+  "cycleLiteracyLibraryIntro": "Evidence-based educational guides to understand your body, hormones, and cycle rhythms.",
+  "@cycleLiteracyLibraryIntro": {
+    "description": "Issue #1004 (tranche 4b): intro paragraph atop the cycle literacy library."
+  },
+  "helpCardSourceLine": "Source: {source}",
+  "@helpCardSourceLine": {
+    "description": "Issue #1004 (tranche 4b): provenance source line on a bundled help card.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "helpCardReviewedLine": "Reviewed: {date}",
+  "@helpCardReviewedLine": {
+    "description": "Issue #1004 (tranche 4b): provenance review date on a bundled help card.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "failClosedAppTitle": "lunarlog",
+  "@failClosedAppTitle": {
+    "description": "Issue #1004 (tranche 4b): OS task-switcher title of the fail-closed startup app."
+  },
+  "failClosedClose": "Close",
+  "@failClosedClose": {
+    "description": "Issue #1004 (tranche 4b): the fail-closed screen's single Close action."
+  },
+  "failClosedTechnicalDetail": "Technical detail (for the device owner):",
+  "@failClosedTechnicalDetail": {
+    "description": "Issue #1004 (tranche 4b): label above the raw error on the fail-closed screen."
+  },
+  "failClosedQuarantineTitle": "lunarlog could not open your data",
+  "@failClosedQuarantineTitle": {
+    "description": "Issue #1004 (tranche 4b): fail-closed title for a quarantined database."
+  },
+  "failClosedQuarantineBody": "The data saved on this device could not be opened. Nothing was changed and nothing was deleted — the data file was left exactly as it was, untouched.",
+  "@failClosedQuarantineBody": {
+    "description": "Issue #1004 (tranche 4b): fail-closed body for a quarantined database."
+  },
+  "failClosedStartTitle": "lunarlog could not start",
+  "@failClosedStartTitle": {
+    "description": "Issue #1004 (tranche 4b): fail-closed title for a generic startup failure."
+  },
+  "failClosedStartBody": "Something went wrong before any data was opened. Nothing on this device was changed.",
+  "@failClosedStartBody": {
+    "description": "Issue #1004 (tranche 4b): fail-closed body for a generic startup failure."
+  },
+  "daySheetDiscardFailedBody": "The last change couldn't be saved. Discarding removes it from this device.",
+  "@daySheetDiscardFailedBody": {
+    "description": "Issue #1004 (tranche 4b): body of the day sheet's discard-after-failed-save confirmation."
+  },
+  "monthCalendarFertileWindowExplainer": "{label} — the days around estimated ovulation, back-calculated from the estimated period date.",
+  "@monthCalendarFertileWindowExplainer": {
+    "description": "Issue #1004 (tranche 4b): fertile-window explainer body on a future calendar day, prefixed by the mode's own fertile-window label.",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "mergeNoticeDismissTooltip": "Dismiss",
+  "@mergeNoticeDismissTooltip": {
+    "description": "Issue #1004 (tranche 4b): tooltip on the day sheet merge notice's dismiss button."
+  },
+  "mergeNoticeAnotherGuardian": "another guardian",
+  "@mergeNoticeAnotherGuardian": {
+    "description": "Issue #1004 (tranche 4b): fallback author name in the day sheet merge notice."
+  },
+  "mergeNoticeAnotherGuardianPossessive": "another guardian's",
+  "@mergeNoticeAnotherGuardianPossessive": {
+    "description": "Issue #1004 (tranche 4b): possessive fallback author name in the day sheet merge notice."
+  },
+  "mergeNoticeYou": "you",
+  "@mergeNoticeYou": {
+    "description": "Issue #1004 (tranche 4b): the signed-in user as a merge-notice author."
+  },
+  "mergeNoticeYour": "your",
+  "@mergeNoticeYour": {
+    "description": "Issue #1004 (tranche 4b): possessive form of the signed-in user in a merge-notice sentence."
+  },
+  "mergeNoticeNoteBody": "Two entries for this date were merged; {winner} note was kept and {loser} note was discarded.",
+  "@mergeNoticeNoteBody": {
+    "description": "Issue #1004 (tranche 4b): merge-notice sentence for a discarded note.",
+    "placeholders": {
+      "winner": {
+        "type": "String"
+      },
+      "loser": {
+        "type": "String"
+      }
+    }
+  },
+  "mergeNoticeFlowBody": "Two entries for this date were merged; {winner} flow level was kept and {loser} was discarded.",
+  "@mergeNoticeFlowBody": {
+    "description": "Issue #1004 (tranche 4b): merge-notice sentence for a discarded flow level.",
+    "placeholders": {
+      "winner": {
+        "type": "String"
+      },
+      "loser": {
+        "type": "String"
+      }
+    }
+  },
+  "mergeNoticeGuardianNoteBody": "A guardian note for this date was replaced on sync.",
+  "@mergeNoticeGuardianNoteBody": {
+    "description": "Issue #1004 (tranche 4b): merge-notice sentence for a replaced guardian note."
+  },
+  "mergeNoticeRestoreNote": "Restore my note",
+  "@mergeNoticeRestoreNote": {
+    "description": "Issue #1004 (tranche 4b): restore action for a discarded note."
+  },
+  "mergeNoticeRestoreFlow": "Restore my flow level",
+  "@mergeNoticeRestoreFlow": {
+    "description": "Issue #1004 (tranche 4b): restore action for a discarded flow level."
+  },
+  "caregiverAttributionYou": "you",
+  "@caregiverAttributionYou": {
+    "description": "Issue #1004 (tranche 4b): the signed-in user in a caregiver-attribution badge."
+  },
+  "caregiverAttributionGuardianFallback": "Guardian",
+  "@caregiverAttributionGuardianFallback": {
+    "description": "Issue #1004 (tranche 4b): fallback guardian name in a caregiver-attribution badge."
+  },
+  "caregiverAttributionLoggedBy": "Logged by {name}",
+  "@caregiverAttributionLoggedBy": {
+    "description": "Issue #1004 (tranche 4b): attribution verb naming who logged an entry.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "caregiverAttributionModifiedBy": "Modified by {name}",
+  "@caregiverAttributionModifiedBy": {
+    "description": "Issue #1004 (tranche 4b): attribution verb naming who last modified an entry.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "caregiverAttributionImportedClue": "Imported from Clue",
+  "@caregiverAttributionImportedClue": {
+    "description": "Issue #1004 (tranche 4b): import-source badge for a Clue import."
+  },
+  "caregiverAttributionImportedHealth": "Imported from Health",
+  "@caregiverAttributionImportedHealth": {
+    "description": "Issue #1004 (tranche 4b): import-source badge for an Apple Health / HealthKit import."
+  },
+  "caregiverAttributionImportedHealthConnect": "Imported from Health Connect",
+  "@caregiverAttributionImportedHealthConnect": {
+    "description": "Issue #1004 (tranche 4b): import-source badge for a Health Connect import."
+  },
+  "caregiverAttributionImportedFile": "Imported from file",
+  "@caregiverAttributionImportedFile": {
+    "description": "Issue #1004 (tranche 4b): import-source badge for a file import."
+  },
+  "caregiverAttributionImportedWearable": "Imported from wearable",
+  "@caregiverAttributionImportedWearable": {
+    "description": "Issue #1004 (tranche 4b): import-source badge for a wearable import."
+  },
+  "caregiverAttributionImportedGeneric": "Imported",
+  "@caregiverAttributionImportedGeneric": {
+    "description": "Issue #1004 (tranche 4b): generic import-source badge for an unrecognised source."
+  },
+    "commonRetry": "Retry",
+    "@commonRetry": {
+      "description": "Issue #1004 (tranche 4a): shared retry action label (inline errors and the sync-failure banner)."
+    },
+    "appShellTabToday": "Today",
+    "@appShellTabToday": {
+      "description": "Issue #1004 (tranche 4a): Today destination label in the app shell's navigation bar."
+    },
+    "appShellTabCalendar": "Calendar",
+    "@appShellTabCalendar": {
+      "description": "Issue #1004 (tranche 4a): Calendar destination label in the app shell's navigation bar."
+    },
+    "appShellTabInsights": "Insights",
+    "@appShellTabInsights": {
+      "description": "Issue #1004 (tranche 4a): Insights destination label in the app shell's navigation bar."
+    },
+    "appShellTabMore": "More",
+    "@appShellTabMore": {
+      "description": "Issue #1004 (tranche 4a): More destination label in the app shell's navigation bar."
+    },
+    "appShellSyncBannerGoToSettings": "Go to Settings",
+    "@appShellSyncBannerGoToSettings": {
+      "description": "Issue #1004 (tranche 4a): sync-failure banner action that switches to the Settings tab."
+    },
+    "todayCardLogsFlowTooltip": "Logs a {level}-flow period start for today",
+    "@todayCardLogsFlowTooltip": {
+      "description": "Issue #1004 (tranche 4a): tooltip on the Today card's quick-log button, naming the flow level it writes.",
+      "placeholders": {
+        "level": {
+          "type": "String"
+        }
+      }
+    },
+    "cycleHistoryTitle": "Cycle history",
+    "@cycleHistoryTitle": {
+      "description": "Issue #1004 (tranche 4a): heading of the cycle-history section."
+    },
+    "cycleHistorySyncNote": "Omissions sync across your devices.",
+    "@cycleHistorySyncNote": {
+      "description": "Issue #1004 (tranche 4a): note under the cycle-history list explaining that omissions sync."
+    },
+    "cycleHistoryAvgCycle": "Avg cycle",
+    "@cycleHistoryAvgCycle": {
+      "description": "Issue #1004 (tranche 4a): label of the average-cycle-length statistic."
+    },
+    "cycleHistoryAvgPeriod": "Avg period",
+    "@cycleHistoryAvgPeriod": {
+      "description": "Issue #1004 (tranche 4a): label of the average-period-length statistic."
+    },
+    "cycleHistoryVariation": "Variation",
+    "@cycleHistoryVariation": {
+      "description": "Issue #1004 (tranche 4a): label of the cycle-length variation statistic."
+    },
+    "cycleHistoryOutlier": "Outlier — never averaged",
+    "@cycleHistoryOutlier": {
+      "description": "Issue #1004 (tranche 4a): subtitle marking a cycle excluded automatically as an outlier."
+    },
+    "cycleHistoryCurrentCycleStarted": "Current cycle — started {date}",
+    "@cycleHistoryCurrentCycleStarted": {
+      "description": "Issue #1004 (tranche 4a): title of the open cycle row, naming its start date.",
+      "placeholders": {
+        "date": {
+          "type": "String"
+        }
+      }
+    },
+    "cycleHistorySkippedExcluded": "Skipped — excluded from averages",
+    "@cycleHistorySkippedExcluded": {
+      "description": "Issue #1004 (tranche 4a): subtitle of an open cycle the operator skipped."
+    },
+    "cycleHistoryInclude": "Include",
+    "@cycleHistoryInclude": {
+      "description": "Issue #1004 (tranche 4a): action restoring a previously omitted cycle to the averages."
+    },
+    "cycleHistoryOmit": "Omit",
+    "@cycleHistoryOmit": {
+      "description": "Issue #1004 (tranche 4a): action excluding a cycle from the averages."
+    },
+    "cycleHistoryUndo": "Undo",
+    "@cycleHistoryUndo": {
+      "description": "Issue #1004 (tranche 4a): action undoing a skipped open cycle."
+    },
+    "lateResolverSnoozedUntil": "We will check back on {date}.",
+    "@lateResolverSnoozedUntil": {
+      "description": "Issue #1004 (tranche 4a): snoozed late-resolver line naming the date it resumes.",
+      "placeholders": {
+        "date": {
+          "type": "String"
+        }
+      }
+    },
+    "lateResolverShowOptions": "Show options",
+    "@lateResolverShowOptions": {
+      "description": "Issue #1004 (tranche 4a): action ending a late-resolution snooze early."
+    },
+    "lateResolverDaysLate": "{count, plural, =1{1 day late} other{{count} days late}}",
+    "@lateResolverDaysLate": {
+      "description": "Issue #1004 (tranche 4a): late-resolver title naming the day count, pluralised.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "lateResolverNoPeriodLoggedFor": "No period logged for {days}",
+    "@lateResolverNoPeriodLoggedFor": {
+      "description": "Issue #1004 (tranche 4a): late-resolver fallback line, where {days} is an already-localized day count.",
+      "placeholders": {
+        "days": {
+          "type": "String"
+        }
+      }
+    },
+    "lateResolverPromptStillNothing": "Still nothing logged — what would you like to do?",
+    "@lateResolverPromptStillNothing": {
+      "description": "Issue #1004 (tranche 4a): late-resolver prompt after a snooze expired."
+    },
+    "lateResolverPrompt": "What would you like to do?",
+    "@lateResolverPrompt": {
+      "description": "Issue #1004 (tranche 4a): late-resolver prompt."
+    },
+    "lateResolverLogIt": "Log it",
+    "@lateResolverLogIt": {
+      "description": "Issue #1004 (tranche 4a): late-resolver action opening the day sheet."
+    },
+    "lateResolverSkipCycle": "Skip this cycle",
+    "@lateResolverSkipCycle": {
+      "description": "Issue #1004 (tranche 4a): late-resolver action omitting the open cycle."
+    },
+    "lateResolverRemindMe": "Remind me in 3 days",
+    "@lateResolverRemindMe": {
+      "description": "Issue #1004 (tranche 4a): late-resolver action snoozing for three days."
+    },
+    "lateResolverWhyLate": "Why is it late?",
+    "@lateResolverWhyLate": {
+      "description": "Issue #1004 (tranche 4a): late-resolver link to the late-period help card."
+    },
+    "overviewWhyThreeCompletedCycles": "Why three completed cycles?",
+    "@overviewWhyThreeCompletedCycles": {
+      "description": "Issue #1004 (tranche 4a): label of the help-card link explaining the three-cycle threshold."
+    },
+    "analysisLoadError": "Could not load your cycle analysis.",
+    "@analysisLoadError": {
+      "description": "Issue #1004 (tranche 4a): error shown when the analysis tab's prediction stream fails."
+    },
+    "analysisTitle": "Analysis",
+    "@analysisTitle": {
+      "description": "Issue #1004 (tranche 4a): heading of the analysis tab."
+    },
+    "analysisBbtChartTitle": "BBT by cycle day",
+    "@analysisBbtChartTitle": {
+      "description": "Issue #1004 (tranche 4a): title of the BBT chart card."
+    },
+    "analysisStatsTitle": "Cycle statistics",
+    "@analysisStatsTitle": {
+      "description": "Issue #1004 (tranche 4a): title of the headline cycle-statistics card."
+    },
+    "analysisMeanCycleLength": "Average cycle length",
+    "@analysisMeanCycleLength": {
+      "description": "Issue #1004 (tranche 4a): label of the mean cycle-length statistic."
+    },
+    "analysisMeanPeriodLength": "Average period length",
+    "@analysisMeanPeriodLength": {
+      "description": "Issue #1004 (tranche 4a): label of the mean period-length statistic."
+    },
+    "analysisVariability": "Variability",
+    "@analysisVariability": {
+      "description": "Issue #1004 (tranche 4a): label of the cycle-length variability statistic."
+    },
+    "analysisSpreadDays": "±{days} days",
+    "@analysisSpreadDays": {
+      "description": "Issue #1004 (tranche 4a): variability value, the spread from the mean in days.",
+      "placeholders": {
+        "days": {
+          "type": "int"
+        }
+      }
+    },
+    "bbtChartEmptyTitle": "No BBT logged yet",
+    "@bbtChartEmptyTitle": {
+      "description": "Issue #1004 (tranche 4a): empty-state title of the BBT chart."
+    },
+    "bbtChartEmptyBody": "Log a basal body temperature reading in the day sheet to see your curve here, plotted against cycle day.",
+    "@bbtChartEmptyBody": {
+      "description": "Issue #1004 (tranche 4a): empty-state body of the BBT chart."
+    },
+    "bbtChartCaption": "{count, plural, =1{1 cycle shown} other{{count} cycles shown}} · {range}",
+    "@bbtChartCaption": {
+      "description": "Issue #1004 (tranche 4a): BBT chart caption, naming the cycle count and the temperature range.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        },
+        "range": {
+          "type": "String"
+        }
+      }
+    },
+    "phaseInsightsHelpfulToTrack": "Helpful to track:",
+    "@phaseInsightsHelpfulToTrack": {
+      "description": "Issue #1004 (tranche 4a): label introducing a subphase's what-to-track guidance."
+    },
+    "phaseInsightsReadArticle": "Read: {title}",
+    "@phaseInsightsReadArticle": {
+      "description": "Issue #1004 (tranche 4a): button opening the subphase's context article, naming its title.",
+      "placeholders": {
+        "title": {
+          "type": "String"
+        }
+      }
+    },
+    "phaseInsightsSource": "Source: {source} · Rev: {date}",
+    "@phaseInsightsSource": {
+      "description": "Issue #1004 (tranche 4a): provenance footnote naming the subphase content's source and review date.",
+      "placeholders": {
+        "source": {
+          "type": "String"
+        },
+        "date": {
+          "type": "String"
+        }
+      }
+    },
+    "symptomTrendsTitle": "Symptom Trends & Patterns",
+    "@symptomTrendsTitle": {
+      "description": "Issue #1004 (tranche 4a): heading of the symptom-trends section."
+    },
+    "symptomTrendsRecurring": "Recurring Symptoms",
+    "@symptomTrendsRecurring": {
+      "description": "Issue #1004 (tranche 4a): title of the recurring-symptoms card."
+    },
+    "symptomTrendsEmpty": "Log symptoms across at least 3 completed cycles to uncover recurring patterns and trends.",
+    "@symptomTrendsEmpty": {
+      "description": "Issue #1004 (tranche 4a): empty state of the recurring-symptoms card."
+    },
+    "symptomTrendsDisclaimer": "Patterns reflect descriptive logs only and are not clinical diagnostics.",
+    "@symptomTrendsDisclaimer": {
+      "description": "Issue #1004 (tranche 4a): disclaimer under the recurring-symptoms list."
+    },
+    "symptomTrendsFlowTitle": "Typical Bleed Rhythm",
+    "@symptomTrendsFlowTitle": {
+      "description": "Issue #1004 (tranche 4a): title of the flow-distribution summary."
+    },
+    "symptomTrendsFlowSubtitle": "Peak flow typically falls on Cycle Day {day} ({flow}).",
+    "@symptomTrendsFlowSubtitle": {
+      "description": "Issue #1004 (tranche 4a): flow summary subtitle naming the typical peak cycle day and flow level.",
+      "placeholders": {
+        "day": {
+          "type": "int"
+        },
+        "flow": {
+          "type": "String"
+        }
+      }
+    },
+    "symptomTrendsLibraryTitle": "Cycle Literacy Library",
+    "@symptomTrendsLibraryTitle": {
+      "description": "Issue #1004 (tranche 4a): title of the cycle-literacy library call to action."
+    },
+    "symptomTrendsLibrarySubtitle": "Evidence-based guides on hormones, cycle phases, and body signals.",
+    "@symptomTrendsLibrarySubtitle": {
+      "description": "Issue #1004 (tranche 4a): subtitle of the cycle-literacy library call to action."
+    },
+    "crampPredictionTitle": "Anticipated Cramp Window",
+    "@crampPredictionTitle": {
+      "description": "Issue #1004 (tranche 4a): title of the cramp-prediction card."
+    },
+    "crampPredictionDates": "Estimated dates: {dates}",
+    "@crampPredictionDates": {
+      "description": "Issue #1004 (tranche 4a): cramp-prediction line naming the predicted dates.",
+      "placeholders": {
+        "dates": {
+          "type": "String"
+        }
+      }
+    },
+    "crampPredictionObserved": "Observed in {observed} of {total} recorded cycles.",
+    "@crampPredictionObserved": {
+      "description": "Issue #1004 (tranche 4a): cramp-prediction line naming how many cycles the pattern was observed in.",
+      "placeholders": {
+        "observed": {
+          "type": "int"
+        },
+        "total": {
+          "type": "int"
+        }
+      }
+    },
+    "symptomTrendsLogged": "Logged {occurrences} times across {cycles} cycles",
+    "@symptomTrendsLogged": {
+      "description": "Issue #1004 (tranche 4a): per-pattern line naming its occurrence and cycle counts.",
+      "placeholders": {
+        "occurrences": {
+          "type": "int"
+        },
+        "cycles": {
+          "type": "int"
+        }
+      }
+    }
 }

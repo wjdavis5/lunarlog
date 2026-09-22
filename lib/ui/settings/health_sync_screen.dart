@@ -28,6 +28,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../config.dart';
+import '../../domain/health/health_deviation.dart';
 import '../../domain/health/health_import.dart';
 import '../../domain/health/health_platform.dart';
 import '../../domain/health/health_sync_binding.dart';
@@ -53,8 +54,24 @@ import '../../observability/route_names.dart';
 /// The human name of [platform]'s health store, used in every import-copy
 /// string so the screen names the store the runner actually reads.
 String _sourceName(HealthImportPlatform platform) => switch (platform) {
-      HealthImportPlatform.appleHealth => 'Apple Health',
+      HealthImportPlatform.appleHealth => 'the Health app',
       HealthImportPlatform.healthConnect => 'Health Connect',
+    };
+
+/// The human name of [platform]'s health store for titles and headings.
+String _sourceTitle(HealthImportPlatform platform) => switch (platform) {
+      HealthImportPlatform.appleHealth => 'Health app',
+      HealthImportPlatform.healthConnect => 'Health Connect',
+    };
+
+/// The unavailable copy for [platform]'s health store when the device
+/// cannot run it.
+String _sourceUnavailableCopy(HealthImportPlatform platform) =>
+    switch (platform) {
+      HealthImportPlatform.appleHealth =>
+        "The Health app isn't available on this device.",
+      HealthImportPlatform.healthConnect =>
+        "Health Connect isn't available on this device.",
     };
 
 /// The neutral statement shown when an import read returned nothing usable
@@ -66,11 +83,11 @@ String _sourceName(HealthImportPlatform platform) => switch (platform) {
 String healthImportEmptyCopy(HealthImportPlatform platform) =>
     switch (platform) {
       HealthImportPlatform.appleHealth =>
-        'Apple Health returned no menstrual-flow data for the last 30 days. '
-            "Apple Health doesn't tell apps whether read access is allowed, so "
+        'The Health app returned no menstrual-flow data. '
+            "The Health app doesn't tell apps whether read access is allowed, so "
             'this can mean nothing was tracked, or that access is off.',
       HealthImportPlatform.healthConnect =>
-        'Health Connect returned no menstrual-flow data for the last 30 days. '
+        'Health Connect returned no menstrual-flow data. '
             'This can mean nothing was tracked, or that read access is off.',
     };
 
@@ -85,7 +102,7 @@ const String kHealthSyncWriteIntro =
 /// (Android, Issue #458) — it must not promise writes that will not happen.
 const String kHealthSyncImportIntro =
     'Choose the one profile this phone may import health data into. Every '
-    "other profile stays out of this phone's Health app entirely.";
+    'other profile stays out of Health Connect entirely.';
 
 /// The forward-only write explanation (iOS).
 const String kHealthSyncWriteForwardOnly =
@@ -114,6 +131,7 @@ class HealthSyncScreen extends StatefulWidget {
     required this.binding,
     required this.signedInUserId,
     this.importer,
+    this.deviationInsights,
     this.permissionProbe,
     this.writeEnabled = true,
   });
@@ -134,6 +152,12 @@ class HealthSyncScreen extends StatefulWidget {
   /// platform with no health store), in which case the import tile is
   /// hidden entirely.
   final HealthImportRunner? importer;
+
+  /// Issue #799: the device-local deviation insight seam. When wired, a
+  /// successful import also refreshes the bound profile's "Apple Health
+  /// noticed…" snapshot, which the overview renders; null (tests, an
+  /// unconfigured build, a platform with no health store) simply skips it.
+  final HealthDeviationInsights? deviationInsights;
 
   /// Whether the write direction is wired on this platform. False on
   /// Android as of Issue #458, where only the read/import runner is wired
@@ -166,6 +190,16 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
   bool _importFailed = false;
   HealthImportSummary? _importSummary;
 
+  /// Issue #992: the running sample count of a full-history pass, so a long
+  /// import shows progress rather than a bare spinner. Null until the first
+  /// page reports.
+  HealthImportProgress? _importProgress;
+
+  /// Issue #1017: marks the result block so a finished pass can scroll it
+  /// into view — the import tile sits at the bottom of the page, so the
+  /// result otherwise renders below the fold and the tap looks like a no-op.
+  final GlobalKey _resultKey = GlobalKey();
+
   /// Issue #959: the OS permission state read from [permissionProbe] — null
   /// when no probe is wired (nothing is rendered then). Re-read on every
   /// load and after each user-initiated import, so a revocation made in OS
@@ -176,8 +210,12 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
   /// The platform the runner reads — drives the copy below. Defaults to
   /// Apple Health only for the (never-shown) case where the importer is
   /// absent; every rendered path is guarded by a non-null importer.
-  HealthImportPlatform get _importPlatform =>
-      widget.importer?.platform ?? HealthImportPlatform.appleHealth;
+  HealthImportPlatform get _importPlatform {
+    if (widget.importer != null) return widget.importer!.platform;
+    return widget.writeEnabled
+        ? HealthImportPlatform.appleHealth
+        : HealthImportPlatform.healthConnect;
+  }
 
   @override
   void initState() {
@@ -348,7 +386,8 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
         SnackBar(
           content: Text(
             reason.isEmpty
-                ? "Couldn't sync ${profile.displayName} — try again."
+                ? AppLocalizations.of(context)
+                    .healthSyncSyncFailed(profile.displayName)
                 : reason,
           ),
         ),
@@ -362,27 +401,32 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
       context: context,
       routeSettings: const RouteSettings(name: kRouteHealthSyncBindDialog),
       builder: (dialogContext) => AlertDialog(
-        title: Text('Sync ${profile.displayName} to this phone?'),
+        title: Text(
+          AppLocalizations.of(dialogContext)
+              .healthSyncBindTitle(profile.displayName),
+        ),
         content: Text(
           widget.writeEnabled
-              ? "Only ${profile.displayName}'s data will ever be written to "
-                  "this phone's Health app. This phone can sync one profile at "
-                  'a time — choosing a different profile later replaces this '
-                  'one.'
-              : "Only ${profile.displayName}'s data will ever be imported "
-                  "from this phone's Health app. This phone can sync one "
-                  'profile at a time — choosing a different profile later '
-                  'replaces this one.',
+              ? AppLocalizations.of(dialogContext).healthSyncBindWriteBody(
+                  profile.displayName,
+                  _sourceName(_importPlatform),
+                )
+              : AppLocalizations.of(dialogContext).healthSyncBindImportBody(
+                  profile.displayName,
+                  _sourceName(_importPlatform),
+                ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(AppLocalizations.of(dialogContext).healthSyncBindCancel),
           ),
           FilledButton(
             key: const ValueKey('health-sync-confirm-bind'),
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Bind'),
+            child: Text(
+              AppLocalizations.of(dialogContext).healthSyncConfirmSyncAction,
+            ),
           ),
         ],
       ),
@@ -426,12 +470,13 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
       routeSettings: const RouteSettings(name: kRouteHealthSyncUnbindDialog),
       builder: (dialogContext) {
         final l10n = AppLocalizations.of(dialogContext);
+        final source = _sourceName(_importPlatform);
         return AlertDialog(
           title: Text(l10n.healthSyncUnbindDialogTitle(name)),
           content: Text(
             widget.writeEnabled
-                ? l10n.healthSyncUnbindDialogWriteBody(name)
-                : l10n.healthSyncUnbindDialogImportBody(name),
+                ? l10n.healthSyncUnbindDialogWriteBody(name, source)
+                : l10n.healthSyncUnbindDialogImportBody(name, source),
           ),
           actions: [
             TextButton(
@@ -451,9 +496,10 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
   }
 
   /// Runs one user-initiated import (Issue #217). The runner owns the guard,
-  /// the bounded window, and the merge; this only sequences and renders its
-  /// summary. An unexpected throw (a storage error the runner does not
-  /// classify) becomes the generic failure line rather than a crash.
+  /// the full-history paged read, and the merge; this only sequences,
+  /// renders progress, and renders the summary. An unexpected throw (a
+  /// storage error the runner does not classify) becomes the generic
+  /// failure line rather than a crash.
   Future<void> _runImport() async {
     final importer = widget.importer;
     if (importer == null || _importing) return;
@@ -461,26 +507,62 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
       _importing = true;
       _importFailed = false;
       _importSummary = null;
+      _importProgress = null;
     });
     try {
-      final summary = await importer.importNow();
+      final summary = await importer.importNow(
+        onProgress: (progress) {
+          if (!mounted) return;
+          setState(() => _importProgress = progress);
+        },
+      );
+      // Issue #799: after a pass, refresh the bound profile's computed
+      // cycle-deviation snapshot for the overview card. Best-effort and
+      // read-only — a failure here must never turn a successful import into
+      // a reported failure, so it is swallowed and the pass result stands.
+      try {
+        await widget.deviationInsights?.refresh();
+      } catch (_) {
+        // Ignored: the snapshot is a display cache, not part of the import.
+      }
       final permissionStatus = await _readPermissionStatus();
       if (!mounted) return;
       setState(() {
         _importing = false;
         _importSummary = summary;
+        _importProgress = null;
         // Issue #959: re-read the OS permission after the pass, so an
         // import that hit a revoked permission updates the status line
         // (and offers the settings link) without leaving the screen.
         _permissionStatus = permissionStatus;
       });
+      _announceResult(summary);
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _importing = false;
+        _importProgress = null;
         _importFailed = true;
       });
+      _revealResult();
     }
+  }
+
+  /// Issue #1017: bring the result into view and, for a completed pass that
+  /// read something, announce its headline in a SnackBar so the result is
+  /// impossible to miss. A blocked/empty pass has no headline to announce;
+  /// scrolling alone reveals its copy. Split out of [_runImport] so that
+  /// method stays under the CRAP threshold.
+  void _announceResult(HealthImportSummary summary) {
+    _revealResult();
+    if (summary.isBlocked || summary.isEmpty) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          _completedSummaryHeadline(AppLocalizations.of(context), summary),
+        ),
+      ),
+    );
   }
 
   /// The copy for a pass that ended before reading — a guard refusal or a
@@ -492,7 +574,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
     return switch (blocked) {
       HealthPlatformRefused() =>
         "This profile can't import from $source right now.",
-      HealthPlatformUnavailable() => "$source isn't available on this device.",
+      HealthPlatformUnavailable() => _sourceUnavailableCopy(_importPlatform),
       HealthPlatformPermissionDenied() => healthImportEmptyCopy(_importPlatform),
       HealthPlatformFailed() =>
         "Couldn't finish the import. Please try again.",
@@ -500,67 +582,128 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
     };
   }
 
+  /// The completion headline for a pass that actually read something. Issue
+  /// #1017: the headline alone states the imported and skipped counts — the
+  /// pre-#992 "Updated N days" and "N days already matched" lines restated
+  /// them with different verbs, so they are gone. When nothing was imported,
+  /// say so plainly instead of "Imported 0 days".
+  String _completedSummaryHeadline(
+    AppLocalizations l10n,
+    HealthImportSummary summary,
+  ) {
+    if (summary.importedDays == 0 && summary.spottingDaysWritten == 0) {
+      return l10n.healthSyncImportSummaryNothingNew(
+        summary.skippedAlreadyLoggedDays,
+      );
+    }
+    return l10n.healthSyncImportSummaryHeadline(
+      summary.importedDays,
+      summary.skippedAlreadyLoggedDays,
+    );
+  }
+
   /// The positive result lines for a pass that read samples. Empty when
   /// every sample was a no-op. Issue #902: rows placed from this phone's own
   /// zone (the source recorded none) get their own line — never the "Skipped"
   /// wording — and the skip line is reserved for samples that truly could not
-  /// be placed.
+  /// be placed. Issue #1017: that zone provenance is shown only when some
+  /// samples were actually skipped for lack of a zone, so a clean run does
+  /// not carry a line that reads as a warning about nothing.
   List<String> _importResultLines(
     AppLocalizations l10n,
     HealthImportSummary summary,
   ) {
     final source = _sourceName(_importPlatform);
     return [
-      if (summary.daysWritten > 0)
-        l10n.healthSyncImportUpdatedDays(summary.daysWritten, source),
+      // Issue #992/#1017: one completion headline, then only the detail
+      // lines that add information the headline does not already carry.
+      _completedSummaryHeadline(l10n, summary),
       if (summary.spottingDaysWritten > 0)
         l10n.healthSyncImportAddedSpotting(summary.spottingDaysWritten, source),
-      if (summary.daysUnchanged > 0)
-        l10n.healthSyncImportAlreadyMatched(summary.daysUnchanged),
       if (summary.daysKeptManual > 0)
         l10n.healthSyncImportKeptManual(summary.daysKeptManual),
-      if (summary.samplesFromDeviceZone > 0)
-        l10n.healthSyncImportPlacedDeviceZone(summary.samplesFromDeviceZone),
-      if (summary.samplesWithoutZone > 0)
+      if (summary.samplesWithoutZone > 0) ...[
+        if (summary.samplesFromDeviceZone > 0)
+          l10n.healthSyncImportPlacedDeviceZone(summary.samplesFromDeviceZone),
         l10n.healthSyncImportSkippedNoZone(summary.samplesWithoutZone),
+      ],
       if (summary.samplesUnsupported > 0)
         l10n.healthSyncImportSkippedUnsupported(summary.samplesUnsupported),
     ];
   }
 
+  /// Issue #1017: scrolls the result block into view after a pass finishes,
+  /// so the tap that started it cannot look like it did nothing. Deferred to
+  /// a post-frame callback because the result is not in the tree until the
+  /// `setState` that precedes this has built.
+  void _revealResult() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final resultContext = _resultKey.currentContext;
+      if (resultContext == null) return;
+      unawaited(
+        Scrollable.ensureVisible(
+          resultContext,
+          duration: const Duration(milliseconds: 300),
+          alignment: 0.5,
+        ),
+      );
+    });
+  }
+
   /// The result block: progress while running, then either the failure
   /// line, the blocked line, the neutral empty copy, or the positive lines.
   Widget _importResult() {
+    final l10n = AppLocalizations.of(context);
     final children = <Widget>[];
     if (_importing) {
-      children.add(Text('Importing from ${_sourceName(_importPlatform)}…'));
+      children.add(Text(_importingCopy(l10n)));
     } else if (_importFailed) {
       children.add(
-        const Text("Couldn't finish the import. Please try again."),
+        Text(l10n.healthSyncImportFailed),
       );
     } else if (_importSummary != null) {
-      final summary = _importSummary!;
-      if (summary.isBlocked) {
-        children.add(Text(_blockedImportCopy(summary.blocked!)));
-      } else if (summary.isEmpty) {
-        children.add(Text(healthImportEmptyCopy(_importPlatform)));
-      } else {
-        for (final line in _importResultLines(
-          AppLocalizations.of(context),
-          summary,
-        )) {
-          children.add(Text(line));
-        }
-      }
+      children.addAll(_importSummaryChildren(l10n, _importSummary!));
     }
     return Padding(
       key: const ValueKey('health-sync-import-summary'),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
+        key: _resultKey,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: children,
       ),
     );
+  }
+
+  /// The progress line while a pass runs (Issue #992): the running sample
+  /// count once the first page has reported, otherwise the bare store name.
+  String _importingCopy(AppLocalizations l10n) {
+    final progress = _importProgress;
+    if (progress == null) {
+      return l10n.healthSyncImporting(_sourceName(_importPlatform));
+    }
+    return l10n.healthSyncImportProgress(progress.samplesRead);
+  }
+
+  /// The lines for a finished pass: the blocked line, the neutral empty
+  /// copy, or the stopped-early note plus the positive result lines.
+  List<Widget> _importSummaryChildren(
+    AppLocalizations l10n,
+    HealthImportSummary summary,
+  ) {
+    if (summary.isBlocked) {
+      return [Text(_blockedImportCopy(summary.blocked!))];
+    }
+    if (summary.isEmpty) {
+      return [Text(healthImportEmptyCopy(_importPlatform))];
+    }
+    return [
+      // Issue #992: a pass stopped by the page cap or a repeated cursor says
+      // so plainly rather than pretending it finished.
+      if (summary.pageLimitReached || summary.repeatedCursor)
+        Text(l10n.healthSyncImportStoppedEarly),
+      for (final line in _importResultLines(l10n, summary)) Text(line),
+    ];
   }
 
   @override
@@ -574,17 +717,22 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
       );
     }
     if (_loadFailed) {
+      final l10n = AppLocalizations.of(context);
       return Scaffold(
-        appBar: AppBar(title: const Text('Health app sync')),
+        appBar: AppBar(
+          title: Text(
+            l10n.settingsHealthSyncTitle(_sourceTitle(_importPlatform)),
+          ),
+        ),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  key: ValueKey('health-sync-load-error'),
-                  "Couldn't load profiles for health sync.",
+                Text(
+                  key: const ValueKey('health-sync-load-error'),
+                  AppLocalizations.of(context).healthSyncLoadFailed,
                 ),
                 const SizedBox(height: 12),
                 FilledButton(
@@ -592,7 +740,8 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
                     setState(() => _loading = true);
                     unawaited(_load());
                   },
-                  child: const Text('Retry'),
+                  child:
+                      Text(AppLocalizations.of(context).healthSyncRetry),
                 ),
               ],
             ),
@@ -600,10 +749,14 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
         ),
       );
     }
-    final permissionSection =
-        _permissionStatusSection(AppLocalizations.of(context));
+    final l10n = AppLocalizations.of(context);
+    final permissionSection = _permissionStatusSection(l10n);
     return Scaffold(
-      appBar: AppBar(title: const Text('Health app sync')),
+      appBar: AppBar(
+        title: Text(
+          l10n.settingsHealthSyncTitle(_sourceTitle(_importPlatform)),
+        ),
+      ),
       body: ListView(
         children: [
           Padding(
@@ -629,14 +782,11 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
               padding: EdgeInsets.symmetric(horizontal: 16),
               child: Text(kHealthSyncWriteForwardOnly),
             ),
-            const Padding(
-              key: ValueKey('health-sync-flow-collapse-copy'),
-              padding: EdgeInsets.all(16),
+            Padding(
+              key: const ValueKey('health-sync-flow-collapse-copy'),
+              padding: const EdgeInsets.all(16),
               child: Text(
-                'Super heavy days are written to the Health app as Heavy. '
-                'Spotting logged inside a period is written as Light '
-                'bleeding; spotting between periods is written as '
-                'intermenstrual bleeding.',
+                AppLocalizations.of(context).healthSyncFlowCollapseNote,
               ),
             ),
             // Issue #238 / #918: disclosure of symptom and mood writes.
@@ -649,14 +799,11 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
             // sync or revoking this phone's Health app permission never deletes
             // what was already written — the samples stay in the Health app,
             // which may consider them theirs.
-            const Padding(
-              key: ValueKey('health-sync-revocation-copy'),
-              padding: EdgeInsets.all(16),
+            Padding(
+              key: const ValueKey('health-sync-revocation-copy'),
+              padding: const EdgeInsets.all(16),
               child: Text(
-                'Turning sync off, or later revoking this phone\'s Health app '
-                'permission, leaves everything already written in the Health '
-                'app in place. To remove it, delete it in the Health app '
-                'itself.',
+                AppLocalizations.of(context).healthSyncRevocationNote,
               ),
             ),
           ] else ...[
@@ -681,17 +828,14 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
               ),
             ),
           ],
-          // Issue #186 (AC9): the v1 scope decision, stated plainly.
-          // Reads are limited to the last 30 days on both platforms;
-          // full-history import (READ_HEALTH_DATA_HISTORY) and background
-          // sync (READ_HEALTH_DATA_IN_BACKGROUND) are deliberately deferred
-          // for v1.
-          const Padding(
-            key: ValueKey('health-sync-30-day-limit-copy'),
-            padding: EdgeInsets.all(16),
+          // Issue #992: the scope decision, stated plainly. Reads are
+          // full-history now; background sync (READ_HEALTH_DATA_IN_BACKGROUND)
+          // remains deliberately deferred.
+          Padding(
+            key: const ValueKey('health-sync-full-history-copy'),
+            padding: const EdgeInsets.all(16),
             child: Text(
-              'Reads are limited to the last 30 days. Full history import and '
-              'background sync are not available yet.',
+              AppLocalizations.of(context).healthSyncFullHistoryNote,
             ),
           ),
           for (final profile in _profiles) _profileTile(profile),
@@ -701,9 +845,12 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
             ListTile(
               key: const ValueKey('health-sync-import-tile'),
               leading: const Icon(Icons.download_outlined),
-              title: Text('Import from ${_sourceName(_importPlatform)}'),
-              subtitle: const Text(
-                'Bring in menstrual flow and spotting from the last 30 days.',
+              title: Text(
+                AppLocalizations.of(context)
+                    .healthSyncImportFrom(_sourceName(_importPlatform)),
+              ),
+              subtitle: Text(
+                AppLocalizations.of(context).healthSyncImportTileSubtitle,
               ),
               trailing: _importing
                   ? const SizedBox(
@@ -722,7 +869,9 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
             ListTile(
               key: const ValueKey('health-sync-unbind-tile'),
               leading: const Icon(Icons.link_off),
-              title: const Text('Stop syncing to this phone'),
+              title: Text(
+                AppLocalizations.of(context).healthSyncUnbindAction,
+              ),
               onTap: _unbind,
             ),
         ],

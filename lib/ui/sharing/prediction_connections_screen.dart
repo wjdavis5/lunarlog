@@ -126,26 +126,24 @@ class _PredictionConnectionsScreenState
   /// identical terminal state server-side.
   Future<void> _stopReceiving(IncomingPredictionConnection connection) async {
     if (_leavingConnectionIds.contains(connection.connectionId)) return;
+    final l10n = AppLocalizations.of(context);
     final confirm = await showDialog<bool>(
       context: context,
       routeSettings:
           const RouteSettings(name: kRouteStopReceivingPredictionsDialog),
       builder: (ctx) => AlertDialog(
-        title: const Text('Stop receiving these predictions?'),
-        content: const SingleChildScrollView(
-          child: Text(
-            "You will stop seeing this profile's shared cycle calendar. "
-            'The sharer can invite you again at any time.',
-          ),
+        title: Text(l10n.sharingPredictionConnectionsStopTitle),
+        content: SingleChildScrollView(
+          child: Text(l10n.sharingPredictionConnectionsStopBody),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n.sharingPredictionConnectionsCancel),
           ),
           DestructiveButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Stop receiving'),
+            child: Text(l10n.sharingPredictionConnectionsStopAction),
           ),
         ],
       ),
@@ -159,15 +157,15 @@ class _PredictionConnectionsScreenState
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Stopped receiving predictions')),
+          SnackBar(content: Text(l10n.sharingPredictionConnectionsStopped)),
         );
         _load();
       }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not stop receiving. Check connection.'),
+          SnackBar(
+            content: Text(l10n.sharingPredictionConnectionsStopFailed),
           ),
         );
       }
@@ -188,22 +186,24 @@ class _PredictionConnectionsScreenState
     final error = typedFailure != null
         ? predictionConnectionFailureCopy(l10n, typedFailure)
         : unexpectedFailure
-        ? 'An unexpected error occurred.'
+        ? l10n.sharingUnexpectedError
         : null;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(error ?? 'Connection failed.')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(error ?? l10n.sharingPredictionConnectionsFailed)),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Shared with me')),
+      appBar: AppBar(title: Text(l10n.sharingPredictionConnectionsTitle)),
       floatingActionButton: FloatingActionButton.extended(
         key: const ValueKey('enter-prediction-code'),
         onPressed: _enterCode,
         icon: const Icon(Icons.vpn_key_outlined),
-        label: const Text('Enter code'),
+        label: Text(l10n.predictionEnterLinkAction),
       ),
       body: FutureBuilder<List<IncomingPredictionConnection>>(
         future: _connectionsFuture,
@@ -221,7 +221,7 @@ class _PredictionConnectionsScreenState
             return Center(
               child: InlineError(
                 key: const ValueKey('prediction-connections-error'),
-                message: 'Could not load connections.',
+                message: l10n.sharingPredictionConnectionsLoadError,
                 onRetry: _load,
               ),
             );
@@ -241,13 +241,12 @@ class _PredictionConnectionsScreenState
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'No shared predictions yet',
+                      l10n.sharingPredictionConnectionsEmptyTitle,
                       style: theme.textTheme.titleMedium,
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'When someone shares their cycle predictions with you, '
-                      'their calendar appears here.',
+                      l10n.sharingPredictionConnectionsEmptyBody,
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
@@ -268,10 +267,11 @@ class _PredictionConnectionsScreenState
               return ListTile(
                 key: ValueKey('prediction-connection-${connection.profileId}'),
                 leading: const Icon(Icons.calendar_month),
-                title: const Text('Cycle predictions'),
+                title: Text(l10n.sharingPredictionConnectionsCyclePredictions),
                 subtitle: Text(
-                  'Shared ${_formatDate(context, connection.acceptedAt)} • '
-                  'phases only',
+                  l10n.sharingPredictionConnectionsSharedSubtitle(
+                    _formatDate(context, connection.acceptedAt),
+                  ),
                 ),
                 // Issue #462: "Stop receiving" sits beside the disclosure
                 // chevron rather than replacing it — the row itself still
@@ -293,7 +293,7 @@ class _PredictionConnectionsScreenState
                               'stop-receiving-${connection.connectionId}',
                             ),
                             icon: const Icon(Icons.link_off),
-                            tooltip: 'Stop receiving',
+                            tooltip: l10n.sharingPredictionConnectionsStopTooltip,
                             onPressed: () => _stopReceiving(connection),
                           ),
                     const Icon(Icons.chevron_right),
@@ -304,7 +304,8 @@ class _PredictionConnectionsScreenState
                     name: kRoutePredictionCalendarScreen,
                     builder: (_) => PredictionConnectionCalendarScreen(
                       profileId: connection.profileId,
-                      profileName: 'Cycle predictions',
+                      profileName:
+                          l10n.sharingPredictionConnectionsCyclePredictions,
                       service: widget.service,
                     ),
                   ),
@@ -341,8 +342,9 @@ class _EnterCodeDialogState extends State<_EnterCodeDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return AlertDialog(
-      title: const Text('Enter connection code'),
+      title: Text(l10n.predictionEnterLinkTitle),
       content: TextField(
         key: const ValueKey('prediction-code-field'),
         controller: _controller,
@@ -351,18 +353,18 @@ class _EnterCodeDialogState extends State<_EnterCodeDialog> {
         // action (identical to the button's pop-with-trimmed-code).
         textInputAction: TextInputAction.done,
         onSubmitted: (_) => Navigator.of(context).pop(_controller.text.trim()),
-        decoration: const InputDecoration(
-          hintText: 'Paste the code you received',
+        decoration: InputDecoration(
+          hintText: l10n.predictionEnterLinkHint,
         ),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(l10n.sharingPredictionConnectionsCancel),
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
-          child: const Text('Connect'),
+          child: Text(l10n.sharingPredictionConnectionsConnect),
         ),
       ],
     );

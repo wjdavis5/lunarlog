@@ -93,6 +93,12 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   intl: 0.20.3
+  # Epic #831 slice 4: `history.replaceState` after a web PKCE exchange so a
+  # reload cannot replay a spent `code`. Used only by
+  # lib/data/auth/web_url_cleaner_web.dart, which native never compiles
+  # (conditional import); declared directly rather than relying on a
+  # transitive pull (it was previously transitive via the plugin stack).
+  web: ^1.1.1
   # Issue #141: the home-screen widget bridge (iOS App Group / Android
   # widget store). Pinned exactly (not `^`) — a security- and
   # platform-sensitive dependency whose internals this repo's native code

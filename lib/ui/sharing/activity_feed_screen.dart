@@ -117,7 +117,12 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('${widget.profile.displayName} Activity')),
+      appBar: AppBar(
+        title: Text(
+          AppLocalizations.of(context)
+              .sharingActivityFeedScreenTitle(widget.profile.displayName),
+        ),
+      ),
       body: StreamBuilder<ActivityFeedSnapshot>(
         stream: _feedStream,
         builder: (context, snapshot) {
@@ -154,6 +159,7 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
   }
 
   Widget _singleGuardianState(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return EmptyState(
       key: const ValueKey('activity-single-guardian'),
       illustration: Icon(
@@ -161,15 +167,13 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
         size: 48,
         color: Theme.of(context).colorScheme.onSurfaceVariant,
       ),
-      title: 'Just you for now',
-      body:
-          'This profile has one guardian, so there is no shared activity '
-          'to review. When a second guardian joins, both of your changes '
-          'appear here.',
+      title: l10n.sharingActivityFeedJustYouTitle,
+      body: l10n.sharingActivityFeedJustYouBody,
     );
   }
 
   Widget _noActivityState(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return EmptyState(
       key: const ValueKey('activity-no-activity'),
       illustration: Icon(
@@ -177,8 +181,8 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
         size: 48,
         color: Theme.of(context).colorScheme.onSurfaceVariant,
       ),
-      title: 'No activity yet',
-      body: 'Changes either guardian makes to this profile will appear here.',
+      title: l10n.sharingActivityFeedNoActivityTitle,
+      body: l10n.sharingActivityFeedNoActivityBody,
     );
   }
 
@@ -193,9 +197,7 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
           return Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
             child: Text(
-              'Newest first. Each row shows a day\u2019s latest change — '
-              'earlier edits by the same guardian are not recorded '
-              'separately.',
+              AppLocalizations.of(context).sharingActivityFeedCaption,
               key: const ValueKey('activity-feed-caption'),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
@@ -241,45 +243,54 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
     ActivityKind.accessRemoved => Icons.person_remove_outlined,
   };
 
-  String _possessive(String label) => label == 'you' ? 'your' : "$label's";
+  String _possessive(AppLocalizations l10n, String label) =>
+      label == l10n.activityActorYou
+      ? l10n.sharingActivityFeedPossessiveYou
+      : l10n.sharingActivityFeedPossessiveName(label);
 
   String _title(ActivityItem item, ActivityFeedSnapshot data) {
+    final l10n = AppLocalizations.of(context);
     final actor = activityActorLabel(
-      AppLocalizations.of(context),
+      l10n,
       item.actorId,
       _currentUserId,
       data.guardians,
     );
     switch (item.kind) {
       case ActivityKind.logged:
-        return _byLine('Logged', actor);
+        return _byLine(l10n, l10n.sharingActivityFeedVerbLogged, actor);
       case ActivityKind.updated:
-        return _byLine('Updated', actor);
+        return _byLine(l10n, l10n.sharingActivityFeedVerbUpdated, actor);
       case ActivityKind.removed:
-        return _byLine('Removed', actor);
+        return _byLine(l10n, l10n.sharingActivityFeedVerbRemoved, actor);
       case ActivityKind.mergeOutcome:
         return actor == null
-            ? 'Sync merge kept one version'
-            : 'Sync merge kept ${_possessive(actor)} version';
+            ? l10n.sharingActivityFeedMergeKeptOne
+            : l10n.sharingActivityFeedMergeKeptPossessive(
+                _possessive(l10n, actor),
+              );
       case ActivityKind.accessRemoved:
         return actor == null
-            ? 'A guardian no longer has access'
-            : '$actor no longer has access';
+            ? l10n.sharingActivityFeedAccessRemovedNoActor
+            : l10n.sharingActivityFeedAccessRemovedActor(actor);
     }
   }
 
   /// '`verb` by `actor`', or an actor-less '`Entry verb`' form for an
   /// unattributed row — never an invented actor (issue #124's legacy-row
   /// AC).
-  String _byLine(String verb, String? actor) =>
-      actor == null ? 'Entry ${verb.toLowerCase()}' : '$verb by $actor';
+  String _byLine(AppLocalizations l10n, String verb, String? actor) =>
+      actor == null
+      ? l10n.sharingActivityFeedByLineNoActor(verb.toLowerCase())
+      : l10n.sharingActivityFeedByLineActor(verb, actor);
 
   String _subtitle(ActivityItem item, ActivityFeedSnapshot data) {
     switch (item.kind) {
       case ActivityKind.mergeOutcome:
         return _mergeSubtitle(item, data);
       case ActivityKind.accessRemoved:
-        return 'Access to this profile was removed';
+        return AppLocalizations.of(context)
+            .sharingActivityFeedAccessRemovedSubtitle;
       case ActivityKind.logged:
       case ActivityKind.updated:
       case ActivityKind.removed:
@@ -293,34 +304,47 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
   /// deleted day must not restate health detail the calendar no longer
   /// shows. Never note text, never tag codes.
   String _entrySubtitle(ActivityItem item, ActivityFeedSnapshot data) {
+    final l10n = AppLocalizations.of(context);
     final parts = <String>[
-      if (item.localDateIso != null) 'for ${item.localDateIso}',
+      if (item.localDateIso != null)
+        l10n.sharingActivityFeedForDate(item.localDateIso!),
       if (item.kind == ActivityKind.updated && item.secondaryActorId != null)
-        'logged by '
-            '${activityActorLabel(AppLocalizations.of(context), item.secondaryActorId, _currentUserId, data.guardians) ?? AppLocalizations.of(context).activityActorGuardianFallback}',
+        l10n.sharingActivityFeedLoggedBy(
+          activityActorLabel(
+                l10n,
+                item.secondaryActorId,
+                _currentUserId,
+                data.guardians,
+              ) ??
+              l10n.activityActorGuardianFallback,
+        ),
       if (item.flow != null) flowLabel(item.flow!),
       if (item.tagCount > 0)
-        '${item.tagCount} tag${item.tagCount == 1 ? '' : 's'}',
-      if (item.hasNote) 'note',
+        l10n.sharingActivityFeedTagCount(item.tagCount),
+      if (item.hasNote) l10n.sharingActivityFeedNote,
     ];
     return parts.join(' \u2022 ');
   }
 
   String _mergeSubtitle(ActivityItem item, ActivityFeedSnapshot data) {
+    final l10n = AppLocalizations.of(context);
     final loser =
         activityActorLabel(
-          AppLocalizations.of(context),
+          l10n,
           item.secondaryActorId,
           _currentUserId,
           data.guardians,
         ) ??
-        'one guardian';
+        l10n.sharingActivityFeedOneGuardian;
     final what = item.discardedNote && item.discardedFlow
-        ? 'flow and note values were'
+        ? l10n.sharingActivityFeedDiscardedFlowAndNote
         : item.discardedNote
-        ? 'note was'
-        : 'flow value was';
-    return '${_possessive(loser)} $what discarded in a same-date merge';
+        ? l10n.sharingActivityFeedDiscardedNote
+        : l10n.sharingActivityFeedDiscardedFlow;
+    return l10n.sharingActivityFeedMergeDiscarded(
+      _possessive(l10n, loser),
+      what,
+    );
   }
 
   Widget _trailing(BuildContext context, ActivityItem item) {
@@ -348,7 +372,7 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              'New',
+              AppLocalizations.of(context).sharingActivityFeedNewBadge,
               style: theme.textTheme.labelSmall?.copyWith(
                 color: theme.colorScheme.onPrimary,
               ),

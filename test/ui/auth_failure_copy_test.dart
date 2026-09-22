@@ -25,7 +25,8 @@ void main() {
     expect(authFailureCopy(_l10n, const AuthFailure.identityTaken()),
         'That sign-in method already belongs to another account.');
     expect(authFailureCopy(_l10n, const AuthFailure.signUpClosed()),
-        'New accounts for this app are set up by the account owner.');
+        "New accounts are created by invitation. Ask the person who set up "
+            "your family's lunarlog to invite you.");
     expect(
       authFailureCopy(_l10n, const AuthFailure.lastSignInMethod()),
       'That is the only way left to sign in to this account. Add '

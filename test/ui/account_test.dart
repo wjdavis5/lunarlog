@@ -347,6 +347,8 @@ void main() {
       addTearDown(controller.dispose);
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: MultiProvider(
             providers: [
               ChangeNotifierProvider<AuthController>.value(value: controller),
@@ -358,6 +360,56 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(key('auth-apple'), findsOneWidget);
+    });
+  });
+
+  group('web sign-in shape (epic #831 slice 2: providers hidden, email works)', () {
+    testWidgets('with Apple, Google, and passkeys hidden (the web shape), the '
+        'email + password form signs in', (tester) async {
+      final s = await pumpStandalone(
+        tester,
+        showApple: false,
+        showGoogle: false,
+        showPasskeys: false,
+      );
+      expect(key('auth-apple'), findsNothing);
+      expect(key('auth-google'), findsNothing);
+      expect(key('auth-passkey'), findsNothing);
+      expect(
+        key('auth-magic-link'),
+        findsOneWidget,
+        reason: 'passwordless email has no build-config gate and is the web '
+            'fallback alongside the password form',
+      );
+
+      await tester.enterText(key('auth-email'), 'web@b.c');
+      await tester.enterText(key('auth-password'), 'correct horse');
+      await tester.tap(key('auth-sign-in'));
+      await tester.pumpAndSettle();
+      expect(s.auth.signInCalls.single.email, 'web@b.c');
+      expect(key('auth-error'), findsNothing);
+    });
+
+    testWidgets('with the native providers hidden, the passwordless email '
+        'send and the 8-digit code path still work on web', (tester) async {
+      final s = await pumpStandalone(
+        tester,
+        showApple: false,
+        showGoogle: false,
+        showPasskeys: false,
+      );
+      await tester.enterText(key('auth-email'), 'web@b.c');
+      await tester.tap(key('auth-magic-link'));
+      await tester.pumpAndSettle();
+      expect(s.auth.magicLinkCalls.single.email, 'web@b.c');
+      expect(key('auth-code'), findsOneWidget);
+
+      await tester.enterText(key('auth-code'), '12345678');
+      await tester.pumpAndSettle();
+      await tester.tap(key('auth-verify-code'));
+      await tester.pumpAndSettle();
+      expect(s.auth.codeCalls.single.email, 'web@b.c');
+      expect(s.auth.codeCalls.single.code, '12345678');
     });
   });
 
@@ -648,6 +700,95 @@ void main() {
     );
   });
 
+  group('email is validated before any auth request (issue #1030)', () {
+    testWidgets('sign-in with an empty email shows the local error, focuses '
+        'the field, and never calls the service', (tester) async {
+      final s = await pumpStandalone(tester);
+      await tester.enterText(key('auth-password'), 'correct horse battery');
+      await tester.tap(key('auth-sign-in'));
+      await tester.pumpAndSettle();
+
+      expect(s.auth.signInCalls, isEmpty);
+      expect(
+        tester.widget<InlineError>(key('auth-error')).message,
+        'Enter your email address.',
+      );
+      expect(
+        tester.widget<TextField>(key('auth-email')).focusNode!.hasFocus,
+        isTrue,
+      );
+    });
+
+    testWidgets('sign-in with a malformed email shows the shape error and '
+        'never calls the service', (tester) async {
+      final s = await pumpStandalone(tester);
+      await tester.enterText(key('auth-email'), 'not-an-email');
+      await tester.enterText(key('auth-password'), 'correct horse battery');
+      await tester.tap(key('auth-sign-in'));
+      await tester.pumpAndSettle();
+
+      expect(s.auth.signInCalls, isEmpty);
+      expect(
+        tester.widget<InlineError>(key('auth-error')).message,
+        "That doesn't look like an email address.",
+      );
+    });
+
+    testWidgets('forgot password with an empty email shows the local error '
+        'and never calls the service', (tester) async {
+      final s = await pumpStandalone(tester);
+      await tester.tap(key('auth-forgot-password'));
+      await tester.pumpAndSettle();
+
+      expect(s.auth.passwordResetCalls, isEmpty);
+      expect(
+        tester.widget<InlineError>(key('auth-error')).message,
+        'Enter your email address.',
+      );
+      expect(
+        tester.widget<TextField>(key('auth-email')).focusNode!.hasFocus,
+        isTrue,
+      );
+    });
+
+    testWidgets('forgot password with a valid email calls the service once',
+        (tester) async {
+      final s = await pumpStandalone(tester);
+      await tester.enterText(key('auth-email'), 'who@b.c');
+      await tester.tap(key('auth-forgot-password'));
+      await tester.pumpAndSettle();
+
+      expect(s.auth.passwordResetCalls, ['who@b.c']);
+      expect(key('auth-error'), findsNothing);
+    });
+
+    testWidgets('magic link with an empty email shows the local error and '
+        'never calls the service', (tester) async {
+      final s = await pumpStandalone(tester);
+      await tester.tap(key('auth-magic-link'));
+      await tester.pumpAndSettle();
+
+      expect(s.auth.magicLinkCalls, isEmpty);
+      expect(
+        tester.widget<InlineError>(key('auth-error')).message,
+        'Enter your email address.',
+      );
+      expect(key('auth-code'), findsNothing);
+    });
+
+    testWidgets('magic link with a valid email calls the service once',
+        (tester) async {
+      final s = await pumpStandalone(tester);
+      await tester.enterText(key('auth-email'), 'a@b.c');
+      await tester.tap(key('auth-magic-link'));
+      await tester.pumpAndSettle();
+
+      expect(s.auth.magicLinkCalls.single,
+          (email: 'a@b.c', createAccount: false));
+      expect(key('auth-error'), findsNothing);
+    });
+  });
+
   group('passkey sign-in (#30 U4; AE1, AE2, AE3)', () {
     testWidgets('AE1: showPasskeys false and the null default (empty '
         'config) render no passkey button; true renders it', (tester) async {
@@ -791,6 +932,8 @@ void main() {
       var completions = 0;
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: MultiProvider(
             providers: [
               ChangeNotifierProvider<AuthController>.value(value: controller),

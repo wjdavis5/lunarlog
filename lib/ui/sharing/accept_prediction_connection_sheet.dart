@@ -68,7 +68,7 @@ class _AcceptPredictionConnectionSheetState
       if (mounted) {
         setState(() {
           _loading = false;
-          _error = 'An unexpected error occurred.';
+          _error = AppLocalizations.of(context).sharingUnexpectedError;
         });
       }
     }
@@ -77,6 +77,7 @@ class _AcceptPredictionConnectionSheetState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
 
     return SafeArea(
       child: Padding(
@@ -102,18 +103,16 @@ class _AcceptPredictionConnectionSheetState
                 // sheet's width at large text scales.
                 Expanded(
                   child: Text(
-                    'Connect to cycle predictions',
+                    l10n.sharingAcceptPredictionTitle,
                     style: theme.textTheme.titleLarge,
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            const Text(
-              'Accepting adds a read-only calendar of their estimated '
-              'period, fertile, ovulation, and PMS days. No notes, tags, '
-              'or logs are ever shared or synced to this device.',
-              style: TextStyle(height: 1.35),
+            Text(
+              l10n.sharingAcceptPredictionBody,
+              style: const TextStyle(height: 1.35),
             ),
             if (_error != null)
               // No onRetry: the Connect button right below is the retry
@@ -130,7 +129,7 @@ class _AcceptPredictionConnectionSheetState
                   onPressed: _loading
                       ? null
                       : () => Navigator.of(context).pop(),
-                  child: const Text('Decline'),
+                  child: Text(l10n.sharingAcceptPredictionDecline),
                 ),
                 const SizedBox(width: 8),
                 FilledButton(
@@ -141,7 +140,7 @@ class _AcceptPredictionConnectionSheetState
                           height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Connect'),
+                      : Text(l10n.sharingAcceptPredictionConnect),
                 ),
               ],
             ),

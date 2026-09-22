@@ -8,6 +8,7 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/health/health_channel_codec.dart';
 import 'package:lunarlog/domain/health/day_boundary.dart';
+import 'package:lunarlog/domain/health/health_deviation.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_policy.dart';
@@ -255,14 +256,95 @@ void main() {
     });
   });
 
-  group('readMenstrualFlow codec (Issue #217)', () {
-    test('encodeReadWindowArgs crosses absolute instants as epoch ms', () {
+  group('readMenstrualFlowPage codec (Issues #217/#992)', () {
+    test('encodeReadWindowArgs crosses absolute instants as epoch ms, the '
+        'pinned page size, and an optional cursor', () {
       final args = encodeReadWindowArgs(
         DateTime.utc(2026, 8, 16),
         DateTime.utc(2026, 9, 17),
+        pageSize: kHealthImportPageSize,
       );
       expect(args['startMs'], DateTime.utc(2026, 8, 16).millisecondsSinceEpoch);
       expect(args['endMs'], DateTime.utc(2026, 9, 17).millisecondsSinceEpoch);
+      // Pinned exactly: the native halves read this value from the wire, so
+      // a change here (not mirrored in a native half) is caught by BOTH the
+      // channel test (asserts what is sent) and the Swift/Kotlin tests.
+      expect(args['pageSize'], kHealthImportPageSize);
+      expect(kHealthImportPageSize, 500);
+      // Absent/null cursor stays absent so a first page is unambiguous.
+      expect(args.containsKey('cursor'), isFalse);
+
+      final withCursor = encodeReadWindowArgs(
+        DateTime.utc(2026, 8, 16),
+        DateTime.utc(2026, 9, 17),
+        pageSize: kHealthImportPageSize,
+        cursor: 'opaque-cursor',
+      );
+      expect(withCursor['cursor'], 'opaque-cursor');
+    });
+
+    test('a page Map decodes the samples and the next cursor (Issue #992)',
+        () {
+      final decoded = decodeHealthReadResult({
+        'samples': [
+          {
+            'recordId': 'uuid-1',
+            'flow': 'light',
+            'startMs': 1000,
+            'endMs': 2000,
+          },
+        ],
+        'nextCursor': 'page-2',
+      });
+      final page = decoded as HealthReadSamples;
+      expect(page.samples.single.recordId, 'uuid-1');
+      expect(page.nextCursor, 'page-2');
+    });
+
+    test('a page Map with a null/absent cursor means the last page', () {
+      expect(
+        (decodeHealthReadResult({
+              'samples': <Object?>[],
+              'nextCursor': null,
+            }) as HealthReadSamples)
+            .nextCursor,
+        isNull,
+      );
+      expect(
+        (decodeHealthReadResult({'samples': <Object?>[]})
+                as HealthReadSamples)
+            .nextCursor,
+        isNull,
+      );
+      // An empty-string cursor is treated as "no cursor", never a cursor
+      // that could make the loop stop on a phantom repeat.
+      expect(
+        (decodeHealthReadResult({
+              'samples': <Object?>[],
+              'nextCursor': '',
+            }) as HealthReadSamples)
+            .nextCursor,
+        isNull,
+      );
+    });
+
+    test('a non-string cursor, or a page with no samples list, is a failure',
+        () {
+      expect(
+        decodeHealthReadResult({
+          'samples': <Object?>[],
+          'nextCursor': 7,
+        }),
+        isA<HealthReadFailed>(),
+      );
+      expect(
+        decodeHealthReadResult({'nextCursor': 'x'}),
+        isA<HealthReadFailed>(),
+      );
+      expect(
+        decodeHealthReadResult({'samples': 'not-a-list'}),
+        isA<HealthReadFailed>(),
+      );
     });
 
     test('a sample list decodes to HealthReadSamples with every field', () {
@@ -425,6 +507,96 @@ void main() {
         () {
       expect(decodeHealthReadResult('nonsense'), isA<HealthReadFailed>());
       expect(decodeHealthReadResult(7), isA<HealthReadFailed>());
+    });
+  });
+
+  group('readCycleDeviations codec (Issue #799)', () {
+    test('encodeDeviationReadArgs sends the window and the closed kind list',
+        () {
+      final args = encodeDeviationReadArgs(
+        DateTime.utc(2026, 1, 1),
+        DateTime.utc(2026, 6, 30),
+      );
+      expect(
+        args['startMs'],
+        DateTime.utc(2026, 1, 1).millisecondsSinceEpoch,
+      );
+      expect(
+        args['endMs'],
+        DateTime.utc(2026, 6, 30).millisecondsSinceEpoch,
+      );
+      expect(args['kinds'], [
+        for (final kind in HealthDeviationKind.values) kind.healthKitIdentifier,
+      ]);
+    });
+
+    test('a deviation sample decodes every field', () {
+      final decoded = decodeHealthDeviationReadResult([
+        {
+          'kind': 'prolongedMenstrualPeriods',
+          'recordId': 'dev-1',
+          'startMs': DateTime.utc(2026, 5, 1).millisecondsSinceEpoch,
+          'endMs': DateTime.utc(2026, 5, 12).millisecondsSinceEpoch,
+          'tzName': 'America/New_York',
+        },
+      ]);
+      final sample = (decoded as HealthDeviationSamples).samples.single;
+      expect(sample.kind, HealthDeviationKind.prolongedMenstrualPeriods);
+      expect(sample.recordId, 'dev-1');
+      expect(sample.start, DateTime.utc(2026, 5, 1));
+      expect(sample.end, DateTime.utc(2026, 5, 12));
+      expect(sample.tzName, 'America/New_York');
+    });
+
+    test('an empty list is a valid empty result', () {
+      final decoded = decodeHealthDeviationReadResult(const <Object?>[]);
+      expect((decoded as HealthDeviationSamples).samples, isEmpty);
+    });
+
+    test('platform outcomes and deny names decode to their variants', () {
+      expect(
+        decodeHealthDeviationReadResult('unavailable'),
+        isA<HealthDeviationUnavailable>(),
+      );
+      expect(
+        decodeHealthDeviationReadResult('permissionDenied'),
+        isA<HealthDeviationPermissionDenied>(),
+      );
+      expect(
+        (decodeHealthDeviationReadResult(HealthSyncCheck.noBinding.name)
+                as HealthDeviationRefused)
+            .check,
+        HealthSyncCheck.noBinding,
+      );
+    });
+
+    test('a malformed sample, unknown string, or wrong type is a failure', () {
+      expect(
+        decodeHealthDeviationReadResult([
+          {'kind': 'irregularMenstrualCycles', 'recordId': 'x', 'startMs': 1},
+        ]),
+        isA<HealthDeviationFailed>(),
+      );
+      expect(
+        decodeHealthDeviationReadResult('nonsense'),
+        isA<HealthDeviationFailed>(),
+      );
+      expect(decodeHealthDeviationReadResult(7), isA<HealthDeviationFailed>());
+    });
+
+    test('the wire vocabulary is the four closed names, and unknown is null',
+        () {
+      expect(
+        {for (final kind in HealthDeviationKind.values) kind.wire},
+        {
+          'irregularMenstrualCycles',
+          'infrequentMenstrualCycles',
+          'prolongedMenstrualPeriods',
+          'persistentIntermenstrualBleeding',
+        },
+      );
+      expect(HealthDeviationKind.fromWire('nope'), isNull);
+      expect(HealthDeviationKind.fromWire(null), isNull);
     });
   });
 

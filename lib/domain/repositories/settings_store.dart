@@ -53,6 +53,15 @@ abstract final class SettingsKeys {
   /// Issue #269). Recorded locally so it is not re-prompted every launch.
   static const String minimumAgeAcknowledged = 'minimum_age_acknowledged';
 
+  /// The policy version of the minimum-age acknowledgement recorded in
+  /// [minimumAgeAcknowledged] (Issue #845). Absent on a legacy install (the
+  /// pre-#845 acknowledgement carried no version), which reads as "current"
+  /// so upgrading never re-prompts; a stored value that differs from
+  /// `kMinimumAgePolicyVersion` means the policy changed and the operator is
+  /// re-prompted (the synced `account_consents` row is consulted too when a
+  /// session exists).
+  static const String minimumAgePolicyVersion = 'minimum_age_policy_version';
+
   /// Email of a sign-up whose confirmation link has not been opened on
   /// this device yet (AS10). Device-local; cleared (set to the empty
   /// string) once a signed-in session arrives.

@@ -55,17 +55,19 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
 
   Future<void> _save() async {
     if (_busy) return;
+    final l10n = AppLocalizations.of(context);
     if (_password.text.length < kMinPasswordLength) {
       setState(
-        () => _error =
-            'Use at least $kMinPasswordLength characters for the password.',
+        () => _error = l10n.accountPasswordRecoveryLengthError(
+          kMinPasswordLength,
+        ),
       );
       return;
     }
     // #165: the confirm field's match check — same imperative-error shape
     // as the length check above it.
     if (_confirm.text != _password.text) {
-      setState(() => _error = 'Passwords do not match.');
+      setState(() => _error = l10n.accountPasswordRecoveryMismatchError);
       return;
     }
     setState(() {
@@ -89,18 +91,16 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Set a new password'),
+        title: Text(l10n.accountPasswordRecoveryTitle),
         automaticallyImplyLeading: false,
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const Text(
-            'You opened a password reset link. Choose a new password for '
-            'your account.',
-          ),
+          Text(l10n.accountPasswordRecoveryIntro),
           const SizedBox(height: 16),
           // #165: one AutofillGroup over the password pair so password
           // managers see a single saveable form.
@@ -120,13 +120,17 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
                   onSubmitted: (_) => _confirmFocus.requestFocus(),
                   autofillHints: const [AutofillHints.newPassword],
                   decoration: InputDecoration(
-                    labelText: 'New password',
-                    helperText: 'At least $kMinPasswordLength characters',
+                    labelText: l10n.accountPasswordRecoveryNewLabel,
+                    helperText: l10n.accountPasswordRecoveryLengthHelper(
+                      kMinPasswordLength,
+                    ),
                     suffixIcon: IconButton(
                       key: const ValueKey('recovery-new-password-reveal'),
                       onPressed: () =>
                           setState(() => _obscureNew = !_obscureNew),
-                      tooltip: _obscureNew ? 'Show password' : 'Hide password',
+                      tooltip: _obscureNew
+                          ? l10n.accountPasswordRecoveryShow
+                          : l10n.accountPasswordRecoveryHide,
                       icon: Icon(
                         _obscureNew
                             ? Icons.visibility_outlined
@@ -145,13 +149,14 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
                   textInputAction: TextInputAction.done,
                   onSubmitted: (_) => _save(),
                   decoration: InputDecoration(
-                    labelText: 'Confirm password',
+                    labelText: l10n.accountPasswordRecoveryConfirmLabel,
                     suffixIcon: IconButton(
                       key: const ValueKey('recovery-confirm-password-reveal'),
                       onPressed: () =>
                           setState(() => _obscureConfirm = !_obscureConfirm),
-                      tooltip:
-                          _obscureConfirm ? 'Show password' : 'Hide password',
+                      tooltip: _obscureConfirm
+                          ? l10n.accountPasswordRecoveryShow
+                          : l10n.accountPasswordRecoveryHide,
                       icon: Icon(
                         _obscureConfirm
                             ? Icons.visibility_outlined
@@ -181,7 +186,7 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('Save password'),
+                : Text(l10n.accountPasswordRecoverySave),
           ),
           const SizedBox(height: 8),
           TextButton(
@@ -189,7 +194,7 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
             onPressed: _busy
                 ? null
                 : () => context.read<AuthController>().consumeRecovery(),
-            child: const Text('Not now'),
+            child: Text(l10n.accountPasswordRecoveryNotNow),
           ),
         ],
       ),

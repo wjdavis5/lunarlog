@@ -21,12 +21,14 @@ import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/diagnostics/device_diagnostics_collector.dart';
 import 'package:lunarlog/data/export/account_export_writer.dart';
 import 'package:lunarlog/data/export/csv_export_writer.dart';
+import 'package:lunarlog/data/consent/supabase_consent_service.dart';
 import 'package:lunarlog/data/export/clinical_pdf_writer.dart';
 import 'package:lunarlog/data/export/fhir_bundle_writer.dart';
 import 'package:lunarlog/data/export/supabase_account_export_remote_source.dart';
 import 'package:lunarlog/data/feedback/image_picker_attachment_source.dart';
 import 'package:lunarlog/data/feedback/supabase_feedback_service.dart';
 import 'package:lunarlog/data/health/health_channel.dart';
+import 'package:lunarlog/data/health/health_deviation_service.dart';
 import 'package:lunarlog/data/health/health_flow_write_coordinator.dart';
 import 'package:lunarlog/data/health/health_flow_write_service.dart';
 import 'package:lunarlog/data/health/health_import_service.dart';
@@ -74,6 +76,7 @@ import 'package:lunarlog/data/sync/realtime_sync_coordinator.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/birth_control.dart';
+import 'package:lunarlog/domain/consent/consent_service.dart';
 import 'package:lunarlog/domain/export/account_export_remote_source.dart';
 import 'package:lunarlog/domain/feedback/device_diagnostics_collector.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
@@ -105,6 +108,7 @@ import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart';
+import 'package:lunarlog/domain/health/health_deviation.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
@@ -169,6 +173,7 @@ class AppDependencies {
     this.profileErasureService,
     this.notificationPreferencesService,
     this.accountExportRemoteSource,
+    this.consentService,
     this.reminderWindowUpsert,
     this.scheduler,
     this.widgetDataStore,
@@ -245,6 +250,11 @@ class AppDependencies {
   final NotificationPreferencesService? notificationPreferencesService;
   final AccountExportRemoteSource? accountExportRemoteSource;
 
+  /// Issue #845: the account-level minimum-age consent-record seam. Null on
+  /// the unconfigured-build posture, same gate as
+  /// [accountExportRemoteSource].
+  final ConsentService? consentService;
+
   /// Publishes a profile's prediction window to the server (Issue #5). Null
   /// without a push-capable Supabase client.
   final ReminderWindowRemote? reminderWindowUpsert;
@@ -285,6 +295,7 @@ AppDependencies buildAppDependencies({
   ProfileErasureService? profileErasureService,
   NotificationPreferencesService? notificationPreferencesService,
   AccountExportRemoteSource? accountExportRemoteSource,
+  ConsentService? consentService,
   ReminderWindowRemote? reminderWindowUpsert,
   ReminderScheduler? scheduler,
   WidgetDataStore? widgetDataStore,
@@ -478,6 +489,11 @@ AppDependencies buildAppDependencies({
       () => SupabaseNotificationPreferencesService(client: client!),
     ),
     accountExportRemoteSource: builtAccountExportRemoteSource,
+    consentService: _resolve(
+      consentService,
+      cloudEnabled,
+      () => SupabaseConsentService(client: client!),
+    ),
     reminderWindowUpsert: _resolve(
       reminderWindowUpsert,
       cloudEnabled && pushEnabled,
@@ -764,6 +780,38 @@ HealthImportRunner? buildHealthImportRunner({
     observations: observations,
     guardiansForProfile: guardiansForProfile,
     signedInUserId: signedInUserId,
+  );
+}
+
+/// Constructs the device-local computed-cycle-deviation insight service
+/// (Issue #799, deferred from #217), or null when health sync is gated off —
+/// the same gate and wired platforms as [buildHealthImportRunner]. It shares
+/// that runner's read port, so the "Apple Health noticed…" snapshot is read
+/// over exactly the same guarded channel; it never gains a write surface.
+HealthDeviationInsights? buildHealthDeviationInsights({
+  required SettingsStore settings,
+  required ProfilesRepository profiles,
+  required Future<List<ProfileGuardian>> Function(String profileId)
+  guardiansForProfile,
+  required String? Function() signedInUserId,
+  required bool minorBindingAllowed,
+}) {
+  if (!AppConfig.hasHealthSync) return null;
+  final importPlatform = _healthImportPlatforms[defaultTargetPlatform];
+  if (kIsWeb || importPlatform == null) return null;
+  final binding = HealthSyncBinding(settings);
+  return LocalHealthDeviationService(
+    source: createHealthImportSource(
+      defaultTargetPlatform,
+      binding: binding,
+      minorBindingAllowed: minorBindingAllowed,
+    ),
+    binding: binding,
+    minorBindingAllowed: minorBindingAllowed,
+    profiles: profiles,
+    guardiansForProfile: guardiansForProfile,
+    signedInUserId: signedInUserId,
+    settings: settings,
   );
 }
 

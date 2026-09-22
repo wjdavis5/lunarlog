@@ -144,12 +144,14 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
         final message = _message.text.trim();
         if (message.isEmpty) return;
         if (message.length > 4000) {
-          setState(() => _error = 'Message must be 4000 characters or fewer.');
+          setState(() => _error =
+              AppLocalizations.of(context).feedbackScreenMessageTooLong);
           return;
         }
         final replyEmail = _replyEmail.text.trim();
         if (!_emailPattern.hasMatch(replyEmail)) {
-          setState(() => _error = 'Enter a valid reply email address.');
+          setState(() => _error =
+              AppLocalizations.of(context).feedbackScreenReplyEmailInvalid);
           return;
         }
         await _controller.submit(
@@ -168,13 +170,14 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
             // screen session, and it may carry minors' health data (R5).
             _attachment = null;
             _formGeneration++;
-            _info = "Thanks — we'll get back to you at $replyEmail.";
+            _info = AppLocalizations.of(context).feedbackScreenThanks(replyEmail);
           });
         }
       });
 
   List<Widget> _buildCategoryChips() => [
-        Text('Category', style: Theme.of(context).textTheme.labelLarge),
+        Text(AppLocalizations.of(context).feedbackScreenCategoryLabel,
+            style: Theme.of(context).textTheme.labelLarge),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
@@ -199,8 +202,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
         // #165: multiline — the honest keyboard action is "newline" (a
         // "done" action would steal the enter key from line breaks).
         textInputAction: TextInputAction.newline,
-        decoration: const InputDecoration(
-          labelText: 'What happened?',
+        decoration: InputDecoration(
+          labelText: AppLocalizations.of(context).feedbackScreenMessageLabel,
           alignLabelWithHint: true,
         ),
         onChanged: (_) => setState(() {}),
@@ -217,15 +220,17 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
         textInputAction: TextInputAction.done,
         onSubmitted: (_) => _submit(),
         autofillHints: const [AutofillHints.email],
-        decoration: const InputDecoration(labelText: 'Reply email'),
+        decoration: InputDecoration(
+            labelText: AppLocalizations.of(context).feedbackScreenReplyEmailLabel),
       );
 
   List<Widget> _buildDiagnosticsSection() => [
         SwitchListTile(
           key: const ValueKey('feedback-diagnostics-toggle'),
           contentPadding: EdgeInsets.zero,
-          title: const Text('Include diagnostics'),
-          subtitle: const Text('App version, OS, device model, and recent activity.'),
+          title: Text(AppLocalizations.of(context).feedbackScreenDiagnosticsTitle),
+          subtitle: Text(
+              AppLocalizations.of(context).feedbackScreenDiagnosticsSubtitle),
           value: _diagnosticsOn,
           onChanged: _busy ? null : (value) => setState(() => _diagnosticsOn = value),
         ),
@@ -239,7 +244,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                 children: [
                   Icon(_diagnosticsExpanded ? Icons.expand_less : Icons.expand_more, size: 20),
                   const SizedBox(width: 4),
-                  const Text('See what will be attached'),
+                  Text(AppLocalizations.of(context)
+                      .feedbackScreenDiagnosticsPreview),
                 ],
               ),
             ),
@@ -298,13 +304,13 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   Widget _buildSubmitButton() => FilledButton(
         key: const ValueKey('feedback-submit'),
         onPressed: _busy || _message.text.trim().isEmpty ? null : _submit,
-        child: const Text('Send feedback'),
+        child: Text(AppLocalizations.of(context).feedbackScreenSendButton),
       );
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Send feedback')),
+      appBar: AppBar(title: Text(AppLocalizations.of(context).feedbackScreenTitle)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

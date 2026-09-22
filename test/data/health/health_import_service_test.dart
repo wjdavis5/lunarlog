@@ -11,6 +11,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/health/health_import_service.dart';
+import 'package:lunarlog/domain/health/health_deviation.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
@@ -33,9 +34,8 @@ const _profileId = 'profile-1';
 const _ownerId = 'owner-user';
 const _tz = 'America/New_York';
 
-/// The fixed "today" every pass resolves its window against. The window is
-/// [kHealthImportWindowDays] days back inclusive, i.e. 2026-08-17 …
-/// 2026-09-15.
+/// The fixed "today" every pass resolves its window against. Since Issue
+/// #992 the window is full history (1970 … today), not a fixed day count.
 final _today = LocalDate(2026, 9, 15);
 
 Profile _profile() => Profile(
@@ -83,22 +83,51 @@ class _FakePlatform implements HealthPlatformStore {
 }
 
 class _FakeSource implements HealthImportSource {
+  /// A single page served on every call. Cursor is null, so a pass that
+  /// uses this stops after one page — the shape the pre-#992 tests use.
   HealthReadResult result = const HealthReadResult.samples([]);
+
+  /// When non-empty, pages are served in order (an exhausted fake returns
+  /// an empty page with a null cursor). Lets a test drive the cursor loop.
+  List<HealthReadResult> pages = const [];
+
   int calls = 0;
   DateTime? lastStart;
   DateTime? lastEnd;
+  int? lastPageSize;
+  String? lastCursor;
+  final List<String?> cursorsSeen = [];
 
   @override
-  Future<HealthReadResult> readMenstrualFlow(
+  Future<HealthReadResult> readMenstrualFlowPage(
     HealthGuardFacts facts, {
     required DateTime start,
     required DateTime end,
+    required int pageSize,
+    String? cursor,
   }) async {
-    calls++;
     lastStart = start;
     lastEnd = end;
+    lastPageSize = pageSize;
+    lastCursor = cursor;
+    cursorsSeen.add(cursor);
+    final index = calls;
+    calls++;
+    if (pages.isNotEmpty) {
+      return index < pages.length
+          ? pages[index]
+          : const HealthReadResult.samples([]);
+    }
     return result;
   }
+
+  @override
+  Future<HealthDeviationReadResult> readCycleDeviations(
+    HealthGuardFacts facts, {
+    required DateTime start,
+    required DateTime end,
+  }) async =>
+      const HealthDeviationReadResult.unavailable();
 }
 
 class _FakeProfiles implements ProfilesRepository {
@@ -406,14 +435,16 @@ void main() {
     expect(dayEntries.saved, isEmpty);
   });
 
-  test('samples outside the bounded window are ignored', () async {
+  test('a sample dated after today is ignored (the window still ends '
+      'today)', () async {
     await bind();
     source.result = HealthReadResult.samples([
-      // 2026-08-16 is one day before the 30-day window opens.
+      // 2026-09-16 is one day after "today" (2026-09-15) — outside the
+      // imported civil window even though the full history has no lower cap.
       _sample(
-        id: 'hk-old',
+        id: 'hk-future',
         flow: HealthFlowValue.heavy,
-        startIso: '2026-08-16T04:00:00Z',
+        startIso: '2026-09-16T04:00:00Z',
       ),
     ]);
     final summary = await build().importNow();
@@ -423,16 +454,36 @@ void main() {
   });
 
   test(
-    'the query window is widened a day either side of the civil window',
+    'the full-history query window runs from 1970 to tomorrow, one day of '
+    'slack either side',
     () async {
       await bind();
       await build().importNow();
-      // Window opens 2026-08-17, closes 2026-09-15; query is padded by one
-      // day before and two days after (exclusive end).
-      expect(source.lastStart, DateTime.utc(2026, 8, 16));
+      // Lower bound is the first day of kHealthImportEarliestYear minus a
+      // day; upper bound is today + 2 (exclusive end). Issue #992 removed
+      // the 30-day cap, so a 2026-08-16 sample now imports.
+      expect(source.lastStart, DateTime.utc(1969, 12, 31));
       expect(source.lastEnd, DateTime.utc(2026, 9, 17));
+      expect(source.lastPageSize, kHealthImportPageSize);
+      expect(source.lastCursor, isNull);
     },
   );
+
+  test('a sample from before the old 30-day window now imports (Issue #992)',
+      () async {
+    await bind();
+    source.result = HealthReadResult.samples([
+      _sample(
+        id: 'hk-old',
+        flow: HealthFlowValue.heavy,
+        // 15:00Z is 10:00 in America/New_York, so the civil date is the 15th.
+        startIso: '2024-01-15T15:00:00Z',
+      ),
+    ]);
+    final summary = await build().importNow();
+    expect(summary.daysWritten, 1);
+    expect(dayEntries.saved.single.localDate, LocalDate(2024, 1, 15));
+  });
 
   test('a hand-logged flow is never overwritten', () async {
     await bind();
@@ -873,6 +924,182 @@ void main() {
       expect(summary.samplesFromRecordedZone, 1);
       expect(summary.samplesFromDeviceZone, 1);
       expect(summary.samplesWithoutZone, 1);
+    });
+  });
+
+  group('Issue #992 full-history paging', () {
+    test('pages are read in order with the cursor the previous page '
+        'returned, and a null cursor ends the pass', () async {
+      await bind();
+      source.pages = [
+        HealthReadResult.samples(
+          [
+            _sample(
+              id: 'p1',
+              flow: HealthFlowValue.light,
+              startIso: '2026-09-09T04:00:00Z',
+            ),
+          ],
+          nextCursor: 'cursor-2',
+        ),
+        const HealthReadResult.samples([], nextCursor: 'cursor-3'),
+        HealthReadResult.samples(
+          [
+            _sample(
+              id: 'p3',
+              flow: HealthFlowValue.medium,
+              startIso: '2026-09-10T04:00:00Z',
+            ),
+          ],
+        ),
+      ];
+      final summary = await build().importNow();
+
+      expect(summary.pagesRead, 3);
+      expect(source.calls, 3);
+      expect(source.cursorsSeen, [null, 'cursor-2', 'cursor-3']);
+      expect(summary.samplesRead, 2);
+      expect(summary.daysWritten, 2);
+      expect(summary.repeatedCursor, isFalse);
+      expect(summary.pageLimitReached, isFalse);
+    });
+
+    test('a page with no samples but a live cursor continues the pass',
+        () async {
+      await bind();
+      source.pages = [
+        // Every raw sample on this page was our own write, so it filtered
+        // to nothing — but the page advanced, so the loop must continue.
+        const HealthReadResult.samples([], nextCursor: 'cursor-2'),
+        HealthReadResult.samples([
+          _sample(
+            id: 'later',
+            flow: HealthFlowValue.heavy,
+            startIso: '2026-09-10T04:00:00Z',
+          ),
+        ]),
+      ];
+      final summary = await build().importNow();
+      expect(summary.pagesRead, 2);
+      expect(summary.daysWritten, 1);
+      expect(dayEntries.saved.single.sourceId, 'later');
+    });
+
+    test('the highest intensity wins even when the samples land on '
+        'different pages', () async {
+      await bind();
+      source.pages = [
+        HealthReadResult.samples(
+          [
+            _sample(
+              id: 'light-page',
+              flow: HealthFlowValue.light,
+              startIso: '2026-09-10T04:00:00Z',
+            ),
+          ],
+          nextCursor: 'cursor-2',
+        ),
+        HealthReadResult.samples([
+          _sample(
+            id: 'heavy-page',
+            flow: HealthFlowValue.heavy,
+            startIso: '2026-09-10T05:00:00Z',
+          ),
+        ]),
+      ];
+      final summary = await build().importNow();
+      expect(summary.daysWritten, 1);
+      expect(dayEntries.saved.single.flow, FlowLevel.heavy);
+      expect(dayEntries.saved.single.sourceId, 'heavy-page');
+    });
+
+    test('a repeated cursor stops the pass instead of spinning', () async {
+      await bind();
+      source.pages = [
+        const HealthReadResult.samples([], nextCursor: 'same'),
+        const HealthReadResult.samples([], nextCursor: 'same'),
+      ];
+      final summary = await build().importNow();
+      expect(summary.repeatedCursor, isTrue);
+      expect(summary.pagesRead, 2);
+    });
+
+    test('a cursor already seen this pass stops the pass', () async {
+      await bind();
+      source.pages = [
+        const HealthReadResult.samples([], nextCursor: 'A'),
+        const HealthReadResult.samples([], nextCursor: 'B'),
+        const HealthReadResult.samples([], nextCursor: 'A'),
+      ];
+      final summary = await build().importNow();
+      expect(summary.repeatedCursor, isTrue);
+      expect(summary.pagesRead, 3);
+    });
+
+    test('the page cap stops a runaway adapter', () async {
+      await bind();
+      source.pages = [
+        for (var i = 0; i < kHealthImportMaxPages + 5; i++)
+          HealthReadResult.samples([], nextCursor: 'cursor-$i'),
+      ];
+      final summary = await build().importNow();
+      expect(summary.pageLimitReached, isTrue);
+      expect(summary.pagesRead, kHealthImportMaxPages);
+    });
+
+    test('onProgress reports the running counts after each page', () async {
+      await bind();
+      source.pages = [
+        HealthReadResult.samples(
+          [
+            _sample(
+              id: 'a',
+              flow: HealthFlowValue.light,
+              startIso: '2026-09-09T04:00:00Z',
+            ),
+          ],
+          nextCursor: 'cursor-2',
+        ),
+        HealthReadResult.samples([
+          _sample(
+            id: 'b',
+            flow: HealthFlowValue.medium,
+            startIso: '2026-09-10T04:00:00Z',
+          ),
+        ]),
+      ];
+      final ticks = <HealthImportProgress>[];
+      await build().importNow(onProgress: ticks.add);
+      expect(ticks, hasLength(2));
+      expect(ticks[0].pagesRead, 1);
+      expect(ticks[0].samplesRead, 1);
+      expect(ticks[1].pagesRead, 2);
+      expect(ticks[1].samplesRead, 2);
+    });
+
+    test('a large page is still resolved correctly through the isolate '
+        'offload seam', () async {
+      await bind();
+      // More than kHealthImportResolveOffloadThreshold samples on ONE day,
+      // so the page-resolution runs on a background isolate and the
+      // accumulator still keeps the single highest flow.
+      source.result = HealthReadResult.samples([
+        for (var i = 0; i < kHealthImportResolveOffloadThreshold; i++)
+          _sample(
+            id: 'iso-$i',
+            flow: HealthFlowValue.light,
+            startIso: '2026-09-10T04:00:00Z',
+          ),
+        _sample(
+          id: 'iso-heavy',
+          flow: HealthFlowValue.heavy,
+          startIso: '2026-09-10T05:00:00Z',
+        ),
+      ]);
+      final summary = await build().importNow();
+      expect(summary.daysWritten, 1);
+      expect(dayEntries.saved.single.flow, FlowLevel.heavy);
+      expect(dayEntries.saved.single.sourceId, 'iso-heavy');
     });
   });
 }

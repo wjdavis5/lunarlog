@@ -8,10 +8,9 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/sync/local_row_counts.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:provider/provider.dart';
-
-String _plural(int n, String one, String many) => '$n ${n == 1 ? one : many}';
 
 class UploadConsentScreen extends StatefulWidget {
   const UploadConsentScreen({super.key, required this.onNotNow});
@@ -47,9 +46,10 @@ class _UploadConsentScreenState extends State<UploadConsentScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Upload to your account?'),
+        title: Text(l10n.accountUploadConsentTitle),
         automaticallyImplyLeading: false,
       ),
       body: ListView(
@@ -60,24 +60,18 @@ class _UploadConsentScreenState extends State<UploadConsentScreen> {
             builder: (context, snapshot) {
               final counts = snapshot.data;
               if (counts == null) {
-                return const Text('This device holds data that is not in '
-                    'your account yet.');
+                return Text(l10n.accountUploadConsentLoadingBody);
               }
               return Text(
-                'This device holds ${_plural(counts.profiles, 'profile', 'profiles')} '
-                'and ${_plural(counts.dayEntries, 'entry', 'entries')} that are '
-                'not in your account yet. Uploading copies them to the '
-                'account, deletions included, and keeps this device in sync '
-                'from now on.',
+                l10n.accountUploadConsentBody(
+                  counts.profiles,
+                  counts.dayEntries,
+                ),
               );
             },
           ),
           const SizedBox(height: 12),
-          const Text(
-            'If another device also created the same person while offline, '
-            'you will see two profiles after the upload; archive the one you '
-            'do not want.',
-          ),
+          Text(l10n.accountUploadConsentDuplicateNote),
           const SizedBox(height: 24),
           FilledButton(
             key: const ValueKey('consent-upload'),
@@ -88,13 +82,13 @@ class _UploadConsentScreenState extends State<UploadConsentScreen> {
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('Upload to my account'),
+                : Text(l10n.accountUploadConsentUploadAction),
           ),
           const SizedBox(height: 8),
           TextButton(
             key: const ValueKey('consent-not-now'),
             onPressed: _busy ? null : widget.onNotNow,
-            child: const Text('Not now'),
+            child: Text(l10n.accountUploadConsentNotNow),
           ),
         ],
       ),

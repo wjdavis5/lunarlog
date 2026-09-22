@@ -397,6 +397,18 @@ bool computeHasGoogle({
   return true;
 }
 
+/// Pure decision behind the Apple Sign-In availability default shared by
+/// the auth service, `SignInScreen`, and `AccountSection` (epic #831 slice
+/// 2): Apple Sign-In exists natively on iOS only, so a web build never
+/// renders or offers it. Exposed as a function so the rule is unit-testable
+/// even though production reads the compile-time `kIsWeb` and
+/// `defaultTargetPlatform` constants.
+bool computeAppleSignInAvailable({
+  required bool isWeb,
+  required bool isIos,
+}) =>
+    !isWeb && isIos;
+
 /// Pure decision behind [AppConfig.hasPasskeys] (#30 U1; KTD3).
 ///
 /// Requires [hasSupabase], a non-web platform, and a non-empty relying-party

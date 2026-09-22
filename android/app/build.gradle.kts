@@ -130,6 +130,13 @@ dependencies {
     // the current stable line (1.2.x is alpha-only as of this writing);
     // the minSdk 26 pin above already satisfies its floor per #166.
     implementation("androidx.health.connect:connect-client:1.1.0")
+    // Issue #992: plain-JVM unit test for the pure HealthImportCursor codec
+    // (paging cursor format). The codec deliberately uses only
+    // java.util.Base64 and strings — no Health Connect or android.* types —
+    // so it runs as a normal local unit test without Robolectric. Run with
+    // `./gradlew :app:testDebugUnitTest`; it is not wired into CI (which
+    // has no Android unit-test step).
+    testImplementation("junit:junit:4.13.2")
 }
 
 flutter {

@@ -45,6 +45,7 @@ import 'package:lunarlog/app_lifecycle.dart' show GateController;
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/util/email_address.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/google_sign_in_button.dart';
@@ -129,7 +130,10 @@ class _SignInScreenState extends State<SignInScreen> {
 
   bool get _showApple =>
       widget.showApple ??
-      (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS);
+      computeAppleSignInAvailable(
+        isWeb: kIsWeb,
+        isIos: defaultTargetPlatform == TargetPlatform.iOS,
+      );
 
   bool get _showGoogle => widget.showGoogle ?? AppConfig.hasGoogle;
 
@@ -227,19 +231,46 @@ class _SignInScreenState extends State<SignInScreen> {
     if (!widget.embedded) Navigator.of(context).maybePop();
   }
 
-  Future<void> _signIn() => _run(() async {
-        final auth = context.read<AuthController>();
-        await auth.signInWithPassword(
-          email: _email.text.trim(),
-          password: _password.text,
-        );
-        _signedIn();
-      });
+  /// #1030: rejects an empty or obviously malformed email locally, before
+  /// any handler hands it to the auth service. On failure it focuses the
+  /// field and shows the local copy under the same `auth-error` line a
+  /// server failure uses; the caller then returns without calling `_run`.
+  bool _emailLooksValid(AppLocalizations l10n) {
+    final email = _email.text.trim();
+    final String? error;
+    if (email.isEmpty) {
+      error = l10n.accountSignInEmailRequired;
+    } else if (!looksLikeEmail(email)) {
+      error = l10n.accountSignInEmailInvalid;
+    } else {
+      error = null;
+    }
+    if (error == null) return true;
+    setState(() {
+      _error = error;
+      _info = null;
+    });
+    _emailFocus.requestFocus();
+    return false;
+  }
+
+  Future<void> _signIn() async {
+    if (!_emailLooksValid(AppLocalizations.of(context))) return;
+    await _run(() async {
+      final auth = context.read<AuthController>();
+      await auth.signInWithPassword(
+        email: _email.text.trim(),
+        password: _password.text,
+      );
+      _signedIn();
+    });
+  }
 
   Future<void> _createAccount() async {
+    final l10n = AppLocalizations.of(context);
     if (_password.text.length < kMinPasswordLength) {
       setState(() {
-        _error = 'Use at least $kMinPasswordLength characters for the password.';
+        _error = l10n.accountSignInUseAtLeast(kMinPasswordLength);
         _info = null;
       });
       return;
@@ -255,25 +286,23 @@ class _SignInScreenState extends State<SignInScreen> {
         case SignUpAwaitingConfirmation(email: final pending):
           await settings.set(SettingsKeys.awaitingConfirmationEmail, pending);
           if (mounted) {
-            setState(() => _info =
-                'Check your email to confirm the account, then open the '
-                'link on this device.');
+            setState(() => _info = l10n.accountSignInConfirmEmailInfo);
           }
       }
     });
   }
 
-  Future<void> _forgotPassword() => _run(() async {
-        final auth = context.read<AuthController>();
-        await auth.sendPasswordReset(_email.text.trim());
-        if (mounted) {
-          setState(() => _info =
-              'If an account exists for that email, a reset link is on its '
-              'way. Open it on this device. If you request another email, '
-              'only the newest link works — an earlier one stops working '
-              '(issue #32).');
-        }
-      });
+  Future<void> _forgotPassword() async {
+    final l10n = AppLocalizations.of(context);
+    if (!_emailLooksValid(l10n)) return;
+    await _run(() async {
+      final auth = context.read<AuthController>();
+      await auth.sendPasswordReset(_email.text.trim());
+      if (mounted) {
+        setState(() => _info = l10n.accountSignInResetInfo);
+      }
+    });
+  }
 
   /// Runs [action] inside the gate's system-UI window when a gate is in
   /// scope (#65 U2; KTD6), so the provider's own picker cannot re-lock the
@@ -333,19 +362,23 @@ class _SignInScreenState extends State<SignInScreen> {
   /// completion here — a link opened on this device arrives through
   /// [_onAuthChanged] like any other link-delivered session (#2 U3); the
   /// code field is the same-device alternative to that link.
-  Future<void> _sendMagicLink() => _run(() async {
-        final auth = context.read<AuthController>();
-        final settings = context.read<SettingsStore>();
-        final email = _email.text.trim();
-        await auth.sendMagicLink(email: email, createAccount: _createMode);
-        await settings.set(SettingsKeys.awaitingMagicLinkEmail, email);
-        if (mounted) {
-          setState(() {
-            _showCodeField = true;
-            _info = 'Check your email for a sign-in link or code.';
-          });
-        }
-      });
+  Future<void> _sendMagicLink() async {
+    final l10n = AppLocalizations.of(context);
+    if (!_emailLooksValid(l10n)) return;
+    await _run(() async {
+      final auth = context.read<AuthController>();
+      final settings = context.read<SettingsStore>();
+      final email = _email.text.trim();
+      await auth.sendMagicLink(email: email, createAccount: _createMode);
+      await settings.set(SettingsKeys.awaitingMagicLinkEmail, email);
+      if (mounted) {
+        setState(() {
+          _showCodeField = true;
+          _info = l10n.accountSignInMagicLinkInfo;
+        });
+      }
+    });
+  }
 
   /// The same-device counterpart of [_sendMagicLink]: completes through
   /// [_signedIn] directly, matching [_apple]/[_google]/[_passkey], since a
@@ -363,12 +396,10 @@ class _SignInScreenState extends State<SignInScreen> {
   /// (#2 U6).
   List<Widget> _buildEmbeddedIntro() => [
         if (widget.embedded)
-          const Padding(
-            padding: EdgeInsets.only(bottom: 16),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
             child: Text(
-              'An account keeps a copy of this device\'s data so it can be '
-              'restored on another device. You can also keep everything on '
-              'this device only.',
+              AppLocalizations.of(context).accountSignInEmbeddedIntro,
             ),
           ),
       ];
@@ -396,21 +427,21 @@ class _SignInScreenState extends State<SignInScreen> {
           OutlinedButton(
             key: const ValueKey('auth-passkey'),
             onPressed: _busy ? null : _passkey,
-            child: const Text('Sign in with a passkey'),
+            child: Text(AppLocalizations.of(context).accountSignInPasskeyAction),
           ),
           const SizedBox(height: 8),
         ],
         if (_showApple || _showGoogle || _showPasskeys)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
             child: Row(
               children: [
-                Expanded(child: Divider()),
+                const Expanded(child: Divider()),
                 Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12),
-                  child: Text('or'),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(AppLocalizations.of(context).accountSignInOr),
                 ),
-                Expanded(child: Divider()),
+                const Expanded(child: Divider()),
               ],
             ),
           ),
@@ -428,7 +459,9 @@ class _SignInScreenState extends State<SignInScreen> {
         textInputAction: TextInputAction.next,
         onSubmitted: (_) => _passwordFocus.requestFocus(),
         autofillHints: const [AutofillHints.email],
-        decoration: const InputDecoration(labelText: 'Email'),
+        decoration: InputDecoration(
+          labelText: AppLocalizations.of(context).accountSignInEmailLabel,
+        ),
       );
 
   /// #165: "done" submits (whichever primary action the current mode
@@ -447,15 +480,18 @@ class _SignInScreenState extends State<SignInScreen> {
             ? const [AutofillHints.newPassword]
             : const [AutofillHints.password],
         decoration: InputDecoration(
-          labelText: 'Password',
+          labelText: AppLocalizations.of(context).accountSignInPasswordLabel,
           helperText: _createMode
-              ? 'At least $kMinPasswordLength characters'
+              ? AppLocalizations.of(context)
+                  .accountSignInPasswordLengthHelper(kMinPasswordLength)
               : null,
           suffixIcon: IconButton(
             key: const ValueKey('auth-password-reveal'),
             onPressed: () =>
                 setState(() => _obscurePassword = !_obscurePassword),
-            tooltip: _obscurePassword ? 'Show password' : 'Hide password',
+            tooltip: _obscurePassword
+                ? AppLocalizations.of(context).accountSignInShowPassword
+                : AppLocalizations.of(context).accountSignInHidePassword,
             icon: Icon(
               _obscurePassword
                   ? Icons.visibility_outlined
@@ -503,13 +539,14 @@ class _SignInScreenState extends State<SignInScreen> {
           FilledButton(
             key: const ValueKey('auth-create-account'),
             onPressed: _busy ? null : _createAccount,
-            child: const Text('Create account'),
+            child:
+                Text(AppLocalizations.of(context).accountSignInCreateAccountAction),
           )
         else
           FilledButton(
             key: const ValueKey('auth-sign-in'),
             onPressed: _busy ? null : _signIn,
-            child: const Text('Sign in'),
+            child: Text(AppLocalizations.of(context).accountSignInAction),
           ),
       ];
 
@@ -524,14 +561,14 @@ class _SignInScreenState extends State<SignInScreen> {
                     _info = null;
                   }),
           child: Text(_createMode
-              ? 'I already have an account'
-              : 'Create an account instead'),
+              ? AppLocalizations.of(context).accountSignInToggleHaveAccount
+              : AppLocalizations.of(context).accountSignInToggleCreateInstead),
         ),
         if (!_createMode)
           TextButton(
             key: const ValueKey('auth-forgot-password'),
             onPressed: _busy ? null : _forgotPassword,
-            child: const Text('Forgot password'),
+            child: Text(AppLocalizations.of(context).accountSignInForgotPasswordAction),
           ),
       ];
 
@@ -542,16 +579,16 @@ class _SignInScreenState extends State<SignInScreen> {
   /// build-config gate) — button copy follows [_createMode] the same way
   /// [_buildPrimaryActionButton] does.
   List<Widget> _buildMagicLinkSection() => [
-        const Padding(
-          padding: EdgeInsets.symmetric(vertical: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
           child: Row(
             children: [
-              Expanded(child: Divider()),
+              const Expanded(child: Divider()),
               Padding(
-                padding: EdgeInsets.symmetric(horizontal: 12),
-                child: Text('or'),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text(AppLocalizations.of(context).accountSignInOr),
               ),
-              Expanded(child: Divider()),
+              const Expanded(child: Divider()),
             ],
           ),
         ),
@@ -559,8 +596,8 @@ class _SignInScreenState extends State<SignInScreen> {
           key: const ValueKey('auth-magic-link'),
           onPressed: _busy ? null : _sendMagicLink,
           child: Text(_createMode
-              ? 'Email me a link to create my account'
-              : 'Email me a sign-in link'),
+              ? AppLocalizations.of(context).accountSignInMagicLinkCreate
+              : AppLocalizations.of(context).accountSignInMagicLinkSignIn),
         ),
         ..._buildCodeField(),
       ];
@@ -583,46 +620,46 @@ class _SignInScreenState extends State<SignInScreen> {
             },
             autofillHints: const [AutofillHints.oneTimeCode],
             onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(
-              labelText: 'Code from the email',
-              hintText: '6-10 digits',
+            decoration: InputDecoration(
+              labelText: AppLocalizations.of(context).accountSignInCodeLabel,
+              hintText: AppLocalizations.of(context).accountSignInCodeHint,
             ),
           ),
           const SizedBox(height: 8),
           FilledButton(
             key: const ValueKey('auth-verify-code'),
             onPressed: _busy || !_codeLooksValid ? null : _verifyCode,
-            child: const Text('Sign in with code'),
+            child: Text(AppLocalizations.of(context).accountSignInVerifyCodeAction),
           ),
         ],
       ];
 
   List<Widget> _buildEmbeddedFooter() {
     if (!widget.embedded) return const [];
-    final l10n = Localizations.of<AppLocalizations>(context, AppLocalizations);
-    final restoreLabel =
-        l10n?.firstRunRestore ?? 'Restore from backup or Clue export';
+    final l10n = AppLocalizations.of(context);
     return [
       const Divider(height: 32),
       if (widget.onRestore != null) ...[
         OutlinedButton(
           key: const ValueKey('first-run-restore-account-step'),
           onPressed: _busy ? null : widget.onRestore,
-          child: Text(restoreLabel),
+          child: Text(l10n.firstRunRestore),
         ),
         const SizedBox(height: 8),
       ],
       TextButton(
         key: const ValueKey('first-run-not-now'),
         onPressed: _busy ? null : widget.onNotNow,
-        child: const Text('Not now'),
+        child: Text(l10n.accountSignInNotNow),
       ),
     ];
   }
 
   @override
   Widget build(BuildContext context) {
-    final title = _createMode ? 'Create an account' : 'Sign in';
+    final l10n = AppLocalizations.of(context);
+    final title =
+        _createMode ? l10n.accountSignInTitleCreate : l10n.accountSignInTitle;
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
