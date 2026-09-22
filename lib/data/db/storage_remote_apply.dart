@@ -2380,6 +2380,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           loserLoggedByUserId: other.loggedByUserId,
           loserNote: other.note,
           winnerNote: remote.note,
+          loserNotePrivate: other.notePrivate,
           loserFlow: other.flow,
           winnerFlow: remote.flow,
         );
@@ -2433,6 +2434,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           loserLoggedByUserId: remote.loggedByUserId,
           loserNote: remote.note,
           winnerNote: other.note,
+          loserNotePrivate: remote.notePrivate,
           loserFlow: remote.flow,
           winnerFlow: other.flow,
         );
@@ -2563,6 +2565,11 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     required String? loserLoggedByUserId,
     required String? loserNote,
     required String? winnerNote,
+    // Issue #849: a private losing note's text is never synced — the
+    // disclosure row is still recorded (guardians learn a note was
+    // discarded) but with empty retained text, matching the server
+    // resolver's own redaction.
+    required bool loserNotePrivate,
     required FlowLevel loserFlow,
     required FlowLevel winnerFlow,
   }) async {
@@ -2579,7 +2586,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
         winnerRowId: winnerRowId,
         losingRowId: losingRowId,
         field: 'note',
-        losingValueText: loserNote ?? '',
+        losingValueText: loserNotePrivate ? '' : (loserNote ?? ''),
         losingAuthorUserId: loserActorId,
         winningAuthorUserId: winnerActorId,
       );
