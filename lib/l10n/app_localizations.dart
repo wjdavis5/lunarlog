@@ -1566,6 +1566,12 @@ abstract class AppLocalizations {
   /// **'Export clinical summary for'**
   String get clinicalPdfExportForProfileTitle;
 
+  /// Issue #115 G4: shown beneath any export tile when the operator tries to export a profile flagged as a minor's but is not an accepted guardian (or the subject) on it.
+  ///
+  /// In en, this message translates to:
+  /// **'Export is not available for a minor\'s profile without guardian access.'**
+  String get exportMinorGuardianUnavailable;
+
   /// Header of the Settings 'Appearance' section (Issue #226): the theme-mode picker.
   ///
   /// In en, this message translates to:

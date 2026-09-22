@@ -1265,6 +1265,10 @@
   "@clinicalPdfExportForProfileTitle": {
     "description": "Profile chooser dialog title shown before the PDF clinical summary export when several live profiles exist (Issue #154)."
   },
+  "exportMinorGuardianUnavailable": "Export is not available for a minor's profile without guardian access.",
+  "@exportMinorGuardianUnavailable": {
+    "description": "Issue #115 G4: shown beneath any export tile when the operator tries to export a profile flagged as a minor's but is not an accepted guardian (or the subject) on it."
+  },
   "settingsSectionAppearance": "Appearance",
   "@settingsSectionAppearance": {
     "description": "Header of the Settings 'Appearance' section (Issue #226): the theme-mode picker."

@@ -32,6 +32,24 @@ class ExportAccess {
   final bool allowed;
 }
 
+/// Resolves [ExportAccess] from already-read membership facts — the pure
+/// half, so a caller that must read several profiles' guardians before its
+/// first `await` (the household JSON export) can reuse the same rule.
+ExportAccess exportAccessFor({
+  required Profile profile,
+  required List<ProfileGuardian> guardians,
+  required String? currentUserId,
+  DateTime? today,
+}) =>
+    ExportAccess(
+      lens: guardianLensFor(guardians, currentUserId),
+      allowed: canExportMinorProfile(
+        isMinor: profile.isMinorAsOf(today ?? DateTime.now()),
+        guardians: guardians,
+        currentUserId: currentUserId,
+      ),
+    );
+
 /// Reads the operator's membership for [profile] from the tree and resolves
 /// [ExportAccess].
 ///
@@ -51,12 +69,10 @@ Future<ExportAccess> resolveExportAccess(
   final guardians = guardiansRepo == null
       ? const <ProfileGuardian>[]
       : await guardiansRepo.getForProfile(profile.id);
-  return ExportAccess(
-    lens: guardianLensFor(guardians, currentUserId),
-    allowed: canExportMinorProfile(
-      isMinor: profile.isMinorAsOf(today ?? DateTime.now()),
-      guardians: guardians,
-      currentUserId: currentUserId,
-    ),
+  return exportAccessFor(
+    profile: profile,
+    guardians: guardians,
+    currentUserId: currentUserId,
+    today: today,
   );
 }
