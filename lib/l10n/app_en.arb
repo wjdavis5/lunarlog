@@ -1593,6 +1593,14 @@
   "@firstRunInviteSignInAction": {
     "description": "Button on the invite step opening the embedded sign-in screen; names the outcome the sign-in is for (issue #804; reworded by issue #996)."
   },
+  "pendingInviteBannerTitle": "Sign in to accept your invite",
+  "@pendingInviteBannerTitle": {
+    "description": "Persistent banner shown while a latched invite waits for a signed-out recipient (issue #535 (b)); moved out of lib/app.dart verbatim (issue #1046 follow-up)."
+  },
+  "pendingInviteBannerAction": "Sign In",
+  "@pendingInviteBannerAction": {
+    "description": "Action on the pending-invite banner opening the sign-in screen (issue #535 (b)); moved out of lib/app.dart verbatim, capital I preserved (issue #1046 follow-up)."
+  },
   "firstRunInviteCoParent": "Invite a guardian",
   "@firstRunInviteCoParent": {
     "description": "Per-profile button opening the invite dialog with the guardian presets (issue #804). Issue #1005: 'a guardian' is the umbrella the dialog actually offers — a grandparent inviting is not a co-parent."
@@ -3898,6 +3906,34 @@
     "sharingNotificationPreferencesMissedEntrySubtitle": "Check in when no entry has been logged for a while",
     "@sharingNotificationPreferencesMissedEntrySubtitle": {
       "description": "Issue #1004 (tranche 1): missed-entry threshold tile subtitle."
+    },
+    "sharingNotificationPreferencesAheadOfTimeHeader": "Ahead of time",
+    "@sharingNotificationPreferencesAheadOfTimeHeader": {
+      "description": "Issue #851: section header over the three opt-in ahead-of-time guardian alerts."
+    },
+    "sharingNotificationPreferencesPeriodSoon": "Period reminder",
+    "@sharingNotificationPreferencesPeriodSoon": {
+      "description": "Issue #851: opt-in toggle for the period_soon ahead-of-time alert."
+    },
+    "sharingNotificationPreferencesPeriodSoonSubtitle": "A heads-up a few days before the next expected period",
+    "@sharingNotificationPreferencesPeriodSoonSubtitle": {
+      "description": "Issue #851: period_soon toggle subtitle (generic; the alert itself carries no detail)."
+    },
+    "sharingNotificationPreferencesRestock": "Restock reminder",
+    "@sharingNotificationPreferencesRestock": {
+      "description": "Issue #851: opt-in toggle for the restock_due ahead-of-time alert."
+    },
+    "sharingNotificationPreferencesRestockSubtitle": "Remind me to restock supplies before the next expected period",
+    "@sharingNotificationPreferencesRestockSubtitle": {
+      "description": "Issue #851: restock_due toggle subtitle."
+    },
+    "sharingNotificationPreferencesPmsSoon": "PMS heads-up",
+    "@sharingNotificationPreferencesPmsSoon": {
+      "description": "Issue #851: opt-in toggle for the pms_soon ahead-of-time alert."
+    },
+    "sharingNotificationPreferencesPmsSoonSubtitle": "A gentle heads-up before a likely PMS window (needs at least three logged PMS intervals)",
+    "@sharingNotificationPreferencesPmsSoonSubtitle": {
+      "description": "Issue #851: pms_soon toggle subtitle, naming the three-interval gate."
     },
     "sharingNotificationPreferencesOff": "Off",
     "@sharingNotificationPreferencesOff": {

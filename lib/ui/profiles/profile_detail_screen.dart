@@ -247,6 +247,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
       readOnly: widget.readOnly,
       timezoneProvider: widget.timezoneProvider,
       guardiansRepository: guardiansRepository,
+      subjectName: widget.profile.displayName,
       trailingChildren: !widget.readOnly
           ? const []
           : [

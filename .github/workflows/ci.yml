@@ -76,6 +76,12 @@ jobs:
         if: always()
         run: bash .github/scripts/tests/check-qa-build-gate.test.sh
 
+      # Issue #141 / PR #1007: a signed build now signs both the app and its
+      # LunarLogWidget extension, so the workflow must install two profiles
+      # and the export plist must map both bundle ids. This pins that wiring.
+      - name: Run check-ios-widget-signing tests
+        if: always()
+        run: bash .github/scripts/tests/check-ios-widget-signing.test.sh
       - name: Run check-web-build-output tests
         # Epic #831 slice 3: proves the web-build deploy gate fails closed on
         # a missing CSP/`_redirects`, and that web-deploy.yml builds the sync
@@ -248,6 +254,12 @@ jobs:
         if: always()
         run: bash .github/scripts/tests/check-qa-build-gate.test.sh
 
+      # Issue #141 / PR #1007: a signed build now signs both the app and its
+      # LunarLogWidget extension, so the workflow must install two profiles
+      # and the export plist must map both bundle ids. This pins that wiring.
+      - name: Run check-ios-widget-signing tests
+        if: always()
+        run: bash .github/scripts/tests/check-ios-widget-signing.test.sh
       - name: Run check-web-build-output tests
         # Epic #831 slice 3: proves the web-build deploy gate fails closed on
         # a missing CSP/`_redirects`, and that web-deploy.yml builds the sync

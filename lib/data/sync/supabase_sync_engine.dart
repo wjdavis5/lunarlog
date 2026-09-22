@@ -210,138 +210,114 @@ class _SyncAborted implements Exception {
   const _SyncAborted();
 }
 
-/// Keyset cursor state for one [SupabaseSyncEngine._push] call, split out
-/// so [SupabaseSyncEngine._readPushRound] stays small. `readProfilePage`
-/// is always a live read with no cached "done" flag (finding #1) —
-/// `entriesDone` only latches for day entries, whose own read is gated by
-/// the caller once a page comes back short.
+/// One row of the table-agnostic push-paging descriptor (issue #551):
+/// where a table's dirty page is read, which column identifies a row and
+/// its captured `local_rev`, how a row is JSON-encoded for `sync_push`, and
+/// the owning profile id (`null` for profiles). The ordered list of these in
+/// [SupabaseSyncEngine._pushTables] replaces the hand-written chain of
+/// `readXPage` methods and `xDone` flags — the parent-before-child paging
+/// order is now the list order.
+class _PushTable {
+  const _PushTable({
+    required this.table,
+    required this.readPage,
+    required this.idOf,
+    required this.localRevOf,
+    required this.encode,
+    required this.profileIdOf,
+    required this.alwaysRead,
+  });
+
+  final SyncTable table;
+  final Future<List<dynamic>> Function({int? limit, String? afterId}) readPage;
+  final String Function(dynamic row) idOf;
+  final int Function(dynamic row) localRevOf;
+  final JsonRow Function(dynamic row) encode;
+  final String? Function(dynamic row)? profileIdOf;
+
+  /// The one always-read table ([SyncTable.profiles], finding #1): read on
+  /// every round rather than gated behind a latched "done" flag, so a
+  /// profile created mid-cycle surfaces in a later round's page and is
+  /// pushed before or alongside its own day entries.
+  final bool alwaysRead;
+}
+
+/// Builds a [_PushTable] with the row type checked at the call site, then
+/// erased to `dynamic` for the heterogeneous ordered list
+/// [SupabaseSyncEngine._pushTables].
+_PushTable _pushTable<T>({
+  required SyncTable table,
+  required Future<List<T>> Function({int? limit, String? afterId}) readPage,
+  required String Function(T) idOf,
+  required int Function(T) localRev,
+  required JsonRow Function(T) encode,
+  String? Function(T)? profileIdOf,
+  bool alwaysRead = false,
+}) =>
+    _PushTable(
+      table: table,
+      readPage: ({int? limit, String? afterId}) =>
+          readPage(limit: limit, afterId: afterId),
+      idOf: (row) => idOf(row as T),
+      localRevOf: (row) => localRev(row as T),
+      encode: (row) => encode(row as T),
+      profileIdOf:
+          profileIdOf == null ? null : (row) => profileIdOf(row as T),
+      alwaysRead: alwaysRead,
+    );
+
+/// Keyset cursor state for one [SupabaseSyncEngine._push] call.
+///
+/// Issue #551: table-agnostic — a cursor string per table key plus the set
+/// of child tables whose keyset scan is exhausted, driven by the ordered
+/// [_PushTable] list rather than ten hand-written `readXPage` methods and
+/// `xDone` flags. The always-read profiles entry (finding #1) has no
+/// latched "done" flag: its short-page signal is overwritten each round
+/// because it keeps being read.
 class _PushCursor {
-  _PushCursor(this._syncMetadata, this.batchSize);
+  _PushCursor(this.batchSize, this._tables);
 
-  final SyncDirtyStore _syncMetadata;
   final int batchSize;
+  final List<_PushTable> _tables;
 
-  String? _profileCursor;
-  String? _entryCursor;
-  String? _observationCursor;
-  String? _profileModeCursor;
-  String? _cycleOverrideCursor;
-  String? _careNoteCursor;
-  String? _guardianNoteCursor;
-  String? _visitPrepItemCursor;
-  String? _mergeEventCursor;
-  String? _tagRegistryCursor;
-  bool entriesDone = false;
-  bool observationsDone = false;
-  bool profileModesDone = false;
-  bool cycleOverridesDone = false;
-  bool careNotesDone = false;
-  bool guardianNotesDone = false;
-  bool visitPrepItemsDone = false;
-  bool mergeEventsDone = false;
-  bool tagRegistryDone = false;
+  final Map<String, String?> _cursors = {};
+  final Set<String> _done = {};
 
-  Future<List<Profile>> readProfilePage() async {
-    final page = await _syncMetadata.readDirtyProfiles(
-        limit: batchSize, afterId: _profileCursor);
-    if (page.isNotEmpty) _profileCursor = page.last.id;
+  /// Reads one keyset page for [table], advancing its cursor to the page's
+  /// last id when non-empty. Same keyset-paging contract every table's
+  /// `readDirty*` uses.
+  Future<List<dynamic>> readPage(_PushTable table) async {
+    final key = table.table.name;
+    final page =
+        await table.readPage(limit: batchSize, afterId: _cursors[key]);
+    if (page.isNotEmpty) _cursors[key] = table.idOf(page.last);
     return page;
   }
 
-  Future<List<DayEntry>> readEntryPage() async {
-    final page = await _syncMetadata.readDirtyDayEntries(
-        limit: batchSize, afterId: _entryCursor);
-    entriesDone = page.length < batchSize;
-    if (page.isNotEmpty) _entryCursor = page.last.id;
-    return page;
+  /// Records one table's page: the always-read profiles entry overwrites
+  /// its short-page signal each round (it keeps being read), while every
+  /// child table latches `done` once a page comes back short of
+  /// [batchSize] and is never read again this push.
+  void recordPage(_PushTable table, int pageLength) {
+    final key = table.table.name;
+    if (pageLength < batchSize) {
+      _done.add(key);
+    } else if (!table.alwaysRead) {
+      return;
+    } else {
+      _done.remove(key);
+    }
   }
 
-  /// Issue #240: same keyset-paging contract as [readEntryPage].
-  Future<List<Observation>> readObservationPage() async {
-    final page = await _syncMetadata.readDirtyObservations(
-        limit: batchSize, afterId: _observationCursor);
-    observationsDone = page.length < batchSize;
-    if (page.isNotEmpty) _observationCursor = page.last.id;
-    return page;
-  }
-
-  /// Issue #188: same keyset-paging contract as [readEntryPage], keyed by
-  /// profile id (the table's primary key).
-  Future<List<ProfileModeData>> readProfileModePage() async {
-    final page = await _syncMetadata.readDirtyProfileModes(
-        limit: batchSize, afterId: _profileModeCursor);
-    profileModesDone = page.length < batchSize;
-    if (page.isNotEmpty) _profileModeCursor = page.last.profileId;
-    return page;
-  }
-
-  /// Issue #188: same keyset-paging contract as [readEntryPage].
-  Future<List<CycleOverrideData>> readCycleOverridePage() async {
-    final page = await _syncMetadata.readDirtyCycleOverrides(
-        limit: batchSize, afterId: _cycleOverrideCursor);
-    cycleOverridesDone = page.length < batchSize;
-    if (page.isNotEmpty) _cycleOverrideCursor = page.last.id;
-    return page;
-  }
-
-  /// Issue #128: same keyset-paging contract as [readEntryPage].
-  Future<List<CareNoteData>> readCareNotePage() async {
-    final page = await _syncMetadata.readDirtyCareNotes(
-        limit: batchSize, afterId: _careNoteCursor);
-    careNotesDone = page.length < batchSize;
-    if (page.isNotEmpty) _careNoteCursor = page.last.id;
-    return page;
-  }
-
-  /// Issue #128: same keyset-paging contract as [readEntryPage].
-  Future<List<VisitPrepItemData>> readVisitPrepItemPage() async {
-    final page = await _syncMetadata.readDirtyVisitPrepItems(
-        limit: batchSize, afterId: _visitPrepItemCursor);
-    visitPrepItemsDone = page.length < batchSize;
-    if (page.isNotEmpty) _visitPrepItemCursor = page.last.id;
-    return page;
-  }
-
-  /// Issue #801: same keyset-paging contract as [readEntryPage].
-  Future<List<GuardianNoteData>> readGuardianNotePage() async {
-    final page = await _syncMetadata.readDirtyGuardianNotes(
-        limit: batchSize, afterId: _guardianNoteCursor);
-    guardianNotesDone = page.length < batchSize;
-    if (page.isNotEmpty) _guardianNoteCursor = page.last.id;
-    return page;
-  }
-
-  /// Issue #130: same keyset-paging contract as [readEntryPage].
-  Future<List<DayEntryMergeEventData>> readMergeEventPage() async {
-    final page = await _syncMetadata.readDirtyDayEntryMergeEvents(
-        limit: batchSize, afterId: _mergeEventCursor);
-    mergeEventsDone = page.length < batchSize;
-    if (page.isNotEmpty) _mergeEventCursor = page.last.id;
-    return page;
-  }
-
-  /// Issue #257: same keyset-paging contract as [readEntryPage].
-  Future<List<ProfileTagRegistryEntry>> readTagRegistryPage() async {
-    final page = await _syncMetadata.readDirtyProfileTagRegistry(
-        limit: batchSize, afterId: _tagRegistryCursor);
-    tagRegistryDone = page.length < batchSize;
-    if (page.isNotEmpty) _tagRegistryCursor = page.last.id;
-    return page;
-  }
+  bool isDone(String key) => _done.contains(key);
 
   /// Whether every child table's keyset scan is exhausted (the `done` half
-  /// of [_readPushRound]'s contract, split out so that method's branch
-  /// count stays under the CRAP gate as tables are added).
-  bool get allTablesDone =>
-      entriesDone &&
-      observationsDone &&
-      profileModesDone &&
-      cycleOverridesDone &&
-      careNotesDone &&
-      guardianNotesDone &&
-      visitPrepItemsDone &&
-      mergeEventsDone &&
-      tagRegistryDone;
+  /// of [_readPushRound]'s contract). The always-read profiles entry is
+  /// excluded — its emptiness is the separate per-round signal
+  /// [_readPushRound] uses for termination.
+  bool get allTablesDone => _tables
+      .where((t) => !t.alwaysRead)
+      .every((t) => _done.contains(t.table.name));
 }
 
 class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
@@ -691,6 +667,13 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   @visibleForTesting
   Future<bool> hasPushableDirtyForTest() => _hasPushableDirty();
 
+  /// Issue #551: the push paging order, exposed so the guard test can pin
+  /// it as a literal and cross-check it against the storage layer's
+  /// pushable tables. [_pushTables] remains the single source of truth.
+  @visibleForTesting
+  List<SyncTable> pushTableOrderForTest() =>
+      [for (final table in _pushTables) table.table];
+
   Future<bool> _hasPushable<T>({
     required Future<List<T>> Function({int? limit, String? afterId}) readPage,
     required String Function(T) id,
@@ -762,6 +745,106 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
           id: (e) => e.id,
           localRev: (e) => e.localRev,
         ),
+  ];
+
+  /// Issue #551: the single ordered source of truth for the push paging
+  /// order — parent before child, exactly the chain the hand-written
+  /// [_readPushRound] used to spell out. Adding a synced table is now one
+  /// entry here (plus its `PushBatch` array, the RPC's own fixed shape)
+  /// instead of a cursor field, a `readXPage`, a `Done` flag and up to five
+  /// chain sites.
+  ///
+  /// [SyncTable.profiles] is [alwaysRead] (finding #1) and first: everything
+  /// else references one, and a profile created mid-cycle must surface
+  /// before or alongside its own day entries so the server's foreign key
+  /// never rejects them. Each later entry rides the same keyset scan once
+  /// the one before it is exhausted: day entries then observations (an
+  /// observation references a day entry), the two mode tables and two care
+  /// tables after every content table (both reference only a profile), then
+  /// guardian notes, merge events and the tag registry (issues #801, #130,
+  /// #257 — each references only a profile, already pushed by the time its
+  /// turn comes).
+  late final List<_PushTable> _pushTables = [
+    _pushTable(
+      table: SyncTable.profiles,
+      readPage: _syncMetadata.readDirtyProfiles,
+      idOf: (p) => p.id,
+      localRev: (p) => p.localRev,
+      encode: encodeProfile,
+      alwaysRead: true,
+    ),
+    _pushTable(
+      table: SyncTable.dayEntries,
+      readPage: _syncMetadata.readDirtyDayEntries,
+      idOf: (e) => e.id,
+      localRev: (e) => e.localRev,
+      encode: encodeDayEntry,
+      profileIdOf: (e) => e.profileId,
+    ),
+    _pushTable(
+      table: SyncTable.observations,
+      readPage: _syncMetadata.readDirtyObservations,
+      idOf: (o) => o.id,
+      localRev: (o) => o.localRev,
+      encode: encodeObservation,
+      profileIdOf: (o) => o.profileId,
+    ),
+    _pushTable(
+      table: SyncTable.profileModes,
+      readPage: _syncMetadata.readDirtyProfileModes,
+      idOf: (m) => m.profileId,
+      localRev: (m) => m.localRev,
+      encode: encodeProfileMode,
+      profileIdOf: (m) => m.profileId,
+    ),
+    _pushTable(
+      table: SyncTable.cycleOverrides,
+      readPage: _syncMetadata.readDirtyCycleOverrides,
+      idOf: (o) => o.id,
+      localRev: (o) => o.localRev,
+      encode: encodeCycleOverride,
+      profileIdOf: (o) => o.profileId,
+    ),
+    _pushTable(
+      table: SyncTable.careNotes,
+      readPage: _syncMetadata.readDirtyCareNotes,
+      idOf: (n) => n.id,
+      localRev: (n) => n.localRev,
+      encode: encodeCareNote,
+      profileIdOf: (n) => n.profileId,
+    ),
+    _pushTable(
+      table: SyncTable.visitPrepItems,
+      readPage: _syncMetadata.readDirtyVisitPrepItems,
+      idOf: (i) => i.id,
+      localRev: (i) => i.localRev,
+      encode: encodeVisitPrepItem,
+      profileIdOf: (i) => i.profileId,
+    ),
+    _pushTable(
+      table: SyncTable.guardianNotes,
+      readPage: _syncMetadata.readDirtyGuardianNotes,
+      idOf: (n) => n.id,
+      localRev: (n) => n.localRev,
+      encode: encodeGuardianNote,
+      profileIdOf: (n) => n.profileId,
+    ),
+    _pushTable(
+      table: SyncTable.dayEntryMergeEvents,
+      readPage: _syncMetadata.readDirtyDayEntryMergeEvents,
+      idOf: (e) => e.id,
+      localRev: (e) => e.localRev,
+      encode: encodeDayEntryMergeEvent,
+      profileIdOf: (e) => e.profileId,
+    ),
+    _pushTable(
+      table: SyncTable.profileTagRegistry,
+      readPage: _syncMetadata.readDirtyProfileTagRegistry,
+      idOf: (e) => e.id,
+      localRev: (e) => e.localRev,
+      encode: encodeProfileTagRegistryEntry,
+      profileIdOf: (e) => e.profileId,
+    ),
   ];
 
   /// Whether any dirty row across every pushed table is currently
@@ -1180,7 +1263,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     if (totalDirty == 0) return;
 
     var pushedRows = 0;
-    final cursor = _PushCursor(_syncMetadata, _batchSize);
+    final cursor = _PushCursor(_batchSize, _pushTables);
     while (true) {
       final round = await _readPushRound(cursor);
       if (round.batch.isEmpty) {
@@ -1194,157 +1277,50 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     }
   }
 
-  /// One round of [_push]: a fresh profiles page is read on *every* call
-  /// via [cursor] — never gated behind a cached "done" flag (finding #1).
-  /// Whenever that fresh page falls short of a full batch (profiles
-  /// momentarily exhausted, from this round's point of view), the same
-  /// round also reads the next day-entry page, so the two ride together
-  /// exactly as the old single-shot chunking did. Because the profiles
-  /// read is never skipped, a profile created mid-cycle (a ULID above the
-  /// cursor) surfaces in a later round's page and is pushed before or
-  /// alongside its own day entries — never after, which would otherwise
-  /// reject the entries on a foreign key it hasn't seen yet. Returns this
-  /// round's pushable items and whether the loop may terminate after it
-  /// (this round's profile page was genuinely empty and day entries are
-  /// exhausted).
+  /// One round of [_push]: reads the always-read profiles page, then walks
+  /// [_pushTables] in order, reading each child table only once the table
+  /// before it is exhausted (and only until it is exhausted itself). The
+  /// parent-before-child paging order is now the list order, so a profile
+  /// created mid-cycle (a ULID above the cursor) surfaces before or
+  /// alongside its own day entries and the server's foreign key never
+  /// rejects them. Returns this round's pushable items and whether the loop
+  /// may terminate after it (this round's profile page was genuinely empty
+  /// and every child table is exhausted).
   Future<({List<SyncPushItem> batch, bool done})> _readPushRound(
     _PushCursor cursor,
   ) async {
-    final profilePage = await cursor.readProfilePage();
-    final profilesEmptyThisRound = profilePage.isEmpty;
-    final batch = <SyncPushItem>[
-      for (final row
-          in _apply.pushable(profilePage, (p) => p.id, (p) => p.localRev))
-        SyncPushItem(
-            SyncTable.profiles, row.id, row.localRev, encodeProfile(row)),
-    ];
-    if (profilePage.length < cursor.batchSize && !cursor.entriesDone) {
-      final entryPage = await cursor.readEntryPage();
-      batch.addAll([
-        for (final row in _apply.pushable(entryPage, (e) => e.id, (e) => e.localRev))
-          SyncPushItem(SyncTable.dayEntries, row.id, row.localRev,
-              encodeDayEntry(row), profileId: row.profileId),
-      ]);
+    final batch = <SyncPushItem>[];
+    final profilePage = await cursor.readPage(_pushTables.first);
+    cursor.recordPage(_pushTables.first, profilePage.length);
+    _appendPushItems(batch, _pushTables.first, profilePage);
+    for (var i = 1; i < _pushTables.length; i++) {
+      final table = _pushTables[i];
+      if (!cursor.isDone(_pushTables[i - 1].table.name)) continue;
+      if (cursor.isDone(table.table.name)) continue;
+      final page = await cursor.readPage(table);
+      cursor.recordPage(table, page.length);
+      _appendPushItems(batch, table, page);
     }
-    // Issue #240: observations ride the same chaining rule day entries use
-    // relative to profiles — read this round only once day entries are
-    // (now, or already) exhausted, so the tables share one keyset scan's
-    // worth of batching rather than each getting its own full
-    // [_batchSize] allotment every round. Issue #188 extends the same
-    // chain via [_appendModeTableItems].
-    if (cursor.entriesDone && !cursor.observationsDone) {
-      final observationPage = await cursor.readObservationPage();
-      batch.addAll([
-        for (final row
-            in _apply.pushable(observationPage, (o) => o.id, (o) => o.localRev))
-          SyncPushItem(SyncTable.observations, row.id, row.localRev,
-              encodeObservation(row), profileId: row.profileId),
-      ]);
-    }
-    await _appendModeTableItems(batch, cursor);
     return (
       batch: batch,
-      done: profilesEmptyThisRound && cursor.allTablesDone,
+      done: profilePage.isEmpty && cursor.allTablesDone,
     );
   }
 
-  /// Issue #188: the profile_modes and cycle_overrides pages ride the same
-  /// chaining rule — profile modes read once observations are exhausted,
-  /// cycle overrides once profile modes are. Split out of [_readPushRound]
-  /// (and the `done` conjunction into [_PushCursor.allTablesDone]) so that
-  /// method's branch count stays under the CRAP gate as tables are added.
-  /// Issue #128 extends the same chain via [_appendCareTableItems]: care
-  /// notes ride once cycle overrides are exhausted, visit-prep items once
-  /// care notes are.
-  Future<void> _appendModeTableItems(
+  /// Encodes one table's page into push items, dropping any row the server
+  /// has already rejected at its current `local_rev`
+  /// ([SupabaseSyncApply.pushable]).
+  void _appendPushItems(
     List<SyncPushItem> batch,
-    _PushCursor cursor,
-  ) async {
-    if (cursor.observationsDone && !cursor.profileModesDone) {
-      final profileModePage = await cursor.readProfileModePage();
-      batch.addAll([
-        for (final row in _apply.pushable(
-            profileModePage, (m) => m.profileId, (m) => m.localRev))
-          SyncPushItem(SyncTable.profileModes, row.profileId, row.localRev,
-              encodeProfileMode(row), profileId: row.profileId),
-      ]);
-    }
-    if (cursor.profileModesDone && !cursor.cycleOverridesDone) {
-      final cycleOverridePage = await cursor.readCycleOverridePage();
-      batch.addAll([
-        for (final row in _apply.pushable(
-            cycleOverridePage, (o) => o.id, (o) => o.localRev))
-          SyncPushItem(SyncTable.cycleOverrides, row.id, row.localRev,
-              encodeCycleOverride(row), profileId: row.profileId),
-      ]);
-    }
-    await _appendCareTableItems(batch, cursor);
-  }
-
-  /// Issue #128: the care_notes and visit_prep_items pages ride the same
-  /// chaining rule — care notes read once cycle overrides are exhausted,
-  /// visit-prep items once care notes are. Split out of
-  /// [_appendModeTableItems] so that method's branch count stays under the
-  /// CRAP gate as tables are added.
-  Future<void> _appendCareTableItems(
-    List<SyncPushItem> batch,
-    _PushCursor cursor,
-  ) async {
-    if (cursor.cycleOverridesDone && !cursor.careNotesDone) {
-      final careNotePage = await cursor.readCareNotePage();
-      batch.addAll([
-        for (final row
-            in _apply.pushable(careNotePage, (n) => n.id, (n) => n.localRev))
-          SyncPushItem(SyncTable.careNotes, row.id, row.localRev,
-              encodeCareNote(row), profileId: row.profileId),
-      ]);
-    }
-    if (cursor.careNotesDone && !cursor.visitPrepItemsDone) {
-      final prepItemPage = await cursor.readVisitPrepItemPage();
-      batch.addAll([
-        for (final row in _apply.pushable(prepItemPage, (i) => i.id, (i) => i.localRev))
-          SyncPushItem(SyncTable.visitPrepItems, row.id, row.localRev,
-              encodeVisitPrepItem(row), profileId: row.profileId),
-      ]);
-    }
-    // Issue #130: merge events ride the same chaining rule, once
-    // visit-prep items are exhausted.
-    if (cursor.visitPrepItemsDone && !cursor.guardianNotesDone) {
-      final guardianNotePage = await cursor.readGuardianNotePage();
-      batch.addAll([
-        for (final row in _apply.pushable(
-            guardianNotePage, (n) => n.id, (n) => n.localRev))
-          SyncPushItem(SyncTable.guardianNotes, row.id, row.localRev,
-              encodeGuardianNote(row), profileId: row.profileId),
-      ]);
-    }
-    await _appendMergeAndRegistryItems(batch, cursor);
-  }
-
-  /// Issue #130/#257: the merge-event and tag-registry pages ride the same
-  /// chaining rule, once guardian notes are exhausted. Split out of
-  /// [_appendCareTableItems] so neither method's branch count reaches the
-  /// CRAP gate as tables are added.
-  Future<void> _appendMergeAndRegistryItems(
-    List<SyncPushItem> batch,
-    _PushCursor cursor,
-  ) async {
-    if (cursor.guardianNotesDone && !cursor.mergeEventsDone) {
-      final mergeEventPage = await cursor.readMergeEventPage();
-      batch.addAll([
-        for (final row in _apply.pushable(mergeEventPage, (e) => e.id, (e) => e.localRev))
-          SyncPushItem(SyncTable.dayEntryMergeEvents, row.id, row.localRev,
-              encodeDayEntryMergeEvent(row), profileId: row.profileId),
-      ]);
-    }
-    if (cursor.mergeEventsDone && !cursor.tagRegistryDone) {
-      final tagRegistryPage = await cursor.readTagRegistryPage();
-      batch.addAll([
-        for (final row in _apply.pushable(tagRegistryPage, (e) => e.id, (e) => e.localRev))
-          SyncPushItem(SyncTable.profileTagRegistry, row.id, row.localRev,
-              encodeProfileTagRegistryEntry(row), profileId: row.profileId),
-      ]);
-    }
+    _PushTable table,
+    List<dynamic> page,
+  ) {
+    batch.addAll([
+      for (final row in _apply.pushable(page, table.idOf, table.localRevOf))
+        SyncPushItem(table.table, table.idOf(row), table.localRevOf(row),
+            table.encode(row),
+            profileId: table.profileIdOf?.call(row)),
+    ]);
   }
 
   /// One push batch's request/response handling, split out of [_push]

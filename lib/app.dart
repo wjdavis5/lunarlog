@@ -545,6 +545,14 @@ class _LunarLogAppState extends State<LunarLogApp>
       birthControlStateFor: (profileId) => _profileModes
           .watch(profileId)
           .map(birthControlStateFromProfileMode),
+      // Issue #850, D-6: the per-viewer lens source gates local presets —
+      // a profile the signed-in viewer only guards (not the subject of)
+      // plans no local reminder; server caregiver alerts cover it instead.
+      // Both seams are always present in the app shell; the source fails
+      // open to "subject" for a local-only operator or a not-yet-synced
+      // membership.
+      guardians: _profileGuardians,
+      currentUserId: () => _authController?.currentUserId,
     );
     _coordinator = coordinator;
     _scheduleReminderStart(coordinator);
@@ -1537,6 +1545,7 @@ class _PendingInviteSignInBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     return Material(
       key: bannerKey,
       color: theme.colorScheme.primaryContainer,
@@ -1548,7 +1557,7 @@ class _PendingInviteSignInBanner extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  'Sign in to accept your invite',
+                  l10n.pendingInviteBannerTitle,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onPrimaryContainer,
                   ),
@@ -1556,7 +1565,20 @@ class _PendingInviteSignInBanner extends StatelessWidget {
               ),
               TextButton(
                 onPressed: onSignIn,
-                child: const Text('Sign In'),
+                child: Text(l10n.pendingInviteBannerAction),
+              ),
+              IconButton(
+                key: dismissButtonKey,
+                onPressed: onDismiss,
+                // The banner sits above the Navigator, so it has no Overlay
+                // for a `Tooltip`; a semantic label on the icon gets the
+                // same localized "Close" announced without one.
+                icon: Icon(
+                  Icons.close,
+                  semanticLabel:
+                      MaterialLocalizations.of(context).closeButtonTooltip,
+                ),
+                visualDensity: VisualDensity.compact,
               ),
               IconButton(
                 key: dismissButtonKey,

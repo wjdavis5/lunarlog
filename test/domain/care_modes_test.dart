@@ -12,6 +12,7 @@ import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/notifications/reminder_presets.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart'
     show CycleConfidence;
+import 'package:lunarlog/domain/sharing/guardian_lens.dart';
 import 'package:lunarlog/domain/tags.dart';
 
 void main() {
@@ -528,6 +529,174 @@ void main() {
       expect(highTierTeen.silencesLateBanner, isTrue);
       expect(highTierTeen.showsTierCaption, isTrue);
       expect(highTierTeen.showsFertileWindow, isTrue);
+    });
+  });
+
+  group('issue #850 (U7): the guardian lens reads third-person', () {
+    const progress = '2 of 3 completed cycles — estimates start after the '
+        'next period.';
+    const teenBodySubject =
+        'Every entry builds the picture of your cycle. $progress';
+    const irregularBodySubject =
+        '$progress Your estimates may stay ranges rather than dates.';
+
+    CareModeCopy subject(ProfileMode mode, {bool irregularFraming = false}) =>
+        careModeCopyFor(mode, irregularFraming: irregularFraming);
+    CareModeCopy guardian(
+      ProfileMode mode, {
+      bool irregularFraming = false,
+      String? name,
+    }) => careModeCopyFor(
+          mode,
+          irregularFraming: irregularFraming,
+          lens: GuardianLens.guardian,
+          subjectName: name,
+        );
+
+    test('the subject lens is byte-for-byte the pre-#850 copy, and an '
+        'unused name never leaks in', () {
+      for (final mode in ProfileMode.values) {
+        final plain = subject(mode);
+        final named = careModeCopyFor(
+          mode,
+          irregularFraming: false,
+          lens: GuardianLens.subject,
+          subjectName: 'Maya',
+        );
+        expect(named.notEnoughTitle, plain.notEnoughTitle, reason: '$mode');
+        expect(named.notEnoughBody(2, 3), plain.notEnoughBody(2, 3),
+            reason: '$mode');
+        expect(named.nextEstimateLabel, plain.nextEstimateLabel,
+            reason: '$mode');
+      }
+    });
+
+    test('teen second-person strings render the subject name under the '
+        'guardian lens', () {
+      final teen = guardian(ProfileMode.teen, name: 'Maya');
+      expect(teen.notEnoughTitle, "Maya's record is just getting started");
+      expect(
+        teen.notEnoughBody(2, 3),
+        "Every entry builds the picture of Maya's cycle. $progress",
+      );
+      expect(teen.nextEstimateLabel, "Maya's next period is estimated around:");
+      expect(
+        guardian(ProfileMode.teen, irregularFraming: true, name: 'Maya')
+            .nextEstimateLabel,
+        "Maya's next period may start around:",
+      );
+    });
+
+    test('teen second-person strings fall back to the gender-neutral '
+        '"their" with no name', () {
+      final teen = guardian(ProfileMode.teen);
+      expect(teen.notEnoughTitle, 'Their record is just getting started');
+      expect(
+        teen.notEnoughBody(2, 3),
+        'Every entry builds the picture of their cycle. $progress',
+      );
+      expect(teen.nextEstimateLabel, 'Their next period is estimated around:');
+      expect(
+        guardian(ProfileMode.teen, irregularFraming: true).nextEstimateLabel,
+        'Their next period may start around:',
+      );
+    });
+
+    test('the irregular range suffix renders third-person — base and '
+        'composed, with and without a name', () {
+      expect(
+        guardian(ProfileMode.irregular, name: 'Maya').notEnoughBody(2, 3),
+        "$progress Maya's estimates may stay ranges rather than dates.",
+      );
+      expect(
+        guardian(ProfileMode.irregular).notEnoughBody(2, 3),
+        '$progress Their estimates may stay ranges rather than dates.',
+      );
+      expect(
+        guardian(ProfileMode.teen, irregularFraming: true, name: 'Maya')
+            .notEnoughBody(2, 3),
+        "Every entry builds the picture of Maya's cycle. $progress "
+        "Maya's estimates may stay ranges rather than dates for a while.",
+      );
+      expect(
+        guardian(ProfileMode.teen, irregularFraming: true).notEnoughBody(2, 3),
+        'Every entry builds the picture of their cycle. $progress '
+        'Their estimates may stay ranges rather than dates for a while.',
+      );
+      // The non-teen composed suffix is the same sentence family, so it is
+      // third-person too (a standard profile with framing on).
+      expect(
+        guardian(ProfileMode.standard, irregularFraming: true, name: 'Maya')
+            .notEnoughBody(2, 3),
+        "$progress Maya's estimates may stay ranges rather than dates.",
+      );
+    });
+
+    test('the subject-lens strings are unchanged (the enumerated originals)',
+        () {
+      expect(
+        subject(ProfileMode.teen).notEnoughTitle,
+        'Your record is just getting started',
+      );
+      expect(subject(ProfileMode.teen).notEnoughBody(2, 3), teenBodySubject);
+      expect(
+        subject(ProfileMode.teen).nextEstimateLabel,
+        'Your next period is estimated around:',
+      );
+      expect(
+        subject(ProfileMode.teen, irregularFraming: true).nextEstimateLabel,
+        'Your next period may start around:',
+      );
+      expect(
+        subject(ProfileMode.irregular).notEnoughBody(2, 3),
+        irregularBodySubject,
+      );
+      expect(
+        subject(ProfileMode.teen, irregularFraming: true).notEnoughBody(2, 3),
+        'Every entry builds the picture of your cycle. $progress '
+        'Your estimates may stay ranges rather than dates for a while.',
+      );
+    });
+
+    test('no guardian-lens copy ever says "you" or "your", in any mode, '
+        'framed or not', () {
+      for (final mode in ProfileMode.values) {
+        for (final framed in [false, true]) {
+          final copy = guardian(mode, irregularFraming: framed, name: 'Maya');
+          final surfaced = [
+            copy.notEnoughTitle,
+            copy.notEnoughBody(2, 3),
+            copy.nextEstimateLabel,
+          ].join(' ').toLowerCase();
+          expect(surfaced, isNot(contains('you')),
+              reason: '$mode framed=$framed');
+          expect(surfaced, isNot(contains('your')),
+              reason: '$mode framed=$framed');
+        }
+      }
+    });
+
+    test('the lens changes only the second-person fields — flags, '
+        'fertile-window vocabulary, category order and headings are '
+        'identical', () {
+      for (final mode in ProfileMode.values) {
+        for (final framed in [false, true]) {
+          final subj = subject(mode, irregularFraming: framed);
+          final guard = guardian(mode, irregularFraming: framed, name: 'Maya');
+          expect(guard.silencesLateBanner, subj.silencesLateBanner,
+              reason: '$mode');
+          expect(guard.showsTierCaption, subj.showsTierCaption,
+              reason: '$mode');
+          expect(guard.showsFertileWindow, subj.showsFertileWindow,
+              reason: '$mode');
+          expect(guard.fertileWindowLabel, subj.fertileWindowLabel);
+          expect(guard.fertileWindowLegend, subj.fertileWindowLegend);
+          expect(guard.overdueStatusLabel, subj.overdueStatusLabel);
+          expect(guard.overdueActionLabel, subj.overdueActionLabel);
+          expect(guard.categoriesInOrder, subj.categoriesInOrder);
+          expect(guard.categoryLabels, subj.categoryLabels);
+        }
+      }
     });
   });
 }
