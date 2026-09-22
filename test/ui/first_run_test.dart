@@ -764,9 +764,12 @@ void main() {
       await tester.pumpAndSettle();
       // Issue #853: `irregular` is no longer offered — it is a legacy wire
       // value, not a rival mode; the framing composes via the edit dialog's
-      // flag instead. The picker offers exactly standard/teen/caregiver.
+      // flag instead. Issue #850 retired `caregiver` the same way, so the
+      // picker offers exactly standard/teen.
       expect(find.text('Irregular cycles'), findsNothing,
           reason: 'issue #853: irregular is not a choosable mode');
+      expect(find.text('Caregiver'), findsNothing,
+          reason: 'issue #850: caregiver is a legacy wire value, not a mode');
       await tester.tap(find.text('Teen').last);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('first-run-continue')));

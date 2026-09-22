@@ -41,9 +41,12 @@ void main() {
       expect(teen.late.enabled, isFalse,
           reason: 'the teen preset silences the late window');
 
+      // Issue #850: caregiver is a retired wire value mapped to standard,
+      // so it no longer arms nothing — a guardian's device is later gated
+      // on the per-viewer lens, not on the mode's preset.
       final caregiver = ReminderConfig.fromMode(ProfileMode.caregiver);
-      expect(caregiver.upcoming.enabled, isFalse);
-      expect(caregiver.late.enabled, isFalse);
+      expect(caregiver.upcoming.enabled, isTrue);
+      expect(caregiver.late.enabled, isTrue);
 
       final irregular = ReminderConfig.fromMode(ProfileMode.irregular);
       expect(irregular.upcoming.enabled, isTrue);
