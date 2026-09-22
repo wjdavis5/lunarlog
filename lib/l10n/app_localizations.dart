@@ -6352,6 +6352,18 @@ abstract class AppLocalizations {
   /// **'Email'**
   String get accountSignInEmailLabel;
 
+  /// Issue #1030: sign-in screen local error when the email field is empty and the action would otherwise send an empty address.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your email address.'**
+  String get accountSignInEmailRequired;
+
+  /// Issue #1030: sign-in screen local error when the email field is non-empty but not shaped like an address.
+  ///
+  /// In en, this message translates to:
+  /// **'That doesn\'t look like an email address.'**
+  String get accountSignInEmailInvalid;
+
   /// Issue #1004 (tranche 2): sign-in screen password field label.
   ///
   /// In en, this message translates to:

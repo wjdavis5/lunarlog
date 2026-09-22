@@ -5088,6 +5088,14 @@
     "@accountSignInEmailLabel": {
       "description": "Issue #1004 (tranche 2): sign-in screen email field label."
     },
+    "accountSignInEmailRequired": "Enter your email address.",
+    "@accountSignInEmailRequired": {
+      "description": "Issue #1030: sign-in screen local error when the email field is empty and the action would otherwise send an empty address."
+    },
+    "accountSignInEmailInvalid": "That doesn't look like an email address.",
+    "@accountSignInEmailInvalid": {
+      "description": "Issue #1030: sign-in screen local error when the email field is non-empty but not shaped like an address."
+    },
     "accountSignInPasswordLabel": "Password",
     "@accountSignInPasswordLabel": {
       "description": "Issue #1004 (tranche 2): sign-in screen password field label."
