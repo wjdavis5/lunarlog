@@ -994,6 +994,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get clinicalPdfExportForProfileTitle => 'Export clinical summary for';
 
   @override
+  String get exportMinorGuardianUnavailable =>
+      'Export is not available for a minor\'s profile without guardian access.';
+
+  @override
   String get settingsSectionAppearance => 'Appearance';
 
   @override

@@ -83,18 +83,22 @@ import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
 import 'package:lunarlog/domain/logging/day_entry_merge_event.dart';
 import 'package:lunarlog/domain/export/account_export_writer.dart';
+import 'package:lunarlog/domain/export/export_redaction.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/care_note.dart';
 import 'package:lunarlog/domain/models/cycle_override.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/guardian_note.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/visit_prep_item.dart';
 import 'package:lunarlog/domain/repositories/account_export_snapshot_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart'
     show ProfileLifecycleMode;
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
+import 'package:lunarlog/domain/sharing/guardian_lens.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -935,6 +939,14 @@ class _AccountSectionState extends State<AccountSection> {
     // remote source that itself resolves to null (signed out, offline, a
     // server error).
     final exportWriter = context.read<AccountExportWriter>();
+    // Issue #115 G4: the same per-viewer lens the "Export my data" tile
+    // resolves, read before the first `await` below. This path is the
+    // delete dialog's "Export first": it redacts private notes the operator
+    // is not the subject of, but deliberately does not apply the
+    // minor-profile gate — blocking the pre-deletion backup would keep a
+    // household from ever deleting an account.
+    final guardiansRepo = context.read<ProfileGuardiansRepository?>();
+    final currentUserId = context.read<AuthController?>()?.currentUserId;
     final profiles = await profilesRepo.list();
     final entriesByProfile = <String, List<DayEntry>>{};
     final observationsByProfile = <String, List<Observation>>{};
@@ -946,8 +958,12 @@ class _AccountSectionState extends State<AccountSection> {
     final customTagsByProfile = <String, List<CustomTag>>{};
     final guardianNotesByProfile = <String, List<GuardianNote>>{};
     for (final profile in profiles) {
+      final guardians = guardiansRepo == null
+          ? const <ProfileGuardian>[]
+          : await guardiansRepo.getForProfile(profile.id);
+      final lens = guardianLensFor(guardians, currentUserId);
       final snapshot = await snapshotRepo.forProfile(profile.id);
-      entriesByProfile[profile.id] = snapshot.entries;
+      entriesByProfile[profile.id] = redactForLens(snapshot.entries, lens);
       observationsByProfile[profile.id] = snapshot.observations;
       profileModesByProfile[profile.id] = snapshot.profileMode;
       cycleOverridesByProfile[profile.id] = snapshot.cycleOverrides;
