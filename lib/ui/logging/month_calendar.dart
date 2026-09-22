@@ -47,6 +47,7 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/calendar_preferences.dart';
 import 'package:lunarlog/domain/care_modes.dart';
+import 'package:lunarlog/domain/sharing/guardian_lens.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
@@ -871,6 +872,12 @@ class _MonthCalendarState extends State<MonthCalendar>
   /// saw ([_computeInputPrediction], assigned by `_ensureComputed` before
   /// any cell or legend renders). A teen with no explicit choice hides the
   /// fertile window until its estimate reaches `CycleConfidence.high`.
+  ///
+  /// Issue #850 (U7): the lens is passed for parity with every other
+  /// registry consumer, though no field this calendar reads varies by lens
+  /// today (the fertile-window gates are lens-independent; the third-person
+  /// strings live on the overview and Analysis). Passing it now keeps a
+  /// future copy addition from silently reading the subject lens.
   CareModeCopy get _copy => careModeCopyFor(
     widget.mode,
     irregularFraming: irregularFramingInEffect(
@@ -881,6 +888,7 @@ class _MonthCalendarState extends State<MonthCalendar>
         _ => null,
       },
     ),
+    lens: guardianLensFor(_guardians, _currentUserId),
   );
 
   /// Issue #196 AC1: the fertile-window display is also suppressed by the
