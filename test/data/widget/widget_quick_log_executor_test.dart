@@ -4,6 +4,13 @@
 /// #136/KTD4 shape); it is idempotent under a double tap; and it
 /// re-verifies the logging role and the target profile at write time, so
 /// a stale widget container can never authorize anything.
+///
+/// Issue #1016: every materialized write also emits an outcome on
+/// `outcomes` — the acknowledgement payload the app shell surfaces as the
+/// same snackbar + Undo the in-app Today card shows. Drops (role, missing
+/// profile) and relatches emit nothing: silence on non-writes is the
+/// shipped posture (the issue's one-line "dropped" message is explicitly
+/// out of scope).
 library;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -93,6 +100,22 @@ void main() {
     entries = _InMemoryDayEntries();
     profiles = _InMemoryProfiles()..live['p1'] = _profile('p1');
   });
+
+  /// Subscribes to the executor's outcomes, runs [action], and returns
+  /// every outcome the executor emitted (drained through the broadcast
+  /// stream's delivery queue).
+  Future<List<WidgetQuickLogOutcome>> collectOutcomes(
+    WidgetQuickLogExecutor ex,
+    Future<void> Function() action,
+  ) async {
+    final outcomes = <WidgetQuickLogOutcome>[];
+    final sub = ex.outcomes.listen(outcomes.add);
+    await action();
+    await ex.idle;
+    await pumpEventQueue();
+    await sub.cancel();
+    return outcomes;
+  }
 
   test('an unlocked tap writes today\'s entry with the quick-log rule',
       () async {
@@ -209,5 +232,113 @@ void main() {
     unlocked = true;
     await ex.idle;
     expect(entries.saved, isNull);
+  });
+
+  group('issue #1016: materialized writes emit an outcome for the shell to '
+      'acknowledge', () {
+    test('a write onto an empty day emits logged with a null previous entry',
+        () async {
+      final ex = executor(canQuickLogNow: (_) async => true);
+      final outcomes =
+          await collectOutcomes(ex, () async => ex.handle(quickLogUri));
+
+      expect(outcomes, hasLength(1));
+      expect(outcomes.single.profileId, 'p1');
+      expect(outcomes.single.date, today);
+      expect(outcomes.single.previousEntry, isNull,
+          reason: 'the tap created the day, so the Undo is a tombstone');
+    });
+
+    test('a write that upgrades a lighter day carries the pre-write entry '
+        'for the shared Undo', () async {
+      final prior = await entries.save(DayEntry(
+        id: '',
+        profileId: 'p1',
+        localDate: today,
+        tz: 'America/New_York',
+        flow: FlowLevel.light,
+        note: 'tender',
+        updatedAt: DateTime.now().toUtc(),
+      ));
+
+      final ex = executor(canQuickLogNow: (_) async => true);
+      final outcomes =
+          await collectOutcomes(ex, () async => ex.handle(quickLogUri));
+
+      expect(outcomes, hasLength(1));
+      expect(outcomes.single.previousEntry, isNotNull);
+      expect(outcomes.single.previousEntry!.flow, FlowLevel.light);
+      expect(outcomes.single.previousEntry!.note, 'tender');
+      expect(outcomes.single.previousEntry, prior);
+      // The write itself upgraded the flow and kept the note.
+      expect(entries.saved!.flow, FlowLevel.medium);
+      expect(entries.saved!.note, 'tender');
+    });
+
+    test('a viewer-role drop emits nothing', () async {
+      final ex = executor(canQuickLogNow: (_) async => false);
+      final outcomes =
+          await collectOutcomes(ex, () async => ex.handle(quickLogUri));
+
+      expect(outcomes, isEmpty,
+          reason: 'nothing was written, so nothing is acknowledged');
+      expect(entries.saved, isNull);
+    });
+
+    test('a since-deleted-profile drop emits nothing', () async {
+      final ex = executor(canQuickLogNow: (_) async => true);
+      final outcomes = await collectOutcomes(
+        ex,
+        () async => ex.handle(Uri.parse(widgetQuickLogUri('gone'))),
+      );
+
+      expect(outcomes, isEmpty);
+      expect(entries.saved, isNull);
+    });
+
+    test('a latched intent emits only when it actually writes on unlock',
+        () async {
+      var unlocked = false;
+      final unlockListeners = <void Function()>[];
+      final ex = executor(
+        canQuickLogNow: (_) async => true,
+        isUnlocked: () => unlocked,
+        addUnlockListener: unlockListeners.add,
+        removeUnlockListener: unlockListeners.remove,
+      );
+
+      final outcomes = await collectOutcomes(ex, () async {
+        ex.handle(quickLogUri);
+        unlocked = true;
+        for (final listener in unlockListeners) {
+          listener();
+        }
+      });
+
+      expect(outcomes, hasLength(1),
+          reason: 'exactly one outcome, for the one materialized write');
+      expect(entries.saved?.flow, FlowLevel.medium);
+    });
+
+    test('a relocked relatch emits nothing (the write never happened)',
+        () async {
+      var unlocked = true;
+      final ex = executor(
+        canQuickLogNow: (_) async => true,
+        isUnlocked: () => unlocked,
+      );
+
+      final outcomes = await collectOutcomes(ex, () async {
+        ex.handle(quickLogUri);
+        // The gate relocks before the queued write's turn comes up: the
+        // intent relatches instead of writing (issue #141) and, issue
+        // #1016, emits nothing.
+        unlocked = false;
+      });
+
+      expect(outcomes, isEmpty);
+      expect(ex.hasPending, isTrue);
+      expect(entries.saved, isNull);
+    });
   });
 }
