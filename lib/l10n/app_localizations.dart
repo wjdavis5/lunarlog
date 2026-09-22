@@ -658,6 +658,12 @@ abstract class AppLocalizations {
   /// **'Private note'**
   String get daySheetNotePrivateHidden;
 
+  /// Issue #1071: the note disclosure swapped in when the subject has ticked 'Keep this note private'. Replaces careNotesDisclosure so the 'anyone with access' sentence does not sit over a note guardians cannot read.
+  ///
+  /// In en, this message translates to:
+  /// **'Only you can read this note. Guardians see “Private note”.'**
+  String get daySheetNotePrivateDisclosure;
+
   /// The day sheet's pinned affirmative control (issue #812). It dismisses the sheet only; autosave has already persisted the edit, so it never means "save".
   ///
   /// In en, this message translates to:

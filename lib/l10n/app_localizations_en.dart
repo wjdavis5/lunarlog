@@ -346,6 +346,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get daySheetNotePrivateHidden => 'Private note';
 
   @override
+  String get daySheetNotePrivateDisclosure =>
+      'Only you can read this note. Guardians see “Private note”.';
+
+  @override
   String get daySheetDoneLabel => 'Done';
 
   @override

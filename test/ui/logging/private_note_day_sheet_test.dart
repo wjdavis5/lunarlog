@@ -1,10 +1,16 @@
 /// Issue #849 (re-scoped) widget coverage: the per-note private toggle.
 ///
 /// The subject (a membership stamped `isSubject`) sees the "Keep this note
-/// private" toggle while the note is being written, and the flag rides the
-/// entry into storage. Every other guardian — even the profile owner — never
-/// sees the toggle, and a private note whose text the server masked to null
-/// renders as the "Private note" placeholder instead of an editor.
+/// private" toggle above the note field while the note is being written, and
+/// the flag rides the entry into storage. Every other guardian — even the
+/// profile owner — never sees the toggle, and a private note whose text the
+/// server masked to null renders as the "Private note" placeholder instead of
+/// an editor.
+///
+/// Issue #1071 adds the write-then-decide coverage: the toggle is never
+/// hidden, the first persist of a non-empty note is held back until the
+/// writer chooses (or the sheet leaves), and a locked note keeps the control
+/// visible and disabled with the saved hint.
 library;
 
 import 'package:drift/native.dart';
@@ -53,7 +59,18 @@ final _guardians = [
   _guardian(_doc, GuardianRole.viewer, 'Dr. Lee'),
 ];
 
-Future<LunarLogDatabase> _pumpSheet(
+/// The pump harness: the database, the profile it created, and the entry
+/// repository — so a test can query saved rows and re-open a sheet on the
+/// same store.
+class _Sheet {
+  _Sheet(this.db, this.profileId, this.entries);
+
+  final LunarLogDatabase db;
+  final String profileId;
+  final DriftDayEntriesRepository entries;
+}
+
+Future<_Sheet> _pumpSheet(
   WidgetTester tester, {
   required String viewerId,
   required DayEntry? existing,
@@ -71,19 +88,7 @@ Future<LunarLogDatabase> _pumpSheet(
   final entries = DriftDayEntriesRepository(db.storage);
   final observations = DriftObservationsRepository(db.storage);
 
-  final scoped = existing == null
-      ? null
-      : DayEntry(
-          id: existing.id,
-          profileId: profile.id,
-          localDate: existing.localDate,
-          tz: existing.tz,
-          flow: existing.flow,
-          note: existing.note,
-          notePrivate: existing.notePrivate,
-          updatedAt: existing.updatedAt,
-          loggedByUserId: existing.loggedByUserId,
-        );
+  final scoped = _scope(existing, profile.id);
 
   await tester.pumpWidget(
     MultiProvider(
@@ -110,7 +115,49 @@ Future<LunarLogDatabase> _pumpSheet(
     ),
   );
   await tester.pumpAndSettle();
-  return db;
+  return _Sheet(db, profile.id, entries);
+}
+
+/// Re-points an [existing] fixture at the freshly created profile id (the
+/// fixture is written before the profile exists).
+DayEntry? _scope(DayEntry? existing, String profileId) => existing == null
+    ? null
+    : DayEntry(
+        id: existing.id,
+        profileId: profileId,
+        localDate: existing.localDate,
+        tz: existing.tz,
+        flow: existing.flow,
+        note: existing.note,
+        notePrivate: existing.notePrivate,
+        updatedAt: existing.updatedAt,
+        loggedByUserId: existing.loggedByUserId,
+      );
+
+DayEntry _savedNote(String? note) => DayEntry(
+      id: 'entry-1',
+      profileId: 'unused',
+      localDate: _today,
+      tz: 'America/New_York',
+      flow: FlowLevel.medium,
+      note: note,
+      updatedAt: DateTime.utc(2026, 8, 30, 12),
+      loggedByUserId: _daughter,
+    );
+
+Future<void> _enterNote(WidgetTester tester, String text) async {
+  final field = find.byKey(const ValueKey('note-field'));
+  await tester.ensureVisible(field);
+  await tester.pumpAndSettle();
+  await tester.enterText(field, text);
+}
+
+/// Pumps past the autosave debounce and settles, so whatever write was armed
+/// has completed by the time it returns.
+Future<void> _pumpAutosave(WidgetTester tester) async {
+  await tester.pump(kDaySheetAutosaveDelay);
+  await tester.pump(const Duration(milliseconds: 50));
+  await tester.pumpAndSettle();
 }
 
 Future<void> _tearDown(WidgetTester tester, LunarLogDatabase db) async {
@@ -121,21 +168,24 @@ Future<void> _tearDown(WidgetTester tester, LunarLogDatabase db) async {
 
 void main() {
   testWidgets(
-    'the subject sees the private-note toggle while writing, and the flag '
-    'rides the saved entry (issue #849)',
+    'ticking first then writing persists the private flag (issue #849)',
     (tester) async {
-      final db = await _pumpSheet(tester, viewerId: _daughter, existing: null);
+      final sheet = await _pumpSheet(
+        tester,
+        viewerId: _daughter,
+        existing: null,
+      );
 
       expect(find.byKey(const ValueKey('note-field')), findsOneWidget);
       final toggle = find.byKey(const ValueKey('note-private-toggle'));
       expect(toggle, findsOneWidget);
       expect(find.text('Keep this note private'), findsOneWidget);
-
       expect(
         tester.widget<CheckboxListTile>(toggle).onChanged,
         isNotNull,
         reason: 'the toggle is enabled while the note is empty',
       );
+
       await tester.ensureVisible(toggle);
       await tester.pumpAndSettle();
       await tester.tap(toggle);
@@ -145,21 +195,148 @@ void main() {
         isTrue,
         reason: 'tapping the toggle marks the note private',
       );
-      await tester.enterText(
-        find.byKey(const ValueKey('note-field')),
-        'only for me',
-      );
-      // Let the debounced autosave write.
-      await tester.pump(kDaySheetAutosaveDelay);
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.pumpAndSettle();
 
-      final rows = await db.select(db.dayEntries).get();
-      final saved = rows.single;
+      await _enterNote(tester, 'only for me');
+      await _pumpAutosave(tester);
+
+      final saved = (await sheet.db.select(sheet.db.dayEntries).get()).single;
       expect(saved.note, 'only for me');
       expect(saved.notePrivate, isTrue);
 
-      await _tearDown(tester, db);
+      await _tearDown(tester, sheet.db);
+    },
+  );
+
+  testWidgets(
+    'writing first then ticking still saves the flag private (issue #1071)',
+    (tester) async {
+      final sheet = await _pumpSheet(
+        tester,
+        viewerId: _daughter,
+        existing: null,
+      );
+
+      await _enterNote(tester, 'Felt off today');
+      await _pumpAutosave(tester);
+
+      // The control never disappears: after the first autosave the note is
+      // still unchosen, so the toggle stays visible and enabled.
+      final toggle = find.byKey(const ValueKey('note-private-toggle'));
+      expect(toggle, findsOneWidget);
+      expect(find.text('Keep this note private'), findsOneWidget);
+      expect(
+        tester.widget<CheckboxListTile>(toggle).onChanged,
+        isNotNull,
+        reason: 'the writer can still choose privacy after typing',
+      );
+
+      final before = (await sheet.db.select(sheet.db.dayEntries).get()).single;
+      expect(
+        before.note,
+        isNull,
+        reason: 'the first persist of the note is held back for the choice',
+      );
+
+      await tester.ensureVisible(toggle);
+      await tester.pumpAndSettle();
+      await tester.tap(toggle);
+      await tester.pump();
+      await _pumpAutosave(tester);
+
+      final saved = (await sheet.db.select(sheet.db.dayEntries).get()).single;
+      expect(saved.note, 'Felt off today');
+      expect(saved.notePrivate, isTrue);
+
+      await _tearDown(tester, sheet.db);
+    },
+  );
+
+  testWidgets(
+    'a saved (shared) note locks the toggle but keeps it visible with the '
+    'hint (issue #1071)',
+    (tester) async {
+      final sheet = await _pumpSheet(
+        tester,
+        viewerId: _daughter,
+        existing: _savedNote('already shared'),
+      );
+
+      final toggle = find.byKey(const ValueKey('note-private-toggle'));
+      expect(
+        toggle,
+        findsOneWidget,
+        reason: 'a locked note never hides the control',
+      );
+      expect(
+        tester.widget<CheckboxListTile>(toggle).onChanged,
+        isNull,
+        reason: 'a note that was already shared can no longer be made private',
+      );
+      expect(
+        find.text(
+          "Privacy is chosen when the note is written, and can't be changed "
+          "after it's saved.",
+        ),
+        findsOneWidget,
+      );
+
+      await _tearDown(tester, sheet.db);
+    },
+  );
+
+  testWidgets(
+    'dismissing with an unchosen note shares it as written (issue #1071)',
+    (tester) async {
+      final sheet = await _pumpSheet(
+        tester,
+        viewerId: _daughter,
+        existing: null,
+      );
+
+      await _enterNote(tester, 'typed then closed');
+      // Deliberately do not wait out the autosave debounce: teardown must
+      // flush the held note rather than drop it.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pumpAndSettle();
+
+      final saved = (await sheet.db.select(sheet.db.dayEntries).get()).single;
+      expect(saved.note, 'typed then closed');
+      expect(
+        saved.notePrivate,
+        isFalse,
+        reason: 'no privacy choice was made, so the note is shared as written',
+      );
+
+      await sheet.db.close();
+    },
+  );
+
+  testWidgets(
+    'backgrounding the app flushes a held note so a kill cannot lose it '
+    '(issue #1071)',
+    (tester) async {
+      final sheet = await _pumpSheet(
+        tester,
+        viewerId: _daughter,
+        existing: null,
+      );
+
+      await _enterNote(tester, 'typed then backgrounded');
+      // Drive the sheet's own observer directly: the global lifecycle
+      // dispatch also reaches an AppLifecycleListener elsewhere in the
+      // tree, whose transition assertions do not accept a bare
+      // paused -> resumed.
+      (tester.state(find.byType(DaySheet)) as WidgetsBindingObserver)
+          .didChangeAppLifecycleState(AppLifecycleState.paused);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pumpAndSettle();
+
+      final saved = (await sheet.db.select(sheet.db.dayEntries).get()).single;
+      expect(saved.note, 'typed then backgrounded');
+      expect(saved.notePrivate, isFalse);
+
+      await _tearDown(tester, sheet.db);
     },
   );
 
@@ -167,7 +344,7 @@ void main() {
     'a guardian sees no toggle and gets the placeholder for a masked private '
     'note (issue #849)',
     (tester) async {
-      final db = await _pumpSheet(
+      final sheet = await _pumpSheet(
         tester,
         viewerId: _mom,
         existing: DayEntry(
@@ -191,7 +368,28 @@ void main() {
       );
       expect(find.text('Private note'), findsOneWidget);
 
-      await _tearDown(tester, db);
+      await _tearDown(tester, sheet.db);
+    },
+  );
+
+  testWidgets(
+    'a guardian never sees the toggle even for a non-private note '
+    '(issue #849/#1071)',
+    (tester) async {
+      final sheet = await _pumpSheet(
+        tester,
+        viewerId: _mom,
+        existing: _savedNote('visible to everyone'),
+      );
+
+      expect(find.byKey(const ValueKey('note-field')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('note-private-toggle')),
+        findsNothing,
+        reason: 'only the subject may mark a note private',
+      );
+
+      await _tearDown(tester, sheet.db);
     },
   );
 
@@ -199,7 +397,7 @@ void main() {
     'a read-only viewer also gets the placeholder, never the editor '
     '(issue #849)',
     (tester) async {
-      final db = await _pumpSheet(
+      final sheet = await _pumpSheet(
         tester,
         viewerId: _doc,
         readOnly: true,
@@ -222,7 +420,7 @@ void main() {
       expect(find.byKey(const ValueKey('note-field')), findsNothing);
       expect(find.byKey(const ValueKey('note-private-toggle')), findsNothing);
 
-      await _tearDown(tester, db);
+      await _tearDown(tester, sheet.db);
     },
   );
 }
