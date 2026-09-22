@@ -340,7 +340,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get daySheetNotePrivateSavedHint =>
-      'A note you\'ve already saved can\'t be made private.';
+      'Privacy is chosen when the note is written, and can\'t be changed after it\'s saved.';
 
   @override
   String get daySheetNotePrivateHidden => 'Private note';

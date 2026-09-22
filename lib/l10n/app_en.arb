@@ -460,9 +460,9 @@
   "@daySheetNotePrivateHint": {
     "description": "Issue #849: the disclosure under the private-note toggle, telling the subject who can and cannot read it."
   },
-  "daySheetNotePrivateSavedHint": "A note you've already saved can't be made private.",
+  "daySheetNotePrivateSavedHint": "Privacy is chosen when the note is written, and can't be changed after it's saved.",
   "@daySheetNotePrivateSavedHint": {
-    "description": "Issue #849: the disclosure shown when the private-note toggle is disabled because the note is already saved (privacy must be chosen when the note is written)."
+    "description": "Issue #849: the disclosure shown when the private-note toggle is disabled — the note is already saved (privacy must be chosen when the note is written) or already private (a private flag can never be cleared)."
   },
   "daySheetNotePrivateHidden": "Private note",
   "@daySheetNotePrivateHidden": {

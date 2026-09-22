@@ -646,10 +646,10 @@ abstract class AppLocalizations {
   /// **'Private notes aren\'t shared with your guardians.'**
   String get daySheetNotePrivateHint;
 
-  /// Issue #849: the disclosure shown when the private-note toggle is disabled because the note is already saved (privacy must be chosen when the note is written).
+  /// Issue #849: the disclosure shown when the private-note toggle is disabled — the note is already saved (privacy must be chosen when the note is written) or already private (a private flag can never be cleared).
   ///
   /// In en, this message translates to:
-  /// **'A note you\'ve already saved can\'t be made private.'**
+  /// **'Privacy is chosen when the note is written, and can\'t be changed after it\'s saved.'**
   String get daySheetNotePrivateSavedHint;
 
   /// Issue #849: placeholder shown to a guardian in place of a day note the subject marked private. The note's text is never delivered to a non-subject device.

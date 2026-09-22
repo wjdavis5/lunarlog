@@ -1987,6 +1987,13 @@ class _DaySheetState extends State<DaySheet> {
       _lensForViewer == GuardianLens.subject &&
       (!_notePrivacyLocked || _notePrivate);
 
+  /// Issue #849: the toggle locks once the flag is stored (it can never be
+  /// cleared) or a non-empty note has been saved (privacy can't be chosen
+  /// retroactively). A freshly checked, unsaved new note is deliberately
+  /// NOT locked, so the subject can change her mind before the first save.
+  bool get _privacyToggleLocked =>
+      _notePrivacyLocked || (widget.existing?.notePrivate ?? false);
+
   /// Issue #849: the read-only body's note text — the private placeholder
   /// for a masked private note, "No note" when empty, the text otherwise.
   String _readOnlyNoteText(AppLocalizations l10n) {
@@ -2025,12 +2032,12 @@ class _DaySheetState extends State<DaySheet> {
       child: CheckboxListTile(
         key: const ValueKey('note-private-toggle'),
         value: _notePrivate,
-        onChanged: (!_notePrivacyLocked && !_busy)
+        onChanged: (!_privacyToggleLocked && !_busy)
             ? (value) => setState(() => _notePrivate = value ?? false)
             : null,
         title: Text(l10n.daySheetNotePrivateToggle),
         subtitle: Text(
-          _notePrivacyLocked
+          _privacyToggleLocked
               ? l10n.daySheetNotePrivateSavedHint
               : l10n.daySheetNotePrivateHint,
         ),

@@ -27,6 +27,7 @@ import 'package:provider/provider.dart';
 final _today = LocalDate(2026, 8, 30);
 const _mom = 'user-mom';
 const _daughter = 'user-daughter';
+const _doc = 'user-doc';
 
 ProfileGuardian _guardian(
   String userId,
@@ -49,12 +50,14 @@ ProfileGuardian _guardian(
 final _guardians = [
   _guardian(_mom, GuardianRole.coParent, 'Mom'),
   _guardian(_daughter, GuardianRole.caregiver, 'Daughter', isSubject: true),
+  _guardian(_doc, GuardianRole.viewer, 'Dr. Lee'),
 ];
 
 Future<LunarLogDatabase> _pumpSheet(
   WidgetTester tester, {
   required String viewerId,
   required DayEntry? existing,
+  bool readOnly = false,
 }) async {
   tester.view.physicalSize = const Size(800, 1400);
   tester.view.devicePixelRatio = 1.0;
@@ -98,6 +101,7 @@ Future<LunarLogDatabase> _pumpSheet(
             date: _today,
             today: _today,
             existing: scoped,
+            readOnly: readOnly,
             currentUserId: viewerId,
             guardians: _guardians,
           ),
@@ -186,6 +190,37 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Private note'), findsOneWidget);
+
+      await _tearDown(tester, db);
+    },
+  );
+
+  testWidgets(
+    'a read-only viewer also gets the placeholder, never the editor '
+    '(issue #849)',
+    (tester) async {
+      final db = await _pumpSheet(
+        tester,
+        viewerId: _doc,
+        readOnly: true,
+        existing: DayEntry(
+          id: 'entry-1',
+          profileId: 'unused',
+          localDate: _today,
+          tz: 'America/New_York',
+          flow: FlowLevel.medium,
+          note: null,
+          notePrivate: true,
+          updatedAt: DateTime.utc(2026, 8, 30, 12),
+          loggedByUserId: _daughter,
+        ),
+      );
+
+      // The read-only body renders the placeholder text (not the editable
+      // field), and never the toggle.
+      expect(find.text('Private note'), findsOneWidget);
+      expect(find.byKey(const ValueKey('note-field')), findsNothing);
+      expect(find.byKey(const ValueKey('note-private-toggle')), findsNothing);
 
       await _tearDown(tester, db);
     },
