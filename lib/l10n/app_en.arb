@@ -468,6 +468,10 @@
   "@daySheetNotePrivateHidden": {
     "description": "Issue #849: placeholder shown to a guardian in place of a day note the subject marked private. The note's text is never delivered to a non-subject device."
   },
+  "daySheetNotePrivateDisclosure": "Only you can read this note. Guardians see \u201cPrivate note\u201d.",
+  "@daySheetNotePrivateDisclosure": {
+    "description": "Issue #1071: the note disclosure swapped in when the subject has ticked 'Keep this note private'. Replaces careNotesDisclosure so the 'anyone with access' sentence does not sit over a note guardians cannot read."
+  },
   "daySheetDoneLabel": "Done",
   "@daySheetDoneLabel": {
     "description": "The day sheet's pinned affirmative control (issue #812). It dismisses the sheet only; autosave has already persisted the edit, so it never means \"save\"."
