@@ -634,6 +634,30 @@ abstract class AppLocalizations {
   /// **'Anything worth remembering about today?'**
   String get daySheetNoteHint;
 
+  /// Issue #849 (re-scoped): the subject-only toggle that marks the day note private. Rendered only while the note is being written (the stored note is empty), and disabled once a non-empty note has been saved.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep this note private'**
+  String get daySheetNotePrivateToggle;
+
+  /// Issue #849: the disclosure under the private-note toggle, telling the subject who can and cannot read it.
+  ///
+  /// In en, this message translates to:
+  /// **'Private notes aren\'t shared with your guardians.'**
+  String get daySheetNotePrivateHint;
+
+  /// Issue #849: the disclosure shown when the private-note toggle is disabled because the note is already saved (privacy must be chosen when the note is written).
+  ///
+  /// In en, this message translates to:
+  /// **'A note you\'ve already saved can\'t be made private.'**
+  String get daySheetNotePrivateSavedHint;
+
+  /// Issue #849: placeholder shown to a guardian in place of a day note the subject marked private. The note's text is never delivered to a non-subject device.
+  ///
+  /// In en, this message translates to:
+  /// **'Private note'**
+  String get daySheetNotePrivateHidden;
+
   /// The day sheet's pinned affirmative control (issue #812). It dismisses the sheet only; autosave has already persisted the edit, so it never means "save".
   ///
   /// In en, this message translates to:

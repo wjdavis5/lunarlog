@@ -1386,6 +1386,10 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
               flow: _dayEntryFlow(tombstone, remote),
               tags: Value(_dayEntryTags(tombstone, tags)),
               note: Value(_dayEntryNote(tombstone, remote)),
+              // Issue #849: the flag is server-owned and never cleared by a
+              // tombstone; a guardian's masked pull carries null `note` with
+              // this true.
+              notePrivate: Value(remote.notePrivate),
               pms: Value(_dayEntryPms(tombstone, remote)),
               updatedAt: updatedAt,
               deletedAt: Value(deletedAt),
@@ -1418,6 +1422,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             flow: Value(_dayEntryFlow(tombstone, remote)),
             tags: Value(_dayEntryTags(tombstone, tags)),
             note: Value(_dayEntryNote(tombstone, remote)),
+            notePrivate: Value(remote.notePrivate),
             pms: Value(_dayEntryPms(tombstone, remote)),
             updatedAt: Value(updatedAt),
             deletedAt: Value(deletedAt),
