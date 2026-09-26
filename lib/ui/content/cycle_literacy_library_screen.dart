@@ -19,12 +19,11 @@ class CycleLiteracyLibraryScreen extends StatefulWidget {
 
   static MaterialPageRoute<void> route({
     CycleLiteracyAudience initialAudience = CycleLiteracyAudience.all,
-  }) =>
-      MaterialPageRoute<void>(
-        settings: const RouteSettings(name: kRouteCycleLiteracyLibraryScreen),
-        builder: (_) =>
-            CycleLiteracyLibraryScreen(initialAudience: initialAudience),
-      );
+  }) => MaterialPageRoute<void>(
+    settings: const RouteSettings(name: kRouteCycleLiteracyLibraryScreen),
+    builder: (_) =>
+        CycleLiteracyLibraryScreen(initialAudience: initialAudience),
+  );
 
   @override
   State<CycleLiteracyLibraryScreen> createState() =>
@@ -48,9 +47,7 @@ class _CycleLiteracyLibraryScreenState
     final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.cycleLiteracyLibraryTitle),
-      ),
+      appBar: AppBar(title: Text(l10n.cycleLiteracyLibraryTitle)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -73,7 +70,9 @@ class _CycleLiteracyLibraryScreenState
                 selected: _selectedAudience == CycleLiteracyAudience.all,
                 onSelected: (selected) {
                   if (selected) {
-                    setState(() => _selectedAudience = CycleLiteracyAudience.all);
+                    setState(
+                      () => _selectedAudience = CycleLiteracyAudience.all,
+                    );
                   }
                 },
               ),
@@ -83,7 +82,9 @@ class _CycleLiteracyLibraryScreenState
                 selected: _selectedAudience == CycleLiteracyAudience.teen,
                 onSelected: (selected) {
                   if (selected) {
-                    setState(() => _selectedAudience = CycleLiteracyAudience.teen);
+                    setState(
+                      () => _selectedAudience = CycleLiteracyAudience.teen,
+                    );
                   }
                 },
               ),
@@ -93,7 +94,9 @@ class _CycleLiteracyLibraryScreenState
                 selected: _selectedAudience == CycleLiteracyAudience.guardian,
                 onSelected: (selected) {
                   if (selected) {
-                    setState(() => _selectedAudience = CycleLiteracyAudience.guardian);
+                    setState(
+                      () => _selectedAudience = CycleLiteracyAudience.guardian,
+                    );
                   }
                 },
               ),
@@ -101,15 +104,28 @@ class _CycleLiteracyLibraryScreenState
           ),
           const SizedBox(height: 16),
 
+          // Featured Audience Section (#1088): when an audience is selected,
+          // surface that audience's targeted articles at the very top.
+          if (_selectedAudience != CycleLiteracyAudience.all) ...[
+            _AudienceSection(
+              title: _audienceSectionTitle(l10n, _selectedAudience),
+              articles: CycleLiteracyLibrary.getArticlesForExactAudience(
+                _selectedAudience,
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
           // Categories & Articles
           for (final category in CycleLiteracyCategory.values) ...[
             _CategorySection(
               category: category,
               articles: CycleLiteracyLibrary.getArticlesByCategory(category)
-                  .where((a) =>
-                      _selectedAudience == CycleLiteracyAudience.all ||
-                      a.audience == _selectedAudience ||
-                      a.audience == CycleLiteracyAudience.all)
+                  .where(
+                    (a) => _selectedAudience == CycleLiteracyAudience.all
+                        ? true
+                        : a.audience == CycleLiteracyAudience.all,
+                  )
                   .toList(),
             ),
             const SizedBox(height: 16),
@@ -136,11 +152,55 @@ class _CycleLiteracyLibraryScreenState
   }
 }
 
+String _audienceSectionTitle(
+  AppLocalizations l10n,
+  CycleLiteracyAudience audience,
+) => switch (audience) {
+  CycleLiteracyAudience.teen => l10n.cycleLiteracySectionWrittenForTeens,
+  CycleLiteracyAudience.guardian =>
+    l10n.cycleLiteracySectionWrittenForGuardians,
+  CycleLiteracyAudience.all => '',
+};
+
+String _audienceBadgeLabel(
+  AppLocalizations l10n,
+  CycleLiteracyAudience audience,
+) => switch (audience) {
+  CycleLiteracyAudience.teen => l10n.cycleLiteracyAudienceFilterTeen,
+  CycleLiteracyAudience.guardian => l10n.cycleLiteracyAudienceFilterGuardian,
+  CycleLiteracyAudience.all => l10n.cycleLiteracyAudienceFilterAll,
+};
+
+class _AudienceSection extends StatelessWidget {
+  const _AudienceSection({required this.title, required this.articles});
+
+  final String title;
+  final List<CycleLiteracyArticle> articles;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (articles.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        for (final article in articles) _ArticleCard(article: article),
+      ],
+    );
+  }
+}
+
 class _CategorySection extends StatelessWidget {
-  const _CategorySection({
-    required this.category,
-    required this.articles,
-  });
+  const _CategorySection({required this.category, required this.articles});
 
   final CycleLiteracyCategory category;
   final List<CycleLiteracyArticle> articles;
@@ -161,54 +221,63 @@ class _CategorySection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        for (final article in articles) ...[
-          Card(
-            margin: const EdgeInsets.only(bottom: 8),
-            child: ListTile(
-              title: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      article.title,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  if (article.audience != CycleLiteracyAudience.all) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primaryContainer,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        article.audience.displayName,
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: theme.colorScheme.onPrimaryContainer,
-                          fontSize: 10,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              subtitle: Text(
-                article.summary,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall,
-              ),
-              trailing: const Icon(Icons.chevron_right, size: 20),
-              onTap: () => CycleLiteracyArticleSheet.show(context, article),
-            ),
-          ),
-        ],
+        for (final article in articles) _ArticleCard(article: article),
       ],
+    );
+  }
+}
+
+class _ArticleCard extends StatelessWidget {
+  const _ArticleCard({required this.article});
+
+  final CycleLiteracyArticle article;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (article.audience != CycleLiteracyAudience.all) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  _audienceBadgeLabel(l10n, article.audience),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onPrimaryContainer,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+            Text(
+              article.title,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        subtitle: Text(
+          article.summary,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodySmall,
+        ),
+        trailing: const Icon(Icons.chevron_right, size: 20),
+        onTap: () => CycleLiteracyArticleSheet.show(context, article),
+      ),
     );
   }
 }
