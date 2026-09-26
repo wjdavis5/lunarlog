@@ -87,4 +87,23 @@ case $bootstrap in
     ;;
 esac
 
+# No Cloudflare Worker source may ship inside the app build (epic #831,
+# issue #1097). Flutter copies everything under `web/` verbatim into
+# `build/web`, so a Worker that lives there (the links Worker used to be
+# `web/links/`; the email Worker was `web/email/`) publishes its
+# TypeScript, `wrangler.*`, and `deno.*` files on `app.lunarlog.app`.
+# Worker source lives outside `web/` now (`site/` and `workers/`); this
+# fails closed if one creeps back in, or if any other stray .ts/manifest
+# appears. `find` is deliberately unanchored: a match at any depth under
+# the build is a leak.
+stray_worker_files="$(find "$BUILD_DIR" \
+  \( -type d \( -name links -o -name email \) \) -o \
+  \( -type f \( -name '*.ts' -o -name 'wrangler.*' -o -name 'deno.json' -o -name 'deno.lock' \) \) \
+  2>/dev/null || true)"
+if [ -n "$stray_worker_files" ]; then
+  fail "Web build output '$BUILD_DIR' contains files that belong to a Cloudflare Worker (epic #831, issue #1097):
+$stray_worker_files
+Worker source must not live under web/ -- Flutter copies it into this build and publishes it on app.lunarlog.app. It lives in site/ and workers/."
+fi
+
 echo "Web build output '$BUILD_DIR' is deployable: index.html, main.dart.js, _headers (CSP), the SPA _redirects fallback, and local CanvasKit in flutter_bootstrap.js are present."
