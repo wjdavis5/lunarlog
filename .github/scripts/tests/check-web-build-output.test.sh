@@ -131,6 +131,49 @@ make_build_dir "$WORK/local-canvaskit"
 run_case "$WORK/local-canvaskit"
 assert_exit "a bootstrap setting useLocalCanvasKit:true passes" 0
 
+# --- No Worker source in the build (epic #831, issue #1097) -----------------
+# Flutter copies web/ verbatim; a Worker living there would publish its
+# source on app.lunarlog.app.
+
+make_build_dir "$WORK/links-dir"
+mkdir -p "$WORK/links-dir/links/src"
+printf 'export default {};\n' >"$WORK/links-dir/links/src/index.ts"
+run_case "$WORK/links-dir"
+assert_exit "a links/ directory in the build refuses" 1
+assert_contains "the links/ leak is named" "$LAST_LOG" "links/"
+
+make_build_dir "$WORK/email-dir"
+mkdir -p "$WORK/email-dir/email/src"
+printf 'export default {};\n' >"$WORK/email-dir/email/src/index.ts"
+run_case "$WORK/email-dir"
+assert_exit "an email/ directory in the build refuses" 1
+assert_contains "the email/ leak is named" "$LAST_LOG" "email/"
+
+make_build_dir "$WORK/stray-ts"
+mkdir -p "$WORK/stray-ts/nested"
+printf 'const x: number = 1;\n' >"$WORK/stray-ts/nested/worker.ts"
+run_case "$WORK/stray-ts"
+assert_exit "a stray .ts file anywhere in the build refuses" 1
+assert_contains "the stray .ts file is named" "$LAST_LOG" "worker.ts"
+
+make_build_dir "$WORK/stray-wrangler"
+printf '{}\n' >"$WORK/stray-wrangler/wrangler.jsonc"
+run_case "$WORK/stray-wrangler"
+assert_exit "a wrangler.* file in the build refuses" 1
+assert_contains "the wrangler manifest is named" "$LAST_LOG" "wrangler.jsonc"
+
+make_build_dir "$WORK/stray-deno"
+printf '{}\n' >"$WORK/stray-deno/deno.json"
+run_case "$WORK/stray-deno"
+assert_exit "a deno.json file in the build refuses" 1
+assert_contains "the deno manifest is named" "$LAST_LOG" "deno.json"
+
+make_build_dir "$WORK/stray-deno-lock"
+printf '{}\n' >"$WORK/stray-deno-lock/deno.lock"
+run_case "$WORK/stray-deno-lock"
+assert_exit "a deno.lock file in the build refuses" 1
+assert_contains "the deno lockfile is named" "$LAST_LOG" "deno.lock"
+
 # --- Wiring: the deploy workflow actually uses the check and the secrets ----
 
 deploy_yaml="$(cat "$DEPLOY_WORKFLOW")"

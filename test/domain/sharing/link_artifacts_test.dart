@@ -27,12 +27,12 @@ void main() {
       expect(aasa, isNot(contains('__TEAMID__')));
     });
 
-    test('web/links deployed assets match canonical docs/links files', () {
+    test('site deployed assets match canonical docs/links files', () {
       final deployedAasa =
-          File('web/links/public/.well-known/apple-app-site-association')
+          File('site/public/.well-known/apple-app-site-association')
               .readAsStringSync();
       final deployedLanding =
-          File('web/links/public/invite.html').readAsStringSync();
+          File('site/public/invite.html').readAsStringSync();
 
       expect(deployedAasa, equals(aasa));
       expect(deployedLanding, equals(landing));
