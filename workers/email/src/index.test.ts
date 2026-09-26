@@ -73,6 +73,29 @@ Deno.test("parser: extractOtpCode extracts 8-digit and 6-digit codes", () => {
   assertEquals(extractOtpCode("No code here at all."), undefined);
 });
 
+Deno.test("parser: extractOtpCode ignores date timestamps and prefers contextual/non-date codes", () => {
+  // Calendar date YYYYMMDD before actual code
+  assertEquals(
+    extractOtpCode("Date: 20260926\nYour login code is 84920183.\nGenerated: 20260926"),
+    "84920183",
+  );
+  // 6-digit OTP with date present
+  assertEquals(
+    extractOtpCode("Date: 20260926\nVerification code: 123456"),
+    "123456",
+  );
+  // No explicit keyword, but non-date 8-digit code along with date
+  assertEquals(
+    extractOtpCode("20260926\n98765432"),
+    "98765432",
+  );
+  // Only date present falls back safely
+  assertEquals(
+    extractOtpCode("20260926"),
+    "20260926",
+  );
+});
+
 Deno.test("parser: extractAuthLinks extracts URLs and ignores XML namespaces", () => {
   const content = `
     Click https://app.lunarlog.app/auth/callback?code=abc123xyz to log in.
@@ -83,6 +106,38 @@ Deno.test("parser: extractAuthLinks extracts URLs and ignores XML namespaces", (
   assertEquals(links.length, 2);
   assertEquals(links.includes("https://app.lunarlog.app/auth/callback?code=abc123xyz"), true);
   assertEquals(links.includes("lunarlog://auth-callback?token_hash=token456"), true);
+});
+
+Deno.test("parser: extractAuthLinks decodes HTML entities (&amp;, &#38;, quotes) in URLs", () => {
+  const htmlContent = `
+    <p>Please confirm your account:</p>
+    <a href="https://dleexnnevuuddcgcpztq.supabase.co/auth/v1/verify?token=pkce_abc&amp;type=signup&amp;redirect_to=lunarlog%3A%2F%2Fauth-callback">Confirm Email</a>
+    <a href="https://example.com/login?u=test&#38;ref=email&quot;">Legacy Entity Link</a>
+    <a href="lunarlog://auth-callback?token_hash=hash_123&amp;type=magiclink">App Deep Link</a>
+  `;
+  const links = extractAuthLinks(htmlContent);
+  assertEquals(links.length, 3);
+
+  const supabaseUrl = links.find((l) => l.includes("supabase.co"));
+  assertExists(supabaseUrl);
+  assertEquals(
+    supabaseUrl,
+    "https://dleexnnevuuddcgcpztq.supabase.co/auth/v1/verify?token=pkce_abc&type=signup&redirect_to=lunarlog%3A%2F%2Fauth-callback",
+  );
+
+  // Validate URL query params parse cleanly without corrupted 'amp;type' keys
+  const parsed = new URL(supabaseUrl);
+  assertEquals(parsed.searchParams.get("type"), "signup");
+  assertEquals(parsed.searchParams.get("token"), "pkce_abc");
+  assertEquals(parsed.searchParams.has("amp;type"), false);
+
+  const legacyUrl = links.find((l) => l.includes("example.com"));
+  assertExists(legacyUrl);
+  assertEquals(legacyUrl, "https://example.com/login?u=test&ref=email");
+
+  const appLink = links.find((l) => l.startsWith("lunarlog://"));
+  assertExists(appLink);
+  assertEquals(appLink, "lunarlog://auth-callback?token_hash=hash_123&type=magiclink");
 });
 
 Deno.test("parser: normalizeEmail converts lowercase and trims", () => {
@@ -114,6 +169,36 @@ Deno.test("parser: parseInboundEmail parses RFC 5322 MIME stream", async () => {
     parsed.authLinks[0],
     "https://dleexnnevuuddcgcpztq.supabase.co/auth/v1/verify?token=pkce999&type=signup",
   );
+});
+
+Deno.test("parser: parseInboundEmail parses HTML email with entity-encoded links and dates", async () => {
+  const mime = [
+    "From: Lunarlog <noreply@lunarlog.app>",
+    "To: Test Recipient <test-456@inbound.lunarlog.app>",
+    "Subject: Your verification link",
+    "Date: 20260926",
+    "Content-Type: text/html; charset=utf-8",
+    "",
+    "<html><body>",
+    "<p>Use this code: 84920183</p>",
+    '<p><a href="https://dleexnnevuuddcgcpztq.supabase.co/auth/v1/verify?token=pkce_token_123&amp;type=signup&amp;redirect_to=lunarlog%3A%2F%2Fauth-callback">Confirm your email</a></p>',
+    "</body></html>",
+  ].join("\r\n");
+
+  const stream = createMockStream(mime);
+  const parsed = await parseInboundEmail(stream);
+
+  assertEquals(parsed.otpCode, "84920183");
+  assertExists(parsed.authLinks);
+  assertEquals(parsed.authLinks.length, 1);
+  assertEquals(
+    parsed.authLinks[0],
+    "https://dleexnnevuuddcgcpztq.supabase.co/auth/v1/verify?token=pkce_token_123&type=signup&redirect_to=lunarlog%3A%2F%2Fauth-callback",
+  );
+
+  const parsedUrl = new URL(parsed.authLinks[0]);
+  assertEquals(parsedUrl.searchParams.get("type"), "signup");
+  assertEquals(parsedUrl.searchParams.get("token"), "pkce_token_123");
 });
 
 // ---------------------------------------------------------------------------

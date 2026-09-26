@@ -3,6 +3,7 @@
   "specifiers": {
     "jsr:@std/assert@1": "1.0.19",
     "jsr:@std/internal@^1.0.12": "1.0.14",
+    "npm:postal-mime@2.7.6": "2.7.6",
     "npm:postal-mime@^2.2.0": "2.7.6"
   },
   "jsr": {
