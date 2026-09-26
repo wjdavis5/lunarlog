@@ -1138,18 +1138,52 @@ jobs:
         # per-test timeouts to "simplify" the file — they are the evidence
         # this job otherwise lacks.
         #
-        # Issue #922: this 15-minute budget now covers only the test run (and
-        # the short incremental Dart rebuild `flutter test` does on top of the
+        # Issue #922: this budget covers only the test run (and the short
+        # incremental Dart rebuild `flutter test` does on top of the
         # "Build the app for the simulator" step above) — the cold native
-        # build no longer competes for it. With the per-test 2-minute bounds
-        # firing first, 15 minutes is generous; keep the build and test steps
-        # separate rather than collapsing them back into one.
+        # build no longer competes for it.
+        #
+        # Issue #1130: on GitHub-hosted macOS runners, CoreSimulator or the
+        # Dart VM service handshake can occasionally hang before tests start
+        # (after "Xcode build done"). Each attempt is bounded at 300s (5m);
+        # on a timeout or failure, the step reboots the simulator and retries
+        # once, preventing transient runner stalls from failing CI on main.
         if: steps.check_run.outputs.run == 'true'
-        timeout-minutes: 15
+        timeout-minutes: 12
         env:
           SIM_UDID: ${{ steps.sim.outputs.udid }}
         run: |
-          flutter test integration_test/gate_test.dart -d "$SIM_UDID"
+          set -euo pipefail
+
+          run_suite() {
+            python3 -c '
+          import subprocess, sys
+          timeout = int(sys.argv[1])
+          cmd = sys.argv[2:]
+          cmd_str = " ".join(cmd)
+          try:
+              res = subprocess.run(cmd, timeout=timeout)
+              sys.exit(res.returncode)
+          except subprocess.TimeoutExpired:
+              print(f"::error::Command timed out after {timeout}s: {cmd_str}")
+              sys.exit(124)
+          ' 300 flutter test integration_test/gate_test.dart -d "$SIM_UDID"
+          }
+
+          echo "Running integration tests on simulator $SIM_UDID (attempt 1)..."
+          if run_suite; then
+            echo "Integration tests passed on attempt 1."
+            exit 0
+          fi
+
+          echo "::warning::Attempt 1 failed or timed out. Rebooting simulator and retrying (attempt 2)..."
+          xcrun simctl shutdown "$SIM_UDID" || true
+          sleep 5
+          xcrun simctl boot "$SIM_UDID" || true
+          xcrun simctl bootstatus "$SIM_UDID" -b
+
+          echo "Running integration tests on simulator $SIM_UDID (attempt 2)..."
+          run_suite
 
       - name: Shut down simulator
         if: steps.check_run.outputs.run == 'true' && always()
