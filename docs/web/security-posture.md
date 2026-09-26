@@ -71,12 +71,22 @@ The practical consequences:
   a web page has no device-credential prompt of its own. The browser build's
   honest disclosure must say what the browser stores and how to clear it,
   because it cannot promise OS-level protection.
-- **Assets must be same-origin and pinned by CSP.** Flutter's engine, fonts,
-  and `sqlite3.wasm` are all bundled into the build (no CDN, no
-  `google_fonts`), so a strict `script-src 'self'` is achievable. The one
-  engine requirement is `'wasm-unsafe-eval'`, which permits `WebAssembly`
-  compilation without enabling general `eval`. `web/_headers` (Section 3) is
-  where this is enforced.
+- **Assets are same-origin and pinned by CSP.** `flutter build web` runs with
+  `--no-web-resources-cdn` (issue #1091), so CanvasKit ships inside the build
+  and the loader resolves it locally instead of fetching
+  `https://www.gstatic.com/flutter-canvaskit/<revision>/`, which the CSP
+  blocks and which used to leave the page blank. The bundled Inter, Fraunces,
+  and Roboto faces cover the app's text and the web engine's default family,
+  and `sqlite3.wasm` is bundled too, so nothing loads from a script CDN and a
+  strict `script-src 'self'` holds. The one engine requirement is
+  `'wasm-unsafe-eval'`, which permits `WebAssembly` compilation without
+  enabling general `eval`. The single deliberate exception is the engine's
+  on-demand Noto fallback for a glyph the bundled faces lack (emoji, a
+  non-Latin name): `https://fonts.gstatic.com` is allowed in `font-src` and
+  `connect-src` only, a plain boot makes no such request, and the fetch
+  carries no entry content. `web/_headers` (Section 3) is where this is
+  enforced, and `tool/web_smoke/` (Section 6) proves the served policy in a
+  real browser.
 
 ## 3. Where the Supabase session lives on web today
 
@@ -206,16 +216,21 @@ rewritten (not removed) to say the same. When the flag is false the existing
 #831's non-negotiable: the build and the disclosure move together.
 
 **D3 — A strict CSP is deployed with the build from the start.** `web/_headers`
-carries the policy (Section 3), including `'wasm-unsafe-eval'` for
+carries the policy (Section 3), including `'wasm-unsafe-eval'` for the bundled
 `sqlite3.wasm`, `script-src 'self'`, `object-src 'none'`, `base-uri 'self'`,
 `frame-ancestors 'none'`, `form-action 'self'`, and cross-origin isolation
 (`Cross-Origin-Opener-Policy: same-origin`,
 `Cross-Origin-Embedder-Policy: require-corp`) so drift's WASM executor can use
 shared-memory modes. Without COOP/COEP drift falls back to IndexedDB modes, so
 the app works either way; the isolation headers are included because they are
-strictly better and cost nothing for a same-origin app. `connect-src` is
-limited to the app origin, the `dleexnnevuuddcgcpztq.supabase.co` project
-(HTTPS + WSS), and Sentry's ingest host.
+strictly better and cost nothing for a same-origin app. `script-src` also
+depends on the build resolving CanvasKit locally (`--no-web-resources-cdn`,
+issue #1091). `connect-src` is limited to the app origin, the
+`dleexnnevuuddcgcpztq.supabase.co` project (HTTPS + WSS), the Google Fonts
+fallback host (`https://fonts.gstatic.com`, on-demand glyph fallback only),
+and Sentry's ingest host. `font-src` is `'self' data:` plus that same
+fallback host. `tool/web_smoke/` (Section 6) runs the served policy in a real
+browser on every relevant PR.
 
 **D4 — Local data and token are cleared only by the app's own reset or a
 browser site-data clear; the copy tells the user that.** `WebGuardrails` keeps
@@ -246,8 +261,13 @@ never permanently separated from the disclosure that real data is present.
   in a browser (a popup OAuth flow, WebAuthn) is separate work.
 - **Trusted Types, a CSP report collector, and nonce/hash-based `script-src`**
   (dropping `'unsafe-inline'` from `style-src`, tightening the wasm allowance).
-  Worth revisiting once hosting exists and real-browser verification is
-  possible; this slice cannot run a browser to prove the tighter policy.
+  The "no browser to prove it" gap this bullet used to name is closed:
+  [`tool/web_smoke/`](../../tool/web_smoke/boot_check.mjs) serves the real
+  `build/web` under the real `_headers` policy, loads it in headless Chromium,
+  and fails on any CSP violation not on its explicit allowlist or a missing
+  `flutter-first-frame`. It runs in the `Verify` job and in `web-deploy.yml`.
+  What remains open here is tightening the *policy* itself, not the ability to
+  verify it.
 - **Live-browser verification of the URL cleanup.** The `replaceState`
   rewrite (slice 4) is proven by the injectable seam and the pure
   `cleanAuthUrl` tests, but no hosted origin exists yet, so it has not been
@@ -301,19 +321,21 @@ the code half; the DNS/provisioning half is the checklist at the end of this
 section.
 
 - **Deploy path.** `.github/workflows/web-deploy.yml` builds
-  `flutter build web --release` with the same eleven client-safe
-  dart-defines ci.yml's `Verify` job passes **plus
+  `flutter build web --release --no-web-resources-cdn` with the same eleven
+  client-safe dart-defines ci.yml's `Verify` job passes **plus
   `LUNARLOG_WEB_SYNC=true`** (the deployed page is the signed-in web
   client), verifies the output with
   `.github/scripts/check-web-build-output.sh` — which fails closed unless
-  `build/web/_headers` carries the CSP and `build/web/_redirects` carries
-  the status-200 SPA fallback — and publishes `build/web` to the
-  `lunarlog-app` Cloudflare Pages project with a pinned
-  `cloudflare/wrangler-action`. It runs on push to `main` when a path the
-  web client depends on changes (`lib/`, `web/`, `assets/`, `pubspec.*`,
+  `build/web/_headers` carries the CSP, `build/web/_redirects` carries
+  the status-200 SPA fallback, and `build/web/flutter_bootstrap.js` resolves
+  CanvasKit locally — runs the headless boot check in `tool/web_smoke/`, and
+  publishes `build/web` to the `lunarlog-app` Cloudflare Pages project with a
+  pinned `cloudflare/wrangler-action`. It runs on push to `main` when a path
+  the web client depends on changes (`lib/`, `web/`, `assets/`, `pubspec.*`,
   `l10n.yaml`, the workflow, the check script), or on `workflow_dispatch`.
   A `web-deploy` concurrency group serialises runs and never cancels one
-  mid-upload.
+  mid-upload. ci.yml's `Verify` job runs both checks against its own build
+  too, so a regression fails a PR rather than a deploy.
 - **Inert until provisioned.** The deploy step is gated on both
   `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. Without them the run
   prints a `::warning::` and skips the upload — it never fails — so a fork
@@ -327,19 +349,26 @@ section.
 
 ### Installability / offline is deferred
 
-`web/manifest.json` is left **exactly as is**. The app is not marketed as
-installable and this epic adds no service worker or offline cache:
+`web/manifest.json` now carries its real name, description, and brand colours,
+and explicitly **`"display": "browser"`** so Chromium does not offer
+installation (issue #1095). The app is not marketed as installable and this
+epic adds no service worker or offline cache:
 
-- **Installability (A2HS) is deferred.** A home-screen icon that opens a
-  cached page whose drift/IndexedDB state can silently diverge is precisely
-  the kind of half-online surface this posture refuses to promise.
+- **Installability (A2HS) is deferred, and the manifest no longer advertises
+  it.** A home-screen icon that opens a cached page whose drift/IndexedDB
+  state can silently diverge is precisely the kind of half-online surface this
+  posture refuses to promise. `display: browser` is the recorded decision;
+  the icon set stays only for platforms/browsers that ignore `display`.
 - **Offline execution in the browser is deferred.** Sign-in and sync need
   the network, and Flutter's default web build registers no service worker.
   A future slice can add one, subject to the same disclosure and CSP review
   that governs everything else on this origin.
-- **`manifest.json`'s placeholder `name`/`description` are not corrected
-  here either** — that copy belongs with the installability/offline
-  decision, not before it.
+- **The signed-in app is `noindex`.** `web/index.html` carries
+  `<meta name="robots" content="noindex">` and `web/_headers` carries
+  `X-Robots-Tag: noindex` (pinned in
+  `test/architecture/web_headers_test.dart`). `app.lunarlog.app` is the
+  signed-in client, never the front door; the marketing site (#830) is what
+  search engines index.
 
 ### Owner checklist (slice 3)
 

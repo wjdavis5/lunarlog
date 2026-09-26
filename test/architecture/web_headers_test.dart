@@ -116,6 +116,9 @@ void main() {
       expect(headers['x-frame-options'], 'DENY');
       expect(headers['referrer-policy'], 'no-referrer');
       expect(headers['x-content-type-options'], 'nosniff');
+      // Issue #1095: the signed-in app must never be indexed; the marketing
+      // site is the front door.
+      expect(headers['x-robots-tag'], 'noindex');
     });
 
     test('Cross-origin isolation for sqlite3.wasm / drift_worker.js', () {
@@ -156,11 +159,27 @@ void main() {
       expect(csp['worker-src'], containsAll(["'self'", 'blob:']));
     });
 
-    test('CSP connect-src reaches only the app, Supabase, and Sentry', () {
+    test('CSP font-src keeps faces same-origin plus the Google Fonts fallback',
+        () {
+      final font = csp['font-src'] ?? const [];
+      expect(font, contains("'self'"));
+      expect(font, contains('data:'));
+      // Issue #1091: the engine fetches its Noto fallback fonts from Google
+      // Fonts when text contains a glyph the bundled Inter/Fraunces/Roboto
+      // faces lack (emoji, non-Latin names). A plain boot makes no such
+      // request; this allowance only covers that on-demand fallback.
+      expect(font, contains('https://fonts.gstatic.com'));
+    });
+
+    test('CSP connect-src reaches only the app, Supabase, Google Fonts, and '
+        'Sentry', () {
       final connect = csp['connect-src'] ?? const [];
       expect(connect, contains("'self'"));
       expect(connect, contains('https://dleexnnevuuddcgcpztq.supabase.co'));
       expect(connect, contains('wss://dleexnnevuuddcgcpztq.supabase.co'));
+      // Issue #1091: font fallback files are fetched, so the host is needed
+      // in connect-src as well as font-src.
+      expect(connect, contains('https://fonts.gstatic.com'));
       final sentryHosts =
           connect.where((s) => s.contains('ingest')).toList();
       expect(sentryHosts, isNotEmpty,
