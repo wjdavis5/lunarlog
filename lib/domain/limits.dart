@@ -57,6 +57,14 @@ const int kMaxObservationRawLength = 7936;
 const int kMinObservationIntensity = 1;
 const int kMaxObservationIntensity = 5;
 
+/// The human-readable form of the graded [kMinObservationIntensity]..
+/// [kMaxObservationIntensity] pain scale, carried wherever a bare intensity
+/// number would otherwise be read on the clinical 0-10 scale (issue #1114):
+/// the FHIR export's `Observation.referenceRange.text` and the clinician
+/// PDF's method note. Lives next to the numeric bounds so the two can never
+/// drift apart.
+const String kPainIntensityScaleText = '1 (mild) to 5 (severe)';
+
 /// Per-(profile, local_date) cap on live observations, enforced server-side
 /// in `sync_push` (a CHECK cannot count sibling rows) — mirrored here only
 /// as a documented constant a future write path can reference, not enforced

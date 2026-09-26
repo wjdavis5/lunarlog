@@ -116,6 +116,14 @@ void main() {
     expect(text, contains('not medical advice'));
   });
 
+  test('states the graded 1-5 pain scale (issue #1114)', () {
+    final text = latin1.decode(buildClinicalPdfDocument(_fixtureSummary()));
+    // The method note wraps at the printable width, so assert the stable
+    // tail word of the appended scale sentence rather than the whole line.
+    expect(kClinicalSummaryPainScaleNote, contains('1 (mild) to 5 (severe)'));
+    expect(text, contains('(severe).'));
+  });
+
   test('lists the per-cycle dates and lengths with irregular and omitted columns', () {
     final starts = _starts(8);
     final text = latin1.decode(buildClinicalPdfDocument(_fixtureSummary()));

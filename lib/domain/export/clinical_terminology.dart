@@ -59,16 +59,18 @@
 /// - **Basal body temperature (A3-46):** [kBodyTemperatureLoinc] —
 ///   LOINC `8310-5` "Body temperature" (the code US Core / IPS
 ///   vital-signs profiles expect), emitted with a basal qualifier
-///   (`bodySite`/method, or an additional local coding marking the
-///   reading basal). Never an invented BBT-specific LOINC.
+///   ([kBasalBodyTemperatureSnomed], SNOMED `300076005` "Basal body
+///   temperature", since issue #1115 — a real concept exists, so no
+///   invented BBT-specific LOINC).
 /// - **Pregnancy + estimated due date (A3-47):** pregnancy status is
 ///   conventionally a `Condition` (or an `Observation` of pregnancy
 ///   status); the estimated delivery date is an `Observation` coded with
-///   the already-verified `11778-8` "Delivery date Estimated"
-///   ([estimatedDeliveryDateCode]; USCDI:
+///   the LMP-derived LOINC `11779-6` ([kEstimatedDeliveryDateLoinc];
+///   USCDI lists it as a Level 0 submission:
 ///   https://www.healthit.gov/isa/uscdi-data/estimated-date-delivery).
-///   No pregnancy-status/due-date data model exists yet — only the mode
-///   — so this is shape reservation, not an implemented mapping.
+///   `11778-8` means a practitioner-selected date and is not used. No
+///   pregnancy-status/due-date data model exists yet — only the mode —
+///   so this is shape reservation, not an implemented mapping.
 /// - **Birth control (A3-48, #260):** [kBirthControlResourceShapes] —
 ///   `MedicationStatement` / `Device` + `DeviceUseStatement` /
 ///   `Procedure` by method shape. Never modeled as an `Observation`;
@@ -154,9 +156,21 @@ class ClinicalCode {
   String toString() => '$system|$code ($display)';
 }
 
-/// The seven verified menstrual-health LOINC codes from #152's A3-44
-/// pass, each sourced to its `loinc.org` page. This list is exhaustive -
-/// a test asserts it contains exactly these seven and no others.
+/// The seven verified menstrual-health LOINC rows from #152's A3-44 pass,
+/// each sourced to its `loinc.org` page — the audit catalogue, not all of
+/// them still emitted. A test asserts it contains exactly these seven and
+/// no others.
+///
+/// Issue #1116's independent re-verification (tx.fhir.org / CSIRO
+/// Ontoserver, 2026-09-26) found four of them are no longer the right
+/// question for what the export sends, so the builder stopped emitting
+/// them while the rows are retained here as the provenance record:
+/// `8678-5` and `3146-8` ("Menstrual status" — the state of menstruation,
+/// not a day's flow amount; replaced by SNOMED `364308001`), `64700-8`
+/// (a TRIAL-status PhenX survey question with an ordinal band answer list;
+/// replaced by SNOMED `161716008`), and `11778-8` ("Delivery date
+/// Estimated" — a due date a practitioner selected; an app-calculated,
+/// LMP-derived date uses [kEstimatedDeliveryDateLoinc], `11779-6`).
 const List<ClinicalCode> kLoincCodes = [
   ClinicalCode(
     system: kSystemLoinc,
@@ -202,45 +216,96 @@ const List<ClinicalCode> kLoincCodes = [
   ),
 ];
 
-/// LOINC codes that were checked during the A3-44 pass and found to
-/// **not** mean what they are commonly cited as meaning. `3141-9` is
-/// "Body weight Measured" - not a menstrual concept at all. Referenced by
-/// code (not full [ClinicalCode] rows, since these must never be built
+/// LOINC codes that were checked and found to **not** mean what they are
+/// commonly cited as meaning, so they must never be built into a coding.
+/// `3141-9` is "Body weight Measured" - in fact a weight code, not a
+/// menstrual concept. The three from #1116's independent re-verification
+/// (tx.fhir.org / CSIRO Ontoserver, 2026-09-26): `49033-4` is "Menstrual
+/// History - Reported" (not the flow-amount code it was cited as),
+/// `21840-4` is "Sex [NAACCR]" (a cancer-registry field), and `3151-8` is
+/// "Inhaled oxygen flow rate" — neither is a menstrual concept. Referenced
+/// by code (not full [ClinicalCode] rows, since these must never be built
 /// into an actual coding) purely so the never-referenced test has
 /// something to check against.
-const List<String> kRefutedLoincCodes = ['3141-9'];
-
-/// LOINC codes that came up during the A3-44 pass but were **not**
-/// resolved to a verified menstrual concept in that pass. Do not use
-/// without independent verification - see #152.
-const List<String> kUnverifiedLoincCodes = [
+const List<String> kRefutedLoincCodes = [
+  '3141-9',
   '49033-4',
-  '63871-7',
   '21840-4',
-  '8708-3',
   '3151-8',
 ];
 
-/// LOINC `8310-5` "Body temperature" — **reserved for basal body
-/// temperature** (A3-46), not part of [kLoincCodes]: that table is
-/// exactly the A3-44 verified *menstrual-health question* set, and a
-/// vital-sign code is not one of those seven (a test pins both facts).
-///
-/// `8310-5` is the standard body-temperature code US Core / IPS
-/// vital-signs profiles expect, but on its own it understates BBT as a
-/// distinct clinical concept (resting, first-waking). When the FHIR
-/// builder (#157) starts emitting BBT `Observation`s for
-/// `observations.category = 'bbt'` rows, it must emit this code **with a
-/// basal qualifier** — a `bodySite`/method qualifier, or an additional
-/// lunarlog-local coding marking the reading basal — rather than
-/// inventing a BBT-specific LOINC code. Revisit once a BBT-specific
-/// LOINC is confirmed. Until then, BBT rows ride the builder's generic
-/// local-coding fallback, which is valid FHIR and guesses nothing.
+/// LOINC codes that came up during the A3-44 pass but were **not**
+/// resolved to a verified menstrual concept in that pass. Empty since
+/// issue #1116's independent re-verification: `63871-7` and `8708-3` do
+/// not exist (both fail the LOINC mod-10 check digit and are absent from
+/// LOINC 2.82), and `49033-4`/`21840-4`/`3151-8` turned out to be
+/// different, unrelated concepts and moved to [kRefutedLoincCodes]. The
+/// list is kept (rather than deleted) so a future unresolved code has a
+/// documented home; a test asserts it is empty today.
+const List<String> kUnverifiedLoincCodes = [];
+
+/// LOINC `8310-5` "Body temperature" — the standard vital-sign code (US
+/// Core / IPS) the FHIR builder now emits for `observations.category =
+/// 'bbt'` rows, paired with the SNOMED finding
+/// [kBasalBodyTemperatureSnomed] (300076005) to mark the reading as basal
+/// (issue #1115 — a SNOMED BBT concept exists, so no invented BBT-specific
+/// LOINC is needed). Deliberately **not** part of [kLoincCodes]: that
+/// table is exactly the A3-44 verified *menstrual-health question* set,
+/// and a vital-sign code is not one of those (a test pins both facts).
 const ClinicalCode kBodyTemperatureLoinc = ClinicalCode(
   system: kSystemLoinc,
   code: '8310-5',
   display: 'Body temperature',
   provenanceUrl: 'https://loinc.org/8310-5',
+);
+
+/// SNOMED CT `300076005` "Basal body temperature" — the finding coding
+/// that pairs with [kBodyTemperatureLoinc] on a BBT `Observation` (issue
+/// #1115; `docs/clinical/terminology.md`'s BBT section). Verified against
+/// `tx.fhir.org` (SNOMED CT International 20250201) on 2026-09-26.
+const ClinicalCode kBasalBodyTemperatureSnomed = ClinicalCode(
+  system: kSystemSnomed,
+  code: '300076005',
+  display: 'Basal body temperature',
+  provenanceUrl:
+      'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=300076005',
+);
+
+/// LOINC `29463-7` "Body weight" — the vital-sign code the FHIR builder
+/// emits for `observations.category = 'weight'` rows (issue #1115).
+/// Verified against `tx.fhir.org` (LOINC 2.82) on 2026-09-26.
+const ClinicalCode kBodyWeightLoinc = ClinicalCode(
+  system: kSystemLoinc,
+  code: '29463-7',
+  display: 'Body weight',
+  provenanceUrl: 'https://loinc.org/29463-7',
+);
+
+/// SNOMED CT `161716008` "Usual length of menstrual cycle" — the cycle
+/// length `Observation.code` (issue #1115), replacing the TRIAL-status,
+/// ordinal LOINC `64700-8` that asked a PhenX survey question with a
+/// required band answer list. Active observable entity, verified against
+/// `tx.fhir.org` (SNOMED CT International 20250201) on 2026-09-26.
+const ClinicalCode kUsualLengthOfMenstrualCycleSnomed = ClinicalCode(
+  system: kSystemSnomed,
+  code: '161716008',
+  display: 'Usual length of menstrual cycle',
+  provenanceUrl:
+      'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=161716008',
+);
+
+/// SNOMED CT `364308001` "Quantity of menstrual blood loss" — the single
+/// `Observation.code` for a per-day flow amount (issue #1115), replacing
+/// the two LOINC "Menstrual status" codings (`8678-5`, `3146-8`) that
+/// described the state of menstruation rather than how much was lost.
+/// Active observable entity, verified against `tx.fhir.org` (SNOMED CT
+/// International 20250201) on 2026-09-26.
+const ClinicalCode kQuantityOfMenstrualBloodLossSnomed = ClinicalCode(
+  system: kSystemSnomed,
+  code: '364308001',
+  display: 'Quantity of menstrual blood loss',
+  provenanceUrl:
+      'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=364308001',
 );
 
 /// The clinical coding for every code in [tags.kTagTaxonomy] (all 113 —
@@ -270,9 +335,9 @@ const Map<String, ClinicalCode> kTagClinicalCodes = {
   // pain
   'cramps': ClinicalCode(
     system: kSystemSnomed,
-    code: '266599000',
-    display: 'Dysmenorrhea',
-    provenanceUrl: 'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=266599000',
+    code: '431416001',
+    display: 'Menstrual cramp',
+    provenanceUrl: 'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=431416001',
   ),
   'headache': ClinicalCode(
     system: kSystemSnomed,
@@ -288,9 +353,9 @@ const Map<String, ClinicalCode> kTagClinicalCodes = {
   ),
   'breast_tenderness': ClinicalCode(
     system: kSystemSnomed,
-    code: '55222007',
-    display: 'Tenderness of breast',
-    provenanceUrl: 'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=55222007',
+    code: '53430007',
+    display: 'Pain of breast',
+    provenanceUrl: 'https://tx.fhir.org/r4/CodeSystem/\$lookup?system=http://snomed.info/sct&code=53430007',
   ),
   // body
   'bloating': ClinicalCode(
@@ -1057,40 +1122,51 @@ ClinicalCode? loincByCode(String code) {
   return null;
 }
 
-/// The LOINC rows #157's FHIR Bundle builder should use for menstrual
-/// status observations: `8678-5` (patient-reported) and `3146-8` (the
-/// general "Menstrual status" question).
-List<ClinicalCode> get menstrualStatusCodes => [
-  loincByCode('8678-5')!,
-  loincByCode('3146-8')!,
-];
-
-/// The LOINC row #157's FHIR Bundle builder should use for typical cycle
-/// length: `64700-8`.
-List<ClinicalCode> get cycleLengthCodes => [loincByCode('64700-8')!];
+/// The row #157's FHIR Bundle builder uses for typical cycle length:
+/// SNOMED `161716008` "Usual length of menstrual cycle" (issue #1115). The
+/// LOINC `64700-8` it replaced is a TRIAL-status, ordinal PhenX survey
+/// question whose required answer list does not fit the free day-count the
+/// app sends; see [kUsualLengthOfMenstrualCycleSnomed] and
+/// [kLoincCodes]'s doc comment.
+List<ClinicalCode> get cycleLengthCodes => [kUsualLengthOfMenstrualCycleSnomed];
 
 /// The LOINC row reserved for the estimated delivery date `Observation`
-/// of the pregnancy shape (A3-47): `11778-8` "Delivery date Estimated",
-/// one of the A3-44 verified seven, included in USCDI
-/// (https://www.healthit.gov/isa/uscdi-data/estimated-date-delivery).
+/// of the pregnancy shape (A3-47): `11779-6` "Delivery date Estimated from
+/// last menstrual period" (issue #1116). An app-calculated date is
+/// LMP-derived, which is precisely what this code means; `11778-8`
+/// "Delivery date Estimated" means a date a practitioner selected and must
+/// not be used for it. The cited USCDI page lists this as a Level 0
+/// submission, not the "included in USCDI" the earlier note claimed.
+/// Verified against `tx.fhir.org` (LOINC 2.82) on 2026-09-26.
 ///
 /// **Shape reservation, not an implemented mapping.** Pregnancy status
 /// is conventionally a `Condition` (or an `Observation` of pregnancy
 /// status) — never an `Observation` with this code; the EDD specifically
 /// is the `Observation`. #188's lifecycle modes carry a pregnancy *mode*
 /// but no pregnancy-status or due-date data model exists yet, so nothing
-/// consumes this getter; it exists so the export design already accounts
-/// for the resource split the day that data lands (see the library doc's
-/// "Reserved shapes" section).
-ClinicalCode get estimatedDeliveryDateCode => loincByCode('11778-8')!;
+/// consumes this object yet; it exists so the export design already
+/// accounts for the resource split the day that data lands (see the
+/// library doc's "Reserved shapes" section).
+const ClinicalCode kEstimatedDeliveryDateLoinc = ClinicalCode(
+  system: kSystemLoinc,
+  code: '11779-6',
+  display: 'Delivery date Estimated from last menstrual period',
+  provenanceUrl: 'https://loinc.org/11779-6',
+);
+
+/// [kEstimatedDeliveryDateLoinc], as a getter for the call site that reads
+/// it by concept rather than by code.
+ClinicalCode get estimatedDeliveryDateCode => kEstimatedDeliveryDateLoinc;
 
 /// The A3-48 birth-control resource-shape reservation: which FHIR
 /// resource each method shape must be exported as, keyed by method
 /// shape. `#260`'s birth-control model has landed
 /// (`lib/domain/birth_control.dart`: profile-level method plus per-day
-/// `birth_control_*` intake observation rows), but the FHIR builder does
-/// not yet emit any of these shapes — its generic local-coding fallback
-/// covers the intake rows meanwhile.
+/// `birth_control_*` intake observation rows). The FHIR builder does not
+/// emit any of these shapes — and, per its binding rule, never models a
+/// birth-control intake row as an `Observation` either: those rows are
+/// deliberately absent from the export (issue #1115), not carried on the
+/// generic local-coding fallback. See `docs/clinical/fhir-export.md`.
 ///
 /// The binding rule (a test pins it): **no birth-control method shape is
 /// ever modeled as an `Observation`** — exporting ongoing medication,

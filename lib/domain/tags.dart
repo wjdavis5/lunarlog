@@ -541,6 +541,39 @@ String flatDisplayForTag(TagCode tag) {
   return tag.display;
 }
 
+/// The category-context words [contextualDisplayForTag] prefixes where a
+/// tag's own option label is ambiguous once it is read outside its
+/// category heading (issue #1114). Only categories whose bare options lose
+/// their meaning without the heading appear here; every other category
+/// falls back to [flatDisplayForTag] unchanged.
+const Map<TagCategory, String> _kContextualCategoryLabels = {
+  TagCategory.sexLife: 'Sex',
+  TagCategory.tests: 'Test result',
+  TagCategory.discharge: 'Discharge',
+  TagCategory.cravings: 'Craving',
+  TagCategory.stool: 'Stool',
+  TagCategory.sleep: 'Sleep duration',
+  TagCategory.medication: 'Medication',
+  TagCategory.digestion: 'Digestion',
+};
+
+/// The display string for [tag] in a namespace that renders **no category
+/// headings** — the FHIR export's per-tag Observations (issue #1114),
+/// where the label is the only human-readable text a receiving system
+/// shows. Extends [flatDisplayForTag] (which already resolves display
+/// collisions such as "Great (digestion)") with a human category context
+/// for the categories whose option alone is ambiguous out of context:
+/// "Withdrawal" reads as substance withdrawal, "0-3 hours" as anything.
+/// The result is e.g. "Sex: Withdrawal", "Sleep duration: 0-3 hours",
+/// "Medication: Antibiotic". Tags whose display is already self-describing
+/// are returned unchanged.
+String contextualDisplayForTag(TagCode tag) {
+  final flat = flatDisplayForTag(tag);
+  if (flat != tag.display) return flat;
+  final context = _kContextualCategoryLabels[tag.category];
+  return context == null ? flat : '$context: $flat';
+}
+
 /// Throws [ArgumentError] naming the first tag not in the taxonomy.
 ///
 /// Issue #257: [registryCodes] -- the profile's custom-tag registry codes

@@ -77,7 +77,8 @@ void _addMethodNote(_PdfLayout layout, ClinicalPdfSummary summary) {
     'and the symptom grid, and flagged as irregular. '
     'Cycles longer than 60 days are omitted from the symptom grid but '
     'retained in the statistics and the cycle table. No fertility, '
-    'ovulation, or conception estimate is included.',
+    'ovulation, or conception estimate is included. '
+    '$kClinicalSummaryPainScaleNote',
   );
   layout.paragraph(notebook.toString(), size: 9, before: 10);
 }

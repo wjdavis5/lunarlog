@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/export/clinical_terminology.dart';
 import 'package:lunarlog/domain/export/fhir_bundle.dart';
+import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -335,8 +336,8 @@ void main() {
   });
 
   group('menstrual status Observations (flow days)', () {
-    test('one per day entry with flow != none, coded with both LOINC '
-        'menstrual-status codes', () {
+    test('one per day entry with flow != none, coded with the single '
+        'SNOMED quantity-of-blood-loss code (#1115)', () {
       final bundle = build();
       final entries = (bundle['entry'] as List).cast<Map>();
       final flowObs = entries
@@ -348,10 +349,15 @@ void main() {
       // day-01 (medium) and day-03 (light) count; day-02 (none) does not.
       expect(flowObs, hasLength(2));
       for (final obs in flowObs) {
-        final codes = ((obs['code'] as Map)['coding'] as List)
-            .map((c) => (c as Map)['code'])
-            .toSet();
-        expect(codes, {'8678-5', '3146-8'});
+        final codings = ((obs['code'] as Map)['coding'] as List)
+            .map((c) => (c as Map))
+            .toList();
+        expect(codings, hasLength(1));
+        expect(codings.single['system'], kSystemSnomed);
+        expect(codings.single['code'], '364308001');
+        expect(codings.single['display'], 'Quantity of menstrual blood loss');
+        expect((obs['code'] as Map)['text'],
+            'Quantity of menstrual blood loss');
         expect(obs['status'], 'final');
         expect(obs['performer'], isNotEmpty);
         expect((obs['note'] as List).first, isA<Map>());
@@ -411,10 +417,12 @@ void main() {
     });
 
     test('a non-taxonomy observation code degrades to a local coding '
-        '(no guessed clinical code)', () {
+        '(no guessed clinical code), with a category-qualified label',
+        () {
       final bundle = build(obs: [
         _observation('o1', 'day-01', profile.id, '2026-04-01',
-            category: ObservationCategory.bbt, code: 'reading'),
+            category: ObservationCategory.custom('other'),
+            code: 'wearable_metric'),
       ]);
       final entries = (bundle['entry'] as List).cast<Map>();
       final obs = entries
@@ -428,7 +436,9 @@ void main() {
       expect(codings, hasLength(1));
       final coding = codings.single as Map;
       expect(coding['system'], kSystemLunarlogLocal);
-      expect(coding['code'], 'bbt:reading');
+      expect(coding['code'], 'other:wearable_metric');
+      expect(coding['display'], 'Other: wearable_metric');
+      expect((obs['code'] as Map)['text'], 'Other: wearable_metric');
     });
 
     test('intensity-only carries as top-level valueInteger, no component '
@@ -444,6 +454,36 @@ void main() {
       expect(obs['valueInteger'], 4);
       expect(obs.containsKey('valueQuantity'), isFalse);
       expect(obs.containsKey('component'), isFalse);
+    });
+
+    test('a graded pain row carries a referenceRange stating the 1-5 scale '
+        '(issue #1114)', () {
+      final bundle = build(obs: [
+        _observation('o1', 'day-01', profile.id, '2026-04-01',
+            category: ObservationCategory.pain, code: 'cramps', intensity: 4),
+      ]);
+      final entries = (bundle['entry'] as List).cast<Map>();
+      final obs = entries
+          .map((e) => e['resource'] as Map)
+          .firstWhere((r) =>
+              r['resourceType'] == 'Observation' &&
+              r.containsKey('valueInteger'));
+      final range = (obs['referenceRange'] as List).single as Map;
+      expect((range['low'] as Map)['value'], kMinObservationIntensity);
+      expect((range['high'] as Map)['value'], kMaxObservationIntensity);
+      expect(range['text'], kPainIntensityScaleText);
+    });
+
+    test('an ungraded row carries no referenceRange', () {
+      final bundle = build(obs: [
+        _observation('o1', 'day-01', profile.id, '2026-04-01',
+            category: ObservationCategory.pain, code: 'cramps'),
+      ]);
+      final entries = (bundle['entry'] as List).cast<Map>();
+      final obs = entries
+          .map((e) => e['resource'] as Map)
+          .firstWhere((r) => r['resourceType'] == 'Observation');
+      expect(obs.containsKey('referenceRange'), isFalse);
     });
 
     test('valueNum+unit carries as top-level valueQuantity (UCUM code when '
@@ -695,6 +735,139 @@ void main() {
       final codings = (symptomObs.single['code'] as Map)['coding'] as List;
       expect(codings.any((c) => (c as Map)['code'] == 'cramps'), isTrue);
     });
+
+    test('out-of-context tag labels carry their category (issue #1114): '
+        'code.text and the local coding display are self-describing', () {
+      final bundle = build(
+        entries: [
+          _entry('day-01', profile.id, '2026-04-01', flow: FlowLevel.none, tags: const [
+            'withdrawal',
+            'pregnancy_positive',
+            'ovulation_negative',
+            'great_digestion',
+            'great_stool',
+          ]),
+        ],
+        obs: const [],
+      );
+      final entries = (bundle['entry'] as List).cast<Map>();
+      final tagObs = entries
+          .map((e) => e['resource'] as Map)
+          .where((r) => r['resourceType'] == 'Observation')
+          .toList();
+      String textFor(String tag) {
+        final obs = tagObs.firstWhere((obs) =>
+            ((obs['code'] as Map)['coding'] as List)
+                .any((c) => (c as Map)['code'] == tag));
+        return (obs['code'] as Map)['text'] as String;
+      }
+      expect(textFor('withdrawal'), 'Sex: Withdrawal');
+      expect(textFor('pregnancy_positive'), 'Test result: Pregnancy · positive');
+      expect(textFor('ovulation_negative'),
+          'Test result: Ovulation · negative');
+      // The collision disambiguation from flatDisplayForTag is preserved.
+      expect(textFor('great_digestion'), 'Great (digestion)');
+      expect(textFor('great_stool'), 'Great (stool)');
+      // The local coding's display is the same self-describing label.
+      final withdrawal = tagObs.firstWhere((obs) =>
+          ((obs['code'] as Map)['coding'] as List)
+              .any((c) => (c as Map)['code'] == 'withdrawal'));
+      final local = ((((withdrawal['code'] as Map)['coding'] as List))
+              .cast<Map>())
+          .firstWhere((c) => c['system'] == kSystemLunarlogLocal);
+      expect(local['display'], 'Sex: Withdrawal');
+    });
+
+    test('the fallback display for a non-tag row is category-qualified so a '
+        'bare option is never exported (issue #1114)', () {
+      expect(fhirLocalDisplayFor('birth_control_pill', 'missed'),
+          'Birth control pill: missed');
+      expect(fhirLocalDisplayFor('birth_control_pill', 'taken'),
+          'Birth control pill: taken');
+    });
+  });
+
+  group('measurement rows and intake rows (#1115)', () {
+    test('a BBT row is coded LOINC 8310-5 + SNOMED 300076005 in the Vital '
+        'signs section, not Problems', () {
+      final bundle = build(
+        entries: const [],
+        obs: [
+          _observation('o-bbt', 'day-01', profile.id, '2026-04-01',
+              category: ObservationCategory.bbt,
+              code: 'reading',
+              valueNum: 36.6,
+              unit: 'celsius'),
+        ],
+      );
+      final entries = (bundle['entry'] as List).cast<Map>();
+      final obs = entries
+          .map((e) => e['resource'] as Map)
+          .firstWhere((r) =>
+              r['resourceType'] == 'Observation' &&
+              r.containsKey('valueQuantity'));
+      final codings = ((obs['code'] as Map)['coding'] as List).cast<Map>();
+      expect(codings, hasLength(2));
+      expect(codings[0]['code'], '8310-5');
+      expect(codings[0]['display'], 'Body temperature');
+      expect(codings[1]['code'], '300076005');
+      expect(codings[1]['display'], 'Basal body temperature');
+      expect((obs['valueQuantity'] as Map)['code'], 'Cel');
+
+      final composition = entries
+          .map((e) => e['resource'] as Map)
+          .firstWhere((r) => r['resourceType'] == 'Composition');
+      final sections = (composition['section'] as List).cast<Map>();
+      final vitals = sections.firstWhere((s) => s['title'] == 'Vital signs');
+      final problems = sections.firstWhere((s) => s['title'] == 'Problems');
+      expect((vitals['entry'] as List), hasLength(1));
+      expect(problems['entry'], isEmpty);
+    });
+
+    test('a weight row is coded LOINC 29463-7 in Vital signs', () {
+      final bundle = build(
+        entries: const [],
+        obs: [
+          _observation('o-w', 'day-01', profile.id, '2026-04-01',
+              category: ObservationCategory.weight,
+              code: 'weight',
+              valueNum: 62.5,
+              unit: 'kg'),
+        ],
+      );
+      final entries = (bundle['entry'] as List).cast<Map>();
+      final obs = entries
+          .map((e) => e['resource'] as Map)
+          .firstWhere((r) =>
+              r['resourceType'] == 'Observation' &&
+              r.containsKey('valueQuantity'));
+      final coding = ((obs['code'] as Map)['coding'] as List).single as Map;
+      expect(coding['system'], kSystemLoinc);
+      expect(coding['code'], '29463-7');
+      expect(coding['display'], 'Body weight');
+      expect((obs['valueQuantity'] as Map)['code'], 'kg');
+    });
+
+    test('birth-control intake rows are never exported as Observations '
+        '(A3-48; issue #1115)', () {
+      final bundle = build(
+        entries: const [],
+        obs: [
+          _observation('o-bcp', 'day-01', profile.id, '2026-04-01',
+              category: ObservationCategory.birthControlPill, code: 'missed'),
+        ],
+      );
+      final strings = _allStrings(bundle);
+      expect(strings.any((s) => s.contains('birth_control_pill')), isFalse);
+      expect(strings.contains('missed'), isFalse);
+      final entries = (bundle['entry'] as List).cast<Map>();
+      final composition = entries
+          .map((e) => e['resource'] as Map)
+          .firstWhere((r) => r['resourceType'] == 'Composition');
+      final sections = (composition['section'] as List).cast<Map>();
+      final problems = sections.firstWhere((s) => s['title'] == 'Problems');
+      expect(problems['entry'], isEmpty);
+    });
   });
 
   group('DayEntry.note is never exported (#157 review fix)', () {
@@ -723,8 +896,9 @@ void main() {
       expect(dateTimes, isEmpty);
     });
 
-    test('an ActivePrediction adds typical-cycle-length (64700-8) and LMP '
-        '(8665-2) Observations', () {
+    test('an ActivePrediction adds SNOMED cycle-length (161716008) and LMP '
+        '(8665-2) Observations; cycle length is not marked self-reported',
+        () {
       final history = _cycleHistory(profile.id);
       final prediction = computePredictionFromEntries(
         entries: history,
@@ -736,13 +910,18 @@ void main() {
       final lengthObs = entries
           .map((e) => e['resource'] as Map)
           .firstWhere((r) => r.containsKey('valueQuantity'));
-      expect(((lengthObs['code'] as Map)['coding'] as List).single, isA<Map>());
-      expect(
-        (((lengthObs['code'] as Map)['coding'] as List).single as Map)['code'],
-        '64700-8',
-      );
+      final lengthCoding =
+          ((lengthObs['code'] as Map)['coding'] as List).single as Map;
+      expect(lengthCoding['system'], kSystemSnomed);
+      expect(lengthCoding['code'], '161716008');
+      expect(lengthCoding['display'], 'Usual length of menstrual cycle');
       expect((lengthObs['valueQuantity'] as Map)['value'],
           prediction.meanCycleLengthDays.round());
+      // Issue #1115: calculated from logged period starts, so no performer
+      // and no self-reported note.
+      expect(lengthObs.containsKey('performer'), isFalse);
+      expect((lengthObs['note'] as List).single,
+          containsPair('text', kCalculatedCycleLengthNoteText));
 
       final lmpObs = entries
           .map((e) => e['resource'] as Map)
@@ -752,12 +931,15 @@ void main() {
         '8665-2',
       );
       expect(lmpObs['valueDateTime'], prediction.lastEpisodeStart.iso);
+      // LMP is the logged period-start date itself, so it stays
+      // self-reported.
+      expect(lmpObs['performer'], isNotEmpty);
     });
   });
 
   group('Composition sections', () {
-    test('Results section references flow + stat observations, Problems '
-        'section references symptom observations', () {
+    test('Results references flow + stat observations, Vital signs the '
+        'measurements, Problems the symptom observations (#1115)', () {
       final history = _cycleHistory(profile.id);
       final prediction = computePredictionFromEntries(
         entries: history,
@@ -768,6 +950,11 @@ void main() {
         obs: [
           _observation('o1', 'e0', profile.id, '2026-01-01',
               category: ObservationCategory.pain, code: 'cramps'),
+          _observation('o2', 'e0', profile.id, '2026-01-01',
+              category: ObservationCategory.bbt,
+              code: 'reading',
+              valueNum: 36.5,
+              unit: 'celsius'),
         ],
         prediction: prediction,
       );
@@ -776,19 +963,23 @@ void main() {
           .map((e) => e['resource'] as Map)
           .firstWhere((r) => r['resourceType'] == 'Composition');
       final sections = (composition['section'] as List).cast<Map>();
-      expect(sections, hasLength(2));
+      expect(sections, hasLength(3));
 
       final results = sections.firstWhere((s) => s['title'] == 'Results');
+      final vitals = sections.firstWhere((s) => s['title'] == 'Vital signs');
       final problems = sections.firstWhere((s) => s['title'] == 'Problems');
       expect(((results['code'] as Map)['coding'] as List).first,
           containsPair('code', '30954-2'));
+      expect(((vitals['code'] as Map)['coding'] as List).first,
+          containsPair('code', '8716-3'));
       expect(((problems['code'] as Map)['coding'] as List).first,
           containsPair('code', '11450-4'));
 
-      // 8 flow entries (2 bleed days per period x 4 periods... actually
-      // history has 3 flow days per period) + 2 stat observations.
+      // history has 3 flow days per period x 4 periods = 12 flow entries,
+      // + 2 stat observations.
       final flowAndStatCount = history.length + 2;
       expect((results['entry'] as List).length, flowAndStatCount);
+      expect((vitals['entry'] as List).length, 1);
       expect((problems['entry'] as List).length, 1);
     });
 
