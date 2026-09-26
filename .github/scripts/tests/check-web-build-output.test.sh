@@ -198,7 +198,12 @@ assert_contains "web-deploy.yml targets the lunarlog-app Pages project" "$deploy
 assert_contains "web-deploy.yml reads CLOUDFLARE_API_TOKEN" "$deploy_yaml" "CLOUDFLARE_API_TOKEN"
 assert_contains "web-deploy.yml reads CLOUDFLARE_ACCOUNT_ID" "$deploy_yaml" "CLOUDFLARE_ACCOUNT_ID"
 assert_contains "web-deploy.yml warns-and-skips without the secrets" "$deploy_yaml" "::warning::"
-assert_not_contains "the deploy step cannot fail the run on a missing secret" "$deploy_yaml" "exit 1"
+# Issue #1092 adds a deliberately failing ensure-project step after the
+# credentials check, so scope the "must not fail on a missing secret"
+# assertion to the credentials check itself rather than the whole workflow.
+credentials_step="${deploy_yaml#*'name: Check the Cloudflare credentials'}"
+credentials_step="${credentials_step%%'name: Ensure the Cloudflare Pages project exists'*}"
+assert_not_contains "the credentials check cannot fail the run on a missing secret" "$credentials_step" "exit 1"
 
 ci_yaml="$(cat "$CI_WORKFLOW")"
 assert_contains "ci.yml release-guards runs this suite" "$ci_yaml" "bash .github/scripts/tests/check-web-build-output.test.sh"
