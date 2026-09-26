@@ -171,11 +171,20 @@ class CycleLiteracyLibrary {
 
   // --- Verified, linkable citations (Issue #1103) ---
   //
-  // Every URL below was checked with
-  // `curl -sIL -o /dev/null -w "%{http_code} %{url_effective}"` and returned
-  // HTTP 200 on the publisher's own domain. Never add a URL that has not been
-  // verified this way; the domain is enforced by
-  // test/domain/content/cycle_literacy_library_test.dart.
+  // How each URL below was verified (Issue #1119 corrects this comment: the
+  // old claim that every URL "returned HTTP 200" was not true):
+  // - ACOG, NHS, WHO and RCOG pages returned HTTP 200 to
+  //   `curl -sIL -o /dev/null -w "%{http_code} %{url_effective}"` with a
+  //   browser User-Agent. ACOG serves *missing* pages as HTTP 200 too, so
+  //   each ACOG page's `og:title` was read as well; none is a soft 404.
+  // - The two peer-reviewed DOI links (_wilcoxOvulationTiming,
+  //   _figoMenstrualDisorders) return HTTP 403 to curl behind a publisher
+  //   bot challenge. They were verified by following the doi.org redirect
+  //   and confirming the title against Crossref and PubMed E-utilities.
+  // - The AAP HealthyChildren page returned HTTP 200; its title was read
+  //   from `og:title`.
+  // Never add a URL that has not been verified this way; the domain is
+  // enforced by test/domain/content/cycle_literacy_library_test.dart.
 
   static const ArticleSource _acogMenstrualCycle = ArticleSource(
     publisher: SourcePublisher.acog,
@@ -255,24 +264,6 @@ class CycleLiteracyLibrary {
     retrieved: _retrievedDate,
   );
 
-  static const ArticleSource _endocrineLibrary = ArticleSource(
-    publisher: SourcePublisher.endocrineSociety,
-    title: 'Endocrine Library',
-    url: 'https://www.endocrine.org/patient-engagement/endocrine-library',
-    retrieved: _retrievedDate,
-  );
-
-  static const ArticleSource _aapPediatricsMenstruationVitalSign =
-      ArticleSource(
-        publisher: SourcePublisher.aap,
-        title:
-            'Menstruation in girls and adolescents: using the menstrual cycle as a vital sign',
-        identifier: 'Pediatrics 2006;118(5):2245-50',
-        url:
-            'https://publications.aap.org/pediatrics/article/118/5/2245/69874/Menstruation-in-Girls-and-Adolescents-Using-the',
-        retrieved: _retrievedDate,
-      );
-
   static const ArticleSource _aapHealthyChildrenMenstrualDisorders =
       ArticleSource(
         publisher: SourcePublisher.aap,
@@ -321,7 +312,7 @@ class CycleLiteracyLibrary {
 
   static const ArticleSource _guytonAndHall = ArticleSource(
     publisher: SourcePublisher.textbook,
-    title: 'Guyton and Hall Textbook of Medical Physiology',
+    title: 'Guyton and Hall Textbook of Medical Physiology (15th ed.)',
     retrieved: _retrievedDate,
   );
 
@@ -333,7 +324,7 @@ class CycleLiteracyLibrary {
 
   static const ArticleSource _yenAndJaffe = ArticleSource(
     publisher: SourcePublisher.textbook,
-    title: 'Yen & Jaffe\'s Reproductive Endocrinology',
+    title: 'Yen & Jaffe\'s Reproductive Endocrinology (8th ed.)',
     retrieved: _retrievedDate,
   );
 
@@ -344,7 +335,7 @@ class CycleLiteracyLibrary {
     summary: 'A comprehensive guide to how menstruation, the follicular phase, ovulation, and the luteal phase interact each cycle.',
     category: CycleLiteracyCategory.phases,
     readingTimeMinutes: 3,
-    sources: [_acogMenstrualCycle, _endocrineLibrary],
+    sources: [_acogMenstrualCycle],
     reviewDate: _currentReviewDate,
     relatedSubphases: [
       CycleSubphase.earlyFollicular,
@@ -435,7 +426,12 @@ class CycleLiteracyLibrary {
         summary: 'The role of the corpus luteum in producing progesterone, stabilizing the endometrium, and raising basal temperature.',
         category: CycleLiteracyCategory.phases,
         readingTimeMinutes: 2,
-        sources: [_williamsObstetrics, _yenAndJaffe, _acogMenstrualCycle],
+        sources: [
+          _williamsObstetrics,
+          _yenAndJaffe,
+          _acogMenstrualCycle,
+          _acogFertilityAwareness,
+        ],
         reviewDate: _currentReviewDate,
         relatedSubphases: [CycleSubphase.earlyLuteal, CycleSubphase.midLuteal],
         sections: [
@@ -563,10 +559,7 @@ class CycleLiteracyLibrary {
         category: CycleLiteracyCategory.variability,
         audience: CycleLiteracyAudience.teen,
         readingTimeMinutes: 3,
-        sources: [
-          _acogCommitteeOpinion651,
-          _aapPediatricsMenstruationVitalSign,
-        ],
+        sources: [_acogCommitteeOpinion651],
         reviewDate: _currentReviewDate,
         relatedSubphases: [
           CycleSubphase.earlyFollicular,
@@ -605,10 +598,7 @@ class CycleLiteracyLibrary {
         category: CycleLiteracyCategory.variability,
         audience: CycleLiteracyAudience.teen,
         readingTimeMinutes: 3,
-        sources: [
-          _acogCommitteeOpinion651,
-          _aapPediatricsMenstruationVitalSign,
-        ],
+        sources: [_acogCommitteeOpinion651],
         reviewDate: _currentReviewDate,
         relatedSubphases: [
           CycleSubphase.earlyFollicular,
