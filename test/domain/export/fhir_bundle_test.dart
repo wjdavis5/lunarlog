@@ -495,8 +495,8 @@ void main() {
         <String>[
           'Self-reported by the patient or guardian via lunarlog; not a '
               'clinician assessment.',
-          'Intensity self-rated on a 1-5 scale (1 (least intense) to 5 '
-              '(most intense)); this is not the 0-10 clinical pain scale.',
+          'Intensity self-rated from 1 (least intense) to 5 (most intense); '
+              'this is not the 0-10 clinical pain scale.',
         ],
       );
     });
@@ -521,8 +521,8 @@ void main() {
       expect(
         notes,
         contains(
-          'Intensity self-rated on a 1-5 scale (1 (least intense) to 5 '
-          '(most intense)); this is not the 0-10 clinical pain scale.',
+          'Intensity self-rated from 1 (least intense) to 5 (most intense); '
+          'this is not the 0-10 clinical pain scale.',
         ),
       );
       // The measurement itself is unchanged.
@@ -868,6 +868,9 @@ void main() {
       expect(fhirLocalDisplayFor('spotting', 'spotting'), 'Spotting');
       expect(fhirLocalDisplayFor('discharge', 'egg_white'),
           'Vaginal discharge: egg_white');
+      // An unattested Clue `tests` option must not read as a lab result.
+      expect(fhirLocalDisplayFor('tests', 'pregnancy_test_positive'),
+          'Home test: pregnancy_test_positive');
     });
   });
 
@@ -947,7 +950,7 @@ void main() {
 
     test('a measurement with no value, or a unit that is not recognised '
         'UCUM, is omitted rather than exported as a malformed vital sign '
-        '(PR #1124 reverification)', () {
+        '(reverification)', () {
       final bundle = build(
         entries: const [],
         obs: [
@@ -960,6 +963,12 @@ void main() {
           // An unknown-shape row with no value at all.
           _observation('o-no-value', 'day-02', profile.id, '2026-04-02',
               category: ObservationCategory.bbt, code: 'bbt'),
+          // A recognised unit but no value: the value-null gate alone must
+          // omit this (the UCUM check cannot hide it).
+          _observation('o-unit-no-value', 'day-03', profile.id, '2026-04-03',
+              category: ObservationCategory.bbt,
+              code: 'bbt',
+              unit: 'celsius'),
         ],
       );
       final entries = (bundle['entry'] as List).cast<Map>();
@@ -997,17 +1006,22 @@ void main() {
       expect(problems['entry'], isEmpty);
     });
 
-    test('the Clue-import unsuffixed `birth_control` category is excluded '
-        'too (PR #1124 reverification)', () {
-      // The importer writes the bare category, which
-      // ObservationCategory.fromCode leaves unknown.
-      final clueRow = ObservationCategory.fromCode('birth_control');
-      expect(clueRow.isBirthControl, isFalse);
+    test('the Clue-import `birth_control` categories are excluded too '
+        '(unsuffixed and unknown-suffixed; reverification)', () {
+      // The importer writes the bare category, and a future option can
+      // carry a suffix this build does not know; both leave `fromCode` on
+      // an UnknownObservationCategory where `isBirthControl` is false.
+      final clueBare = ObservationCategory.fromCode('birth_control');
+      final clueUnknownSuffix = ObservationCategory.fromCode('birth_control_foo');
+      expect(clueBare.isBirthControl, isFalse);
+      expect(clueUnknownSuffix.isBirthControl, isFalse);
       final bundle = build(
         entries: const [],
         obs: [
           _observation('o-clue-bcp', 'day-01', profile.id, '2026-04-01',
-              category: clueRow, code: 'pill_taken'),
+              category: clueBare, code: 'pill_taken'),
+          _observation('o-clue-bcp2', 'day-02', profile.id, '2026-04-02',
+              category: clueUnknownSuffix, code: 'pill_taken'),
         ],
       );
       final strings = _allStrings(bundle);
@@ -1079,10 +1093,10 @@ void main() {
         (lengthObs['note'] as List).single,
         containsPair(
           'text',
-          'Average of up to 6 recent cycle lengths (15-60 days), '
-              'calculated by lunarlog from period start dates logged by the '
-              'patient or guardian; not measured or confirmed by a '
-              'clinician.',
+          'Mean of the 15-60 day cycles among the last 12 completed cycles '
+              '(cycles excluded from averages are left out), calculated by '
+              'lunarlog from period start dates logged by the patient or '
+              'guardian; not measured or confirmed by a clinician.',
         ),
       );
 
@@ -1097,6 +1111,33 @@ void main() {
       // LMP is the logged period-start date itself, so it stays
       // self-reported.
       expect(lmpObs['performer'], isNotEmpty);
+    });
+
+    test('the exported cycle length is the mean over the last 12 completed '
+        'cycles, not the last 6 (reverification)', () {
+      // One 30-day cycle, then six of 34, then six of 26. The mean of the
+      // last 12 is 30 ((6*34 + 6*26) / 12); the mean of the last 6 is 26,
+      // so this pins the note's "last 12" claim to the emitted value.
+      final starts = <LocalDate>[LocalDate(2025, 1, 1)];
+      for (final gap in const [30, 34, 34, 34, 34, 34, 34, 26, 26, 26, 26, 26, 26]) {
+        starts.add(starts.last.addDays(gap));
+      }
+      final entries = [
+        for (final start in starts)
+          for (var day = 0; day < 3; day++)
+            _entry('w-${start.iso}-$day', profile.id, start.addDays(day).iso),
+      ];
+      final prediction = computePredictionFromEntries(
+        entries: entries,
+        today: starts.last.addDays(20),
+      ) as ActivePrediction;
+      final bundle =
+          build(entries: entries, obs: const [], prediction: prediction);
+      final lengthObs = (bundle['entry'] as List)
+          .cast<Map>()
+          .map((e) => e['resource'] as Map)
+          .firstWhere((r) => r.containsKey('valueQuantity'));
+      expect((lengthObs['valueQuantity'] as Map)['value'], 30);
     });
   });
 

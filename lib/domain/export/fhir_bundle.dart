@@ -106,7 +106,8 @@ import '../models/flow_level.dart';
 import '../models/observation.dart';
 import '../models/observation_category.dart';
 import '../models/profile.dart';
-import '../prediction/prediction.dart' show ActivePrediction;
+import '../prediction/prediction.dart'
+    show ActivePrediction, kMaxCycleDays, kMinCycleDays, kPredictionWindowCycles;
 import '../tags.dart' as tags
     show contextualDisplayForTag, isValidTagCode, tagByCode;
 import 'account_export.dart' show kAccountExportAppName;
@@ -120,11 +121,11 @@ import 'package:uuid/uuid.dart';
 /// `Bundle.meta.tag` via [_versionTag] — see this file's "Versioning" doc
 /// note above.
 ///
-/// `2` (issues #1114/#1115): pain rows carry a 1-5 `referenceRange`, flow
-/// uses SNOMED `364308001`, cycle length uses SNOMED `161716008`, the tag
-/// `code.text`/local displays are category-qualified, and BBT/weight moved
-/// into a Vital Signs section (birth-control intake rows are no longer
-/// emitted as Observations).
+/// `2` (issues #1114/#1115): intensity-bearing rows carry a 1-5 scale
+/// `note` (never a `referenceRange`), flow uses SNOMED `364308001`, cycle
+/// length uses SNOMED `161716008`, the tag `code.text`/local displays are
+/// self-describing, and BBT/weight moved into a Vital Signs section
+/// (birth-control intake rows are no longer emitted as Observations).
 const int kFhirExportBundleVersion = 2;
 
 /// lunarlog's own code system for the version tag ([_versionTag]) — a
@@ -262,13 +263,17 @@ const String kSelfReportedNoteText =
 
 /// The note on the cycle-length `Observation` (issue #1115) — the value is
 /// computed by the app from the profile's logged period starts, so it must
-/// not be marked self-reported the way the raw symptom/flow rows are. Says
-/// plainly that the inputs are the patient's own logs and that the average
-/// is neither measured nor clinician-confirmed.
+/// not be marked self-reported the way the raw symptom/flow rows are. The
+/// window is built from the prediction engine's own constants
+/// ([kMinCycleDays]..[kMaxCycleDays] within [kPredictionWindowCycles]) so
+/// the wording cannot drift from what `ActivePrediction.meanCycleLengthDays`
+/// actually averages.
 const String kCalculatedCycleLengthNoteText =
-    'Average of up to 6 recent cycle lengths (15-60 days), calculated by '
-    'lunarlog from period start dates logged by the patient or guardian; '
-    'not measured or confirmed by a clinician.';
+    'Mean of the $kMinCycleDays-$kMaxCycleDays day cycles among the last '
+    '$kPredictionWindowCycles completed cycles (cycles excluded from '
+    'averages are left out), calculated by lunarlog from period start '
+    'dates logged by the patient or guardian; not measured or confirmed '
+    'by a clinician.';
 
 final Uuid _uuidGenerator = const Uuid();
 
@@ -717,7 +722,7 @@ Map<String, Object?> _intensityComponent(int intensity) => {
 /// assert 1-5 is normal and (on a row whose primary value is a
 /// measurement) misqualify that value.
 const String kPainIntensityNoteText =
-    'Intensity self-rated on a 1-5 scale ($kPainIntensityScaleText); '
+    'Intensity self-rated from $kPainIntensityScaleText; '
     'this is not the 0-10 clinical pain scale.';
 
 /// UCUM unit codes for the closed `Observation.unit` set
@@ -792,10 +797,12 @@ List<Map<String, Object?>> _codingsForDisplay(
     ];
 
 /// Category contexts whose snake_case wire name is not the label a reader
-/// should see in a Problem list (issue #1114 / PR #1124 reverification):
-/// "Discharge" is overloaded with hospital discharge.
+/// should see in a Problem list (issue #1114 / reverification): "Discharge"
+/// is overloaded with hospital discharge, and an unattested Clue `tests`
+/// option would read as a laboratory result.
 const Map<String, String> _kFallbackCategoryLabels = {
   'discharge': 'Vaginal discharge',
+  'tests': 'Home test',
 };
 
 /// The display for a local (non-tag) `observations`-row coding in a
