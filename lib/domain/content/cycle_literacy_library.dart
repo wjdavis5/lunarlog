@@ -163,7 +163,7 @@ class CycleLiteracyArticle {
 class CycleLiteracyLibrary {
   const CycleLiteracyLibrary._();
 
-  static const String _currentReviewDate = '2026-09-12';
+  static const String _currentReviewDate = '2026-09-26';
 
   /// ISO date the citations below were last checked against their publishers
   /// (Issue #1103).
@@ -236,13 +236,6 @@ class CycleLiteracyLibrary {
     retrieved: _retrievedDate,
   );
 
-  static const ArticleSource _nhsPeriods = ArticleSource(
-    publisher: SourcePublisher.nhs,
-    title: 'Periods',
-    url: 'https://www.nhs.uk/conditions/periods/',
-    retrieved: _retrievedDate,
-  );
-
   static const ArticleSource _nhsPeriodPain = ArticleSource(
     publisher: SourcePublisher.nhs,
     title: 'Period pain',
@@ -306,7 +299,7 @@ class CycleLiteracyLibrary {
   static const ArticleSource _speroffs = ArticleSource(
     publisher: SourcePublisher.textbook,
     title:
-        'Speroff\'s Clinical Gynecologic Endocrinology and Infertility (9th ed.)',
+        'Speroff\'s Clinical Gynecologic Endocrinology and Infertility (10th ed.)',
     retrieved: _retrievedDate,
   );
 
@@ -324,7 +317,7 @@ class CycleLiteracyLibrary {
 
   static const ArticleSource _yenAndJaffe = ArticleSource(
     publisher: SourcePublisher.textbook,
-    title: 'Yen & Jaffe\'s Reproductive Endocrinology (8th ed.)',
+    title: 'Yen & Jaffe\'s Reproductive Endocrinology (9th ed.)',
     retrieved: _retrievedDate,
   );
 
@@ -335,7 +328,7 @@ class CycleLiteracyLibrary {
     summary: 'A comprehensive guide to how menstruation, the follicular phase, ovulation, and the luteal phase interact each cycle.',
     category: CycleLiteracyCategory.phases,
     readingTimeMinutes: 3,
-    sources: [_acogMenstrualCycle],
+    sources: [_acogMenstrualCycle, _whoMenstrualHealth, _acogCommitteeOpinion651],
     reviewDate: _currentReviewDate,
     relatedSubphases: [
       CycleSubphase.earlyFollicular,
@@ -369,7 +362,12 @@ class CycleLiteracyLibrary {
         summary: 'How FSH and rising estradiol grow a follicle and rebuild the uterine lining.',
         category: CycleLiteracyCategory.phases,
         readingTimeMinutes: 2,
-        sources: [_speroffs, _guytonAndHall, _nhsPeriods],
+        sources: [
+          _speroffs,
+          _guytonAndHall,
+          _acogMenstrualCycle,
+          _acogFertilityAwareness,
+        ],
         reviewDate: _currentReviewDate,
         relatedSubphases: [CycleSubphase.lateFollicular],
         sections: [
