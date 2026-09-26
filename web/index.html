@@ -82,6 +82,12 @@
     <p>lunarlog needs JavaScript to run. Please enable JavaScript and reload this page.</p>
   </noscript>
   <!--
+    Remove the loading overlay once Flutter paints its first frame. A
+    same-origin script (allowed by `script-src 'self'`) registered before
+    `flutter_bootstrap.js` so the listener exists before the event fires.
+  -->
+  <script src="loading_overlay.js"></script>
+  <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader
     or to give the user feedback during the initialization process.

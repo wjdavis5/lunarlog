@@ -23,8 +23,10 @@
 //      `securitypolicyviolation` event (and any console line naming a
 //      Content-Security-Policy refusal) and waits for Flutter's first frame
 //      via the `flutter-first-frame` window event.
-//   3. Fails if any violation is not allowlisted, or if no first frame lands
-//      within the timeout.
+//   3. Fails if any violation is not allowlisted, if no first frame lands
+//      within the timeout, or if the `#loading` overlay is still in the DOM
+//      after the first frame (it must be removed by `web/loading_overlay.js`,
+//      or screen readers keep announcing it).
 //
 // Usage (from this directory):
 //   npm ci
@@ -252,14 +254,19 @@ async function main() {
 
   const startedAt = Date.now();
   let firstFrameMs = null;
+  let loadingRemoved = false;
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForFunction(() => window.__lunarlogFirstFrame === true, null, {
       timeout: firstFrameTimeoutMs,
     });
     firstFrameMs = Date.now() - startedAt;
-    // Let any late fallback font / worker requests surface their violations.
+    // Let any late fallback font / worker requests surface their violations,
+    // and give web/loading_overlay.js a moment to remove `#loading`.
     await page.waitForTimeout(2000);
+    loadingRemoved = await page.evaluate(
+      () => document.getElementById('loading') === null,
+    );
   } catch (error) {
     console.log(`First frame not observed within ${firstFrameTimeoutMs} ms: ${error.message}`);
   }
@@ -289,6 +296,7 @@ async function main() {
 
   console.log('');
   console.log(`First frame: ${firstFrameMs === null ? 'NOT RENDERED' : `rendered in ${firstFrameMs} ms`}`);
+  console.log(`Loading overlay removed: ${loadingRemoved ? 'yes' : 'NO'}`);
   console.log(`CSP violations: ${events.length} event(s), ${consoleViolations.length} console line(s)`);
   for (const event of allowedEvents) {
     const entry = allowlisted(event.blockedURI);
@@ -307,6 +315,13 @@ async function main() {
 
   if (firstFrameMs === null) {
     fail('The app never painted a first frame under its own CSP.');
+  }
+  if (!loadingRemoved) {
+    fail(
+      'The #loading overlay is still in the DOM after the first frame; it ' +
+        'stays in the accessibility tree and screen readers keep announcing ' +
+        'it. web/loading_overlay.js must remove it on flutter-first-frame.',
+    );
   }
   if (blockedEvents.length > 0 || blockedConsole.length > 0) {
     fail(
