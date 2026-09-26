@@ -172,6 +172,12 @@ void main() {
 
   testWidgets('OverviewPanel mounts the Conceive card above the ordinary '
       'estimate while in Conceive mode (AC1)', (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
     await tester.pumpWidget(_app(
       modes: _FakeModesRepository(_modeRow(LifecycleMode.conceive)),
       child: OverviewPanel(profileId: 'p', todayProvider: () => _today),

@@ -4494,6 +4494,29 @@ class AppLocalizationsEn extends AppLocalizations {
       'Evidence-based educational guides to understand your body, hormones, and cycle rhythms.';
 
   @override
+  String get settingsCycleLiteracyTitle => 'Cycle Literacy';
+
+  @override
+  String get settingsCycleLiteracySubtitle =>
+      'Evidence-based guides to cycles, hormones, and body changes';
+
+  @override
+  String get overviewTeenCycleLiteracyLink =>
+      'Learn about teen cycles & body changes';
+
+  @override
+  String get cycleLiteracyAudienceFilterAll => 'All';
+
+  @override
+  String get cycleLiteracyAudienceFilterTeen => 'Teens';
+
+  @override
+  String get cycleLiteracyAudienceFilterGuardian => 'Guardians';
+
+  @override
+  String get guardianOverviewActionGuides => 'Cycle guides';
+
+  @override
   String helpCardSourceLine(String source) {
     return 'Source: $source';
   }

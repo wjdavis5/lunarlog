@@ -1700,6 +1700,38 @@ void main() {
       await disposeOverview(tester, longCycle);
     });
 
+    testWidgets(
+        'issue #854: teen mode active card renders the cycle literacy link and standard mode does not',
+        (tester) async {
+      final teen = await pumpOverview(
+        tester,
+        mode: ProfileMode.teen,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kActiveStarts),
+      );
+      expect(
+        find.byKey(const ValueKey('overview-teen-literacy-link')),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Learn about teen cycles & body changes'),
+        findsOneWidget,
+      );
+      await disposeOverview(tester, teen);
+
+      final standard = await pumpOverview(
+        tester,
+        mode: ProfileMode.standard,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kActiveStarts),
+      );
+      expect(
+        find.byKey(const ValueKey('overview-teen-literacy-link')),
+        findsNothing,
+      );
+      await disposeOverview(tester, standard);
+    });
+
     testWidgets('issue #998: teen mode with the framing explicitly OFF '
         'still silences the late resolver -- the flag controls the estimate '
         'axis, not the overdue wording', (tester) async {
@@ -2345,6 +2377,10 @@ void main() {
           find.byKey(const ValueKey('guardian-overview-action-supplies')),
           findsOneWidget,
         );
+        expect(
+          find.byKey(const ValueKey('guardian-overview-action-guides')),
+          findsOneWidget,
+        );
         await disposeOverview(tester, h);
       });
     }
@@ -2367,6 +2403,10 @@ void main() {
       );
       expect(
         find.byKey(const ValueKey('guardian-overview-action-supplies')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('guardian-overview-action-guides')),
         findsNothing,
       );
       await disposeOverview(tester, h);

@@ -3,8 +3,11 @@
 /// Every card is a compile-time constant: title, summary, body paragraphs,
 /// source, and review date all ship in the app bundle, so every card opens
 /// with no network. Copy rules (enforced by `test/domain/help/`):
-/// - No fertility content — nothing about fertile windows, ovulation, or
-///   conception, educational or otherwise (PRIVACY.md binding constraint).
+/// - Note on fertility copy (Issue #854): earlier drafts cited an early
+///   PRIVACY.md restriction that was superseded when Issue #142 restored
+///   fertility estimation and disclosures. Contextual help may explain the
+///   app's fertile band, ovulation estimates, and general cycle physiology
+///   under the standard educational disclaimer framing.
 /// - No individualised medical advice — cards explain the app and general
 ///   cycle literacy only. Estimates always sit next to the "Estimates only"
 ///   framing, and worry is always routed to a clinician, never answered.

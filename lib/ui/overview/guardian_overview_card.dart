@@ -25,6 +25,8 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/domain/content/cycle_literacy_library.dart'
+    show CycleLiteracyAudience;
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
@@ -33,6 +35,7 @@ import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/content/cycle_literacy_library_screen.dart';
 import 'package:lunarlog/ui/l10n/activity_actor_copy.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/l10n/tiers.dart';
@@ -348,6 +351,16 @@ class _GuardianOverviewCardState extends State<GuardianOverviewCard> {
               icon: const Icon(Icons.shopping_cart_outlined, size: 18),
               label: Text(l10n.guardianOverviewActionSupplies),
             ),
+          OutlinedButton.icon(
+            key: const ValueKey('guardian-overview-action-guides'),
+            onPressed: () => Navigator.of(context).push(
+              CycleLiteracyLibraryScreen.route(
+                initialAudience: CycleLiteracyAudience.guardian,
+              ),
+            ),
+            icon: const Icon(Icons.menu_book_outlined, size: 18),
+            label: Text(l10n.guardianOverviewActionGuides),
+          ),
         ],
       ),
     );

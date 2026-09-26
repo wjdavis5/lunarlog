@@ -5764,6 +5764,34 @@
   "@cycleLiteracyLibraryIntro": {
     "description": "Issue #1004 (tranche 4b): intro paragraph atop the cycle literacy library."
   },
+  "settingsCycleLiteracyTitle": "Cycle Literacy",
+  "@settingsCycleLiteracyTitle": {
+    "description": "Issue #854: title of the Cycle Literacy Library tile in Settings Help section."
+  },
+  "settingsCycleLiteracySubtitle": "Evidence-based guides to cycles, hormones, and body changes",
+  "@settingsCycleLiteracySubtitle": {
+    "description": "Issue #854: subtitle of the Cycle Literacy Library tile in Settings Help section."
+  },
+  "overviewTeenCycleLiteracyLink": "Learn about teen cycles & body changes",
+  "@overviewTeenCycleLiteracyLink": {
+    "description": "Issue #854: educational guide link shown on the teen Today overview card."
+  },
+  "cycleLiteracyAudienceFilterAll": "All",
+  "@cycleLiteracyAudienceFilterAll": {
+    "description": "Issue #854: filter chip for all audiences in cycle literacy library."
+  },
+  "cycleLiteracyAudienceFilterTeen": "Teens",
+  "@cycleLiteracyAudienceFilterTeen": {
+    "description": "Issue #854: filter chip for teen audience in cycle literacy library."
+  },
+  "cycleLiteracyAudienceFilterGuardian": "Guardians",
+  "@cycleLiteracyAudienceFilterGuardian": {
+    "description": "Issue #854: filter chip for guardian audience in cycle literacy library."
+  },
+  "guardianOverviewActionGuides": "Cycle guides",
+  "@guardianOverviewActionGuides": {
+    "description": "Issue #854: quick action button on the guardian logistics overview card linking to cycle guides."
+  },
   "helpCardSourceLine": "Source: {source}",
   "@helpCardSourceLine": {
     "description": "Issue #1004 (tranche 4b): provenance source line on a bundled help card.",
