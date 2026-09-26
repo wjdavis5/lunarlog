@@ -711,6 +711,19 @@ void main() {
       expect(find.text('This cycle is unusually long'), findsOneWidget);
       expect(find.text('Exclude this cycle'), findsOneWidget);
       expect(find.text('Turn off estimates'), findsOneWidget);
+      // Issue #1118 follow-up: the on-screen long-cycle prompt carries the
+      // pregnancy-test/90-day safety line and links the bundled card, so the
+      // prompt is reachable even for teen-mode profiles (who never see the
+      // late resolver's period-late link).
+      expect(
+        find.textContaining("If there's any chance of pregnancy"),
+        findsOneWidget,
+        reason: 'the long-cycle prompt must carry the safety line',
+      );
+      expect(
+        find.byKey(const ValueKey('help-link-unusually-long-cycle')),
+        findsOneWidget,
+      );
       expect(
         tester
             .widget<OutlinedButton>(

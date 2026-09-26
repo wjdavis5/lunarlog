@@ -147,6 +147,15 @@ void main() {
 
   testWidgets('ConceiveCard renders the curve, peak day, and the full '
       'disclaimer treatment', (tester) async {
+    // The card is taller than the 800x600 default test surface once every
+    // disclaimer paragraph renders; in the app it lives in a scrolling
+    // OverviewPanel. Give the test enough room to assert the full card.
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
     await tester.pumpWidget(MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
@@ -161,6 +170,15 @@ void main() {
     expect(find.byKey(const ValueKey('conceive-card')), findsOneWidget);
     expect(find.byKey(const ValueKey('conceive-window')), findsOneWidget);
     expect(find.byKey(const ValueKey('conceive-peak')), findsOneWidget);
+    // Issue #1120: Wilcox 1995 counted hCG-detected conceptions via a
+    // sensitive research assay, not clinical pregnancies or home tests, so
+    // the peak line says so explicitly.
+    expect(find.textContaining('very early pregnancy'), findsOneWidget);
+    expect(
+      find.textContaining('sensitive lab hormone test'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('of cycles in the study'), findsNothing);
 
     // AC3/AC6: the evidence basis and the contraception disclaimer render,
     // verbatim, next to the value.

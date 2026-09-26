@@ -62,8 +62,14 @@ class HelpCards {
   /// gained the early-years variance paragraph on 2026-09-20, so it no
   /// longer shares the bundle-wide stamp. Issue #998 reworded that
   /// paragraph (2026-09-21) to explain the teen rule and the separate
-  /// irregular-cycles axis for a parent.
-  static const String _periodLateReviewDate = '2026-09-21';
+  /// irregular-cycles axis for a parent. Issue #1120 re-sourced the card's
+  /// medical claim to ACOG CO 651 / FAQ047 and re-reviewed it (2026-09-26).
+  static const String _periodLateReviewDate = '2026-09-26';
+
+  /// Issue #1120: review date for the two cards that gained a clinician or
+  /// pregnancy-test safety prompt (`unusuallyLongCycle`, `flowLevels`).
+  static const String _safetyPromptReviewDate = '2026-09-26';
+
   static const String _appPredictionSource =
       "lunarlog's own prediction model";
   static const String _appBehaviourSource = 'lunarlog app behaviour';
@@ -71,6 +77,14 @@ class HelpCards {
   static const String _literacySource =
       'American College of Obstetricians and Gynecologists (ACOG), '
       'patient education on menstruation';
+
+  /// Issue #1120: the "period is late" card states a medical fact about
+  /// cycle-length variability (teen and perimenopause), so it must cite a
+  /// medical source rather than the app's own prediction model. CO 651
+  /// covers adolescent cycles; FAQ047 ("The Menopause Years") covers
+  /// perimenopause.
+  static const String _periodLateSource =
+      'ACOG Committee Opinion 651; ACOG FAQ047';
 
   static const HelpCard whyNoEstimateYet = HelpCard(
     id: 'why-no-estimate-yet',
@@ -169,13 +183,14 @@ class HelpCards {
           'changes how much the estimate hedges, but it is not what keeps '
           'this banner away from a teen — teen mode does that on its own, '
           'at every stage.',
-      'A late estimate is not a statement about anyone\u2019s body — it '
-          'only means nothing logged yet lines up with the average. If '
-          'something worries you, talk to a doctor or another clinician '
-          'you trust.',
+      'A late estimate is only about the maths — it does not mean nothing '
+          'is wrong, and it does not rule anything out. If something worries '
+          'you, talk to a doctor or another clinician you trust.',
+      'If there\u2019s any chance of pregnancy, take a pregnancy test. With '
+          'an IUD, a missed period is a reason to contact a clinician.',
       'Estimates only — not medical advice.',
     ],
-    source: _appPredictionSource,
+    source: _periodLateSource,
     reviewDate: _periodLateReviewDate,
     screens: ['late-resolver'],
   );
@@ -193,11 +208,13 @@ class HelpCards {
       'The estimate keeps rolling forward in whole average-cycle steps so '
           'reminders and the calendar always have a live date, while the '
           'count of days since the estimate keeps growing alongside it.',
+      'If there\u2019s any chance of pregnancy, take a pregnancy test. Going '
+          '3 months (90 days) without a period is a reason to see a doctor.',
       'Estimates only — not medical advice. If something worries you, talk '
           'to a doctor or another clinician you trust.',
     ],
-    source: _appPredictionSource,
-    reviewDate: _reviewDate,
+    source: 'ACOG FAQ049; ACOG Committee Opinion 651',
+    reviewDate: _safetyPromptReviewDate,
     screens: ['late-resolver'],
   );
 
@@ -295,12 +312,14 @@ class HelpCards {
       'Spotting is tracked separately from flow, as one of the day\u2019s '
           'options. Light staining between periods is logged there rather '
           'than as a light-flow day, which keeps period boundaries honest.',
+      'Bleeding between periods or after sex is worth checking with a '
+          'doctor, especially if it keeps happening.',
       '"Not bleeding today" is an explicit note, different from leaving a '
           'day unlogged. It tells the record the day was seen and there was '
           'nothing to log.',
     ],
-    source: _appBehaviourSource,
-    reviewDate: _reviewDate,
+    source: 'NHS, Periods; ACOG FAQ095',
+    reviewDate: _safetyPromptReviewDate,
     screens: ['flow-levels', 'day-sheet'],
   );
 

@@ -121,7 +121,7 @@ void main() {
 
       expect(info.subphase, CycleSubphase.lateLuteal);
       expect(info.cycleDay, 27);
-      expect(info.biologicalExplainer, contains('decline sharply'));
+      expect(info.biologicalExplainer, contains('fall if no pregnancy occurs'));
     });
 
     test('Overdue cycle (Day 32) -> lateLuteal with honest hedged notice', () {

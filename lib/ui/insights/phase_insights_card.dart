@@ -25,6 +25,26 @@ class PhaseInsightsCard extends StatelessWidget {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final colorScheme = theme.colorScheme;
+
+    // Issue #1118: any non-statistical basis — a pack-driven (pill/patch/
+    // ring) prediction, or a hormonal method with no recorded start date —
+    // carries no ovulatory signal, so the card must show no subphase or
+    // ovulation content. See [PredictionBasis]'s own doc comment.
+    if (prediction.basis != PredictionBasis.statistical) {
+      return Card(
+        key: const ValueKey('phase-insights-regimen-schedule'),
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            l10n.phaseInsightsHormonalContraceptionBody,
+            key: const ValueKey('phase-regimen-schedule-text'),
+            style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
+          ),
+        ),
+      );
+    }
+
     final info = deriveSubphase(prediction: prediction, today: today);
     final primaryArticle =
         CycleLiteracyLibrary.getArticleById(info.subphase.primaryArticleId);
@@ -69,9 +89,12 @@ class PhaseInsightsCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
 
-            // Hormonal Biology Explainer
+            // Hormonal Biology Explainer. The lead-in frames it as a
+            // typical ovulatory cycle rather than a fact about this
+            // person's cycle today (issue #1118; teen cycles are often
+            // anovulatory — ACOG CO 651).
             Text(
-              info.biologicalExplainer,
+              '${l10n.phaseInsightsTypicalCycleLead} ${info.biologicalExplainer}',
               key: const ValueKey('phase-explainer-text'),
               style: theme.textTheme.bodyMedium?.copyWith(
                 height: 1.4,

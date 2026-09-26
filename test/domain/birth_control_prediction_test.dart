@@ -3,9 +3,11 @@ import 'package:lunarlog/domain/logging/day_entry_merge_event.dart' as mergelog;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/birth_control.dart';
+import 'package:lunarlog/domain/conceive.dart';
 import 'package:lunarlog/domain/episodes/episodes.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/prediction/fertile_window.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
@@ -79,46 +81,76 @@ class _StubDayEntriesRepository implements DayEntriesRepository {
 }
 
 void main() {
-  group('birthControlPredictionKind classification (issue #233)', () {
-    test('withdrawal-bleed / cyclic methods classify as pack-driven', () {
-      expect(
-        birthControlPredictionKind(BirthControlMethod.pill),
-        BirthControlPredictionKind.withdrawalBleed,
-      );
-      expect(
-        birthControlPredictionKind(BirthControlMethod.patch),
-        BirthControlPredictionKind.withdrawalBleed,
-      );
-      expect(
-        birthControlPredictionKind(BirthControlMethod.ring),
-        BirthControlPredictionKind.withdrawalBleed,
-      );
-    });
+  group('birthControlPredictionKind classification (issue #233, #1118)', () {
+    // The single source of truth for every member of the enum: a newly
+    // added method cannot slip through unclassified without this failing.
+    const expected = <BirthControlMethod, BirthControlPredictionKind?>{
+      BirthControlMethod.pill: BirthControlPredictionKind.withdrawalBleed,
+      BirthControlMethod.patch: BirthControlPredictionKind.withdrawalBleed,
+      BirthControlMethod.ring: BirthControlPredictionKind.withdrawalBleed,
+      BirthControlMethod.shot: BirthControlPredictionKind.continuous,
+      BirthControlMethod.implant: BirthControlPredictionKind.continuous,
+      BirthControlMethod.hormonalIud: BirthControlPredictionKind.continuous,
+      BirthControlMethod.copperIud: null,
+      BirthControlMethod.none: null,
+      BirthControlMethod.condom: null,
+      BirthControlMethod.other: null,
+      BirthControlMethod.unknown: null,
+    };
 
-    test('continuous methods classify as continuous', () {
-      for (final method in [
-        BirthControlMethod.shot,
-        BirthControlMethod.implant,
-        BirthControlMethod.hormonalIud,
-        BirthControlMethod.copperIud,
-      ]) {
+    test('classifies every BirthControlMethod', () {
+      expect(
+        expected.keys.toSet(),
+        BirthControlMethod.values.toSet(),
+        reason: 'every enum member needs an expected classification',
+      );
+      for (final method in BirthControlMethod.values) {
         expect(
           birthControlPredictionKind(method),
-          BirthControlPredictionKind.continuous,
+          expected[method],
           reason: method.name,
         );
       }
     });
 
-    test('non-tracked answers classify as null (never reach the predictor)', () {
-      for (final method in [
-        BirthControlMethod.none,
-        BirthControlMethod.condom,
-        BirthControlMethod.other,
-        BirthControlMethod.unknown,
-      ]) {
-        expect(birthControlPredictionKind(method), isNull, reason: method.name);
-      }
+    test('copper IUD is not period-suppressing and keeps ordinary estimates '
+        '(issue #1118)', () {
+      expect(
+        birthControlPredictionKind(BirthControlMethod.copperIud),
+        isNull,
+      );
+      final result = computePrediction(
+        episodes: episodesFromStarts(
+            [d(2026, 1, 1), d(2026, 1, 29), d(2026, 2, 28), d(2026, 4, 1)]),
+        today: d(2026, 4, 10),
+        birthControl: ActiveBirthControl(
+          method: BirthControlMethod.copperIud,
+          startedOn: LocalDate(2026, 1, 1),
+        ),
+      );
+      expect(result, isA<ActivePrediction>(),
+          reason: 'a copper IUD must not pause period estimates (ACOG '
+              'FAQ184: it contains no hormones and does not stop periods)');
+      expect((result as ActivePrediction).basis, PredictionBasis.statistical,
+          reason: 'a copper IUD keeps the ordinary ovulatory-basis estimate');
+    });
+
+    test('copper IUD with a long open cycle still reaches the late/'
+        'unusually-long state, never a silent pause (issue #1118)', () {
+      final result = computePrediction(
+        episodes: episodesFromStarts(
+            [d(2026, 1, 1), d(2026, 1, 29), d(2026, 2, 28), d(2026, 4, 1)]),
+        today: d(2026, 6, 10),
+        birthControl: ActiveBirthControl(
+          method: BirthControlMethod.copperIud,
+          startedOn: LocalDate(2026, 1, 1),
+        ),
+      );
+      expect(result, isA<ActivePrediction>());
+      final p = result as ActivePrediction;
+      expect(p.basis, PredictionBasis.statistical);
+      expect(p.unusuallyLongCycle, isTrue);
+      expect(p.isLate, isTrue);
     });
   });
 
@@ -153,21 +185,16 @@ void main() {
       expect(result, isA<PredictionsSuppressed>());
     });
 
-    test('shot and copper IUD also suppress', () {
-      for (final method in [
-        BirthControlMethod.shot,
-        BirthControlMethod.copperIud,
-      ]) {
-        final result = computePrediction(
-          episodes: const [],
-          today: d(2026, 6, 1),
-          birthControl: ActiveBirthControl(
-            method: method,
-            startedOn: d(2026, 1, 1),
-          ),
-        );
-        expect(result, isA<PredictionsSuppressed>(), reason: method.name);
-      }
+    test('shot also suppresses', () {
+      final result = computePrediction(
+        episodes: const [],
+        today: d(2026, 6, 1),
+        birthControl: ActiveBirthControl(
+          method: BirthControlMethod.shot,
+          startedOn: d(2026, 1, 1),
+        ),
+      );
+      expect(result, isA<PredictionsSuppressed>());
     });
   });
 
@@ -281,6 +308,37 @@ void main() {
         ),
       );
       expect(result, isA<NotEnoughHistory>());
+    });
+
+    test('withdrawal-bleed method with no start date and enough history '
+        'carries a non-ovulatory basis: no fertile window, no conception '
+        'curve (issue #1118 follow-up)', () {
+      final episodes = episodesFromStarts(
+          [d(2026, 1, 1), d(2026, 1, 29), d(2026, 2, 28), d(2026, 4, 1)]);
+      for (final method in [
+        BirthControlMethod.pill,
+        BirthControlMethod.patch,
+        BirthControlMethod.ring,
+      ]) {
+        final result = computePrediction(
+          episodes: episodes,
+          today: d(2026, 4, 10),
+          birthControl: ActiveBirthControl(method: method, startedOn: null),
+        );
+        expect(result, isA<ActivePrediction>(), reason: method.name);
+        final p = result as ActivePrediction;
+        expect(
+          p.basis,
+          PredictionBasis.statisticalOnHormonalMethod,
+          reason: method.name,
+        );
+        expect(
+          currentFertileWindow(p),
+          isNull,
+          reason: '${method.name}: no pack anchor means no ovulatory signal',
+        );
+        expect(currentConceptionEstimate(p), isNull, reason: method.name);
+      }
     });
   });
 

@@ -125,6 +125,15 @@ void main() {
       for (final card in HelpCards.all) {
         final copy = _copyOf(card).toLowerCase();
         for (final banned in kBannedSubstrings) {
+          // Issue #1120: the unusually-long-cycle and period-late cards
+          // deliberately carry a pregnancy-test safety prompt (ACOG lists a
+          // missed period as a pregnancy warning sign for IUD users).
+          // "pregnan" is allowed there and only there — it is safety copy,
+          // not fertility education.
+          if (banned == 'pregnan' &&
+              const {'unusually-long-cycle', 'period-late'}.contains(card.id)) {
+            continue;
+          }
           expect(copy.contains(banned), isFalse,
               reason: '${card.id} contains "$banned"');
         }
@@ -197,6 +206,43 @@ void main() {
     });
   });
 
+  group('safety prompts (issue #1120)', () {
+    test('unusually-long-cycle carries the pregnancy-test and 90-day prompts '
+        'and cites ACOG', () {
+      final card = HelpCards.byId('unusually-long-cycle')!;
+      final copy = _copyOf(card);
+      expect(copy, contains('take a pregnancy test'));
+      expect(copy, contains('3 months (90 days)'));
+      expect(card.source, 'ACOG FAQ049; ACOG Committee Opinion 651');
+      expect(card.source.startsWith('lunarlog'), isFalse);
+    });
+
+    test('flow-levels carries the NHS bleeding-between-periods prompt and '
+        'cites NHS/ACOG', () {
+      final card = HelpCards.byId('flow-levels')!;
+      final copy = _copyOf(card).toLowerCase();
+      expect(copy, contains('bleeding between periods or after sex'));
+      expect(copy, contains('checking with a doctor'));
+      expect(card.source, 'NHS, Periods; ACOG FAQ095');
+    });
+
+    test('period-late cites a medical source, not the app model', () {
+      final card = HelpCards.byId('period-late')!;
+      expect(card.source, 'ACOG Committee Opinion 651; ACOG FAQ047');
+      expect(card.source.startsWith('lunarlog'), isFalse);
+    });
+
+    test('period-late carries the pregnancy/IUD prompt and no longer '
+        'over-reassures', () {
+      final copy = _copyOf(HelpCards.byId('period-late')!).toLowerCase();
+      expect(copy, contains('take a pregnancy test'));
+      expect(copy, contains('with an iud, a missed period is a reason to '
+          'contact a clinician'));
+      expect(copy, isNot(contains('not a statement about anyone')));
+      expect(copy, contains('does not rule anything out'));
+    });
+  });
+
   group('plain-language source lines (issue #878)', () {
     test('no source string leaks a code path, extension, or symbol', () {
       // A `(`-wrapped path (with a slash or dot inside) reads as debug text
@@ -230,7 +276,8 @@ void main() {
       );
     });
 
-    test('the app-source vs external-source card counts are unchanged', () {
+    test('the external-source card set grew with the medical re-sourcing '
+        '(issue #1120)', () {
       var appSourced = 0;
       var external = 0;
       for (final card in HelpCards.all) {
@@ -240,8 +287,8 @@ void main() {
           external++;
         }
       }
-      expect(appSourced, 23);
-      expect(external, 1);
+      expect(appSourced, 20);
+      expect(external, 4);
     });
   });
 }

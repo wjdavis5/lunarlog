@@ -42,8 +42,8 @@ const String kFertileWindowDisclaimer =
 const String kConceiveEvidenceBasis =
     'Conception likelihood uses the day-by-day probabilities published by '
     'Wilcox, Weinberg & Baird (New England Journal of Medicine, 1995). It '
-    "is a documented substitute for Clue's Dynamic Optimal Timing (DOT) "
-    'algorithm, which is not public and could not be reproduced here.';
+    'is a documented substitute for the Dynamic Optimal Timing (DOT) '
+    'algorithm used by other apps; lunarlog does not reproduce it.';
 
 /// Conceive-mode conception-likelihood disclaimer (issue #204, issue #898):
 /// the same contraception and evidence-basis treatment issue #143's

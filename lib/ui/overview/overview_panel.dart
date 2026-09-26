@@ -1321,6 +1321,11 @@ class _OverviewPanelState extends State<OverviewPanel>
               color: theme.colorScheme.onSecondaryContainer,
             ),
           ),
+          // Issue #1118 follow-up: the body above carries a pregnancy/90-day
+          // safety line, so link the bundled card that explains the state in
+          // full (the late resolver's `period-late` link is unreachable for
+          // teen-mode profiles, which is exactly who sees this prompt).
+          HelpCardLink(cardId: 'unusually-long-cycle'),
           if (!_effectiveReadOnly) ...[
             const SizedBox(height: LLSpace.space2),
             Wrap(

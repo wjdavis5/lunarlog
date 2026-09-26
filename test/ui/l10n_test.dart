@@ -237,9 +237,11 @@ void main() {
       expect(l10n.overviewLongCycleTitle, 'This cycle is unusually long');
       expect(
         l10n.overviewLongCycleBody,
-        'It has run well past a typical cycle for this profile. You can '
-        'exclude it from future averages, or turn off estimates if long '
-        'cycles are common for this profile.',
+        "It has run well past a typical cycle for this profile. If there's "
+        'any chance of pregnancy, take a pregnancy test. Going 3 months '
+        '(90 days) without a period is a reason to see a doctor. You can '
+        'also exclude this cycle from future averages, or turn off estimates '
+        'if long cycles are common for this profile.',
       );
       expect(l10n.overviewLongCyclePredictionsOff, 'Turn off estimates');
       expect(l10n.overviewIrregularSuggestionTitle, 'Cycles vary a lot');

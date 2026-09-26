@@ -116,9 +116,10 @@ class ForecastCycle {
   /// [start] minus the assumed luteal-phase length, at this cycle's own
   /// [tier] — the ovulation this window describes precedes [start] (it
   /// belongs to the cycle *ending* in this predicted period, not the one
-  /// starting from it). Null for a [PredictionBasis.regimenSchedule]
-  /// prediction (issue LLA-064) — a pack-driven withdrawal-bleed schedule
-  /// carries no ovulatory signal, so nothing here is derived from it.
+  /// starting from it). Null for any non-statistical
+  /// [PredictionBasis] (issue LLA-064 / #1118) — a pack-driven schedule or
+  /// a hormonal method with no recorded start date carries no ovulatory
+  /// signal, so nothing here is derived from it.
   final FertileWindowEstimate? fertileWindow;
 
   /// Estimated last bleed day of this cycle's band (inclusive).
@@ -250,11 +251,12 @@ List<ForecastCycle> deriveForecast({
   // an exact duplicate of it).
   final horizonEnd = endOfHorizonMonth(today, horizonMonths);
 
-  // Issue LLA-064: a regimen-schedule (pack-driven withdrawal-bleed)
-  // prediction carries no ovulatory signal — see [PredictionBasis]'s own
-  // doc comment. No cycle in this forecast gets a fertile window.
+  // Issue LLA-064 / #1118: any non-statistical basis (a pack cadence, or a
+  // hormonal method with no recorded start date) carries no ovulatory
+  // signal — see [PredictionBasis]'s own doc comment. No cycle in this
+  // forecast gets a fertile window.
   final suppressFertileWindow =
-      prediction.basis == PredictionBasis.regimenSchedule;
+      prediction.basis != PredictionBasis.statistical;
 
   final cycles = <ForecastCycle>[];
   for (final predicted in prediction.forecast) {

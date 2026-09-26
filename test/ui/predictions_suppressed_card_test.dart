@@ -36,14 +36,16 @@ void main() {
     });
 
     testWidgets('does not read as a not-enough-history state', (tester) async {
+      // Issue #1118: a copper IUD no longer classifies as continuous, so
+      // use a genuinely period-suppressing method here.
       await tester.pumpWidget(_wrap(
-        const PredictionsSuppressedCard(method: BirthControlMethod.copperIud),
+        const PredictionsSuppressedCard(method: BirthControlMethod.hormonalIud),
       ));
       final body = tester.widget<Text>(
         find.byKey(const ValueKey('predictions-suppressed-body')),
       );
       expect(body.data, isNot(contains('not enough history')));
-      expect(body.data, contains('Copper IUD'));
+      expect(body.data, contains('Hormonal IUD'));
     });
   });
 
