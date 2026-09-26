@@ -408,7 +408,10 @@ void main() {
     expect(find.byKey(const ValueKey('settings-cycle-literacy-tile')), findsOneWidget);
     expect(find.text('Cycle Literacy'), findsOneWidget);
     expect(
-      find.text('Evidence-based guides to cycles, hormones, and body changes'),
+      find.text(
+        'Guides to cycles, hormones, and body changes, sourced from ACOG, '
+        'NHS and other medical bodies',
+      ),
       findsOneWidget,
     );
 

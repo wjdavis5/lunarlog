@@ -85,12 +85,17 @@ void main() {
       expect(luteal, isNot(contains('0.2°C to 0.5°C')));
     });
 
-    test('follicular summary hedges the energy claim', () {
+    test('follicular summary and body make no energy or mood claim', () {
       final article = CycleLiteracyLibrary.getArticleById(
         'understanding-follicular-phase',
       )!;
-      expect(article.summary, isNot(contains('elevates energy levels')));
-      expect(article.summary, contains('often'));
+      expect(article.summary, isNot(contains('energy')));
+      expect(article.summary, contains('follicle'));
+      expect(
+        paragraph('understanding-follicular-phase', 'Physical'),
+        contains("doesn't show a consistent pattern"),
+        reason: 'Issue #1119: the vitality/skin/mood overclaim is now hedged',
+      );
     });
 
     test('PMS mechanism is stated as a hypothesis, not settled fact', () {
@@ -109,10 +114,12 @@ void main() {
       expect(headings, contains('When to Ask a Doctor'));
 
       final body = article.sections.expand((s) => s.paragraphs).join(' ');
-      expect(body, contains('21 to 45 days'));
-      expect(body, contains('three months'));
-      expect(body, contains('longer than about a week'));
+      expect(body, contains('21 and 45 days'));
+      expect(body, contains('3 months (90 days)'));
+      expect(body, contains('more than 7 days'));
       expect(body, contains('every hour'));
+      expect(body, contains('quarter'));
+      expect(body, contains('pregnancy test'));
       expect(_hasPublisher(article, SourcePublisher.acog), isTrue);
     });
   });
@@ -207,7 +214,7 @@ void main() {
       );
       expect(teen2, isNotNull);
       expect(teen2!.audience, CycleLiteracyAudience.teen);
-      expect(_hasPublisher(teen2, SourcePublisher.aap), isTrue);
+      expect(_hasPublisher(teen2, SourcePublisher.acog), isTrue);
       expect(
         teen2.sections.any((s) => s.heading.contains('Anovulatory Cycles')),
         isTrue,
@@ -423,6 +430,101 @@ void main() {
           expect(publisher.allowedHosts, isEmpty);
         } else {
           expect(publisher.allowedHosts, isNotEmpty);
+        }
+      }
+    });
+  });
+
+  group('Issue #1119 safety and provenance corrections', () {
+    String body(String articleId) {
+      final article = CycleLiteracyLibrary.getArticleById(articleId)!;
+      return article.sections.expand((s) => s.paragraphs).join(' ');
+    }
+
+    test('teen amenorrhea rule drops the "once regular" qualifier', () {
+      final article = CycleLiteracyLibrary.getArticleById(
+        'cycle-length-variability',
+      )!;
+      final text = article.sections.expand((s) => s.paragraphs).join(' ');
+      expect(text, contains('even if your cycles were never regular'));
+      expect(text, contains('pregnancy test'));
+      expect(text, contains('quarter'));
+      expect(text, isNot(contains('once cycles had been regular')));
+    });
+
+    test('teen "right away" bleeding signs are present', () {
+      expect(
+        body('first-periods-first-two-years'),
+        contains('right away if you feel dizzy or light-headed'),
+      );
+      expect(
+        body('first-periods-first-two-years'),
+        contains('heart is racing'),
+      );
+    });
+
+    test('cramp article carries the urgent pain tier', () {
+      expect(
+        body('why-cramps-happen'),
+        contains("pain relievers haven't helped"),
+      );
+    });
+
+    test('crisis route is present wherever hopelessness is discussed', () {
+      for (final id in [
+        'pms-and-progesterone',
+        'pms-vs-mood-when-to-ask-clinician',
+      ]) {
+        final text = body(id);
+        expect(text, contains('hopeless'), reason: id);
+        expect(text, contains('988 in the US'), reason: id);
+        expect(text, contains('999 or go to A&E in the UK'), reason: id);
+        expect(text, contains('local emergency number'), reason: id);
+      }
+      expect(
+        body('pms-vs-mood-when-to-ask-clinician'),
+        contains('have treatments that can help'),
+      );
+      expect(
+        body('pms-vs-mood-when-to-ask-clinician'),
+        isNot(contains('highly treatable')),
+      );
+    });
+
+    test('fertile window matches ACOG FAQ024 (5 days before to 1 day after)',
+        () {
+      final article = CycleLiteracyLibrary.getArticleById(
+        'understanding-ovulation',
+      )!;
+      expect(article.sections.map((s) => s.heading), contains('The Fertile Window'));
+      final text = article.sections.expand((s) => s.paragraphs).join(' ');
+      expect(text, contains('the day after'));
+      expect(text, isNot(contains('6-Day Fertile Window')));
+    });
+
+    test('PMS mechanism is stated as an unknown, not the "steep drop"', () {
+      final text = body('pms-and-progesterone');
+      expect(text, contains("the exact cause isn't known"));
+      expect(text, isNot(contains('steep drop')));
+    });
+
+    test('superseded AAP 2006 report and generic Endocrine link are gone', () {
+      for (final article in CycleLiteracyLibrary.allArticles) {
+        final citations = article.sources
+            .map((s) => '${s.publisher.name} ${s.title} ${s.identifier ?? ''}')
+            .join(' ');
+        expect(citations, isNot(contains('Pediatrics 2006')));
+        expect(citations, isNot(contains('publications.aap.org')));
+        expect(citations, isNot(contains('Endocrine Library')));
+
+        for (final source in article.sources) {
+          if (source.publisher == SourcePublisher.textbook) {
+            expect(
+              source.title,
+              contains('ed.'),
+              reason: 'Issue #1119: every textbook needs an edition',
+            );
+          }
         }
       }
     });
