@@ -606,7 +606,11 @@ class CycleLiteracyLibrary {
         category: CycleLiteracyCategory.variability,
         audience: CycleLiteracyAudience.teen,
         readingTimeMinutes: 3,
-        sources: [_acogCommitteeOpinion651],
+        sources: [
+          _acogCommitteeOpinion651,
+          _acogYourFirstPeriod,
+          _aapHealthyChildrenMenstrualDisorders,
+        ],
         reviewDate: _currentReviewDate,
         relatedSubphases: [
           CycleSubphase.earlyFollicular,
@@ -630,7 +634,8 @@ class CycleLiteracyLibrary {
           ArticleSection(
             heading: 'When to Speak with a Doctor',
             paragraphs: [
-              'While cycle length variation is normal, medical guidelines say to see a healthcare professional if periods come more often than every 21 days or less often than every 45 days, or if 90 days go by without a period — even once.',
+              'While cycle length variation is normal, medical guidelines say to see a healthcare professional if: periods come more often than every 21 days or less often than every 45 days; 90 days go by without a period — even once; periods that had been coming regularly become irregular for several months; bleeding lasts more than 7 days; you need to change a soaked pad or tampon every 1 to 2 hours; or your periods are heavy and you bruise or bleed easily, or someone in your family has a bleeding disorder. If you\'ve had sex and your period is late, take a pregnancy test.',
+              'If you haven\'t had a first period by age 15, or within 3 years of your breasts starting to develop, that\'s worth a check-up too.',
             ],
           ),
         ],
