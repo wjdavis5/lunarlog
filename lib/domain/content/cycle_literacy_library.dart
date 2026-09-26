@@ -473,7 +473,13 @@ class CycleLiteracyLibrary {
         heading: 'Serotonin and GABA Interactions',
         paragraphs: [
           'Progesterone metabolites (such as allopregnanolone) interact directly with GABA receptors in the brain, which regulate calm and anxiety. As progesterone plunges, researchers think this shifts GABA and serotonin signaling, which may contribute to premenstrual mood sensitivity, sleep disruptions, and sugar cravings.',
-          'Tracking premenstrual symptoms over several cycles helps identify personal patterns and supports productive discussions with your healthcare provider if symptoms become disruptive. If you ever feel hopeless or have thoughts of harming yourself, get help now: call or text 988 in the US, call 999 or go to A&E in the UK, or contact your local emergency number.',
+          'Tracking premenstrual symptoms over several cycles helps identify personal patterns and supports productive discussions with your healthcare provider if symptoms become disruptive.',
+        ],
+      ),
+      ArticleSection(
+        heading: 'If You Feel Hopeless or Need Help Now',
+        paragraphs: [
+          'If you ever feel hopeless, or have thoughts of hurting yourself or ending your life, please tell a trusted adult and get support now. In the US or Canada, call or text 988. In the UK, call Samaritans free on 116 123 (or Childline on 0800 1111 if you\'re under 19), or call NHS 111 and choose the mental health option. If you might not be able to keep yourself safe, or you have already hurt yourself, call your local emergency number (911 in the US and Canada, 999 in the UK) or go to the nearest emergency department (A&E) now.',
         ],
       ),
     ],
@@ -700,7 +706,8 @@ class CycleLiteracyLibrary {
           ArticleSection(
             heading: 'When to Seek Clinical Care',
             paragraphs: [
-              'Reach out to a doctor if mood symptoms significantly interfere with daily life, school, work, or relationships, or if you feel overwhelmed or anxious. If you ever feel hopeless or have thoughts of harming yourself, get help now: call or text 988 in the US, call 999 or go to A&E in the UK, or contact your local emergency number. More severe premenstrual conditions, such as Premenstrual Dysphoric Disorder (PMDD), have treatments that can help, so it\'s worth asking.',
+              'Reach out to a doctor if mood symptoms significantly interfere with daily life, school, work, or relationships, or if you feel overwhelmed or anxious. More severe premenstrual conditions, such as Premenstrual Dysphoric Disorder (PMDD), have treatments that can help, so it\'s worth asking.',
+              'If you ever feel hopeless, or have thoughts of hurting yourself or ending your life, please tell a trusted adult and get support now. In the US or Canada, call or text 988. In the UK, call Samaritans free on 116 123 (or Childline on 0800 1111 if you\'re under 19), or call NHS 111 and choose the mental health option. If you might not be able to keep yourself safe, or you have already hurt yourself, call your local emergency number (911 in the US and Canada, 999 in the UK) or go to the nearest emergency department (A&E) now.',
             ],
           ),
         ],
