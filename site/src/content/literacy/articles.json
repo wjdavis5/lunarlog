@@ -35,9 +35,25 @@
         "identifier": null,
         "url": "https://www.acog.org/womens-health/infographics/the-menstrual-cycle",
         "retrieved": "2026-09-26"
+      },
+      {
+        "publisher": "who",
+        "publisherName": "World Health Organization",
+        "title": "Menstrual health",
+        "identifier": null,
+        "url": "https://www.who.int/news-room/fact-sheets/detail/menstrual-health",
+        "retrieved": "2026-09-26"
+      },
+      {
+        "publisher": "acog",
+        "publisherName": "American College of Obstetricians and Gynecologists",
+        "title": "Menstruation in Girls and Adolescents: Using the Menstrual Cycle as a Vital Sign",
+        "identifier": "Committee Opinion No. 651",
+        "url": "https://www.acog.org/clinical/clinical-guidance/committee-opinion/articles/2015/12/menstruation-in-girls-and-adolescents-using-the-menstrual-cycle-as-a-vital-sign",
+        "retrieved": "2026-09-26"
       }
     ],
-    "reviewDate": "2026-09-12",
+    "reviewDate": "2026-09-26",
     "relatedSubphases": [
       "earlyFollicular",
       "lateFollicular"
@@ -73,7 +89,7 @@
       {
         "publisher": "textbook",
         "publisherName": "Textbook",
-        "title": "Speroff's Clinical Gynecologic Endocrinology and Infertility (9th ed.)",
+        "title": "Speroff's Clinical Gynecologic Endocrinology and Infertility (10th ed.)",
         "identifier": null,
         "url": null,
         "retrieved": "2026-09-26"
@@ -87,15 +103,23 @@
         "retrieved": "2026-09-26"
       },
       {
-        "publisher": "nhs",
-        "publisherName": "National Health Service (UK)",
-        "title": "Periods",
+        "publisher": "acog",
+        "publisherName": "American College of Obstetricians and Gynecologists",
+        "title": "The Menstrual Cycle: Menstruation, Ovulation, and How Pregnancy Occurs",
         "identifier": null,
-        "url": "https://www.nhs.uk/conditions/periods/",
+        "url": "https://www.acog.org/womens-health/infographics/the-menstrual-cycle",
+        "retrieved": "2026-09-26"
+      },
+      {
+        "publisher": "acog",
+        "publisherName": "American College of Obstetricians and Gynecologists",
+        "title": "Fertility Awareness-Based Methods of Family Planning",
+        "identifier": null,
+        "url": "https://www.acog.org/womens-health/faqs/fertility-awareness-based-methods-of-family-planning",
         "retrieved": "2026-09-26"
       }
     ],
-    "reviewDate": "2026-09-12",
+    "reviewDate": "2026-09-26",
     "relatedSubphases": [
       "lateFollicular"
     ],
@@ -145,7 +169,7 @@
         "retrieved": "2026-09-26"
       }
     ],
-    "reviewDate": "2026-09-12",
+    "reviewDate": "2026-09-26",
     "relatedSubphases": [
       "ovulation"
     ],
@@ -188,7 +212,7 @@
       {
         "publisher": "textbook",
         "publisherName": "Textbook",
-        "title": "Yen & Jaffe's Reproductive Endocrinology (8th ed.)",
+        "title": "Yen & Jaffe's Reproductive Endocrinology (9th ed.)",
         "identifier": null,
         "url": null,
         "retrieved": "2026-09-26"
@@ -210,7 +234,7 @@
         "retrieved": "2026-09-26"
       }
     ],
-    "reviewDate": "2026-09-12",
+    "reviewDate": "2026-09-26",
     "relatedSubphases": [
       "earlyLuteal",
       "midLuteal"
@@ -239,7 +263,13 @@
         "heading": "Serotonin and GABA Interactions",
         "paragraphs": [
           "Progesterone metabolites (such as allopregnanolone) interact directly with GABA receptors in the brain, which regulate calm and anxiety. As progesterone plunges, researchers think this shifts GABA and serotonin signaling, which may contribute to premenstrual mood sensitivity, sleep disruptions, and sugar cravings.",
-          "Tracking premenstrual symptoms over several cycles helps identify personal patterns and supports productive discussions with your healthcare provider if symptoms become disruptive. If you ever feel hopeless or have thoughts of harming yourself, get help now: call or text 988 in the US, call 999 or go to A&E in the UK, or contact your local emergency number."
+          "Tracking premenstrual symptoms over several cycles helps identify personal patterns and supports productive discussions with your healthcare provider if symptoms become disruptive."
+        ]
+      },
+      {
+        "heading": "If You Feel Hopeless or Need Help Now",
+        "paragraphs": [
+          "If you ever feel hopeless, or have thoughts of hurting yourself or ending your life, please tell a trusted adult and get support now. In the US or Canada, call or text 988. In the UK, call Samaritans free on 116 123 (or Childline on 0800 1111 if you're under 19), or call NHS 111 and choose the mental health option. If you might not be able to keep yourself safe, or you have already hurt yourself, call your local emergency number (911 in the US and Canada, 999 in the UK) or go to the nearest emergency department (A&E) now."
         ]
       }
     ],
@@ -261,7 +291,7 @@
         "retrieved": "2026-09-26"
       }
     ],
-    "reviewDate": "2026-09-12",
+    "reviewDate": "2026-09-26",
     "relatedSubphases": [
       "midLuteal",
       "lateLuteal"
@@ -313,7 +343,7 @@
         "retrieved": "2026-09-26"
       }
     ],
-    "reviewDate": "2026-09-12",
+    "reviewDate": "2026-09-26",
     "relatedSubphases": [
       "lateLuteal",
       "earlyFollicular"
@@ -348,7 +378,7 @@
       {
         "heading": "When to Ask a Doctor",
         "paragraphs": [
-          "Check in with a healthcare professional if: you go 3 months (90 days) without a period — even if your cycles were never regular; bleeding lasts more than 7 days; you soak through a pad or tampon every hour for several hours; or you pass clots the size of a quarter or bigger. If you've had sex and your period is late, take a pregnancy test. Get help right away if you feel dizzy or light-headed while bleeding."
+          "Check in with a healthcare professional if: you go 3 months (90 days) without a period — even if your cycles were never regular; bleeding lasts more than 7 days; you need to change a soaked pad or tampon every 1 to 2 hours; or you pass clots the size of a quarter (about 2.5 cm) or bigger. If you've had sex and your period is late, take a pregnancy test. Get help right away if you feel dizzy or light-headed, or your heart is racing, while you're bleeding."
         ]
       }
     ],
@@ -372,13 +402,29 @@
       {
         "publisher": "acog",
         "publisherName": "American College of Obstetricians and Gynecologists",
-        "title": "The Menstrual Cycle: Menstruation, Ovulation, and How Pregnancy Occurs",
+        "title": "Menstruation in Girls and Adolescents: Using the Menstrual Cycle as a Vital Sign",
+        "identifier": "Committee Opinion No. 651",
+        "url": "https://www.acog.org/clinical/clinical-guidance/committee-opinion/articles/2015/12/menstruation-in-girls-and-adolescents-using-the-menstrual-cycle-as-a-vital-sign",
+        "retrieved": "2026-09-26"
+      },
+      {
+        "publisher": "acog",
+        "publisherName": "American College of Obstetricians and Gynecologists",
+        "title": "Your First Period",
+        "identifier": "FAQ049",
+        "url": "https://www.acog.org/womens-health/faqs/your-first-period",
+        "retrieved": "2026-09-26"
+      },
+      {
+        "publisher": "aap",
+        "publisherName": "American Academy of Pediatrics",
+        "title": "Menstrual Disorders in Teens: Causes, Diagnosis & Treatment",
         "identifier": null,
-        "url": "https://www.acog.org/womens-health/infographics/the-menstrual-cycle",
+        "url": "https://www.healthychildren.org/English/health-issues/conditions/genitourinary-tract/Pages/Menstrual-Disorders.aspx",
         "retrieved": "2026-09-26"
       }
     ],
-    "reviewDate": "2026-09-12",
+    "reviewDate": "2026-09-26",
     "relatedSubphases": [
       "earlyFollicular",
       "lateLuteal"
@@ -400,7 +446,7 @@
         "heading": "Finding Your Rhythm",
         "paragraphs": [
           "It often takes two to three years after menarche (your first period) for cycles to settle — and for some people it takes six years or more. In these early years, the reproductive system is still practicing and maturing.",
-          "It is very common for cycles to vary widely at first. Some cycles may be 24 days long and the next 40 days — cycles between about 21 and 45 days are normal at this stage. If a period comes more than 45 days after the last one, or you go 3 months without one, talk with a parent or doctor."
+          "It is very common for cycles to vary widely at first. Some cycles may be 24 days long and the next 40 days — cycles between about 21 and 45 days are normal at this stage. If a period comes more than 45 days after the last one, or you go 3 months without one, talk with a parent or doctor. If you've had sex and your period is late, take a pregnancy test."
         ]
       },
       {
@@ -425,9 +471,17 @@
         "identifier": "Committee Opinion No. 651",
         "url": "https://www.acog.org/clinical/clinical-guidance/committee-opinion/articles/2015/12/menstruation-in-girls-and-adolescents-using-the-menstrual-cycle-as-a-vital-sign",
         "retrieved": "2026-09-26"
+      },
+      {
+        "publisher": "acog",
+        "publisherName": "American College of Obstetricians and Gynecologists",
+        "title": "Your First Period",
+        "identifier": "FAQ049",
+        "url": "https://www.acog.org/womens-health/faqs/your-first-period",
+        "retrieved": "2026-09-26"
       }
     ],
-    "reviewDate": "2026-09-12",
+    "reviewDate": "2026-09-26",
     "relatedSubphases": [
       "earlyFollicular",
       "lateFollicular"
@@ -462,7 +516,8 @@
       {
         "heading": "When to Speak with a Doctor",
         "paragraphs": [
-          "While cycle length variation is normal, medical guidelines say to see a healthcare professional if periods come more often than every 21 days or less often than every 45 days, or if 90 days go by without a period — even once."
+          "While cycle length variation is normal, medical guidelines say to see a healthcare professional if: periods come more often than every 21 days or less often than every 45 days; 90 days go by without a period — even once; periods that had been coming regularly become irregular for several months; bleeding lasts more than 7 days; you need to change a soaked pad or tampon every 1 to 2 hours; or your periods are heavy and you bruise or bleed easily, or someone in your family has a bleeding disorder. If you've had sex and your period is late, take a pregnancy test.",
+          "If you haven't had a first period by age 15, or within 3 years of your breasts starting to develop, that's worth a check-up too."
         ]
       }
     ],
@@ -474,9 +529,25 @@
         "identifier": "Committee Opinion No. 651",
         "url": "https://www.acog.org/clinical/clinical-guidance/committee-opinion/articles/2015/12/menstruation-in-girls-and-adolescents-using-the-menstrual-cycle-as-a-vital-sign",
         "retrieved": "2026-09-26"
+      },
+      {
+        "publisher": "acog",
+        "publisherName": "American College of Obstetricians and Gynecologists",
+        "title": "Your First Period",
+        "identifier": "FAQ049",
+        "url": "https://www.acog.org/womens-health/faqs/your-first-period",
+        "retrieved": "2026-09-26"
+      },
+      {
+        "publisher": "aap",
+        "publisherName": "American Academy of Pediatrics",
+        "title": "Menstrual Disorders in Teens: Causes, Diagnosis & Treatment",
+        "identifier": null,
+        "url": "https://www.healthychildren.org/English/health-issues/conditions/genitourinary-tract/Pages/Menstrual-Disorders.aspx",
+        "retrieved": "2026-09-26"
       }
     ],
-    "reviewDate": "2026-09-12",
+    "reviewDate": "2026-09-26",
     "relatedSubphases": [
       "earlyFollicular",
       "lateLuteal"
@@ -533,7 +604,7 @@
         "retrieved": "2026-09-26"
       }
     ],
-    "reviewDate": "2026-09-12",
+    "reviewDate": "2026-09-26",
     "relatedSubphases": [
       "earlyFollicular",
       "lateLuteal"
@@ -568,7 +639,8 @@
       {
         "heading": "When to Seek Clinical Care",
         "paragraphs": [
-          "Reach out to a doctor if mood symptoms significantly interfere with daily life, school, work, or relationships, or if you feel overwhelmed or anxious. If you ever feel hopeless or have thoughts of harming yourself, get help now: call or text 988 in the US, call 999 or go to A&E in the UK, or contact your local emergency number. More severe premenstrual conditions, such as Premenstrual Dysphoric Disorder (PMDD), have treatments that can help, so it's worth asking."
+          "Reach out to a doctor if mood symptoms significantly interfere with daily life, school, work, or relationships, or if you feel overwhelmed or anxious. More severe premenstrual conditions, such as Premenstrual Dysphoric Disorder (PMDD), have treatments that can help, so it's worth asking.",
+          "If you ever feel hopeless, or have thoughts of hurting yourself or ending your life, please tell a trusted adult and get support now. In the US or Canada, call or text 988. In the UK, call Samaritans free on 116 123 (or Childline on 0800 1111 if you're under 19), or call NHS 111 and choose the mental health option. If you might not be able to keep yourself safe, or you have already hurt yourself, call your local emergency number (911 in the US and Canada, 999 in the UK) or go to the nearest emergency department (A&E) now."
         ]
       }
     ],
@@ -590,7 +662,7 @@
         "retrieved": "2026-09-26"
       }
     ],
-    "reviewDate": "2026-09-12",
+    "reviewDate": "2026-09-26",
     "relatedSubphases": [
       "earlyLuteal",
       "lateLuteal"

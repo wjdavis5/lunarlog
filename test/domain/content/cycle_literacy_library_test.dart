@@ -117,7 +117,7 @@ void main() {
       expect(body, contains('21 and 45 days'));
       expect(body, contains('3 months (90 days)'));
       expect(body, contains('more than 7 days'));
-      expect(body, contains('every hour'));
+      expect(body, contains('every 1 to 2 hours'));
       expect(body, contains('quarter'));
       expect(body, contains('pregnancy test'));
       expect(_hasPublisher(article, SourcePublisher.acog), isTrue);
@@ -377,11 +377,9 @@ void main() {
       }
     });
 
-    test('(c) every retrieved date is a valid ISO date', () {
-      // The shared retrieved date (2026-09-26) is after the shared review
-      // date (2026-09-12), so the "on or before reviewDate" half of the
-      // brief's rule cannot hold yet; assert the format only and record the
-      // discrepancy in the PR rather than faking the date.
+    test('(c) every retrieved date is a valid ISO date on or before review', () {
+      // Issue #1119 set the shared review date to the re-check date
+      // (2026-09-26), so retrieved is now on or before reviewDate everywhere.
       final isoDate = RegExp(r'^\d{4}-\d{2}-\d{2}$');
       for (final article in CycleLiteracyLibrary.allArticles) {
         for (final source in article.sources) {
@@ -389,6 +387,13 @@ void main() {
             source.retrieved,
             matches(isoDate),
             reason: '${article.id}: ${source.title}',
+          );
+          expect(
+            source.retrieved.compareTo(article.reviewDate) <= 0,
+            isTrue,
+            reason:
+                '${article.id}: ${source.title} retrieved ${source.retrieved} '
+                'is after review ${article.reviewDate}',
           );
         }
       }
@@ -477,8 +482,11 @@ void main() {
       ]) {
         final text = body(id);
         expect(text, contains('hopeless'), reason: id);
-        expect(text, contains('988 in the US'), reason: id);
-        expect(text, contains('999 or go to A&E in the UK'), reason: id);
+        expect(text, contains('trusted adult'), reason: id);
+        expect(text, contains('988'), reason: id);
+        expect(text, contains('116 123'), reason: id);
+        expect(text, contains('0800 1111'), reason: id);
+        expect(text, contains('NHS 111'), reason: id);
         expect(text, contains('local emergency number'), reason: id);
       }
       expect(
@@ -511,7 +519,11 @@ void main() {
     test('superseded AAP 2006 report and generic Endocrine link are gone', () {
       for (final article in CycleLiteracyLibrary.allArticles) {
         final citations = article.sources
-            .map((s) => '${s.publisher.name} ${s.title} ${s.identifier ?? ''}')
+            .map(
+              (s) =>
+                  '${s.publisher.name} ${s.title} ${s.identifier ?? ''} '
+                  '${s.url ?? ''}',
+            )
             .join(' ');
         expect(citations, isNot(contains('Pediatrics 2006')));
         expect(citations, isNot(contains('publications.aap.org')));
@@ -526,6 +538,56 @@ void main() {
             );
           }
         }
+      }
+    });
+
+    test('teen red-flag lists are complete and cite ACOG FAQ049', () {
+      final a7 = CycleLiteracyLibrary.getArticleById(
+        'cycle-length-variability',
+      )!;
+      expect(
+        a7.sources.any((s) => s.identifier == 'FAQ049'),
+        isTrue,
+        reason: 'Issue #1119: A7 signs come from ACOG FAQ049',
+      );
+      final a7Text = a7.sections.expand((s) => s.paragraphs).join(' ');
+      expect(a7Text, contains('every 1 to 2 hours'));
+      expect(a7Text, contains('heart is racing'));
+      expect(a7Text, contains('2.5 cm'));
+
+      final a8 = CycleLiteracyLibrary.getArticleById(
+        'first-periods-first-two-years',
+      )!;
+      expect(a8.sources.any((s) => s.identifier == 'FAQ049'), isTrue);
+      expect(
+        a8.sections.expand((s) => s.paragraphs).join(' '),
+        contains('take a pregnancy test'),
+      );
+
+      final a9 = CycleLiteracyLibrary.getArticleById(
+        'what-irregular-means-at-13',
+      )!;
+      expect(a9.sources.any((s) => s.identifier == 'FAQ049'), isTrue);
+      expect(a9.sources.any((s) => s.publisher == SourcePublisher.aap), isTrue);
+      final a9Text = a9.sections.expand((s) => s.paragraphs).join(' ');
+      expect(a9Text, contains('become irregular for several months'));
+      expect(a9Text, contains('bleeding lasts more than 7 days'));
+      expect(a9Text, contains('every 1 to 2 hours'));
+      expect(a9Text, contains('bleeding disorder'));
+      expect(a9Text, contains('by age 15'));
+      expect(a9Text, contains('breasts starting to develop'));
+      expect(a9Text, contains('take a pregnancy test'));
+
+      final a1 = CycleLiteracyLibrary.getArticleById(
+        'menstrual-cycle-phases',
+      )!;
+      expect(_hasPublisher(a1, SourcePublisher.who), isTrue);
+      expect(_hasPublisher(a1, SourcePublisher.acog), isTrue);
+    });
+
+    test('every article carries the re-checked review date', () {
+      for (final article in CycleLiteracyLibrary.allArticles) {
+        expect(article.reviewDate, '2026-09-26');
       }
     });
   });
