@@ -1,0 +1,13 @@
+{
+  "name": "lunarlog-inbound-email",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Inbound email receiving and processing worker on lunarlog.app (Issue #1107, #1121)",
+  "dependencies": {
+    "postal-mime": "2.7.6"
+  },
+  "devDependencies": {
+    "wrangler": "4.20.0"
+  }
+}

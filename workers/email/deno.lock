@@ -20,5 +20,16 @@
     "postal-mime@2.7.6": {
       "integrity": "sha512-UUlyE2KlxmvwMGq060onF/VWU3zD6dVW31FwokQ5v26jWd35fbs2MoTFzh+jXnPwAyV2MULMKXcBInGOl5TO6Q=="
     }
+  },
+  "workspace": {
+    "dependencies": [
+      "npm:postal-mime@2.7.6"
+    ],
+    "packageJson": {
+      "dependencies": [
+        "npm:postal-mime@2.7.6",
+        "npm:wrangler@4.20.0"
+      ]
+    }
   }
 }
