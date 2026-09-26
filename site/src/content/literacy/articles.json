@@ -31,7 +31,7 @@
       {
         "publisher": "acog",
         "publisherName": "American College of Obstetricians and Gynecologists",
-        "title": "The Menstrual Cycle: Menstruation, Ovulation, and How Pregnancy Happens",
+        "title": "The Menstrual Cycle: Menstruation, Ovulation, and How Pregnancy Occurs",
         "identifier": null,
         "url": "https://www.acog.org/womens-health/infographics/the-menstrual-cycle",
         "retrieved": "2026-09-26"
@@ -147,9 +147,9 @@
       {
         "publisher": "peerReviewed",
         "publisherName": "Peer-reviewed literature",
-        "title": "Timing of Sexual Intercourse in Relation to Ovulation: Effects on the Probability of Conception, Survival of the Pregnancy, and Sex of the Baby",
-        "identifier": "PMID 7477166",
-        "url": "https://pubmed.ncbi.nlm.nih.gov/7477166/",
+        "title": "Timing of sexual intercourse in relation to ovulation. Effects on the probability of conception, survival of the pregnancy, and sex of the baby",
+        "identifier": "N Engl J Med 1995;333:1517-21",
+        "url": "https://doi.org/10.1056/NEJM199512073332301",
         "retrieved": "2026-09-26"
       }
     ],
@@ -204,7 +204,7 @@
       {
         "publisher": "acog",
         "publisherName": "American College of Obstetricians and Gynecologists",
-        "title": "The Menstrual Cycle: Menstruation, Ovulation, and How Pregnancy Happens",
+        "title": "The Menstrual Cycle: Menstruation, Ovulation, and How Pregnancy Occurs",
         "identifier": null,
         "url": "https://www.acog.org/womens-health/infographics/the-menstrual-cycle",
         "retrieved": "2026-09-26"
@@ -354,11 +354,11 @@
     ],
     "sources": [
       {
-        "publisher": "figo",
-        "publisherName": "International Federation of Gynecology and Obstetrics",
-        "title": "FIGO Menstrual Disorders Committee: FIGO Systems 1 & 2",
-        "identifier": "FIGO Systems 1 & 2",
-        "url": null,
+        "publisher": "peerReviewed",
+        "publisherName": "Peer-reviewed literature",
+        "title": "The two FIGO systems for normal and abnormal uterine bleeding symptoms and classification of causes of abnormal uterine bleeding in the reproductive years: 2018 revisions",
+        "identifier": "FIGO Menstrual Disorders Committee; Int J Gynaecol Obstet 2018;143(3):393-408",
+        "url": "https://doi.org/10.1002/ijgo.12666",
         "retrieved": "2026-09-26"
       },
       {
@@ -372,7 +372,7 @@
       {
         "publisher": "acog",
         "publisherName": "American College of Obstetricians and Gynecologists",
-        "title": "The Menstrual Cycle: Menstruation, Ovulation, and How Pregnancy Happens",
+        "title": "The Menstrual Cycle: Menstruation, Ovulation, and How Pregnancy Occurs",
         "identifier": null,
         "url": "https://www.acog.org/womens-health/infographics/the-menstrual-cycle",
         "retrieved": "2026-09-26"
@@ -429,9 +429,9 @@
       {
         "publisher": "aap",
         "publisherName": "American Academy of Pediatrics",
-        "title": "Adolescent Sexual and Reproductive Health",
-        "identifier": null,
-        "url": "https://www.aap.org/en/patient-care/adolescent-sexual-health/",
+        "title": "Menstruation in girls and adolescents: using the menstrual cycle as a vital sign",
+        "identifier": "Pediatrics 2006;118(5):2245-50",
+        "url": "https://publications.aap.org/pediatrics/article/118/5/2245/69874/Menstruation-in-Girls-and-Adolescents-Using-the",
         "retrieved": "2026-09-26"
       }
     ],
@@ -486,9 +486,9 @@
       {
         "publisher": "aap",
         "publisherName": "American Academy of Pediatrics",
-        "title": "Adolescent Sexual and Reproductive Health",
-        "identifier": null,
-        "url": "https://www.aap.org/en/patient-care/adolescent-sexual-health/",
+        "title": "Menstruation in girls and adolescents: using the menstrual cycle as a vital sign",
+        "identifier": "Pediatrics 2006;118(5):2245-50",
+        "url": "https://publications.aap.org/pediatrics/article/118/5/2245/69874/Menstruation-in-Girls-and-Adolescents-Using-the",
         "retrieved": "2026-09-26"
       }
     ],
@@ -535,9 +535,9 @@
       {
         "publisher": "aap",
         "publisherName": "American Academy of Pediatrics",
-        "title": "Adolescent Sexual and Reproductive Health",
+        "title": "Menstrual Disorders in Teens: Causes, Diagnosis & Treatment",
         "identifier": null,
-        "url": "https://www.aap.org/en/patient-care/adolescent-sexual-health/",
+        "url": "https://www.healthychildren.org/English/health-issues/conditions/genitourinary-tract/Pages/Menstrual-Disorders.aspx",
         "retrieved": "2026-09-26"
       },
       {
