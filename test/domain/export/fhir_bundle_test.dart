@@ -393,6 +393,26 @@ void main() {
           (e['resource'] as Map).containsKey('valueCodeableConcept'));
       expect(flowObs, isEmpty);
     });
+
+    test('superHeavy stays the emitted local code (the enum name), while '
+        'the stored wire value is super_heavy (#1115)', () {
+      final bundle = build(entries: [
+        _entry('d1', profile.id, '2026-04-01', flow: FlowLevel.superHeavy),
+      ]);
+      final entries = (bundle['entry'] as List).cast<Map>();
+      final obs = entries
+          .map((e) => e['resource'] as Map)
+          .firstWhere((r) => r.containsKey('valueCodeableConcept'));
+      final coding =
+          ((obs['valueCodeableConcept'] as Map)['coding'] as List).single
+              as Map;
+      expect(coding['system'], kSystemLunarlogLocalFlow);
+      expect(coding['code'], 'superHeavy');
+      expect(coding['display'], 'Super heavy');
+      // The stored/wire value the code maps from is `super_heavy`.
+      expect(FlowLevel.superHeavy.toDb(), 'super_heavy');
+      expect(FlowLevel.fromDb('super_heavy'), FlowLevel.superHeavy);
+    });
   });
 
   group('symptom Observations (observation rows)', () {

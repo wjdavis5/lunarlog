@@ -10,11 +10,11 @@
 /// `Composition` (`status: final`, `type` LOINC `60591-5` "Patient summary
 /// Document" — verified against `tx.fhir.org`, see
 /// [kCompositionTypePatientSummary]), followed by one `Patient`, the
-/// `Observation`s for cycle/symptom data, and one `Provenance`. This is
-/// **IPS-shaped, not IPS-conformant** (Issue #157 A3-49, modeled on
+/// `Observation`s for cycle/symptom/vital-sign data, and one `Provenance`.
+/// This is **IPS-shaped, not IPS-conformant** (Issue #157 A3-49, modeled on
 /// https://hl7.org/fhir/uv/ips/ IG v2.0.0): the section layout and resource
 /// choices follow the International Patient Summary's shape (Results +
-/// Problems sections, a self-authored Composition), but **no
+/// Vital signs + Problems sections, a self-authored Composition), but **no
 /// `meta.profile` is ever asserted** — IPS has required sections
 /// (allergies, medications, problems-as-Condition) this app cannot
 /// populate yet, and claiming the profile while failing validation is
@@ -118,7 +118,13 @@ import 'package:uuid/uuid.dart';
 /// `account_export.dart`'s `kAccountExportSchemaVersion`). Carried as
 /// `Bundle.meta.tag` via [_versionTag] — see this file's "Versioning" doc
 /// note above.
-const int kFhirExportBundleVersion = 1;
+///
+/// `2` (issues #1114/#1115): pain rows carry a 1-5 `referenceRange`, flow
+/// uses SNOMED `364308001`, cycle length uses SNOMED `161716008`, the tag
+/// `code.text`/local displays are category-qualified, and BBT/weight moved
+/// into a Vital Signs section (birth-control intake rows are no longer
+/// emitted as Observations).
+const int kFhirExportBundleVersion = 2;
 
 /// lunarlog's own code system for the version tag ([_versionTag]) — a
 /// distinct URI from [kSystemLunarlogLocal] (clinical concepts) because a

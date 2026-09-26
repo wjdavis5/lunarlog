@@ -26,43 +26,47 @@ and says so explicitly. Nothing here is "this is probably right."
 Originally a verbatim copy of #152's own audit table. **Re-verified
 2026-09-09** against the HL7 FHIR terminology server's LOINC lookup
 (`https://tx.fhir.org/r4/CodeSystem/$lookup?system=http://loinc.org&code=<code>`)
-rather than trusted as a copy alone: all seven codes below, plus the
-refuted `3141-9`, were checked against that server. Six matched the
-original audit exactly; one (`64700-8`) had its display corrected — the
-original text (`…days in a typical menstrual cycle [PhenX]`) was an
-editorial elision from the issue body, not the code's actual LOINC
-SHORTNAME, which the table below now uses verbatim.
+rather than trusted as a copy alone, and **independently re-verified
+2026-09-26** (tx.fhir.org / CSIRO Ontoserver, LOINC 2.82) for #1116, which
+corrected several claims below. The 2026-09-26 pass is the provenance
+record for every correction in this section.
 
-### Verified — safe to use
+### Audited rows
 
-| Code | Display | Source | Verified |
-|---|---|---|---|
-| `8665-2` | Last menstrual period start date | https://loinc.org/8665-2 | 2026-09 (#152 A3-44); re-verified 2026-09-09 (tx.fhir.org) |
-| `8678-5` | Menstrual status - Reported | https://loinc.org/8678-5 | 2026-09 (#152 A3-44); re-verified 2026-09-09 (tx.fhir.org) |
-| `3146-8` | Menstrual status | https://loinc.org/3146-8 | 2026-09 (#152 A3-44); re-verified 2026-09-09 (tx.fhir.org) |
-| `92656-8` | Number of menstrual periods per year | https://loinc.org/92656-8 | 2026-09 (#152 A3-44); re-verified 2026-09-09 (tx.fhir.org) |
-| `63888-2` | Age at first menstrual period | https://loinc.org/63888-2 | 2026-09 (#152 A3-44); re-verified 2026-09-09 (tx.fhir.org) |
-| `64700-8` | Menstrual cycle typical days PhenX | https://loinc.org/64700-8 | 2026-09 (#152 A3-44); display corrected 2026-09-09 (tx.fhir.org SHORTNAME) |
-| `11778-8` | Delivery date Estimated | https://loinc.org/11778-8 | 2026-09 (#152 A3-44); re-verified 2026-09-09 (tx.fhir.org) |
+These are the seven rows of `kLoincCodes` plus the standalone
+`kEstimatedDeliveryDateLoinc` (`11779-6`). Note the **"Used by"** column:
+`8678-5`, `3146-8`, `64700-8` and `11778-8` are retained here as the
+audit record but are **no longer emitted** — the export now uses the
+SNOMED/LOINC replacements named in each note (issues #1115/#1116).
 
-These are `kLoincCodes` in the Dart module — the list is exhaustive; a
-test asserts it is exactly these seven codes.
+| Code | Display | Source | Verified | Used by |
+|---|---|---|---|---|
+| `8665-2` | Last menstrual period start date | https://loinc.org/8665-2 | 2026-09 (#152 A3-44); re-verified 2026-09-09, 2026-09-26 | LMP Observation |
+| `8678-5` | Menstrual status - Reported | https://loinc.org/8678-5 | 2026-09 (#152 A3-44); re-verified 2026-09-09, 2026-09-26 | **not emitted** — "Menstrual status" is the state of menstruation, not a day's flow amount; per-day flow now uses SNOMED `364308001` |
+| `3146-8` | Menstrual status | https://loinc.org/3146-8 | 2026-09 (#152 A3-44); re-verified 2026-09-09, 2026-09-26 | **not emitted** — see `8678-5` |
+| `92656-8` | Number of menstrual periods per year | https://loinc.org/92656-8 | 2026-09 (#152 A3-44); re-verified 2026-09-09, 2026-09-26 | reserved, not emitted |
+| `63888-2` | Age at first menstrual period | https://loinc.org/63888-2 | 2026-09 (#152 A3-44); re-verified 2026-09-09, 2026-09-26 | reserved, not emitted |
+| `64700-8` | Menstrual cycle typical days PhenX | https://loinc.org/64700-8 | 2026-09 (#152 A3-44); display corrected 2026-09-09 (tx.fhir.org SHORTNAME) | **not emitted** — **TRIAL status**, an ordinal PhenX survey question with a required band answer list (LL1227-9); cycle length now uses SNOMED `161716008` |
+| `11778-8` | Delivery date Estimated | https://loinc.org/11778-8 | 2026-09 (#152 A3-44); re-verified 2026-09-09, 2026-09-26 | **not emitted** — means a due date a *practitioner selected*; an LMP-derived date uses `11779-6` |
+| `11779-6` | Delivery date Estimated from last menstrual period | https://loinc.org/11779-6 | 2026-09-26 (tx.fhir.org) | estimated delivery date (reserved shape) |
 
 ### Refuted — never use
 
 | Code | What it actually is | Source |
 |---|---|---|
 | `3141-9` | Body weight Measured — **not** a menstrual concept at all, despite being commonly cited as one | https://loinc.org/3141-9; re-verified 2026-09-09 (tx.fhir.org) |
+| `49033-4` | Menstrual History - Reported — **not** a flow-amount code, despite being cited as one | 2026-09-26 (tx.fhir.org / CSIRO Ontoserver) |
+| `21840-4` | Sex [NAACCR] — a cancer-registry field, unrelated to menstrual health | 2026-09-26 (tx.fhir.org / CSIRO Ontoserver) |
+| `3151-8` | Inhaled oxygen flow rate — unrelated to menstrual health | 2026-09-26 (tx.fhir.org / CSIRO Ontoserver) |
 
 ### Unverified — do not use without independent verification
 
-`49033-4`, `63871-7`, `21840-4`, `8708-3`, `3151-8` — these came up during
-the audit but were not resolved to a verified menstrual concept. They are
-not refuted (they may turn out fine), just not cleared for use yet.
-
-`kRefutedLoincCodes` and `kUnverifiedLoincCodes` in the Dart module list
-these codes; a test asserts neither list's codes are referenced by any
-mapping row anywhere in this module.
+**Empty as of 2026-09-26.** The codes #152 left unresolved are now all
+placed: `63871-7` and `8708-3` **do not exist** (both fail the LOINC mod-10
+check digit and are absent from LOINC 2.82), and `49033-4`, `21840-4` and
+`3151-8` were resolved to unrelated concepts and moved to the refuted table
+above. `kUnverifiedLoincCodes` in the Dart module is therefore empty; a
+test asserts that.
 
 ## Tag taxonomy — SNOMED CT dual coding (A3-45)
 
@@ -73,7 +77,7 @@ one (SNOMED, when verified) and the lunarlog local one, always, so an
 importer can recover the exact original tag without reversing a clinical
 code (`dualCodingFor` in the Dart module implements this).
 
-All 113 codes in `lib/domain/tags.dart` are covered — 17 verified SNOMED
+All 113 codes in `lib/domain/tags.dart` are covered — 12 verified SNOMED
 rows plus issue #249's 28, issue #251's 22, issue #252's 19, issue
 #253's 22, and issue #456's 5 explicit local decisions (see the sections
 at the end of this document). Every SNOMED
@@ -101,16 +105,23 @@ taxonomy grows.
 
 | lunarlog code | SNOMED concept | Term | Verified |
 |---|---|---|---|
-| `cramps` | `266599000` | Dysmenorrhea | active, tx.fhir.org, 2026-09 |
+| `cramps` | `431416001` | Menstrual cramp | active, tx.fhir.org, 2026-09-26 |
 | `headache` | `25064002` | Headache | active, tx.fhir.org, 2026-09 |
 | `back_pain` | `161891005` | Backache | active, tx.fhir.org, 2026-09 |
-| `breast_tenderness` | `55222007` | Tenderness of breast | active, tx.fhir.org, 2026-09 |
+| `breast_tenderness` | `53430007` | Pain of breast | active, tx.fhir.org, 2026-09-26 |
 
-`266599000` is a **disorder**-tier concept (`Dysmenorrhea (disorder)`),
-not finding-tier — used anyway because SNOMED's own synonyms for it
-include the plain self-reported terms "Menstrual cramps" and "Period
-pain", so it is the standard clinical designation for the lunarlog
-`cramps` tag itself, not an overreach into a distinct diagnosis.
+**Correction (issue #1114, re-verified 2026-09-26):** `cramps` previously
+mapped to `266599000 "Dysmenorrhea (disorder)"`. That is a *disorder*-tier
+concept emitted for every logged cramp day inside the IPS "Problem list -
+Reported" section, which a receiving EHR could import as a diagnosis the
+patient was never given. It now maps to the *finding*-tier `431416001
+"Menstrual cramp (finding)"`, active since 2008. Likewise
+`breast_tenderness` previously mapped to `55222007 "Tenderness of breast"`,
+a sign a clinician finds by examination; the patient-reported symptom is
+`53430007 "Pain of breast (finding)"`, which is what the tag actually is.
+The generic "Cramps" tag is not distinguished by cycle phase at export
+time; it is always emitted as the symptom-level concept, never the
+disorder.
 
 ### Body
 
@@ -171,22 +182,32 @@ A local row is still valid FHIR — `Coding.system` + `Coding.code` +
 `Coding.display` — and is honest about being lunarlog's own vocabulary
 rather than dressing it up as a clinical code it isn't.
 
-## `FlowLevel` — stays fully local
+## `FlowLevel` — the *question* is SNOMED, the *values* stay local
 
-`lib/domain/models/flow_level.dart`'s five values (`none`, `spotting`,
-`light`, `medium`, `heavy`) were checked against SNOMED CT for a verified
-flow-amount scale and none was found that fits without overreaching:
+`lib/domain/models/flow_level.dart` has **seven** values — `none`,
+`spotting`, `notBleeding`, `light`, `medium`, `heavy`, `superHeavy`
+(`spotting` is a deprecated alias for already-stored pre-#247 data, is
+never written going forward, and **never exported**; `notBleeding` and
+`none` are both non-bleed values and are never exported either — see
+`isBleed`). The earlier "five values" list here was stale (issue #1116).
 
-**System URI (#157 review fix, 2026-09-09):** flow levels are coded on
-their own local system, `kSystemLunarlogLocalFlow`
+**The question code (issue #1115, re-verified 2026-09-26):** a per-day
+flow `Observation` is coded with the single SNOMED concept `364308001
+"Quantity of menstrual blood loss (observable entity)"`. The previous two
+LOINC codings (`8678-5`, `3146-8`) both mean "Menstrual status" — the
+state of menstruation, not how much blood was lost that day — and FHIR
+treats two codings in one `CodeableConcept` as translations of one
+concept, which they are not.
+
+The *values* stay local on their own system, `kSystemLunarlogLocalFlow`
 (`https://lunarlog.app/fhir/CodeSystem/flow`, defined in
 `lib/domain/export/fhir_bundle.dart`) — **not** `kSystemLunarlogLocal`
 (`.../CodeSystem/tag`, this file's own subject above). The two URIs exist
 because they cover genuinely different concept spaces: `kSystemLunarlogLocal`
-is specifically *the 17-code tag taxonomy* (`lib/domain/tags.dart`), and a
-flow level was never one of those 17 codes — v1 of the FHIR export coded
-it on the tag system anyway (an oversight, not a decision), which this
-fix corrects. `Provenance.activity`'s `self-reported` marker (see
+is specifically *the 113-code tag taxonomy* (`lib/domain/tags.dart`), and a
+flow level was never one of those codes — v1 of the FHIR export coded it
+on the tag system anyway (an oversight, not a decision), corrected by the
+#157 review fix. `Provenance.activity`'s `self-reported` marker (see
 `docs/clinical/fhir-export.md`'s "Self-reported" section) stays on
 `kSystemLunarlogLocal` — a self-report marker is a single fixed value, not
 a competing taxonomy the way flow levels are, so splitting it out into
@@ -194,63 +215,78 @@ its own system would not buy the same clarity. Both systems' rows are
 **permanent once emitted**, the same as `kSystemLunarlogLocal` itself —
 neither is to be changed casually.
 
-- The only close matches describe *abnormal* flow as a standalone
-  concept, not a neutral descriptor of a given cycle day's flow amount —
-  e.g. `64206003` **Hypomenorrhea (finding)** (abnormally light/scanty
-  flow — finding-tier, not a diagnosis) and menorrhagia (heavy menstrual
-  bleeding, a disorder-tier concept). Coding every "heavy" day entry with
-  a bleeding-disorder concept, or every "light" day with an abnormal-flow
-  finding, would misrepresent normal cycle variation as pathology, exactly
-  the kind of wrong-but-plausible code #152 rules out.
-- `9126005` "Menstrual spotting" was also checked and rejected for
-  `spotting`: it specifically means *intermenstrual* bleeding (between
-  periods), not the lightest flow intensity within a tracked period —
-  a different clinical concept than lunarlog's `FlowLevel.spotting`.
-- LOINC's own flow-amount code (commonly cited as `49033-4`) is in this
-  issue's **unverified** list above and is not usable regardless.
+The emitted `FlowLevel` local codes are the Dart enum names
+(`light`/`medium`/`heavy`/`superHeavy`), while the *stored* value for the
+heaviest level is `super_heavy`. The export deliberately keeps emitting
+`superHeavy` (an existing local code value that may already be in a
+customer's exported Bundle); `docs/clinical/fhir-export.md` records the
+mapping and `fhir_bundle_test.dart` pins it.
+
+Why the values are local, and why the earlier "no matching concept"
+reasoning was itself partly wrong (issue #1116, re-verified 2026-09-26):
+
+- `386692008` Menorrhagia is a **finding**, not a disorder (the earlier
+  text called it disorder-tier); `308550003 "Normal menstrual blood loss"`
+  also exists. Neither is a neutral descriptor of a *given day's* flow
+  amount, so neither was adopted as a value coding.
+- The exact question concept exists: `364308001`, now used as the
+  `Observation.code` above.
+- `9126005` is `"Menstrual spotting (finding)"`. It does **not** mean
+  *intermenstrual* bleeding — that is `237130006` (the earlier claim was
+  wrong).
+- The code commonly cited as LOINC's flow-amount code is `49033-4`, which
+  is actually `"Menstrual History - Reported"`; it is in the **refuted**
+  table above and not usable.
 
 `FlowLevel` therefore has no entry in `kTagClinicalCodes` (it is not a
-tag-taxonomy code) and no dedicated `ClinicalCode` rows in the Dart
-module; a future export of `FlowLevel` should emit a local coding only,
-following the same policy as any other unmapped concept above.
+tag-taxonomy code); its `Observation.code` is SNOMED `364308001` and each
+emitted value is a local `kSystemLunarlogLocalFlow` coding, following the
+same no-guessed-codes policy as any other unmapped concept above.
 
 ## Reserved rows (shape decisions recorded ahead of the builder)
 
 The issue's own body reserves the shape for three more concept groups.
-Per #152 AC, these decisions are now documented **in the code-table
-module itself** (`clinical_terminology.dart`'s "Reserved shapes" library
-doc plus `kBodyTemperatureLoinc`, `estimatedDeliveryDateCode`, and
-`kBirthControlResourceShapes`), pinned by tests; this section is their
-prose record. The underlying tracking features have all landed since
-#152 was written — BBT observation logging (#144 — `observations` rows
-with `category: 'bbt'`, consumed by `lib/domain/insights/bbt_chart.dart`,
-#245), #188's pregnancy lifecycle mode, and #260's birth-control
-model (`lib/domain/birth_control.dart`) — but the FHIR builder (#157,
-`fhir_bundle.dart`) does not yet emit any of these shapes; those rows
-ride its generic local-coding fallback meanwhile, which is valid FHIR
-and guesses nothing. No premature code ships ahead of that builder work.
+Per #152 AC, these decisions are documented **in the code-table module
+itself** (`clinical_terminology.dart`'s "Reserved shapes" library doc plus
+`kBodyTemperatureLoinc`/`kBasalBodyTemperatureSnomed`/`kBodyWeightLoinc`,
+`estimatedDeliveryDateCode`, and `kBirthControlResourceShapes`), pinned by
+tests; this section is their prose record. The underlying tracking
+features have all landed since #152 was written — BBT observation logging
+(#144 — `observations` rows with `category: 'bbt'`, consumed by
+`lib/domain/insights/bbt_chart.dart`, #245), #188's pregnancy lifecycle
+mode, and #260's birth-control model (`lib/domain/birth_control.dart`).
+**BBT and weight are now emitted (issue #1115)**; pregnancy/due-date and
+birth-control resource shapes remain reserved but unemitted. Birth-control
+intake rows are deliberately **not** exported as Observations at all — see
+`docs/clinical/fhir-export.md`.
 
-### Basal body temperature (tracking landed; builder emission pending)
+### Basal body temperature (emitted as a vital sign, issue #1115)
 
 LOINC `8310-5` "Body temperature" (https://loinc.org/8310-5) is the
-standard vital-sign code US Core / IPS vital-signs profiles expect, but
-on its own it understates BBT as a distinct clinical concept (resting,
-first-waking). When the builder starts emitting BBT observations, it
-must emit `8310-5` — reserved as `kBodyTemperatureLoinc`, deliberately
-**not** in `kLoincCodes` (that table is exactly the A3-44 menstrual
-question seven) — with a `bodySite`/method qualifier or an additional
-local coding marking the reading as basal — do not invent a
-BBT-specific LOINC code. Revisit once a BBT-specific LOINC is confirmed.
+standard vital-sign code US Core / IPS vital-signs profiles expect, but on
+its own it understates BBT as a distinct clinical concept (resting,
+first-waking). The builder therefore emits it — reserved as
+`kBodyTemperatureLoinc`, deliberately **not** in `kLoincCodes` (that table
+is exactly the A3-44 menstrual question seven) — **paired with** SNOMED
+`300076005` "Basal body temperature" (`kBasalBodyTemperatureSnomed`, active
+since 2002, verified against tx.fhir.org 2026-09-26), rather than a
+`bodySite` qualifier or an invented BBT-specific LOINC code. The pair lands
+in the IPS **Vital Signs** section (LOINC `8716-3`); weight uses LOINC
+`29463-7` "Body weight" in the same section.
 
 ### Pregnancy + estimated due date (mode landed; no due-date data yet)
 
 Pregnancy status is conventionally a `Condition` (or an `Observation` of
-pregnancy status); estimated delivery date is an `Observation` using the
-already-verified LOINC `11778-8` "Delivery date Estimated" (USCDI:
-https://www.healthit.gov/isa/uscdi-data/estimated-date-delivery,
-reserved as `estimatedDeliveryDateCode`). #188's lifecycle modes carry a
-pregnancy *mode*, but no pregnancy-status or due-date data model exists
-yet — only the shape is reserved.
+pregnancy status); estimated delivery date is an `Observation` using LOINC
+`11779-6` "Delivery date Estimated from last menstrual period"
+(`kEstimatedDeliveryDateLoinc`, verified against tx.fhir.org 2026-09-26;
+USCDI lists it as a **Level 0** submission, not "included in USCDI" as an
+earlier note overstated:
+https://www.healthit.gov/isa/uscdi-data/estimated-date-delivery). The
+previously reserved `11778-8` means a date a *practitioner selected*, so it
+must not be used for an app-calculated, LMP-derived date. #188's lifecycle
+modes carry a pregnancy *mode*, but no pregnancy-status or due-date data
+model exists yet — only the shape is reserved.
 
 ### Birth control (model landed; builder emission pending, A3-9/#260)
 
@@ -264,7 +300,11 @@ Reserved as `kBirthControlResourceShapes` in the Dart module. Not
 modeled as `Observation` for any of these — doing so would make the
 export look machine-generated rather than clinically credible. No
 specific medication/device codes are reserved since none has been
-verified against an external system.
+verified against an external system. The per-day `birth_control_*` intake
+rows (#260) are therefore **not emitted at all** today (issue #1115): an
+intake row is not an `Observation`, and no `MedicationStatement`/`Device`
+builder exists yet, so it is deliberately absent rather than exported
+under a wrong resource type. See `docs/clinical/fhir-export.md`.
 
 ## Issue #249's expanded taxonomy — local decisions (2026-09)
 

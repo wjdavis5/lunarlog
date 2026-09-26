@@ -29,10 +29,12 @@ through the same share-sheet pattern but as its own file
    document-level `text` narrative (a `status: generated` summary of the
    record counts) — the same discipline each section's own `text.div`
    already follows, just at the document level. Two sections:
-   - **Results** (LOINC `30954-2`) — the menstrual-status Observations
+   - **Results** (LOINC `30954-2`) — the menstrual-flow Observations
      (one per day entry that is a bleed day — see `isBleed` below) and,
      when available, the two cycle-statistic Observations derived from
      `ActivePrediction`.
+   - **Vital signs** (LOINC `8716-3`, issue #1115) — the BBT and weight
+     measurement Observations (see "Measurement rows" below).
    - **Problems** (LOINC `11450-4`) — the self-reported symptom
      Observations: one per live (non-excluded) `observations` table row,
      plus one per tag per day entry from `DayEntry.tags` (see "Symptom
@@ -42,7 +44,9 @@ through the same share-sheet pattern but as its own file
      self-reported symptom log as a diagnosed condition. Problems was
      still the closer semantic fit of the two IPS sections for a symptom
      finding, so that is where it went, with this caveat recorded rather
-     than silently choosing a wrong-but-quieter section.
+     than silently choosing a wrong-but-quieter section. Measurement rows
+     and birth-control intake rows are deliberately **not** here (see
+     "Measurement rows" and "Exclusion policy").
    Each section carries a minimal generated narrative (`text.div`) — a
    count and a fixed sentence, never raw entry content, so the narrative
    itself never discloses anything the coded Observations don't already
@@ -50,21 +54,26 @@ through the same share-sheet pattern but as its own file
    `unavailable` on the FHIR core `list-empty-reason` CodeSystem) instead
    of a bare empty `entry` array.
 2. **Patient** — see below.
-3. **Observation** entries — flow-day, symptom, and (if present)
-   cycle-statistic.
+3. **Observation** entries — flow-day, symptom, vital-sign, and (if
+   present) cycle-statistic.
 4. **Provenance** — exactly one per Bundle.
 
 ## Symptom Observations: two sources (#157 review fix)
 
 Early v1 read only the `observations` table (Issue #240's per-option-row
-child table) for symptom findings — but nothing in production actually
-writes that table yet, so every tagged symptom (`DayEntry.tags`, the
-app's real symptom-logging surface) was silently missing from the export.
-The Problems section now emits from **both**:
+child table) for symptom findings — but at the time nothing in production
+wrote that table, so every tagged symptom (`DayEntry.tags`, the app's real
+symptom-logging surface) was silently missing from the export. **That
+"nothing writes it" claim is now stale (issue #1116):** the day sheet
+writes pain, spotting, BBT and weight rows, birth-control intake writes
+its `birth_control_*` rows, and the Clue import writes rows too. The
+Problems section emits from **both**:
 
-- One `Observation` per live (`excluded == false`) `observations` row,
-  dual-coded via `dualCodingFor` (or the local fallback — see "Coding
-  discipline" below).
+- One `Observation` per live (`excluded == false`) *symptom* `observations`
+  row, dual-coded via `dualCodingFor` (or the local fallback — see "Coding
+  discipline" below). Measurement (`bbt`/`weight`) and birth-control
+  intake rows are filtered out here — see "Measurement rows" and
+  "Exclusion policy".
 - One `Observation` per tag per day entry, from `DayEntry.tags`, also
   dual-coded via `dualCodingFor` — **except** when a live `observations`
   row already carries the same `(effectiveDateTime, code)` pair, so a
@@ -78,12 +87,45 @@ Each tag-derived Observation's id is a deterministic UUID v5 hash of
 the same day entry, the same guarantee the flow-day and `observations`-row
 Observations already had (see "Determinism" below).
 
+### Tag labels are self-describing (issue #1114)
+
+A tag `Observation` carries no category heading, so its
+`CodeableConcept.text` (and the lunarlog-local coding's `display`) is the
+only human-readable text a receiving system may show. The export uses
+`contextualDisplayForTag` (`lib/domain/tags.dart`) — `flatDisplayForTag`
+plus a category context for options that lose their meaning alone:
+"Sex: Withdrawal", "Test result: Pregnancy · positive", "Sleep duration:
+0-3 hours", "Discharge: Egg white", "Stool: Normal", "Medication:
+Antibiotic". Collisions stay disambiguated ("Great (digestion)" /
+"Great (stool)"). A non-tag `observations` row's local fallback display is
+also category-qualified (e.g. "Birth control pill: missed", though those
+rows are not exported — see "Exclusion policy") rather than a bare option
+code.
+
+### Measurement rows: Vital Signs, not Problems (issue #1115)
+
+Live `bbt` and `weight` `observations` rows no longer ride the generic
+local fallback into Problems. They are emitted in the IPS **Vital Signs**
+section (LOINC `8716-3`):
+
+- BBT → LOINC `8310-5` "Body temperature" **plus** SNOMED `300076005`
+  "Basal body temperature", value and UCUM unit unchanged.
+- Weight → LOINC `29463-7` "Body weight", value and UCUM unit unchanged.
+
+Birth-control intake rows (`birth_control_*`) are **not emitted at all** —
+they are not `Observation`s (the A3-48 rule `clinical_terminology.dart`
+records), and no `MedicationStatement`/`Device` builder exists yet, so they
+are deliberately absent rather than exported under a wrong resource type.
+
 ## `Observation` value shape (#157 review fix; Issue #612 LLA-088)
 
 A symptom `Observation` (from either source above) carries, when present
 on the underlying row:
 
-- `intensity` → `valueInteger`.
+- `intensity` → `valueInteger`, **with** a `referenceRange` stating the
+  scale (issue #1114): `low` 1, `high` 5, and `text` "1 (mild) to 5
+  (severe)". Without it a clinician reads the bare grade on the usual
+  0-10 pain scale. The same scale is stated in the clinician PDF.
 - `valueNum` + `unit` → `valueQuantity`. `unit` carries the UCUM code
   (`system: http://unitsofmeasure.org`, `code`) for the closed unit set
   `Observation.unit` documents today (`celsius`→`Cel`,
@@ -122,7 +164,7 @@ meant to keep out.
 
 ## Self-reported, never a clinician observation
 
-Every clinical `Observation` and the `Provenance` itself mark the data as
+The raw logged `Observation`s and the `Provenance` itself mark the data as
 patient/guardian self-report:
 
 - `Observation.performer` is the Patient (never a `Practitioner`).
@@ -135,14 +177,24 @@ patient/guardian self-report:
   verified against `tx.fhir.org`) and `who` = the Patient.
 - `Provenance.activity` is coded `self-reported` on lunarlog's own local
   system — no verified external FHIR R4 code represents "patient
+
+**Exception — calculated values are not self-reported (issue #1115).**
+The typical-cycle-length `Observation` is computed by lunarlog from the
+profile's logged period starts, so it is **not** marked self-reported: it
+carries no `performer` and a note saying it is calculated from logged
+period starts. (The LMP `Observation` *is* self-reported — its value is the
+logged period-start date itself, not a derivation.) The earlier "every
+clinical Observation is self-reported" claim was misleading for this row
+(issue #1116).
   self-report" as a `Provenance.activity` in the core value sets, so this
   is an explicit local decision (see "Local codes" below), not a guess.
 
 ## IPS-shaped, not IPS-conformant
 
 Modeled on the [International Patient Summary](https://hl7.org/fhir/uv/ips/)
-(IG v2.0.0, FHIR R4) — a Composition-led document with Results/Problems
-sections — but **no `Bundle.meta.profile` or `Composition.meta.profile` is
+(IG v2.0.0, FHIR R4) — a Composition-led document with Results/Vital
+signs/Problems sections — but **no `Bundle.meta.profile` or
+`Composition.meta.profile` is
 ever asserted**. IPS has required sections this app cannot populate yet
 (Allergies, Medications, and Problems as `Condition` resources, not
 `Observation`s) — claiming the profile while a real IPS validator would
@@ -168,8 +220,13 @@ because a FHIR document can leave the device:
   from the output.
 - No `loggedByUserId`/`lastModifiedByUserId`/`sourceId`/`importId`/email/
   Supabase user id anywhere.
-- Pregnancy/birth-control resource mapping is out of scope (per the
-  issue's own Assumptions) until those tracking features exist —
+- **Birth-control intake rows (#1115)** are never emitted. The A3-48 rule
+  is that no birth-control method shape is modeled as an `Observation`;
+  the per-day `birth_control_*` intake rows are not an
+  `Observation`-shaped concept, and no `MedicationStatement`/`Device`
+  builder exists yet, so they are absent rather than exported under a
+  wrong resource type. Pregnancy/birth-control resource mapping remains
+  out of scope until those resource builders exist —
   `clinical_terminology.dart` already reserves the shape for that.
 - **`DayEntry.note` (#157 review fix)** is never read by `fhir_bundle.dart`
   at all — no function in that file even accepts it as a parameter, so
@@ -194,9 +251,11 @@ excluded `observations` row (and its `valueText`) never does either.
 
 `Bundle.meta.tag` carries one entry: `system`
 `https://lunarlog.app/fhir/CodeSystem/export-version`,
-`code` the current `kFhirExportBundleVersion` (`1` as of this writing). A
-future change to this file's mapping bumps that constant so a downstream
-consumer (or a person comparing two exports) can tell the shapes apart.
+`code` the current `kFhirExportBundleVersion` (`2` as of
+issues #1114/#1115, which changed the pain scale, flow/cycle-length
+coding, tag labels, and the Vital Signs section). A future change to this
+file's mapping bumps that constant so a downstream consumer (or a person
+comparing two exports) can tell the shapes apart.
 
 ## Code-system URIs are permanent (frozen from the first shipped build)
 
@@ -222,7 +281,7 @@ verified table (issue #152) or an explicit local coding on lunarlog's own
 system (`kSystemLunarlogLocal`,
 `https://lunarlog.app/fhir/CodeSystem/tag`) with a
 documented reason — never a code typed from memory. `fhir_bundle.dart`
-itself adds three more verified LOINC codes and one verified HL7
+itself adds four more verified LOINC codes and one verified HL7
 terminology code that `clinical_terminology.dart` does not carry, because
 they are Composition/section/Provenance-level, not `Observation.code`, so
 they don't belong in that file's exhaustively-tested `kLoincCodes` list:
@@ -232,15 +291,21 @@ they don't belong in that file's exhaustively-tested `kLoincCodes` list:
 | `60591-5` | LOINC | Patient summary Document | `Composition.type` | `tx.fhir.org` $lookup, 2026-09-09 |
 | `30954-2` | LOINC | Relevant diagnostic tests/laboratory data note | Results section `.code` | `tx.fhir.org` $lookup, 2026-09-09 |
 | `11450-4` | LOINC | Problem list - Reported | Problems section `.code` | `tx.fhir.org` $lookup, 2026-09-09 |
+| `8716-3` | LOINC | Vital signs note | Vital signs section `.code` | `tx.fhir.org` $lookup, 2026-09-26 |
 | `author` | `http://terminology.hl7.org/CodeSystem/provenance-participant-type` | Author | `Provenance.agent.type` | `tx.fhir.org` $lookup, 2026-09-09 |
 
-Menstrual-status and cycle-statistic Observations reuse
-`clinical_terminology.dart`'s `menstrualStatusCodes` (`8678-5`, `3146-8`)
-and `cycleLengthCodes` (`64700-8`), plus the standalone verified LOINC
-`8665-2` ("Last menstrual period start date") for the last-menstrual-period
-Observation. Symptom Observations reuse `dualCodingFor` — a SNOMED CT
-finding coding plus the lunarlog local coding, or the local coding alone
-when no verified SNOMED match exists for that tag.
+Observation-level coding (post-#1115/#1116):
+
+- Per-day flow: SNOMED `364308001` "Quantity of menstrual blood loss"
+  (`kQuantityOfMenstrualBloodLossSnomed`) as the single question code,
+  with the local flow-level `valueCodeableConcept`.
+- Typical cycle length: SNOMED `161716008` "Usual length of menstrual
+  cycle" (`cycleLengthCodes`), value in `d`.
+- LMP: the standalone LOINC `8665-2` "Last menstrual period start date".
+- BBT: LOINC `8310-5` + SNOMED `300076005`; weight: LOINC `29463-7`.
+- Symptoms reuse `dualCodingFor` — a SNOMED CT finding coding plus the
+  lunarlog local coding, or the local coding alone when no verified
+  SNOMED match exists for that tag.
 
 ### Local codes introduced by this export
 
@@ -249,27 +314,35 @@ already cover. **#157 review fix:** flow levels moved to their own local
 system, `kSystemLunarlogLocalFlow`
 (`https://lunarlog.app/fhir/CodeSystem/flow`) — distinct
 from `kSystemLunarlogLocal` (`.../CodeSystem/tag`), which
-`clinical_terminology.dart` documents as specifically the 17-tag system.
-A flow level is not a tag, so it no longer shares that system's URI; see
-`docs/clinical/terminology.md`'s "FlowLevel — stays fully local" section
-for both URIs and why they're separate.
+`clinical_terminology.dart` documents as specifically the 113-code tag
+system. A flow level is not a tag, so it no longer shares that system's
+URI; see `docs/clinical/terminology.md`'s "`FlowLevel`" section for both
+URIs and why they're separate.
 
-- **Flow level** (`spotting`/`light`/`medium`/`heavy`, as the
-  `valueCodeableConcept` on a menstrual-status Observation; system
+- **Flow level** (`light`/`medium`/`heavy`/`superHeavy`, as the
+  `valueCodeableConcept` on a flow Observation; system
   `kSystemLunarlogLocalFlow`): no LOINC answer-list code was verified for
-  lunarlog's specific five-level flow scale, so each level is its own
-  local code, `display` from `flowLabel` (the same human label
-  `DaySheet`'s own flow chips use — moved into
-  `lib/domain/models/flow_level.dart` so this pure-Dart builder can share
-  it without importing a UI widget file).
+  lunarlog's flow scale, so each emitted level is its own local code, with
+  `display` from `flowLabel` (the same human label `DaySheet`'s own flow
+  chips use — moved into `lib/domain/models/flow_level.dart` so this
+  pure-Dart builder can share it without importing a UI widget file).
+  The emitted set is only the bleed levels (`isBleed`): `spotting` is a
+  deprecated stored alias and is **never exported**; `none` and
+  `notBleeding` are non-bleed and never exported. `superHeavy` **is**
+  exported. **Stored value → emitted code:** `super_heavy` (the wire
+  value on `day_entries.flow`) → the local code `superHeavy` (the Dart
+  enum name, kept stable because it may already be in a customer's
+  exported Bundle); `fhir_bundle_test.dart` pins this mapping.
 - **Generic observation-row fallback** (`<category>:<code>`, e.g.
-  `bbt:reading`; system `kSystemLunarlogLocal`): the `observations` table
-  (issue #240) models roughly 200 Clue-style option codes, a much larger
-  and looser vocabulary than the 17-tag taxonomy `dualCodingFor` covers.
-  When an observation row's `code` is not one of those 17 tags, this is
-  the fallback — a local coding built directly from the row's own
-  `category`/`code`, never a guessed clinical concept for a vocabulary
-  that hasn't been verified yet.
+  `other:wearable_metric`; system `kSystemLunarlogLocal`): the
+  `observations` table (issue #240) models roughly 200 Clue-style option
+  codes, a much larger and looser vocabulary than the 113-tag taxonomy
+  `dualCodingFor` covers. When a live symptom row's `code` is not one of
+  those tags, this is the fallback — a local coding built directly from
+  the row's own `category`/`code`, never a guessed clinical concept for a
+  vocabulary that hasn't been verified yet. Its `display` is
+  category-qualified (e.g. "Birth control pill: missed") so the label is
+  meaningful with no section heading (issue #1114).
 - **`self-reported`** (`Provenance.activity`; system
   `kSystemLunarlogLocal` — still the tag system's URI, since a
   self-report marker is not a competing taxonomy the way flow levels
@@ -337,6 +410,8 @@ time or randomness.
   `meta.profile` can be added — see "IPS-shaped, not IPS-conformant"
   above.
 - **Pregnancy/birth-control resources** (A3-47/A3-48): deferred until
-  those tracking features exist, per the issue's own Assumptions.
+  those resource builders exist, per the issue's own Assumptions.
+  Birth-control intake rows are excluded from the Bundle meanwhile (see
+  "Exclusion policy").
 - **C-CDA output** (#161, CE-4): blocked on this issue per its
   Dependencies; not started.
