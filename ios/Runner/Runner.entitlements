@@ -23,13 +23,9 @@
 	<true/>
 	<key>com.apple.developer.healthkit.access</key>
 	<array/>
-	<!-- Issue #129: HTTPS universal-link fallback for invite/claim links.
-	     The human provisioning the hosted domain (issue #384) replaces
-	     __LUNARLOG_LINK_DOMAIN__ with that domain (e.g.
-	     `applinks:links.example.com`) once DNS/hosting exist and the
-	     AASA file in docs/links/ is served. Until then this placeholder
-	     matches nothing and the custom `lunarlog://` scheme below is the
-	     only working link form. -->
+	<!-- Issue #129, #450: HTTPS universal-link fallback for invite/claim links.
+	     Hosted domain is lunarlog.app, served by the Cloudflare Worker in
+	     web/links/ which hosts /.well-known/apple-app-site-association. -->
 	<!-- Issue #141: the shared suite the home-screen widget extension
 	     reads (the discreet render payload written by the app's
 	     WidgetStatePublisher through the `home_widget` plugin). The SAME
@@ -46,7 +42,7 @@
 	</array>
 	<key>com.apple.developer.associated-domains</key>
 	<array>
-		<string>applinks:__LUNARLOG_LINK_DOMAIN__</string>
+		<string>applinks:lunarlog.app</string>
 	</array>
 </dict>
 </plist>

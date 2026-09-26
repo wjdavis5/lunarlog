@@ -1,0 +1,54 @@
+name: Links deploy (Cloudflare Workers)
+
+# Issue #450: hosts invite universal-link files on lunarlog.app via Cloudflare Workers.
+# Deploys web/links/ to the apex lunarlog.app domain using Workers Custom Domain.
+#
+# Scope: serves /.well-known/apple-app-site-association and /invite* (invite.html).
+# Android assetlinks.json is omitted until release fingerprints exist.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/links/**'
+      - '.github/workflows/links-deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: links-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  deploy:
+    name: Deploy links Worker to Cloudflare
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Check the Cloudflare credentials
+        id: cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID are not configured; skipping the Cloudflare Worker deploy."
+          fi
+
+      - name: Deploy to Cloudflare Workers
+        if: steps.cloudflare.outputs.configured == 'true'
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '3.89.0'
+          workingDirectory: 'web/links'
+          command: deploy --config wrangler.jsonc

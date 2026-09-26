@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<!-- Issue #129: neutral no-app landing-page draft for invite/claim links.
+     Human hosting tracked in issue #384 — see docs/links/README.md.
+
+     Privacy contract (enforced by construction, not by policy):
+     - No external resources of any kind: no stylesheets, fonts, images,
+       tracking beacons, or third-party scripts. This file makes zero
+       network requests beyond its own initial load.
+     - No stored state and no outbound calls of any kind: the single
+       inline script below only reads this page's own query string and
+       sets one anchor's href. It never sends anything anywhere.
+     - Neutral copy only: no profile, child, or sender names — the server
+       never personalises this page and the static file cannot know them.
+     - The redeemable code stays in URLs only: it is never rendered as page
+       text, never written to storage, and — via the no-referrer policy and
+       noreferrer links — never leaked in a Referer header.
+     - The human hoster must additionally disable HTTP access logging for
+       these URLs (or accept that the hosting layer logs them): a token in
+       a query string is visible to anything that logs request lines. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Lunarlog invitation</title>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 2rem 1.25rem; color: #222; background: #fff; }
+  main { max-width: 32rem; margin: 0 auto; }
+  h1 { font-size: 1.4rem; }
+  p { line-height: 1.5; }
+  ol { line-height: 1.7; padding-left: 1.25rem; }
+  .open { display: inline-block; margin-top: 1rem; padding: 0.75rem 1.5rem; background: #4a6fa5; color: #fff; text-decoration: none; border-radius: 0.5rem; }
+</style>
+</head>
+<body>
+<main>
+<h1>You have a Lunarlog invitation</h1>
+<p>Someone invited you to connect on Lunarlog, a private family cycle-tracking app. This device does not have the app installed (or it could not open the link directly), so the invitation is waiting for you inside the app instead.</p>
+<ol>
+<li>Install Lunarlog on your device.</li>
+<li>Open this same invitation link again on that device.</li>
+<li>Sign in (or create an account) and follow the prompt to accept.</li>
+</ol>
+<p>If the app is already installed, tap below to open the invitation in it:</p>
+<p><a id="open-in-app" class="open" href="lunarlog://invite" rel="noreferrer noopener">Open in Lunarlog</a></p>
+<p>Invitation links expire. If yours no longer works, ask the sender for a fresh one.</p>
+</main>
+<script>
+(function () {
+  // Rebuilds the custom-scheme equivalent of this page's own URL so the
+  // "Open in Lunarlog" button carries the same code (and only the code's
+  // own query parameters) with nothing added, stored, or transmitted.
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var code = params.get('code');
+    if (!code) { return; }
+    var target = 'lunarlog://invite?code=' + encodeURIComponent(code);
+    var profile = params.get('profile');
+    var kind = params.get('kind');
+    if (profile) { target += '&profile=' + encodeURIComponent(profile); }
+    if (kind) { target += '&kind=' + encodeURIComponent(kind); }
+    var openLink = document.getElementById('open-in-app');
+    if (openLink) { openLink.setAttribute('href', target); }
+  } catch (e) {
+    // No script, no problem: the neutral instructions above still apply.
+  }
+})();
+</script>
+</body>
+</html>

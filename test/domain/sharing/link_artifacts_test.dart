@@ -19,11 +19,23 @@ void main() {
       landing = File('docs/links/invite.html').readAsStringSync();
     });
 
-    test('AASA pins the bundle id and the invite path only', () {
+    test('AASA pins the bundle id, team id, and invite path', () {
       expect(aasa, contains('com.wjdavis5.lunarlog'));
       expect(aasa, contains('/invite*'));
-      // The Team ID is a human-filled placeholder until #384 provisions it.
-      expect(aasa, contains('__TEAMID__'));
+      // The Apple Developer Team ID is 5273C9R3V4 (issue #450).
+      expect(aasa, contains('5273C9R3V4.com.wjdavis5.lunarlog'));
+      expect(aasa, isNot(contains('__TEAMID__')));
+    });
+
+    test('web/links deployed assets match canonical docs/links files', () {
+      final deployedAasa =
+          File('web/links/public/.well-known/apple-app-site-association')
+              .readAsStringSync();
+      final deployedLanding =
+          File('web/links/public/invite.html').readAsStringSync();
+
+      expect(deployedAasa, equals(aasa));
+      expect(deployedLanding, equals(landing));
     });
 
     test('assetlinks pins the package name with a placeholder fingerprint', () {
