@@ -5788,6 +5788,14 @@
   "@cycleLiteracyAudienceFilterGuardian": {
     "description": "Issue #854: filter chip for guardian audience in cycle literacy library."
   },
+  "cycleLiteracySectionWrittenForTeens": "Written for teens",
+  "@cycleLiteracySectionWrittenForTeens": {
+    "description": "Issue #1088: section heading for teen-specific articles when Teens filter is active."
+  },
+  "cycleLiteracySectionWrittenForGuardians": "Written for guardians",
+  "@cycleLiteracySectionWrittenForGuardians": {
+    "description": "Issue #1088: section heading for guardian-specific articles when Guardians filter is active."
+  },
   "guardianOverviewActionGuides": "Cycle guides",
   "@guardianOverviewActionGuides": {
     "description": "Issue #854: quick action button on the guardian logistics overview card linking to cycle guides."

@@ -4514,6 +4514,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get cycleLiteracyAudienceFilterGuardian => 'Guardians';
 
   @override
+  String get cycleLiteracySectionWrittenForTeens => 'Written for teens';
+
+  @override
+  String get cycleLiteracySectionWrittenForGuardians => 'Written for guardians';
+
+  @override
   String get guardianOverviewActionGuides => 'Cycle guides';
 
   @override

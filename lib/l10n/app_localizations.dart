@@ -7202,6 +7202,18 @@ abstract class AppLocalizations {
   /// **'Guardians'**
   String get cycleLiteracyAudienceFilterGuardian;
 
+  /// Issue #1088: section heading for teen-specific articles when Teens filter is active.
+  ///
+  /// In en, this message translates to:
+  /// **'Written for teens'**
+  String get cycleLiteracySectionWrittenForTeens;
+
+  /// Issue #1088: section heading for guardian-specific articles when Guardians filter is active.
+  ///
+  /// In en, this message translates to:
+  /// **'Written for guardians'**
+  String get cycleLiteracySectionWrittenForGuardians;
+
   /// Issue #854: quick action button on the guardian logistics overview card linking to cycle guides.
   ///
   /// In en, this message translates to:
