@@ -178,9 +178,11 @@ flutter:
   #
   # Issue #1091: Roboto (Apache-2.0) is the Flutter web engine's default
   # family. Without a bundled family named exactly `Roboto`, the engine
-  # resolves it from fonts.gstatic.com, which the web CSP blocks — a blank
-  # first paint. The one regular weight the engine asks for is enough; the
-  # app's own text is Inter/Fraunces. The licence text ships beside it.
+  # fetches Roboto from fonts.gstatic.com on every boot — a third-party
+  # request on every visit. Bundling it keeps a plain boot same-origin. The
+  # one regular weight the engine asks for is enough; the app's own text is
+  # Inter/Fraunces. The licence text ships beside it. (A blocked Roboto
+  # fetch does not blank the page; the blank page #1091 fixed was CanvasKit.)
   fonts:
     - family: Inter
       fonts:
