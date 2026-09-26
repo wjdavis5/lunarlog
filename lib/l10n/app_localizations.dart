@@ -2208,7 +2208,7 @@ abstract class AppLocalizations {
   /// **'PMS estimate: {tier}'**
   String overviewPmsTierLabel(String tier);
 
-  /// Title of the overview/Analysis state shown when a profile's in-effect birth-control method is a continuous one (IUD, implant, shot, continuous pill): period prediction is deliberately off (Issue #233).
+  /// Title of the overview/Analysis state shown when a profile's in-effect birth-control method is a continuous one (hormonal IUD, implant, shot, continuous pill): period prediction is deliberately off (Issue #233). A copper IUD is not in this group — it keeps ordinary estimates (Issue #1118).
   ///
   /// In en, this message translates to:
   /// **'Estimates paused'**
@@ -2472,10 +2472,10 @@ abstract class AppLocalizations {
   /// **'Injection reminder'**
   String get reminderKindBirthControlShot;
 
-  /// The injection reminder's settings row subtitle (Issue #183).
+  /// The injection reminder's settings row subtitle (Issue #183). Issue #1118: the shot is due every 13 weeks (ACOG; CDC US SPR), so 12 weeks is a week-early reminder rather than the interval itself.
   ///
   /// In en, this message translates to:
-  /// **'Every 12 weeks'**
+  /// **'Every 12 weeks — a week before the usual 13-week shot is due'**
   String get reminderKindBirthControlShotSubtitle;
 
   /// Row subtitle shown when an anchor-based birth-control reminder (patch, ring, shot) is enabled for a method with no recorded start date: without one there is no knowable due date, so nothing fires (Issue #183).
@@ -7651,6 +7651,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Helpful to track:'**
   String get phaseInsightsHelpfulToTrack;
+
+  /// Issue #1118: framing lead-in for a subphase's hormone explainer. The card describes a typical ovulatory cycle, not a fact about this person's cycle today (teen cycles are often anovulatory, ACOG CO 651).
+  ///
+  /// In en, this message translates to:
+  /// **'In a typical cycle where ovulation happens, around this point:'**
+  String get phaseInsightsTypicalCycleLead;
+
+  /// Issue #1118: shown on the Analysis tab in place of the phase card when the prediction is pack-driven (PredictionBasis.regimenSchedule). Combined hormonal contraception suppresses ovulation, so subphase/ovulation copy would assert a physiological event the pack schedule says nothing about.
+  ///
+  /// In en, this message translates to:
+  /// **'While using the pill, patch, or ring, ovulation usually doesn\'t happen, so cycle phases don\'t apply.'**
+  String get phaseInsightsHormonalContraceptionBody;
 
   /// Issue #1004 (tranche 4a): button opening the subphase's context article, naming its title.
   ///

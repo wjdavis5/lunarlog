@@ -1930,9 +1930,9 @@
   "@reminderKindBirthControlShot": {
     "description": "The 12-weekly injection reminder's settings row title (Issue #183)."
   },
-  "reminderKindBirthControlShotSubtitle": "Every 12 weeks",
+  "reminderKindBirthControlShotSubtitle": "Every 12 weeks — a week before the usual 13-week shot is due",
   "@reminderKindBirthControlShotSubtitle": {
-    "description": "The injection reminder's settings row subtitle (Issue #183)."
+    "description": "The injection reminder's settings row subtitle (Issue #183). Issue #1118: the shot is due every 13 weeks (ACOG; CDC US SPR), so 12 weeks is a week-early reminder rather than the interval itself."
   },
   "reminderBirthControlNeedsStartDate": "Waits for a start date on the recorded method — re-record the method from Edit profile to set one",
   "@reminderBirthControlNeedsStartDate": {
@@ -6166,6 +6166,14 @@
     "phaseInsightsHelpfulToTrack": "Helpful to track:",
     "@phaseInsightsHelpfulToTrack": {
       "description": "Issue #1004 (tranche 4a): label introducing a subphase's what-to-track guidance."
+    },
+    "phaseInsightsTypicalCycleLead": "In a typical cycle where ovulation happens, around this point:",
+    "@phaseInsightsTypicalCycleLead": {
+      "description": "Issue #1118: framing lead-in for a subphase's hormone explainer. The card describes a typical ovulatory cycle, not a fact about this person's cycle today (teen cycles are often anovulatory, ACOG CO 651)."
+    },
+    "phaseInsightsHormonalContraceptionBody": "While using the pill, patch, or ring, ovulation usually doesn't happen, so cycle phases don't apply.",
+    "@phaseInsightsHormonalContraceptionBody": {
+      "description": "Issue #1118: shown on the Analysis tab in place of the phase card when the prediction is pack-driven (PredictionBasis.regimenSchedule). Combined hormonal contraception suppresses ovulation, so subphase/ovulation copy would assert a physiological event the pack schedule says nothing about."
     },
     "phaseInsightsReadArticle": "Read: {title}",
     "@phaseInsightsReadArticle": {

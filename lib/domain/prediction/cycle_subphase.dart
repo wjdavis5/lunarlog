@@ -14,8 +14,9 @@
 ///    initiates progesterone secretion.
 /// 5. [midLuteal]: Peak luteal phase. Progesterone peaks; endometrium reaches
 ///    receptivity.
-/// 6. [lateLuteal]: Premenstrual phase. Progesterone and estrogen drop sharply;
-///    withdrawal triggers PMS and menses.
+/// 6. [lateLuteal]: Premenstrual phase. Progesterone and estrogen fall if no
+///    pregnancy occurs, which leads to a period; premenstrual symptoms often
+///    show up around this time.
 ///
 /// **Constraints & Framing**:
 /// - Descriptive biological education only: no individualised medical advice,
@@ -71,7 +72,9 @@ enum CycleSubphase {
         CycleSubphase.midLuteal =>
           'Progesterone peaks, stabilizing the uterine lining and supporting potential implantation.',
         CycleSubphase.lateLuteal =>
-          'Progesterone and estrogen decline sharply if no pregnancy occurs, initiating premenstrual changes.',
+          'Progesterone and estrogen fall if no pregnancy occurs, which '
+              'leads to a period. Premenstrual symptoms often show up '
+              'around this time.',
       };
 
   /// Primary educational article ID in the bundled cycle-literacy library.
@@ -156,8 +159,8 @@ class CycleSubphaseInfo {
       : 'Cycle Days $startCycleDay–$endCycleDay';
 
   static const String kSourceCitation =
-      'ACOG Patient Education FAQ049; Speroff\'s Clinical Gynecologic Endocrinology (9th ed.)';
-  static const String kReviewDate = '2026-09-12';
+      'ACOG Menstrual Cycle infographic (PFSI033); ACOG FAQ024';
+  static const String kReviewDate = '2026-09-26';
 }
 
 /// Derives the active [CycleSubphaseInfo] for [today] given [prediction].
@@ -222,10 +225,23 @@ String? _buildHedgedNotice({required bool isHedged, required bool isLate}) {
 }
 
 /// Derives the active [CycleSubphaseInfo] for [today] given [prediction].
+///
+/// This describes an ovulatory cycle and must not be called for a
+/// pack-driven [PredictionBasis.regimenSchedule] prediction (pill, patch,
+/// or ring): that basis asserts no ovulatory event, so any subphase or
+/// ovulation copy would be false in context (issue #1118). Callers —
+/// `PhaseInsightsCard` is the only one today — branch on the basis first;
+/// the assert below pins that contract.
 CycleSubphaseInfo deriveSubphase({
   required ActivePrediction prediction,
   required LocalDate today,
 }) {
+  assert(
+    prediction.basis != PredictionBasis.regimenSchedule,
+    'deriveSubphase describes an ovulatory cycle and must not be called '
+    'for a pack-driven (regimenSchedule) prediction — see PredictionBasis '
+    '(issue #1118).',
+  );
   final cycleDay = prediction.cycleDay;
   final meanLength = prediction.meanCycleLengthDays.round().clamp(15, 60);
   final bleedLength = prediction.meanPeriodLengthDays > 0

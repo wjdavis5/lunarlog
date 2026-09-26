@@ -1517,7 +1517,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get reminderKindBirthControlShot => 'Injection reminder';
 
   @override
-  String get reminderKindBirthControlShotSubtitle => 'Every 12 weeks';
+  String get reminderKindBirthControlShotSubtitle =>
+      'Every 12 weeks — a week before the usual 13-week shot is due';
 
   @override
   String get reminderBirthControlNeedsStartDate =>
@@ -4785,6 +4786,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get phaseInsightsHelpfulToTrack => 'Helpful to track:';
+
+  @override
+  String get phaseInsightsTypicalCycleLead =>
+      'In a typical cycle where ovulation happens, around this point:';
+
+  @override
+  String get phaseInsightsHormonalContraceptionBody =>
+      'While using the pill, patch, or ring, ovulation usually doesn\'t happen, so cycle phases don\'t apply.';
 
   @override
   String phaseInsightsReadArticle(String title) {

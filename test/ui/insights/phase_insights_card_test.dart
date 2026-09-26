@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/domain/birth_control.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
@@ -52,6 +53,48 @@ void main() {
     expect(find.byKey(const ValueKey('phase-tracking-text')), findsOneWidget);
     expect(find.byKey(const ValueKey('phase-article-button')), findsOneWidget);
     expect(find.textContaining('Source: ACOG'), findsOneWidget);
+    // Issue #1118: the hormone explainer is framed as a typical ovulatory
+    // cycle, not a fact about this person's cycle today.
+    expect(
+      find.textContaining('In a typical cycle where ovulation happens'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+      'pill (regimenSchedule) shows no subphase or ovulation content '
+      '(issue #1118)', (tester) async {
+    final today = LocalDate(2026, 1, 15);
+    // A pill with a recorded start date is exactly what the predictor
+    // turns into a pack-driven (regimenSchedule) estimate.
+    final prediction = computePrediction(
+      episodes: const [],
+      today: today,
+      birthControl: ActiveBirthControl(
+        method: BirthControlMethod.pill,
+        startedOn: LocalDate(2026, 1, 1),
+      ),
+    ) as ActivePrediction;
+    expect(prediction.basis, PredictionBasis.regimenSchedule);
+
+    await _pump(
+      tester,
+      PhaseInsightsCard(prediction: prediction, today: today),
+    );
+
+    expect(
+      find.byKey(const ValueKey('phase-insights-regimen-schedule')),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining("ovulation usually doesn't happen"),
+      findsOneWidget,
+    );
+    // No subphase card content renders.
+    expect(find.byKey(const ValueKey('phase-name-text')), findsNothing);
+    expect(find.byKey(const ValueKey('phase-explainer-text')), findsNothing);
+    expect(find.byKey(const ValueKey('phase-tracking-text')), findsNothing);
+    expect(find.textContaining('Ovulation'), findsNothing);
   });
 
   testWidgets('PhaseInsightsCard renders hedged notice when confidence is learning', (tester) async {
