@@ -542,6 +542,12 @@ jobs:
           deno check src/**/*.ts
           deno test
 
+      - name: Run deno check and deno test for web/email
+        working-directory: web/email
+        run: |
+          deno check src/**/*.ts
+          deno test
+
   db-tests:
     name: Database tests (pgTAP)
     runs-on: ubuntu-latest

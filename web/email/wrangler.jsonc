@@ -1,0 +1,31 @@
+{
+  "name": "lunarlog-inbound-email",
+  "compatibility_date": "2026-09-20",
+  "main": "src/index.ts",
+
+  // Custom domain route on Cloudflare. workers_dev is false to prevent unrouted public origin.
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "email.lunarlog.app",
+      "custom_domain": true
+    }
+  ],
+
+  // KV store for incoming parsed emails with 24-hour expiration TTL.
+  "kv_namespaces": [
+    {
+      "binding": "INBOUND_EMAILS",
+      "id": "placeholder_inbound_emails_kv",
+      "preview_id": "placeholder_inbound_emails_kv_preview"
+    }
+  ],
+
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    }
+  }
+}
