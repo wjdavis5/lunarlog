@@ -6,31 +6,88 @@ import PostalMime from "postal-mime";
 import type { ParsedEmailData } from "./types.ts";
 
 /**
+ * Checks if an 8-digit sequence is likely an ISO calendar date (YYYYMMDD)
+ * in the range 2020-2039.
+ */
+function isLikelyIsoDate(digits: string): boolean {
+  return /^20[2-3]\d(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/.test(digits);
+}
+
+/**
  * Extracts authentication OTP code from text/HTML content.
- * Prioritizes 8-digit OTPs (used by Lunarlog Auth per #2 and #970),
- * falling back to 6-digit OTPs if present.
+ * Prioritizes codes near auth/verification keywords, then non-date 8-digit OTPs
+ * (used by Lunarlog Auth per #2 and #970), falling back to 6-digit OTPs.
  */
 export function extractOtpCode(content: string): string | undefined {
   if (!content) return undefined;
 
-  // Look for 8-digit OTPs first (word-boundary matched)
-  const eightDigitMatch = content.match(/\b\d{8}\b/);
-  if (eightDigitMatch) {
-    return eightDigitMatch[0];
+  // 1. Look for contextual 8-digit OTPs near keywords
+  const contextual8 = content.match(
+    /(?:code|verification|verify|otp|token|confirm(?:ation)?|sign[- ]in|login|pin)[^\d\n\r]{1,40}\b(\d{8})\b/i,
+  ) || content.match(
+    /\b(\d{8})\b[^\d\n\r]{1,40}(?:is your|code|verification|to verify|to log)/i,
+  );
+  if (contextual8) {
+    return contextual8[1];
   }
 
-  // Fallback to 6-digit OTPs
+  // 2. Look for contextual 6-digit OTPs near keywords
+  const contextual6 = content.match(
+    /(?:code|verification|verify|otp|token|confirm(?:ation)?|sign[- ]in|login|pin)[^\d\n\r]{1,40}\b(\d{6})\b/i,
+  ) || content.match(
+    /\b(\d{6})\b[^\d\n\r]{1,40}(?:is your|code|verification|to verify|to log)/i,
+  );
+  if (contextual6) {
+    return contextual6[1];
+  }
+
+  // 3. Fallback: all 8-digit matches, filtering out calendar dates (e.g. YYYYMMDD)
+  const allEight = Array.from(content.matchAll(/\b\d{8}\b/g)).map((m) => m[0]);
+  const nonDateEight = allEight.filter((d) => !isLikelyIsoDate(d));
+  if (nonDateEight.length > 0) {
+    return nonDateEight[0];
+  }
+
+  // 4. Fallback: 6-digit OTPs
   const sixDigitMatch = content.match(/\b\d{6}\b/);
   if (sixDigitMatch) {
     return sixDigitMatch[0];
   }
 
+  // 5. Last resort: date-like 8-digit match if nothing else matched
+  if (allEight.length > 0) {
+    return allEight[0];
+  }
+
   return undefined;
+}
+
+const URL_ENTITY_MAP: Record<string, string> = {
+  "&amp;": "&",
+  "&#38;": "&",
+  "&#x26;": "&",
+  "&#x00026;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+  "&apos;": "'",
+};
+
+/**
+ * Decodes common HTML entity representations in URLs in a single pass
+ * to avoid double-unescaping vulnerabilities.
+ */
+function decodeHtmlEntitiesInUrl(url: string): string {
+  return url.replace(/&(?:amp|#38|#x26|#x00026|lt|gt|quot|apos|#39);/gi, (match) => {
+    return URL_ENTITY_MAP[match.toLowerCase()] ?? match;
+  });
 }
 
 /**
  * Extracts links (HTTP/HTTPS and custom schemes like lunarlog://) from text/HTML.
  * Filters out common XML/HTML namespace URLs and deduplicates results.
+ * Decodes HTML entities (e.g. &amp;) so query parameters are intact.
  */
 export function extractAuthLinks(content: string): string[] {
   if (!content) return [];
@@ -40,7 +97,9 @@ export function extractAuthLinks(content: string): string[] {
 
   const deduped = new Set<string>();
   for (const rawUrl of matches) {
-    const cleaned = rawUrl.replace(/[.,;:!?]+$/, "");
+    let cleaned = decodeHtmlEntitiesInUrl(rawUrl);
+    cleaned = cleaned.replace(/["']+$/, "");
+    cleaned = cleaned.replace(/[.,;:!?&]+$/, "");
     // Ignore XML/DTD schemas
     try {
       if (cleaned.startsWith("http://") || cleaned.startsWith("https://")) {
