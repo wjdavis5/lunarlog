@@ -277,8 +277,10 @@ never permanently separated from the disclosure that real data is present.
   verify it.
 - **Live-browser verification of the URL cleanup.** The `replaceState`
   rewrite (slice 4) is proven by the injectable seam and the pure
-  `cleanAuthUrl` tests, but no hosted origin exists yet, so it has not been
-  exercised in a real browser; the hosting slice owns that end-to-end check.
+  `cleanAuthUrl` tests. The origin is now hosted (`app.lunarlog.app`,
+  2026-09-26) and the post-deploy smoke check proves `/auth/callback`
+  reaches the app, but no automated in-browser assertion of the cleanup
+  itself has been added yet.
   The cleanup also assumes the `/auth/callback` path reaches the app at all
   (the SPA-fallback dependency above) — if the host 404s the path, the code
   never reaches `Uri.base` and there is nothing to clean.
@@ -320,12 +322,12 @@ never permanently separated from the disclosure that real data is present.
 
 ## 8. Hosting (slice 3)
 
-**Status:** slice 3 of epic #831 lands the deploy path **in code**. What
-remains is owner provisioning — the Cloudflare project, the two secrets, the
-custom domain, and the Supabase redirect allow-list — plus the PWA decision
-below. The §6 "Hosting, deploy automation, DNS" follow-up is superseded for
-the code half; the DNS/provisioning half is the checklist at the end of this
-section.
+**Status:** the deploy path is live. The Cloudflare Pages project
+`lunarlog-app`, its `app.lunarlog.app` custom domain, and the proxied DNS
+record were provisioned by hand on 2026-09-26, and a dispatched run deployed
+successfully. The one remaining owner step is the Supabase redirect
+allow-list (#1093); the PWA decision below is still open. The §6 "Hosting,
+deploy automation, DNS" follow-up is superseded.
 
 - **Deploy path.** `.github/workflows/web-deploy.yml` builds
   `flutter build web --release --no-web-resources-cdn` with the same eleven
@@ -335,24 +337,37 @@ section.
   `.github/scripts/check-web-build-output.sh` — which fails closed unless
   `build/web/_headers` carries the CSP, `build/web/_redirects` carries
   the status-200 SPA fallback, and `build/web/flutter_bootstrap.js` resolves
-  CanvasKit locally — runs the headless boot check in `tool/web_smoke/`, and
-  publishes `build/web` to the `lunarlog-app` Cloudflare Pages project with a
-  pinned `cloudflare/wrangler-action`. It runs on push to `main` when a path
-  the web client depends on changes (`lib/`, `web/`, `assets/`, `pubspec.*`,
-  `l10n.yaml`, the workflow, the check script), or on `workflow_dispatch`.
-  A `web-deploy` concurrency group serialises runs and never cancels one
-  mid-upload. ci.yml's `Verify` job runs both checks against its own build
-  too, so a regression fails a PR rather than a deploy.
-- **Inert until provisioned.** The deploy step is gated on both
+  CanvasKit locally — runs the headless boot check in `tool/web_smoke/`,
+  **ensures the Pages project exists** (`wrangler pages project create
+  lunarlog-app --production-branch=main`, treating "already exists" as
+  success, so a fresh account or a deleted project cannot regress every run
+  to "Project not found" — issue #1092), and publishes `build/web` to the
+  `lunarlog-app` project with a pinned `cloudflare/wrangler-action`. After
+  the upload it **smoke-checks the live origin** with
+  `.github/scripts/check-web-deploy.sh`, which retries for ~90 s and fails
+  the run unless `/` is 200 `text/html` carrying the `web/_headers` policy
+  (`script-src 'self'`, `Cross-Origin-Opener-Policy: same-origin`,
+  `Cross-Origin-Embedder-Policy: require-corp`, `Strict-Transport-Security`,
+  `X-Robots-Tag: noindex`), `/auth/callback?code=…` reaches the SPA
+  fallback, and `/flutter_bootstrap.js` sets `"useLocalCanvasKit":true`. It
+  runs on push to `main` when a path the web client depends on changes
+  (`lib/`, `web/`, `assets/`, `pubspec.*`, `l10n.yaml`, the workflow, the
+  check scripts), or on `workflow_dispatch`. A `web-deploy` concurrency
+  group serialises runs and never cancels one mid-upload. ci.yml's `Verify`
+  job runs the build checks against its own build too, so a regression fails
+  a PR rather than a deploy.
+- **Unconfigured is inert (forks and secret-less checkouts).** The project
+  ensure/create, the upload, and the smoke check are each gated on both
   `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. Without them the run
-  prints a `::warning::` and skips the upload — it never fails — so a fork
+  prints a `::warning::` and skips those steps — it never fails — so a fork
   or an unprovisioned checkout still produces a verified build artifact.
 - **Origin and the redirect allow-list.** The served origin is
   `https://app.lunarlog.app` (the apex stays for the marketing site, #830).
   Because slice 2's web sign-in links redirect to `<origin>/auth/callback`,
   that exact URL must be in the Supabase Auth redirect allow-list, and
-  `web/_redirects` is what makes the path serve the app rather than 404. Both
-  are owner steps below.
+  `web/_redirects` is what makes the path serve the app rather than 404 —
+  now proven live by the post-deploy smoke check. The allow-list is the
+  remaining owner step below.
 
 ### Installability / offline is deferred
 
@@ -379,17 +394,19 @@ epic adds no service worker or offline cache:
 
 ### Owner checklist (slice 3)
 
-1. Create the Cloudflare Pages project named `lunarlog-app`
-   (Workers & Pages → Create → Pages → **Direct Upload**; no Git connection
-   is needed — CI uploads the build).
-2. Add repository secrets `CLOUDFLARE_API_TOKEN` (account-scoped, with
-   **Cloudflare Pages: Edit** permission) and `CLOUDFLARE_ACCOUNT_ID`.
-   Until both exist, `web-deploy.yml` warns and skips the upload.
-3. Point `app.lunarlog.app` at the Pages project (Custom domains → Set up a
-   custom domain). `web/_headers` and `web/_redirects` ship with every
-   deploy.
+1. ~~Create the Cloudflare Pages project named `lunarlog-app`~~ — **done**
+   2026-09-26. `web-deploy.yml` now also creates it idempotently before the
+   upload (issue #1092), so a fresh account or a deleted project cannot
+   regress.
+2. ~~Add repository secrets `CLOUDFLARE_API_TOKEN` (account-scoped, with
+   **Cloudflare Pages: Edit** permission) and `CLOUDFLARE_ACCOUNT_ID`~~ —
+   **done**. Without both, the credentialed steps warn and skip.
+3. ~~Point `app.lunarlog.app` at the Pages project (Custom domains → Set up a
+   custom domain)~~ — **done** 2026-09-26 (custom domain plus the proxied
+   CNAME). `web/_headers` and `web/_redirects` ship with every deploy and are
+   now smoke-checked on the live origin.
 4. Add `https://app.lunarlog.app/auth/callback` to the Supabase Auth
    redirect allow-list (Authentication → URL Configuration) so the slice-2
-   email links resolve. This is the same checkbox recorded under "Web
-   hosting" in `docs/ops/supabase-go-live.md`.
+   email links resolve. **Outstanding (#1093)** — the same checkbox recorded
+   under "Web hosting" in `docs/ops/supabase-go-live.md`.
 
