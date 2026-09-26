@@ -31,6 +31,9 @@ make_build_dir() {
   Content-Security-Policy: default-src 'self'
 EOF
   printf '/* /index.html 200\n' >"$dir/_redirects"
+  # Issue #1091: a bootable build resolves CanvasKit locally.
+  printf 'var _flutter=window._flutter||{};_flutter.buildConfig = {"engineRevision":"abc","useLocalCanvasKit":true};\n' \
+    >"$dir/flutter_bootstrap.js"
 }
 
 # run_case DIR -- populates $LAST_EXIT and $LAST_LOG.
@@ -109,6 +112,25 @@ printf '/* /index.html 302\n' >"$WORK/wrong-status/_redirects"
 run_case "$WORK/wrong-status"
 assert_exit "a 302 fallback (a redirect, not a rewrite) refuses" 1
 
+# --- Local CanvasKit (issue #1091) ------------------------------------------
+
+make_build_dir "$WORK/no-bootstrap"
+rm "$WORK/no-bootstrap/flutter_bootstrap.js"
+run_case "$WORK/no-bootstrap"
+assert_exit "missing flutter_bootstrap.js refuses (fail closed on a blank page)" 1
+assert_contains "flutter_bootstrap.js is named" "$LAST_LOG" "flutter_bootstrap.js"
+
+make_build_dir "$WORK/no-canvaskit"
+printf 'var _flutter=window._flutter||{};_flutter.buildConfig = {"engineRevision":"abc"};\n' \
+  >"$WORK/no-canvaskit/flutter_bootstrap.js"
+run_case "$WORK/no-canvaskit"
+assert_exit "a bootstrap without useLocalCanvasKit refuses" 1
+assert_contains "the CanvasKit requirement is named" "$LAST_LOG" "useLocalCanvasKit"
+
+make_build_dir "$WORK/local-canvaskit"
+run_case "$WORK/local-canvaskit"
+assert_exit "a bootstrap setting useLocalCanvasKit:true passes" 0
+
 # --- Wiring: the deploy workflow actually uses the check and the secrets ----
 
 deploy_yaml="$(cat "$DEPLOY_WORKFLOW")"
@@ -137,5 +159,13 @@ assert_not_contains "the deploy step cannot fail the run on a missing secret" "$
 
 ci_yaml="$(cat "$CI_WORKFLOW")"
 assert_contains "ci.yml release-guards runs this suite" "$ci_yaml" "bash .github/scripts/tests/check-web-build-output.test.sh"
+
+# --- Issue #1091: local CanvasKit and the headless boot check ---------------
+
+assert_contains "web-deploy.yml builds with local CanvasKit" "$deploy_yaml" "--no-web-resources-cdn"
+assert_contains "ci.yml builds with local CanvasKit" "$ci_yaml" "--no-web-resources-cdn"
+assert_contains "ci.yml runs the deployability check" "$ci_yaml" "check-web-build-output.sh"
+assert_contains "web-deploy.yml runs the headless boot check" "$deploy_yaml" "tool/web_smoke"
+assert_contains "ci.yml runs the headless boot check" "$ci_yaml" "tool/web_smoke"
 
 print_summary "check-web-build-output.test.sh"

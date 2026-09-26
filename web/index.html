@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <!--
     If you are serving your web app in a path other than the root, change the
@@ -8,9 +8,6 @@
     The path provided below has to start and end with a slash "/" in order for
     it to work correctly.
 
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
     This is a placeholder for base href that will be replaced by the value of
     the `--base-href` argument provided to `flutter build`.
   -->
@@ -18,7 +15,13 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="lunarlog is a private cycle tracker for families: log periods and symptoms on your own device and share them with the guardians you choose.">
+
+  <!-- Issue #1095: the signed-in app at app.lunarlog.app is never indexed; the
+       marketing site is the front door. Mirrored by the X-Robots-Tag header
+       in web/_headers (pinned in test/architecture/web_headers_test.dart). -->
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#37156C">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -31,8 +34,59 @@
 
   <title>lunarlog</title>
   <link rel="manifest" href="manifest.json">
+
+  <!--
+    Issue #1095: a CSS-only loading state. `script-src 'self'` forbids an
+    inline script, so this is style and markup only. Flutter appends its own
+    `flutter-view` after the bootstrap script and paints over this overlay;
+    the overlay is intentionally behind it in document order. The surface
+    colour matches the app's light theme surface (#F4FAFB).
+  -->
+  <style>
+    #loading {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      background: #F4FAFB;
+      color: #37156C;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      text-align: center;
+      padding: 24px;
+    }
+    #loading .spinner {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 3px solid rgba(55, 21, 108, 0.2);
+      border-top-color: #37156C;
+      animation: lunarlog-spin 0.9s linear infinite;
+    }
+    @keyframes lunarlog-spin {
+      to { transform: rotate(360deg); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #loading .spinner { animation: none; }
+    }
+  </style>
 </head>
 <body>
+  <div id="loading" role="status" aria-live="polite">
+    <div class="spinner" aria-hidden="true"></div>
+    <p>Loading lunarlog&hellip;</p>
+  </div>
+  <noscript>
+    <p>lunarlog needs JavaScript to run. Please enable JavaScript and reload this page.</p>
+  </noscript>
+  <!--
+    Remove the loading overlay once Flutter paints its first frame. A
+    same-origin script (allowed by `script-src 'self'`) registered before
+    `flutter_bootstrap.js` so the listener exists before the event fires.
+  -->
+  <script src="loading_overlay.js"></script>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader

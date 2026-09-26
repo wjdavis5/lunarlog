@@ -175,6 +175,14 @@ flutter:
   # launch and works offline. Only the weights the ramp actually uses are
   # bundled (see `LLType` in lib/ui/theme/tokens.dart): Inter 400/500/600
   # and Fraunces 600.
+  #
+  # Issue #1091: Roboto (Apache-2.0) is the Flutter web engine's default
+  # family. Without a bundled family named exactly `Roboto`, the engine
+  # fetches Roboto from fonts.gstatic.com on every boot — a third-party
+  # request on every visit. Bundling it keeps a plain boot same-origin. The
+  # one regular weight the engine asks for is enough; the app's own text is
+  # Inter/Fraunces. The licence text ships beside it. (A blocked Roboto
+  # fetch does not blank the page; the blank page #1091 fixed was CanvasKit.)
   fonts:
     - family: Inter
       fonts:
@@ -188,6 +196,10 @@ flutter:
       fonts:
         - asset: assets/fonts/Fraunces-SemiBold.ttf
           weight: 600
+    - family: Roboto
+      fonts:
+        - asset: assets/fonts/Roboto-Regular.ttf
+          weight: 400
 
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package

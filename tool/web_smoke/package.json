@@ -1,0 +1,12 @@
+{
+  "name": "lunarlog-web-smoke",
+  "private": true,
+  "type": "module",
+  "description": "Issue #1091: headless-Chromium boot check for build/web. Serves the real _headers policy, loads the app, and fails on any non-allowlisted Content-Security-Policy violation or a missing first frame.",
+  "scripts": {
+    "boot-check": "node boot_check.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.63.0"
+  }
+}
