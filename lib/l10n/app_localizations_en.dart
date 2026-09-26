@@ -592,7 +592,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get overviewLongCycleBody =>
-      'It has run well past a typical cycle for this profile. You can exclude it from future averages, or turn off estimates if long cycles are common for this profile.';
+      'It has run well past a typical cycle for this profile. If there\'s any chance of pregnancy, take a pregnancy test. Going 3 months (90 days) without a period is a reason to see a doctor. You can also exclude this cycle from future averages, or turn off estimates if long cycles are common for this profile.';
 
   @override
   String get overviewLongCycleExclude => 'Exclude this cycle';
@@ -1518,7 +1518,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get reminderKindBirthControlShotSubtitle =>
-      'Every 12 weeks — a week before the usual 13-week shot is due';
+      'Every 12 weeks from the start date (the shot is usually due every 13 weeks)';
 
   @override
   String get reminderBirthControlNeedsStartDate =>
@@ -2254,7 +2254,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String conceivePeakDay(String date, int percent) {
-    return 'Most likely day: $date. In the study behind this estimate, sex on this day led to a detected pregnancy about $percent% of the time.';
+    return 'Most likely day: $date. In the study behind this estimate, the chance of a very early pregnancy (found by a sensitive lab hormone test, including very early losses) from sex on this day was about $percent%.';
   }
 
   @override
@@ -2262,14 +2262,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get perimenopauseBody =>
-      'In perimenopause, cycle lengths vary from one to the next. Comparing each cycle with the one before it is how change shows up — not a count of days late.';
+      'In perimenopause, cycle lengths vary from one to the next. Comparing each cycle with the one before it is how change shows up — not a count of days late. Still, tell a clinician about very heavy bleeding, bleeding between periods or after sex, or periods much closer together.';
 
   @override
   String get perimenopauseNotEnoughTitle => 'Nothing to compare yet';
 
   @override
   String get perimenopauseNotEnoughBody =>
-      'Keep logging — once a second cycle is recorded, this view compares them so you can spot changes. Irregular cycles are expected around perimenopause. Still, tell a clinician about very heavy bleeding, bleeding between periods or after sex, or periods much closer together.';
+      'Keep logging — once a second cycle is recorded, this view compares them so you can spot changes. Irregular cycles are expected around perimenopause.';
 
   @override
   String perimenopauseLengthLonger(String days) {
@@ -4793,7 +4793,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get phaseInsightsHormonalContraceptionBody =>
-      'While using the pill, patch, or ring, ovulation usually doesn\'t happen, so cycle phases don\'t apply.';
+      'While you\'re using the pill, patch, or ring, your estimate follows your pack schedule rather than a natural cycle, so cycle phases aren\'t shown. Combined pills, the patch, and the ring usually stop ovulation; progestin-only (mini) pills don\'t always.';
 
   @override
   String phaseInsightsReadArticle(String title) {
