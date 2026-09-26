@@ -401,6 +401,22 @@ void main() {
       }
     });
 
+    test('(e) every non-textbook source carries a URL', () {
+      for (final article in CycleLiteracyLibrary.allArticles) {
+        for (final source in article.sources) {
+          if (source.publisher != SourcePublisher.textbook) {
+            expect(
+              source.url,
+              isNotNull,
+              reason:
+                  '${article.id}: a ${source.publisher.name} source '
+                  '("${source.title}") must carry a URL',
+            );
+          }
+        }
+      }
+    });
+
     test('only textbooks lack a publisher host declaration', () {
       for (final publisher in SourcePublisher.values) {
         if (publisher == SourcePublisher.textbook) {

@@ -180,7 +180,7 @@ class CycleLiteracyLibrary {
   static const ArticleSource _acogMenstrualCycle = ArticleSource(
     publisher: SourcePublisher.acog,
     title:
-        'The Menstrual Cycle: Menstruation, Ovulation, and How Pregnancy Happens',
+        'The Menstrual Cycle: Menstruation, Ovulation, and How Pregnancy Occurs',
     url: 'https://www.acog.org/womens-health/infographics/the-menstrual-cycle',
     retrieved: _retrievedDate,
   );
@@ -287,14 +287,13 @@ class CycleLiteracyLibrary {
     retrieved: _retrievedDate,
   );
 
-  // figo.org answers automated link-checking with HTTP 403 (bot protection),
-  // so no FIGO URL could be verified. It is kept as a named source without a
-  // URL rather than inventing one; the article still carries verified,
-  // linkable sources (WHO, ACOG).
   static const ArticleSource _figoMenstrualDisorders = ArticleSource(
-    publisher: SourcePublisher.figo,
-    title: 'FIGO Menstrual Disorders Committee: FIGO Systems 1 & 2',
-    identifier: 'FIGO Systems 1 & 2',
+    publisher: SourcePublisher.peerReviewed,
+    title:
+        'The two FIGO systems for normal and abnormal uterine bleeding symptoms and classification of causes of abnormal uterine bleeding in the reproductive years: 2018 revisions',
+    identifier:
+        'FIGO Menstrual Disorders Committee; Int J Gynaecol Obstet 2018;143(3):393-408',
+    url: 'https://doi.org/10.1002/ijgo.12666',
     retrieved: _retrievedDate,
   );
 
