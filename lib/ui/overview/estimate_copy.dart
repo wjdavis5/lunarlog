@@ -45,22 +45,24 @@ const String kConceiveEvidenceBasis =
     "is a documented substitute for Clue's Dynamic Optimal Timing (DOT) "
     'algorithm, which is not public and could not be reproduced here.';
 
-/// Conceive-mode conception-likelihood disclaimer (issue #204): the same
-/// contraception and evidence-basis treatment issue #143's fertile-window
-/// estimate carries, plus the explicit distinction the issue's acceptance
-/// criteria require — a reader must be able to tell which prediction they
-/// are looking at. Renders in addition to (never instead of)
-/// [kEstimateDisclaimer] and [kFertileWindowDisclaimer] next to every
-/// rendering of a [ConceptionEstimate].
+/// Conceive-mode conception-likelihood disclaimer (issue #204, issue #898):
+/// the same contraception and evidence-basis treatment issue #143's
+/// fertile-window estimate carries, plus the explicit distinction the
+/// issue's acceptance criteria require — a reader must be able to tell which
+/// estimate they are looking at. Issue #898 clarifies the 1-day difference:
+/// the calendar fertile window trails one day past ovulation to absorb
+/// timing uncertainty, whereas the conception curve ends on ovulation day
+/// per the Wilcox study.
 const String kConceiveDisclaimer =
     'This conception likelihood must not be used to prevent pregnancy. It '
     'is not birth control and not a backup to birth control. It is not a '
     'test or a diagnosis, and it cannot tell you whether you are fertile '
     'today. It is computed from period start dates alone — a logged '
     'ovulation test or basal body temperature reading never changes it. '
-    'It differs from the fertile-window estimate on Insights, which is '
-    'plain calendar arithmetic around an assumed ovulation day. This '
-    'estimator has not been tested in a research study.';
+    'It differs from the calendar fertile window, which trails one day past '
+    'ovulation to absorb timing uncertainty; this conception curve ends on '
+    'the estimated ovulation day per the Wilcox study. This estimator has '
+    'not been tested in a research study.';
 
 /// Issue #850 U5: the shared date-or-range rendering of an active estimate.
 /// Moved out of `overview_panel.dart`'s private `_estimateDateText` so the

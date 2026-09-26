@@ -57,6 +57,7 @@ import 'package:lunarlog/ui/account/account_section.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/settings_section.dart';
 import 'package:lunarlog/ui/components/responsive_body.dart';
+import 'package:lunarlog/ui/content/cycle_literacy_library_screen.dart';
 import 'package:lunarlog/ui/help/help_library_screen.dart';
 import 'package:lunarlog/ui/feedback/feedback_screen.dart'
     show kSupportEmailAddress;
@@ -440,6 +441,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         id: 'help',
         title: l10n.settingsSectionHelp,
         children: [
+          ListTile(
+            key: const ValueKey('settings-cycle-literacy-tile'),
+            leading: const Icon(Icons.menu_book_outlined),
+            title: Text(l10n.settingsCycleLiteracyTitle),
+            subtitle: Text(l10n.settingsCycleLiteracySubtitle),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              CycleLiteracyLibraryScreen.route(),
+            ),
+          ),
           ListTile(
             key: const ValueKey('settings-help-tile'),
             leading: const Icon(Icons.help_outline),

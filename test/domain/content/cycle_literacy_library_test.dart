@@ -114,5 +114,50 @@ void main() {
         }
       }
     });
+
+    test('getArticlesForAudience filters appropriately', () {
+      final all = CycleLiteracyLibrary.getArticlesForAudience(CycleLiteracyAudience.all);
+      expect(all.length, 11);
+
+      final teens = CycleLiteracyLibrary.getArticlesForAudience(CycleLiteracyAudience.teen);
+      expect(teens.length, 10);
+      for (final a in teens) {
+        expect(a.audience == CycleLiteracyAudience.all || a.audience == CycleLiteracyAudience.teen, isTrue);
+      }
+
+      final guardians = CycleLiteracyLibrary.getArticlesForAudience(CycleLiteracyAudience.guardian);
+      expect(guardians.length, 9);
+      for (final a in guardians) {
+        expect(a.audience == CycleLiteracyAudience.all || a.audience == CycleLiteracyAudience.guardian, isTrue);
+      }
+    });
+  });
+
+  group('Issue #854 teen and guardian cycle education', () {
+    test('catalog contains the four required teen and guardian articles', () {
+      final teen1 = CycleLiteracyLibrary.getArticleById('first-periods-first-two-years');
+      expect(teen1, isNotNull);
+      expect(teen1!.audience, CycleLiteracyAudience.teen);
+      expect(teen1.source, contains('ACOG'));
+      expect(teen1.sections.any((s) => s.heading.contains('Finding Your Rhythm')), isTrue);
+
+      final teen2 = CycleLiteracyLibrary.getArticleById('what-irregular-means-at-13');
+      expect(teen2, isNotNull);
+      expect(teen2!.audience, CycleLiteracyAudience.teen);
+      expect(teen2.source, contains('AAP'));
+      expect(teen2.sections.any((s) => s.heading.contains('Anovulatory Cycles')), isTrue);
+
+      final guardian1 = CycleLiteracyLibrary.getArticleById('talking-about-cycles-teens-parents');
+      expect(guardian1, isNotNull);
+      expect(guardian1!.audience, CycleLiteracyAudience.guardian);
+      expect(guardian1.source, contains('AAP'));
+      expect(guardian1.sections.any((s) => s.heading.contains('Dialogues')), isTrue);
+
+      final guardian2 = CycleLiteracyLibrary.getArticleById('pms-vs-mood-when-to-ask-clinician');
+      expect(guardian2, isNotNull);
+      expect(guardian2!.audience, CycleLiteracyAudience.all);
+      expect(guardian2.source, contains('ACOG'));
+      expect(guardian2.sections.any((s) => s.heading.contains('Seek Clinical Care')), isTrue);
+    });
   });
 }

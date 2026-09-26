@@ -30,6 +30,19 @@ enum CycleLiteracyCategory {
       };
 }
 
+/// Target audience for cycle literacy articles (Issue #854).
+enum CycleLiteracyAudience {
+  all,
+  teen,
+  guardian;
+
+  String get displayName => switch (this) {
+        CycleLiteracyAudience.all => 'All',
+        CycleLiteracyAudience.teen => 'For Teens',
+        CycleLiteracyAudience.guardian => 'For Guardians',
+      };
+}
+
 /// A structured section within a cycle literacy article.
 class ArticleSection {
   const ArticleSection({
@@ -48,6 +61,7 @@ class CycleLiteracyArticle {
     required this.title,
     required this.summary,
     required this.category,
+    this.audience = CycleLiteracyAudience.all,
     required this.readingTimeMinutes,
     required this.source,
     required this.reviewDate,
@@ -66,6 +80,9 @@ class CycleLiteracyArticle {
 
   /// Categorical topic.
   final CycleLiteracyCategory category;
+
+  /// Target audience for this article (Issue #854).
+  final CycleLiteracyAudience audience;
 
   /// Estimated reading time in minutes.
   final int readingTimeMinutes;
@@ -331,6 +348,170 @@ class CycleLiteracyLibrary {
     ],
   );
 
+  // --- Article 8: First Periods: First Two Years (Issue #854) ---
+  static const CycleLiteracyArticle firstPeriodsFirstTwoYears =
+      CycleLiteracyArticle(
+    id: 'first-periods-first-two-years',
+    title: 'First Periods: What to Expect in the First Two Years',
+    summary:
+        'Why early cycles take time to find a rhythm, how the body adjusts, and what is completely normal when starting out.',
+    category: CycleLiteracyCategory.variability,
+    audience: CycleLiteracyAudience.teen,
+    readingTimeMinutes: 3,
+    source:
+        'American College of Obstetricians and Gynecologists (ACOG) Committee Opinion No. 651; American Academy of Pediatrics (AAP) Menstruation in Girls and Adolescents',
+    reviewDate: _currentReviewDate,
+    relatedSubphases: [
+      CycleSubphase.earlyFollicular,
+      CycleSubphase.lateFollicular,
+    ],
+    sections: [
+      ArticleSection(
+        heading: 'Finding Your Rhythm',
+        paragraphs: [
+          'The body takes about two to three years after menarche (your first period) to coordinate the hormonal communication between the brain and ovaries. In these early years, the reproductive system is practicing and maturing.',
+          'It is very common for cycles to vary widely at first. Some cycles may be 24 days long, while the next might be 40 days, and occasional cycles may even be skipped entirely as your hormones settle.',
+        ],
+      ),
+      ArticleSection(
+        heading: 'What a Normal Early Cycle Looks Like',
+        paragraphs: [
+          'Bleeding typically lasts between 2 and 7 days. Flow may be light and brownish on some days, or brighter red with occasional small clots on others.',
+          'Mild cramping and breast tenderness before or during bleeding are common physical signals as the body releases prostaglandins to help the uterine lining shed.',
+        ],
+      ),
+      ArticleSection(
+        heading: 'Tracking and Self-Advocacy',
+        paragraphs: [
+          'Logging your bleeding days helps you discover your own unique rhythm rather than comparing yourself to a textbook schedule. If bleeding lasts more than 7 days, if you need to change pads or tampons every 1 to 2 hours, or if severe pain disrupts school, talk with a parent or doctor.',
+        ],
+      ),
+    ],
+  );
+
+  // --- Article 9: What Irregular Means at 13 (Issue #854) ---
+  static const CycleLiteracyArticle whatIrregularMeansAt13 =
+      CycleLiteracyArticle(
+    id: 'what-irregular-means-at-13',
+    title: "What 'Irregular' Really Means at 13",
+    summary:
+        'Why an unpredictable cycle during puberty is typical biology, not an illness or defect.',
+    category: CycleLiteracyCategory.variability,
+    audience: CycleLiteracyAudience.teen,
+    readingTimeMinutes: 3,
+    source:
+        'American Academy of Pediatrics (AAP) and ACOG Clinical Guidelines: Menstruation in Girls and Adolescents (Pediatrics 2015)',
+    reviewDate: _currentReviewDate,
+    relatedSubphases: [
+      CycleSubphase.earlyFollicular,
+      CycleSubphase.lateLuteal,
+    ],
+    sections: [
+      ArticleSection(
+        heading: 'Anovulatory Cycles and Maturation',
+        paragraphs: [
+          'During the first few years after starting menstruation, many cycles are anovulatory—meaning an egg is not released every single month. Without ovulation, there is no consistent luteal phase to set a regular cycle length.',
+          'Because the uterine lining continues to build up until estrogen levels shift, the timing and flow of bleeding naturally fluctuate. This irregularity is a standard developmental stage, not a sign of hormone failure.',
+        ],
+      ),
+      ArticleSection(
+        heading: 'How Long Does It Take to Become Regular?',
+        paragraphs: [
+          'Most adolescents begin experiencing more predictable, ovulatory cycles within two to three years after their first period. For some, slight variation from month to month remains normal throughout life.',
+          'Stress, illness, changes in nutrition, and intense sports training can also temporarily shift cycle timing by pausing ovulation.',
+        ],
+      ),
+      ArticleSection(
+        heading: 'When to Speak with a Doctor',
+        paragraphs: [
+          'While cycle length variation is normal, medical guidelines advise consulting a healthcare professional if cycles remain consistently over 45 days after the first year, if bleeding occurs more frequently than every 21 days, or if periods stop for 90 days or longer.',
+        ],
+      ),
+    ],
+  );
+
+  // --- Article 10: Talking About Cycles: Teens & Parents (Issue #854) ---
+  static const CycleLiteracyArticle talkingAboutCyclesTeensParents =
+      CycleLiteracyArticle(
+    id: 'talking-about-cycles-teens-parents',
+    title: 'Cycle Conversations: Talking Between Teens and Parents',
+    summary:
+        'How guardians and teens can discuss cycle changes, privacy boundaries, and practical support with confidence.',
+    category: CycleLiteracyCategory.bodyAndSymptoms,
+    audience: CycleLiteracyAudience.guardian,
+    readingTimeMinutes: 3,
+    source:
+        'American Academy of Pediatrics (AAP) HealthyChildren.org; ACOG Patient Education: Your First Period',
+    reviewDate: _currentReviewDate,
+    relatedSubphases: [
+      CycleSubphase.earlyFollicular,
+      CycleSubphase.lateLuteal,
+    ],
+    sections: [
+      ArticleSection(
+        heading: 'Opening Low-Pressure Dialogues',
+        paragraphs: [
+          'Conversations about menstrual cycles are most helpful when treated as routine, practical health topics rather than urgent or emotional events. Demystifying bodily changes early builds confidence.',
+          'Focus on preparedness: ensuring menstrual supplies are readily accessible at home and in backpacks, discussing what cramps feel like, and planning ahead for school days.',
+        ],
+      ),
+      ArticleSection(
+        heading: 'Respecting Autonomy and Privacy',
+        paragraphs: [
+          'As adolescents grow, privacy boundaries naturally shift. Providing support does not require examining every symptom or reading personal reflections.',
+          'Encourage your teen to track their own symptoms and cycle timing. Offer to review patterns together if concerns arise, while respecting their personal health diary space.',
+        ],
+      ),
+      ArticleSection(
+        heading: 'Partnering for Clinical Care',
+        paragraphs: [
+          'Involve your teen directly in their healthcare visits. Encourage them to ask their pediatrician questions about pain management, flow, or irregularities, establishing strong self-advocacy skills for the future.',
+        ],
+      ),
+    ],
+  );
+
+  // --- Article 11: PMS vs Mood Shifts (Issue #854) ---
+  static const CycleLiteracyArticle pmsVsMoodWhenToAskClinician =
+      CycleLiteracyArticle(
+    id: 'pms-vs-mood-when-to-ask-clinician',
+    title: 'PMS vs. Mood Shifts: When to Ask a Clinician',
+    summary:
+        'Distinguishing normal hormonal mood fluctuations from persistent symptoms that deserve medical support.',
+    category: CycleLiteracyCategory.bodyAndSymptoms,
+    audience: CycleLiteracyAudience.all,
+    readingTimeMinutes: 3,
+    source:
+        'American College of Obstetricians and Gynecologists (ACOG) Practice Bulletin No. 15; NHS Clinical Guidance on Premenstrual Syndrome (PMS)',
+    reviewDate: _currentReviewDate,
+    relatedSubphases: [
+      CycleSubphase.earlyLuteal,
+      CycleSubphase.lateLuteal,
+    ],
+    sections: [
+      ArticleSection(
+        heading: 'Hormones and Emotions',
+        paragraphs: [
+          'In the second half of the cycle (the luteal phase), progesterone rises and then drops before menstruation. These hormonal shifts interact with brain chemicals such as serotonin, which can trigger temporary changes in mood, energy, sleep, or irritability.',
+          'Mild premenstrual symptoms affect most menstruating individuals and generally begin a few days before bleeding starts.',
+        ],
+      ),
+      ArticleSection(
+        heading: 'Tracking the Cyclical Pattern',
+        paragraphs: [
+          'The defining hallmark of Premenstrual Syndrome (PMS) is its timing: symptoms appear consistently during the luteal phase and clear up within a few days of your period starting, followed by a symptom-free follicular phase.',
+          'If mood changes or fatigue persist throughout the entire month regardless of cycle day, they are likely unrelated to PMS and warrant a broader medical evaluation.',
+        ],
+      ),
+      ArticleSection(
+        heading: 'When to Seek Clinical Care',
+        paragraphs: [
+          'Reach out to a doctor if mood symptoms significantly interfere with daily life, school, work, or relationships, or if you feel overwhelmed, anxious, or hopeless. More severe premenstrual conditions, such as Premenstrual Dysphoric Disorder (PMDD), are highly treatable with clinical guidance.',
+        ],
+      ),
+    ],
+  );
+
   /// All bundled cycle literacy articles in reading order.
   static const List<CycleLiteracyArticle> allArticles = [
     menstrualCyclePhases,
@@ -340,6 +521,10 @@ class CycleLiteracyLibrary {
     pmsAndProgesterone,
     whyCrampsHappen,
     cycleLengthVariability,
+    firstPeriodsFirstTwoYears,
+    whatIrregularMeansAt13,
+    talkingAboutCyclesTeensParents,
+    pmsVsMoodWhenToAskClinician,
   ];
 
   /// Look up an article by its unique [id].
@@ -361,5 +546,16 @@ class CycleLiteracyLibrary {
   static List<CycleLiteracyArticle> getArticlesByCategory(
       CycleLiteracyCategory category) {
     return allArticles.where((article) => article.category == category).toList();
+  }
+
+  /// Retrieve articles intended for [audience], including articles for all audiences.
+  static List<CycleLiteracyArticle> getArticlesForAudience(
+      CycleLiteracyAudience audience) {
+    if (audience == CycleLiteracyAudience.all) return allArticles;
+    return allArticles
+        .where((article) =>
+            article.audience == audience ||
+            article.audience == CycleLiteracyAudience.all)
+        .toList();
   }
 }

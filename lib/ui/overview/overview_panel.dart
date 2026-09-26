@@ -75,6 +75,8 @@ import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/content/cycle_literacy_library.dart'
+    show CycleLiteracyAudience;
 import 'package:lunarlog/domain/sharing/guardian_lens.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
@@ -83,6 +85,7 @@ import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/app_shell_scope.dart';
 import 'package:lunarlog/ui/components/async_snapshot_view.dart';
 import 'package:lunarlog/ui/components/conceive_card.dart';
+import 'package:lunarlog/ui/content/cycle_literacy_library_screen.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/components/predictions_disabled_card.dart';
 import 'package:lunarlog/ui/components/predictions_suppressed_card.dart';
@@ -1004,6 +1007,8 @@ class _OverviewPanelState extends State<OverviewPanel>
       copy,
     );
 
+    final isTeen = widget.mode == ProfileMode.teen;
+
     return Card(
       key: const ValueKey('overview-active'),
       child: Padding(
@@ -1029,6 +1034,22 @@ class _OverviewPanelState extends State<OverviewPanel>
               canLog: !_effectiveReadOnly,
               onLogToday: _logPeriodStartedToday,
             ),
+            if (isTeen) ...[
+              const SizedBox(height: LLSpace.space1),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  key: const ValueKey('overview-teen-literacy-link'),
+                  onPressed: () => Navigator.of(context).push(
+                    CycleLiteracyLibraryScreen.route(
+                      initialAudience: CycleLiteracyAudience.teen,
+                    ),
+                  ),
+                  icon: const Icon(Icons.menu_book_outlined, size: 18),
+                  label: Text(l10n.overviewTeenCycleLiteracyLink),
+                ),
+              ),
+            ],
             if (aboutSection != null) ...[
               const SizedBox(height: LLSpace.space2),
               aboutSection,

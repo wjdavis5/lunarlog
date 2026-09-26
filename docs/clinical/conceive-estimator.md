@@ -65,6 +65,17 @@ ovulation anchor but never share a derivation. Both disclaimers render next
 to the Conceive curve, plus a line naming which estimate the reader is
 looking at.
 
+### One-day difference between fertile window and conception curve (Issue #898)
+
+The calendar fertile window (`kFertileWindowLeadDays` = 5, `kFertileWindowTrailDays` = 1)
+spans ovulation −5 … +1, providing a 7-day binary window with a 1-day trailing cushion
+after estimated ovulation to absorb ovulation-timing uncertainty. In contrast, the
+conception curve spans ovulation −5 … 0 (6 days), ending strictly on estimated
+ovulation day based on the empirical findings of Wilcox 1995. Thus, the calendar
+fertile window extends 1 day longer than the conception curve for the same cycle.
+Both estimators remain faithful to their respective bases, and `kConceiveDisclaimer`
+explicitly notes this distinction in the UI.
+
 ## What this estimator must never do
 
 **It is computed from period start dates alone.** Clue deliberately keeps DOT

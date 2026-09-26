@@ -26,6 +26,7 @@ import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/components/list_section_header.dart';
+import 'package:lunarlog/ui/content/cycle_literacy_library_screen.dart';
 import 'package:lunarlog/ui/settings/about_section.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -397,5 +398,23 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Not available'), findsOneWidget);
+  });
+
+  testWidgets(
+      'Issue #854: Help section renders the Cycle Literacy tile and opens the library',
+      (tester) async {
+    await pumpSettings(tester, profiles: [_profile('p1', 'Alice')]);
+
+    expect(find.byKey(const ValueKey('settings-cycle-literacy-tile')), findsOneWidget);
+    expect(find.text('Cycle Literacy'), findsOneWidget);
+    expect(
+      find.text('Evidence-based guides to cycles, hormones, and body changes'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('settings-cycle-literacy-tile')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CycleLiteracyLibraryScreen), findsOneWidget);
   });
 }

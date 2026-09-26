@@ -7166,6 +7166,48 @@ abstract class AppLocalizations {
   /// **'Evidence-based educational guides to understand your body, hormones, and cycle rhythms.'**
   String get cycleLiteracyLibraryIntro;
 
+  /// Issue #854: title of the Cycle Literacy Library tile in Settings Help section.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle Literacy'**
+  String get settingsCycleLiteracyTitle;
+
+  /// Issue #854: subtitle of the Cycle Literacy Library tile in Settings Help section.
+  ///
+  /// In en, this message translates to:
+  /// **'Evidence-based guides to cycles, hormones, and body changes'**
+  String get settingsCycleLiteracySubtitle;
+
+  /// Issue #854: educational guide link shown on the teen Today overview card.
+  ///
+  /// In en, this message translates to:
+  /// **'Learn about teen cycles & body changes'**
+  String get overviewTeenCycleLiteracyLink;
+
+  /// Issue #854: filter chip for all audiences in cycle literacy library.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get cycleLiteracyAudienceFilterAll;
+
+  /// Issue #854: filter chip for teen audience in cycle literacy library.
+  ///
+  /// In en, this message translates to:
+  /// **'Teens'**
+  String get cycleLiteracyAudienceFilterTeen;
+
+  /// Issue #854: filter chip for guardian audience in cycle literacy library.
+  ///
+  /// In en, this message translates to:
+  /// **'Guardians'**
+  String get cycleLiteracyAudienceFilterGuardian;
+
+  /// Issue #854: quick action button on the guardian logistics overview card linking to cycle guides.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle guides'**
+  String get guardianOverviewActionGuides;
+
   /// Issue #1004 (tranche 4b): provenance source line on a bundled help card.
   ///
   /// In en, this message translates to:
