@@ -56,7 +56,7 @@ SNOMED/LOINC replacements named in each note (issues #1115/#1116).
 |---|---|---|
 | `3141-9` | Body weight Measured — **not** a menstrual concept at all, despite being commonly cited as one | https://loinc.org/3141-9; re-verified 2026-09-09 (tx.fhir.org) |
 | `49033-4` | Menstrual History - Reported — **not** a flow-amount code, despite being cited as one | 2026-09-26 (tx.fhir.org / CSIRO Ontoserver) |
-| `21840-4` | Sex [NAACCR] — a cancer-registry field, unrelated to menstrual health | 2026-09-26 (tx.fhir.org / CSIRO Ontoserver) |
+| `21840-4` | Sex [NAACCR v.11] — a cancer-registry field, unrelated to menstrual health | 2026-09-26 (tx.fhir.org / CSIRO Ontoserver) |
 | `3151-8` | Inhaled oxygen flow rate — unrelated to menstrual health | 2026-09-26 (tx.fhir.org / CSIRO Ontoserver) |
 
 ### Unverified — do not use without independent verification

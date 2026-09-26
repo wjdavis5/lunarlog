@@ -66,8 +66,8 @@ wrote that table, so every tagged symptom (`DayEntry.tags`, the app's real
 symptom-logging surface) was silently missing from the export. **That
 "nothing writes it" claim is now stale (issue #1116):** the day sheet
 writes pain, spotting, BBT and weight rows, birth-control intake writes
-its `birth_control_*` rows, the Clue import writes rows too (`birth_control`
-and other categories). The
+its `birth_control_*` rows, and the Clue import writes rows too
+(`birth_control` and other categories). The
 Problems section emits from **both**:
 
 - One `Observation` per live (`excluded == false`) *symptom* `observations`
@@ -129,8 +129,8 @@ no value at all; both break the profile's required
 `valueQuantity.system`/`code` and are omitted rather than exported.
 
 Birth-control intake rows — the app's `birth_control_*` categories and the
-Clue import's unsuffixed `birth_control` category — are **not emitted at
-all** — they are not `Observation`s (the A3-48 rule
+Clue import's unsuffixed `birth_control` category — are not emitted at all:
+they are not `Observation`s (the A3-48 rule
 `clinical_terminology.dart` records), and no `MedicationStatement`/`Device`
 builder exists yet, so they are deliberately absent rather than exported
 under a wrong resource type.
@@ -141,13 +141,12 @@ A symptom `Observation` (from either source above) carries, when present
 on the underlying row:
 
 - `intensity` → `valueInteger`, **with** a second `Observation.note`
-  stating the scale (issue #1114): "Intensity self-rated on a 1-5 scale
-  (1 (least intense) to 5 (most intense)); this is not the 0-10 clinical
-  pain scale." A **note**, not a `referenceRange`: R4 reads an untyped
-  reference range as the *normal* range, so a 1-5 range would assert 1-5 is
-  normal and, on a row whose top-level value is a measurement, would
-  wrongly qualify that value. The scale wording is shared with the
-  clinician PDF.
+  stating the scale (issue #1114): "Intensity self-rated from 1 (least
+  intense) to 5 (most intense); this is not the 0-10 clinical pain scale."
+  A **note**, not a `referenceRange`: R4 reads an untyped reference range
+  as the *normal* range, so a 1-5 range would assert 1-5 is normal and, on
+  a row whose top-level value is a measurement, would wrongly qualify that
+  value. The scale wording is shared with the clinician PDF.
 - `valueNum` + `unit` → `valueQuantity`. `unit` carries the UCUM code
   (`system: http://unitsofmeasure.org`, `code`) for the closed unit set
   `Observation.unit` documents today (`celsius`→`Cel`,
@@ -206,10 +205,12 @@ patient/guardian self-report:
 The typical-cycle-length `Observation` is computed by lunarlog from the
 profile's logged period starts, so it is **not** marked self-reported: it
 carries no `performer`, an `Observation.method.text` of "Calculated (mean
-of recent logged cycles)", and a note spelling that out — "Average of up
-to 6 recent cycle lengths (15-60 days), calculated by lunarlog from period
-start dates logged by the patient or guardian; not measured or confirmed
-by a clinician." (The LMP `Observation` *is* self-reported — its value is
+of recent logged cycles)", and a note spelling that out — "Mean of the
+15-60 day cycles among the last 12 completed cycles (cycles excluded from
+averages are left out), calculated by lunarlog from period start dates
+logged by the patient or guardian; not measured or confirmed by a
+clinician." The window wording is built from the prediction engine's own
+constants. (The LMP `Observation` *is* self-reported — its value is
 the logged period-start date itself, not a derivation.) The earlier "every
 clinical Observation is self-reported" claim was misleading for this row
 (issue #1116).
@@ -308,9 +309,10 @@ verified table (issue #152) or an explicit local coding on lunarlog's own
 system (`kSystemLunarlogLocal`,
 `https://lunarlog.app/fhir/CodeSystem/tag`) with a
 documented reason — never a code typed from memory. `fhir_bundle.dart`
-itself adds four more verified LOINC codes and one verified HL7
-terminology code that `clinical_terminology.dart` does not carry, because
-they are Composition/section/Provenance-level, not `Observation.code`, so
+itself adds four more verified LOINC codes and two verified HL7
+terminology codes that `clinical_terminology.dart` does not carry, because
+they are Composition/section/Provenance/category-level, not
+`Observation.code`, so
 they don't belong in that file's exhaustively-tested `kLoincCodes` list:
 
 | Code | System | Display | Used for | Verified |
@@ -319,6 +321,7 @@ they don't belong in that file's exhaustively-tested `kLoincCodes` list:
 | `30954-2` | LOINC | Relevant diagnostic tests/laboratory data note | Results section `.code` | `tx.fhir.org` $lookup, 2026-09-09 |
 | `11450-4` | LOINC | Problem list - Reported | Problems section `.code` | `tx.fhir.org` $lookup, 2026-09-09 |
 | `8716-3` | LOINC | Vital signs note | Vital signs section `.code` | `tx.fhir.org` $lookup, 2026-09-26 |
+| `vital-signs` | `http://terminology.hl7.org/CodeSystem/observation-category` | Vital Signs | vital-sign `Observation.category` | `tx.fhir.org` $validate-code, 2026-09-26 |
 | `author` | `http://terminology.hl7.org/CodeSystem/provenance-participant-type` | Author | `Provenance.agent.type` | `tx.fhir.org` $lookup, 2026-09-09 |
 
 Observation-level coding (post-#1115/#1116):

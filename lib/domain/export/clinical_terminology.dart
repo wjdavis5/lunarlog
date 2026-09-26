@@ -83,7 +83,8 @@ library;
 
 import '../tags.dart' as tags show TagCode, kTagTaxonomy, isValidTagCode;
 
-/// `http://loinc.org` - LOINC codes the *question*.
+/// `http://loinc.org` - LOINC commonly codes the *question* (what was
+/// measured/asked), and also measurement concepts.
 const String kSystemLoinc = 'http://loinc.org';
 
 /// `http://snomed.info/sct` - SNOMED CT codes the *finding* or the
