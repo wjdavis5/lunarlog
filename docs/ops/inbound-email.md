@@ -1,6 +1,6 @@
 # Inbound Email Processing Worker — Runbook
 
-This document covers the configuration, architecture, and query interfaces for the Cloudflare Inbound Email Worker (`web/email/`).
+This document covers the configuration, architecture, and query interfaces for the Cloudflare Inbound Email Worker (`workers/email/`).
 
 ---
 
@@ -17,7 +17,7 @@ The `lunarlog-inbound-email` worker accepts incoming emails sent to `lunarlog.ap
 ### A. KV Namespace Creation
 1. In the Cloudflare Dashboard, go to **Workers & Pages → KV → Create a namespace**.
 2. Name the namespace `lunarlog-inbound-emails`.
-3. Copy the generated `id` and replace the placeholder in `web/email/wrangler.jsonc`:
+3. Copy the generated `id` and replace the placeholder in `workers/email/wrangler.jsonc`:
    ```jsonc
    "kv_namespaces": [
      {
@@ -141,8 +141,8 @@ Run tests and type checks locally via Deno:
 
 ```bash
 # Type check TypeScript sources
-deno check web/email/src/**/*.ts
+deno check workers/email/src/**/*.ts
 
 # Run unit tests
-deno test web/email/src/index.test.ts
+deno test workers/email/src/index.test.ts
 ```

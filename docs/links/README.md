@@ -12,10 +12,11 @@ whenever a build carries `--dart-define=LUNARLOG_LINK_DOMAIN=<domain>`.
   so `assetlinks.json` remains in the repo as a template but is deliberately not published
   until real signing certificate fingerprints exist.
 
-## Cloudflare Worker hosting (`web/links/`)
+## Cloudflare Worker hosting (`site/`)
 
-The apex domain `lunarlog.app` is served by a Cloudflare Worker (`web/links/`) with
-static assets, deployed automatically by `.github/workflows/links-deploy.yml`:
+The apex domain `lunarlog.app` is served by a Cloudflare Worker (`site/`, source
+in `site/worker/`) with static assets, deployed automatically by
+`.github/workflows/links-deploy.yml`:
 - `/.well-known/apple-app-site-association` is served as `application/json`, 200, no redirect.
 - `/invite*` serves `invite.html` with query strings preserved.
 - `observability.logs.invocation_logs` is disabled (`false`) so request lines and query

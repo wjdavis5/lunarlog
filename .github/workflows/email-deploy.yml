@@ -1,13 +1,13 @@
 name: Email worker deploy (Cloudflare Workers)
 
 # Issue #1107: inbound email receiving and processing worker on lunarlog.app.
-# Deploys web/email/ to Cloudflare Workers with custom domain route email.lunarlog.app.
+# Deploys workers/email/ to Cloudflare Workers with custom domain route email.lunarlog.app.
 
 on:
   push:
     branches: [main]
     paths:
-      - 'web/email/**'
+      - 'workers/email/**'
       - '.github/workflows/email-deploy.yml'
   workflow_dispatch:
 
@@ -47,5 +47,5 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: '3.89.0'
-          workingDirectory: 'web/email'
+          workingDirectory: 'workers/email'
           command: deploy --config wrangler.jsonc

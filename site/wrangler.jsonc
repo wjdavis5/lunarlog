@@ -1,7 +1,7 @@
 {
   "name": "lunarlog-links",
   "compatibility_date": "2026-09-20",
-  "main": "src/index.ts",
+  "main": "worker/index.ts",
 
   // The only public origin. workers_dev is off deliberately (issue #450,
   // matching civics-flashcards): apex lunarlog.app is the only desired endpoint.

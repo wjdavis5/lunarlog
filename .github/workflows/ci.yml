@@ -554,14 +554,14 @@ jobs:
           deno check ./**/*.ts
           deno test
 
-      - name: Run deno check and deno test for web/links
-        working-directory: web/links
+      - name: Run deno check and deno test for site/worker
+        working-directory: site/worker
         run: |
           deno check src/**/*.ts
           deno test
 
-      - name: Run deno check and deno test for web/email
-        working-directory: web/email
+      - name: Run deno check and deno test for workers/email
+        working-directory: workers/email
         run: |
           deno check src/**/*.ts
           deno test

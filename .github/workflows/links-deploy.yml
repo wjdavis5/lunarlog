@@ -1,7 +1,7 @@
 name: Links deploy (Cloudflare Workers)
 
 # Issue #450: hosts invite universal-link files on lunarlog.app via Cloudflare Workers.
-# Deploys web/links/ to the apex lunarlog.app domain using Workers Custom Domain.
+# Deploys site/ to the apex lunarlog.app domain using Workers Custom Domain.
 #
 # Scope: serves /.well-known/apple-app-site-association and /invite* (invite.html).
 # Android assetlinks.json is omitted until release fingerprints exist.
@@ -10,7 +10,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'web/links/**'
+      - 'site/**'
       - '.github/workflows/links-deploy.yml'
   workflow_dispatch:
 
@@ -50,5 +50,5 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: '3.89.0'
-          workingDirectory: 'web/links'
+          workingDirectory: 'site'
           command: deploy --config wrangler.jsonc
