@@ -28,11 +28,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  detect-changes:
+    # Analyzes git diff against the base ref (PR) or previous commit (push) to determine
+    # which component suites need to run. If marketing pages, Cloudflare Workers, or docs
+    # change, heavy mobile/test builds skip their execution while cleanly passing the required
+    # checks in seconds.
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      app_flutter: ${{ steps.filter.outputs.app_flutter }}
+      database: ${{ steps.filter.outputs.database }}
+      edge_functions: ${{ steps.filter.outputs.edge_functions }}
+      release_guards: ${{ steps.filter.outputs.release_guards }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - name: Detect changed monorepo components
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: bash .github/scripts/detect-ci-changes.sh
+
   release-guards:
     # Proves the release-guard scripts (issue #41) on every PR instead of
     # by pushing to main. No Flutter, Java, or Supabase toolchain and no
     # secrets, so this stays fast.
     name: Release guard scripts (unit tests + actionlint)
+    needs: detect-changes
     # Issue #569: this job needs only bash, python3, and actionlint, and its
     # whole purpose is to be the ubuntu/bash-5 counterpart to
     # release-guards-macos below (which proves the same scripts survive
@@ -45,49 +71,54 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Check if release guards should run
+        id: check_run
+        run: |
+          if [ "${{ needs.detect-changes.outputs.release_guards }}" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No release guard scripts or workflow changes detected; skipping suite."
+          fi
 
-      # Each verification step below runs with `if: always()` (skipping only
-      # on cancellation) so one script's failure can never hide the rest --
-      # that was the P1 bug: a single red step used to short-circuit every
-      # step after it, leaving the release gate with zero executed coverage
-      # in CI. Every step's own pass/fail is now always visible.
-      # The shared assertion helpers every suite below sources. Runs
-      # first: a bug in lib/assert.sh reports a wrong verdict in the
-      # voice of whichever suite called it, so its own coverage has to
-      # land before the suites that trust it.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: steps.check_run.outputs.run == 'true'
+
+      # Each verification step below runs with `if: ... && !cancelled()` so one
+      # script's failure can never hide the rest when the suite runs.
       - name: Run assert.sh helper tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/lib/assert.test.sh
 
       - name: Run extract-marketing-version tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/extract-marketing-version.test.sh
 
       - name: Run detect-version-bump tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/detect-version-bump.test.sh
 
       - name: Run check-release-gate tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-release-gate.test.sh
 
       - name: Run check-qa-build-gate tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-qa-build-gate.test.sh
 
       # Issue #141 / PR #1007: a signed build now signs both the app and its
       # LunarLogWidget extension, so the workflow must install two profiles
       # and the export plist must map both bundle ids. This pins that wiring.
       - name: Run check-ios-widget-signing tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-ios-widget-signing.test.sh
+
       - name: Run check-web-build-output tests
         # Epic #831 slice 3: proves the web-build deploy gate fails closed on
         # a missing CSP/`_redirects`, and that web-deploy.yml builds the sync
         # app with the same defines and gates the Pages upload on the two
         # Cloudflare secrets.
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-web-build-output.test.sh
 
       - name: Run check-links-deploy tests
@@ -95,51 +126,56 @@ jobs:
         # the AASA must be application/json with nosniff and no redirect, and
         # /invite* must carry the Worker's headers rather than the asset
         # layer's.
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-links-deploy.test.sh
 
       - name: Run upload-sentry-symbols-setup tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/upload-sentry-symbols-setup.test.sh
 
       - name: Run check-ci-gate tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-ci-gate.test.sh
 
       - name: Run check-destructive-sql tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-destructive-sql.test.sh
 
       - name: Run edge-function-hash tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/edge-function-hash.test.sh
 
       - name: Run check-apple-secrets tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-apple-secrets.test.sh
 
       - name: Run classify-schema-diff tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/classify-schema-diff.test.sh
 
       - name: Run apple-client-secret tests
         # Issue #974: mints the ES256 Apple client-secret JWT the rotation
         # workflow pushes to Supabase, verified against a throwaway P-256 key
         # this suite generates itself (never the production `.p8`).
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/apple-client-secret.test.sh
+
       # Issue #972: this suite existed but was never wired into CI, so the
       # advisor gate's exclusion list could change without its truth table
       # ever running. It proves the removed leaked-password exclusion is
       # really gone and that unrecognised/missing-level findings still fail
       # closed.
       - name: Run check-advisor-gate tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-advisor-gate.test.sh
 
       - name: Run check-auth-config tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-auth-config.test.sh
+
+      - name: Run detect-ci-changes tests
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
+        run: bash .github/scripts/tests/detect-ci-changes.test.sh
 
       # Issue #266: unlike the scripts above (proven only via their own
       # unit tests here, then invoked for real elsewhere -- e.g.
@@ -150,39 +186,31 @@ jobs:
       # needed beyond bash, so it runs here rather than waiting for the
       # `check`/`db-tests` jobs below.
       - name: Check supabase/config.toml auth posture
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/check-auth-config.sh
 
       - name: Run tool/coord tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: python3 -m unittest discover -s tool/coord/tests
 
       - name: Run tool/orchestrator tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: python3 -m unittest discover -s tool/orchestrator/tests
 
       - name: Cache actionlint
         id: actionlint-cache
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: actionlint
           key: actionlint-${{ runner.os }}-${{ runner.arch }}-1.7.7
 
       - name: Install actionlint
-        if: always() && steps.actionlint-cache.outputs.cache-hit != 'true'
+        if: steps.check_run.outputs.run == 'true' && !cancelled() && steps.actionlint-cache.outputs.cache-hit != 'true'
         env:
           ACTIONLINT_VERSION: '1.7.7'
         run: |
           set -euo pipefail
-          # OS/arch-aware download (#352, #361; #569 moved this job back to
-          # ubuntu-latest, but the case below is kept -- it's harmless and
-          # keeps this step correct if the runner ever changes, e.g. an
-          # arm64 GitHub-hosted runner, or landing back on self-hosted
-          # macOS). Each asset is pinned to its published sha256 (issue
-          # #570) so a hijacked or corrupted release asset can never
-          # silently become `./actionlint` -- verified against
-          # actionlint_1.7.7_checksums.txt from the v1.7.7 GitHub release.
           case "${{ runner.os }}/${{ runner.arch }}" in
             macOS/ARM64)
               ASSET=darwin_arm64
@@ -210,11 +238,11 @@ jobs:
           rm actionlint.tar.gz
 
       - name: Verify actionlint
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: ./actionlint -version
 
       - name: Lint workflows with actionlint
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: ./actionlint .github/workflows/*.yml
 
   release-guards-macos:
@@ -231,49 +259,58 @@ jobs:
     # self-hosted Mac mini no longer serves CI, so there is no shared,
     # non-ephemeral runner to serialise behind or to guard from fork PRs.
     name: Release guard scripts on macOS (bash 3.2 compatibility)
+    needs: detect-changes
     runs-on: macos-latest
     timeout-minutes: 5
     steps:
+      - name: Check if macOS release guards should run
+        id: check_run
+        run: |
+          if [ "${{ needs.detect-changes.outputs.release_guards }}" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No release guard scripts or workflow changes detected; skipping macOS suite."
+          fi
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: steps.check_run.outputs.run == 'true'
 
       # Same rationale as the release-guards job above: keep every script's
       # result visible instead of letting an earlier failure hide the rest.
-      # The shared assertion helpers every suite below sources. Runs
-      # first: a bug in lib/assert.sh reports a wrong verdict in the
-      # voice of whichever suite called it, so its own coverage has to
-      # land before the suites that trust it.
       - name: Run assert.sh helper tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/lib/assert.test.sh
 
       - name: Run extract-marketing-version tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/extract-marketing-version.test.sh
 
       - name: Run detect-version-bump tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/detect-version-bump.test.sh
 
       - name: Run check-release-gate tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-release-gate.test.sh
 
       - name: Run check-qa-build-gate tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-qa-build-gate.test.sh
 
       # Issue #141 / PR #1007: a signed build now signs both the app and its
       # LunarLogWidget extension, so the workflow must install two profiles
       # and the export plist must map both bundle ids. This pins that wiring.
       - name: Run check-ios-widget-signing tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-ios-widget-signing.test.sh
+
       - name: Run check-web-build-output tests
         # Epic #831 slice 3: proves the web-build deploy gate fails closed on
         # a missing CSP/`_redirects`, and that web-deploy.yml builds the sync
         # app with the same defines and gates the Pages upload on the two
         # Cloudflare secrets.
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-web-build-output.test.sh
 
       - name: Run check-links-deploy tests
@@ -281,45 +318,50 @@ jobs:
         # the AASA must be application/json with nosniff and no redirect, and
         # /invite* must carry the Worker's headers rather than the asset
         # layer's.
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-links-deploy.test.sh
 
       - name: Run upload-sentry-symbols-setup tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/upload-sentry-symbols-setup.test.sh
 
       - name: Run check-ci-gate tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-ci-gate.test.sh
 
       - name: Run check-destructive-sql tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-destructive-sql.test.sh
 
       - name: Run edge-function-hash tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/edge-function-hash.test.sh
 
       - name: Run check-apple-secrets tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-apple-secrets.test.sh
 
       - name: Run classify-schema-diff tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/classify-schema-diff.test.sh
 
       - name: Run apple-client-secret tests
         # Issue #974: mints the ES256 Apple client-secret JWT the rotation
         # workflow pushes to Supabase, verified against a throwaway P-256 key
         # this suite generates itself (never the production `.p8`).
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/apple-client-secret.test.sh
+
       # Issue #972: same addition as the ubuntu release-guards job above --
       # proves the advisor gate's truth table (and its Bash 3.2
       # compatibility) actually runs.
       - name: Run check-advisor-gate tests
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-advisor-gate.test.sh
+
+      - name: Run detect-ci-changes tests
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
+        run: bash .github/scripts/tests/detect-ci-changes.test.sh
 
   check:
     # The former "Analyze, test, build web" job, minus the test suite: that
@@ -330,18 +372,32 @@ jobs:
     # runs once with coverage rather than once plain and once again for
     # coverage.
     name: Verify (codegen, analyze, web build)
+    needs: detect-changes
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Check if Flutter verify should run
+        id: check_run
+        run: |
+          if [ "${{ needs.detect-changes.outputs.app_flutter }}" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No app/Flutter source changes detected; skipping verify."
+          fi
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: steps.check_run.outputs.run == 'true'
 
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        if: steps.check_run.outputs.run == 'true'
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
       - name: Get dependencies
+        if: steps.check_run.outputs.run == 'true'
         run: flutter pub get
 
       - name: Cache build_runner outputs
@@ -350,6 +406,7 @@ jobs:
         # dependency lockfile + build config, then on the source tree, with
         # a prefix fallback so an unrelated source change still warm-starts
         # from the last run instead of rebuilding every generator from cold.
+        if: steps.check_run.outputs.run == 'true'
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .dart_tool/build
@@ -377,6 +434,7 @@ jobs:
         # brand new generated file (e.g. a new table's .g.dart, or a new
         # schemaVersion's drift_schema_vN.json) that was never committed is
         # invisible to it and the gate passes green.
+        if: steps.check_run.outputs.run == 'true'
         run: |
           set -euo pipefail
           dart run build_runner build --delete-conflicting-outputs
@@ -397,6 +455,7 @@ jobs:
           fi
 
       - name: Analyze
+        if: steps.check_run.outputs.run == 'true'
         run: flutter analyze
 
       - name: Build web (release)
@@ -411,6 +470,7 @@ jobs:
         # stray `#` (see extract-marketing-version.sh's hardening) would
         # have silently commented out every flag after it in the release
         # workflows that build `--build-name=`/`--build-number=` this way.
+        if: steps.check_run.outputs.run == 'true'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
@@ -441,6 +501,7 @@ jobs:
         # Issue #1091: the same deployability check web-deploy.yml runs, so a
         # CI build that would blank-page in a browser fails here instead of
         # only after a deploy. It also asserts local CanvasKit.
+        if: steps.check_run.outputs.run == 'true'
         run: bash .github/scripts/check-web-build-output.sh
 
       - name: Boot-check the web build under its CSP
@@ -449,6 +510,7 @@ jobs:
         # loads it in headless Chromium, failing on any CSP violation not on
         # the script's explicit allowlist, or if Flutter never paints a first
         # frame. This is the regression guard the issue asked for.
+        if: steps.check_run.outputs.run == 'true'
         working-directory: tool/web_smoke
         run: |
           npm ci
@@ -464,6 +526,7 @@ jobs:
     # the coverage run for no extra signal. TOTAL_SHARDS must match the
     # matrix length and the download pattern in quality-gate.
     name: Test (shard ${{ matrix.shard }})
+    needs: detect-changes
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -474,21 +537,36 @@ jobs:
       TOTAL_SHARDS: '3'
       SHARD_INDEX: ${{ matrix.shard }}
     steps:
+      - name: Check if Flutter tests should run
+        id: check_run
+        run: |
+          if [ "${{ needs.detect-changes.outputs.app_flutter }}" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No app/Flutter source changes detected; skipping test shard."
+          fi
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: steps.check_run.outputs.run == 'true'
 
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        if: steps.check_run.outputs.run == 'true'
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
       - name: Get dependencies
+        if: steps.check_run.outputs.run == 'true'
         run: flutter pub get
 
       - name: Test (with coverage)
+        if: steps.check_run.outputs.run == 'true'
         run: flutter test --coverage --total-shards "$TOTAL_SHARDS" --shard-index "$SHARD_INDEX"
 
       - name: Upload shard coverage
+        if: steps.check_run.outputs.run == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: lcov-shard-${{ matrix.shard }}
@@ -503,28 +581,43 @@ jobs:
     # tool/quality_gate.dart and AGENTS.md "Quality gates". Runs the gates
     # only — the tests themselves already ran in the shards.
     name: Quality gate (coverage floor + CRAP)
-    needs: test
+    needs: [detect-changes, test]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Check if quality gate should run
+        id: check_run
+        run: |
+          if [ "${{ needs.detect-changes.outputs.app_flutter }}" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No app/Flutter source changes detected; skipping quality gate."
+          fi
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: steps.check_run.outputs.run == 'true'
 
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        if: steps.check_run.outputs.run == 'true'
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
       - name: Get dependencies
+        if: steps.check_run.outputs.run == 'true'
         run: flutter pub get
 
       - name: Download shard coverage
+        if: steps.check_run.outputs.run == 'true'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: lcov-shard-*
           path: coverage/shards
 
       - name: Merge shard coverage and evaluate the gates
+        if: steps.check_run.outputs.run == 'true'
         run: |
           set -euo pipefail
           shards=(coverage/shards/lcov-shard-*/lcov.info)
@@ -543,12 +636,25 @@ jobs:
     # `feedback-notify/index.test.ts` (its ownership check + replay guard)
     # only ever ran locally, so a regression there would have shipped green.
     name: Edge Functions (deno test)
+    needs: detect-changes
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Check if Edge Functions should run
+        id: check_run
+        run: |
+          if [ "${{ needs.detect-changes.outputs.edge_functions }}" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No edge function or web worker changes detected; skipping edge functions suite."
+          fi
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: steps.check_run.outputs.run == 'true'
 
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        if: steps.check_run.outputs.run == 'true'
         with:
           deno-version: v2.x
 
@@ -565,18 +671,21 @@ jobs:
         # `require-await` hit on every fake's async interface method with no
         # `await` in its body) - none introduced by this change, and not a
         # same-PR-sized cleanup.
+        if: steps.check_run.outputs.run == 'true'
         working-directory: supabase/functions
         run: |
           deno check ./**/*.ts
           deno test
 
       - name: Run deno check and deno test for site/worker
+        if: steps.check_run.outputs.run == 'true'
         working-directory: site/worker
         run: |
           deno check index.ts
           deno test
 
       - name: Run deno check and deno test for workers/email
+        if: steps.check_run.outputs.run == 'true'
         working-directory: workers/email
         run: |
           deno check src/**/*.ts
@@ -584,12 +693,25 @@ jobs:
 
   db-tests:
     name: Database tests (pgTAP)
+    needs: detect-changes
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Check if database tests should run
+        id: check_run
+        run: |
+          if [ "${{ needs.detect-changes.outputs.database }}" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No database changes detected; skipping pgTAP and sync tests."
+          fi
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: steps.check_run.outputs.run == 'true'
 
       - uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1.7.1
+        if: steps.check_run.outputs.run == 'true'
         with:
           # Pinned to the version the migrations and tests were written against.
           version: 2.116.0
@@ -600,12 +722,14 @@ jobs:
         # The same stack also serves the Dart round-trip test below (issue
         # #102): the `-x` list keeps REST (PostgREST) and Auth (GoTrue)
         # running, which is exactly what that test needs on top of Postgres.
+        if: steps.check_run.outputs.run == 'true'
         run: |
           supabase start \
             -x realtime,storage-api,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor
 
       - name: Run pgTAP tests
         # Proves RLS isolation, privileges, constraints, and sync_push (R9).
+        if: steps.check_run.outputs.run == 'true'
         run: supabase test db --local
 
       - name: Generated types snapshot freshness (supabase/database.types.ts)
@@ -626,6 +750,7 @@ jobs:
         # (graphql_public & co.) would churn with platform versions rather
         # than migrations. The DB is at the migration tip here: `start`
         # above applied migrations and `test db` re-applied them.
+        if: steps.check_run.outputs.run == 'true'
         run: |
           set -euo pipefail
           supabase gen types typescript --local --schema public > supabase/database.types.ts
@@ -644,15 +769,18 @@ jobs:
       # whatever rows pgTAP leaves behind, while pgTAP is not necessarily
       # robust to rows this test creates.
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        if: steps.check_run.outputs.run == 'true'
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
       - name: Get dependencies
+        if: steps.check_run.outputs.run == 'true'
         run: flutter pub get
 
       - name: Dart <-> local Supabase sync round trip (issue #102)
+        if: steps.check_run.outputs.run == 'true'
         run: |
           set -euo pipefail
           eval "$(supabase status -o env 2>/dev/null)"
@@ -662,32 +790,48 @@ jobs:
           flutter test test/data/sync/local_supabase_round_trip_test.dart
 
       - name: Stop local Supabase
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && always()
         run: supabase stop --no-backup
 
   android:
     name: Build Android (debug APK)
+    needs: detect-changes
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Check if Android build should run
+        id: check_run
+        run: |
+          if [ "${{ needs.detect-changes.outputs.app_flutter }}" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No app/Flutter source changes detected; skipping Android build."
+          fi
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: steps.check_run.outputs.run == 'true'
 
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        if: steps.check_run.outputs.run == 'true'
         with:
           distribution: temurin
           java-version: '17'
           cache: gradle
 
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        if: steps.check_run.outputs.run == 'true'
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
       - name: Get dependencies
+        if: steps.check_run.outputs.run == 'true'
         run: flutter pub get
 
       - name: Build debug APK
+        if: steps.check_run.outputs.run == 'true'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
@@ -720,6 +864,7 @@ jobs:
     # repo, a fresh VM per run, and no longer serialised on the lab's single
     # Mac mini behind every other session's iOS jobs. Fork PRs can run this
     # (it needs no secrets that matter -- see the build step's comment).
+    needs: detect-changes
     runs-on: macos-latest
     timeout-minutes: 45
     env:
@@ -729,15 +874,28 @@ jobs:
       LANG: en_US.UTF-8
       LC_ALL: en_US.UTF-8
     steps:
+      - name: Check if iOS build should run
+        id: check_run
+        run: |
+          if [ "${{ needs.detect-changes.outputs.app_flutter }}" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No app/Flutter source changes detected; skipping iOS build."
+          fi
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: steps.check_run.outputs.run == 'true'
 
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        if: steps.check_run.outputs.run == 'true'
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
       - name: Cache Swift Package Manager dependencies
+        if: steps.check_run.outputs.run == 'true'
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
@@ -756,6 +914,7 @@ jobs:
         # of this job's ~9 minutes. Keyed on the dependency locks, then the
         # Dart sources; the prefix fallbacks let an unrelated change reuse
         # everything that did not change (Xcode rebuilds what did).
+        if: steps.check_run.outputs.run == 'true'
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
@@ -768,11 +927,13 @@ jobs:
             ${{ runner.os }}-xcode-device-v2-
 
       - name: Get dependencies
+        if: steps.check_run.outputs.run == 'true'
         run: flutter pub get
 
       - name: Build iOS (unsigned)
         # Unsigned: a PR from a fork cannot read signing secrets, and this
         # only needs to prove the app still compiles for a device.
+        if: steps.check_run.outputs.run == 'true'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
@@ -813,6 +974,7 @@ jobs:
     # `iPhone <N>`, else any available iPhone) rather than hard-coded, so an
     # image upgrade that renames the simulators cannot break this job.
     name: iOS Simulator tests
+    needs: detect-changes
     runs-on: macos-latest
     # Issue #922: raised from 25 so both steps below fit. A cold native build
     # gets its own 20-minute budget ("Build the app for the simulator") and the
@@ -822,7 +984,18 @@ jobs:
     # hung build or test fails there with a named step, never here.
     timeout-minutes: 45
     steps:
+      - name: Check if iOS Simulator tests should run
+        id: check_run
+        run: |
+          if [ "${{ needs.detect-changes.outputs.app_flutter }}" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No app/Flutter source changes detected; skipping iOS Simulator tests."
+          fi
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: steps.check_run.outputs.run == 'true'
 
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         # Issue #570: this job previously went straight to `flutter pub get`
@@ -831,6 +1004,7 @@ jobs:
         # this job to a different Flutter version than every other job here
         # (all pinned via this same action) and the shipped app. Pinned the
         # same way as the rest of CI.
+        if: steps.check_run.outputs.run == 'true'
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: ${{ env.FLUTTER_CHANNEL }}
@@ -849,6 +1023,7 @@ jobs:
         # same lib/ + locks rather than falling straight through to a lock-only
         # prefix -- narrowing the cold-build window the build step below has to
         # cover.
+        if: steps.check_run.outputs.run == 'true'
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
@@ -867,6 +1042,7 @@ jobs:
             ${{ runner.os }}-xcode-simulator-v2-
 
       - name: Get dependencies
+        if: steps.check_run.outputs.run == 'true'
         run: flutter pub get
 
       - name: Build the app for the simulator
@@ -883,10 +1059,12 @@ jobs:
         # 20 minutes is ~2x the ~12-minute cold build observed on a hosted Mac.
         # Do not collapse this back into the test step: that re-creates the
         # shared budget this split exists to remove.
+        if: steps.check_run.outputs.run == 'true'
         timeout-minutes: 20
         run: flutter build ios --simulator --debug
 
       - name: Pick and boot a simulator
+        if: steps.check_run.outputs.run == 'true'
         id: sim
         # Issue #952: CoreSimulator on the self-hosted Mac can transiently
         # report zero available devices (observed run 35509921134: the list
@@ -957,6 +1135,7 @@ jobs:
         # build no longer competes for it. With the per-test 2-minute bounds
         # firing first, 15 minutes is generous; keep the build and test steps
         # separate rather than collapsing them back into one.
+        if: steps.check_run.outputs.run == 'true'
         timeout-minutes: 15
         env:
           SIM_UDID: ${{ steps.sim.outputs.udid }}
@@ -964,7 +1143,7 @@ jobs:
           flutter test integration_test/gate_test.dart -d "$SIM_UDID"
 
       - name: Shut down simulator
-        if: always()
+        if: steps.check_run.outputs.run == 'true' && always()
         env:
           SIM_UDID: ${{ steps.sim.outputs.udid }}
         run: |
