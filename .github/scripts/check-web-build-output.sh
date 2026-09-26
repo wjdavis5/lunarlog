@@ -9,11 +9,19 @@ set -euo pipefail
 # silently dropped the static routing/header files can never be published
 # with the app's SPA deep links (`/auth/callback`) or its CSP missing.
 #
-# The two files that matter and that Flutter copies verbatim from `web/`:
+# The files that matter and that Flutter copies verbatim from `web/`:
 #   * `_headers`   -- the CSP and cross-origin-isolation policy
 #                     (`docs/web/security-posture.md`, section 3).
 #   * `_redirects` -- the status-200 SPA fallback to `index.html`.
 # A build with either missing is broken; this script is the check.
+#
+# It also fails closed unless `flutter_bootstrap.js` resolves CanvasKit from
+# the build itself (issue #1091). When Flutter's loader sees an
+# `engineRevision` but no `"useLocalCanvasKit":true`, it fetches CanvasKit
+# from `https://www.gstatic.com/flutter-canvaskit/<revision>/`, which the
+# deployed CSP (`script-src 'self'`, `connect-src 'self'`) blocks -- the page
+# stays blank. `flutter build web --no-web-resources-cdn` writes that flag;
+# the assertion here is what keeps a regression from reaching a deploy.
 #
 # Input (env):
 #   WEB_BUILD_DIR  Build output directory. Defaults to `build/web`.
@@ -66,4 +74,17 @@ done <"$BUILD_DIR/_redirects"
 [ "$spa_fallback" = 1 ] ||
   fail "Web build output '$BUILD_DIR/_redirects' has no '/* /index.html 200' catch-all."
 
-echo "Web build output '$BUILD_DIR' is deployable: index.html, main.dart.js, _headers (CSP), and the SPA _redirects fallback are present."
+# `flutter_bootstrap.js`: present, and resolving CanvasKit from the build
+# rather than www.gstatic.com (issue #1091). The exact literal is what
+# `--no-web-resources-cdn` emits into `_flutter.buildConfig`.
+[ -s "$BUILD_DIR/flutter_bootstrap.js" ] ||
+  fail "Web build output '$BUILD_DIR/flutter_bootstrap.js' is missing or empty; the app could not bootstrap in a browser."
+bootstrap="$(cat "$BUILD_DIR/flutter_bootstrap.js")"
+case $bootstrap in
+  *'"useLocalCanvasKit":true'*) ;;
+  *)
+    fail "Web build output '$BUILD_DIR/flutter_bootstrap.js' does not set \"useLocalCanvasKit\":true; Flutter's loader would fetch CanvasKit from www.gstatic.com, which the deployed CSP blocks. Build with --no-web-resources-cdn (issue #1091)."
+    ;;
+esac
+
+echo "Web build output '$BUILD_DIR' is deployable: index.html, main.dart.js, _headers (CSP), the SPA _redirects fallback, and local CanvasKit in flutter_bootstrap.js are present."

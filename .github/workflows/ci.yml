@@ -408,7 +408,7 @@ jobs:
           FCM_IOS_API_KEY: ${{ secrets.FCM_IOS_API_KEY }}
           FCM_IOS_APP_ID: ${{ secrets.FCM_IOS_APP_ID }}
         run: |
-          flutter build web --release \
+          flutter build web --release --no-web-resources-cdn \
             --dart-define=SUPABASE_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY" \
             --dart-define=SENTRY_DSN="$SENTRY_DSN" \
@@ -420,6 +420,24 @@ jobs:
             --dart-define=FCM_ANDROID_APP_ID="$FCM_ANDROID_APP_ID" \
             --dart-define=FCM_IOS_API_KEY="$FCM_IOS_API_KEY" \
             --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID"
+
+      - name: Verify the web build output carries the headers and SPA fallback
+        # Issue #1091: the same deployability check web-deploy.yml runs, so a
+        # CI build that would blank-page in a browser fails here instead of
+        # only after a deploy. It also asserts local CanvasKit.
+        run: bash .github/scripts/check-web-build-output.sh
+
+      - name: Boot-check the web build under its CSP
+        # Issue #1091: a build that parses green can still never render.
+        # tool/web_smoke serves build/web with the real `_headers` policy and
+        # loads it in headless Chromium, failing on any CSP violation not on
+        # the script's explicit allowlist, or if Flutter never paints a first
+        # frame. This is the regression guard the issue asked for.
+        working-directory: tool/web_smoke
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          node boot_check.mjs
 
   test:
     # The unit/widget suite, sharded across runners. Each shard runs a

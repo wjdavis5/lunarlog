@@ -75,6 +75,11 @@ key.properties
 supabase/tests/manual/node_modules/
 supabase/tests/manual/package-lock.json
 
+# Node deps for the headless-Chromium web boot check (issue #1091). Its
+# package-lock.json IS committed (the script's pin); only node_modules is
+# ignored.
+tool/web_smoke/node_modules/
+
 # OpenCode's own local install (plugin/SDK deps for the opencode-<model> coordinators)
 .opencode/node_modules/
 

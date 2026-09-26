@@ -90,7 +90,7 @@ jobs:
           FCM_IOS_API_KEY: ${{ secrets.FCM_IOS_API_KEY }}
           FCM_IOS_APP_ID: ${{ secrets.FCM_IOS_APP_ID }}
         run: |
-          flutter build web --release \
+          flutter build web --release --no-web-resources-cdn \
             --dart-define=LUNARLOG_WEB_SYNC=true \
             --dart-define=SUPABASE_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY" \
@@ -105,9 +105,22 @@ jobs:
             --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID"
 
       - name: Verify the build output carries the headers and SPA fallback
-        # Fails closed: a build missing `_headers` (the CSP) or `_redirects`
-        # (the `/auth/callback` SPA fallback) must never be published.
+        # Fails closed: a build missing `_headers` (the CSP), `_redirects`
+        # (the `/auth/callback` SPA fallback), or local CanvasKit (issue
+        # #1091) must never be published.
         run: bash .github/scripts/check-web-build-output.sh
+
+      - name: Boot-check the build under its CSP
+        # Issue #1091: never deploy a build that blank-pages under its own
+        # CSP. Serves build/web with the real `_headers` policy, loads it in
+        # headless Chromium, and fails on any CSP violation not on the
+        # script's explicit allowlist, or if Flutter never paints a first
+        # frame. Fails closed before the Cloudflare upload.
+        working-directory: tool/web_smoke
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          node boot_check.mjs
 
       - name: Upload the verified web build
         if: always()
