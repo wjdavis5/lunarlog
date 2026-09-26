@@ -108,7 +108,7 @@ export default {
     } catch (error) {
       console.error("Error processing inbound email:", error);
       // Rejecting notifies sender's MTA with an SMTP error
-      message.setReject(`Failed to process email: ${error instanceof Error ? error.message : "internal error"}`);
+      message.setReject("Failed to process inbound email");
     }
   },
 
@@ -217,9 +217,10 @@ export default {
         await store.saveEmail(emailData);
         return jsonResponse({ success: true, email: emailData }, 201);
       } catch (err) {
+        console.error("Simulation error:", err);
         return jsonResponse({
           error: "simulation_failed",
-          message: err instanceof Error ? err.message : String(err),
+          message: "Failed to parse simulation email payload",
         }, 400);
       }
     }

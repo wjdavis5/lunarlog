@@ -42,8 +42,21 @@ export function extractAuthLinks(content: string): string[] {
   for (const rawUrl of matches) {
     const cleaned = rawUrl.replace(/[.,;:!?]+$/, "");
     // Ignore XML/DTD schemas
-    if (cleaned.includes("w3.org") || cleaned.includes("schema.org")) {
-      continue;
+    try {
+      if (cleaned.startsWith("http://") || cleaned.startsWith("https://")) {
+        const parsedUrl = new URL(cleaned);
+        const host = parsedUrl.hostname.toLowerCase();
+        if (
+          host === "w3.org" ||
+          host.endsWith(".w3.org") ||
+          host === "schema.org" ||
+          host.endsWith(".schema.org")
+        ) {
+          continue;
+        }
+      }
+    } catch {
+      // not a standard URL, continue
     }
     deduped.add(cleaned);
   }
