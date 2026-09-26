@@ -7173,7 +7173,7 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 4b): intro paragraph atop the cycle literacy library.
   ///
   /// In en, this message translates to:
-  /// **'Evidence-based educational guides to understand your body, hormones, and cycle rhythms.'**
+  /// **'Guides to your body, hormones, and cycle rhythms, sourced from ACOG, NHS and other medical bodies.'**
   String get cycleLiteracyLibraryIntro;
 
   /// Issue #854: title of the Cycle Literacy Library tile in Settings Help section.
@@ -7185,7 +7185,7 @@ abstract class AppLocalizations {
   /// Issue #854: subtitle of the Cycle Literacy Library tile in Settings Help section.
   ///
   /// In en, this message translates to:
-  /// **'Evidence-based guides to cycles, hormones, and body changes'**
+  /// **'Guides to cycles, hormones, and body changes, sourced from ACOG, NHS and other medical bodies'**
   String get settingsCycleLiteracySubtitle;
 
   /// Issue #854: educational guide link shown on the teen Today overview card.
@@ -7719,7 +7719,7 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 4a): subtitle of the cycle-literacy library call to action.
   ///
   /// In en, this message translates to:
-  /// **'Evidence-based guides on hormones, cycle phases, and body signals.'**
+  /// **'Guides on hormones, cycle phases, and body signals, sourced from ACOG, NHS and other medical bodies.'**
   String get symptomTrendsLibrarySubtitle;
 
   /// Issue #1004 (tranche 4a): title of the cramp-prediction card.

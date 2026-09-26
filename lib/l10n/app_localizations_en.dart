@@ -4500,14 +4500,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get cycleLiteracyLibraryIntro =>
-      'Evidence-based educational guides to understand your body, hormones, and cycle rhythms.';
+      'Guides to your body, hormones, and cycle rhythms, sourced from ACOG, NHS and other medical bodies.';
 
   @override
   String get settingsCycleLiteracyTitle => 'Cycle Literacy';
 
   @override
   String get settingsCycleLiteracySubtitle =>
-      'Evidence-based guides to cycles, hormones, and body changes';
+      'Guides to cycles, hormones, and body changes, sourced from ACOG, NHS and other medical bodies';
 
   @override
   String get overviewTeenCycleLiteracyLink =>
@@ -4832,7 +4832,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get symptomTrendsLibrarySubtitle =>
-      'Evidence-based guides on hormones, cycle phases, and body signals.';
+      'Guides on hormones, cycle phases, and body signals, sourced from ACOG, NHS and other medical bodies.';
 
   @override
   String get crampPredictionTitle => 'Anticipated Cramp Window';

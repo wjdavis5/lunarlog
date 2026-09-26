@@ -5778,7 +5778,7 @@
   "@cycleLiteracyLibraryTitle": {
     "description": "Issue #1004 (tranche 4b): app-bar title of the standalone cycle literacy library."
   },
-  "cycleLiteracyLibraryIntro": "Evidence-based educational guides to understand your body, hormones, and cycle rhythms.",
+  "cycleLiteracyLibraryIntro": "Guides to your body, hormones, and cycle rhythms, sourced from ACOG, NHS and other medical bodies.",
   "@cycleLiteracyLibraryIntro": {
     "description": "Issue #1004 (tranche 4b): intro paragraph atop the cycle literacy library."
   },
@@ -5786,7 +5786,7 @@
   "@settingsCycleLiteracyTitle": {
     "description": "Issue #854: title of the Cycle Literacy Library tile in Settings Help section."
   },
-  "settingsCycleLiteracySubtitle": "Evidence-based guides to cycles, hormones, and body changes",
+  "settingsCycleLiteracySubtitle": "Guides to cycles, hormones, and body changes, sourced from ACOG, NHS and other medical bodies",
   "@settingsCycleLiteracySubtitle": {
     "description": "Issue #854: subtitle of the Cycle Literacy Library tile in Settings Help section."
   },
@@ -6242,7 +6242,7 @@
     "@symptomTrendsLibraryTitle": {
       "description": "Issue #1004 (tranche 4a): title of the cycle-literacy library call to action."
     },
-    "symptomTrendsLibrarySubtitle": "Evidence-based guides on hormones, cycle phases, and body signals.",
+    "symptomTrendsLibrarySubtitle": "Guides on hormones, cycle phases, and body signals, sourced from ACOG, NHS and other medical bodies.",
     "@symptomTrendsLibrarySubtitle": {
       "description": "Issue #1004 (tranche 4a): subtitle of the cycle-literacy library call to action."
     },
