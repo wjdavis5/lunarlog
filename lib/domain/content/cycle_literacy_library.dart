@@ -281,9 +281,9 @@ class CycleLiteracyLibrary {
   static const ArticleSource _wilcoxOvulationTiming = ArticleSource(
     publisher: SourcePublisher.peerReviewed,
     title:
-        'Timing of Sexual Intercourse in Relation to Ovulation: Effects on the Probability of Conception, Survival of the Pregnancy, and Sex of the Baby',
-    identifier: 'PMID 7477166',
-    url: 'https://pubmed.ncbi.nlm.nih.gov/7477166/',
+        'Timing of sexual intercourse in relation to ovulation. Effects on the probability of conception, survival of the pregnancy, and sex of the baby',
+    identifier: 'N Engl J Med 1995;333:1517-21',
+    url: 'https://doi.org/10.1056/NEJM199512073332301',
     retrieved: _retrievedDate,
   );
 
