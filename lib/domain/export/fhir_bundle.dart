@@ -107,7 +107,7 @@ import '../models/observation_category.dart';
 import '../models/profile.dart';
 import '../prediction/prediction.dart' show ActivePrediction;
 import '../tags.dart' as tags
-    show TagCode, contextualDisplayForTag, isValidTagCode, tagByCode;
+    show contextualDisplayForTag, isValidTagCode, tagByCode;
 import 'account_export.dart' show kAccountExportAppName;
 import 'clinical_terminology.dart';
 
@@ -709,7 +709,7 @@ Map<String, Object?> _symptomCode(Observation observation) {
 /// self-describing label (`tags.dart`) that does not depend on a category
 /// heading the export never carries (issue #1114).
 Map<String, Object?> _tagCode(String tagCode) {
-  final display = contextualDisplayForTag(tags.tagByCode(tagCode)!);
+  final display = tags.contextualDisplayForTag(tags.tagByCode(tagCode)!);
   return {
     'coding': _codingsForDisplay(dualCodingFor(tagCode), display),
     'text': display,

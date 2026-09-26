@@ -118,10 +118,14 @@ void main() {
 
   test('states the graded 1-5 pain scale (issue #1114)', () {
     final text = latin1.decode(buildClinicalPdfDocument(_fixtureSummary()));
-    // The method note wraps at the printable width, so assert the stable
-    // tail word of the appended scale sentence rather than the whole line.
+    // The PDF escapes parentheses, so match the escaped fragment the
+    // method note renders on its final line.
     expect(kClinicalSummaryPainScaleNote, contains('1 (mild) to 5 (severe)'));
-    expect(text, contains('(severe).'));
+    expect(
+      text,
+      contains(r'Pain intensity, where recorded, is graded 1 \(mild\) to 5 '
+          r'\(severe\)'),
+    );
   });
 
   test('lists the per-cycle dates and lengths with irregular and omitted columns', () {
