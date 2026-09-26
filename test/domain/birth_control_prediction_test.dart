@@ -79,46 +79,56 @@ class _StubDayEntriesRepository implements DayEntriesRepository {
 }
 
 void main() {
-  group('birthControlPredictionKind classification (issue #233)', () {
-    test('withdrawal-bleed / cyclic methods classify as pack-driven', () {
-      expect(
-        birthControlPredictionKind(BirthControlMethod.pill),
-        BirthControlPredictionKind.withdrawalBleed,
-      );
-      expect(
-        birthControlPredictionKind(BirthControlMethod.patch),
-        BirthControlPredictionKind.withdrawalBleed,
-      );
-      expect(
-        birthControlPredictionKind(BirthControlMethod.ring),
-        BirthControlPredictionKind.withdrawalBleed,
-      );
-    });
+  group('birthControlPredictionKind classification (issue #233, #1118)', () {
+    // The single source of truth for every member of the enum: a newly
+    // added method cannot slip through unclassified without this failing.
+    const expected = <BirthControlMethod, BirthControlPredictionKind?>{
+      BirthControlMethod.pill: BirthControlPredictionKind.withdrawalBleed,
+      BirthControlMethod.patch: BirthControlPredictionKind.withdrawalBleed,
+      BirthControlMethod.ring: BirthControlPredictionKind.withdrawalBleed,
+      BirthControlMethod.shot: BirthControlPredictionKind.continuous,
+      BirthControlMethod.implant: BirthControlPredictionKind.continuous,
+      BirthControlMethod.hormonalIud: BirthControlPredictionKind.continuous,
+      BirthControlMethod.copperIud: null,
+      BirthControlMethod.none: null,
+      BirthControlMethod.condom: null,
+      BirthControlMethod.other: null,
+      BirthControlMethod.unknown: null,
+    };
 
-    test('continuous methods classify as continuous', () {
-      for (final method in [
-        BirthControlMethod.shot,
-        BirthControlMethod.implant,
-        BirthControlMethod.hormonalIud,
-        BirthControlMethod.copperIud,
-      ]) {
+    test('classifies every BirthControlMethod', () {
+      expect(
+        expected.keys.toSet(),
+        BirthControlMethod.values.toSet(),
+        reason: 'every enum member needs an expected classification',
+      );
+      for (final method in BirthControlMethod.values) {
         expect(
           birthControlPredictionKind(method),
-          BirthControlPredictionKind.continuous,
+          expected[method],
           reason: method.name,
         );
       }
     });
 
-    test('non-tracked answers classify as null (never reach the predictor)', () {
-      for (final method in [
-        BirthControlMethod.none,
-        BirthControlMethod.condom,
-        BirthControlMethod.other,
-        BirthControlMethod.unknown,
-      ]) {
-        expect(birthControlPredictionKind(method), isNull, reason: method.name);
-      }
+    test('copper IUD is not period-suppressing and keeps ordinary estimates '
+        '(issue #1118)', () {
+      expect(
+        birthControlPredictionKind(BirthControlMethod.copperIud),
+        isNull,
+      );
+      final result = computePrediction(
+        episodes: episodesFromStarts(
+            [d(2026, 1, 1), d(2026, 1, 29), d(2026, 2, 28), d(2026, 4, 1)]),
+        today: d(2026, 4, 10),
+        birthControl: ActiveBirthControl(
+          method: BirthControlMethod.copperIud,
+          startedOn: LocalDate(2026, 1, 1),
+        ),
+      );
+      expect(result, isA<ActivePrediction>(),
+          reason: 'a copper IUD must not pause period estimates (ACOG '
+              'FAQ184: it contains no hormones and does not stop periods)');
     });
   });
 
@@ -153,21 +163,16 @@ void main() {
       expect(result, isA<PredictionsSuppressed>());
     });
 
-    test('shot and copper IUD also suppress', () {
-      for (final method in [
-        BirthControlMethod.shot,
-        BirthControlMethod.copperIud,
-      ]) {
-        final result = computePrediction(
-          episodes: const [],
-          today: d(2026, 6, 1),
-          birthControl: ActiveBirthControl(
-            method: method,
-            startedOn: d(2026, 1, 1),
-          ),
-        );
-        expect(result, isA<PredictionsSuppressed>(), reason: method.name);
-      }
+    test('shot also suppresses', () {
+      final result = computePrediction(
+        episodes: const [],
+        today: d(2026, 6, 1),
+        birthControl: ActiveBirthControl(
+          method: BirthControlMethod.shot,
+          startedOn: d(2026, 1, 1),
+        ),
+      );
+      expect(result, isA<PredictionsSuppressed>());
     });
   });
 

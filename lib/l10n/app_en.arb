@@ -1731,7 +1731,7 @@
   },
   "predictionsSuppressedTitle": "Estimates paused",
   "@predictionsSuppressedTitle": {
-    "description": "Title of the overview/Analysis state shown when a profile's in-effect birth-control method is a continuous one (IUD, implant, shot, continuous pill): period prediction is deliberately off (Issue #233)."
+    "description": "Title of the overview/Analysis state shown when a profile's in-effect birth-control method is a continuous one (hormonal IUD, implant, shot, continuous pill): period prediction is deliberately off (Issue #233). A copper IUD is not in this group — it keeps ordinary estimates (Issue #1118)."
   },
   "predictionsSuppressedBody": "Because {method} typically stops or irregularly affects periods, period estimates are paused while it is active. The method will resume ordinary estimates once it is switched or cleared.",
   "@predictionsSuppressedBody": {

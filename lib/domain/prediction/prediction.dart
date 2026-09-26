@@ -272,16 +272,24 @@ enum BirthControlPredictionKind {
   /// follicular statistics.
   withdrawalBleed,
 
-  /// Methods that typically stop or irregularly affect periods (IUD,
-  /// implant, shot, continuous-regimen pill): period prediction is
+  /// Methods that typically stop or irregularly affect periods (hormonal
+  /// IUD, implant, shot, continuous-regimen pill): period prediction is
   /// suppressed for the duration the method is active.
   continuous,
 }
 
-/// Classifies [method] for prediction, or null for the non-tracked answers
-/// ([none]/[condom]/[other]/[unknown]) which never reach the predictor —
-/// the effective-method seam (`birthControlMethodInEffectOn`) returns null
-/// for them, so this null is defensive-only.
+/// Classifies [method] for prediction, or null for methods the predictor
+/// must not branch on at all:
+///
+/// * [none]/[condom]/[other]/[unknown] — answers with no prediction effect
+///   (the effective-method seam `birthControlMethodInEffectOn` already
+///   returns null for them, so this null is defensive-only).
+/// * [copperIud] (issue #1118) — a copper IUD contains no hormones and does
+///   not stop periods (ACOG FAQ184; NHS lists the *hormonal* IUS, not the
+///   copper IUD, among causes of missed periods). It is deliberately left
+///   unclassified here, so a copper-IUD user falls through to the ordinary
+///   history-based estimate. Suppressing that estimate would hide the
+///   missed period ACOG lists as a pregnancy warning sign for IUD users.
 ///
 /// Judgment call (documented in issue #233's PR): the stored `pill` value
 /// cannot distinguish a combined (cyclic) pill from a continuous-regimen
@@ -299,13 +307,13 @@ BirthControlPredictionKind? birthControlPredictionKind(BirthControlMethod method
         BirthControlPredictionKind.withdrawalBleed,
       BirthControlMethod.shot ||
       BirthControlMethod.implant ||
-      BirthControlMethod.hormonalIud ||
-      BirthControlMethod.copperIud =>
+      BirthControlMethod.hormonalIud =>
         BirthControlPredictionKind.continuous,
       BirthControlMethod.none ||
       BirthControlMethod.condom ||
       BirthControlMethod.other ||
-      BirthControlMethod.unknown =>
+      BirthControlMethod.unknown ||
+      BirthControlMethod.copperIud =>
         null,
     };
 
@@ -557,10 +565,11 @@ class ActiveBirthControl {
 /// though logging more won't help) and NOT a silent late/paused state:
 ///
 /// 1. [method] (issue #233): the birth-control method in effect on the
-///    date of interest is a continuous one (IUD, implant, shot,
+///    date of interest is a continuous one (hormonal IUD, implant, shot,
 ///    continuous-regimen pill) — these typically stop or irregularly
 ///    affect periods, so any follicular-style estimate (or a pack-driven
-///    withdrawal-bleed estimate) would be misleading.
+///    withdrawal-bleed estimate) would be misleading. A copper IUD is
+///    deliberately not in this group (issue #1118).
 /// 2. [lifecycleMode] (issue #528): the profile's life-stage mode is
 ///    `pregnancy`, `postpartum`, or `perimenopause` — none of these are
 ///    the regular ovulatory cycle this file's averaging model assumes, so
