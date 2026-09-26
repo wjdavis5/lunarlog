@@ -118,7 +118,13 @@ Deno.test("parser: extractAuthLinks decodes HTML entities (&amp;, &#38;, quotes)
   const links = extractAuthLinks(htmlContent);
   assertEquals(links.length, 3);
 
-  const supabaseUrl = links.find((l) => l.includes("supabase.co"));
+  const supabaseUrl = links.find((l) => {
+    try {
+      return new URL(l).hostname.endsWith(".supabase.co");
+    } catch {
+      return false;
+    }
+  });
   assertExists(supabaseUrl);
   assertEquals(
     supabaseUrl,
@@ -131,7 +137,13 @@ Deno.test("parser: extractAuthLinks decodes HTML entities (&amp;, &#38;, quotes)
   assertEquals(parsed.searchParams.get("token"), "pkce_abc");
   assertEquals(parsed.searchParams.has("amp;type"), false);
 
-  const legacyUrl = links.find((l) => l.includes("example.com"));
+  const legacyUrl = links.find((l) => {
+    try {
+      return new URL(l).hostname === "example.com";
+    } catch {
+      return false;
+    }
+  });
   assertExists(legacyUrl);
   assertEquals(legacyUrl, "https://example.com/login?u=test&ref=email");
 

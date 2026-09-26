@@ -62,19 +62,26 @@ export function extractOtpCode(content: string): string | undefined {
   return undefined;
 }
 
+const URL_ENTITY_MAP: Record<string, string> = {
+  "&amp;": "&",
+  "&#38;": "&",
+  "&#x26;": "&",
+  "&#x00026;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+  "&apos;": "'",
+};
+
 /**
- * Decodes common HTML entity representations in URLs.
+ * Decodes common HTML entity representations in URLs in a single pass
+ * to avoid double-unescaping vulnerabilities.
  */
 function decodeHtmlEntitiesInUrl(url: string): string {
-  return url
-    .replaceAll("&amp;", "&")
-    .replaceAll("&#38;", "&")
-    .replaceAll("&#x26;", "&")
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&#39;", "'")
-    .replaceAll("&apos;", "'");
+  return url.replace(/&(?:amp|#38|#x26|#x00026|lt|gt|quot|apos|#39);/gi, (match) => {
+    return URL_ENTITY_MAP[match.toLowerCase()] ?? match;
+  });
 }
 
 /**
