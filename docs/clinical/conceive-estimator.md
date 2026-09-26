@@ -10,12 +10,13 @@ and in code/docs.
 
 ## What Clue does, and what lunarlog ships instead
 
-Clue's Conceive mode uses **Dynamic Optimal Timing (DOT)**, a proprietary
-model developed by the Institute for Reproductive Health at Georgetown
-University. DOT is not published in a form lunarlog can license or
-reproduce, so this build ships a **documented substitute** rather than
-claiming parity with an algorithm it cannot name, cite, or verify. That
-distinction is stated in-app, not only here.
+Clue's Conceive mode uses **Dynamic Optimal Timing (DOT)**, the algorithm
+behind the Dot app — developed by Cycle Technologies and studied by
+Georgetown University's Institute for Reproductive Health (Simmons et al.,
+*JMIR Res Protoc* 2017, doi:10.2196/resprot.6886). lunarlog does not
+reproduce the DOT algorithm, so this build ships a **documented
+substitute** rather than claiming parity with an algorithm it does not
+implement. That distinction is stated in-app, not only here.
 
 ## The substitute: Wilcox, Weinberg & Baird (1995)
 
@@ -23,8 +24,16 @@ The estimator uses the day-by-day conception probabilities reported by
 Wilcox, Weinberg & Baird, *"Timing of sexual intercourse in relation to
 ovulation"*, **N Engl J Med** 1995;333(23):1517-1521
 ([doi:10.1056/NEJM199512073332301](https://doi.org/10.1056/NEJM199512073332301)).
-These are the population-average probabilities of a clinical pregnancy
-following a single act of intercourse on a given day relative to ovulation:
+These are population-average probabilities of conception — pregnancy
+detected by an early urinary-hCG rise, including very early losses —
+after a single act of intercourse on a given day relative to ovulation.
+They are **not** probabilities of a clinical pregnancy: about two thirds
+of the hCG-detected pregnancies in that cohort ended in a live birth, and
+the clinical-pregnancy probabilities Wilcox reported from the same cohort
+(Hum Reprod 1998,
+[doi:10.1093/humrep/13.2.394](https://doi.org/10.1093/humrep/13.2.394))
+peak about two days *before* ovulation and are much lower on ovulation
+day itself (about 0.08).
 
 | Day relative to ovulation | Probability |
 | ------------------------- | ----------- |
@@ -40,9 +49,29 @@ ending on the estimated day of ovulation, so there is no published
 probability for the day after ovulation and the curve ends at day 0. (The
 0.10 point estimate belongs to day −5, not to any day after ovulation.)
 
+**Value basis (issue #1120).** Only the two endpoints — day −5 (0.10) and
+day 0 (0.33) — were read directly in the study's abstract. The intermediate
+values for days −4…−1 (0.16, 0.14, 0.27, 0.31) are widely quoted but could
+not be confirmed against the paywalled full text, so they are recorded
+here as **secondary-source values** rather than primary-source ones. The
+curve's endpoints and its six-day span are primary-source.
+
 The table is a named constant (`kConceptionProbabilityByDayOffset`) in
 `lib/domain/conceive.dart`, not inline literals, so the numbers and this
 record cannot drift apart.
+
+### Why "Most likely day" is ovulation day (issue #1120)
+
+The shipped UI labels day 0 the "Most likely day" because 0.33 is the
+maximum of the table above: on the hCG-detected conception curve the study
+reports, ovulation day is the peak. That label must be read against the
+curve it comes from — it is the most likely day for conception *detected
+by an early hCG rise*, not the most likely day for a clinical pregnancy,
+which Wilcox's clinical-pregnancy figures put about two days earlier. The
+in-app copy now says "led to a detected pregnancy about …%" to make that
+distinction explicit. Changing the highlighted day without changing the
+underlying table would misstate the data, so the highlight stays on day 0
+until (if ever) a clinical-pregnancy curve is adopted.
 
 ## How the window is anchored
 

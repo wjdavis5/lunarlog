@@ -3642,10 +3642,10 @@ abstract class AppLocalizations {
   /// **'Estimated fertile window'**
   String get conceiveWindowLabel;
 
-  /// Conceive-mode card line naming the peak conception-likelihood day from the cited population-average study (Issue #204). Issue #1005: names what the percentage is a percentage of — the study's population, not the reader's personal odds.
+  /// Conceive-mode card line naming the peak conception-likelihood day from the cited population-average study (Issue #204). Issue #1005: names what the percentage is a percentage of — the study's population, not the reader's personal odds. Issue #1120: the study counted pregnancies detected by an early hCG rise (including very early losses), not clinical pregnancies, so the copy says 'detected pregnancy'.
   ///
   /// In en, this message translates to:
-  /// **'Most likely day: {date} (about {percent}% of cycles in the study behind this estimate)'**
+  /// **'Most likely day: {date}. In the study behind this estimate, sex on this day led to a detected pregnancy about {percent}% of the time.'**
   String conceivePeakDay(String date, int percent);
 
   /// Heading of the Perimenopause-mode Cycle View card, shown while profile_modes.mode is perimenopause (Issue #196).
@@ -3666,10 +3666,10 @@ abstract class AppLocalizations {
   /// **'Nothing to compare yet'**
   String get perimenopauseNotEnoughTitle;
 
-  /// Body of the Perimenopause-mode Cycle View card's empty state (Issue #196).
+  /// Body of the Perimenopause-mode Cycle View card's empty state (Issue #196). Issue #1120 appends ACOG FAQ047's report-abnormal-bleeding prompt: changes are normal but still worth telling a clinician about.
   ///
   /// In en, this message translates to:
-  /// **'Keep logging — once a second cycle is recorded, this view compares them so you can spot changes. Irregular cycles are expected around perimenopause.'**
+  /// **'Keep logging — once a second cycle is recorded, this view compares them so you can spot changes. Irregular cycles are expected around perimenopause. Still, tell a clinician about very heavy bleeding, bleeding between periods or after sex, or periods much closer together.'**
   String get perimenopauseNotEnoughBody;
 
   /// Perimenopause comparison line when the compared cycle is longer than the one before it (Issue #196). {days} is an already-formatted, pluralized day count. Issue #862: the card compares the two most recent COMPLETED cycles (an open cycle has no length yet), so the copy names those rather than saying 'this cycle' — which every other surface uses for the still-open one.

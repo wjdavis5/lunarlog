@@ -125,6 +125,13 @@ void main() {
       for (final card in HelpCards.all) {
         final copy = _copyOf(card).toLowerCase();
         for (final banned in kBannedSubstrings) {
+          // Issue #1120: the unusually-long-cycle card deliberately carries a
+          // pregnancy-test safety prompt (ACOG lists a missed period as a
+          // pregnancy warning sign for IUD users). "pregnan" is allowed there
+          // and only there — it is safety copy, not fertility education.
+          if (banned == 'pregnan' && card.id == 'unusually-long-cycle') {
+            continue;
+          }
           expect(copy.contains(banned), isFalse,
               reason: '${card.id} contains "$banned"');
         }
@@ -197,6 +204,27 @@ void main() {
     });
   });
 
+  group('safety prompts (issue #1120)', () {
+    test('unusually-long-cycle carries the pregnancy-test and 90-day prompts',
+        () {
+      final copy = _copyOf(HelpCards.byId('unusually-long-cycle')!);
+      expect(copy, contains('take a pregnancy test'));
+      expect(copy, contains('3 months (90 days)'));
+    });
+
+    test('flow-levels carries the bleeding-between-periods prompt', () {
+      final copy = _copyOf(HelpCards.byId('flow-levels')!).toLowerCase();
+      expect(copy, contains('spotting between periods'));
+      expect(copy, contains('mentioning to a doctor'));
+    });
+
+    test('period-late cites a medical source, not the app model', () {
+      final card = HelpCards.byId('period-late')!;
+      expect(card.source, 'ACOG Committee Opinion 651; ACOG FAQ047');
+      expect(card.source.startsWith('lunarlog'), isFalse);
+    });
+  });
+
   group('plain-language source lines (issue #878)', () {
     test('no source string leaks a code path, extension, or symbol', () {
       // A `(`-wrapped path (with a slash or dot inside) reads as debug text
@@ -230,7 +258,8 @@ void main() {
       );
     });
 
-    test('the app-source vs external-source card counts are unchanged', () {
+    test('the external-source card set grew with the medical re-sourcing '
+        '(issue #1120)', () {
       var appSourced = 0;
       var external = 0;
       for (final card in HelpCards.all) {
@@ -240,8 +269,8 @@ void main() {
           external++;
         }
       }
-      expect(appSourced, 23);
-      expect(external, 1);
+      expect(appSourced, 22);
+      expect(external, 2);
     });
   });
 }

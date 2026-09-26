@@ -2254,7 +2254,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String conceivePeakDay(String date, int percent) {
-    return 'Most likely day: $date (about $percent% of cycles in the study behind this estimate)';
+    return 'Most likely day: $date. In the study behind this estimate, sex on this day led to a detected pregnancy about $percent% of the time.';
   }
 
   @override
@@ -2269,7 +2269,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get perimenopauseNotEnoughBody =>
-      'Keep logging — once a second cycle is recorded, this view compares them so you can spot changes. Irregular cycles are expected around perimenopause.';
+      'Keep logging — once a second cycle is recorded, this view compares them so you can spot changes. Irregular cycles are expected around perimenopause. Still, tell a clinician about very heavy bleeding, bleeding between periods or after sex, or periods much closer together.';
 
   @override
   String perimenopauseLengthLonger(String days) {

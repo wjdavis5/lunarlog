@@ -12,18 +12,20 @@
 /// [currentConceptionEstimate].
 ///
 /// **Evidence basis (stated here and in the UI).** Clue's Conceive mode
-/// uses Dynamic Optimal Timing (DOT), a proprietary model developed by the
-/// Institute for Reproductive Health at Georgetown University, which
-/// lunarlog cannot license or reproduce. This file ships a documented
-/// substitute: the day-by-day conception probabilities published by
-/// Wilcox, Weinberg & Baird, "Timing of sexual intercourse in relation to
-/// ovulation", *N Engl J Med* 1995;333(23):1517-1521 — the same
-/// population-average study the issue names as the fallback evidence
-/// basis. Those are probabilities of clinical pregnancy from a single act
-/// of intercourse on a given day relative to ovulation, not a personalised
-/// prediction, and the estimator otherwise reuses the app's ordinary
-/// period-date math ([kDefaultLutealPhaseDays] back from the predicted
-/// next period start). It has not been validated in a research study, and
+/// uses Dynamic Optimal Timing (DOT), the algorithm behind the Dot app
+/// (developed by Cycle Technologies and studied by Georgetown University's
+/// Institute for Reproductive Health; Simmons et al., *JMIR Res Protoc*
+/// 2017, doi:10.2196/resprot.6886). lunarlog does not reproduce it, so
+/// this file ships a documented substitute: the day-by-day conception
+/// probabilities published by Wilcox, Weinberg & Baird, "Timing of sexual
+/// intercourse in relation to ovulation", *N Engl J Med*
+/// 1995;333(23):1517-1521 — the same population-average study the issue
+/// names as the fallback evidence basis. Those are probabilities of
+/// conception detected by an early urinary-hCG rise (including very early
+/// losses), not of clinical pregnancy, from a single act of intercourse on
+/// a given day relative to ovulation — not a personalised prediction — and
+/// the estimator otherwise reuses the app's ordinary period-date math
+/// ([kDefaultLutealPhaseDays] back from the predicted next period start). It has not been validated in a research study, and
 /// it is **not a contraception method** — see [kConceiveDisclaimer] in
 /// `lib/ui/overview/estimate_copy.dart`, rendered next to every surface
 /// that shows this curve.
@@ -62,7 +64,9 @@ import 'tags.dart';
 /// is invented here.
 ///
 /// Values are the point estimates from that study for the probability of
-/// clinical pregnancy following a single act of intercourse on that day.
+/// conception detected by an early urinary-hCG rise (including very early
+/// losses) following a single act of intercourse on that day — not the
+/// probability of a clinical pregnancy.
 /// They are population averages, not a measurement of any individual's
 /// fertility. A named, cited table rather than inline literals so the
 /// evidence basis can never drift from the numbers.
@@ -76,10 +80,10 @@ const Map<int, double> kConceptionProbabilityByDayOffset = {
 };
 
 /// One day's estimated conception likelihood: [probability] is the
-/// published population-average probability (0..1) of clinical pregnancy
-/// from a single act of intercourse on [date], under this estimator's
-/// assumption that [date] sits at the corresponding offset from estimated
-/// ovulation.
+/// published population-average probability (0..1) of hCG-detected
+/// conception from a single act of intercourse on [date], under this
+/// estimator's assumption that [date] sits at the corresponding offset
+/// from estimated ovulation.
 class ConceptionDayLikelihood {
   const ConceptionDayLikelihood({
     required this.date,

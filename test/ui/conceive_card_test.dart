@@ -161,6 +161,10 @@ void main() {
     expect(find.byKey(const ValueKey('conceive-card')), findsOneWidget);
     expect(find.byKey(const ValueKey('conceive-window')), findsOneWidget);
     expect(find.byKey(const ValueKey('conceive-peak')), findsOneWidget);
+    // Issue #1120: Wilcox 1995 counted hCG-detected conceptions, not
+    // clinical pregnancies, so the peak line says "detected pregnancy".
+    expect(find.textContaining('detected pregnancy'), findsOneWidget);
+    expect(find.textContaining('of cycles in the study'), findsNothing);
 
     // AC3/AC6: the evidence basis and the contraception disclaimer render,
     // verbatim, next to the value.

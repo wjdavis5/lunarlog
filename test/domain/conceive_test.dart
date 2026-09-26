@@ -107,6 +107,13 @@ void main() {
       expect(copy, isNot(contains('after ovulation')));
       expect(copy, isNot(contains('+1')));
     });
+
+    test('describes DOT provenance accurately (issue #1120)', () {
+      final copy = kConceiveEvidenceBasis.toLowerCase();
+      expect(copy, isNot(contains('not public')));
+      expect(copy, isNot(contains('could not be reproduced')));
+      expect(copy, contains('does not reproduce'));
+    });
   });
 
   group('conceptionEstimateFor', () {
