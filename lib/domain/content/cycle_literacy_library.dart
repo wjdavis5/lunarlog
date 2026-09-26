@@ -385,7 +385,7 @@ class CycleLiteracyLibrary {
           ArticleSection(
             heading: 'Rising Estrogen and Follicle Growth',
             paragraphs: [
-              'Following menstruation, the pituitary gland releases Follicle-Stimulating Hormone (FSH). In response, fluid-filled sacs in the ovaries called follicles begin growing. Each follicle holds an immature egg.',
+              'Around the start of a period, the pituitary gland releases more Follicle-Stimulating Hormone (FSH). In response, fluid-filled sacs in the ovaries called follicles begin growing. Each follicle holds an immature egg.',
               'As follicles grow, they secrete estradiol—the most potent form of estrogen. Estradiol stimulates cell division in the endometrium, causing the uterine lining to thicken and develop blood vessels in preparation for possible pregnancy.',
             ],
           ),
@@ -413,15 +413,15 @@ class CycleLiteracyLibrary {
           ArticleSection(
             heading: 'The Ovulatory Surge',
             paragraphs: [
-              'When estrogen levels reach a critical peak, they trigger a rapid surge of Luteinizing Hormone (LH) from the pituitary. Within 24 to 36 hours of this surge, the dominant ovarian follicle ruptures, releasing a mature egg.',
+              'When estrogen levels reach a critical peak, they trigger a rapid surge of Luteinizing Hormone (LH) from the pituitary. Usually about 24 to 36 hours after this surge begins (sometimes up to about two days), the dominant follicle ruptures, releasing a mature egg.',
               'Once released, the egg survives in the fallopian tube for only 12 to 24 hours. If it is not fertilized within this timeframe, it naturally dissolves.',
             ],
           ),
           ArticleSection(
-            heading: 'The 6-Day Fertile Window',
+            heading: 'The Fertile Window',
             paragraphs: [
-              'Although the egg lives for only one day, sperm can survive inside the reproductive tract for up to 5 days under the nourishment of fertile cervical mucus. Consequently, the biological fertile window spans the 5 days before ovulation plus the day of ovulation itself.',
-              'Important note: Calendar calculations provide statistical approximations based on past cycle lengths. They are helpful for understanding your cycle rhythms, but should never be used as a standalone contraceptive technique.',
+              'Although the egg lives for only about a day, sperm can survive for up to 5 days. So pregnancy can happen from sex in the 5 days before ovulation, on the day of ovulation, and — by ACOG\'s count — the day after.',
+              'Important note: the dates in this app are estimates from past cycle lengths. They are not a birth control method and must not be used to prevent pregnancy.',
             ],
           ),
         ],
@@ -504,8 +504,8 @@ class CycleLiteracyLibrary {
       ArticleSection(
         heading: 'Why Cramping Peaks Early',
         paragraphs: [
-          'Prostaglandin levels are highest during the first 24 to 48 hours of heavy bleeding, which is why cramping is typically most intense on Cycle Days 1 and 2.',
-          'When prostaglandins enter the bloodstream, they can also cause neighboring smooth muscles to contract, leading to common accompanying symptoms such as loose stools, nausea, or lower back pain.',
+              'Prostaglandin levels are highest on the first day or two of a period, which is why cramps are usually worst on Cycle Days 1 and 2.',
+              'Prostaglandins can also affect the gut, causing loose stools or nausea, and period pain often spreads to the lower back and thighs.',
               'While mild to moderate cramps are very common, pain that interferes with school, work, or daily activities warrants an evaluation by a healthcare professional. Get help urgently if pain is severe and pain relievers haven\'t helped, or if it\'s much worse than usual. Pain that keeps getting worse over months is also worth checking.',
         ],
       ),
@@ -534,14 +534,14 @@ class CycleLiteracyLibrary {
           ArticleSection(
             heading: 'The Myth of the 28-Day Clockwork Cycle',
             paragraphs: [
-              'Only a small fraction of individuals have exactly 28-day cycles every month. In healthy adults, cycle lengths naturally vary by 2 to 7 days from month to month without indicating any medical problem.',
+              'Only a small fraction of individuals have exactly 28-day cycles every month. In healthy adults, the gap between the shortest and longest cycle is usually up to about 7 to 9 days, depending on age.',
               'Factors such as psychological stress, travel, illness, shifts in sleep schedule, and vigorous exercise can transiently delay follicular development and shift ovulation date, extending that month\'s cycle.',
             ],
           ),
           ArticleSection(
             heading: 'The First Few Years',
             paragraphs: [
-              'For the first two to three years after a first period, cycles are often longer and less predictable than they will later become — commonly ranging from about 21 to 45 days, with some months skipped entirely. That is a normal part of the hormonal feedback loop maturing, not automatically a sign of a problem.',
+              'For the first two to three years after a first period, cycles are often longer and less predictable — most fall between about 21 and 45 days. An occasional longer cycle can happen, but if periods come more than 45 days apart, or you go 3 months (90 days) without one, check in with a doctor.',
               'Once cycles have settled, an adult cycle generally falls between about 21 and 35 days, and a few days of month-to-month variation remains normal.',
             ],
           ),
@@ -576,15 +576,15 @@ class CycleLiteracyLibrary {
           ArticleSection(
             heading: 'Finding Your Rhythm',
             paragraphs: [
-              'The body takes about two to three years after menarche (your first period) to coordinate the hormonal communication between the brain and ovaries. In these early years, the reproductive system is practicing and maturing.',
-              'It is very common for cycles to vary widely at first. Some cycles may be 24 days long, while the next might be 40 days, and occasional cycles may even be skipped entirely as your hormones settle.',
+              'It often takes two to three years after menarche (your first period) for cycles to settle — and for some people it takes six years or more. In these early years, the reproductive system is still practicing and maturing.',
+              'It is very common for cycles to vary widely at first. Some cycles may be 24 days long and the next 40 days — cycles between about 21 and 45 days are normal at this stage. If a period comes more than 45 days after the last one, or you go 3 months without one, talk with a parent or doctor.',
             ],
           ),
           ArticleSection(
             heading: 'What a Normal Early Cycle Looks Like',
             paragraphs: [
               'Bleeding typically lasts between 2 and 7 days. Flow may be light and brownish on some days, or brighter red with occasional small clots on others.',
-              'Mild cramping and breast tenderness before or during bleeding are common physical signals as the body releases prostaglandins to help the uterine lining shed.',
+              'Mild cramps are common: before and during a period the uterus makes prostaglandins, which make its muscles tighten to shed the lining. Some people also get sore breasts before a period, from normal hormone changes.',
             ],
           ),
           ArticleSection(
@@ -632,7 +632,7 @@ class CycleLiteracyLibrary {
           ArticleSection(
             heading: 'When to Speak with a Doctor',
             paragraphs: [
-              'While cycle length variation is normal, medical guidelines advise consulting a healthcare professional if cycles remain consistently over 45 days after the first year, if bleeding occurs more frequently than every 21 days, or if periods stop for 90 days or longer.',
+              'While cycle length variation is normal, medical guidelines say to see a healthcare professional if periods come more often than every 21 days or less often than every 45 days, or if 90 days go by without a period — even once.',
             ],
           ),
         ],
@@ -704,7 +704,7 @@ class CycleLiteracyLibrary {
             heading: 'Tracking the Cyclical Pattern',
             paragraphs: [
               'The defining hallmark of Premenstrual Syndrome (PMS) is its timing: symptoms appear consistently during the luteal phase and clear up within a few days of your period starting, followed by a symptom-free follicular phase.',
-              'If mood changes or fatigue persist throughout the entire month regardless of cycle day, they are likely unrelated to PMS and warrant a broader medical evaluation.',
+              'If mood changes or tiredness last all month, no matter the cycle day, it may be something other than PMS — like depression or anxiety, which can also get worse before a period. That\'s worth checking with a doctor.',
             ],
           ),
           ArticleSection(
