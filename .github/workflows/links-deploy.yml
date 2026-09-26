@@ -56,3 +56,10 @@ jobs:
           wranglerVersion: '4.20.0'
           workingDirectory: 'site'
           command: deploy --config wrangler.jsonc
+
+      - name: Smoke-check the deployed routes
+        # Issue #1090: the unit tests call the handler directly, so only a
+        # live check can catch the asset-first routing failure this issue
+        # documents. Retries for ~90 s to allow for edge propagation.
+        if: steps.cloudflare.outputs.configured == 'true'
+        run: bash .github/scripts/check-links-deploy.sh

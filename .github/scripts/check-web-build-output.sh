@@ -89,8 +89,7 @@ esac
 
 # No Cloudflare Worker source may ship inside the app build (epic #831,
 # issue #1097). Flutter copies everything under `web/` verbatim into
-# `build/web`, so a Worker that lives there (the links Worker used to be
-# `web/links/`; the email Worker was `web/email/`) publishes its
+# `build/web`, so a Worker kept there (both Workers once were) publishes its
 # TypeScript, `wrangler.*`, and `deno.*` files on `app.lunarlog.app`.
 # Worker source lives outside `web/` now (`site/` and `workers/`); this
 # fails closed if one creeps back in, or if any other stray .ts/manifest
