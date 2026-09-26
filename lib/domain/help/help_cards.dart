@@ -183,10 +183,11 @@ class HelpCards {
           'changes how much the estimate hedges, but it is not what keeps '
           'this banner away from a teen — teen mode does that on its own, '
           'at every stage.',
-      'A late estimate is not a statement about anyone\u2019s body — it '
-          'only means nothing logged yet lines up with the average. If '
-          'something worries you, talk to a doctor or another clinician '
-          'you trust.',
+      'A late estimate is only about the maths — it does not mean nothing '
+          'is wrong, and it does not rule anything out. If something worries '
+          'you, talk to a doctor or another clinician you trust.',
+      'If there\u2019s any chance of pregnancy, take a pregnancy test. With '
+          'an IUD, a missed period is a reason to contact a clinician.',
       'Estimates only — not medical advice.',
     ],
     source: _periodLateSource,
@@ -212,7 +213,7 @@ class HelpCards {
       'Estimates only — not medical advice. If something worries you, talk '
           'to a doctor or another clinician you trust.',
     ],
-    source: _appPredictionSource,
+    source: 'ACOG FAQ049; ACOG Committee Opinion 651',
     reviewDate: _safetyPromptReviewDate,
     screens: ['late-resolver'],
   );
@@ -311,13 +312,13 @@ class HelpCards {
       'Spotting is tracked separately from flow, as one of the day\u2019s '
           'options. Light staining between periods is logged there rather '
           'than as a light-flow day, which keeps period boundaries honest.',
-      'Bleeding or spotting between periods that keeps happening is worth '
-          'mentioning to a doctor.',
+      'Bleeding between periods or after sex is worth checking with a '
+          'doctor, especially if it keeps happening.',
       '"Not bleeding today" is an explicit note, different from leaving a '
           'day unlogged. It tells the record the day was seen and there was '
           'nothing to log.',
     ],
-    source: _appBehaviourSource,
+    source: 'NHS, Periods; ACOG FAQ095',
     reviewDate: _safetyPromptReviewDate,
     screens: ['flow-levels', 'day-sheet'],
   );

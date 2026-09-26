@@ -60,6 +60,16 @@ void main() {
         );
       }
     });
+
+    testWidgets('period-late card renders the pregnancy/IUD prompt (#1120)',
+        (tester) async {
+      await _pump(tester, const HelpCardView(card: HelpCards.periodLate));
+      expect(find.textContaining('take a pregnancy test'), findsOneWidget);
+      expect(
+        find.textContaining('missed period is a reason to contact a clinician'),
+        findsOneWidget,
+      );
+    });
   });
 
   group('HelpCardLink (contextual entry point)', () {

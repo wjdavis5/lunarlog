@@ -218,6 +218,12 @@ void main() {
       findsWidgets,
       reason: 'both the length line and the bleed-day line name the pair',
     );
+    // Issue #1120: the clinician prompt lives on the always-rendered body,
+    // so it is still present once there are cycles to compare.
+    expect(
+      find.textContaining('Still, tell a clinician'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('stays honest with fewer than two cycles', (tester) async {
@@ -235,6 +241,11 @@ void main() {
     expect(
       find.byKey(const ValueKey('perimenopause-compare-button')),
       findsNothing,
+    );
+    // Issue #1120: the prompt is in the always-on body, not the empty state.
+    expect(
+      find.textContaining('Still, tell a clinician'),
+      findsOneWidget,
     );
   });
 
