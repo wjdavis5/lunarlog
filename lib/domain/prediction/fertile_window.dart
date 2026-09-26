@@ -141,11 +141,12 @@ FertileWindowEstimate? estimateFertileWindow(
   // last log, so a fertile window back-calculated from it would describe a
   // cycle that was never observed and is not imminent — hide it outright.
   if (prediction.staleHistory) return null;
-  // Issue LLA-064: a regimen-schedule estimate (a withdrawal-bleed pack
-  // cadence) carries no ovulatory signal — see [PredictionBasis]'s own
-  // doc comment for why deriving a fertile window from it would be
-  // physiologically meaningless, not merely low-confidence.
-  if (prediction.basis == PredictionBasis.regimenSchedule) return null;
+  // Issue LLA-064 / #1118: any non-statistical basis (a pack cadence, or a
+  // hormonal method with no recorded start date) carries no ovulatory
+  // signal — see [PredictionBasis]'s own doc comment for why deriving a
+  // fertile window from it would be physiologically meaningless, not
+  // merely low-confidence.
+  if (prediction.basis != PredictionBasis.statistical) return null;
   return fertileWindowFor(
     start: prediction.estimatedNextStart,
     tier: prediction.tier,
@@ -176,8 +177,8 @@ FertileWindowEstimate? currentFertileWindow(
   if (prediction == null) return null;
   // Issue #859: see [estimateFertileWindow]'s own comment.
   if (prediction.staleHistory) return null;
-  // Issue LLA-064: see [estimateFertileWindow]'s own comment.
-  if (prediction.basis == PredictionBasis.regimenSchedule) return null;
+  // Issue LLA-064 / #1118: see [estimateFertileWindow]'s own comment.
+  if (prediction.basis != PredictionBasis.statistical) return null;
   for (final cycle in prediction.forecast) {
     final window = fertileWindowFor(
       start: cycle.start,

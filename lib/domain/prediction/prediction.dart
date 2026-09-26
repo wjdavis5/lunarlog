@@ -629,10 +629,11 @@ class PredictionsDisabled extends CyclePrediction {
 /// LLA-064). Every consumer that infers something beyond "when is the next
 /// bleed" — most importantly `fertile_window.dart`'s ovulation
 /// back-calculation, which assumes a follicular cycle driving toward a
-/// real ovulation — must check this first: a [regimenSchedule] estimate
-/// carries no ovulatory information at all, so deriving a fertile window
-/// or ovulation date from it would assert a physiological event a fixed
-/// pill/patch/ring pack schedule says nothing about.
+/// real ovulation — must check this first. **The gate is
+/// `basis != PredictionBasis.statistical`**: any other basis carries no
+/// ovulatory information, so deriving a fertile window, ovulation date,
+/// conception curve or subphase from it would assert a physiological event
+/// the estimate's schedule says nothing about.
 enum PredictionBasis {
   /// The ordinary history-based estimate (last episode start + mean of
   /// recent valid cycle lengths) — an ovulatory cycle assumption fertile-
@@ -642,9 +643,19 @@ enum PredictionBasis {
   /// [_packDrivenPrediction]'s withdrawal-bleed branch (issue #233): the
   /// next bleed is predicted from a fixed pack cadence, not averaged
   /// cycles. Combined hormonal contraception typically suppresses
-  /// ovulation, so this basis carries no fertility signal — consumers
-  /// must not back-calculate a fertile window or ovulation day from it.
+  /// ovulation, so this basis carries no fertility signal.
   regimenSchedule,
+
+  /// The history-based estimate for a profile whose in-effect method is a
+  /// withdrawal-bleed hormonal method (pill/patch/ring) with **no recorded
+  /// regimen start** (issue #1118 follow-up): there is no pack anchor, so
+  /// [_packDrivenPrediction] cannot run and the ordinary mean-of-cycles
+  /// estimate is used. It is still a hormonal-contraception profile, so —
+  /// exactly like [regimenSchedule] — it carries no ovulatory signal and
+  /// every ovulation gate must hide its content. A null start date is a
+  /// real state: rows written before issue #183's anchoring, older synced
+  /// rows, and imported older exports all produce it.
+  statisticalOnHormonalMethod,
 }
 
 /// A live estimate: last episode start + mean of the most recent usable
@@ -792,11 +803,15 @@ class ActivePrediction extends CyclePrediction {
   /// What this estimate is derived from (issue LLA-064) —
   /// [PredictionBasis.statistical] for the ordinary history-averaged
   /// estimate, [PredictionBasis.regimenSchedule] for
-  /// [_packDrivenPrediction]'s withdrawal-bleed branch. Fertile-window/
-  /// ovulation consumers ([fertile_window.dart], `forecast.dart`,
-  /// `prediction_projection.dart`, `scheduling.dart`) must check this
-  /// before deriving anything from [estimatedNextStart]/[forecast] — see
-  /// [PredictionBasis]'s own doc comment.
+  /// [_packDrivenPrediction]'s withdrawal-bleed branch, and
+  /// [PredictionBasis.statisticalOnHormonalMethod] for the history-averaged
+  /// estimate of a hormonal method that has no recorded start date (issue
+  /// #1118). Fertile-window/ovulation consumers ([fertile_window.dart],
+  /// `forecast.dart`, `prediction_projection.dart`, `scheduling.dart`,
+  /// `conceive.dart`, `cycle_subphase.dart`) must gate on
+  /// `basis != PredictionBasis.statistical` before deriving anything from
+  /// [estimatedNextStart]/[forecast] — see [PredictionBasis]'s own doc
+  /// comment.
   final PredictionBasis basis;
 
   /// Whole civil days from today to [estimatedNextStart] (negative when
@@ -897,11 +912,15 @@ class ActivePrediction extends CyclePrediction {
 /// in effect the behavior is exactly as before. A withdrawal-bleed method
 /// with no recorded regimen start ([ActiveBirthControl.startedOn] null)
 /// falls through to the history-based path defensively, since there is no
-/// pack anchor to predict from.
+/// pack anchor to predict from — and (issue #1118 follow-up) that estimate
+/// carries [PredictionBasis.statisticalOnHormonalMethod] so no ovulation
+/// content renders for it either.
 ///
 /// Ordering of the gates:
 /// 0. [birthControl] in effect → [PredictionsSuppressed] (continuous) or
-///    [_packDrivenPrediction] (withdrawal-bleed with a start date).
+///    [_packDrivenPrediction] (withdrawal-bleed with a start date); a
+///    withdrawal-bleed method without a start date continues to gate 1 with
+///    a non-ovulatory basis.
 /// 1. No episodes, or fewer than [kMinCompletedValidCycles] completed
 ///    *usable* cycles (valid per the 15–60 window and not omitted, within
 ///    [kRecencyWindowCycles] of the raw chronological list — issue #213) →
@@ -930,14 +949,27 @@ CyclePrediction computePrediction({
   if (kind == BirthControlPredictionKind.continuous) {
     return PredictionsSuppressed(method: birthControl!.method);
   }
-  if (kind == BirthControlPredictionKind.withdrawalBleed &&
-      birthControl!.startedOn != null) {
+  final isWithdrawalBleed =
+      kind == BirthControlPredictionKind.withdrawalBleed;
+  if (isWithdrawalBleed && birthControl!.startedOn != null) {
     return _packDrivenPrediction(
       episodes: episodes,
       startedOn: birthControl.startedOn!,
       today: today,
     );
   }
+  // Issue #1118 follow-up: a withdrawal-bleed method with no recorded
+  // regimen start has no pack anchor, so it falls through to the
+  // history-based estimate below. It is still a hormonal-contraception
+  // profile, though, so tag that estimate with the non-ovulatory
+  // [PredictionBasis.statisticalOnHormonalMethod] — every ovulation gate
+  // keys on `basis != statistical` and will hide its content. Without this,
+  // a pre-#183 row or an imported older export would render the full
+  // ovulatory phase card, fertile window and conception curve for a pill,
+  // patch or ring user.
+  final basis = isWithdrawalBleed
+      ? PredictionBasis.statisticalOnHormonalMethod
+      : PredictionBasis.statistical;
   // Issue LLA-071: a future-dated stored episode (a restored export, a
   // multi-timezone edit, or a device clock rollback) must never anchor
   // "today's" cycle or inflate history stats — every stat and the
@@ -1052,6 +1084,7 @@ CyclePrediction computePrediction({
     unusuallyLongCycle: unusuallyLongCycle,
     staleHistory: staleHistory,
     pms: pms,
+    basis: basis,
   );
 }
 

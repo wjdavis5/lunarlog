@@ -238,11 +238,12 @@ bool _sameDays(List<LocalDate> a, List<LocalDate> b) {
 /// already skips publishing entirely when the current prediction is not
 /// an [ActivePrediction] (`NotEnoughHistory`, no tier to share).
 PredictionProjection buildPredictionProjection(ActivePrediction prediction) {
-  // Issue LLA-064: a regimen-schedule (pack-driven withdrawal-bleed)
-  // prediction carries no ovulatory signal — see [PredictionBasis]'s own
-  // doc comment — so a share never derives fertile/ovulation days from
-  // one, matching the sharer's own calendar (`forecast.dart`).
-  final fertile = prediction.basis == PredictionBasis.regimenSchedule
+  // Issue LLA-064 / #1118: any non-statistical basis (a pack cadence, or a
+  // hormonal method with no recorded start date) carries no ovulatory
+  // signal — see [PredictionBasis]'s own doc comment — so a share never
+  // derives fertile/ovulation days from one, matching the sharer's own
+  // calendar (`forecast.dart`).
+  final fertile = prediction.basis != PredictionBasis.statistical
       ? (fertile: <LocalDate>{}, ovulation: <LocalDate>{})
       : _fertileAndOvulationDays(prediction.forecast);
   return PredictionProjection(

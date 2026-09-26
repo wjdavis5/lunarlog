@@ -197,16 +197,17 @@ ConceptionEstimate conceptionEstimateFor({
 /// passed, carrying that forecast cycle's own [PredictedCycle.tier].
 ///
 /// `null` when [prediction] is null (the caller's own too-little-history
-/// case), when its basis is [PredictionBasis.regimenSchedule] (a pack
-/// cadence asserts no ovulatory event — see [PredictionBasis]'s own doc
-/// comment), or when every forecast window has already passed.
+/// case), when its basis is not [PredictionBasis.statistical] (a pack
+/// cadence, or a hormonal method with no recorded start date, asserts no
+/// ovulatory event — see [PredictionBasis]'s own doc comment), or when
+/// every forecast window has already passed.
 ConceptionEstimate? currentConceptionEstimate(ActivePrediction? prediction) {
   if (prediction == null) return null;
   // Issue #859: a stale history's estimate is rolled many cycles past the
   // last log — a conception curve derived from it would point at a cycle
   // nobody logged, so hide it.
   if (prediction.staleHistory) return null;
-  if (prediction.basis == PredictionBasis.regimenSchedule) return null;
+  if (prediction.basis != PredictionBasis.statistical) return null;
   for (final cycle in prediction.forecast) {
     final estimate = conceptionEstimateFor(
       nextPeriodStart: cycle.start,

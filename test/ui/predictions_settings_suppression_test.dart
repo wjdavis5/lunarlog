@@ -218,6 +218,30 @@ void main() {
     await h.dispose();
   });
 
+  testWidgets('a copper IUD does not suppress — it keeps ordinary estimates '
+      '(issue #1118)', (tester) async {
+    final h = _Harness(tester);
+    final profile = await h.createProfile('Alice');
+    final c = await h.controller();
+    await h.modes.save(
+      profileId: profile.id,
+      mode: LifecycleMode.tracking,
+      birthControlMethod: 'copper_iud',
+    );
+
+    await tester.pumpWidget(h.appFor(c));
+    await tester.pumpAndSettle();
+
+    final toggle = tester.widget<SwitchListTile>(
+      find.byKey(const ValueKey('predictions-toggle')),
+    );
+    expect(toggle.onChanged, isNotNull,
+        reason: 'a copper IUD must not turn prediction off by its method');
+    expect(find.text(h.l10n().settingsPredictionsSubtitle), findsOneWidget);
+
+    await h.dispose();
+  });
+
   testWidgets(
     'while suppressed the flag cannot be toggled and is unchanged after '
     'the mode is cleared (issue #877 regression)',

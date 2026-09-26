@@ -26,11 +26,11 @@ class PhaseInsightsCard extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final colorScheme = theme.colorScheme;
 
-    // Issue #1118: a pack-driven (pill/patch/ring) prediction carries no
-    // ovulatory signal — combined hormonal contraception suppresses
-    // ovulation — so the card must show no subphase or ovulation content.
-    // See [PredictionBasis]'s own doc comment.
-    if (prediction.basis == PredictionBasis.regimenSchedule) {
+    // Issue #1118: any non-statistical basis — a pack-driven (pill/patch/
+    // ring) prediction, or a hormonal method with no recorded start date —
+    // carries no ovulatory signal, so the card must show no subphase or
+    // ovulation content. See [PredictionBasis]'s own doc comment.
+    if (prediction.basis != PredictionBasis.statistical) {
       return Card(
         key: const ValueKey('phase-insights-regimen-schedule'),
         margin: const EdgeInsets.symmetric(vertical: 8),

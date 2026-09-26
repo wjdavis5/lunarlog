@@ -158,8 +158,15 @@ class CycleSubphaseInfo {
       ? 'Cycle Day $startCycleDay'
       : 'Cycle Days $startCycleDay–$endCycleDay';
 
+  /// Issue #1118: PFSI033 covers the estrogen rise, ovulation, and the
+  /// post-ovulation progesterone rise/fall; FAQ024 covers the BBT rise.
+  /// Neither names the LH surge, the estrogen peak, the corpus luteum or a
+  /// progesterone peak, so the textbook that does (Speroff, 9th ed.) stays
+  /// alongside rather than being replaced by sources that only partly
+  /// support the card. No verified web page stating all four was found.
   static const String kSourceCitation =
-      'ACOG Menstrual Cycle infographic (PFSI033); ACOG FAQ024';
+      'ACOG Menstrual Cycle infographic (PFSI033); ACOG FAQ024; '
+      'Speroff\'s Clinical Gynecologic Endocrinology (9th ed.)';
   static const String kReviewDate = '2026-09-26';
 }
 
@@ -226,21 +233,22 @@ String? _buildHedgedNotice({required bool isHedged, required bool isLate}) {
 
 /// Derives the active [CycleSubphaseInfo] for [today] given [prediction].
 ///
-/// This describes an ovulatory cycle and must not be called for a
-/// pack-driven [PredictionBasis.regimenSchedule] prediction (pill, patch,
-/// or ring): that basis asserts no ovulatory event, so any subphase or
-/// ovulation copy would be false in context (issue #1118). Callers —
-/// `PhaseInsightsCard` is the only one today — branch on the basis first;
-/// the assert below pins that contract.
+/// This describes an ovulatory cycle and must not be called for any
+/// non-statistical [PredictionBasis] prediction (a pack-driven pill, patch
+/// or ring schedule, or a hormonal method with no recorded start date):
+/// those bases assert no ovulatory event, so any subphase or ovulation copy
+/// would be false in context (issue #1118). Callers — `PhaseInsightsCard`
+/// is the only one today — branch on the basis first; the assert below pins
+/// that contract.
 CycleSubphaseInfo deriveSubphase({
   required ActivePrediction prediction,
   required LocalDate today,
 }) {
   assert(
-    prediction.basis != PredictionBasis.regimenSchedule,
+    prediction.basis == PredictionBasis.statistical,
     'deriveSubphase describes an ovulatory cycle and must not be called '
-    'for a pack-driven (regimenSchedule) prediction — see PredictionBasis '
-    '(issue #1118).',
+    'for a non-statistical (non-ovulatory) prediction — see '
+    'PredictionBasis (issue #1118).',
   );
   final cycleDay = prediction.cycleDay;
   final meanLength = prediction.meanCycleLengthDays.round().clamp(15, 60);

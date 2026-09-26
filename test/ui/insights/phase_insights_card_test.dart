@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/birth_control.dart';
+import 'package:lunarlog/domain/episodes/episodes.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
@@ -87,13 +88,58 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.textContaining("ovulation usually doesn't happen"),
+      find.textContaining('your estimate follows your pack schedule'),
+      findsOneWidget,
+    );
+    // Issue #1118: the copy must distinguish combined from progestin-only
+    // pills, because about 4 in 10 POP users still ovulate (ACOG FAQ186).
+    expect(
+      find.textContaining('progestin-only (mini) pills'),
       findsOneWidget,
     );
     // No subphase card content renders.
     expect(find.byKey(const ValueKey('phase-name-text')), findsNothing);
     expect(find.byKey(const ValueKey('phase-explainer-text')), findsNothing);
     expect(find.byKey(const ValueKey('phase-tracking-text')), findsNothing);
+    expect(find.textContaining('Ovulation'), findsNothing);
+  });
+
+  testWidgets(
+      'pill with no recorded start date also shows no subphase content '
+      '(issue #1118 follow-up)', (tester) async {
+    final today = LocalDate(2026, 4, 10);
+    // A pre-#183 row / imported older export: the method is a pill but the
+    // regimen start was never recorded, so the predictor cannot use the pack
+    // branch and tags the statistical estimate as non-ovulatory.
+    final prediction = computePrediction(
+      episodes: [
+        for (final start in [
+          LocalDate(2026, 1, 1),
+          LocalDate(2026, 1, 29),
+          LocalDate(2026, 2, 28),
+          LocalDate(2026, 4, 1),
+        ])
+          Episode(start, start.addDays(3)),
+      ],
+      today: today,
+      birthControl: ActiveBirthControl(
+        method: BirthControlMethod.pill,
+        startedOn: null,
+      ),
+    ) as ActivePrediction;
+    expect(prediction.basis, PredictionBasis.statisticalOnHormonalMethod);
+
+    await _pump(
+      tester,
+      PhaseInsightsCard(prediction: prediction, today: today),
+    );
+
+    expect(
+      find.byKey(const ValueKey('phase-insights-regimen-schedule')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('phase-name-text')), findsNothing);
+    expect(find.byKey(const ValueKey('phase-explainer-text')), findsNothing);
     expect(find.textContaining('Ovulation'), findsNothing);
   });
 
