@@ -375,7 +375,7 @@ class CycleLiteracyLibrary {
       CycleLiteracyArticle(
         id: 'understanding-follicular-phase',
         title: 'The Follicular Phase & The Power of Estrogen',
-        summary: 'How rising estradiol stimulates follicle development and thickens the endometrium — and why energy often feels higher.',
+        summary: 'How FSH and rising estradiol grow a follicle and rebuild the uterine lining.',
         category: CycleLiteracyCategory.phases,
         readingTimeMinutes: 2,
         sources: [_speroffs, _guytonAndHall, _nhsPeriods],
@@ -392,7 +392,7 @@ class CycleLiteracyLibrary {
           ArticleSection(
             heading: 'Physical & Emotional Impacts',
             paragraphs: [
-              'Rising estrogen during the late follicular phase often correlates with increased physical vitality, clearer skin, and improved mood. Estrogen also interacts with cervical crypts, transitioning cervical fluid from dry or creamy to slippery, fertile fluid as ovulation approaches.',
+              'Some people notice changes in energy, mood, or skin around this time, but research doesn\'t show a consistent pattern, and many people notice no difference. Estrogen also interacts with cervical crypts, transitioning cervical fluid from dry or creamy to slippery, fertile fluid as ovulation approaches.',
             ],
           ),
         ],
@@ -459,7 +459,7 @@ class CycleLiteracyLibrary {
   static const CycleLiteracyArticle pmsAndProgesterone = CycleLiteracyArticle(
     id: 'pms-and-progesterone',
     title: 'Premenstrual Changes: Why Hormones Shift Your Mood and Body',
-    summary: 'The biological basis of PMS: how the abrupt withdrawal of progesterone and estrogen influences neurotransmitters.',
+    summary: 'What researchers think happens in PMS: hormone levels are usually normal, but the brain may be extra sensitive to their rise and fall.',
     category: CycleLiteracyCategory.bodyAndSymptoms,
     readingTimeMinutes: 3,
     sources: [_acogCpgNo7, _rcogPremenstrualSyndrome],
@@ -470,14 +470,14 @@ class CycleLiteracyLibrary {
         heading: 'What Causes Premenstrual Symptoms?',
         paragraphs: [
           'Premenstrual syndrome (PMS) refers to a collection of physical, cognitive, and emotional symptoms that occur during the late luteal phase and resolve shortly after menses begins.',
-          'Rather than an abnormal level of hormones, research indicates PMS is triggered by an increased sensitivity to normal hormonal fluctuations—specifically the steep drop in progesterone and estrogen that occurs when the corpus luteum regresses.',
+          'Hormone levels in people with PMS are usually normal. Researchers think some people are more sensitive to the normal rise and fall of estrogen and progesterone after ovulation, but the exact cause isn\'t known.',
         ],
       ),
       ArticleSection(
         heading: 'Serotonin and GABA Interactions',
         paragraphs: [
           'Progesterone metabolites (such as allopregnanolone) interact directly with GABA receptors in the brain, which regulate calm and anxiety. As progesterone plunges, researchers think this shifts GABA and serotonin signaling, which may contribute to premenstrual mood sensitivity, sleep disruptions, and sugar cravings.',
-          'Tracking premenstrual symptoms over several cycles helps identify personal patterns and supports productive discussions with your healthcare provider if symptoms become disruptive.',
+          'Tracking premenstrual symptoms over several cycles helps identify personal patterns and supports productive discussions with your healthcare provider if symptoms become disruptive. If you ever feel hopeless or have thoughts of harming yourself, get help now: call or text 988 in the US, call 999 or go to A&E in the UK, or contact your local emergency number.',
         ],
       ),
     ],
@@ -506,7 +506,7 @@ class CycleLiteracyLibrary {
         paragraphs: [
           'Prostaglandin levels are highest during the first 24 to 48 hours of heavy bleeding, which is why cramping is typically most intense on Cycle Days 1 and 2.',
           'When prostaglandins enter the bloodstream, they can also cause neighboring smooth muscles to contract, leading to common accompanying symptoms such as loose stools, nausea, or lower back pain.',
-          'While mild to moderate cramps are very common, pain that interferes with school, work, or daily activities warrants an evaluation by a healthcare professional.',
+              'While mild to moderate cramps are very common, pain that interferes with school, work, or daily activities warrants an evaluation by a healthcare professional. Get help urgently if pain is severe and pain relievers haven\'t helped, or if it\'s much worse than usual. Pain that keeps getting worse over months is also worth checking.',
         ],
       ),
     ],
@@ -548,7 +548,7 @@ class CycleLiteracyLibrary {
           ArticleSection(
             heading: 'When to Ask a Doctor',
             paragraphs: [
-              'A few patterns are worth raising with a healthcare professional: no period for three months once cycles had been regular, bleeding that lasts longer than about a week, or soaking through a pad or tampon every hour for several hours.',
+              'Check in with a healthcare professional if: you go 3 months (90 days) without a period — even if your cycles were never regular; bleeding lasts more than 7 days; you soak through a pad or tampon every hour for several hours; or you pass clots the size of a quarter or bigger. If you\'ve had sex and your period is late, take a pregnancy test. Get help right away if you feel dizzy or light-headed while bleeding.',
             ],
           ),
         ],
@@ -590,7 +590,7 @@ class CycleLiteracyLibrary {
           ArticleSection(
             heading: 'Tracking and Self-Advocacy',
             paragraphs: [
-              'Logging your bleeding days helps you discover your own unique rhythm rather than comparing yourself to a textbook schedule. If bleeding lasts more than 7 days, if you need to change pads or tampons every 1 to 2 hours, or if severe pain disrupts school, talk with a parent or doctor.',
+              'Logging your bleeding days helps you discover your own unique rhythm rather than comparing yourself to a textbook schedule. If bleeding lasts more than 7 days, if you need to change pads or tampons every 1 to 2 hours, or if severe pain disrupts school, talk with a parent or doctor. Get help right away if you feel dizzy or light-headed, or your heart is racing, while you\'re bleeding.',
             ],
           ),
         ],
@@ -710,7 +710,7 @@ class CycleLiteracyLibrary {
           ArticleSection(
             heading: 'When to Seek Clinical Care',
             paragraphs: [
-              'Reach out to a doctor if mood symptoms significantly interfere with daily life, school, work, or relationships, or if you feel overwhelmed, anxious, or hopeless. More severe premenstrual conditions, such as Premenstrual Dysphoric Disorder (PMDD), are highly treatable with clinical guidance.',
+              'Reach out to a doctor if mood symptoms significantly interfere with daily life, school, work, or relationships, or if you feel overwhelmed or anxious. If you ever feel hopeless or have thoughts of harming yourself, get help now: call or text 988 in the US, call 999 or go to A&E in the UK, or contact your local emergency number. More severe premenstrual conditions, such as Premenstrual Dysphoric Disorder (PMDD), have treatments that can help, so it\'s worth asking.',
             ],
           ),
         ],
