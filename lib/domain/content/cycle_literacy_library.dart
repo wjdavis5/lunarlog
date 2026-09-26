@@ -525,7 +525,9 @@ class CycleLiteracyLibrary {
         sources: [
           _figoMenstrualDisorders,
           _whoMenstrualHealth,
-          _acogMenstrualCycle,
+          _acogCommitteeOpinion651,
+          _acogYourFirstPeriod,
+          _aapHealthyChildrenMenstrualDisorders,
         ],
         reviewDate: _currentReviewDate,
         relatedSubphases: [
@@ -550,7 +552,7 @@ class CycleLiteracyLibrary {
           ArticleSection(
             heading: 'When to Ask a Doctor',
             paragraphs: [
-              'Check in with a healthcare professional if: you go 3 months (90 days) without a period — even if your cycles were never regular; bleeding lasts more than 7 days; you soak through a pad or tampon every hour for several hours; or you pass clots the size of a quarter or bigger. If you\'ve had sex and your period is late, take a pregnancy test. Get help right away if you feel dizzy or light-headed while bleeding.',
+              'Check in with a healthcare professional if: you go 3 months (90 days) without a period — even if your cycles were never regular; bleeding lasts more than 7 days; you need to change a soaked pad or tampon every 1 to 2 hours; or you pass clots the size of a quarter (about 2.5 cm) or bigger. If you\'ve had sex and your period is late, take a pregnancy test. Get help right away if you feel dizzy or light-headed, or your heart is racing, while you\'re bleeding.',
             ],
           ),
         ],
