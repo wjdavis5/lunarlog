@@ -229,8 +229,15 @@ issue #1091). `connect-src` is limited to the app origin, the
 `dleexnnevuuddcgcpztq.supabase.co` project (HTTPS + WSS), the Google Fonts
 fallback host (`https://fonts.gstatic.com`, on-demand glyph fallback only),
 and Sentry's ingest host. `font-src` is `'self' data:` plus that same
-fallback host. `tool/web_smoke/` (Section 6) runs the served policy in a real
-browser on every relevant PR.
+fallback host. Note on Sentry: `sentry_flutter` loads its JS SDK from
+`browser.sentry-cdn.com`, which `script-src 'self'` blocks, and the SDK has no
+option to self-host that bundle. Whether Sentry delivers *any* error on web
+while its JS SDK is blocked is **unverified** — `JavascriptTransport.send`
+goes through the same JS binding — so a browser build configured with a
+`SENTRY_DSN` currently has no confirmed web error reporting; this is tracked
+in issue #1110 (the ingest host stays allowed for the case where it does
+work). `tool/web_smoke/` (Section 6) runs the served policy in a real browser
+on every relevant PR.
 
 **D4 — Local data and token are cleared only by the app's own reset or a
 browser site-data clear; the copy tells the user that.** `WebGuardrails` keeps
