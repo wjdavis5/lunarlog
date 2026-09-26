@@ -17,8 +17,8 @@ and says so explicitly. Nothing here is "this is probably right."
 
 | System | URI | Used for |
 |---|---|---|
-| LOINC | `http://loinc.org` | The *question* — what was measured or asked (menstrual status, cycle length, delivery date…). |
-| SNOMED CT | `http://snomed.info/sct` | The *finding* — the symptom or observation itself (headache, nausea…). |
+| LOINC | `http://loinc.org` | Commonly the *question* — what was measured or asked (LMP, delivery date…) — and also measurement concepts (body temperature, body weight). |
+| SNOMED CT | `http://snomed.info/sct` | The *finding* — the symptom or observation itself (headache, nausea…) — or the *observable entity* behind a question (usual cycle length `161716008`, quantity of menstrual blood loss `364308001`, basal body temperature `300076005`). |
 | lunarlog local | `https://lunarlog.app/fhir/CodeSystem/tag` | Concepts with no verified external mapping. An `http(s)://` URL under a domain lunarlog controls, not an unregistered `urn:` scheme (this system used `urn:lunarlog:code` until 2026-09-09) — FHIR only requires `Coding.system` to be a URI that uniquely identifies the scheme, but RFC 8141 requires `urn:` namespace identifiers to be formally registered, which `urn:lunarlog:code` never was; FHIR's own guidance for a locally-defined system is an `http(s)://` URL under a domain the publisher controls, which is what this string is even though no document is actually published at that address yet. #961 moved the base to `lunarlog.app` from `https://github.com/wjdavis5/lunarlog/fhir/...` before the first store build shipped an export. **This string is frozen from the first shipped build and must never change** — a Bundle already handed to a clinician cannot be recalled, and changing it later would break every previously exported `Observation.code`. |
 
 ## LOINC code set (A3-44)
@@ -257,8 +257,9 @@ features have all landed since #152 was written — BBT observation logging
 mode, and #260's birth-control model (`lib/domain/birth_control.dart`).
 **BBT and weight are now emitted (issue #1115)**; pregnancy/due-date and
 birth-control resource shapes remain reserved but unemitted. Birth-control
-intake rows are deliberately **not** exported as Observations at all — see
-`docs/clinical/fhir-export.md`.
+intake rows — the app's `birth_control_*` categories and the Clue import's
+unsuffixed `birth_control` category — are deliberately **not** exported as
+Observations at all; see `docs/clinical/fhir-export.md`.
 
 ### Basal body temperature (emitted as a vital sign, issue #1115)
 
@@ -267,24 +268,25 @@ standard vital-sign code US Core / IPS vital-signs profiles expect, but on
 its own it understates BBT as a distinct clinical concept (resting,
 first-waking). The builder therefore emits it — reserved as
 `kBodyTemperatureLoinc`, deliberately **not** in `kLoincCodes` (that table
-is exactly the A3-44 menstrual question seven) — **paired with** SNOMED
-`300076005` "Basal body temperature" (`kBasalBodyTemperatureSnomed`, active
-since 2002, verified against tx.fhir.org 2026-09-26), rather than a
-`bodySite` qualifier or an invented BBT-specific LOINC code. The pair lands
-in the IPS **Vital Signs** section (LOINC `8716-3`); weight uses LOINC
-`29463-7` "Body weight" in the same section.
+is exactly the A3-44 menstrual question seven) — **paired with** the SNOMED
+observable entity `300076005` "Basal body temperature"
+(`kBasalBodyTemperatureSnomed`, FSN "Basal body temperature (observable
+entity)", active since 2002, verified against tx.fhir.org 2026-09-26),
+rather than a `bodySite` qualifier or an invented BBT-specific LOINC code.
+The pair lands in the IPS **Vital Signs** section (LOINC `8716-3`); weight
+uses LOINC `29463-7` "Body weight" in the same section.
 
 ### Pregnancy + estimated due date (mode landed; no due-date data yet)
 
 Pregnancy status is conventionally a `Condition` (or an `Observation` of
 pregnancy status); estimated delivery date is an `Observation` using LOINC
 `11779-6` "Delivery date Estimated from last menstrual period"
-(`kEstimatedDeliveryDateLoinc`, verified against tx.fhir.org 2026-09-26;
-USCDI lists it as a **Level 0** submission, not "included in USCDI" as an
-earlier note overstated:
-https://www.healthit.gov/isa/uscdi-data/estimated-date-delivery). The
-previously reserved `11778-8` means a date a *practitioner selected*, so it
-must not be used for an app-calculated, LMP-derived date. #188's lifecycle
+(`kEstimatedDeliveryDateLoinc`, verified against tx.fhir.org 2026-09-26).
+USCDI's Level 0 "Estimated Date of Delivery" element cites **`11778-8`**
+("Delivery date Estimated", a clinical estimate, LOINC method
+Clinical.estimated), not `11779-6`; lunarlog reserves `11779-6` because an
+app-computed date is LMP-derived, while `11778-8` means a date a
+practitioner selected. #188's lifecycle
 modes carry a pregnancy *mode*, but no pregnancy-status or due-date data
 model exists yet — only the shape is reserved.
 
@@ -300,11 +302,13 @@ Reserved as `kBirthControlResourceShapes` in the Dart module. Not
 modeled as `Observation` for any of these — doing so would make the
 export look machine-generated rather than clinically credible. No
 specific medication/device codes are reserved since none has been
-verified against an external system. The per-day `birth_control_*` intake
-rows (#260) are therefore **not emitted at all** today (issue #1115): an
-intake row is not an `Observation`, and no `MedicationStatement`/`Device`
-builder exists yet, so it is deliberately absent rather than exported
-under a wrong resource type. See `docs/clinical/fhir-export.md`.
+verified against an external system. The per-day intake rows — the app's
+`birth_control_*` categories (#260) and the Clue import's unsuffixed
+`birth_control` category — are therefore **not emitted at all** today
+(issue #1115): an intake row is not an `Observation`, and no
+`MedicationStatement`/`Device` builder exists yet, so it is deliberately
+absent rather than exported under a wrong resource type. See
+`docs/clinical/fhir-export.md`.
 
 ## Issue #249's expanded taxonomy — local decisions (2026-09)
 

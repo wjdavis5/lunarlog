@@ -28,7 +28,7 @@ through the same share-sheet pattern but as its own file
    elements a FHIR-conformant Composition requires), it carries its own
    document-level `text` narrative (a `status: generated` summary of the
    record counts) — the same discipline each section's own `text.div`
-   already follows, just at the document level. Two sections:
+   already follows, just at the document level. Three sections:
    - **Results** (LOINC `30954-2`) — the menstrual-flow Observations
      (one per day entry that is a bleed day — see `isBleed` below) and,
      when available, the two cycle-statistic Observations derived from
@@ -66,13 +66,15 @@ wrote that table, so every tagged symptom (`DayEntry.tags`, the app's real
 symptom-logging surface) was silently missing from the export. **That
 "nothing writes it" claim is now stale (issue #1116):** the day sheet
 writes pain, spotting, BBT and weight rows, birth-control intake writes
-its `birth_control_*` rows, and the Clue import writes rows too. The
+its `birth_control_*` rows, the Clue import writes rows too (`birth_control`
+and other categories). The
 Problems section emits from **both**:
 
 - One `Observation` per live (`excluded == false`) *symptom* `observations`
   row, dual-coded via `dualCodingFor` (or the local fallback — see "Coding
-  discipline" below). Measurement (`bbt`/`weight`) and birth-control
-  intake rows are filtered out here — see "Measurement rows" and
+  discipline" below). Measurement (`bbt`/`weight`) rows and birth-control
+  intake rows (`birth_control_*` and the Clue `birth_control` category) are
+  filtered out here — see "Measurement rows" and
   "Exclusion policy".
 - One `Observation` per tag per day entry, from `DayEntry.tags`, also
   dual-coded via `dualCodingFor` — **except** when a live `observations`
@@ -92,40 +94,60 @@ Observations already had (see "Determinism" below).
 A tag `Observation` carries no category heading, so its
 `CodeableConcept.text` (and the lunarlog-local coding's `display`) is the
 only human-readable text a receiving system may show. The export uses
-`contextualDisplayForTag` (`lib/domain/tags.dart`) — `flatDisplayForTag`
-plus a category context for options that lose their meaning alone:
-"Sex: Withdrawal", "Test result: Pregnancy · positive", "Sleep duration:
-0-3 hours", "Discharge: Egg white", "Stool: Normal", "Medication:
-Antibiotic". Collisions stay disambiguated ("Great (digestion)" /
-"Great (stool)"). A non-tag `observations` row's local fallback display is
-also category-qualified (e.g. "Birth control pill: missed", though those
-rows are not exported — see "Exclusion policy") rather than a bare option
-code.
+`contextualDisplayForTag` (`lib/domain/tags.dart`): a per-code override
+where no category prefix reads correctly ("Trouble sleeping", "Home
+pregnancy test: positive", "Home ovulation (LH) test: negative", "Took
+pain medication", "Took an antibiotic", "Sex: withdrawal method
+(pull-out)", "Ailment: allergy symptoms", "Alcoholic drinks"), otherwise
+`flatDisplayForTag` plus a category context for options that lose their
+meaning alone ("Sleep duration: 0-3 hours", "Vaginal discharge: Egg
+white", "Stool: Normal", "Craving: Sweet"). Collisions stay disambiguated
+("Great (digestion)" / "Great (stool)"). A non-tag `observations` row's
+local fallback display is category-qualified too (e.g. "Birth control
+pill: missed", though those rows are not exported — see "Exclusion
+policy"), and a row whose option is its own category renders as the
+category alone ("Spotting", never "Spotting: spotting").
 
 ### Measurement rows: Vital Signs, not Problems (issue #1115)
 
 Live `bbt` and `weight` `observations` rows no longer ride the generic
 local fallback into Problems. They are emitted in the IPS **Vital Signs**
-section (LOINC `8716-3`):
+section (LOINC `8716-3`) with `Observation.category`
+`http://terminology.hl7.org/CodeSystem/observation-category#vital-signs`
+(the R4 `vitalsigns`/`bodytemp`/`bodyweight` profiles require it 1..1):
 
 - BBT → LOINC `8310-5` "Body temperature" **plus** SNOMED `300076005`
   "Basal body temperature", value and UCUM unit unchanged.
 - Weight → LOINC `29463-7` "Body weight", value and UCUM unit unchanged.
 
-Birth-control intake rows (`birth_control_*`) are **not emitted at all** —
-they are not `Observation`s (the A3-48 rule `clinical_terminology.dart`
-records), and no `MedicationStatement`/`Device` builder exists yet, so they
-are deliberately absent rather than exported under a wrong resource type.
+Only a row that is an actual, interpretable measurement becomes a vital
+sign: it needs a numeric value **and** a recognised UCUM unit (`Cel`,
+`[degF]`, `kg`, `[lb_av]`). A Clue BBT datapoint read from a raw
+`value`/`temperature` key stores `unit: 'value'`/`'temperature'` (no UCUM
+code, and ambiguous between °C and °F), and an unknown-shape row can carry
+no value at all; both break the profile's required
+`valueQuantity.system`/`code` and are omitted rather than exported.
+
+Birth-control intake rows — the app's `birth_control_*` categories and the
+Clue import's unsuffixed `birth_control` category — are **not emitted at
+all** — they are not `Observation`s (the A3-48 rule
+`clinical_terminology.dart` records), and no `MedicationStatement`/`Device`
+builder exists yet, so they are deliberately absent rather than exported
+under a wrong resource type.
 
 ## `Observation` value shape (#157 review fix; Issue #612 LLA-088)
 
 A symptom `Observation` (from either source above) carries, when present
 on the underlying row:
 
-- `intensity` → `valueInteger`, **with** a `referenceRange` stating the
-  scale (issue #1114): `low` 1, `high` 5, and `text` "1 (mild) to 5
-  (severe)". Without it a clinician reads the bare grade on the usual
-  0-10 pain scale. The same scale is stated in the clinician PDF.
+- `intensity` → `valueInteger`, **with** a second `Observation.note`
+  stating the scale (issue #1114): "Intensity self-rated on a 1-5 scale
+  (1 (least intense) to 5 (most intense)); this is not the 0-10 clinical
+  pain scale." A **note**, not a `referenceRange`: R4 reads an untyped
+  reference range as the *normal* range, so a 1-5 range would assert 1-5 is
+  normal and, on a row whose top-level value is a measurement, would
+  wrongly qualify that value. The scale wording is shared with the
+  clinician PDF.
 - `valueNum` + `unit` → `valueQuantity`. `unit` carries the UCUM code
   (`system: http://unitsofmeasure.org`, `code`) for the closed unit set
   `Observation.unit` documents today (`celsius`→`Cel`,
@@ -177,17 +199,20 @@ patient/guardian self-report:
   verified against `tx.fhir.org`) and `who` = the Patient.
 - `Provenance.activity` is coded `self-reported` on lunarlog's own local
   system — no verified external FHIR R4 code represents "patient
+  self-report" as a `Provenance.activity` in the core value sets, so this
+  is an explicit local decision (see "Local codes" below), not a guess.
 
 **Exception — calculated values are not self-reported (issue #1115).**
 The typical-cycle-length `Observation` is computed by lunarlog from the
 profile's logged period starts, so it is **not** marked self-reported: it
-carries no `performer` and a note saying it is calculated from logged
-period starts. (The LMP `Observation` *is* self-reported — its value is the
-logged period-start date itself, not a derivation.) The earlier "every
+carries no `performer`, an `Observation.method.text` of "Calculated (mean
+of recent logged cycles)", and a note spelling that out — "Average of up
+to 6 recent cycle lengths (15-60 days), calculated by lunarlog from period
+start dates logged by the patient or guardian; not measured or confirmed
+by a clinician." (The LMP `Observation` *is* self-reported — its value is
+the logged period-start date itself, not a derivation.) The earlier "every
 clinical Observation is self-reported" claim was misleading for this row
 (issue #1116).
-  self-report" as a `Provenance.activity` in the core value sets, so this
-  is an explicit local decision (see "Local codes" below), not a guess.
 
 ## IPS-shaped, not IPS-conformant
 
@@ -220,9 +245,11 @@ because a FHIR document can leave the device:
   from the output.
 - No `loggedByUserId`/`lastModifiedByUserId`/`sourceId`/`importId`/email/
   Supabase user id anywhere.
-- **Birth-control intake rows (#1115)** are never emitted. The A3-48 rule
+- **Birth-control intake rows (#1115)** are never emitted — the app's
+  per-day `birth_control_*` categories and the Clue import's unsuffixed
+  `birth_control` category alike. The A3-48 rule
   is that no birth-control method shape is modeled as an `Observation`;
-  the per-day `birth_control_*` intake rows are not an
+  these intake rows are not an
   `Observation`-shaped concept, and no `MedicationStatement`/`Device`
   builder exists yet, so they are absent rather than exported under a
   wrong resource type. Pregnancy/birth-control resource mapping remains
