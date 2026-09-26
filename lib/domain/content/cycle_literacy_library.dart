@@ -567,7 +567,7 @@ class CycleLiteracyLibrary {
         category: CycleLiteracyCategory.variability,
         audience: CycleLiteracyAudience.teen,
         readingTimeMinutes: 3,
-        sources: [_acogCommitteeOpinion651],
+        sources: [_acogCommitteeOpinion651, _acogYourFirstPeriod],
         reviewDate: _currentReviewDate,
         relatedSubphases: [
           CycleSubphase.earlyFollicular,
@@ -578,7 +578,7 @@ class CycleLiteracyLibrary {
             heading: 'Finding Your Rhythm',
             paragraphs: [
               'It often takes two to three years after menarche (your first period) for cycles to settle — and for some people it takes six years or more. In these early years, the reproductive system is still practicing and maturing.',
-              'It is very common for cycles to vary widely at first. Some cycles may be 24 days long and the next 40 days — cycles between about 21 and 45 days are normal at this stage. If a period comes more than 45 days after the last one, or you go 3 months without one, talk with a parent or doctor.',
+              'It is very common for cycles to vary widely at first. Some cycles may be 24 days long and the next 40 days — cycles between about 21 and 45 days are normal at this stage. If a period comes more than 45 days after the last one, or you go 3 months without one, talk with a parent or doctor. If you\'ve had sex and your period is late, take a pregnancy test.',
             ],
           ),
           ArticleSection(
