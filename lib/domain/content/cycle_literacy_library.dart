@@ -262,12 +262,25 @@ class CycleLiteracyLibrary {
     retrieved: _retrievedDate,
   );
 
-  static const ArticleSource _aapAdolescentHealth = ArticleSource(
-    publisher: SourcePublisher.aap,
-    title: 'Adolescent Sexual and Reproductive Health',
-    url: 'https://www.aap.org/en/patient-care/adolescent-sexual-health/',
-    retrieved: _retrievedDate,
-  );
+  static const ArticleSource _aapPediatricsMenstruationVitalSign =
+      ArticleSource(
+        publisher: SourcePublisher.aap,
+        title:
+            'Menstruation in girls and adolescents: using the menstrual cycle as a vital sign',
+        identifier: 'Pediatrics 2006;118(5):2245-50',
+        url:
+            'https://publications.aap.org/pediatrics/article/118/5/2245/69874/Menstruation-in-Girls-and-Adolescents-Using-the',
+        retrieved: _retrievedDate,
+      );
+
+  static const ArticleSource _aapHealthyChildrenMenstrualDisorders =
+      ArticleSource(
+        publisher: SourcePublisher.aap,
+        title: 'Menstrual Disorders in Teens: Causes, Diagnosis & Treatment',
+        url:
+            'https://www.healthychildren.org/English/health-issues/conditions/genitourinary-tract/Pages/Menstrual-Disorders.aspx',
+        retrieved: _retrievedDate,
+      );
 
   static const ArticleSource _rcogPremenstrualSyndrome = ArticleSource(
     publisher: SourcePublisher.rcog,
@@ -550,7 +563,10 @@ class CycleLiteracyLibrary {
         category: CycleLiteracyCategory.variability,
         audience: CycleLiteracyAudience.teen,
         readingTimeMinutes: 3,
-        sources: [_acogCommitteeOpinion651, _aapAdolescentHealth],
+        sources: [
+          _acogCommitteeOpinion651,
+          _aapPediatricsMenstruationVitalSign,
+        ],
         reviewDate: _currentReviewDate,
         relatedSubphases: [
           CycleSubphase.earlyFollicular,
@@ -589,7 +605,10 @@ class CycleLiteracyLibrary {
         category: CycleLiteracyCategory.variability,
         audience: CycleLiteracyAudience.teen,
         readingTimeMinutes: 3,
-        sources: [_acogCommitteeOpinion651, _aapAdolescentHealth],
+        sources: [
+          _acogCommitteeOpinion651,
+          _aapPediatricsMenstruationVitalSign,
+        ],
         reviewDate: _currentReviewDate,
         relatedSubphases: [
           CycleSubphase.earlyFollicular,
@@ -628,7 +647,10 @@ class CycleLiteracyLibrary {
         category: CycleLiteracyCategory.bodyAndSymptoms,
         audience: CycleLiteracyAudience.guardian,
         readingTimeMinutes: 3,
-        sources: [_aapAdolescentHealth, _acogYourFirstPeriod],
+        sources: [
+          _aapHealthyChildrenMenstrualDisorders,
+          _acogYourFirstPeriod,
+        ],
         reviewDate: _currentReviewDate,
         relatedSubphases: [
           CycleSubphase.earlyFollicular,
