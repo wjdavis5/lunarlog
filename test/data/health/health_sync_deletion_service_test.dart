@@ -186,6 +186,16 @@ HealthTombstoneObservation _observation(
 }) =>
     HealthTombstoneObservation(id: id, category: category, deletedAt: deletedAt);
 
+Future<void> _waitUntil(
+  bool Function() condition, {
+  Duration timeout = const Duration(seconds: 3),
+}) async {
+  final end = DateTime.now().add(timeout);
+  while (!condition() && DateTime.now().isBefore(end)) {
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+}
+
 void main() {
   group('LocalHealthSyncDeletionService', () {
     test('no bound profile issues no platform call', () async {
@@ -626,7 +636,7 @@ void main() {
       // must suffice, which is exactly what pre-#936 could not do.
       await source
           .emitEntries([_entry(_entryId, deletedAt: DateTime.utc(2026, 9, 2))]);
-      await Future<void>.delayed(const Duration(milliseconds: 30));
+      await _waitUntil(() => ledger.rows.isEmpty);
 
       expect(deletion.calls.expand((call) => call).toSet(), {
         _entryId,
@@ -720,7 +730,7 @@ void main() {
         profileId: _profileId,
         localDate: '2026-09-01',
       );
-      await Future<void>.delayed(const Duration(milliseconds: 60));
+      await _waitUntil(() => deletion.calls.isNotEmpty);
 
       expect(deletion.calls, [
         [saved.id]
@@ -770,7 +780,7 @@ void main() {
         profileId: _profileId,
         localDate: '2026-09-01',
       );
-      await Future<void>.delayed(const Duration(milliseconds: 80));
+      await _waitUntil(() => deletion.calls.isNotEmpty);
 
       final deletedIds = deletion.calls.expand((call) => call).toSet();
       expect(deletedIds, containsAll([saved.id, spotting.id]));
@@ -814,7 +824,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 60));
 
       await storage.softDeleteObservation(spotting.id);
-      await Future<void>.delayed(const Duration(milliseconds: 60));
+      await _waitUntil(() => deletion.calls.isNotEmpty);
 
       expect(deletion.calls, [
         [spotting.id]

@@ -446,6 +446,7 @@ jobs:
             --dart-define=FCM_ANDROID_APP_ID="$FCM_ANDROID_APP_ID" \
             --dart-define=FCM_IOS_API_KEY="$FCM_IOS_API_KEY" \
             --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID" \
+            --dart-define=LUNARLOG_LINK_DOMAIN="lunarlog.app" \
             --dart-define=LUNARLOG_QA_BUILD="$QA_BUILD"
 
       - name: Install CocoaPods dependencies

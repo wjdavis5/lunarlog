@@ -1,0 +1,32 @@
+{
+  "name": "lunarlog-links",
+  "compatibility_date": "2026-09-20",
+  "main": "src/index.ts",
+
+  // The only public origin. workers_dev is off deliberately (issue #450,
+  // matching civics-flashcards): apex lunarlog.app is the only desired endpoint.
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "lunarlog.app",
+      "custom_domain": true
+    }
+  ],
+
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      // Off deliberately (issue #450, docs/links/README.md). The automatic
+      // invocation log retains request URLs and headers; invitation links carry
+      // redeemable tokens in query strings that must not be retained.
+      "invocation_logs": false
+    }
+  }
+}

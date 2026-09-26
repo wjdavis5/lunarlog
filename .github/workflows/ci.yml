@@ -536,6 +536,12 @@ jobs:
           deno check ./**/*.ts
           deno test
 
+      - name: Run deno check and deno test for web/links
+        working-directory: web/links
+        run: |
+          deno check src/**/*.ts
+          deno test
+
   db-tests:
     name: Database tests (pgTAP)
     runs-on: ubuntu-latest
@@ -751,7 +757,8 @@ jobs:
             --dart-define=FCM_ANDROID_API_KEY="$FCM_ANDROID_API_KEY" \
             --dart-define=FCM_ANDROID_APP_ID="$FCM_ANDROID_APP_ID" \
             --dart-define=FCM_IOS_API_KEY="$FCM_IOS_API_KEY" \
-            --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID"
+            --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID" \
+            --dart-define=LUNARLOG_LINK_DOMAIN="lunarlog.app"
 
   ios-simulator:
     # GitHub-hosted macOS image (Xcode + iOS Simulator runtimes preinstalled),
