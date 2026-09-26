@@ -62,7 +62,11 @@ fixture_path() {
 
 # fetch URL -- prints the response's HTTP status line and headers to stdout.
 # No `-L`: a redirect must be observed as a redirect, not followed, so the
-# "200, no redirect" contract can actually be asserted.
+# "200, no redirect" contract can actually be asserted. `--max-time 20` caps
+# each request: a hung connection fails this attempt (empty output, so the
+# status check fails it) and the retry loop simply tries again, rather than
+# stalling the job until GitHub's 6-hour limit while it holds the deploy
+# concurrency group.
 fetch() {
   local url="$1"
   if [ -n "$FIXTURES_DIR" ]; then
@@ -74,7 +78,7 @@ fetch() {
     }
     cat "$fixture"
   else
-    curl -sS -o /dev/null -D - "$url"
+    curl -sS --max-time 20 -o /dev/null -D - "$url"
   fi
 }
 
