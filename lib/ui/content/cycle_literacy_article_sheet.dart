@@ -26,6 +26,22 @@ class CycleLiteracyArticleSheet extends StatelessWidget {
     );
   }
 
+  /// Renders one source as `Publisher — Title (identifier)` (Issue #1103).
+  String _sourceLabel(AppLocalizations l10n, ArticleSource source) {
+    final identifier = source.identifier;
+    if (identifier == null) {
+      return l10n.cycleLiteracySourceItem(
+        source.publisher.displayName,
+        source.title,
+      );
+    }
+    return l10n.cycleLiteracySourceItemWithIdentifier(
+      source.publisher.displayName,
+      source.title,
+      identifier,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -126,7 +142,7 @@ class CycleLiteracyArticleSheet extends StatelessWidget {
 
             const Divider(height: 32),
 
-            // Clinical / Academic Provenance
+            // Sourced Provenance (Issue #1103): one line per cited source.
             Text(
               l10n.cycleLiteracySourceHeading,
               style: theme.textTheme.labelLarge?.copyWith(
@@ -134,12 +150,16 @@ class CycleLiteracyArticleSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            Text(
-              l10n.cycleLiteracySourceLine(article.source),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
+            for (final source in article.sources)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Text(
+                  _sourceLabel(l10n, source),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ),
-            ),
             const SizedBox(height: 2),
             Text(
               l10n.cycleLiteracyLastReviewedLine(article.reviewDate),

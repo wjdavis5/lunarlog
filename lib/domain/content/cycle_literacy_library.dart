@@ -1,14 +1,16 @@
 /// Bundled offline cycle-literacy content library (Issue #239, A2-25).
 ///
-/// Science-backed, expert-reviewed educational articles on menstrual,
-/// hormonal, and reproductive literacy. Fully offline with zero network
+/// Educational articles on menstrual, hormonal, and reproductive literacy,
+/// sourced from named authoritative bodies. Fully offline with zero network
 /// dependency.
 ///
 /// **Constraints & Framing**:
 /// - General biological literacy only: no individualized medical advice,
 ///   no diagnostic assertions, and no clinical prescriptions.
-/// - Every article carries explicit provenance: named authoritative sources
-///   (e.g. ACOG, NHS, peer-reviewed endocrine literature) and ISO review dates.
+/// - Every article carries explicit provenance as structured, individually
+///   linkable citations (Issue #1103). "Last reviewed" is the date the cited
+///   sources were last checked against their publishers; it is **not** a
+///   clinical review of the article, and nothing here claims one.
 /// - Articles link contextually from active cycle subphases (Issue #236) and
 ///   are browsable in a standalone library index.
 library;
@@ -33,6 +35,70 @@ enum CycleLiteracyCategory {
 /// Target audience for cycle literacy articles (Issue #854).
 enum CycleLiteracyAudience { all, teen, guardian }
 
+/// The authoritative body (or style of source) behind a citation (Issue #1103).
+///
+/// Each publisher that serves its own content declares the host(s) that
+/// content legitimately lives on, so a test can prove a cited URL points at
+/// the publisher's own domain rather than a re-host. [peerReviewed] and
+/// [textbook] describe a kind of source rather than a single body; [textbook]
+/// has no host because a printed textbook cannot be linked.
+enum SourcePublisher {
+  acog('American College of Obstetricians and Gynecologists', {'acog.org'}),
+  nhs('National Health Service (UK)', {'nhs.uk'}),
+  who('World Health Organization', {'who.int'}),
+  nichd(
+    'Eunice Kennedy Shriver National Institute of Child Health and Human Development',
+    {'nichd.nih.gov', 'nih.gov'},
+  ),
+  rcog('Royal College of Obstetricians and Gynaecologists', {'rcog.org.uk'}),
+  mayoClinic('Mayo Clinic', {'mayoclinic.org'}),
+  clevelandClinic('Cleveland Clinic', {'my.clevelandclinic.org'}),
+  aap('American Academy of Pediatrics', {'aap.org', 'healthychildren.org'}),
+  figo('International Federation of Gynecology and Obstetrics', {'figo.org'}),
+  endocrineSociety('Endocrine Society', {'endocrine.org'}),
+  peerReviewed(
+    'Peer-reviewed literature',
+    {'doi.org', 'pubmed.ncbi.nlm.nih.gov'},
+  ),
+  textbook('Textbook', {});
+
+  const SourcePublisher(this.displayName, this.allowedHosts);
+
+  /// Human-readable publisher name.
+  final String displayName;
+
+  /// Hosts on which this publisher's own content is served. Empty for
+  /// [textbook], which has no linkable URL.
+  final Set<String> allowedHosts;
+}
+
+/// One cited source behind a [CycleLiteracyArticle] (Issue #1103).
+class ArticleSource {
+  const ArticleSource({
+    required this.publisher,
+    required this.title,
+    this.identifier,
+    this.url,
+    required this.retrieved,
+  });
+
+  /// The authoritative body (or source style) this citation points at.
+  final SourcePublisher publisher;
+
+  /// Title of the cited page or work.
+  final String title;
+
+  /// Optional document identifier, e.g. `'Committee Opinion No. 651'`.
+  final String? identifier;
+
+  /// https URL on [SourcePublisher.allowedHosts]. Null only for a
+  /// [SourcePublisher.textbook] citation, which cannot be linked.
+  final String? url;
+
+  /// ISO-8601 date (`YYYY-MM-DD`) the source was last checked.
+  final String retrieved;
+}
+
 /// A structured section within a cycle literacy article.
 class ArticleSection {
   const ArticleSection({required this.heading, required this.paragraphs});
@@ -41,7 +107,7 @@ class ArticleSection {
   final List<String> paragraphs;
 }
 
-/// One bundled, expert-referenced cycle literacy article.
+/// One bundled, source-referenced cycle literacy article.
 class CycleLiteracyArticle {
   const CycleLiteracyArticle({
     required this.id,
@@ -50,7 +116,7 @@ class CycleLiteracyArticle {
     required this.category,
     this.audience = CycleLiteracyAudience.all,
     required this.readingTimeMinutes,
-    required this.source,
+    required this.sources,
     required this.reviewDate,
     required this.sections,
     required this.relatedSubphases,
@@ -74,8 +140,8 @@ class CycleLiteracyArticle {
   /// Estimated reading time in minutes.
   final int readingTimeMinutes;
 
-  /// Named clinical or scientific source citation.
-  final String source;
+  /// Structured, individually linkable citations behind this article.
+  final List<ArticleSource> sources;
 
   /// ISO-8601 review date (`YYYY-MM-DD`).
   final String reviewDate;
@@ -97,7 +163,163 @@ class CycleLiteracyArticle {
 class CycleLiteracyLibrary {
   const CycleLiteracyLibrary._();
 
-  static const String _currentReviewDate = '2026-09-12';
+  static const String _currentReviewDate = '2026-09-26';
+
+  /// ISO date the citations below were last checked against their publishers
+  /// (Issue #1103).
+  static const String _retrievedDate = '2026-09-26';
+
+  // --- Verified, linkable citations (Issue #1103) ---
+  //
+  // How each URL below was verified (Issue #1119 corrects this comment: the
+  // old claim that every URL "returned HTTP 200" was not true):
+  // - ACOG, NHS, WHO and RCOG pages returned HTTP 200 to
+  //   `curl -sIL -o /dev/null -w "%{http_code} %{url_effective}"` with a
+  //   browser User-Agent. ACOG serves *missing* pages as HTTP 200 too, so
+  //   each ACOG page's `og:title` was read as well; none is a soft 404.
+  // - The two peer-reviewed DOI links (_wilcoxOvulationTiming,
+  //   _figoMenstrualDisorders) return HTTP 403 to curl behind a publisher
+  //   bot challenge. They were verified by following the doi.org redirect
+  //   and confirming the title against Crossref and PubMed E-utilities.
+  // - The AAP HealthyChildren page returned HTTP 200; its title was read
+  //   from `og:title`.
+  // Never add a URL that has not been verified this way; the domain is
+  // enforced by test/domain/content/cycle_literacy_library_test.dart.
+
+  static const ArticleSource _acogMenstrualCycle = ArticleSource(
+    publisher: SourcePublisher.acog,
+    title:
+        'The Menstrual Cycle: Menstruation, Ovulation, and How Pregnancy Occurs',
+    url: 'https://www.acog.org/womens-health/infographics/the-menstrual-cycle',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _acogFertilityAwareness = ArticleSource(
+    publisher: SourcePublisher.acog,
+    title: 'Fertility Awareness-Based Methods of Family Planning',
+    url:
+        'https://www.acog.org/womens-health/faqs/fertility-awareness-based-methods-of-family-planning',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _acogPainfulPeriods = ArticleSource(
+    publisher: SourcePublisher.acog,
+    title: 'Painful Periods',
+    url: 'https://www.acog.org/womens-health/faqs/painful-periods',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _acogYourFirstPeriod = ArticleSource(
+    publisher: SourcePublisher.acog,
+    title: 'Your First Period',
+    identifier: 'FAQ049',
+    url: 'https://www.acog.org/womens-health/faqs/your-first-period',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _acogCommitteeOpinion651 = ArticleSource(
+    publisher: SourcePublisher.acog,
+    title:
+        'Menstruation in Girls and Adolescents: Using the Menstrual Cycle as a Vital Sign',
+    identifier: 'Committee Opinion No. 651',
+    url:
+        'https://www.acog.org/clinical/clinical-guidance/committee-opinion/articles/2015/12/menstruation-in-girls-and-adolescents-using-the-menstrual-cycle-as-a-vital-sign',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _acogCpgNo7 = ArticleSource(
+    publisher: SourcePublisher.acog,
+    title: 'Management of Premenstrual Disorders',
+    identifier: 'Clinical Practice Guideline No. 7',
+    url:
+        'https://www.acog.org/clinical/clinical-guidance/clinical-practice-guideline/articles/2023/12/management-of-premenstrual-disorders',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _nhsPeriodPain = ArticleSource(
+    publisher: SourcePublisher.nhs,
+    title: 'Period pain',
+    url: 'https://www.nhs.uk/symptoms/period-pain/',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _nhsPms = ArticleSource(
+    publisher: SourcePublisher.nhs,
+    title: 'Premenstrual syndrome (PMS)',
+    url: 'https://www.nhs.uk/conditions/pre-menstrual-syndrome/',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _whoMenstrualHealth = ArticleSource(
+    publisher: SourcePublisher.who,
+    title: 'Menstrual health',
+    url: 'https://www.who.int/news-room/fact-sheets/detail/menstrual-health',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _aapHealthyChildrenMenstrualDisorders =
+      ArticleSource(
+        publisher: SourcePublisher.aap,
+        title: 'Menstrual Disorders in Teens: Causes, Diagnosis & Treatment',
+        url:
+            'https://www.healthychildren.org/English/health-issues/conditions/genitourinary-tract/Pages/Menstrual-Disorders.aspx',
+        retrieved: _retrievedDate,
+      );
+
+  static const ArticleSource _rcogPremenstrualSyndrome = ArticleSource(
+    publisher: SourcePublisher.rcog,
+    title: 'Premenstrual Syndrome: Management',
+    identifier: 'Green-top Guideline No. 48',
+    url:
+        'https://www.rcog.org.uk/guidance/browse-all-guidance/green-top-guidelines/premenstrual-syndrome-management-green-top-guideline-no-48/',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _wilcoxOvulationTiming = ArticleSource(
+    publisher: SourcePublisher.peerReviewed,
+    title:
+        'Timing of sexual intercourse in relation to ovulation. Effects on the probability of conception, survival of the pregnancy, and sex of the baby',
+    identifier: 'N Engl J Med 1995;333:1517-21',
+    url: 'https://doi.org/10.1056/NEJM199512073332301',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _figoMenstrualDisorders = ArticleSource(
+    publisher: SourcePublisher.peerReviewed,
+    title:
+        'The two FIGO systems for normal and abnormal uterine bleeding symptoms and classification of causes of abnormal uterine bleeding in the reproductive years: 2018 revisions',
+    identifier:
+        'FIGO Menstrual Disorders Committee; Int J Gynaecol Obstet 2018;143(3):393-408',
+    url: 'https://doi.org/10.1002/ijgo.12666',
+    retrieved: _retrievedDate,
+  );
+
+  // Textbooks cannot be linked or link-checked; each stays as a secondary
+  // citation with no URL (Issue #1103).
+  static const ArticleSource _speroffs = ArticleSource(
+    publisher: SourcePublisher.textbook,
+    title:
+        'Speroff\'s Clinical Gynecologic Endocrinology and Infertility (10th ed.)',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _guytonAndHall = ArticleSource(
+    publisher: SourcePublisher.textbook,
+    title: 'Guyton and Hall Textbook of Medical Physiology (15th ed.)',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _williamsObstetrics = ArticleSource(
+    publisher: SourcePublisher.textbook,
+    title: 'Williams Obstetrics (26th ed.)',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _yenAndJaffe = ArticleSource(
+    publisher: SourcePublisher.textbook,
+    title: 'Yen & Jaffe\'s Reproductive Endocrinology (9th ed.)',
+    retrieved: _retrievedDate,
+  );
 
   // --- Article 1: Menstrual Cycle Phases ---
   static const CycleLiteracyArticle menstrualCyclePhases = CycleLiteracyArticle(
@@ -106,7 +328,7 @@ class CycleLiteracyLibrary {
     summary: 'A comprehensive guide to how menstruation, the follicular phase, ovulation, and the luteal phase interact each cycle.',
     category: CycleLiteracyCategory.phases,
     readingTimeMinutes: 3,
-    source: 'American College of Obstetricians and Gynecologists (ACOG) FAQ049; Endocrine Society Clinical Resources',
+    sources: [_acogMenstrualCycle, _whoMenstrualHealth, _acogCommitteeOpinion651],
     reviewDate: _currentReviewDate,
     relatedSubphases: [
       CycleSubphase.earlyFollicular,
@@ -137,24 +359,29 @@ class CycleLiteracyLibrary {
       CycleLiteracyArticle(
         id: 'understanding-follicular-phase',
         title: 'The Follicular Phase & The Power of Estrogen',
-        summary: 'How rising estradiol stimulates follicle development and thickens the endometrium — and why energy often feels higher.',
+        summary: 'How FSH and rising estradiol grow a follicle and rebuild the uterine lining.',
         category: CycleLiteracyCategory.phases,
         readingTimeMinutes: 2,
-        source: 'Speroff\'s Clinical Gynecologic Endocrinology and Infertility (9th ed.); Guyton and Hall Textbook of Medical Physiology',
+        sources: [
+          _speroffs,
+          _guytonAndHall,
+          _acogMenstrualCycle,
+          _acogFertilityAwareness,
+        ],
         reviewDate: _currentReviewDate,
         relatedSubphases: [CycleSubphase.lateFollicular],
         sections: [
           ArticleSection(
             heading: 'Rising Estrogen and Follicle Growth',
             paragraphs: [
-              'Following menstruation, the pituitary gland releases Follicle-Stimulating Hormone (FSH). In response, fluid-filled sacs in the ovaries called follicles begin growing. Each follicle holds an immature egg.',
+              'Around the start of a period, the pituitary gland releases more Follicle-Stimulating Hormone (FSH). In response, fluid-filled sacs in the ovaries called follicles begin growing. Each follicle holds an immature egg.',
               'As follicles grow, they secrete estradiol—the most potent form of estrogen. Estradiol stimulates cell division in the endometrium, causing the uterine lining to thicken and develop blood vessels in preparation for possible pregnancy.',
             ],
           ),
           ArticleSection(
             heading: 'Physical & Emotional Impacts',
             paragraphs: [
-              'Rising estrogen during the late follicular phase often correlates with increased physical vitality, clearer skin, and improved mood. Estrogen also interacts with cervical crypts, transitioning cervical fluid from dry or creamy to slippery, fertile fluid as ovulation approaches.',
+              'Some people notice changes in energy, mood, or skin around this time, but research doesn\'t show a consistent pattern, and many people notice no difference. Estrogen also interacts with cervical crypts, transitioning cervical fluid from dry or creamy to slippery, fertile fluid as ovulation approaches.',
             ],
           ),
         ],
@@ -168,22 +395,22 @@ class CycleLiteracyLibrary {
         summary: 'The science behind the LH surge, egg release, and the biological window of fertility.',
         category: CycleLiteracyCategory.fertility,
         readingTimeMinutes: 3,
-        source: 'ACOG Clinical Practice Guideline on Infertility; Wilcox et al., New England Journal of Medicine',
+        sources: [_acogFertilityAwareness, _wilcoxOvulationTiming],
         reviewDate: _currentReviewDate,
         relatedSubphases: [CycleSubphase.ovulation],
         sections: [
           ArticleSection(
             heading: 'The Ovulatory Surge',
             paragraphs: [
-              'When estrogen levels reach a critical peak, they trigger a rapid surge of Luteinizing Hormone (LH) from the pituitary. Within 24 to 36 hours of this surge, the dominant ovarian follicle ruptures, releasing a mature egg.',
+              'When estrogen levels reach a critical peak, they trigger a rapid surge of Luteinizing Hormone (LH) from the pituitary. Usually about 24 to 36 hours after this surge begins (sometimes up to about two days), the dominant follicle ruptures, releasing a mature egg.',
               'Once released, the egg survives in the fallopian tube for only 12 to 24 hours. If it is not fertilized within this timeframe, it naturally dissolves.',
             ],
           ),
           ArticleSection(
-            heading: 'The 6-Day Fertile Window',
+            heading: 'The Fertile Window',
             paragraphs: [
-              'Although the egg lives for only one day, sperm can survive inside the reproductive tract for up to 5 days under the nourishment of fertile cervical mucus. Consequently, the biological fertile window spans the 5 days before ovulation plus the day of ovulation itself.',
-              'Important note: Calendar calculations provide statistical approximations based on past cycle lengths. They are helpful for understanding your cycle rhythms, but should never be used as a standalone contraceptive technique.',
+              'Although the egg lives for only about a day, sperm can survive for up to 5 days. So pregnancy can happen from sex in the 5 days before ovulation, on the day of ovulation, and — by ACOG\'s count — the day after.',
+              'Important note: the dates in this app are estimates from past cycle lengths. They are not a birth control method and must not be used to prevent pregnancy.',
             ],
           ),
         ],
@@ -197,7 +424,12 @@ class CycleLiteracyLibrary {
         summary: 'The role of the corpus luteum in producing progesterone, stabilizing the endometrium, and raising basal temperature.',
         category: CycleLiteracyCategory.phases,
         readingTimeMinutes: 2,
-        source: 'Williams Obstetrics (26th ed.); Yen & Jaffe\'s Reproductive Endocrinology',
+        sources: [
+          _williamsObstetrics,
+          _yenAndJaffe,
+          _acogMenstrualCycle,
+          _acogFertilityAwareness,
+        ],
         reviewDate: _currentReviewDate,
         relatedSubphases: [CycleSubphase.earlyLuteal, CycleSubphase.midLuteal],
         sections: [
@@ -221,10 +453,10 @@ class CycleLiteracyLibrary {
   static const CycleLiteracyArticle pmsAndProgesterone = CycleLiteracyArticle(
     id: 'pms-and-progesterone',
     title: 'Premenstrual Changes: Why Hormones Shift Your Mood and Body',
-    summary: 'The biological basis of PMS: how the abrupt withdrawal of progesterone and estrogen influences neurotransmitters.',
+    summary: 'What researchers think happens in PMS: hormone levels are usually normal, but the brain may be extra sensitive to their rise and fall.',
     category: CycleLiteracyCategory.bodyAndSymptoms,
     readingTimeMinutes: 3,
-    source: 'ACOG Clinical Practice Guideline No. 7, Management of Premenstrual Disorders (2023); Royal College of Obstetricians and Gynaecologists (RCOG)',
+    sources: [_acogCpgNo7, _rcogPremenstrualSyndrome],
     reviewDate: _currentReviewDate,
     relatedSubphases: [CycleSubphase.midLuteal, CycleSubphase.lateLuteal],
     sections: [
@@ -232,7 +464,7 @@ class CycleLiteracyLibrary {
         heading: 'What Causes Premenstrual Symptoms?',
         paragraphs: [
           'Premenstrual syndrome (PMS) refers to a collection of physical, cognitive, and emotional symptoms that occur during the late luteal phase and resolve shortly after menses begins.',
-          'Rather than an abnormal level of hormones, research indicates PMS is triggered by an increased sensitivity to normal hormonal fluctuations—specifically the steep drop in progesterone and estrogen that occurs when the corpus luteum regresses.',
+          'Hormone levels in people with PMS are usually normal. Researchers think some people are more sensitive to the normal rise and fall of estrogen and progesterone after ovulation, but the exact cause isn\'t known.',
         ],
       ),
       ArticleSection(
@@ -240,6 +472,12 @@ class CycleLiteracyLibrary {
         paragraphs: [
           'Progesterone metabolites (such as allopregnanolone) interact directly with GABA receptors in the brain, which regulate calm and anxiety. As progesterone plunges, researchers think this shifts GABA and serotonin signaling, which may contribute to premenstrual mood sensitivity, sleep disruptions, and sugar cravings.',
           'Tracking premenstrual symptoms over several cycles helps identify personal patterns and supports productive discussions with your healthcare provider if symptoms become disruptive.',
+        ],
+      ),
+      ArticleSection(
+        heading: 'If You Feel Hopeless or Need Help Now',
+        paragraphs: [
+          'If you ever feel hopeless, or have thoughts of hurting yourself or ending your life, please tell a trusted adult and get support now. In the US or Canada, call or text 988. In the UK, call Samaritans free on 116 123 (or Childline on 0800 1111 if you\'re under 19), or call NHS 111 and choose the mental health option. If you might not be able to keep yourself safe, or you have already hurt yourself, call your local emergency number (911 in the US and Canada, 999 in the UK) or go to the nearest emergency department (A&E) now.',
         ],
       ),
     ],
@@ -252,7 +490,7 @@ class CycleLiteracyLibrary {
     summary: 'The biological mechanism of dysmenorrhea: uterine muscle contractions driven by prostaglandins, and when to speak with a doctor.',
     category: CycleLiteracyCategory.bodyAndSymptoms,
     readingTimeMinutes: 3,
-    source: 'ACOG Clinical Consensus: Dysmenorrhea in Adolescents; NHS Women\'s Health Guidelines',
+    sources: [_acogPainfulPeriods, _nhsPeriodPain],
     reviewDate: _currentReviewDate,
     relatedSubphases: [CycleSubphase.lateLuteal, CycleSubphase.earlyFollicular],
     sections: [
@@ -266,9 +504,9 @@ class CycleLiteracyLibrary {
       ArticleSection(
         heading: 'Why Cramping Peaks Early',
         paragraphs: [
-          'Prostaglandin levels are highest during the first 24 to 48 hours of heavy bleeding, which is why cramping is typically most intense on Cycle Days 1 and 2.',
-          'When prostaglandins enter the bloodstream, they can also cause neighboring smooth muscles to contract, leading to common accompanying symptoms such as loose stools, nausea, or lower back pain.',
-          'While mild to moderate cramps are very common, pain that interferes with school, work, or daily activities warrants an evaluation by a healthcare professional.',
+              'Prostaglandin levels are highest on the first day or two of a period, which is why cramps are usually worst on Cycle Days 1 and 2.',
+              'Prostaglandins can also affect the gut, causing loose stools or nausea, and period pain often spreads to the lower back and thighs.',
+              'While mild to moderate cramps are very common, pain that interferes with school, work, or daily activities warrants an evaluation by a healthcare professional. Get help urgently if pain is severe and pain relievers haven\'t helped, or if it\'s much worse than usual. Pain that keeps getting worse over months is also worth checking.',
         ],
       ),
     ],
@@ -282,7 +520,13 @@ class CycleLiteracyLibrary {
         summary: 'Why cycles fluctuate naturally, how adolescent and adult variations differ, and what variation means for health.',
         category: CycleLiteracyCategory.variability,
         readingTimeMinutes: 3,
-        source: 'FIGO Menstrual Disorders Committee (FIGO Systems 1 & 2); World Health Organization (WHO); ACOG FAQ049',
+        sources: [
+          _figoMenstrualDisorders,
+          _whoMenstrualHealth,
+          _acogCommitteeOpinion651,
+          _acogYourFirstPeriod,
+          _aapHealthyChildrenMenstrualDisorders,
+        ],
         reviewDate: _currentReviewDate,
         relatedSubphases: [
           CycleSubphase.earlyFollicular,
@@ -292,21 +536,21 @@ class CycleLiteracyLibrary {
           ArticleSection(
             heading: 'The Myth of the 28-Day Clockwork Cycle',
             paragraphs: [
-              'Only a small fraction of individuals have exactly 28-day cycles every month. In healthy adults, cycle lengths naturally vary by 2 to 7 days from month to month without indicating any medical problem.',
+              'Only a small fraction of individuals have exactly 28-day cycles every month. In healthy adults, the gap between the shortest and longest cycle is usually up to about 7 to 9 days, depending on age.',
               'Factors such as psychological stress, travel, illness, shifts in sleep schedule, and vigorous exercise can transiently delay follicular development and shift ovulation date, extending that month\'s cycle.',
             ],
           ),
           ArticleSection(
             heading: 'The First Few Years',
             paragraphs: [
-              'For the first two to three years after a first period, cycles are often longer and less predictable than they will later become — commonly ranging from about 21 to 45 days, with some months skipped entirely. That is a normal part of the hormonal feedback loop maturing, not automatically a sign of a problem.',
+              'For the first two to three years after a first period, cycles are often longer and less predictable — most fall between about 21 and 45 days. An occasional longer cycle can happen, but if periods come more than 45 days apart, or you go 3 months (90 days) without one, check in with a doctor.',
               'Once cycles have settled, an adult cycle generally falls between about 21 and 35 days, and a few days of month-to-month variation remains normal.',
             ],
           ),
           ArticleSection(
             heading: 'When to Ask a Doctor',
             paragraphs: [
-              'A few patterns are worth raising with a healthcare professional: no period for three months once cycles had been regular, bleeding that lasts longer than about a week, or soaking through a pad or tampon every hour for several hours.',
+              'Check in with a healthcare professional if: you go 3 months (90 days) without a period — even if your cycles were never regular; bleeding lasts more than 7 days; you need to change a soaked pad or tampon every 1 to 2 hours; or you pass clots the size of a quarter (about 2.5 cm) or bigger. If you\'ve had sex and your period is late, take a pregnancy test. Get help right away if you feel dizzy or light-headed, or your heart is racing, while you\'re bleeding.',
             ],
           ),
         ],
@@ -321,7 +565,7 @@ class CycleLiteracyLibrary {
         category: CycleLiteracyCategory.variability,
         audience: CycleLiteracyAudience.teen,
         readingTimeMinutes: 3,
-        source: 'American College of Obstetricians and Gynecologists (ACOG) Committee Opinion No. 651 (2015); American Academy of Pediatrics (AAP) Menstruation in Girls and Adolescents',
+        sources: [_acogCommitteeOpinion651, _acogYourFirstPeriod],
         reviewDate: _currentReviewDate,
         relatedSubphases: [
           CycleSubphase.earlyFollicular,
@@ -331,21 +575,21 @@ class CycleLiteracyLibrary {
           ArticleSection(
             heading: 'Finding Your Rhythm',
             paragraphs: [
-              'The body takes about two to three years after menarche (your first period) to coordinate the hormonal communication between the brain and ovaries. In these early years, the reproductive system is practicing and maturing.',
-              'It is very common for cycles to vary widely at first. Some cycles may be 24 days long, while the next might be 40 days, and occasional cycles may even be skipped entirely as your hormones settle.',
+              'It often takes two to three years after menarche (your first period) for cycles to settle — and for some people it takes six years or more. In these early years, the reproductive system is still practicing and maturing.',
+              'It is very common for cycles to vary widely at first. Some cycles may be 24 days long and the next 40 days — cycles between about 21 and 45 days are normal at this stage. If a period comes more than 45 days after the last one, or you go 3 months without one, talk with a parent or doctor. If you\'ve had sex and your period is late, take a pregnancy test.',
             ],
           ),
           ArticleSection(
             heading: 'What a Normal Early Cycle Looks Like',
             paragraphs: [
               'Bleeding typically lasts between 2 and 7 days. Flow may be light and brownish on some days, or brighter red with occasional small clots on others.',
-              'Mild cramping and breast tenderness before or during bleeding are common physical signals as the body releases prostaglandins to help the uterine lining shed.',
+              'Mild cramps are common: before and during a period the uterus makes prostaglandins, which make its muscles tighten to shed the lining. Some people also get sore breasts before a period, from normal hormone changes.',
             ],
           ),
           ArticleSection(
             heading: 'Tracking and Self-Advocacy',
             paragraphs: [
-              'Logging your bleeding days helps you discover your own unique rhythm rather than comparing yourself to a textbook schedule. If bleeding lasts more than 7 days, if you need to change pads or tampons every 1 to 2 hours, or if severe pain disrupts school, talk with a parent or doctor.',
+              'Logging your bleeding days helps you discover your own unique rhythm rather than comparing yourself to a textbook schedule. If bleeding lasts more than 7 days, if you need to change pads or tampons every 1 to 2 hours, or if severe pain disrupts school, talk with a parent or doctor. Get help right away if you feel dizzy or light-headed, or your heart is racing, while you\'re bleeding.',
             ],
           ),
         ],
@@ -360,7 +604,11 @@ class CycleLiteracyLibrary {
         category: CycleLiteracyCategory.variability,
         audience: CycleLiteracyAudience.teen,
         readingTimeMinutes: 3,
-        source: 'American College of Obstetricians and Gynecologists (ACOG) Committee Opinion No. 651 (2015); American Academy of Pediatrics (AAP) Menstruation in Girls and Adolescents (Pediatrics 2006)',
+        sources: [
+          _acogCommitteeOpinion651,
+          _acogYourFirstPeriod,
+          _aapHealthyChildrenMenstrualDisorders,
+        ],
         reviewDate: _currentReviewDate,
         relatedSubphases: [
           CycleSubphase.earlyFollicular,
@@ -384,7 +632,8 @@ class CycleLiteracyLibrary {
           ArticleSection(
             heading: 'When to Speak with a Doctor',
             paragraphs: [
-              'While cycle length variation is normal, medical guidelines advise consulting a healthcare professional if cycles remain consistently over 45 days after the first year, if bleeding occurs more frequently than every 21 days, or if periods stop for 90 days or longer.',
+              'While cycle length variation is normal, medical guidelines say to see a healthcare professional if: periods come more often than every 21 days or less often than every 45 days; 90 days go by without a period — even once; periods that had been coming regularly become irregular for several months; bleeding lasts more than 7 days; you need to change a soaked pad or tampon every 1 to 2 hours; or your periods are heavy and you bruise or bleed easily, or someone in your family has a bleeding disorder. If you\'ve had sex and your period is late, take a pregnancy test.',
+              'If you haven\'t had a first period by age 15, or within 3 years of your breasts starting to develop, that\'s worth a check-up too.',
             ],
           ),
         ],
@@ -399,7 +648,10 @@ class CycleLiteracyLibrary {
         category: CycleLiteracyCategory.bodyAndSymptoms,
         audience: CycleLiteracyAudience.guardian,
         readingTimeMinutes: 3,
-        source: 'American Academy of Pediatrics (AAP) HealthyChildren.org; ACOG Patient Education: Your First Period',
+        sources: [
+          _aapHealthyChildrenMenstrualDisorders,
+          _acogYourFirstPeriod,
+        ],
         reviewDate: _currentReviewDate,
         relatedSubphases: [
           CycleSubphase.earlyFollicular,
@@ -438,7 +690,7 @@ class CycleLiteracyLibrary {
         category: CycleLiteracyCategory.bodyAndSymptoms,
         audience: CycleLiteracyAudience.all,
         readingTimeMinutes: 3,
-        source: 'ACOG Clinical Practice Guideline No. 7, Management of Premenstrual Disorders (2023); NHS Clinical Guidance on Premenstrual Syndrome (PMS)',
+        sources: [_acogCpgNo7, _nhsPms],
         reviewDate: _currentReviewDate,
         relatedSubphases: [CycleSubphase.earlyLuteal, CycleSubphase.lateLuteal],
         sections: [
@@ -453,13 +705,14 @@ class CycleLiteracyLibrary {
             heading: 'Tracking the Cyclical Pattern',
             paragraphs: [
               'The defining hallmark of Premenstrual Syndrome (PMS) is its timing: symptoms appear consistently during the luteal phase and clear up within a few days of your period starting, followed by a symptom-free follicular phase.',
-              'If mood changes or fatigue persist throughout the entire month regardless of cycle day, they are likely unrelated to PMS and warrant a broader medical evaluation.',
+              'If mood changes or tiredness last all month, no matter the cycle day, it may be something other than PMS — like depression or anxiety, which can also get worse before a period. That\'s worth checking with a doctor.',
             ],
           ),
           ArticleSection(
             heading: 'When to Seek Clinical Care',
             paragraphs: [
-              'Reach out to a doctor if mood symptoms significantly interfere with daily life, school, work, or relationships, or if you feel overwhelmed, anxious, or hopeless. More severe premenstrual conditions, such as Premenstrual Dysphoric Disorder (PMDD), are highly treatable with clinical guidance.',
+              'Reach out to a doctor if mood symptoms significantly interfere with daily life, school, work, or relationships, or if you feel overwhelmed or anxious. More severe premenstrual conditions, such as Premenstrual Dysphoric Disorder (PMDD), have treatments that can help, so it\'s worth asking.',
+              'If you ever feel hopeless, or have thoughts of hurting yourself or ending your life, please tell a trusted adult and get support now. In the US or Canada, call or text 988. In the UK, call Samaritans free on 116 123 (or Childline on 0800 1111 if you\'re under 19), or call NHS 111 and choose the mental health option. If you might not be able to keep yourself safe, or you have already hurt yourself, call your local emergency number (911 in the US and Canada, 999 in the UK) or go to the nearest emergency department (A&E) now.',
             ],
           ),
         ],
