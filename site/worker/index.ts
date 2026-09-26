@@ -6,6 +6,11 @@
  * - `/.well-known/apple-app-site-association`: application/json, 200, no redirect
  * - `/invite*`: invite.html preserving query string without logging sensitive parameters
  * - Static assets from `env.ASSETS` for other routes (or 404)
+ *
+ * `wrangler.jsonc` sets `assets.run_worker_first` to
+ * `["/.well-known/*", "/invite*"]` (issue #1090). Without it the
+ * static-asset layer answers those paths before this handler runs, and the
+ * AASA goes out as `application/octet-stream` with none of the headers below.
  */
 
 export interface Fetcher {

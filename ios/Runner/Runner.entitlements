@@ -25,7 +25,7 @@
 	<array/>
 	<!-- Issue #129, #450: HTTPS universal-link fallback for invite/claim links.
 	     Hosted domain is lunarlog.app, served by the Cloudflare Worker in
-	     web/links/ which hosts /.well-known/apple-app-site-association. -->
+	     site/ which hosts /.well-known/apple-app-site-association. -->
 	<!-- Issue #141: the shared suite the home-screen widget extension
 	     reads (the discreet render payload written by the app's
 	     WidgetStatePublisher through the `home_widget` plugin). The SAME

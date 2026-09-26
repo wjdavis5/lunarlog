@@ -1,6 +1,6 @@
 # Inbound Email Processing Worker — Runbook
 
-This document covers the configuration, architecture, and query interfaces for the Cloudflare Inbound Email Worker (`web/email/`).
+This document covers the configuration, architecture, and query interfaces for the Cloudflare Inbound Email Worker (`workers/email/`).
 
 ---
 
@@ -17,7 +17,7 @@ The `lunarlog-inbound-email` worker accepts incoming emails sent to `lunarlog.ap
 ### A. KV Namespace Creation
 1. In the Cloudflare Dashboard, go to **Workers & Pages → KV → Create a namespace**.
 2. Name the namespace `lunarlog-inbound-emails`.
-3. Copy the generated `id` and replace the placeholder in `web/email/wrangler.jsonc`:
+3. Copy the generated `id` and replace the placeholder in `workers/email/wrangler.jsonc`:
    ```jsonc
    "kv_namespaces": [
      {
@@ -39,10 +39,12 @@ Set the following secrets in Cloudflare Workers (or via `wrangler secret put`):
 2. Navigate to **Email Routing**.
 3. Enable Email Routing (Cloudflare will automatically prompt to add the necessary MX and TXT verification records to DNS).
 4. Under **Routing Rules**, create a rule:
-   * **Rule type:** Catch-all or Custom Address (e.g. `*@inbound.lunarlog.app` or `auth-test@lunarlog.app`).
+   * **Rule type:** **Custom Address only** (e.g. `*@inbound.lunarlog.app` or `auth-test@lunarlog.app`).
    * **Action:** `Send to a Worker`.
    * **Destination:** `lunarlog-inbound-email`.
 5. Save the rule. Inbound emails to that address will now be routed directly to the worker's `email(message, env, ctx)` handler.
+
+> **Privacy Warning:** Never configure a Catch-all rule on the apex domain (`lunarlog.app`). The apex domain will receive sensitive human support messages (e.g., `support@lunarlog.app` per #1100 where parents may write about a minor's health/cycle). A catch-all would store those sensitive communications unencrypted in KV for 24 hours, accessible to any caller with `EMAIL_API_KEY`. Always use a dedicated subdomain pattern (`*@inbound.lunarlog.app`) or specific testing addresses (`auth-test@lunarlog.app`).
 
 ---
 
@@ -141,8 +143,8 @@ Run tests and type checks locally via Deno:
 
 ```bash
 # Type check TypeScript sources
-deno check web/email/src/**/*.ts
+deno check workers/email/src/**/*.ts
 
 # Run unit tests
-deno test web/email/src/index.test.ts
+deno test workers/email/src/index.test.ts
 ```
