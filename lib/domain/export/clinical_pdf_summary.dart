@@ -66,13 +66,14 @@ const String kClinicalSummaryNotDiagnosisLine =
     'This summary is not a diagnosis. It reports data logged by the person '
     'or their guardian and does not replace an assessment by a clinician.';
 
-/// The graded pain-scale statement the method note carries (issue #1114):
-/// the day sheet records pain intensity as 1-5, and a printed summary must
-/// not leave that number to be read on the clinical 0-10 scale. Shares
-/// [kPainIntensityScaleText] with the FHIR export so the two documents can
-/// never state a different scale.
+/// The graded intensity-scale statement the method note carries (issue
+/// #1114): the day sheet records pain intensity as plain 1-5, and a printed
+/// summary must not leave that number to be read on the clinical 0-10
+/// scale. Shares [kPainIntensityScaleText] with the FHIR export so the two
+/// documents state the same scale.
 const String kClinicalSummaryPainScaleNote =
-    'Pain intensity, where recorded, is graded $kPainIntensityScaleText.';
+    'Pain intensity is self-rated in lunarlog from $kPainIntensityScaleText; '
+    'individual ratings are not shown in this summary.';
 
 /// One completed cycle in the per-cycle history table.
 class ClinicalCycleRow {

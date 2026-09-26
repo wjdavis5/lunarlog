@@ -41,9 +41,11 @@
 ///   see the `Patient` section of `docs/clinical/fhir-export.md`), no
 ///   `birthDate` (even though [Profile.birthYear] exists), no email, no
 ///   Supabase user id, no guardian ids.
-/// - `Observation.performer` and a `note` mark every clinical fact as
+/// - `Observation.performer` and a `note` mark the raw logged facts as
 ///   self-reported (never a clinician observation) — see
 ///   [kSelfReportedNoteText] and [_buildProvenance]'s `activity` coding.
+///   The one exception is the app-calculated cycle-length Observation,
+///   which carries neither (issue #1115).
 /// - [DayEntry.note] (free-text) is never read by this file at all — no
 ///   function here even accepts it as an argument, so there is no code
 ///   path that could leak it. `test/domain/export/fhir_bundle_test.dart`
@@ -98,8 +100,7 @@
 /// each constant's `provenanceUrl`).
 library;
 
-import '../limits.dart'
-    show kMaxObservationIntensity, kMinObservationIntensity, kPainIntensityScaleText;
+import '../limits.dart' show kPainIntensityScaleText;
 import '../models/day_entry.dart';
 import '../models/flow_level.dart';
 import '../models/observation.dart';
@@ -135,13 +136,13 @@ const String kFhirExportVersionSystem =
     '$kFhirCodeSystemBase/export-version';
 
 /// lunarlog's own code system for flow-level codings (#157 review fix,
-/// `docs/clinical/terminology.md`'s "FlowLevel — stays fully local"
-/// section) — a distinct URI from [kSystemLunarlogLocal], which
+/// `docs/clinical/terminology.md`'s "`FlowLevel`" section) — a distinct
+/// URI from [kSystemLunarlogLocal], which
 /// `clinical_terminology.dart` documents as *the tag system*
 /// (`.../CodeSystem/tag`). A flow level is not a tag: giving it its own
 /// system keeps `kSystemLunarlogLocal`'s own meaning ("one of the 113
 /// `lib/domain/tags.dart` codes") exact, rather than overloading it with
-/// an unrelated five-value scale. **Permanent once emitted**, the same as
+/// an unrelated flow-amount scale. **Permanent once emitted**, the same as
 /// [kSystemLunarlogLocal] itself — do not change this value casually.
 const String kSystemLunarlogLocalFlow = '$kFhirCodeSystemBase/flow';
 
@@ -174,7 +175,7 @@ const ClinicalCode kCompositionTypePatientSummary = ClinicalCode(
 );
 
 /// LOINC `30954-2` — the IPS "Results Section" code, verified the same way
-/// as [kCompositionTypePatientSummary]. Holds the menstrual-status and
+/// as [kCompositionTypePatientSummary]. Holds the flow and
 /// cycle-statistic `Observation`s.
 const ClinicalCode kSectionResults = ClinicalCode(
   system: kSystemLoinc,
@@ -261,10 +262,13 @@ const String kSelfReportedNoteText =
 
 /// The note on the cycle-length `Observation` (issue #1115) — the value is
 /// computed by the app from the profile's logged period starts, so it must
-/// not be marked self-reported the way the raw symptom/flow rows are.
+/// not be marked self-reported the way the raw symptom/flow rows are. Says
+/// plainly that the inputs are the patient's own logs and that the average
+/// is neither measured nor clinician-confirmed.
 const String kCalculatedCycleLengthNoteText =
-    'Calculated by lunarlog from the profile\'s logged period starts; not a '
-    'self-reported value.';
+    'Average of up to 6 recent cycle lengths (15-60 days), calculated by '
+    'lunarlog from period start dates logged by the patient or guardian; '
+    'not measured or confirmed by a clinician.';
 
 final Uuid _uuidGenerator = const Uuid();
 
@@ -399,8 +403,8 @@ List<_ResourceEntry> _flowEntries(
     [
       // `isBleed` (#157 review fix, #335 coupling) rather than the equality
       // check this replaced: a positive bleed allow-list, so an explicit
-      // "not bleeding" day can never emit a menstrual-status Observation
-      // even after #335 adds flow levels beyond today's five.
+      // "not bleeding" day can never emit a flow Observation even as #335
+      // adds flow levels beyond the current ones.
       for (final entry in dayEntries.where((e) => isBleed(e.flow)))
         (
           fullUrl: _fullUrl('observation:flow:${entry.id}'),
@@ -483,7 +487,7 @@ List<_ResourceEntry> _symptomEntries(
     for (final observation in observations)
       if (!observation.excluded &&
           !observation.category.isMeasurement &&
-          !observation.category.isBirthControl)
+          !_isBirthControlRow(observation))
         observation,
   ];
   final existingDateCodes = _existingSymptomDateCodes(liveObservations);
@@ -493,23 +497,59 @@ List<_ResourceEntry> _symptomEntries(
   ];
 }
 
+/// Whether [observation] is a birth-control intake row (issue #1115) and so
+/// must never be emitted as an `Observation`.
+///
+/// `ObservationCategory.isBirthControl` covers the app's six
+/// `birth_control_*` category codes, but the **Clue import** writes the
+/// unsuffixed category `'birth_control'` (`clue_option_map.dart`), which
+/// [ObservationCategory.fromCode] does not know and so leaves as an
+/// [UnknownObservationCategory] where `isBirthControl` is false. Matching
+/// the wire string as well closes that leak without widening
+/// `ObservationCategory.known` (other `isBirthControl` consumers would need
+/// auditing first).
+bool _isBirthControlRow(Observation observation) =>
+    observation.category.isBirthControl ||
+    observation.category.wireCode == 'birth_control' ||
+    observation.category.wireCode.startsWith('birth_control_');
+
 /// Measurement `Observation`s (issue #1115): one per live `bbt`/`weight`
 /// row, exported in the IPS Vital Signs section rather than the Problems
 /// list. Birth-control intake rows are deliberately absent — they must
 /// never be modeled as `Observation`s (A3-48; see
 /// `clinical_terminology.dart`'s `kBirthControlResourceShapes`).
+///
+/// Only a row that is an actual, interpretable measurement is a vital
+/// sign: it must carry a numeric [Observation.valueNum] **and** a
+/// recognised UCUM [Observation.unit] (see [_kUcumUnitCodes]). A Clue
+/// import can store a BBT datapoint read from a raw `value`/`temperature`
+/// key as `unit: 'value'`/`'temperature'` (ambiguous between °C and °F and
+/// with no UCUM code), or a category-`bbt` row with no value at all; those
+/// break the R4 vital-signs profile's required `valueQuantity.system`/
+/// `code` and are omitted rather than exported as a malformed vital sign.
 List<_ResourceEntry> _vitalSignEntries(
   List<Observation> observations,
   String patientRef,
 ) =>
     [
       for (final observation in observations)
-        if (!observation.excluded && observation.category.isMeasurement)
+        if (!observation.excluded &&
+            observation.category.isMeasurement &&
+            observation.valueNum != null &&
+            _kUcumUnitCodes.containsKey(observation.unit))
           (
             fullUrl: _fullUrl('observation:row:${observation.id}'),
             resource: _vitalSignObservation(observation, patientRef),
           ),
     ];
+
+/// `http://terminology.hl7.org/CodeSystem/observation-category#vital-signs`
+/// — the `Observation.category` the R4 `vitalsigns`/`bodytemp`/
+/// `bodyweight` profiles (and IPS 2.0.1's `sectionVitalSigns.entry:vitalSign`
+/// slice, which references `vitalsigns`) require 1..1. Display "Vital
+/// Signs" verified on `tx.fhir.org` 2026-09-26.
+const String _kVitalSignsCategorySystem =
+    'http://terminology.hl7.org/CodeSystem/observation-category';
 
 /// One vital-sign `Observation` (issue #1115): basal body temperature as
 /// LOINC `8310-5` plus SNOMED `300076005`, weight as LOINC `29463-7`.
@@ -525,6 +565,17 @@ Map<String, Object?> _vitalSignObservation(
   return {
     'resourceType': 'Observation',
     'status': 'final',
+    'category': [
+      {
+        'coding': [
+          {
+            'system': _kVitalSignsCategorySystem,
+            'code': 'vital-signs',
+            'display': 'Vital Signs',
+          },
+        ],
+      },
+    ],
     'code': {
       'coding': isBasalBodyTemperature
           ? [_coding(kBodyTemperatureLoinc), _coding(kBasalBodyTemperatureSnomed)]
@@ -593,16 +644,19 @@ Map<String, Object?> _symptomObservation(
       // Observation. See [_symptomObservationValue]'s doc comment for the
       // primary-value-plus-component resolution.
       ..._symptomObservationValue(observation),
-      // Issue #1114: a graded severity is meaningless without its scale — a
-      // clinician reads a bare "4" on the usual 0-10 pain scale. Every
-      // Observation carrying a 1-5 intensity states the scale explicitly.
-      if (observation.intensity != null)
-        'referenceRange': _painReferenceRange(),
       'performer': [
         {'reference': patientRef},
       ],
       'note': [
         {'text': kSelfReportedNoteText},
+        // Issue #1114: a graded severity is meaningless without its scale —
+        // a clinician reads a bare "4" on the usual 0-10 pain scale. This
+        // is a `note`, not a `referenceRange`: an untyped R4 referenceRange
+        // asserts the *normal* range, which "1-5" would wrongly do, and on
+        // a row whose top-level value is a measurement it would qualify
+        // that value. It also covers the intensity-in-component case.
+        if (observation.intensity != null)
+          {'text': kPainIntensityNoteText},
       ],
     };
 
@@ -656,20 +710,15 @@ Map<String, Object?> _intensityComponent(int intensity) => {
       'valueInteger': intensity,
     };
 
-/// FHIR `Observation.referenceRange` for the graded
-/// [kMinObservationIntensity]..[kMaxObservationIntensity] pain scale (issue
-/// #1114): without it a receiving system reads the bare integer on the
-/// clinical 0-10 pain scale. `low`/`high` carry the numeric bounds and
-/// `text` spells them out in the scale's own mild-to-severe wording, drawn
-/// from the shared [kPainIntensityScaleText] constant so the FHIR export
-/// and the clinician PDF state the same scale.
-List<Map<String, Object?>> _painReferenceRange() => [
-      {
-        'low': {'value': kMinObservationIntensity},
-        'high': {'value': kMaxObservationIntensity},
-        'text': kPainIntensityScaleText,
-      },
-    ];
+/// The `Observation.note` appended to every intensity-bearing row (issue
+/// #1114), built from the shared [kPainIntensityScaleText] so it matches
+/// the clinician PDF's wording. A note rather than a `referenceRange`: R4
+/// reads an untyped referenceRange as the *normal* range, which would
+/// assert 1-5 is normal and (on a row whose primary value is a
+/// measurement) misqualify that value.
+const String kPainIntensityNoteText =
+    'Intensity self-rated on a 1-5 scale ($kPainIntensityScaleText); '
+    'this is not the 0-10 clinical pain scale.';
 
 /// UCUM unit codes for the closed `Observation.unit` set
 /// `lib/domain/models/observation.dart` documents (`celsius`/`fahrenheit`/
@@ -742,13 +791,27 @@ List<Map<String, Object?>> _codingsForDisplay(
           _coding(coding),
     ];
 
+/// Category contexts whose snake_case wire name is not the label a reader
+/// should see in a Problem list (issue #1114 / PR #1124 reverification):
+/// "Discharge" is overloaded with hospital discharge.
+const Map<String, String> _kFallbackCategoryLabels = {
+  'discharge': 'Vaginal discharge',
+};
+
 /// The display for a local (non-tag) `observations`-row coding in a
 /// namespace with no category heading (issue #1114): the category context
 /// plus the option, e.g. `'Birth control pill: missed'` rather than a bare
-/// `'missed'` a clinician cannot place. The category's snake_case wire code
-/// is rendered in sentence case (underscores become spaces).
-String fhirLocalDisplayFor(String categoryWireCode, String? code) =>
-    '${_sentenceCase(categoryWireCode)}: ${code ?? categoryWireCode}';
+/// `'missed'` a clinician cannot place. When the option is the category
+/// itself (e.g. a spotting row's `spotting`) the context alone is returned
+/// — "Spotting", never "Spotting: spotting". The category's snake_case wire
+/// code is rendered in sentence case (underscores become spaces).
+String fhirLocalDisplayFor(String categoryWireCode, String? code) {
+  final context =
+      _kFallbackCategoryLabels[categoryWireCode] ??
+          _sentenceCase(categoryWireCode);
+  if (code == null || code == categoryWireCode) return context;
+  return '$context: $code';
+}
 
 String _sentenceCase(String wireCode) {
   final spaced = wireCode.replaceAll('_', ' ');
@@ -768,8 +831,9 @@ ClinicalCode _localObservationCoding(Observation observation) => ClinicalCode(
     );
 
 /// One `Observation` per tag per day entry (Issue #157 review fix), from
-/// [DayEntry.tags] — the app's actual symptom surface, since nothing in
-/// production writes the `observations` table yet. Skips a `(date, tag)`
+/// [DayEntry.tags] — the app's tagged-symptom surface, alongside the
+/// `observations` rows the day sheet, birth-control intake and the Clue
+/// import also write (issue #1116). Skips a `(date, tag)`
 /// pair already present in [existingDateCodes] (a live `observations` row
 /// covering the same day/code — see [_symptomEntries]'s dedupe note) and
 /// any tag that is not a recognised taxonomy code (defensive: every
@@ -860,6 +924,11 @@ Map<String, Object?> _cycleLengthObservation(
         'unit': 'd',
         'system': 'http://unitsofmeasure.org',
         'code': 'd',
+      },
+      // R4 `Observation.method` — the value is a computed mean, not a
+      // measured one (issue #1115; PR #1124 reverification).
+      'method': {
+        'text': 'Calculated (mean of recent logged cycles)',
       },
       'note': [
         {'text': kCalculatedCycleLengthNoteText},

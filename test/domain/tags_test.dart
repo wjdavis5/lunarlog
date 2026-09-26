@@ -632,4 +632,73 @@ void main() {
       expect(flatDisplayForTag(tagByCode('acne')!), 'Acne');
     });
   });
+
+  group('contextualDisplayForTag (issue #1114; PR #1124 reverification)', () {
+    test('pins the contextual label for every contextualised code', () {
+      const expected = <String, String>{
+        // category prefix
+        'no_sex_today': 'Sex: No sex today',
+        'low_sex_drive': 'Sex: Low sex drive',
+        'high_sex_drive': 'Sex: High sex drive',
+        'masturbation': 'Sex: Masturbation',
+        'protected_sex': 'Sex: Protected sex',
+        'unprotected_sex': 'Sex: Unprotected sex',
+        'sex_toys': 'Sex: Sex toys',
+        'orgasm': 'Sex: Orgasm',
+        'no_orgasm': 'Sex: No orgasm',
+        'fantasies': 'Sex: Fantasies',
+        'painful_intercourse': 'Sex: Painful intercourse',
+        'none': 'Vaginal discharge: No discharge',
+        'sticky': 'Vaginal discharge: Sticky',
+        'creamy': 'Vaginal discharge: Creamy',
+        'egg_white': 'Vaginal discharge: Egg white',
+        'atypical': 'Vaginal discharge: Atypical',
+        'cravings': 'Craving: Other craving',
+        'sweet': 'Craving: Sweet',
+        'salty': 'Craving: Salty',
+        'carbs': 'Craving: Carbs',
+        'chocolate': 'Craving: Chocolate',
+        'normal': 'Stool: Normal',
+        'constipated': 'Stool: Constipated',
+        'diarrhea': 'Stool: Diarrhea',
+        '0_to_3_hours': 'Sleep duration: 0-3 hours',
+        '3_to_6_hours': 'Sleep duration: 3-6 hours',
+        '6_to_9_hours': 'Sleep duration: 6-9 hours',
+        '9_or_more_hours': 'Sleep duration: 9+ hours',
+        'bloating': 'Digestion: Bloating',
+        'nausea': 'Digestion: Nausea',
+        'gassy': 'Digestion: Gassy',
+        // per-code overrides (no category prefix reads correctly)
+        'sleep_trouble': 'Trouble sleeping',
+        'pregnancy_positive': 'Home pregnancy test: positive',
+        'pregnancy_negative': 'Home pregnancy test: negative',
+        'ovulation_positive': 'Home ovulation (LH) test: positive',
+        'ovulation_negative': 'Home ovulation (LH) test: negative',
+        'ovulation_peak': 'Home ovulation (LH) test: peak',
+        'withdrawal': 'Sex: withdrawal method (pull-out)',
+        'pain': 'Took pain medication',
+        'cold_flu_medication': 'Took cold/flu medication',
+        'antihistamine': 'Took an antihistamine',
+        'antibiotic': 'Took an antibiotic',
+        'allergy': 'Ailment: allergy symptoms',
+        'drinks': 'Alcoholic drinks',
+        // collision path (flatDisplayForTag wins)
+        'great_digestion': 'Great (digestion)',
+        'great_stool': 'Great (stool)',
+      };
+      for (final entry in expected.entries) {
+        expect(
+          contextualDisplayForTag(tagByCode(entry.key)!),
+          entry.value,
+          reason: entry.key,
+        );
+      }
+    });
+
+    test('leaves self-describing tags unchanged', () {
+      expect(contextualDisplayForTag(tagByCode('cramps')!), 'Cramps');
+      expect(contextualDisplayForTag(tagByCode('headache')!), 'Headache');
+      expect(contextualDisplayForTag(tagByCode('happy')!), 'Happy');
+    });
+  });
 }

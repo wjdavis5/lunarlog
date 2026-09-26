@@ -116,16 +116,16 @@ void main() {
     expect(text, contains('not medical advice'));
   });
 
-  test('states the graded 1-5 pain scale (issue #1114)', () {
-    final text = latin1.decode(buildClinicalPdfDocument(_fixtureSummary()));
-    // The PDF escapes parentheses, so match the escaped fragment the
-    // method note renders on its final line.
-    expect(kClinicalSummaryPainScaleNote, contains('1 (mild) to 5 (severe)'));
+  test('states the graded 1-5 intensity scale (issue #1114)', () {
     expect(
-      text,
-      contains(r'Pain intensity, where recorded, is graded 1 \(mild\) to 5 '
-          r'\(severe\)'),
+      kClinicalSummaryPainScaleNote,
+      'Pain intensity is self-rated in lunarlog from 1 (least intense) to 5 '
+      '(most intense); individual ratings are not shown in this summary.',
     );
+    final text = latin1.decode(buildClinicalPdfDocument(_fixtureSummary()));
+    // The method note wraps at the printable width, so assert a word that
+    // cannot break across a line rather than the whole sentence.
+    expect(text, contains('self-rated'));
   });
 
   test('lists the per-cycle dates and lengths with irregular and omitted columns', () {

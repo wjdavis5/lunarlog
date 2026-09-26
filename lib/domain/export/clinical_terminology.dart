@@ -16,10 +16,12 @@
 /// (verified against the FHIR R4 spec - these are what
 /// `Observation.code.coding.system` and `Observation.valueCodeableConcept
 /// .coding.system` expect):
-/// - [kSystemLoinc] - `http://loinc.org` - codes the *question* (what was
-///   measured/asked).
+/// - [kSystemLoinc] - `http://loinc.org` - commonly codes the *question*
+///   (what was measured/asked), and is also used for measurement concepts.
 /// - [kSystemSnomed] - `http://snomed.info/sct` - codes the *finding*
-///   (the symptom/observation itself).
+///   (the symptom/observation itself) or the *observable entity* behind a
+///   question (e.g. [kUsualLengthOfMenstrualCycleSnomed],
+///   [kQuantityOfMenstrualBloodLossSnomed], [kBasalBodyTemperatureSnomed]).
 /// - [kSystemLunarlogLocal] -
 ///   `https://lunarlog.app/fhir/CodeSystem/tag` -
 ///   lunarlog's own code system for concepts with no verified external
@@ -40,43 +42,43 @@
 ///   backs).
 ///
 /// This module is pure Dart (KTD6): no Flutter, no `dart:io`, nothing that
-/// reaches into `lib/data/`. It only describes codes; #157 is what will
-/// spend them building an actual FHIR Bundle.
+/// reaches into `lib/data/`. It only describes codes.
 ///
-/// ## Reserved shapes (A3-46/A3-47/A3-48) — decided now, emitted later
+/// ## Reserved shapes (A3-46/A3-47/A3-48)
 ///
-/// Three concept groups carry mapping decisions recorded here ahead of
-/// the FHIR builder (`lib/domain/export/fhir_bundle.dart`, #157) learning
-/// to emit them, per #152's instruction to reserve the shape now so the
-/// export design accounts for it. The underlying tracking features have
+/// Three concept groups carry mapping decisions recorded here per #152's
+/// instruction to reserve the shape. The underlying tracking features have
 /// all landed since #152 was written — BBT observation logging
 /// (`observations` rows with `category: 'bbt'`, consumed by
 /// `lib/domain/insights/bbt_chart.dart`), #188's pregnancy lifecycle
-/// mode, and #260's birth-control model — but the builder does not yet
-/// emit any of these shapes; those rows ride its generic local-coding
-/// fallback today, which is valid FHIR and carries no guessed code. No
-/// premature guessed code ships ahead of the builder work:
+/// mode, and #260's birth-control model. **BBT and weight are now
+/// emitted** (issue #1115, see [kBodyTemperatureLoinc] /
+/// [kBasalBodyTemperatureSnomed] / [kBodyWeightLoinc]); pregnancy/due-date
+/// and birth-control resource shapes remain reserved but unemitted:
 /// - **Basal body temperature (A3-46):** [kBodyTemperatureLoinc] —
 ///   LOINC `8310-5` "Body temperature" (the code US Core / IPS
-///   vital-signs profiles expect), emitted with a basal qualifier
-///   ([kBasalBodyTemperatureSnomed], SNOMED `300076005` "Basal body
+///   vital-signs profiles expect), emitted with the SNOMED observable
+///   entity [kBasalBodyTemperatureSnomed] (`300076005` "Basal body
 ///   temperature", since issue #1115 — a real concept exists, so no
 ///   invented BBT-specific LOINC).
 /// - **Pregnancy + estimated due date (A3-47):** pregnancy status is
 ///   conventionally a `Condition` (or an `Observation` of pregnancy
 ///   status); the estimated delivery date is an `Observation` coded with
-///   the LMP-derived LOINC `11779-6` ([kEstimatedDeliveryDateLoinc];
-///   USCDI lists it as a Level 0 submission:
-///   https://www.healthit.gov/isa/uscdi-data/estimated-date-delivery).
-///   `11778-8` means a practitioner-selected date and is not used. No
+///   the LMP-derived LOINC `11779-6` ([kEstimatedDeliveryDateLoinc]).
+///   USCDI's Level 0 "Estimated Date of Delivery" element cites `11778-8`
+///   ("Delivery date Estimated", a clinical estimate); lunarlog reserves
+///   `11779-6` because an app-computed date is LMP-derived. No
 ///   pregnancy-status/due-date data model exists yet — only the mode —
 ///   so this is shape reservation, not an implemented mapping.
 /// - **Birth control (A3-48, #260):** [kBirthControlResourceShapes] —
 ///   `MedicationStatement` / `Device` + `DeviceUseStatement` /
 ///   `Procedure` by method shape. Never modeled as an `Observation`;
 ///   doing so would make the export look machine-generated rather than
-///   clinically credible. No medication/device codes are reserved — none
-///   has been verified against an external system.
+///   clinically credible. The per-day intake rows — the app's
+///   `birth_control_*` categories and the Clue import's unsuffixed
+///   `birth_control` category — are therefore not emitted at all. No
+///   medication/device codes are reserved — none has been verified against
+///   an external system.
 library;
 
 import '../tags.dart' as tags show TagCode, kTagTaxonomy, isValidTagCode;
@@ -84,7 +86,8 @@ import '../tags.dart' as tags show TagCode, kTagTaxonomy, isValidTagCode;
 /// `http://loinc.org` - LOINC codes the *question*.
 const String kSystemLoinc = 'http://loinc.org';
 
-/// `http://snomed.info/sct` - SNOMED CT codes the *finding*.
+/// `http://snomed.info/sct` - SNOMED CT codes the *finding* or the
+/// *observable entity* behind a question.
 const String kSystemSnomed = 'http://snomed.info/sct';
 
 /// The permanent URI base for lunarlog's own FHIR code systems -
@@ -222,7 +225,7 @@ const List<ClinicalCode> kLoincCodes = [
 /// menstrual concept. The three from #1116's independent re-verification
 /// (tx.fhir.org / CSIRO Ontoserver, 2026-09-26): `49033-4` is "Menstrual
 /// History - Reported" (not the flow-amount code it was cited as),
-/// `21840-4` is "Sex [NAACCR]" (a cancer-registry field), and `3151-8` is
+/// `21840-4` is "Sex [NAACCR v.11]" (a cancer-registry field), and `3151-8` is
 /// "Inhaled oxygen flow rate" — neither is a menstrual concept. Referenced
 /// by code (not full [ClinicalCode] rows, since these must never be built
 /// into an actual coding) purely so the never-referenced test has
@@ -246,7 +249,7 @@ const List<String> kUnverifiedLoincCodes = [];
 
 /// LOINC `8310-5` "Body temperature" — the standard vital-sign code (US
 /// Core / IPS) the FHIR builder now emits for `observations.category =
-/// 'bbt'` rows, paired with the SNOMED finding
+/// 'bbt'` rows, paired with the SNOMED observable entity
 /// [kBasalBodyTemperatureSnomed] (300076005) to mark the reading as basal
 /// (issue #1115 — a SNOMED BBT concept exists, so no invented BBT-specific
 /// LOINC is needed). Deliberately **not** part of [kLoincCodes]: that
@@ -259,8 +262,9 @@ const ClinicalCode kBodyTemperatureLoinc = ClinicalCode(
   provenanceUrl: 'https://loinc.org/8310-5',
 );
 
-/// SNOMED CT `300076005` "Basal body temperature" — the finding coding
-/// that pairs with [kBodyTemperatureLoinc] on a BBT `Observation` (issue
+/// SNOMED CT `300076005` "Basal body temperature" — the observable entity
+/// (FSN "Basal body temperature (observable entity)") that pairs with
+/// [kBodyTemperatureLoinc] on a BBT `Observation` (issue
 /// #1115; `docs/clinical/terminology.md`'s BBT section). Verified against
 /// `tx.fhir.org` (SNOMED CT International 20250201) on 2026-09-26.
 const ClinicalCode kBasalBodyTemperatureSnomed = ClinicalCode(
@@ -1135,9 +1139,11 @@ List<ClinicalCode> get cycleLengthCodes => [kUsualLengthOfMenstrualCycleSnomed];
 /// last menstrual period" (issue #1116). An app-calculated date is
 /// LMP-derived, which is precisely what this code means; `11778-8`
 /// "Delivery date Estimated" means a date a practitioner selected and must
-/// not be used for it. The cited USCDI page lists this as a Level 0
-/// submission, not the "included in USCDI" the earlier note claimed.
-/// Verified against `tx.fhir.org` (LOINC 2.82) on 2026-09-26.
+/// not be used for it. USCDI's Level 0 "Estimated Date of Delivery"
+/// element cites `11778-8` (a clinical estimate, LOINC method
+/// Clinical.estimated); lunarlog reserves `11779-6` because an
+/// app-computed date is LMP-derived. Verified against `tx.fhir.org`
+/// (LOINC 2.82) on 2026-09-26.
 ///
 /// **Shape reservation, not an implemented mapping.** Pregnancy status
 /// is conventionally a `Condition` (or an `Observation` of pregnancy
@@ -1162,11 +1168,13 @@ ClinicalCode get estimatedDeliveryDateCode => kEstimatedDeliveryDateLoinc;
 /// resource each method shape must be exported as, keyed by method
 /// shape. `#260`'s birth-control model has landed
 /// (`lib/domain/birth_control.dart`: profile-level method plus per-day
-/// `birth_control_*` intake observation rows). The FHIR builder does not
+/// `birth_control_*` intake observation rows; the Clue import also writes
+/// the unsuffixed `birth_control` category). The FHIR builder does not
 /// emit any of these shapes — and, per its binding rule, never models a
 /// birth-control intake row as an `Observation` either: those rows are
-/// deliberately absent from the export (issue #1115), not carried on the
-/// generic local-coding fallback. See `docs/clinical/fhir-export.md`.
+/// deliberately absent from the export (issue #1115), including the Clue
+/// `birth_control` category, not carried on the generic local-coding
+/// fallback. See `docs/clinical/fhir-export.md`.
 ///
 /// The binding rule (a test pins it): **no birth-control method shape is
 /// ever modeled as an `Observation`** — exporting ongoing medication,
