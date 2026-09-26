@@ -80,6 +80,10 @@ supabase/tests/manual/package-lock.json
 # ignored.
 tool/web_smoke/node_modules/
 
+# Node deps for the inbound email Cloudflare Worker (issue #1121). Its
+# package-lock.json IS committed; only node_modules is ignored.
+workers/email/node_modules/
+
 # OpenCode's own local install (plugin/SDK deps for the opencode-<model> coordinators)
 .opencode/node_modules/
 
