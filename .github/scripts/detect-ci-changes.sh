@@ -97,13 +97,31 @@ while IFS= read -r file; do
       release_guards=true
       ;;
 
+    # Database migration workflows -> run release guards and database tests
+    .github/workflows/supabase-migrate.yml|.github/workflows/migration-gate.yml)
+      database=true
+      release_guards=true
+      ;;
+
+    # Release workflows verified by Dart release tests (sentry_symbols_test.dart)
+    .github/workflows/ios-release.yml|.github/workflows/play-store-release.yml|.github/scripts/upload-sentry-symbols-setup.sh)
+      app_flutter=true
+      release_guards=true
+      ;;
+
     # Release guard scripts, tool coordinators, or other workflow files
     .github/workflows/*|.github/scripts/*|tool/coord/*|tool/orchestrator/*)
       release_guards=true
       ;;
 
-    # Cloudflare Workers and Deno Edge Functions
-    site/*|workers/*|web/email/*|web/links/*|supabase/functions/*)
+    # Edge Functions (also checked by Flutter branding tests in test/release/branding_identity_test.dart)
+    supabase/functions/*)
+      edge_functions=true
+      app_flutter=true
+      ;;
+
+    # Cloudflare Workers
+    site/*|workers/*|web/email/*|web/links/*)
       edge_functions=true
       ;;
 
@@ -118,9 +136,24 @@ while IFS= read -r file; do
       database=true
       ;;
 
-    # Database: migrations, pgTAP SQL tests, local supabase config, generated schema snapshot
-    supabase/migrations/*|supabase/tests/*|supabase/config.toml|supabase/database.types.ts|.github/workflows/supabase-migrate.yml|.github/workflows/migration-gate.yml)
+    # Database migrations and pgTAP tests:
+    # Also read by Dart release tests (test/release/pgtap_counts_test.dart)
+    supabase/migrations/*|supabase/tests/*)
       database=true
+      app_flutter=true
+      ;;
+
+    # Local supabase config & generated schema snapshot
+    supabase/config.toml|supabase/database.types.ts)
+      database=true
+      ;;
+
+    # Guard inputs read by Dart release/boundary tests:
+    #   - AGENTS.md (read by test/release/pgtap_counts_test.dart)
+    #   - docs/product/voice-and-copy.md (read by test/release/branding_identity_test.dart)
+    #   - docs/links/* and site/public/* (read by test/domain/sharing/link_artifacts_test.dart)
+    AGENTS.md|docs/product/voice-and-copy.md|docs/links/*|site/public/*)
+      app_flutter=true
       ;;
 
     # Core Flutter application: Dart code, tests, integration tests, assets, Flutter web client, native Android & iOS
