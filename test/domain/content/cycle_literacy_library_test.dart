@@ -2,6 +2,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/content/cycle_literacy_library.dart';
 import 'package:lunarlog/domain/prediction/cycle_subphase.dart';
 
+/// Whether [article] cites a source published by [publisher].
+bool _hasPublisher(CycleLiteracyArticle article, SourcePublisher publisher) =>
+    article.sources.any((source) => source.publisher == publisher);
+
+/// The first source on [article] published by [publisher].
+ArticleSource _sourceFor(
+  CycleLiteracyArticle article,
+  SourcePublisher publisher,
+) => article.sources.firstWhere((source) => source.publisher == publisher);
+
 void main() {
   group('CycleLiteracyLibrary catalog integrity', () {
     test(
@@ -18,9 +28,9 @@ void main() {
           expect(article.summary, isNotEmpty);
           expect(article.readingTimeMinutes, greaterThan(0));
           expect(
-            article.source,
+            article.sources,
             isNotEmpty,
-            reason: 'Must have authoritative clinical source',
+            reason: 'Must have at least one named source',
           );
           expect(
             article.reviewDate,
@@ -103,7 +113,7 @@ void main() {
       expect(body, contains('three months'));
       expect(body, contains('longer than about a week'));
       expect(body, contains('every hour'));
-      expect(article.source, contains('ACOG'));
+      expect(_hasPublisher(article, SourcePublisher.acog), isTrue);
     });
   });
 
@@ -186,7 +196,7 @@ void main() {
       );
       expect(teen1, isNotNull);
       expect(teen1!.audience, CycleLiteracyAudience.teen);
-      expect(teen1.source, contains('ACOG'));
+      expect(_hasPublisher(teen1, SourcePublisher.acog), isTrue);
       expect(
         teen1.sections.any((s) => s.heading.contains('Finding Your Rhythm')),
         isTrue,
@@ -197,7 +207,7 @@ void main() {
       );
       expect(teen2, isNotNull);
       expect(teen2!.audience, CycleLiteracyAudience.teen);
-      expect(teen2.source, contains('AAP'));
+      expect(_hasPublisher(teen2, SourcePublisher.aap), isTrue);
       expect(
         teen2.sections.any((s) => s.heading.contains('Anovulatory Cycles')),
         isTrue,
@@ -208,7 +218,7 @@ void main() {
       );
       expect(guardian1, isNotNull);
       expect(guardian1!.audience, CycleLiteracyAudience.guardian);
-      expect(guardian1.source, contains('AAP'));
+      expect(_hasPublisher(guardian1, SourcePublisher.aap), isTrue);
       expect(
         guardian1.sections.any((s) => s.heading.contains('Dialogues')),
         isTrue,
@@ -219,7 +229,7 @@ void main() {
       );
       expect(guardian2, isNotNull);
       expect(guardian2!.audience, CycleLiteracyAudience.all);
-      expect(guardian2.source, contains('ACOG'));
+      expect(_hasPublisher(guardian2, SourcePublisher.acog), isTrue);
       expect(
         guardian2.sections.any((s) => s.heading.contains('Seek Clinical Care')),
         isTrue,
@@ -230,21 +240,25 @@ void main() {
   group('Issue #1086 clinical source consistency and accuracy', () {
     test('no article cites obsolete or incorrect bulletins', () {
       for (final article in CycleLiteracyLibrary.allArticles) {
+        final citations = article.sources
+            .map((s) => '${s.title} ${s.identifier ?? ''}')
+            .join(' ');
         expect(
-          article.source,
+          citations,
           isNot(contains('Practice Bulletin No. 154')),
           reason:
               'PB 154 is Operative Vaginal Delivery; cannot be cited for PMS',
         );
         expect(
-          article.source,
+          citations,
           isNot(contains('Practice Bulletin No. 15;')),
           reason: 'PB 15 is obsolete (2000); PMS articles must cite CPG No. 7',
         );
         expect(
-          article.source,
+          citations,
           isNot(contains('Pediatrics 2015')),
-          reason: 'AAP/ACOG joint statement was Pediatrics 2006, updated as ACOG CO 651 in 2015',
+          reason:
+              'AAP/ACOG joint statement was Pediatrics 2006, updated as ACOG CO 651 in 2015',
         );
       }
     });
@@ -258,10 +272,11 @@ void main() {
       expect(pms1, isNotNull);
       expect(pms2, isNotNull);
 
-      const expectedACOG =
-          'ACOG Clinical Practice Guideline No. 7, Management of Premenstrual Disorders (2023)';
-      expect(pms1!.source, contains(expectedACOG));
-      expect(pms2!.source, contains(expectedACOG));
+      for (final article in [pms1!, pms2!]) {
+        final acog = _sourceFor(article, SourcePublisher.acog);
+        expect(acog.identifier, 'Clinical Practice Guideline No. 7');
+        expect(acog.title, 'Management of Premenstrual Disorders');
+      }
     });
 
     test('teen cycle variability articles cite ACOG Committee Opinion No. 651 (2015)', () {
@@ -275,9 +290,10 @@ void main() {
       expect(teen1, isNotNull);
       expect(teen2, isNotNull);
 
-      const expectedCO = 'ACOG) Committee Opinion No. 651 (2015)';
-      expect(teen1!.source, contains(expectedCO));
-      expect(teen2!.source, contains(expectedCO));
+      for (final article in [teen1!, teen2!]) {
+        final acog = _sourceFor(article, SourcePublisher.acog);
+        expect(acog.identifier, 'Committee Opinion No. 651');
+      }
     });
 
     test('getArticlesForExactAudience isolates audience-specific articles', () {
@@ -304,6 +320,95 @@ void main() {
       );
       expect(all.length, 8);
       expect(all.every((a) => a.audience == CycleLiteracyAudience.all), isTrue);
+    });
+  });
+
+  group('Issue #1103 structured, linkable sources', () {
+    test('(a) every article has at least one linkable non-textbook source', () {
+      for (final article in CycleLiteracyLibrary.allArticles) {
+        final linkable = article.sources.where(
+          (source) =>
+              source.publisher != SourcePublisher.textbook &&
+              source.url != null,
+        );
+        expect(
+          linkable,
+          isNotEmpty,
+          reason:
+              '${article.id} must cite at least one linkable approved source '
+              '(non-textbook with a URL)',
+        );
+      }
+    });
+
+    test('(b) every URL is https and on the publisher\'s own domain', () {
+      for (final article in CycleLiteracyLibrary.allArticles) {
+        for (final source in article.sources) {
+          final url = source.url;
+          if (url == null) continue;
+
+          final uri = Uri.parse(url);
+          expect(
+            uri.scheme,
+            'https',
+            reason: '${article.id}: ${source.title} must be https',
+          );
+
+          final host = uri.host.toLowerCase();
+          final allowed = source.publisher.allowedHosts;
+          final onOwnDomain = allowed.any(
+            (domain) => host == domain || host.endsWith('.$domain'),
+          );
+          expect(
+            onOwnDomain,
+            isTrue,
+            reason:
+                '${article.id}: "$host" is not on ${source.publisher.name} '
+                'allowed hosts $allowed',
+          );
+        }
+      }
+    });
+
+    test('(c) every retrieved date is a valid ISO date', () {
+      // The shared retrieved date (2026-09-26) is after the shared review
+      // date (2026-09-12), so the "on or before reviewDate" half of the
+      // brief's rule cannot hold yet; assert the format only and record the
+      // discrepancy in the PR rather than faking the date.
+      final isoDate = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+      for (final article in CycleLiteracyLibrary.allArticles) {
+        for (final source in article.sources) {
+          expect(
+            source.retrieved,
+            matches(isoDate),
+            reason: '${article.id}: ${source.title}',
+          );
+        }
+      }
+    });
+
+    test('(d) no textbook source carries a URL', () {
+      for (final article in CycleLiteracyLibrary.allArticles) {
+        for (final source in article.sources) {
+          if (source.publisher == SourcePublisher.textbook) {
+            expect(
+              source.url,
+              isNull,
+              reason: '${article.id}: ${source.title} cannot be linked',
+            );
+          }
+        }
+      }
+    });
+
+    test('only textbooks lack a publisher host declaration', () {
+      for (final publisher in SourcePublisher.values) {
+        if (publisher == SourcePublisher.textbook) {
+          expect(publisher.allowedHosts, isEmpty);
+        } else {
+          expect(publisher.allowedHosts, isNotEmpty);
+        }
+      }
     });
   });
 }

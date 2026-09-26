@@ -1,14 +1,16 @@
 /// Bundled offline cycle-literacy content library (Issue #239, A2-25).
 ///
-/// Science-backed, expert-reviewed educational articles on menstrual,
-/// hormonal, and reproductive literacy. Fully offline with zero network
+/// Educational articles on menstrual, hormonal, and reproductive literacy,
+/// sourced from named authoritative bodies. Fully offline with zero network
 /// dependency.
 ///
 /// **Constraints & Framing**:
 /// - General biological literacy only: no individualized medical advice,
 ///   no diagnostic assertions, and no clinical prescriptions.
-/// - Every article carries explicit provenance: named authoritative sources
-///   (e.g. ACOG, NHS, peer-reviewed endocrine literature) and ISO review dates.
+/// - Every article carries explicit provenance as structured, individually
+///   linkable citations (Issue #1103). "Last reviewed" is the date the cited
+///   sources were last checked against their publishers; it is **not** a
+///   clinical review of the article, and nothing here claims one.
 /// - Articles link contextually from active cycle subphases (Issue #236) and
 ///   are browsable in a standalone library index.
 library;
@@ -33,6 +35,70 @@ enum CycleLiteracyCategory {
 /// Target audience for cycle literacy articles (Issue #854).
 enum CycleLiteracyAudience { all, teen, guardian }
 
+/// The authoritative body (or style of source) behind a citation (Issue #1103).
+///
+/// Each publisher that serves its own content declares the host(s) that
+/// content legitimately lives on, so a test can prove a cited URL points at
+/// the publisher's own domain rather than a re-host. [peerReviewed] and
+/// [textbook] describe a kind of source rather than a single body; [textbook]
+/// has no host because a printed textbook cannot be linked.
+enum SourcePublisher {
+  acog('American College of Obstetricians and Gynecologists', {'acog.org'}),
+  nhs('National Health Service (UK)', {'nhs.uk'}),
+  who('World Health Organization', {'who.int'}),
+  nichd(
+    'Eunice Kennedy Shriver National Institute of Child Health and Human Development',
+    {'nichd.nih.gov', 'nih.gov'},
+  ),
+  rcog('Royal College of Obstetricians and Gynaecologists', {'rcog.org.uk'}),
+  mayoClinic('Mayo Clinic', {'mayoclinic.org'}),
+  clevelandClinic('Cleveland Clinic', {'my.clevelandclinic.org'}),
+  aap('American Academy of Pediatrics', {'aap.org', 'healthychildren.org'}),
+  figo('International Federation of Gynecology and Obstetrics', {'figo.org'}),
+  endocrineSociety('Endocrine Society', {'endocrine.org'}),
+  peerReviewed(
+    'Peer-reviewed literature',
+    {'doi.org', 'pubmed.ncbi.nlm.nih.gov'},
+  ),
+  textbook('Textbook', {});
+
+  const SourcePublisher(this.displayName, this.allowedHosts);
+
+  /// Human-readable publisher name.
+  final String displayName;
+
+  /// Hosts on which this publisher's own content is served. Empty for
+  /// [textbook], which has no linkable URL.
+  final Set<String> allowedHosts;
+}
+
+/// One cited source behind a [CycleLiteracyArticle] (Issue #1103).
+class ArticleSource {
+  const ArticleSource({
+    required this.publisher,
+    required this.title,
+    this.identifier,
+    this.url,
+    required this.retrieved,
+  });
+
+  /// The authoritative body (or source style) this citation points at.
+  final SourcePublisher publisher;
+
+  /// Title of the cited page or work.
+  final String title;
+
+  /// Optional document identifier, e.g. `'Committee Opinion No. 651'`.
+  final String? identifier;
+
+  /// https URL on [SourcePublisher.allowedHosts]. Null only for a
+  /// [SourcePublisher.textbook] citation, which cannot be linked.
+  final String? url;
+
+  /// ISO-8601 date (`YYYY-MM-DD`) the source was last checked.
+  final String retrieved;
+}
+
 /// A structured section within a cycle literacy article.
 class ArticleSection {
   const ArticleSection({required this.heading, required this.paragraphs});
@@ -41,7 +107,7 @@ class ArticleSection {
   final List<String> paragraphs;
 }
 
-/// One bundled, expert-referenced cycle literacy article.
+/// One bundled, source-referenced cycle literacy article.
 class CycleLiteracyArticle {
   const CycleLiteracyArticle({
     required this.id,
@@ -50,7 +116,7 @@ class CycleLiteracyArticle {
     required this.category,
     this.audience = CycleLiteracyAudience.all,
     required this.readingTimeMinutes,
-    required this.source,
+    required this.sources,
     required this.reviewDate,
     required this.sections,
     required this.relatedSubphases,
@@ -74,8 +140,8 @@ class CycleLiteracyArticle {
   /// Estimated reading time in minutes.
   final int readingTimeMinutes;
 
-  /// Named clinical or scientific source citation.
-  final String source;
+  /// Structured, individually linkable citations behind this article.
+  final List<ArticleSource> sources;
 
   /// ISO-8601 review date (`YYYY-MM-DD`).
   final String reviewDate;
@@ -99,6 +165,166 @@ class CycleLiteracyLibrary {
 
   static const String _currentReviewDate = '2026-09-12';
 
+  /// ISO date the citations below were last checked against their publishers
+  /// (Issue #1103).
+  static const String _retrievedDate = '2026-09-26';
+
+  // --- Verified, linkable citations (Issue #1103) ---
+  //
+  // Every URL below was checked with
+  // `curl -sIL -o /dev/null -w "%{http_code} %{url_effective}"` and returned
+  // HTTP 200 on the publisher's own domain. Never add a URL that has not been
+  // verified this way; the domain is enforced by
+  // test/domain/content/cycle_literacy_library_test.dart.
+
+  static const ArticleSource _acogMenstrualCycle = ArticleSource(
+    publisher: SourcePublisher.acog,
+    title:
+        'The Menstrual Cycle: Menstruation, Ovulation, and How Pregnancy Happens',
+    url: 'https://www.acog.org/womens-health/infographics/the-menstrual-cycle',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _acogFertilityAwareness = ArticleSource(
+    publisher: SourcePublisher.acog,
+    title: 'Fertility Awareness-Based Methods of Family Planning',
+    url:
+        'https://www.acog.org/womens-health/faqs/fertility-awareness-based-methods-of-family-planning',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _acogPainfulPeriods = ArticleSource(
+    publisher: SourcePublisher.acog,
+    title: 'Painful Periods',
+    url: 'https://www.acog.org/womens-health/faqs/painful-periods',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _acogYourFirstPeriod = ArticleSource(
+    publisher: SourcePublisher.acog,
+    title: 'Your First Period',
+    identifier: 'FAQ049',
+    url: 'https://www.acog.org/womens-health/faqs/your-first-period',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _acogCommitteeOpinion651 = ArticleSource(
+    publisher: SourcePublisher.acog,
+    title:
+        'Menstruation in Girls and Adolescents: Using the Menstrual Cycle as a Vital Sign',
+    identifier: 'Committee Opinion No. 651',
+    url:
+        'https://www.acog.org/clinical/clinical-guidance/committee-opinion/articles/2015/12/menstruation-in-girls-and-adolescents-using-the-menstrual-cycle-as-a-vital-sign',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _acogCpgNo7 = ArticleSource(
+    publisher: SourcePublisher.acog,
+    title: 'Management of Premenstrual Disorders',
+    identifier: 'Clinical Practice Guideline No. 7',
+    url:
+        'https://www.acog.org/clinical/clinical-guidance/clinical-practice-guideline/articles/2023/12/management-of-premenstrual-disorders',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _nhsPeriods = ArticleSource(
+    publisher: SourcePublisher.nhs,
+    title: 'Periods',
+    url: 'https://www.nhs.uk/conditions/periods/',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _nhsPeriodPain = ArticleSource(
+    publisher: SourcePublisher.nhs,
+    title: 'Period pain',
+    url: 'https://www.nhs.uk/symptoms/period-pain/',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _nhsPms = ArticleSource(
+    publisher: SourcePublisher.nhs,
+    title: 'Premenstrual syndrome (PMS)',
+    url: 'https://www.nhs.uk/conditions/pre-menstrual-syndrome/',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _whoMenstrualHealth = ArticleSource(
+    publisher: SourcePublisher.who,
+    title: 'Menstrual health',
+    url: 'https://www.who.int/news-room/fact-sheets/detail/menstrual-health',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _endocrineLibrary = ArticleSource(
+    publisher: SourcePublisher.endocrineSociety,
+    title: 'Endocrine Library',
+    url: 'https://www.endocrine.org/patient-engagement/endocrine-library',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _aapAdolescentHealth = ArticleSource(
+    publisher: SourcePublisher.aap,
+    title: 'Adolescent Sexual and Reproductive Health',
+    url: 'https://www.aap.org/en/patient-care/adolescent-sexual-health/',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _rcogPremenstrualSyndrome = ArticleSource(
+    publisher: SourcePublisher.rcog,
+    title: 'Premenstrual Syndrome: Management',
+    identifier: 'Green-top Guideline No. 48',
+    url:
+        'https://www.rcog.org.uk/guidance/browse-all-guidance/green-top-guidelines/premenstrual-syndrome-management-green-top-guideline-no-48/',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _wilcoxOvulationTiming = ArticleSource(
+    publisher: SourcePublisher.peerReviewed,
+    title:
+        'Timing of Sexual Intercourse in Relation to Ovulation: Effects on the Probability of Conception, Survival of the Pregnancy, and Sex of the Baby',
+    identifier: 'PMID 7477166',
+    url: 'https://pubmed.ncbi.nlm.nih.gov/7477166/',
+    retrieved: _retrievedDate,
+  );
+
+  // figo.org answers automated link-checking with HTTP 403 (bot protection),
+  // so no FIGO URL could be verified. It is kept as a named source without a
+  // URL rather than inventing one; the article still carries verified,
+  // linkable sources (WHO, ACOG).
+  static const ArticleSource _figoMenstrualDisorders = ArticleSource(
+    publisher: SourcePublisher.figo,
+    title: 'FIGO Menstrual Disorders Committee: FIGO Systems 1 & 2',
+    identifier: 'FIGO Systems 1 & 2',
+    retrieved: _retrievedDate,
+  );
+
+  // Textbooks cannot be linked or link-checked; each stays as a secondary
+  // citation with no URL (Issue #1103).
+  static const ArticleSource _speroffs = ArticleSource(
+    publisher: SourcePublisher.textbook,
+    title:
+        'Speroff\'s Clinical Gynecologic Endocrinology and Infertility (9th ed.)',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _guytonAndHall = ArticleSource(
+    publisher: SourcePublisher.textbook,
+    title: 'Guyton and Hall Textbook of Medical Physiology',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _williamsObstetrics = ArticleSource(
+    publisher: SourcePublisher.textbook,
+    title: 'Williams Obstetrics (26th ed.)',
+    retrieved: _retrievedDate,
+  );
+
+  static const ArticleSource _yenAndJaffe = ArticleSource(
+    publisher: SourcePublisher.textbook,
+    title: 'Yen & Jaffe\'s Reproductive Endocrinology',
+    retrieved: _retrievedDate,
+  );
+
   // --- Article 1: Menstrual Cycle Phases ---
   static const CycleLiteracyArticle menstrualCyclePhases = CycleLiteracyArticle(
     id: 'menstrual-cycle-phases',
@@ -106,7 +332,7 @@ class CycleLiteracyLibrary {
     summary: 'A comprehensive guide to how menstruation, the follicular phase, ovulation, and the luteal phase interact each cycle.',
     category: CycleLiteracyCategory.phases,
     readingTimeMinutes: 3,
-    source: 'American College of Obstetricians and Gynecologists (ACOG) FAQ049; Endocrine Society Clinical Resources',
+    sources: [_acogMenstrualCycle, _endocrineLibrary],
     reviewDate: _currentReviewDate,
     relatedSubphases: [
       CycleSubphase.earlyFollicular,
@@ -140,7 +366,7 @@ class CycleLiteracyLibrary {
         summary: 'How rising estradiol stimulates follicle development and thickens the endometrium — and why energy often feels higher.',
         category: CycleLiteracyCategory.phases,
         readingTimeMinutes: 2,
-        source: 'Speroff\'s Clinical Gynecologic Endocrinology and Infertility (9th ed.); Guyton and Hall Textbook of Medical Physiology',
+        sources: [_speroffs, _guytonAndHall, _nhsPeriods],
         reviewDate: _currentReviewDate,
         relatedSubphases: [CycleSubphase.lateFollicular],
         sections: [
@@ -168,7 +394,7 @@ class CycleLiteracyLibrary {
         summary: 'The science behind the LH surge, egg release, and the biological window of fertility.',
         category: CycleLiteracyCategory.fertility,
         readingTimeMinutes: 3,
-        source: 'ACOG Clinical Practice Guideline on Infertility; Wilcox et al., New England Journal of Medicine',
+        sources: [_acogFertilityAwareness, _wilcoxOvulationTiming],
         reviewDate: _currentReviewDate,
         relatedSubphases: [CycleSubphase.ovulation],
         sections: [
@@ -197,7 +423,7 @@ class CycleLiteracyLibrary {
         summary: 'The role of the corpus luteum in producing progesterone, stabilizing the endometrium, and raising basal temperature.',
         category: CycleLiteracyCategory.phases,
         readingTimeMinutes: 2,
-        source: 'Williams Obstetrics (26th ed.); Yen & Jaffe\'s Reproductive Endocrinology',
+        sources: [_williamsObstetrics, _yenAndJaffe, _acogMenstrualCycle],
         reviewDate: _currentReviewDate,
         relatedSubphases: [CycleSubphase.earlyLuteal, CycleSubphase.midLuteal],
         sections: [
@@ -224,7 +450,7 @@ class CycleLiteracyLibrary {
     summary: 'The biological basis of PMS: how the abrupt withdrawal of progesterone and estrogen influences neurotransmitters.',
     category: CycleLiteracyCategory.bodyAndSymptoms,
     readingTimeMinutes: 3,
-    source: 'ACOG Clinical Practice Guideline No. 7, Management of Premenstrual Disorders (2023); Royal College of Obstetricians and Gynaecologists (RCOG)',
+    sources: [_acogCpgNo7, _rcogPremenstrualSyndrome],
     reviewDate: _currentReviewDate,
     relatedSubphases: [CycleSubphase.midLuteal, CycleSubphase.lateLuteal],
     sections: [
@@ -252,7 +478,7 @@ class CycleLiteracyLibrary {
     summary: 'The biological mechanism of dysmenorrhea: uterine muscle contractions driven by prostaglandins, and when to speak with a doctor.',
     category: CycleLiteracyCategory.bodyAndSymptoms,
     readingTimeMinutes: 3,
-    source: 'ACOG Clinical Consensus: Dysmenorrhea in Adolescents; NHS Women\'s Health Guidelines',
+    sources: [_acogPainfulPeriods, _nhsPeriodPain],
     reviewDate: _currentReviewDate,
     relatedSubphases: [CycleSubphase.lateLuteal, CycleSubphase.earlyFollicular],
     sections: [
@@ -282,7 +508,11 @@ class CycleLiteracyLibrary {
         summary: 'Why cycles fluctuate naturally, how adolescent and adult variations differ, and what variation means for health.',
         category: CycleLiteracyCategory.variability,
         readingTimeMinutes: 3,
-        source: 'FIGO Menstrual Disorders Committee (FIGO Systems 1 & 2); World Health Organization (WHO); ACOG FAQ049',
+        sources: [
+          _figoMenstrualDisorders,
+          _whoMenstrualHealth,
+          _acogMenstrualCycle,
+        ],
         reviewDate: _currentReviewDate,
         relatedSubphases: [
           CycleSubphase.earlyFollicular,
@@ -321,7 +551,7 @@ class CycleLiteracyLibrary {
         category: CycleLiteracyCategory.variability,
         audience: CycleLiteracyAudience.teen,
         readingTimeMinutes: 3,
-        source: 'American College of Obstetricians and Gynecologists (ACOG) Committee Opinion No. 651 (2015); American Academy of Pediatrics (AAP) Menstruation in Girls and Adolescents',
+        sources: [_acogCommitteeOpinion651, _aapAdolescentHealth],
         reviewDate: _currentReviewDate,
         relatedSubphases: [
           CycleSubphase.earlyFollicular,
@@ -360,7 +590,7 @@ class CycleLiteracyLibrary {
         category: CycleLiteracyCategory.variability,
         audience: CycleLiteracyAudience.teen,
         readingTimeMinutes: 3,
-        source: 'American College of Obstetricians and Gynecologists (ACOG) Committee Opinion No. 651 (2015); American Academy of Pediatrics (AAP) Menstruation in Girls and Adolescents (Pediatrics 2006)',
+        sources: [_acogCommitteeOpinion651, _aapAdolescentHealth],
         reviewDate: _currentReviewDate,
         relatedSubphases: [
           CycleSubphase.earlyFollicular,
@@ -399,7 +629,7 @@ class CycleLiteracyLibrary {
         category: CycleLiteracyCategory.bodyAndSymptoms,
         audience: CycleLiteracyAudience.guardian,
         readingTimeMinutes: 3,
-        source: 'American Academy of Pediatrics (AAP) HealthyChildren.org; ACOG Patient Education: Your First Period',
+        sources: [_aapAdolescentHealth, _acogYourFirstPeriod],
         reviewDate: _currentReviewDate,
         relatedSubphases: [
           CycleSubphase.earlyFollicular,
@@ -438,7 +668,7 @@ class CycleLiteracyLibrary {
         category: CycleLiteracyCategory.bodyAndSymptoms,
         audience: CycleLiteracyAudience.all,
         readingTimeMinutes: 3,
-        source: 'ACOG Clinical Practice Guideline No. 7, Management of Premenstrual Disorders (2023); NHS Clinical Guidance on Premenstrual Syndrome (PMS)',
+        sources: [_acogCpgNo7, _nhsPms],
         reviewDate: _currentReviewDate,
         relatedSubphases: [CycleSubphase.earlyLuteal, CycleSubphase.lateLuteal],
         sections: [

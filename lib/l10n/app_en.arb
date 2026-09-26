@@ -5734,15 +5734,33 @@
       }
     }
   },
-  "cycleLiteracySourceHeading": "Source & Review",
+  "cycleLiteracySourceHeading": "Sources & Review",
   "@cycleLiteracySourceHeading": {
     "description": "Issue #1004 (tranche 4b): provenance block heading on a cycle literacy article sheet."
   },
-  "cycleLiteracySourceLine": "Source: {source}",
-  "@cycleLiteracySourceLine": {
-    "description": "Issue #1004 (tranche 4b): provenance source line on a cycle literacy article sheet.",
+  "cycleLiteracySourceItem": "{publisher} — {title}",
+  "@cycleLiteracySourceItem": {
+    "description": "Issue #1103: one cited source without a document identifier on a cycle literacy article sheet.",
     "placeholders": {
-      "source": {
+      "publisher": {
+        "type": "String"
+      },
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "cycleLiteracySourceItemWithIdentifier": "{publisher} — {title} ({identifier})",
+  "@cycleLiteracySourceItemWithIdentifier": {
+    "description": "Issue #1103: one cited source with a document identifier on a cycle literacy article sheet.",
+    "placeholders": {
+      "publisher": {
+        "type": "String"
+      },
+      "title": {
+        "type": "String"
+      },
+      "identifier": {
         "type": "String"
       }
     }

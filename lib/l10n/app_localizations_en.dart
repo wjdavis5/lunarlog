@@ -4474,11 +4474,20 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get cycleLiteracySourceHeading => 'Source & Review';
+  String get cycleLiteracySourceHeading => 'Sources & Review';
 
   @override
-  String cycleLiteracySourceLine(String source) {
-    return 'Source: $source';
+  String cycleLiteracySourceItem(String publisher, String title) {
+    return '$publisher — $title';
+  }
+
+  @override
+  String cycleLiteracySourceItemWithIdentifier(
+    String publisher,
+    String title,
+    String identifier,
+  ) {
+    return '$publisher — $title ($identifier)';
   }
 
   @override

@@ -2,3 +2,9 @@
 # Linux/macOS runners and must never pick up CRLF line endings from a
 # Windows-authored commit (see issue #41, U5).
 *.sh text eol=lf
+
+# Issue #1103: this generated JSON is compared byte-for-byte against the
+# library export by test/tool/export_literacy_test.dart. Windows'
+# core.autocrlf would otherwise check it out as CRLF and make the working file
+# differ from the generator's LF output, so pin it LF on every platform.
+site/src/content/literacy/articles.json text eol=lf

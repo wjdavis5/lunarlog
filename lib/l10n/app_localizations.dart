@@ -7139,14 +7139,24 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 4b): provenance block heading on a cycle literacy article sheet.
   ///
   /// In en, this message translates to:
-  /// **'Source & Review'**
+  /// **'Sources & Review'**
   String get cycleLiteracySourceHeading;
 
-  /// Issue #1004 (tranche 4b): provenance source line on a cycle literacy article sheet.
+  /// Issue #1103: one cited source without a document identifier on a cycle literacy article sheet.
   ///
   /// In en, this message translates to:
-  /// **'Source: {source}'**
-  String cycleLiteracySourceLine(String source);
+  /// **'{publisher} — {title}'**
+  String cycleLiteracySourceItem(String publisher, String title);
+
+  /// Issue #1103: one cited source with a document identifier on a cycle literacy article sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'{publisher} — {title} ({identifier})'**
+  String cycleLiteracySourceItemWithIdentifier(
+    String publisher,
+    String title,
+    String identifier,
+  );
 
   /// Issue #1004 (tranche 4b): provenance review date on a cycle literacy article sheet.
   ///
