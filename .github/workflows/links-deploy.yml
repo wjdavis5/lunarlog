@@ -49,6 +49,10 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          wranglerVersion: '3.89.0'
+          # Issue #1090: 3.89.0 warns "Unexpected fields found in assets
+          # field: run_worker_first" and would deploy without the routing
+          # fix. 4.20.0 is the lowest 4.x that accepts the array form
+          # (verified with `wrangler deploy --dry-run`); 4.19.0 rejects it.
+          wranglerVersion: '4.20.0'
           workingDirectory: 'site'
           command: deploy --config wrangler.jsonc

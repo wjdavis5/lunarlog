@@ -19,6 +19,8 @@ in `site/worker/`) with static assets, deployed automatically by
 `.github/workflows/links-deploy.yml`:
 - `/.well-known/apple-app-site-association` is served as `application/json`, 200, no redirect.
 - `/invite*` serves `invite.html` with query strings preserved.
+- `assets.run_worker_first` is `["/.well-known/*", "/invite*"]` (issue #1090), so the
+  Worker owns both routes instead of the static-asset layer answering them first.
 - `observability.logs.invocation_logs` is disabled (`false`) so request lines and query
   parameters are not retained.
 - Custom domain route: `lunarlog.app` (Workers custom domain creates/binds the DNS record).

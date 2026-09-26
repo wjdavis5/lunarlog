@@ -15,7 +15,12 @@
 
   "assets": {
     "directory": "./public",
-    "binding": "ASSETS"
+    "binding": "ASSETS",
+    // Issue #1090: without this the static-asset layer answers first, so
+    // public/.well-known/apple-app-site-association went out as
+    // application/octet-stream and /invite* as an unheadered invite.html --
+    // both of the worker's branches below were dead code in production.
+    "run_worker_first": ["/.well-known/*", "/invite*"]
   },
 
   "observability": {
