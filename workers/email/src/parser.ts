@@ -2,7 +2,7 @@
  * Inbound email MIME parser and auth metadata extractor.
  */
 
-import PostalMime from "npm:postal-mime@^2.2.0";
+import PostalMime from "postal-mime";
 import type { ParsedEmailData } from "./types.ts";
 
 /**

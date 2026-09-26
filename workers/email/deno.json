@@ -1,4 +1,7 @@
 {
+  "imports": {
+    "postal-mime": "npm:postal-mime@2.7.6"
+  },
   "test": {
     "include": ["src/**/*.test.ts"]
   }

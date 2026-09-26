@@ -691,6 +691,15 @@ jobs:
           deno check src/**/*.ts
           deno test
 
+      - name: Verify bundle build for workers/email (dry-run)
+        # Issue #1121: proves wrangler bundling succeeds on PRs touching
+        # workers/email/** rather than failing at deploy time on main.
+        if: steps.check_run.outputs.run == 'true'
+        working-directory: workers/email
+        run: |
+          npm ci
+          npx wrangler deploy --dry-run
+
   db-tests:
     name: Database tests (pgTAP)
     needs: detect-changes
