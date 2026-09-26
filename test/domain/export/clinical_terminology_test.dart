@@ -78,22 +78,20 @@ void main() {
   });
 
   group('refuted and unverified LOINC codes are never referenced', () {
-    test('kRefutedLoincCodes contains exactly 3141-9', () {
-      expect(kRefutedLoincCodes, ['3141-9']);
+    test('kRefutedLoincCodes holds the weight code plus #1116\'s three '
+        'unrelated concepts', () {
+      expect(kRefutedLoincCodes.toSet(), {
+        '3141-9',
+        '49033-4',
+        '21840-4',
+        '3151-8',
+      });
     });
 
-    test(
-      'kUnverifiedLoincCodes contains exactly the five unresolved codes',
-      () {
-        expect(kUnverifiedLoincCodes.toSet(), {
-          '49033-4',
-          '63871-7',
-          '21840-4',
-          '8708-3',
-          '3151-8',
-        });
-      },
-    );
+    test('kUnverifiedLoincCodes is empty after #1116 (no unresolved '
+        'codes; the non-existent ones were removed)', () {
+      expect(kUnverifiedLoincCodes, isEmpty);
+    });
 
     test('no refuted or unverified code appears in kLoincCodes', () {
       final forbidden = {...kRefutedLoincCodes, ...kUnverifiedLoincCodes};
@@ -132,10 +130,9 @@ void main() {
       }
     });
 
-    test('no refuted or unverified code appears in menstrualStatusCodes or '
-        'cycleLengthCodes', () {
+    test('no refuted or unverified code appears in cycleLengthCodes', () {
       final forbidden = {...kRefutedLoincCodes, ...kUnverifiedLoincCodes};
-      for (final coding in [...menstrualStatusCodes, ...cycleLengthCodes]) {
+      for (final coding in cycleLengthCodes) {
         expect(
           forbidden.contains(coding.code),
           isFalse,
@@ -193,10 +190,10 @@ void main() {
       // source module.
       const expected = <String, (String, String, String)>{
         // pain
-        'cramps': (snomed, '266599000', 'Dysmenorrhea'),
+        'cramps': (snomed, '431416001', 'Menstrual cramp'),
         'headache': (snomed, '25064002', 'Headache'),
         'back_pain': (snomed, '161891005', 'Backache'),
-        'breast_tenderness': (snomed, '55222007', 'Tenderness of breast'),
+        'breast_tenderness': (snomed, '53430007', 'Pain of breast'),
         // body
         'bloating': (snomed, '116289008', 'Abdominal bloating'),
         'acne': (snomed, '11381005', 'Acne'),
@@ -559,20 +556,16 @@ void main() {
     });
   });
 
-  group('menstrualStatusCodes and cycleLengthCodes (#157 helpers)', () {
-    test('menstrualStatusCodes exposes 8678-5 and 3146-8', () {
-      expect(menstrualStatusCodes.map((c) => c.code).toSet(), {
-        '8678-5',
-        '3146-8',
-      });
-      for (final row in menstrualStatusCodes) {
-        expect(row.system, kSystemLoinc);
-      }
-    });
-
-    test('cycleLengthCodes exposes 64700-8', () {
-      expect(cycleLengthCodes.map((c) => c.code).toList(), ['64700-8']);
-      expect(cycleLengthCodes.single.system, kSystemLoinc);
+  group('cycleLengthCodes (#157 helper, re-coded by #1115)', () {
+    test('exposes SNOMED 161716008 "Usual length of menstrual cycle", not '
+        'the TRIAL LOINC 64700-8', () {
+      expect(cycleLengthCodes, hasLength(1));
+      expect(cycleLengthCodes.single.code, '161716008');
+      expect(cycleLengthCodes.single.system, kSystemSnomed);
+      expect(
+        cycleLengthCodes.single.display,
+        'Usual length of menstrual cycle',
+      );
     });
   });
 
@@ -595,12 +588,32 @@ void main() {
       expect(loincByCode('8310-5'), isNull);
     });
 
-    test('estimatedDeliveryDateCode is the verified 11778-8 row '
-        '(pregnancy EDD reservation, A3-47)', () {
-      expect(estimatedDeliveryDateCode.code, '11778-8');
-      expect(estimatedDeliveryDateCode.display, 'Delivery date Estimated');
+    test('estimatedDeliveryDateCode is the LMP-derived 11779-6 row '
+        '(pregnancy EDD reservation, A3-47; corrected by #1116)', () {
+      expect(estimatedDeliveryDateCode.code, '11779-6');
+      expect(
+        estimatedDeliveryDateCode.display,
+        'Delivery date Estimated from last menstrual period',
+      );
       expect(estimatedDeliveryDateCode.system, kSystemLoinc);
-      expect(estimatedDeliveryDateCode.provenanceUrl, 'https://loinc.org/11778-8');
+      expect(
+        estimatedDeliveryDateCode.provenanceUrl,
+        'https://loinc.org/11779-6',
+      );
+    });
+
+    test('the new vital-sign and cycle concepts are verified external rows '
+        '(#1115)', () {
+      expect(kBasalBodyTemperatureSnomed.system, kSystemSnomed);
+      expect(kBasalBodyTemperatureSnomed.code, '300076005');
+      expect(kBasalBodyTemperatureSnomed.display, 'Basal body temperature');
+      expect(kBodyWeightLoinc.system, kSystemLoinc);
+      expect(kBodyWeightLoinc.code, '29463-7');
+      expect(kBodyWeightLoinc.display, 'Body weight');
+      expect(kQuantityOfMenstrualBloodLossSnomed.system, kSystemSnomed);
+      expect(kQuantityOfMenstrualBloodLossSnomed.code, '364308001');
+      expect(kUsualLengthOfMenstrualCycleSnomed.system, kSystemSnomed);
+      expect(kUsualLengthOfMenstrualCycleSnomed.code, '161716008');
     });
 
     test('kBirthControlResourceShapes is exactly A3-48\'s method-shape '

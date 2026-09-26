@@ -116,6 +116,18 @@ void main() {
     expect(text, contains('not medical advice'));
   });
 
+  test('states the graded 1-5 intensity scale (issue #1114)', () {
+    expect(
+      kClinicalSummaryPainScaleNote,
+      'Pain intensity is self-rated in lunarlog from 1 (least intense) to 5 '
+      '(most intense); individual ratings are not shown in this summary.',
+    );
+    final text = latin1.decode(buildClinicalPdfDocument(_fixtureSummary()));
+    // The method note wraps at the printable width, so assert a word that
+    // cannot break across a line rather than the whole sentence.
+    expect(text, contains('self-rated'));
+  });
+
   test('lists the per-cycle dates and lengths with irregular and omitted columns', () {
     final starts = _starts(8);
     final text = latin1.decode(buildClinicalPdfDocument(_fixtureSummary()));

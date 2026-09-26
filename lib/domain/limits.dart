@@ -57,6 +57,15 @@ const int kMaxObservationRawLength = 7936;
 const int kMinObservationIntensity = 1;
 const int kMaxObservationIntensity = 5;
 
+/// The human-readable form of the graded [kMinObservationIntensity]..
+/// [kMaxObservationIntensity] intensity scale (issue #1114), carried as a
+/// text note wherever a bare number would otherwise be read on the
+/// clinical 0-10 pain scale. The app's own selector shows bare numerals
+/// under the heading "Intensity", so this deliberately avoids invented
+/// verbal anchors (mild/severe). Lives next to the numeric bounds so the
+/// FHIR export and the clinician PDF can share one form.
+const String kPainIntensityScaleText = '1 (least intense) to 5 (most intense)';
+
 /// Per-(profile, local_date) cap on live observations, enforced server-side
 /// in `sync_push` (a CHECK cannot count sibling rows) — mirrored here only
 /// as a documented constant a future write path can reference, not enforced

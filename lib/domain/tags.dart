@@ -541,6 +541,61 @@ String flatDisplayForTag(TagCode tag) {
   return tag.display;
 }
 
+/// The category-context words [contextualDisplayForTag] prefixes where a
+/// tag's own option label is ambiguous once it is read outside its
+/// category heading (issue #1114). Only categories whose bare options lose
+/// their meaning without the heading appear here; codes with a
+/// [_kContextualCodeLabels] override, and every other category, fall back
+/// to [flatDisplayForTag] unchanged.
+const Map<TagCategory, String> _kContextualCategoryLabels = {
+  TagCategory.sexLife: 'Sex',
+  TagCategory.discharge: 'Vaginal discharge',
+  TagCategory.cravings: 'Craving',
+  TagCategory.stool: 'Stool',
+  TagCategory.sleep: 'Sleep duration',
+  TagCategory.digestion: 'Digestion',
+};
+
+/// Per-code contextual labels that no category prefix can express (issue
+/// #1114 and PR #1124 reverification): the label a receiving system shows
+/// in a Problem list, where "Medication: Antibiotic" can read as an
+/// allergy or a current prescription, "Test result: Pregnancy · positive"
+/// as a confirmed laboratory finding, and "Sleep duration: Sleep trouble"
+/// is simply wrong. Checked before the category prefix.
+const Map<String, String> _kContextualCodeLabels = {
+  'sleep_trouble': 'Trouble sleeping',
+  'pregnancy_positive': 'Home pregnancy test: positive',
+  'pregnancy_negative': 'Home pregnancy test: negative',
+  'ovulation_positive': 'Home ovulation (LH) test: positive',
+  'ovulation_negative': 'Home ovulation (LH) test: negative',
+  'ovulation_peak': 'Home ovulation (LH) test: peak',
+  'withdrawal': 'Sex: withdrawal method (pull-out)',
+  'pain': 'Took pain medication',
+  'cold_flu_medication': 'Took cold/flu medication',
+  'antihistamine': 'Took an antihistamine',
+  'antibiotic': 'Took an antibiotic',
+  'allergy': 'Ailment: allergy symptoms',
+  'drinks': 'Alcoholic drinks',
+};
+
+/// The display string for [tag] in a namespace that renders **no category
+/// headings** — the FHIR export's per-tag Observations (issue #1114),
+/// where the label is the only human-readable text a receiving system
+/// shows. Extends [flatDisplayForTag] (which already resolves display
+/// collisions such as "Great (digestion)") with a per-code override or a
+/// human category context for the tags whose option alone is ambiguous out
+/// of context: "Withdrawal" reads as substance withdrawal, "0-3 hours" as
+/// anything. Tags whose display is already self-describing are returned
+/// unchanged.
+String contextualDisplayForTag(TagCode tag) {
+  final override = _kContextualCodeLabels[tag.code];
+  if (override != null) return override;
+  final flat = flatDisplayForTag(tag);
+  if (flat != tag.display) return flat;
+  final context = _kContextualCategoryLabels[tag.category];
+  return context == null ? flat : '$context: $flat';
+}
+
 /// Throws [ArgumentError] naming the first tag not in the taxonomy.
 ///
 /// Issue #257: [registryCodes] -- the profile's custom-tag registry codes
