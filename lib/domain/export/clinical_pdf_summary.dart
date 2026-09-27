@@ -432,31 +432,41 @@ Set<String> _observationLabelsOn(
 ) {
   final labels = <String>{};
   for (final observation in observations) {
-    if (observation.excluded) continue;
-    // Issue #847: [ObservationCategory.isMeasurement] is itself an
-    // exhaustive switch, so a new branchable category is a compile error
-    // there rather than silently falling through as a symptom here.
-    if (observation.category.isMeasurement) continue;
-    // Issue #1117: Free-text Clue tags must never appear in clinical exports.
-    if (observation.category.wireCode == 'tags') continue;
-    if (observation.category == ObservationCategory.spotting) {
-      labels.add('Spotting');
-      continue;
+    final label = _observationLabel(observation, customTagsByCode);
+    if (label != null) {
+      labels.add(label);
     }
-    final symptomCode = observation.code ?? observation.category.wireCode;
-    if (tags.kPositiveAssertionCodes.contains(symptomCode)) continue;
-    final customTag = customTagsByCode[symptomCode];
-    if (customTag != null) {
-      labels.add(customTag.displayName);
-      continue;
-    }
-    final taxonomyTag = tags.tagByCode(symptomCode);
-    if (taxonomyTag != null) {
-      labels.add(tags.flatDisplayForTag(taxonomyTag));
-      continue;
-    }
-    labels.add(symptomCode);
   }
   return labels;
+}
+
+String? _observationLabel(
+  Observation observation,
+  Map<String, CustomTag> customTagsByCode,
+) {
+  if (observation.excluded) return null;
+  // Issue #847: [ObservationCategory.isMeasurement] is itself an
+  // exhaustive switch, so a new branchable category is a compile error
+  // there rather than silently falling through as a symptom here.
+  if (observation.category.isMeasurement) return null;
+  // Issue #1117: Free-text Clue tags must never appear in clinical exports.
+  if (observation.category.wireCode == 'tags') return null;
+  if (observation.category == ObservationCategory.spotting) {
+    return 'Spotting';
+  }
+  final symptomCode = observation.code ?? observation.category.wireCode;
+  return _resolveObservationCodeLabel(symptomCode, customTagsByCode);
+}
+
+String? _resolveObservationCodeLabel(
+  String symptomCode,
+  Map<String, CustomTag> customTagsByCode,
+) {
+  if (tags.kPositiveAssertionCodes.contains(symptomCode)) return null;
+  final customTag = customTagsByCode[symptomCode];
+  if (customTag != null) return customTag.displayName;
+  final taxonomyTag = tags.tagByCode(symptomCode);
+  if (taxonomyTag != null) return tags.flatDisplayForTag(taxonomyTag);
+  return symptomCode;
 }
 
