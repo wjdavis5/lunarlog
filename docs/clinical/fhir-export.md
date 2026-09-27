@@ -103,10 +103,10 @@ pain medication", "Took an antibiotic", "Sex: withdrawal method
 meaning alone ("Sleep duration: 0-3 hours", "Vaginal discharge: Egg
 white", "Stool: Normal", "Craving: Sweet"). Collisions stay disambiguated
 ("Great (digestion)" / "Great (stool)"). A non-tag `observations` row's
-local fallback display is category-qualified too (e.g. "Birth control
-pill: missed", though those rows are not exported — see "Exclusion
-policy"), and a row whose option is its own category renders as the
-category alone ("Spotting", never "Spotting: spotting").
+local fallback display is category-qualified too (e.g. "Vaginal discharge:
+egg white"), and a row whose option is its own category renders as the
+category alone ("Spotting", never "Spotting: spotting"). Underscores in
+option codes are rendered as spaces.
 
 ### Measurement rows: Vital Signs, not Problems (issue #1115)
 
@@ -206,14 +206,14 @@ The typical-cycle-length `Observation` is computed by lunarlog from the
 profile's logged period starts, so it is **not** marked self-reported: it
 carries no `performer`, an `Observation.method.text` of "Calculated (mean
 of recent logged cycles)", and a note spelling that out — "Mean of the
-15-60 day cycles among the last 12 completed cycles (cycles excluded from
-averages are left out), calculated by lunarlog from period start dates
-logged by the patient or guardian; not measured or confirmed by a
-clinician." The window wording is built from the prediction engine's own
-constants. (The LMP `Observation` *is* self-reported — its value is
-the logged period-start date itself, not a derivation.) The earlier "every
-clinical Observation is self-reported" claim was misleading for this row
-(issue #1116).
+15-60 day cycles among the last 12 completed cycles (cycles the patient or
+guardian excluded from averages are left out), calculated by lunarlog from
+period start dates logged by the patient or guardian; not measured or
+confirmed by a clinician." The window wording is built from the prediction
+engine's own constants. (The LMP `Observation` *is* self-reported — its
+value is the logged period-start date itself, not a derivation.) The
+earlier "every clinical Observation is self-reported" claim was misleading
+for this row (issue #1116).
 
 ## IPS-shaped, not IPS-conformant
 
@@ -329,6 +329,7 @@ they don't belong in that file's exhaustively-tested `kLoincCodes` list:
 | `8716-3` | LOINC | Vital signs note | Vital signs section `.code` | `tx.fhir.org` $lookup, 2026-09-26 |
 | `vital-signs` | `http://terminology.hl7.org/CodeSystem/observation-category` | Vital Signs | vital-sign `Observation.category` | `tx.fhir.org` $validate-code, 2026-09-26 |
 | `author` | `http://terminology.hl7.org/CodeSystem/provenance-participant-type` | Author | `Provenance.agent.type` | `tx.fhir.org` $lookup, 2026-09-09 |
+| `unavailable` | `http://terminology.hl7.org/CodeSystem/list-empty-reason` | Unavailable | `Composition.section.emptyReason` | FHIR R4 core CodeSystem / `tx.fhir.org` |
 
 Observation-level coding (post-#1115/#1116):
 
@@ -377,7 +378,7 @@ URIs and why they're separate.
   those tags, this is the fallback — a local coding built directly from
   the row's own `category`/`code`, never a guessed clinical concept for a
   vocabulary that hasn't been verified yet. Its `display` is
-  category-qualified (e.g. "Birth control pill: missed") so the label is
+  category-qualified (e.g. "Vaginal discharge: egg white") so the label is
   meaningful with no section heading (issue #1114).
 - **`self-reported`** (`Provenance.activity`; system
   `kSystemLunarlogLocal` — still the tag system's URI, since a
