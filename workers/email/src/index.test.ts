@@ -277,6 +277,46 @@ Deno.test("store: saveEmail, getEmailById, and getLatestEmail", async () => {
   assertEquals(afterDelete, null);
 });
 
+Deno.test("store: saveEmail handles mixed-case recipients case-insensitively for queries and deletion", async () => {
+  const kv = new MemoryKV();
+  const store = new EmailStore(kv);
+
+  const mixedEmail: ParsedEmailData = {
+    id: "msg-mixed-1",
+    from: "noreply@lunarlog.app",
+    to: "User.Name@Inbound.Lunarlog.App",
+    subject: "Mixed Case Test",
+    receivedAt: new Date(1700000000000).toISOString(),
+    text: "Code: 88776655",
+    otpCode: "88776655",
+    authLinks: [],
+  };
+
+  await store.saveEmail(mixedEmail);
+
+  // Lowercase lookup
+  const latestLower = await store.getLatestEmail("user.name@inbound.lunarlog.app");
+  assertExists(latestLower);
+  assertEquals(latestLower?.id, "msg-mixed-1");
+  assertEquals(latestLower?.otpCode, "88776655");
+
+  // Uppercase lookup
+  const latestUpper = await store.getLatestEmail("USER.NAME@INBOUND.LUNARLOG.APP");
+  assertExists(latestUpper);
+  assertEquals(latestUpper?.id, "msg-mixed-1");
+
+  // Mixed case listing
+  const list = await store.listEmailsByRecipient("uSeR.nAmE@iNbOuNd.lUnArLoG.aPp");
+  assertEquals(list.length, 1);
+  assertEquals(list[0].id, "msg-mixed-1");
+
+  // Deletion of mixed case email cleans up latest key
+  const deleted = await store.deleteEmailById("msg-mixed-1");
+  assertEquals(deleted, true);
+  const afterDelete = await store.getLatestEmail("user.name@inbound.lunarlog.app");
+  assertEquals(afterDelete, null);
+});
+
 // ---------------------------------------------------------------------------
 // Worker fetch API Tests
 // ---------------------------------------------------------------------------

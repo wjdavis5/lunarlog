@@ -74,6 +74,7 @@ export async function dispatchWebhook(
       method: "POST",
       headers,
       body: JSON.stringify(data),
+      signal: AbortSignal.timeout(10000),
     });
   } catch (err) {
     // In background workers, log errors without crashing worker

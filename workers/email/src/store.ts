@@ -108,10 +108,11 @@ export class EmailStore {
     const serialized = JSON.stringify(email);
     const dateMs = Date.parse(email.receivedAt) || Date.now();
     const invertedTime = formatInvertedTimestamp(dateMs);
+    const normalizedTo = email.to.trim().toLowerCase();
 
     const msgKey = `msg:${email.id}`;
-    const recipientKey = `recipient:${email.to}:${invertedTime}:${email.id}`;
-    const latestKey = `latest:${email.to}`;
+    const recipientKey = `recipient:${normalizedTo}:${invertedTime}:${email.id}`;
+    const latestKey = `latest:${normalizedTo}`;
 
     await Promise.all([
       this.kv.put(msgKey, serialized, { expirationTtl: this.ttlSeconds }),
@@ -185,8 +186,9 @@ export class EmailStore {
 
     const dateMs = Date.parse(existing.receivedAt) || Date.now();
     const invertedTime = formatInvertedTimestamp(dateMs);
-    const recipientKey = `recipient:${existing.to}:${invertedTime}:${existing.id}`;
-    const latestKey = `latest:${existing.to}`;
+    const normalizedTo = existing.to.trim().toLowerCase();
+    const recipientKey = `recipient:${normalizedTo}:${invertedTime}:${existing.id}`;
+    const latestKey = `latest:${normalizedTo}`;
 
     await Promise.all([
       this.kv.delete(`msg:${id}`),
