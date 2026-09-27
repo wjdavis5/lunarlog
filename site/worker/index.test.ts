@@ -44,6 +44,24 @@ Deno.test("assetlinks: returns 404 while Android is deferred", async () => {
   assertEquals(res.status, 404);
 });
 
+Deno.test("/fhir/*: reserved URIs are a plain 404, never a redirect", async () => {
+  const req = new Request("https://lunarlog.app/fhir/CodeSystem/cycle-status");
+  const res = await worker.fetch(req, {});
+  assertEquals(res.status, 404);
+  assertEquals(res.headers.get("location"), null);
+  assertEquals(res.headers.get("x-content-type-options"), "nosniff");
+});
+
+Deno.test("/fhir/*: 404 wins over a matching asset lookup", async () => {
+  const fakeAssets: Fetcher = {
+    fetch: async () => new Response("should never be served", { status: 200 }),
+  };
+  const req = new Request("https://lunarlog.app/fhir/CodeSystem/cycle-status");
+  const res = await worker.fetch(req, { ASSETS: fakeAssets });
+  assertEquals(res.status, 404);
+  assertEquals(res.headers.get("location"), null);
+});
+
 Deno.test("/invite: serves invite.html without redirect and preserves query string", async () => {
   const req = new Request("https://lunarlog.app/invite?code=secret123&profile=prof-abc&kind=guardian");
   const res = await worker.fetch(req, {});

@@ -1,0 +1,31 @@
+{
+  "name": "lunarlog-site",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The lunarlog.app marketing site (issue #1099): Astro, static output, zero client JS by default.",
+  "scripts": {
+    "dev": "astro dev",
+    "sync": "astro sync",
+    "build": "astro sync && astro check && astro build",
+    "preview": "astro preview",
+    "check:html": "html-validate \"dist/**/*.html\"",
+    "check:links": "node scripts/check-internal-links.mjs",
+    "check:external-links": "node scripts/check-external-links.mjs",
+    "check:lighthouse": "lhci autorun",
+    "check:axe": "node scripts/check-axe.mjs"
+  },
+  "dependencies": {
+    "@fontsource/fraunces": "5.3.0",
+    "@fontsource/inter": "5.3.0",
+    "astro": "7.3.5"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.10",
+    "@lhci/cli": "0.15.1",
+    "axe-core": "4.13.0",
+    "html-validate": "11.16.0",
+    "puppeteer-core": "25.12.0",
+    "typescript": "6.0.3"
+  }
+}

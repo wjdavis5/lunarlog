@@ -1,11 +1,15 @@
 /**
- * lunarlog-links: Cloudflare Worker for hosting universal-link files on lunarlog.app.
- * Issue #450.
+ * lunarlog-links: Cloudflare Worker for the lunarlog.app apex (issue #450).
  *
  * Serves:
  * - `/.well-known/apple-app-site-association`: application/json, 200, no redirect
  * - `/invite*`: invite.html preserving query string without logging sensitive parameters
- * - Static assets from `env.ASSETS` for other routes (or 404)
+ * - `/fhir/*`: a reserved-URI 404, never a redirect (issue #961)
+ * - Static assets from `env.ASSETS` for other routes (or the Astro 404 page)
+ *
+ * Since issue #1099 the static assets are the Astro build output (`site/dist`,
+ * set in `wrangler.jsonc`), so `env.ASSETS` also serves the marketing pages,
+ * robots.txt, the sitemap, and the brand images.
  *
  * `wrangler.jsonc` sets `assets.run_worker_first` to
  * `["/.well-known/*", "/invite*"]` (issue #1090). Without it the
@@ -119,7 +123,20 @@ export function handleRequest(request: Request, env: Env): Promise<Response> | R
     });
   }
 
-  // 3. /invite* -> invite.html preserving query string without logging sensitive parameters
+  // 3. Reserved FHIR URIs (issue #961): exported Bundles already carry
+  //    `https://lunarlog.app/fhir/CodeSystem/...`, so those URIs are frozen.
+  //    Serve a plain 404 and never a redirect.
+  if (pathname === "/fhir" || pathname.startsWith("/fhir/")) {
+    return new Response("Not Found", {
+      status: 404,
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  }
+
+  // 4. /invite* -> invite.html preserving query string without logging sensitive parameters
   if (pathname === "/invite" || pathname.startsWith("/invite/")) {
     if (request.method !== "GET" && request.method !== "HEAD") {
       return new Response("Method Not Allowed", { status: 405 });
@@ -165,7 +182,7 @@ export function handleRequest(request: Request, env: Env): Promise<Response> | R
     });
   }
 
-  // 4. Default / fall-through to static assets or 404
+  // 5. Default / fall-through to static assets or 404
   if (env.ASSETS) {
     return env.ASSETS.fetch(request);
   }

@@ -56,7 +56,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # Issue #1121: pinned to 4.20.0 matching links-deploy.yml (#1090)
+          # Issue #1121: pinned to 4.20.0 matching site-deploy.yml (#1090)
           wranglerVersion: '4.20.0'
           workingDirectory: 'workers/email'
           command: deploy --config wrangler.jsonc
