@@ -227,6 +227,18 @@ void main() {
     expect(summary.symptomGrid.any((row) => row.label == 'bbt'), isFalse);
   });
 
+  test('Issue #1117: free-text Clue tags (category == tags) do not appear in symptom grid', () {
+    final observations = [
+      _observation('o1', starts[1], category: ObservationCategory.pain, code: 'migraine'),
+      _observation('o2', starts[1], category: ObservationCategory.fromCode('tags'), code: 'private free-text tag'),
+      _observation('o3', starts[2], category: ObservationCategory.fromCode('tags'), code: 'headache'),
+    ];
+    final summary = _summary(entries, observations: observations);
+    expect(summary.symptomGrid.any((row) => row.label.contains('private free-text tag')), isFalse);
+    expect(summary.symptomGrid.any((row) => row.label.contains('headache')), isFalse);
+    expect(summary.symptomGrid.any((row) => row.label == 'Migraine'), isTrue);
+  });
+
   test('Issue #834: custom tags appear in symptom grid with displayName', () {
     final customTag = CustomTag(
       id: 'ct1',

@@ -261,6 +261,12 @@ because a FHIR document can leave the device:
   there is no code path that could leak it into the export. Free-text a
   guardian typed into a day's note field is exactly the kind of content
   this export must never carry off-device.
+- **Free-text Clue tags (#1117)** (`category == 'tags'`) are never emitted.
+  Clue's export writes user-entered free-text tags into `observations` under
+  `category: 'tags'` with the raw text as `code`. Like `DayEntry.note` and
+  `Observation.valueText`, user-entered free text must never leave the device
+  in a clinical export, and a free-text tag that happens to equal a taxonomy
+  string (e.g. "headache") must not falsely pick up clinical coding.
 - **`Observation.excluded` rows (#157 review fix)** — the BBT per-point
   exclusion flag (A1-44) — are skipped entirely: not emitted, not marked
   `entered-in-error`, just absent. Exporting an excluded point at all
