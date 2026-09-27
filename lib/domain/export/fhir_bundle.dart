@@ -107,7 +107,7 @@ import '../models/observation.dart';
 import '../models/observation_category.dart';
 import '../models/profile.dart';
 import '../prediction/prediction.dart'
-    show ActivePrediction, kMaxCycleDays, kMinCycleDays, kPredictionWindowCycles;
+    show ActivePrediction, kMaxCycleDays, kMinCycleDays, kRecencyWindowCycles;
 import '../tags.dart' as tags
     show contextualDisplayForTag, isValidTagCode, tagByCode;
 import 'account_export.dart' show kAccountExportAppName;
@@ -265,15 +265,15 @@ const String kSelfReportedNoteText =
 /// computed by the app from the profile's logged period starts, so it must
 /// not be marked self-reported the way the raw symptom/flow rows are. The
 /// window is built from the prediction engine's own constants
-/// ([kMinCycleDays]..[kMaxCycleDays] within [kPredictionWindowCycles]) so
+/// ([kMinCycleDays]..[kMaxCycleDays] within [kRecencyWindowCycles]) so
 /// the wording cannot drift from what `ActivePrediction.meanCycleLengthDays`
 /// actually averages.
 const String kCalculatedCycleLengthNoteText =
     'Mean of the $kMinCycleDays-$kMaxCycleDays day cycles among the last '
-    '$kPredictionWindowCycles completed cycles (cycles excluded from '
-    'averages are left out), calculated by lunarlog from period start '
-    'dates logged by the patient or guardian; not measured or confirmed '
-    'by a clinician.';
+    '$kRecencyWindowCycles completed cycles (cycles the patient or guardian '
+    'excluded from averages are left out), calculated by lunarlog from '
+    'period start dates logged by the patient or guardian; not measured '
+    'or confirmed by a clinician.';
 
 final Uuid _uuidGenerator = const Uuid();
 
@@ -830,7 +830,8 @@ String fhirLocalDisplayFor(String categoryWireCode, String? code) {
       _kFallbackCategoryLabels[categoryWireCode] ??
           _sentenceCase(categoryWireCode);
   if (code == null || code == categoryWireCode) return context;
-  return '$context: $code';
+  final displayOption = code.replaceAll('_', ' ');
+  return '$context: $displayOption';
 }
 
 String _sentenceCase(String wireCode) {

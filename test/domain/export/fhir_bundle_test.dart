@@ -456,8 +456,8 @@ void main() {
       final coding = codings.single as Map;
       expect(coding['system'], kSystemLunarlogLocal);
       expect(coding['code'], 'other:wearable_metric');
-      expect(coding['display'], 'Other: wearable_metric');
-      expect((obs['code'] as Map)['text'], 'Other: wearable_metric');
+      expect(coding['display'], 'Other: wearable metric');
+      expect((obs['code'] as Map)['text'], 'Other: wearable metric');
     });
 
     test('intensity-only carries as top-level valueInteger, no component '
@@ -867,10 +867,10 @@ void main() {
           'Birth control pill: taken');
       expect(fhirLocalDisplayFor('spotting', 'spotting'), 'Spotting');
       expect(fhirLocalDisplayFor('discharge', 'egg_white'),
-          'Vaginal discharge: egg_white');
+          'Vaginal discharge: egg white');
       // An unattested Clue `tests` option must not read as a lab result.
       expect(fhirLocalDisplayFor('tests', 'pregnancy_test_positive'),
-          'Home test: pregnancy_test_positive');
+          'Home test: pregnancy test positive');
     });
   });
 
@@ -1123,7 +1123,7 @@ void main() {
         containsPair(
           'text',
           'Mean of the 15-60 day cycles among the last 12 completed cycles '
-              '(cycles excluded from averages are left out), calculated by '
+              '(cycles the patient or guardian excluded from averages are left out), calculated by '
               'lunarlog from period start dates logged by the patient or '
               'guardian; not measured or confirmed by a clinician.',
         ),
@@ -1144,11 +1144,13 @@ void main() {
 
     test('the exported cycle length is the mean over the last 12 completed '
         'cycles, not the last 6 (reverification)', () {
-      // One 30-day cycle, then six of 34, then six of 26. The mean of the
-      // last 12 is 30 ((6*34 + 6*26) / 12); the mean of the last 6 is 26,
-      // so this pins the note's "last 12" claim to the emitted value.
+      // One 42-day cycle, then six of 34, then six of 26. The mean of the
+      // last 12 is 30 ((6*34 + 6*26) / 12); the mean of all 13 cycles would
+      // be 31 ((42 + 360) / 13 = 30.92 rounded to 31). This confirms that
+      // the recency window caps the average at 12 cycles and excludes the
+      // oldest 13th cycle.
       final starts = <LocalDate>[LocalDate(2025, 1, 1)];
-      for (final gap in const [30, 34, 34, 34, 34, 34, 34, 26, 26, 26, 26, 26, 26]) {
+      for (final gap in const [42, 34, 34, 34, 34, 34, 34, 26, 26, 26, 26, 26, 26]) {
         starts.add(starts.last.addDays(gap));
       }
       final entries = [
