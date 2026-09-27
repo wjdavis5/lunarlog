@@ -1145,11 +1145,11 @@ jobs:
         #
         # Issue #1130: on GitHub-hosted macOS runners, CoreSimulator or the
         # Dart VM service handshake can occasionally hang before tests start
-        # (after "Xcode build done"). Each attempt is bounded at 300s (5m);
+        # (after "Xcode build done"). Each attempt is bounded at 500s (~8.3m);
         # on a timeout or failure, the step reboots the simulator and retries
         # once, preventing transient runner stalls from failing CI on main.
         if: steps.check_run.outputs.run == 'true'
-        timeout-minutes: 12
+        timeout-minutes: 18
         env:
           SIM_UDID: ${{ steps.sim.outputs.udid }}
         run: |
@@ -1167,7 +1167,7 @@ jobs:
           except subprocess.TimeoutExpired:
               print(f"::error::Command timed out after {timeout}s: {cmd_str}")
               sys.exit(124)
-          ' 300 flutter test integration_test/gate_test.dart -d "$SIM_UDID"
+          ' 500 flutter test integration_test/gate_test.dart -d "$SIM_UDID"
           }
 
           echo "Running integration tests on simulator $SIM_UDID (attempt 1)..."
