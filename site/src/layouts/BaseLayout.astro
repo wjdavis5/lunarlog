@@ -28,7 +28,7 @@ const fullTitle = title === "lunarlog" ? title : `${title} — lunarlog`;
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
-    <link rel="canonical" href={canonical} />
+    {!noindex && <link rel="canonical" href={canonical} />}
     {noindex && <meta name="robots" content="noindex" />}
     <link rel="icon" href="/favicon.png" type="image/png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
