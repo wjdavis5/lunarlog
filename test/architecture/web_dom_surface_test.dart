@@ -220,7 +220,7 @@ void main() {
 
       final helper =
           File('lib/ui/components/safe_launch_url.dart').readAsStringSync();
-      for (final scheme in ["'http'", "'https'", "'mailto'", "'tel'"]) {
+      for (final scheme in ["'http'", "'https'", "'mailto'", "'tel'", "'sms'"]) {
         expect(helper, contains(scheme),
             reason: '$scheme must stay in kDefaultLaunchSchemes');
       }

@@ -10,8 +10,8 @@ import 'package:url_launcher/url_launcher.dart' show LaunchMode;
 
 void main() {
   group('isLaunchSchemeAllowed', () {
-    test('allows the default web/mail/phone schemes case-insensitively', () {
-      for (final scheme in ['http', 'https', 'mailto', 'tel', 'HTTPS']) {
+    test('allows the default web/mail/phone/sms schemes case-insensitively', () {
+      for (final scheme in ['http', 'https', 'mailto', 'tel', 'sms', 'HTTPS', 'SMS']) {
         expect(isLaunchSchemeAllowed(scheme, kDefaultLaunchSchemes), isTrue,
             reason: '$scheme must be allowed');
       }

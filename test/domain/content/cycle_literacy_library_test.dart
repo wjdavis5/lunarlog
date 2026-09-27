@@ -42,7 +42,12 @@ void main() {
 
           for (final section in article.sections) {
             expect(section.heading, isNotEmpty);
-            expect(section.paragraphs, isNotEmpty);
+            expect(
+              section.paragraphs.isNotEmpty || section.callout != null,
+              isTrue,
+              reason:
+                  '${article.id} section "${section.heading}" has no content',
+            );
             for (final paragraph in section.paragraphs) {
               expect(paragraph.trim(), isNotEmpty);
             }
@@ -443,7 +448,7 @@ void main() {
   group('Issue #1119 safety and provenance corrections', () {
     String body(String articleId) {
       final article = CycleLiteracyLibrary.getArticleById(articleId)!;
-      return article.sections.expand((s) => s.paragraphs).join(' ');
+      return article.sections.expand((s) => s.allParagraphs).join(' ');
     }
 
     test('teen amenorrhea rule drops the "once regular" qualifier', () {
@@ -487,7 +492,11 @@ void main() {
         expect(text, contains('116 123'), reason: id);
         expect(text, contains('0800 1111'), reason: id);
         expect(text, contains('NHS 111'), reason: id);
+        expect(text, contains('Lifeline'), reason: id);
         expect(text, contains('local emergency number'), reason: id);
+        expect(text, contains('911'), reason: id);
+        expect(text, contains('999'), reason: id);
+        expect(text, contains('A&E'), reason: id);
       }
       expect(
         body('pms-vs-mood-when-to-ask-clinician'),
@@ -588,6 +597,60 @@ void main() {
     test('every article carries the re-checked review date', () {
       for (final article in CycleLiteracyLibrary.allArticles) {
         expect(article.reviewDate, '2026-09-26');
+      }
+    });
+  });
+
+  group('Issue #1132 structured crisis resources', () {
+    test('crisis articles carry structured CrisisResources callout', () {
+      for (final id in [
+        'pms-and-progesterone',
+        'pms-vs-mood-when-to-ask-clinician',
+      ]) {
+        final article = CycleLiteracyLibrary.getArticleById(id)!;
+        final crisisSections =
+            article.sections.where((s) => s.callout != null).toList();
+        expect(crisisSections, hasLength(1), reason: '$id must have 1 callout');
+        final callout = crisisSections.first.callout!;
+        expect(callout.text, contains('hopeless'));
+        expect(callout.actions, isNotEmpty);
+
+        final labels = callout.actions.map((a) => a.label).toList();
+        expect(labels, contains('Call 988'));
+        expect(labels, contains('Text 988'));
+        expect(labels, contains('Samaritans 116 123'));
+        expect(labels, contains('Childline 0800 1111'));
+        expect(labels, contains('NHS 111'));
+        expect(labels, contains('Lifeline 0808 808 8000'));
+        expect(labels, contains('911'));
+        expect(labels, contains('999'));
+
+        for (final action in callout.actions) {
+          expect(action.label, isNotEmpty);
+          expect(
+            action.uri.scheme == 'tel' || action.uri.scheme == 'sms',
+            isTrue,
+            reason: '${action.label} uri ${action.uri} must be tel or sms',
+          );
+          expect(action.semanticsLabel, isNotEmpty);
+        }
+      }
+    });
+
+    test('non-crisis articles carry no callouts', () {
+      final nonCrisis = CycleLiteracyLibrary.allArticles.where(
+        (a) =>
+            a.id != 'pms-and-progesterone' &&
+            a.id != 'pms-vs-mood-when-to-ask-clinician',
+      );
+      for (final article in nonCrisis) {
+        for (final section in article.sections) {
+          expect(
+            section.callout,
+            isNull,
+            reason: '${article.id} section "${section.heading}" has callout',
+          );
+        }
       }
     });
   });

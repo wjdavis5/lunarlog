@@ -19,14 +19,15 @@ library;
 import 'package:url_launcher/url_launcher.dart';
 
 /// The schemes [safeLaunchUrl] permits by default: the web, email, and
-/// telephone schemes a user-facing "open this link" affordance can carry.
-/// Deliberately excludes `javascript:`, `data:`, `file:`, `intent:`, and
+/// telephone/messaging schemes a user-facing "open this link" affordance can
+/// carry. Deliberately excludes `javascript:`, `data:`, `file:`, `intent:`, and
 /// every custom scheme — those are never a URL a user typed.
 const Set<String> kDefaultLaunchSchemes = <String>{
   'http',
   'https',
   'mailto',
   'tel',
+  'sms',
 };
 
 /// The `url_launcher` call shape [safeLaunchUrl] depends on, narrowed to the

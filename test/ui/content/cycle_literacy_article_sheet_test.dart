@@ -2,19 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/content/cycle_literacy_library.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/components/safe_launch_url.dart';
 import 'package:lunarlog/ui/content/cycle_literacy_article_sheet.dart';
 import 'package:lunarlog/ui/theme/app_theme.dart';
+import 'package:url_launcher/url_launcher.dart' show LaunchMode;
 
 Future<void> pumpSheet(
   WidgetTester tester,
-  CycleLiteracyArticle article,
-) async {
+  CycleLiteracyArticle article, {
+  LaunchUrlFn? launchUrlFn,
+}) async {
   await tester.pumpWidget(MaterialApp(
     theme: AppTheme.lightTheme,
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
     home: Scaffold(
-      body: CycleLiteracyArticleSheet(article: article),
+      body: CycleLiteracyArticleSheet(
+        article: article,
+        launchUrlFn: launchUrlFn,
+      ),
     ),
   ));
 }
@@ -75,6 +81,126 @@ void main() {
     expect(
       find.textContaining('(Committee Opinion No. 651)'),
       findsOneWidget,
+    );
+  });
+
+  group('Issue #1132 crisis resources rendering and interaction', () {
+    testWidgets(
+      'PMS vs. Mood sheet contains a crisis block with tappable tel:988 / sms:988 targets',
+      (tester) async {
+        final launched = <Uri>[];
+        final article = CycleLiteracyLibrary.pmsVsMoodWhenToAskClinician;
+
+        await pumpSheet(
+          tester,
+          article,
+          launchUrlFn: (url, {mode = LaunchMode.platformDefault}) async {
+            launched.add(url);
+            return true;
+          },
+        );
+
+        // Scroll until the crisis card is visible
+        await tester.dragUntilVisible(
+          find.byKey(const ValueKey('crisis-resources-card')),
+          find.byType(ListView),
+          const Offset(0, -300),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const ValueKey('crisis-resources-card')),
+          findsOneWidget,
+        );
+
+        // Verify the buttons are rendered and meet >= 44x44 pt target size
+        for (final label in [
+          'Call 988',
+          'Text 988',
+          'Samaritans 116 123',
+          'Childline 0800 1111',
+          'NHS 111',
+          'Lifeline 0808 808 8000',
+          '911',
+          '999',
+        ]) {
+          final buttonFinder = find.byKey(ValueKey('crisis-action-$label'));
+          await tester.ensureVisible(buttonFinder);
+          await tester.pumpAndSettle();
+          expect(buttonFinder, findsOneWidget);
+          final size = tester.getSize(buttonFinder);
+          expect(size.width, greaterThanOrEqualTo(44.0),
+              reason: '$label width must be >= 44pt');
+          expect(size.height, greaterThanOrEqualTo(44.0),
+              reason: '$label height must be >= 44pt');
+        }
+
+        // Semantics checks
+        expect(
+          find.bySemanticsLabel('Call 988, Suicide and Crisis Lifeline'),
+          findsOneWidget,
+        );
+        expect(
+          find.bySemanticsLabel('Text 988, Suicide and Crisis Lifeline'),
+          findsOneWidget,
+        );
+
+        // Tap Call 988
+        final call988Finder =
+            find.byKey(const ValueKey('crisis-action-Call 988'));
+        await tester.ensureVisible(call988Finder);
+        await tester.tap(call988Finder);
+        await tester.pumpAndSettle();
+        expect(launched, contains(Uri.parse('tel:988')));
+
+        // Tap Text 988
+        final text988Finder =
+            find.byKey(const ValueKey('crisis-action-Text 988'));
+        await tester.ensureVisible(text988Finder);
+        await tester.tap(text988Finder);
+        await tester.pumpAndSettle();
+        expect(launched, contains(Uri.parse('sms:988')));
+      },
+    );
+
+    testWidgets(
+      'pmsAndProgesterone sheet renders crisis block in its dedicated section',
+      (tester) async {
+        final article = CycleLiteracyLibrary.pmsAndProgesterone;
+
+        await pumpSheet(tester, article);
+
+        await tester.dragUntilVisible(
+          find.text('If You Feel Hopeless or Need Help Now'),
+          find.byType(ListView),
+          const Offset(0, -300),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text('If You Feel Hopeless or Need Help Now'),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('crisis-resources-card')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'articles without crisis content do not render crisis resources card',
+      (tester) async {
+        final article = CycleLiteracyLibrary.menstrualCyclePhases;
+
+        await pumpSheet(tester, article);
+        await scrollToFooter(tester);
+
+        expect(
+          find.byKey(const ValueKey('crisis-resources-card')),
+          findsNothing,
+        );
+      },
     );
   });
 }

@@ -49,7 +49,12 @@ Map<String, Object?> _articleToJson(CycleLiteracyArticle article) => {
   'readingTimeMinutes': article.readingTimeMinutes,
   'sections': [
     for (final section in article.sections)
-      {'heading': section.heading, 'paragraphs': section.paragraphs},
+      {
+        'heading': section.heading,
+        'paragraphs': section.paragraphs,
+        if (section.callout != null)
+          'callout': _calloutToJson(section.callout!),
+      },
   ],
   'sources': [
     for (final source in article.sources) _sourceToJson(source),
@@ -59,6 +64,18 @@ Map<String, Object?> _articleToJson(CycleLiteracyArticle article) => {
     for (final subphase in article.relatedSubphases) subphase.name,
   ],
   'disclaimer': CycleLiteracyArticle.kMedicalDisclaimer,
+};
+
+Map<String, Object?> _calloutToJson(CrisisResources callout) => {
+  'text': callout.text,
+  'actions': [
+    for (final action in callout.actions)
+      {
+        'label': action.label,
+        'uri': action.uri.toString(),
+        'semanticsLabel': action.semanticsLabel,
+      },
+  ],
 };
 
 Map<String, Object?> _sourceToJson(ArticleSource source) => {
