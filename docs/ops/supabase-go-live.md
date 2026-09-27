@@ -85,29 +85,35 @@ JWT are CLI defaults) and says nothing about the cloud project.
 ### Web hosting (epic #831, slice 3)
 
 The first-class web client's deploy path is in code
-(`.github/workflows/web-deploy.yml`): on push to `main` (or a manual
-dispatch) it builds the sync-enabled web release, verifies the output carries
-the CSP `_headers` and the SPA `_redirects`, and publishes to Cloudflare
-Pages. These are the owner steps that make it live; until they are done the
-workflow builds and verifies but the upload is skipped. Rationale and the
-deferred PWA/offline decision: `docs/web/security-posture.md` section 8.
+(`.github/workflows/web-deploy.yml`) **and live**. On push to `main` (or a
+manual dispatch) it builds the sync-enabled web release, verifies the output
+carries the CSP `_headers` and the SPA `_redirects`, ensures the Cloudflare
+Pages project `lunarlog-app` exists (idempotently — issue #1092), publishes
+to Cloudflare Pages, and smoke-checks the live origin's headers, SPA
+fallback, and local CanvasKit before the run can go green. The project, the
+`app.lunarlog.app` custom domain, and its proxied CNAME were provisioned on
+2026-09-26. Rationale and the deferred PWA/offline decision:
+`docs/web/security-posture.md` section 8.
 
-- [ ] Cloudflare Pages project `lunarlog-app` created (Workers & Pages →
+- [x] Cloudflare Pages project `lunarlog-app` created (Workers & Pages →
       Create → Pages → **Direct Upload**; no Git connection needed — CI
-      uploads the build).
-- [ ] Repository secrets `CLOUDFLARE_API_TOKEN` (account-scoped, with
+      uploads the build). `web-deploy.yml` also creates it idempotently, so
+      a deleted project no longer breaks deploys and this is no longer a
+      blocking owner step.
+- [x] Repository secrets `CLOUDFLARE_API_TOKEN` (account-scoped, with
       **Cloudflare Pages: Edit**) and `CLOUDFLARE_ACCOUNT_ID` set. The
-      deploy step is gated on both; missing either makes the workflow print
-      a `::warning::` and skip the deploy, never fail.
-- [ ] `app.lunarlog.app` pointed at the Pages project (Custom domains →
-      Set up a custom domain). The apex stays for the marketing site
-      (#830).
+      credentialed steps are gated on both; missing either makes the workflow
+      print a `::warning::` and skip them, never fail.
+- [x] `app.lunarlog.app` pointed at the Pages project (Custom domains →
+      Set up a custom domain) with its proxied CNAME. The apex stays for the
+      marketing site (#830).
 - [ ] `https://app.lunarlog.app/auth/callback` added to the Auth redirect
       allow-list (Authentication → URL Configuration) — the same step
       recorded under "Supabase Auth" above, repeated here so the web deploy
-      checklist is complete. A browser cannot open the
-      `lunarlog://auth-callback` custom scheme, so the slice-2 email links
-      land here and `web/_redirects` serves the app for that path.
+      checklist is complete. **This is the one remaining owner step
+      (#1093).** A browser cannot open the `lunarlog://auth-callback` custom
+      scheme, so the slice-2 email links land here and `web/_redirects`
+      serves the app for that path.
 
 ### Social logins and passwordless (issue #2)
 

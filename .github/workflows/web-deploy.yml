@@ -4,16 +4,17 @@ name: Web deploy (Cloudflare Pages)
 # sync-enabled `flutter build web --release` and publishes `build/web` to the
 # `lunarlog-app` Cloudflare Pages project, which serves `app.lunarlog.app`.
 #
-# Scope boundary: this workflow is the code half only. It deliberately does
-# not create the Pages project, hold DNS, or set any secret. The owner steps
-# that make it live -- project creation, `CLOUDFLARE_API_TOKEN` /
-# `CLOUDFLARE_ACCOUNT_ID`, the `app.lunarlog.app` custom domain, and the
-# Supabase redirect allow-list -- are checkboxes in
-# `docs/ops/supabase-go-live.md` ("Web hosting"), with the posture in
-# `docs/web/security-posture.md` section 8.
+# Issue #1092 hardening: before the upload this workflow now ensures the
+# Pages project exists (`wrangler pages project create`, treating "already
+# exists" as success), so a fresh Cloudflare account or a deleted project
+# cannot regress every run to "Project not found", and smoke-checks the live
+# origin after the upload. The project, the `app.lunarlog.app` custom domain,
+# and its proxied DNS record were provisioned by hand on 2026-09-26; the one
+# remaining owner step is the Supabase redirect allow-list (#1093).
 #
-# Until both Cloudflare secrets exist the deploy step warns and is skipped;
-# the run still succeeds and the verified build is uploaded as an artifact.
+# Until both Cloudflare secrets exist the credential-gated steps (ensure
+# project, deploy, smoke check) warn and are skipped; the run still succeeds
+# and the verified build is uploaded as an artifact.
 
 on:
   push:
@@ -29,6 +30,7 @@ on:
       - 'l10n.yaml'
       - '.github/workflows/web-deploy.yml'
       - '.github/scripts/check-web-build-output.sh'
+      - '.github/scripts/check-web-deploy.sh'
   workflow_dispatch:
 
 # Supersede a queued run when main is pushed to again, but never cancel one
@@ -143,6 +145,34 @@ jobs:
             echo "::warning::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID are not configured; skipping the Cloudflare Pages deploy (the release build was verified and uploaded as the 'web-build' artifact). Owner steps: docs/ops/supabase-go-live.md ('Web hosting')."
           fi
 
+      - name: Ensure the Cloudflare Pages project exists
+        # Issue #1092: the `lunarlog-app` project had never been created, so
+        # all 31 runs since #1031 merged failed with `Project not found
+        # [code: 8000007]`. Creating it here keeps a fresh account or a
+        # deleted project from silently breaking every deploy again.
+        # `wrangler pages project create` exits non-zero when the project
+        # already exists; that one error is the idempotent no-op, any other
+        # failure is real. Same pinned wrangler as the deploy step below.
+        if: steps.cloudflare.outputs.configured == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          output_file="$(mktemp)"
+          if npx --yes wrangler@3.89.0 pages project create "$CLOUDFLARE_PAGES_PROJECT" --production-branch=main >"$output_file" 2>&1; then
+            cat "$output_file"
+            echo "Cloudflare Pages project '$CLOUDFLARE_PAGES_PROJECT' is present."
+            exit 0
+          fi
+          cat "$output_file"
+          if grep -qi "already exists" "$output_file"; then
+            echo "Cloudflare Pages project '$CLOUDFLARE_PAGES_PROJECT' already exists; continuing."
+            exit 0
+          fi
+          echo "::error::Could not create the Cloudflare Pages project '$CLOUDFLARE_PAGES_PROJECT'. The Cloudflare API token needs the 'Cloudflare Pages: Edit' permission (docs/ops/supabase-go-live.md, 'Web hosting')."
+          exit 1
+
       - name: Deploy to Cloudflare Pages
         if: steps.cloudflare.outputs.configured == 'true'
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
@@ -155,3 +185,12 @@ jobs:
           # `--branch=main` pins this to a production deployment of the Pages
           # project (a non-production branch would publish a preview URL).
           command: pages deploy build/web --project-name=lunarlog-app --branch=main
+
+      - name: Smoke-check the deployed origin
+        # Issue #1092: `check-web-build-output.sh` proves the build packaged
+        # `_headers` and `_redirects`; only the live origin proves Cloudflare
+        # applied them. Fails the run if app.lunarlog.app stops serving the
+        # CSP or cross-origin-isolation headers, 404s the SPA fallback, or
+        # drops local CanvasKit. Retries for ~90 s for edge propagation.
+        if: steps.cloudflare.outputs.configured == 'true'
+        run: bash .github/scripts/check-web-deploy.sh

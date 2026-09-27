@@ -129,6 +129,14 @@ jobs:
         if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-links-deploy.test.sh
 
+      - name: Run check-web-deploy tests
+        # Issue #1092: proves the web post-deploy smoke check's truth table
+        # (the live origin serves the `web/_headers` policy, the SPA fallback,
+        # and local CanvasKit) and that web-deploy.yml ensures the Pages
+        # project exists before it uploads.
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
+        run: bash .github/scripts/tests/check-web-deploy.test.sh
+
       - name: Run upload-sentry-symbols-setup tests
         if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/upload-sentry-symbols-setup.test.sh
@@ -320,6 +328,14 @@ jobs:
         # layer's.
         if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-links-deploy.test.sh
+
+      - name: Run check-web-deploy tests
+        # Issue #1092: proves the web post-deploy smoke check's truth table
+        # (the live origin serves the `web/_headers` policy, the SPA fallback,
+        # and local CanvasKit) and that web-deploy.yml ensures the Pages
+        # project exists before it uploads.
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
+        run: bash .github/scripts/tests/check-web-deploy.test.sh
 
       - name: Run upload-sentry-symbols-setup tests
         if: steps.check_run.outputs.run == 'true' && !cancelled()
