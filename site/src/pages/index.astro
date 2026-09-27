@@ -1,0 +1,19 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+const tagline =
+  "A family cycle tracker built for sharing between the people involved.";
+---
+
+<BaseLayout
+  title="lunarlog"
+  description={tagline}
+>
+  <section class="hero">
+    <h1 class="hero__title">lunarlog</h1>
+    <p class="hero__tagline">{tagline}</p>
+    <a class="button" href="https://app.lunarlog.app"
+      >Use lunarlog in your browser</a
+    >
+  </section>
+</BaseLayout>
