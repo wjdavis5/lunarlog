@@ -14,13 +14,21 @@
   ],
 
   "assets": {
-    "directory": "./public",
+    // Issue #1099: the Astro build output. `site/public/*` (AASA, invite.html,
+    // robots.txt, _headers, the brand images) is copied into it by the build,
+    // so the Worker's static-asset layer serves the marketing pages plus the
+    // universal-link files from one directory.
+    "directory": "./dist",
     "binding": "ASSETS",
     // Issue #1090: without this the static-asset layer answers first, so
     // public/.well-known/apple-app-site-association went out as
     // application/octet-stream and /invite* as an unheadered invite.html --
     // both of the worker's branches below were dead code in production.
-    "run_worker_first": ["/.well-known/*", "/invite*"]
+    "run_worker_first": ["/.well-known/*", "/invite*"],
+    // Issue #1099: serve the styled Astro 404 page for any path with no
+    // matching asset. This is also how `/fhir/*` stays a plain 404 and never
+    // a redirect (issue #961 froze those URIs).
+    "not_found_handling": "404-page"
   },
 
   "observability": {
