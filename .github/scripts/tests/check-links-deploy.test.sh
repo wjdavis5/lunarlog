@@ -296,6 +296,14 @@ assert_contains "site/package.json pins @lhci/cli exactly" "$site_package" '"@lh
 assert_contains "site/package.json pins axe-core exactly" "$site_package" '"axe-core": "4.13.0"'
 assert_contains "the build script runs astro check" "$site_package" "astro check"
 
+site_headers="$(cat "$SCRIPT_DIR/../../../site/public/_headers")"
+assert_contains "site/_headers carries the strict CSP" "$site_headers" "default-src 'self'"
+assert_not_contains "site/_headers forbids inline styles/scripts" "$site_headers" "unsafe-inline"
+assert_contains "site/_headers sends HSTS" "$site_headers" "Strict-Transport-Security:"
+assert_contains "site/_headers denies framing" "$site_headers" "X-Frame-Options: DENY"
+assert_contains "site/_headers sets a deny-by-default Permissions-Policy" "$site_headers" "Permissions-Policy:"
+assert_contains "site.yml verifies _headers survives the build" "$site_yaml" "dist/_headers"
+
 ci_yaml="$(cat "$CI_WORKFLOW")"
 assert_contains "ci.yml release-guards runs this suite" "$ci_yaml" "bash .github/scripts/tests/check-links-deploy.test.sh"
 assert_not_contains "ci.yml does not pull the site workflow into its required checks" "$ci_yaml" "site.yml"
