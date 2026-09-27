@@ -1,0 +1,143 @@
+name: Site (marketing site)
+
+# Issue #1099: CI for the Astro marketing site in `site/`. This is a
+# separate, path-filtered workflow on purpose:
+#   - an app PR runs no site jobs (acceptance criterion 2);
+#   - it is NOT in ci.yml's `detect-changes` outputs or its "CI required
+#     checks" aggregate, so a site failure can never gate an app release.
+#
+# Deploying is `site-deploy.yml`; this workflow only verifies.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'PRIVACY.md'
+      - 'lib/domain/content/**'
+      - 'lib/l10n/app_en.arb'
+      - '.github/workflows/site.yml'
+  schedule:
+    # Mondays 06:23 UTC. The weekly outbound-link check (issue #1099) is a
+    # no-op until issue #1104 adds the external medical sources.
+    - cron: '23 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-check:
+    name: Site build, links, Lighthouse, axe
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          # Astro 7 requires Node >= 22.12.
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: 'site/package-lock.json'
+
+      - name: Install site dependencies
+        working-directory: site
+        run: npm ci
+
+      - name: Build and type-check the site
+        # `npm run build` runs `astro sync`, `astro check`, and the static
+        # build.
+        working-directory: site
+        run: npm run build
+
+      - name: Verify the universal-link files were copied verbatim
+        # site/public/ is copied into dist/ by the build; the AASA and the
+        # invite page must survive unchanged (their content is also pinned by
+        # test/domain/sharing/link_artifacts_test.dart).
+        working-directory: site
+        run: |
+          cmp dist/.well-known/apple-app-site-association public/.well-known/apple-app-site-association
+          cmp dist/invite.html public/invite.html
+
+      - name: Validate the built HTML
+        working-directory: site
+        run: npm run check:html
+
+      - name: Check internal links and off-origin resources
+        # Fails on a broken same-origin reference and on any resource loaded
+        # from a non-lunarlog.app origin (acceptance criteria 3 and 4).
+        working-directory: site
+        run: npm run check:links
+
+      - name: Run axe against the built site
+        working-directory: site
+        run: npm run check:axe
+
+      - name: Run the Lighthouse CI budgets
+        # Accessibility must be 100; performance and best-practices >= 95
+        # (site/lighthouserc.cjs). Fails the job when a budget is missed.
+        working-directory: site
+        run: npm run check:lighthouse
+
+      - name: Upload the Lighthouse report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: lighthouse-report
+          path: site/.lighthouseci
+          retention-days: 7
+
+  external-links:
+    name: Weekly external link check
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: 'site/package-lock.json'
+
+      - name: Build the site
+        working-directory: site
+        run: |
+          npm ci
+          npm run build
+
+      - name: Check every outbound link
+        id: external
+        working-directory: site
+        run: npm run check:external-links
+
+      - name: File or refresh the rolling issue
+        # The #707 pattern: one issue that is refreshed on each failing run,
+        # never one per run. Only reached on a scheduled failure.
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Site: weekly external link check is failing"
+          existing="$(gh issue list --state open --search 'in:title weekly external link check is failing' --json number --jq '.[0].number')"
+          body="The weekly external link check in \`site.yml\` failed.
+
+          Run: $RUN_URL
+
+          Fix the outbound link(s) named in the run log. This issue is refreshed by the next failing run; close it once the links pass."
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi

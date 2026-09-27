@@ -3,18 +3,28 @@ set -euo pipefail
 
 # .github/scripts/check-links-deploy.sh
 #
-# Post-deploy smoke check for the apex links Worker on lunarlog.app
-# (issue #1090). `links-deploy.yml` runs this immediately after `wrangler
-# deploy`, so the job fails when the Worker is not actually owning its
-# routes -- the exact failure #1090 documents: `wrangler.jsonc` bound static
-# assets without `run_worker_first`, the asset layer answered both routes
-# first, and the AASA went out as `application/octet-stream` with none of
-# the Worker's headers while the unit tests stayed green (they call the
-# handler directly). This runs against the live origin, which is the only
-# place that failure is visible.
+# Post-deploy smoke check for the apex site Worker on lunarlog.app
+# (issue #1090; extended to the marketing pages by issue #1099).
+# `site-deploy.yml` runs this immediately after `wrangler deploy`, so the job
+# fails when the Worker is not actually owning its routes -- the exact failure
+# #1090 documents: `wrangler.jsonc` bound static assets without
+# `run_worker_first`, the asset layer answered both routes first, and the AASA
+# went out as `application/octet-stream` with none of the Worker's headers
+# while the unit tests stayed green (they call the handler directly). This
+# runs against the live origin, which is the only place that failure is
+# visible.
 #
 # It retries for up to ~90 s to allow for edge propagation, then fails
 # closed unless every assertion below holds for the deployed origin.
+#
+# Issue #1099 adds the marketing-site assertions:
+#   - `/` is 200 text/html carrying the strict header set from
+#     `site/public/_headers` (CSP, HSTS, X-Frame-Options, Referrer-Policy,
+#     nosniff);
+#   - an unmatched path serves the Astro 404 page as a real 404, not a
+#     redirect;
+#   - the reserved `/fhir/*` URIs (issue #961) are a 404 and never a
+#     redirect.
 #
 # Input (env):
 #   LINKS_BASE_URL      Origin under test. Defaults to https://lunarlog.app.
@@ -33,9 +43,12 @@ ATTEMPTS="${LINKS_ATTEMPTS:-18}"
 RETRY_DELAY="${LINKS_RETRY_DELAY:-5}"
 FIXTURES_DIR="${LINKS_FIXTURES_DIR:-}"
 
+HOME_URL="$BASE_URL/"
 AASA_URL="$BASE_URL/.well-known/apple-app-site-association"
 INVITE_URL="$BASE_URL/invite?code=smoke"
 ASSETLINKS_URL="$BASE_URL/.well-known/assetlinks.json"
+NOTFOUND_URL="$BASE_URL/this-page-does-not-exist"
+FHIR_URL="$BASE_URL/fhir/CodeSystem/cycle-status"
 
 if [ -n "$FIXTURES_DIR" ]; then
   # Fixtures already hold the settled response; retrying adds nothing.
@@ -56,6 +69,9 @@ fixture_path() {
     */apple-app-site-association) printf '%s' "$FIXTURES_DIR/apple-app-site-association.headers" ;;
     */assetlinks.json) printf '%s' "$FIXTURES_DIR/assetlinks.json.headers" ;;
     */invite*) printf '%s' "$FIXTURES_DIR/invite.headers" ;;
+    */fhir/*) printf '%s' "$FIXTURES_DIR/fhir.headers" ;;
+    */this-page-does-not-exist) printf '%s' "$FIXTURES_DIR/notfound.headers" ;;
+    "$HOME_URL"|"$BASE_URL") printf '%s' "$FIXTURES_DIR/home.headers" ;;
     *) printf '%s' "$FIXTURES_DIR/unknown.headers" ;;
   esac
 }
@@ -149,14 +165,53 @@ expect_header_exact() {
   fi
 }
 
+# expect_header_contains DUMP NAME NEEDLE URL -- the named header must be
+# present and its value must contain NEEDLE (e.g. a CSP directive).
+expect_header_contains() {
+  local dump="$1" name="$2" needle="$3" url="$4" got
+  got="$(header_value "$dump" "$name" || true)"
+  if [ -z "$got" ]; then
+    printf '%s: missing %s header. ' "$url" "$name"
+    return 0
+  fi
+  case "$got" in
+    *"$needle"*) return 0 ;;
+    *) printf '%s: expected %s to contain '%s', got '%s'. ' "$url" "$name" "$needle" "$got" ;;
+  esac
+}
+
+# expect_header_absent DUMP NAME URL -- the header must not be present. Used
+# to prove a route never redirects (no `location`).
+expect_header_absent() {
+  local dump="$1" name="$2" url="$3" got
+  got="$(header_value "$dump" "$name" || true)"
+  if [ -n "$got" ]; then
+    printf "%s: unexpected %s header ('%s'). " "$url" "$name" "$got"
+  fi
+}
+
 # check_once -- prints the accumulated problems (empty on success) and
 # returns non-zero when any assertion failed.
 check_once() {
-  local aasa invite assetlinks problems=""
+  local home aasa invite assetlinks notfound fhir problems=""
 
+  home="$(fetch "$HOME_URL" 2>/dev/null || true)"
   aasa="$(fetch "$AASA_URL" 2>/dev/null || true)"
   invite="$(fetch "$INVITE_URL" 2>/dev/null || true)"
   assetlinks="$(fetch "$ASSETLINKS_URL" 2>/dev/null || true)"
+  notfound="$(fetch "$NOTFOUND_URL" 2>/dev/null || true)"
+  fhir="$(fetch "$FHIR_URL" 2>/dev/null || true)"
+
+  # The home page is served by the static-asset layer, so the strict header
+  # set from `site/public/_headers` must be attached to it.
+  problems="${problems}$(expect_status "$home" 200 "$HOME_URL")"
+  problems="${problems}$(expect_header_prefix "$home" content-type text/html "$HOME_URL")"
+  problems="${problems}$(expect_header_contains "$home" content-security-policy "default-src 'self'" "$HOME_URL")"
+  problems="${problems}$(expect_header_contains "$home" content-security-policy "frame-ancestors 'none'" "$HOME_URL")"
+  problems="${problems}$(expect_header_prefix "$home" strict-transport-security "max-age=" "$HOME_URL")"
+  problems="${problems}$(expect_header_exact "$home" x-frame-options DENY "$HOME_URL")"
+  problems="${problems}$(expect_header_exact "$home" referrer-policy no-referrer "$HOME_URL")"
+  problems="${problems}$(expect_header_exact "$home" x-content-type-options nosniff "$HOME_URL")"
 
   # The AASA must be served by the Worker: 200 with no redirect,
   # application/json, and nosniff (index.ts's AASA branch).
@@ -177,6 +232,17 @@ check_once() {
   # reaches the Worker and must 404.
   problems="${problems}$(expect_status "$assetlinks" 404 "$ASSETLINKS_URL")"
 
+  # An unmatched path serves the Astro 404 page: a real 404, text/html, and
+  # never a redirect.
+  problems="${problems}$(expect_status "$notfound" 404 "$NOTFOUND_URL")"
+  problems="${problems}$(expect_header_prefix "$notfound" content-type text/html "$NOTFOUND_URL")"
+  problems="${problems}$(expect_header_absent "$notfound" location "$NOTFOUND_URL")"
+
+  # Issue #961: the frozen FHIR URIs are reserved. They must be a 404, never
+  # a redirect.
+  problems="${problems}$(expect_status "$fhir" 404 "$FHIR_URL")"
+  problems="${problems}$(expect_header_absent "$fhir" location "$FHIR_URL")"
+
   if [ -n "$problems" ]; then
     printf '%s' "$problems"
     return 1
@@ -187,12 +253,12 @@ check_once() {
 attempt=1
 while :; do
   if reason="$(check_once)"; then
-    echo "Links deploy smoke check passed for '$BASE_URL' (AASA, /invite, assetlinks 404)."
+    echo "Site deploy smoke check passed for '$BASE_URL' (home page headers, AASA, /invite, 404, /fhir reservation)."
     exit 0
   fi
 
   if [ "$attempt" -ge "$ATTEMPTS" ]; then
-    fail "links deploy smoke check failed for '$BASE_URL' after $attempt attempt(s): $reason"
+    fail "site deploy smoke check failed for '$BASE_URL' after $attempt attempt(s): $reason"
   fi
 
   echo "Live origin not ready (attempt $attempt/$ATTEMPTS): $reason"

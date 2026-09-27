@@ -14,17 +14,32 @@ whenever a build carries `--dart-define=LUNARLOG_LINK_DOMAIN=<domain>`.
 
 ## Cloudflare Worker hosting (`site/`)
 
-The apex domain `lunarlog.app` is served by a Cloudflare Worker (`site/`, source
-in `site/worker/`) with static assets, deployed automatically by
-`.github/workflows/links-deploy.yml`:
+The apex domain `lunarlog.app` is served by one Cloudflare Worker (`site/`,
+Worker source in `site/worker/`, Astro site in `site/src/`) with static assets,
+deployed automatically by `.github/workflows/site-deploy.yml` (renamed from
+`links-deploy.yml`, issue #1099):
 - `/.well-known/apple-app-site-association` is served as `application/json`, 200, no redirect.
 - `/invite*` serves `invite.html` with query strings preserved.
+- `/fhir/*` is reserved (issue #961): a plain 404, never a redirect.
+- All other paths are the Astro build output (`assets.directory` is `./dist`),
+  including the styled 404 page (`not_found_handling: "404-page"`).
 - `assets.run_worker_first` is `["/.well-known/*", "/invite*"]` (issue #1090), so the
   Worker owns both routes instead of the static-asset layer answering them first.
+- `site/public/_headers` adds the strict, third-party-free response headers
+  (CSP, HSTS, `X-Frame-Options: DENY`, no-referrer, nosniff, Permissions-Policy)
+  to the static-asset responses. Worker-generated routes keep the headers
+  `site/worker/index.ts` sets.
 - `observability.logs.invocation_logs` is disabled (`false`) so request lines and query
   parameters are not retained.
 - Custom domain route: `lunarlog.app` (Workers custom domain creates/binds the DNS record).
 - The future web app (#831) can share or front this Worker.
+
+**`www.lunarlog.app` -> apex is a follow-up (issue #1099).** Workers
+static-asset `_redirects` does not support domain-level redirects, and the
+Worker is only invoked for the `run_worker_first` paths, so the redirect needs
+a Cloudflare Bulk Redirect (or an equivalent dashboard/zone rule) rather than
+repo config. Until then `www.lunarlog.app` is not attached to the Worker.
+
 
 ## Where to serve each file
 

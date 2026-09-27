@@ -62,6 +62,58 @@ Settings the code cannot apply; each is a checkbox in [`docs/ops/supabase-go-liv
 - Account deletion (issue #17): an Apple Sign in with Apple **key** (Apple Developer portal → Certificates, Identifiers & Profiles → Keys) generated for the `delete-account` Edge Function's token revocation (KTD3); its Team ID, Key ID, and `.p8` contents become the `APPLE_*` `production` environment secrets (see "Config & Credential Locations" below). Nothing dashboard-side is needed for deleting a non-Apple account.
 - A Sentry project and DSN.
 
+## Site (lunarlog.app marketing site)
+
+Issue #1099. The marketing site is built with Astro and lives **in this repo**
+under `site/`; it is served by the same Cloudflare Worker that answers the
+universal-link routes.
+
+- **Layout.** `site/` holds `package.json` / `package-lock.json` (both
+  committed, every dependency pinned exactly), `astro.config.mjs` (static
+  output, `inlineStylesheets: 'never'` so the CSP never needs
+  `'unsafe-inline'`), and `src/`. `site/public/` is copied verbatim into the
+  build: `.well-known/apple-app-site-association`, `invite.html`,
+  `robots.txt`, `_headers`, and the brand images. `site/worker/` is the apex
+  Worker's source plus its `deno test` suite (still run by `ci.yml`'s
+  `edge-functions` job). `site/src/content/literacy/articles.json` is the
+  #1103 literacy export, checked byte for byte by
+  `test/tool/export_literacy_test.dart`; it is not rendered yet (#1104).
+  `site/dist/`, `site/node_modules/`, `site/.astro/` and `site/.lighthouseci/`
+  are gitignored.
+- **Zero client JS.** No `client:*` directives and no integrations: loading a
+  page makes no request to any origin other than `lunarlog.app`
+  (`site/scripts/check-internal-links.mjs` fails on an off-origin resource).
+- **Fonts and brand.** Fraunces (display) and Inter (text) are self-hosted
+  from the pinned `@fontsource/*` packages. Brand purple `#37156C`, teal
+  `#00696F`; the mark is derived from `assets/branding/app_icon_1024.png`.
+- **Local dev / build.** `cd site && npm ci`, then `npm run dev` or
+  `npm run build`. `npm run build` runs `astro sync`, `astro check`, and the
+  static build to `site/dist`. Checks: `npm run check:html` (html-validate),
+  `check:links` (internal links + off-origin resources), `check:axe`
+  (axe-core in system Chrome), `check:lighthouse` (`@lhci/cli` budgets:
+  accessibility 100, performance and best-practices >= 95), and
+  `check:external-links` (outbound links; a no-op until #1104).
+- **Headers.** `site/public/_headers` carries the strict, third-party-free
+  response headers (CSP, HSTS, `X-Frame-Options: DENY`, no-referrer,
+  nosniff, deny-by-default Permissions-Policy). Workers Static Assets applies
+  them to asset responses; the `run_worker_first` routes
+  (`/.well-known/*`, `/invite*`) are worker-generated and keep the headers
+  `site/worker/index.ts` sets.
+- **Deploy.** `.github/workflows/site-deploy.yml` (renamed from
+  `links-deploy.yml`) builds `site/` and runs `wrangler@4.20.0` from `site/`
+  with `assets.directory: "./dist"`, then
+  `.github/scripts/check-links-deploy.sh` asserts the live home page's
+  headers, the AASA, `/invite`, the styled 404, and the reserved `/fhir/*`
+  routes (issue #961: a 404, never a redirect). The Worker keeps its
+  `lunarlog-links` name. `www.lunarlog.app` -> apex is a documented follow-up:
+  Workers static-asset `_redirects` does not support domain-level redirects,
+  so it needs a Bulk Redirect or a dashboard rule (see `docs/links/README.md`).
+- **CI.** `.github/workflows/site.yml` is a separate, path-filtered workflow
+  (`site/**`, `PRIVACY.md`, `lib/domain/content/**`, `lib/l10n/app_en.arb`,
+  and the workflow itself), with a weekly outbound-link schedule. It is not
+  `ci.yml`'s `detect-changes` and not one of `check-ci-gate.sh`'s required
+  checks, so it can never gate an app PR or release.
+
 ## Config & Credential Locations
 
 Credentials and environment variables live in:
