@@ -1035,6 +1035,35 @@ void main() {
       expect(sections.firstWhere((s) => s['title'] == 'Problems')['entry'],
           isEmpty);
     });
+
+    test('Clue-imported free-text tags are excluded from FHIR export '
+        '(issue #1117)', () {
+      final clueTagsCategory = ObservationCategory.fromCode('tags');
+      const freeText = 'private therapist visit discussion';
+      final bundle = build(
+        entries: const [],
+        obs: [
+          _observation('o-clue-tag1', 'day-01', profile.id, '2026-04-01',
+              category: clueTagsCategory, code: freeText),
+          _observation('o-clue-tag2', 'day-02', profile.id, '2026-04-02',
+              category: clueTagsCategory, code: 'headache'),
+        ],
+      );
+      final strings = _allStrings(bundle);
+      expect(strings.any((s) => s.contains(freeText)), isFalse);
+      expect(strings.any((s) => s.contains('tags:')), isFalse);
+      // Even if a free-text tag matches a taxonomy code (e.g. 'headache'),
+      // it was typed as free text in Clue and must not pick up a SNOMED
+      // or local coding in the Problems section.
+      expect(strings.contains('headache'), isFalse);
+      final entries = (bundle['entry'] as List).cast<Map>();
+      final composition = entries
+          .map((e) => e['resource'] as Map)
+          .firstWhere((r) => r['resourceType'] == 'Composition');
+      final sections = (composition['section'] as List).cast<Map>();
+      expect(sections.firstWhere((s) => s['title'] == 'Problems')['entry'],
+          isEmpty);
+    });
   });
 
   group('DayEntry.note is never exported (#157 review fix)', () {

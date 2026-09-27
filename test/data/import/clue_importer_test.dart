@@ -23,6 +23,10 @@ import 'package:lunarlog/data/db/db.dart' hide Profile;
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart' as dbtables show FlowLevel;
 import 'package:lunarlog/data/import/clue_importer.dart';
+import 'package:lunarlog/data/repositories/mappers.dart';
+import 'package:lunarlog/domain/export/clinical_pdf_summary.dart';
+import 'package:lunarlog/domain/export/fhir_bundle.dart';
+import 'package:lunarlog/domain/export/fhir_export_range.dart';
 import 'package:lunarlog/domain/import/clue/clue_export_parser.dart';
 import 'package:lunarlog/domain/import/clue/clue_import_run.dart';
 import 'package:lunarlog/domain/tags.dart';
@@ -437,6 +441,126 @@ void main() {
       expect(
         () => validateTagCodes(['mystery_symptom']),
         throwsArgumentError,
+      );
+    });
+  });
+
+  group('Clue free-text tags end-to-end export exclusion (issue #1117)', () {
+    test('free-text tags are stored in observations but excluded from FHIR and PDF exports',
+        () async {
+      final pid = await profileId();
+      final profileRow = await storage.getProfile(pid);
+      final domainProfile = profileToDomain(profileRow!);
+
+      const freeText = 'private therapist discussion about anxiety';
+      final clueJson = jsonEncode([
+        {
+          'date': '2026-03-01',
+          'type': 'period',
+          'value': [
+            {'option': 'medium'}
+          ],
+        },
+        {
+          'date': '2026-03-02',
+          'type': 'period',
+          'value': [
+            {'option': 'medium'}
+          ],
+        },
+        {
+          'date': '2026-03-05',
+          'type': 'tags',
+          'value': [
+            {'option': freeText}
+          ],
+        },
+        {
+          'date': '2026-03-05',
+          'type': 'tags',
+          'value': [
+            {'option': 'headache'}
+          ],
+        },
+        {
+          'date': '2026-03-05',
+          'type': 'pain',
+          'value': [
+            {'option': 'cramps'}
+          ],
+        },
+        {
+          'date': '2026-03-29',
+          'type': 'period',
+          'value': [
+            {'option': 'medium'}
+          ],
+        },
+        {
+          'date': '2026-03-30',
+          'type': 'period',
+          'value': [
+            {'option': 'medium'}
+          ],
+        },
+      ]);
+
+      final bytes = utf8.encode(clueJson);
+      final summary = await importer.run(
+        profileId: pid,
+        tz: 'UTC',
+        parseResult: parseClueDatapoints(bytes),
+        fileChecksum: clueFileChecksum(bytes),
+      );
+
+      expect(summary.observationsWritten, 3);
+      final obsRows = await storage.getObservationsForProfile(pid);
+      expect(obsRows.length, 3);
+      expect(obsRows.where((o) => o.category == 'tags').length, 2);
+
+      final domainObs = obsRows.map(observationToDomain).toList();
+      final dayEntryRows = await storage.getDayEntries(profileId: pid);
+      final domainEntries = dayEntryRows.map(dayEntryToDomain).toList();
+
+      // 1. FHIR Bundle Export:
+      final fhirBundle = buildFhirDocumentBundle(
+        profile: domainProfile,
+        dayEntries: domainEntries,
+        observations: domainObs,
+        exportedAt: DateTime.utc(2026, 4, 2),
+        appVersion: '1.0.0+1',
+      );
+      final fhirString = jsonEncode(fhirBundle);
+      expect(fhirString.contains(freeText), isFalse);
+      expect(fhirString.contains('tags:'), isFalse);
+      // 'headache' was logged under free-text tags, NOT a structured symptom,
+      // so it must not be in the bundle either.
+      expect(fhirString.contains('headache'), isFalse);
+      // But the structured pain observation 'cramps' WAS exported:
+      expect(fhirString.contains('cramps'), isTrue);
+
+      // 2. Clinical PDF Summary:
+      final pdfSummary = buildClinicalPdfSummary(
+        profile: domainProfile,
+        dayEntries: domainEntries,
+        observations: domainObs,
+        range: FhirExportRange.everything,
+        rangeLabel: 'Everything',
+        generatedAt: DateTime.utc(2026, 4, 2),
+      );
+      expect(
+        pdfSummary.symptomGrid.any((row) => row.label.contains(freeText)),
+        isFalse,
+      );
+      expect(
+        pdfSummary.symptomGrid
+            .any((row) => row.label.toLowerCase().contains('headache')),
+        isFalse,
+      );
+      expect(
+        pdfSummary.symptomGrid
+            .any((row) => row.label.toLowerCase().contains('cramps')),
+        isTrue,
       );
     });
   });

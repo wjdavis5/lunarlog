@@ -486,13 +486,15 @@ List<_ResourceEntry> _symptomEntries(
   // policy" doc note — so they can neither be emitted themselves nor
   // suppress a tag-derived Observation that would otherwise fill the gap
   // they leave. Measurement (`bbt`/`weight`) rows are vital signs, not
-  // symptoms, and birth-control intake rows are never Observations
-  // (issue #1115) — neither belongs in the Problems section.
+  // symptoms, birth-control intake rows are never Observations
+  // (issue #1115), and free-text Clue tags (`category == 'tags'`) must
+  // never leave the device (issue #1117) — none belongs in the Problems section.
   final liveObservations = [
     for (final observation in observations)
       if (!observation.excluded &&
           !observation.category.isMeasurement &&
-          !_isBirthControlRow(observation))
+          !_isBirthControlRow(observation) &&
+          !_isFreeTextTagsRow(observation))
         observation,
   ];
   final existingDateCodes = _existingSymptomDateCodes(liveObservations);
@@ -517,6 +519,17 @@ bool _isBirthControlRow(Observation observation) =>
     observation.category.isBirthControl ||
     observation.category.wireCode == 'birth_control' ||
     observation.category.wireCode.startsWith('birth_control_');
+
+/// Whether [observation] is a free-text tag row (issue #1117) and so must
+/// never be emitted off-device in a clinical export.
+///
+/// Clue's export writes free-text tags under `category: 'tags'` with the
+/// raw user-typed text as `code` (`clue_option_map.dart`). Like `DayEntry.note`
+/// and `Observation.valueText`, free-text notes entered by a user must never
+/// be exported off-device, and a free-text tag that happens to equal a
+/// taxonomy code must not falsely pick up a clinical coding.
+bool _isFreeTextTagsRow(Observation observation) =>
+    observation.category.wireCode == 'tags';
 
 /// Measurement `Observation`s (issue #1115): one per live `bbt`/`weight`
 /// row, exported in the IPS Vital Signs section rather than the Problems
