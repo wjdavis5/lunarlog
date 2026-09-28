@@ -1,0 +1,268 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+// Issue #1102: the account-deletion page Google Play's Data safety form
+// links to from its "Delete account URL" field. Every factual claim about
+// what deletion does carries a `cite:` comment naming the source of record
+// (PRIVACY.md §7, or the code that ships it), per the issue's acceptance
+// criterion; test/site/store_pages_test.dart pins those citations.
+//
+// Two inputs are deliberately pending (issue #1100 — the owner picks the
+// public support address): the email address itself and the committed
+// response time. They are marked as pending below rather than invented;
+// until they land, this page points at the contact address already
+// published in PRIVACY.md. Do not point the Play Console at this URL until
+// that follow-up has merged.
+
+const privacyPolicyUrl =
+  "https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md#7-data-export--retention--deletion-rights";
+---
+
+<BaseLayout
+  title="Delete your account"
+  description="How to delete your lunarlog account — from inside the app on iPhone, Android, or the browser, or by email without the app — and exactly what is and isn't deleted."
+>
+  <article class="doc">
+    <h1 class="doc__title">Delete your account</h1>
+    <p class="doc__lede">
+      You can delete your lunarlog account yourself, from inside the app, and
+      it happens immediately — this is not a request we review later. This page
+      explains how, and exactly what is and isn't deleted.
+    </p>
+
+    <section>
+      <h2>Delete from inside the app</h2>
+      <!-- cite: lib/ui/settings/settings_screen.dart (Settings screen, Account section), lib/ui/account/account_section.dart:562 (the "Delete account" tile), lib/ui/components/app_shell.dart (the More tab hosts Settings). The steps are identical on every platform; only the store they were installed from differs. -->
+      <p>
+        The steps are the same on iPhone, Android, and the browser version at
+        <a href="https://app.lunarlog.app">app.lunarlog.app</a>:
+      </p>
+      <ol class="doc__steps">
+        <li>Open lunarlog and sign in to the account you want to delete.</li>
+        <li>
+          Open <strong>More</strong> in the bottom bar to reach
+          <strong>Settings</strong>.
+        </li>
+        <li>
+          Scroll to the <strong>Account</strong> section and tap
+          <strong>Delete account</strong>.
+        </li>
+        <li>
+          The confirmation dialog tells you exactly what will be deleted and
+          names the profiles it will take with it. Before confirming you can
+          also:
+          <ul>
+            <li>
+              choose <strong>Export first</strong> to save a JSON copy of your
+              data, or export any time earlier from
+              <strong>Settings → Your data</strong>; and
+            </li>
+            <li>
+              choose <strong>Transfer ownership first</strong> if you own a
+              profile that other people still use — see
+              <a href="#minor-profiles">a minor's profile</a> below.
+            </li>
+          </ul>
+        </li>
+        <li>
+          If your account owns profiles shared with other guardians, tick the
+          acknowledgement — it confirms you understand those guardians lose
+          access.
+        </li>
+        <li>
+          Tap <strong>Delete account</strong> to finish. Your server data and
+          your account are normally gone by the time the confirmation
+          completes, and the copy on this device is wiped with them.
+        </li>
+      </ol>
+      <!-- cite: PRIVACY.md §7 "Account & Cloud Deletion" ("This is not a request queued for later…"). -->
+      <p>
+        Deletion is permanent and cannot be undone. If you think you may want
+        your history later, export first.
+      </p>
+      <!-- cite: PRIVACY.md §7 "Account & Cloud Deletion" (the fail-closed rule for Apple revocation and attachment cleanup). -->
+      <p>
+        One safety detail: if something fails part way — an Apple
+        confirmation that doesn't land, a file that can't be removed — the
+        deletion stops instead of half-completing, and you can retry it.
+      </p>
+    </section>
+
+    <section>
+      <h2>What is deleted</h2>
+      <!-- cite: PRIVACY.md §7 "Account & Cloud Deletion"; supabase/functions/delete-account/index.ts; supabase/migrations/20260905110000_account_deletion.sql (delete_account_data()). -->
+      <ul>
+        <li>
+          Every profile you own, and every entry logged on them — including
+          entries other guardians logged on those profiles.
+        </li>
+        <li>
+          Your settings, your guardian memberships on other people's profiles,
+          and every invitation you created.
+        </li>
+        <li>
+          Your minimum-age acknowledgement record, and the progress record for
+          any bulk import you ran (a source label and row counts — no health
+          content).
+        </li>
+        <li>
+          Your feedback tickets, their reply threads, and any attached
+          screenshots.
+        </li>
+        <!-- cite: PRIVACY.md §5 "Prediction-Only Sharing Excludes Minors" ("deleted from our servers the moment the connection is revoked or the account or profile is deleted"). -->
+        <li>
+          Any prediction-sharing snapshot you were sharing; it is removed from
+          the servers with the account.
+        </li>
+        <li>
+          The account itself — including, if you signed in with Apple, that
+          app's access being revoked through Apple.
+        </li>
+        <li>
+          The copy of your data on this device. In the browser version, that
+          is the copy the browser holds.
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>What is kept</h2>
+      <!-- cite: PRIVACY.md §7 "Account & Cloud Deletion"; the delete dialog's guardian note (lib/l10n/app_en.arb accountDeleteDialogGuardianNote); delete_account_data() step 0 in supabase/migrations/20260905110000_account_deletion.sql. -->
+      <ul>
+        <li>
+          <strong>Profiles owned by other people survive untouched.</strong> If
+          you were a guardian on someone else's profile, only your membership
+          ends — their profile and its history are not affected.
+        </li>
+        <li>
+          <strong>Entries you logged on those profiles stay</strong>, with
+          their day-to-day ownership reassigned to the profile's owner. Your
+          name stops being shown as the person who logged them.
+        </li>
+        <li>
+          <strong>Writes already mirrored to Apple Health or Health
+          Connect</strong> stay in your device's own health store. Deleting
+          your lunarlog account does not reach into it.
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Shared profiles</h2>
+      <!-- cite: PRIVACY.md §7 "Account & Cloud Deletion"; the delete dialog's blast-radius copy and acknowledgement (lib/ui/account/delete_account_dialog.dart, lib/l10n/app_en.arb accountDeleteDialogBlastRadiusGuardians / accountDeleteDialogAck). -->
+      <ul>
+        <li>
+          <strong>A profile you own that others can see:</strong> deleted
+          completely, with its whole history. The other guardians — a partner,
+          a co-parent, a caregiver — lose access to it. Their own accounts are
+          not affected, but the shared profile is gone and this cannot be
+          undone.
+        </li>
+        <li>
+          <strong>A profile shared with you that someone else owns:</strong>
+          keeps its history. Your access ends; the entries you logged remain
+          with the profile, re-attributed to its owner as described above.
+        </li>
+      </ul>
+    </section>
+
+    <section id="minor-profiles">
+      <h2>A minor's profile</h2>
+      <!-- cite: PRIVACY.md §5 "Two-stage custodian model" ("A parent who deletes their own account no longer removes a profile they have transferred away; conversely, if the child later deletes their own account, the profile and its history go with it"); the dialog acknowledgement (accountDeleteDialogAck). -->
+      <p>
+        A profile a parent created for a child starts under the parent's
+        account, and can be transferred to the child's own account when she is
+        ready to hold it:
+      </p>
+      <ul>
+        <li>
+          <strong>Already transferred:</strong> the profile belongs to the
+          child's account now. Deleting the parent's account does not touch
+          it — the profile and its whole history stay with the child.
+        </li>
+        <li>
+          <strong>Not yet transferred:</strong> the profile is deleted with the
+          parent's account, history included. The app asks you to acknowledge
+          this specifically before it will delete an account that owns minor
+          profiles.
+        </li>
+      </ul>
+      <p>
+        If you own a minor's profile you do not want to lose, use
+        <strong>Transfer ownership first</strong> in the delete dialog — or
+        transfer ownership from the profile's settings at any time before
+        deleting.
+      </p>
+      <p>
+        The same rule applies to any account holder: whoever owns a profile
+        takes it with them when they delete their account.
+      </p>
+    </section>
+
+    <section>
+      <h2>Deleting less than everything</h2>
+      <!-- cite: PRIVACY.md §7 "Local Deletion" and "Support Ticket Retention"; docs/ops/store-declarations.md §5 "Single-ticket narrower path". -->
+      <p>You don't have to close your account to remove things:</p>
+      <ul>
+        <li>
+          <strong>Single entries or whole profiles</strong> can be deleted from
+          inside the app at any time, without closing your account.
+        </li>
+        <li>
+          <strong>A single feedback ticket</strong> can be deleted on request
+          (see the email path below) while keeping your account: the ticket and
+          its reply thread are removed. One honest caveat — a screenshot
+          attached to a ticket deleted this way currently needs your account to
+          still exist when we process the request, so the file can be removed
+          in the same pass. Deleting your whole account always removes tickets
+          and screenshots itself.
+        </li>
+        <li>
+          <strong>Your data can be exported</strong> at any time from
+          <strong>Settings → Your data</strong> — with or without an account,
+          online or offline.
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Without the app</h2>
+      <!-- cite: PRIVACY.md §7 "Account & Cloud Deletion" ("You can still reach us at … for any deletion the in-app flow does not cover"); pending inputs are issue #1100's. -->
+      <p>
+        If you no longer have access to the app or the device — or you need a
+        deletion the in-app flow doesn't cover — you can request deletion by
+        email instead.
+      </p>
+      <ul>
+        <li>
+          <strong>What to include:</strong> the email address your lunarlog
+          account uses. Please don't include health details — we don't need
+          them, and email isn't the place for them.
+        </li>
+        <li>
+          <strong>What happens next:</strong> because this path permanently
+          deletes an account, we take a verification step to make sure the
+          request really is yours before acting.
+        </li>
+      </ul>
+      <aside class="note note--pending">
+        <span class="note__label">Pending publication</span>
+        <p>
+          The dedicated address for these requests, the exact verification
+          step, and the response time we commit to are being finalized and
+          will be published here. Until then, the contact address already
+          listed in
+          <a href={privacyPolicyUrl}>our privacy policy (Section 7)</a> works
+          for deletion requests.
+        </p>
+      </aside>
+    </section>
+
+    <p class="doc__footer-note">
+      This page summarizes Section 7 of
+      <a href={privacyPolicyUrl}>our privacy policy</a> and the deletion code
+      that ships in the app. If anything here ever disagrees with the policy,
+      the policy wins — and please tell us.
+    </p>
+  </article>
+</BaseLayout>

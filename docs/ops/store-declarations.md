@@ -119,6 +119,12 @@ states "Data Used to Track You: None".
 
 **Privacy policy URL:** `https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md`.
 
+**Support URL** (App Store Connect → App Information; issue #1102):
+`https://lunarlog.app/support`. Set it only after the page is deployed (the
+`site/` pipeline ships it on merge) **and** after issue #1100's pending inputs
+have landed — the page deliberately ships with the public support address and
+response-time commitment marked pending until the owner picks them.
+
 ---
 
 ## 3. Play Console → Data safety (transcription)
@@ -218,6 +224,13 @@ now true and can be transcribed as follows.
     **Yes**.
   - "How can users request data deletion?" → **In-app** (Settings → Account →
     Delete account) **and by email** (`will@wjdavis5.net`). Select both.
+  - **Delete account URL** (issue #1102): `https://lunarlog.app/delete-account`.
+    This is the web page Play requires from any app that offers account
+    creation; it walks through the in-app steps, what is and isn't deleted
+    (per `PRIVACY.md` §7 and the `delete-account` Edge Function), and the
+    email path for users without device access. Set it only after the page is
+    deployed **and** issue #1100's pending inputs (the public support address
+    and response-time commitment) have landed.
   - Every data-type row above answers **Yes** to deletion.
 - **What "Delete account" actually does (so the answer is defensible):** the
   `delete-account` Edge Function removes the account's server rows first
