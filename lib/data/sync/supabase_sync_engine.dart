@@ -51,8 +51,9 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:drift/drift.dart' show TableUpdate, TableUpdateQuery, Value;
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/widgets.dart';
-import 'package:sentry_flutter/sentry_flutter.dart' show Sentry;
+import 'package:sentry_flutter/sentry_flutter.dart' show Hub, Scope, Sentry;
 
 import '../../domain/auth/auth_service.dart';
 import '../../domain/sync/sync_engine.dart';
@@ -81,6 +82,15 @@ Timer defaultSyncPeriodicTimerFactory(
 const Duration kSyncPeriodicInterval = Duration(minutes: 15);
 const Duration kSyncBackoffBase = Duration(seconds: 30);
 const Duration kSyncBackoffCap = Duration(minutes: 10);
+
+/// Issue #1171: the cycle catch-all reports the first unexpected error of a
+/// failing streak to Sentry, then one in every this many consecutive
+/// failures (any successful cycle resets the streak, mirroring
+/// [_consecutiveNetworkFailures]' counter shape). At the 15-minute
+/// [kSyncPeriodicInterval] a day-long storage failure still shows it is
+/// ongoing — twelve events instead of ninety-six — without flooding the
+/// project.
+const int kSyncCycleCaptureEveryNthFailure = 8;
 
 /// How stale the last full reconciliation may be before another is due
 /// (KTD2).
@@ -339,6 +349,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     UlidGenerator? ulid,
     SupabaseSyncApply? apply,
     bool Function()? realtimeSubscribed,
+    Hub? sentryHub,
   })  : _storage = storage,
         _syncMetadata = syncMetadata ?? storage,
         _transport = transport,
@@ -359,6 +370,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         // exactly as before. (The file-level ignore covers the named
         // parameter.)
         _realtimeSubscribed = realtimeSubscribed,
+        _sentryHub = sentryHub,
         _ulid = ulid ?? UlidGenerator() {
     if (batchSize < 1 || batchSize > PushBatch.maxRows) {
       throw ArgumentError.value(
@@ -398,6 +410,13 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// [attachRealtimeSubscribedProbe] rather than the constructor.
   bool Function()? _realtimeSubscribed;
 
+  /// Issue #1171: the Sentry hub the cycle catch-all's capture goes to.
+  /// Null in production — the capture goes through the static
+  /// [Sentry.captureException] like every other capture site; tests stub a
+  /// [Hub] to observe the captured event (the `crash_smoke_test` pattern:
+  /// real SDK, no-op transport, a `beforeSend` recorder).
+  final Hub? _sentryHub;
+
   /// Issue #842: attaches (or replaces) the Realtime liveness probe. The
   /// composition root calls this right after building the coordinator, with
   /// `() => coordinator.isSubscribed`.
@@ -424,6 +443,11 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   bool _writeDuringCycle = false;
   int _consecutiveNetworkFailures = 0;
   int _consecutiveReconcileRetries = 0;
+
+  /// Issue #1171: consecutive cycle failures of the catch-all kind (not
+  /// transport errors — those have their own branch and backoff). Consumed
+  /// by the capture rate limit, reset by any successful cycle.
+  int _consecutiveCycleFailures = 0;
 
   /// Issue #566: the EMA-smoothed clock offset, seeded from the persisted
   /// value on the first cycle ([_restoreOffset]) so smoothing continues
@@ -927,6 +951,9 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       await _updateState((s) => s.copyWith(
           lastSyncAt: Value(finishedAt), lastError: const Value(null)));
       _consecutiveNetworkFailures = 0;
+      // Issue #1171: a completed cycle re-arms the catch-all's capture rate
+      // limit, so the next unexpected failure reports from a fresh streak.
+      _consecutiveCycleFailures = 0;
       _backoffTimer?.cancel();
       _backoffTimer = null;
       _restoring = false;
@@ -952,8 +979,11 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     } on SyncTransportError catch (error) {
       await _fail(_syncErrorKindForTransportError(error));
       return false;
-    } catch (error) {
-      debugPrint('lunarlog sync: cycle failed (${error.runtimeType})');
+    } catch (error, stackTrace) {
+      // Issue #1171: recorded, not silenced — this catch-all used to leave
+      // only a (minified on web) runtimeType in the console, so a failure
+      // repeating every periodic cycle never reached Sentry.
+      await _recordUnexpectedCycleError(error, stackTrace);
       await _fail(SyncErrorKind.other);
       return false;
     } finally {
@@ -1134,6 +1164,67 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         SyncTransportRejectedError() => SyncErrorKind.other,
         SyncTransportOtherError() => SyncErrorKind.other,
       };
+
+  /// [_cycle]'s catch-all bookkeeping, split out so the try/catch shape's
+  /// own decision points stay there (see its doc comment): the console
+  /// lines, then the rate-limited Sentry capture (issue #1171).
+  ///
+  /// The capture is deliberately issued *before* [_fail] runs: if `_fail`'s
+  /// own state write then throws, that failure gets its own capture (issue
+  /// #547) without ever swallowing this one.
+  Future<void> _recordUnexpectedCycleError(
+    Object error,
+    StackTrace stackTrace,
+  ) async {
+    _consecutiveCycleFailures++;
+    debugPrint('lunarlog sync: cycle failed (${error.runtimeType})');
+    if (kDebugMode) {
+      // On web the runtimeType is a minified name and says nothing; the
+      // full error text is a debug-build console aid only — it is never
+      // attached to the capture (the before_send scrubber governs what
+      // that carries, and R18 keeps health content out of either).
+      debugPrint('lunarlog sync: cycle error: $error');
+    }
+    if (_shouldCaptureCycleFailure()) {
+      _captureCycleError(error, stackTrace);
+    }
+  }
+
+  /// Whether this consecutive catch-all failure is one this session reports
+  /// to Sentry: the first, then every [kSyncCycleCaptureEveryNthFailure]th
+  /// (issue #1171, the same counter shape as the network-backoff streak).
+  bool _shouldCaptureCycleFailure() =>
+      _consecutiveCycleFailures == 1 ||
+      _consecutiveCycleFailures % kSyncCycleCaptureEveryNthFailure == 0;
+
+  /// Reports [error] to Sentry with a `sync.phase: cycle` tag and an
+  /// exception-type fingerprint, so a failure repeating every periodic
+  /// cycle groups into one issue instead of one event per 15 minutes
+  /// (issue #1171). No payload or row content is attached — the SDK's
+  /// `before_send` scrubber applies as to any capture. Fire-and-forget:
+  /// the cycle's own error bookkeeping must not wait on the network.
+  void _captureCycleError(Object error, StackTrace stackTrace) {
+    Future<void> decorate(Scope scope) async {
+      await scope.setTag('sync.phase', 'cycle');
+      scope.fingerprint = [
+        'lunarlog-sync-cycle',
+        error.runtimeType.toString(),
+      ];
+    }
+
+    final hub = _sentryHub;
+    unawaited(hub == null
+        ? Sentry.captureException(
+            error,
+            stackTrace: stackTrace,
+            withScope: decorate,
+          )
+        : hub.captureException(
+            error,
+            stackTrace: stackTrace,
+            withScope: decorate,
+          ));
+  }
 
   String? _confirmedUid() => _auth.confirmedUserId;
 

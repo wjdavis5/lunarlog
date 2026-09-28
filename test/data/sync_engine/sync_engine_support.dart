@@ -19,6 +19,7 @@ import 'package:lunarlog/data/sync/supabase_sync_engine.dart';
 import 'package:lunarlog/data/sync/sync_transport.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
+import 'package:sentry_flutter/sentry_flutter.dart' show Hub;
 
 import '../../support/fake_auth_service.dart';
 import '../../support/fake_sync_transport.dart';
@@ -246,6 +247,7 @@ class Rig {
     int pageSize = 500,
     LunarLogStorage Function(LunarLogDatabase db, DateTime Function() clock)?
         storageFactory,
+    Hub? sentryHub,
   }) {
     db = LunarLogDatabase(NativeDatabase.memory());
     clock = FixedClock(t0);
@@ -271,6 +273,7 @@ class Rig {
       batchSize: batchSize,
       pageSize: pageSize,
       writeDebounce: Duration.zero,
+      sentryHub: sentryHub,
     );
     engine.snapshots.listen(seen.add);
   }
