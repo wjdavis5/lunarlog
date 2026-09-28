@@ -152,11 +152,12 @@ const description =
     </section>
 
     <section>
-      <h2>Alerts that stay generic</h2>
-      <!-- cite: PRIVACY.md §4 FCM row (push token + profile id only; "Never a note, tag, flow level, date, or profile name"); the fixed copy is lib/domain/notifications/scheduling.dart's kReminderTitle/kReminderBody, matched character-for-character by supabase/functions/_shared/notification_copy.ts. -->
+      <h2>Reminders that reach the right person</h2>
+      <!-- cite: PRIVACY.md §4 FCM row (opt-in per guardian; push token + profile id only; "Never a note, tag, flow level, date, or profile name"); the fixed copy is lib/domain/notifications/scheduling.dart's kReminderTitle/kReminderBody, matched character-for-character by supabase/functions/_shared/notification_copy.ts. -->
       <p>
         A guardian can turn on optional push alerts — when another guardian
-        logs an entry, or when an expected entry hasn't arrived. The alert
+        logs an entry, or when an expected entry hasn't arrived — so the
+        people around a profile stay in the loop without asking. The alert
         that reaches the lock screen is always the same fixed generic text,
         never the content: no note, tag, flow level, date, or profile name
         ever rides along. Alerts are opt-in per guardian, and a build with

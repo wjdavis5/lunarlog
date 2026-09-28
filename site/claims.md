@@ -35,9 +35,9 @@ issue #830), and any waitlist or email capture (the site collects nothing).
   page: /
   ships: site/src/pages/index.astro
   issue: #1105; #831
-- claim: Free for personal use; no ads, no data brokers, no tracking networks.
+- claim: Free for personal use — stated in the hero fineprint alone (issue #1160: no security-speak in the hero; the no-ads stance leads on /privacy-security instead).
   page: /
-  ships: README.md (License: PolyForm Noncommercial, free for personal use); pubspec.yaml (no billing dependency); PRIVACY.md (§1 "No Advertising or Data Brokers")
+  ships: README.md (License: PolyForm Noncommercial, free for personal use); pubspec.yaml (no billing dependency)
 - claim: Sync and multi-guardian family collaboration are the product's lead, not an add-on.
   page: /
   ships: docs/product/positioning.md ("The family-collaboration story"); PRIVACY.md (§1 "Built For Sync & Family Collaboration")
@@ -71,6 +71,9 @@ issue #830), and any waitlist or email capture (the site collects nothing).
   page: /
   ships: PRIVACY.md (§5 "Minimum-Age Policy")
   issue: #957
+- claim: A guardian can turn on optional alerts — when another guardian logs an entry, or when an expected entry hasn't arrived — and the lock-screen text is fixed and generic, never what was logged (issue #1160: "reminders that reach the right person" beat).
+  page: /
+  ships: PRIVACY.md (§4 FCM row); lib/domain/notifications/scheduling.dart (kReminderTitle, kReminderBody); supabase/functions/_shared/notification_copy.ts
 - claim: Logging, history, and estimates work offline; sync resumes when a connection returns.
   page: /
   ships: PRIVACY.md (§1 "Resilient Offline")
@@ -182,7 +185,7 @@ issue #830), and any waitlist or email capture (the site collects nothing).
 - claim: Same-date merges keep the losing value briefly in a disclosure its author can recover, visible only to guardians, never in a notification, permanently deleted after 30 days.
   page: /family-sharing
   ships: PRIVACY.md (§2.A "Same-date merge disclosures"; §7 "Server-Side Retention Windows"); supabase/migrations/20260916100000_day_entry_merge_events.sql
-- claim: Guardian alerts are opt-in, and the push payload carries only a token and profile id — never a note, tag, flow level, date, or profile name; the visible text is fixed and generic.
+- claim: A guardian can opt in to alerts when another guardian logs an entry or when an expected entry hasn't arrived (issue #1160 retitle: "Reminders that reach the right person"); the push payload carries only a token and profile id — never a note, tag, flow level, date, or profile name; the visible text is fixed and generic.
   page: /family-sharing
   ships: PRIVACY.md (§4 FCM row); lib/domain/notifications/scheduling.dart (kReminderTitle, kReminderBody); supabase/functions/_shared/notification_copy.ts
 - claim: A build with no push configuration never contacts a push service.
