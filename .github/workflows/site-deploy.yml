@@ -81,10 +81,12 @@ jobs:
       - name: Generate the app screenshots
         working-directory: site
         run: |
-          # The runner's SDK cache lacks the material_fonts artifact the
-          # render harness loads by hand (the same failure #1105 fixed in
-          # site.yml's PR job: "Material Icons font not found");
-          # --universal fetches it.
+          # The runner's SDK cache can carry material_fonts.stamp without
+          # the artifact itself (the flutter-action cache restore this
+          # branch observed), which makes precache skip a font the render
+          # harness loads by hand ("Material Icons font not found"). Drop
+          # the stamp so precache re-fetches exactly this artifact.
+          rm -f "$FLUTTER_ROOT/bin/cache/material_fonts.stamp"
           flutter precache --universal
           flutter pub get
           npm run screenshots
