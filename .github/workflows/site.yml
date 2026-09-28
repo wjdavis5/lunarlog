@@ -49,6 +49,7 @@ jobs:
   build-and-check:
     name: Site build, links, Lighthouse, axe
     if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
     # #1105 added the Flutter screenshot render below; Lighthouse runs 3x
     # over ten URLs now. 20 minutes had no headroom for either.
     timeout-minutes: 35
