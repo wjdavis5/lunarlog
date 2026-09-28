@@ -1,0 +1,92 @@
+---
+// One app screenshot, rendered by tool/screenshots (issue #1104) into
+// /screenshots/<screen>-<device>-<theme>.png at deploy time — the PNGs are
+// never committed, so this component pins the *name grammar* at build time:
+// an unknown screen id, device id, or theme fails the Astro build instead
+// of shipping a broken <img>.
+//
+// The committed manifest of record is tool/screenshots/manifest.dart, read
+// here as a Vite `?raw` string (resolved at bundle time, like privacy.astro's
+// PRIVACY.md import — a runtime fs read would resolve against the bundled
+// prerender chunk under dist/). The screen/device id tables below mirror
+// that manifest's public ids and pixel sizes; both this build-time check and
+// test/site/site_claims_test.dart (which imports the Dart manifest directly)
+// fail when the two drift.
+import manifestSource from "../../../tool/screenshots/manifest.dart?raw";
+
+/** Screen ids from tool/screenshots/manifest.dart's kScreenshotScreens. */
+const kScreens = [
+  "today",
+  "estimates",
+  "calendar",
+  "log-day",
+  "guardians",
+  "life-stage",
+  "import",
+  "export",
+  "article",
+] as const;
+
+/** Device ids and PNG pixel sizes from kScreenshotDevices. */
+const kDevices: Record<string, [number, number]> = {
+  "iphone-67": [1290, 2796],
+  "iphone-61": [1179, 2556],
+  pixel: [1080, 2400],
+  tablet: [1668, 2388],
+};
+
+const kThemes = ["light", "dark"] as const;
+
+// The Dart manifest must exist and still name every id mirrored above; a
+// renamed screen or device fails the site build here.
+for (const id of kScreens) {
+  if (!manifestSource.includes(`id: '${id}'`)) {
+    throw new Error(
+      `Screenshot: screen id "${id}" is not in tool/screenshots/manifest.dart. ` +
+        "Update the manifest and this component together.",
+    );
+  }
+}
+for (const id of Object.keys(kDevices)) {
+  if (!manifestSource.includes(`id: '${id}'`)) {
+    throw new Error(
+      `Screenshot: device id "${id}" is not in tool/screenshots/manifest.dart. ` +
+        "Update the manifest and this component together.",
+    );
+  }
+}
+
+interface Props {
+  screen: (typeof kScreens)[number];
+  device?: keyof typeof kDevices;
+  theme?: (typeof kThemes)[number];
+  /** Required: what the screenshot shows, for screen readers. */
+  alt: string;
+  /** Eager for the first viewport; everything else lazy-loads. */
+  loading?: "eager" | "lazy";
+}
+
+const {
+  screen,
+  device = "iphone-67",
+  theme = "light",
+  alt,
+  loading = "lazy",
+} = Astro.props;
+
+if (!kScreens.includes(screen)) {
+  throw new Error(`Screenshot: unknown screen id "${screen}".`);
+}
+const size = kDevices[device];
+if (!size) {
+  throw new Error(`Screenshot: unknown device id "${device}".`);
+}
+if (!kThemes.includes(theme)) {
+  throw new Error(`Screenshot: unknown theme "${theme}".`);
+}
+
+const src = `/screenshots/${screen}-${device}-${theme}.png`;
+const [width, height] = size;
+---
+
+<img src={src} width={width} height={height} alt={alt} loading={loading} decoding="async" />

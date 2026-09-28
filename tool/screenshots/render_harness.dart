@@ -107,12 +107,12 @@ Future<void> loadScreenshotFonts() async {
     await loader.load();
   }
 
-  final icons = File(_materialIconsPath());
-  if (!icons.existsSync()) {
+  final icons = _materialIconsFont();
+  if (icons == null) {
     throw StateError(
-      'Material Icons font not found at ${icons.path} — the screenshots '
-      'need the Flutter SDK cache (FLUTTER_ROOT can point at it); icons '
-      'would render as tofu boxes without it',
+      'Material Icons font not found under the Flutter SDK cache — the '
+      'screenshots need it (FLUTTER_ROOT can point at the SDK root); '
+      'icons would render as tofu boxes without it',
     );
   }
   final iconBytes = icons.readAsBytesSync();
@@ -122,27 +122,47 @@ Future<void> loadScreenshotFonts() async {
   _fontsLoaded = true;
 }
 
-/// The Material Icons font inside the Flutter SDK cache: `$FLUTTER_ROOT`
-/// when the tool provides it, else walked up from the running
-/// `flutter_tester` executable (`bin/cache/artifacts/engine/<host>/`
-/// under the SDK root).
-String _materialIconsPath() {
+/// The Material Icons font inside the Flutter SDK cache, or null when no
+/// candidate directory holds it.
+///
+/// The artifact's filename case changed across Flutter releases — a fresh
+/// SDK downloads `MaterialIcons-Regular.otf`, while caches populated by
+/// older releases hold `materialicons-regular.otf` — so the lookup is
+/// case-insensitive over each candidate directory instead of an
+/// exact-path existence check (a fresh CI runner and a long-lived dev
+/// machine both have to work).
+File? _materialIconsFont() {
+  for (final dir in _materialFontsDirCandidates()) {
+    final directory = Directory(dir);
+    if (!directory.existsSync()) continue;
+    for (final entry in directory.listSync()) {
+      if (entry is File &&
+          entry.uri.pathSegments.last.toLowerCase() ==
+              'materialicons-regular.otf') {
+        return entry;
+      }
+    }
+  }
+  return null;
+}
+
+/// The candidate `material_fonts` cache directories: `$FLUTTER_ROOT` when
+/// the tool provides it, else walked up from the running `flutter_tester`
+/// executable (`bin/cache/artifacts/engine/<host>/` under the SDK root).
+List<String> _materialFontsDirCandidates() {
+  final candidates = <String>[];
   final fromEnv = Platform.environment['FLUTTER_ROOT'];
   if (fromEnv != null && fromEnv.isNotEmpty) {
-    return '$fromEnv/bin/cache/artifacts/material_fonts/'
-        'materialicons-regular.otf';
+    candidates.add('$fromEnv/bin/cache/artifacts/material_fonts');
   }
   var dir = File(Platform.resolvedExecutable).parent;
   for (var i = 0; i < 6; i++) {
-    final candidate =
-        '${dir.path}/bin/cache/artifacts/material_fonts/materialicons-regular.otf';
-    if (File(candidate).existsSync()) return candidate;
+    candidates.add('${dir.path}/bin/cache/artifacts/material_fonts');
     final parent = dir.parent;
     if (parent.path == dir.path) break;
     dir = parent;
   }
-  // Return the env-less guess so the caller's error names something.
-  return 'bin/cache/artifacts/material_fonts/materialicons-regular.otf';
+  return candidates;
 }
 
 /// A minimal [SharingService] whose only live method is the pending-invite

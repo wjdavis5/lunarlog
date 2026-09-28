@@ -10,6 +10,11 @@ name: Site (marketing site)
 #   - it is NOT in ci.yml's `detect-changes` outputs or its "CI required
 #     checks" aggregate, so a site failure can never gate an app release.
 #
+# Issue #1105: the home and feature pages embed the #1104 screenshots, and
+# check:links fails on a referenced file missing from dist/ — so this job
+# renders the screenshots (same step as site-deploy.yml's, same pinned SDK)
+# before building, instead of leaving that to the deploy alone.
+#
 # Deploying is `site-deploy.yml`; this workflow only verifies.
 
 on:
@@ -45,7 +50,9 @@ jobs:
     name: Site build, links, Lighthouse, axe
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # #1105 added the Flutter screenshot render below; Lighthouse runs 3x
+    # over ten URLs now. 20 minutes had no headroom for either.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -59,6 +66,34 @@ jobs:
       - name: Install site dependencies
         working-directory: site
         run: npm ci
+
+      # Issue #1105: the home and feature pages embed the #1104 app
+      # screenshots, and check:links fails when a referenced file is
+      # missing from dist/ — so the PR job renders them before the build,
+      # exactly as site-deploy.yml does (same pinned SDK, same command,
+      # same gitignored output directory).
+      - name: Install the pinned Flutter SDK
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: '3.47.2'
+          channel: stable
+          cache: true
+
+      - name: Generate the app screenshots
+        working-directory: site
+        run: |
+          # The runner's cached SDK (flutter-action cache: true) can carry
+          # material_fonts.stamp without a usable artifact — CI runs on this
+          # branch saw precache consider it fresh while the render harness
+          # failed with "Material Icons font not found". Drop the stamp and
+          # --force the re-download; the ls lines leave ground truth in the
+          # log if it ever breaks differently.
+          rm -f "$FLUTTER_ROOT/bin/cache/material_fonts.stamp"
+          ls -la "$FLUTTER_ROOT/bin/cache/artifacts/material_fonts/" 2>/dev/null || echo "material_fonts missing before precache"
+          flutter precache --universal --force
+          ls -la "$FLUTTER_ROOT/bin/cache/artifacts/material_fonts/"
+          flutter pub get
+          npm run screenshots
 
       - name: Build and type-check the site
         # `npm run build` runs `astro sync`, `astro check`, and the static

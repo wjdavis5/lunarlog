@@ -1,22 +1,39 @@
 ---
-// A screen name or button label, quoted from the app's own strings
-// (issue #1106). Guides never retype a label: this renders the current
-// string for `key` from `lib/l10n/app_en.arb`, so a renamed button and a
-// regenerated ARB update every guide in the same merge — and an unknown
-// key throws here, failing the Astro build instead of leaving a stale
-// guide behind. See `src/lib/ui-strings.mjs` for the rules (no ICU
-// composite messages; `{param}` placeholders need `values`).
-import { uiString } from "../lib/ui-strings.mjs";
+// Issue #1105/#1106 contract: never type an app string into a site page.
+// A page that needs a screen label, a button title, or a role name renders
+// it through this component, which reads the key from the app's own
+// string catalog (`lib/l10n/app_en.arb`) at build time. Renaming or
+// removing the key in the app fails every future site build here — the
+// stale-guide failure mode #1106 names is closed at the component, not by
+// a reviewer's memory.
+//
+// The arb is pulled in as a Vite `?raw` import rather than a node:fs read:
+// Vite resolves it at bundle time (so `astro dev` and `astro build` agree,
+// and a missing file fails the compile), while a runtime `import.meta.url`
+// read would resolve against the bundled prerender chunk under dist/ and
+// miss the repo root. The same shape imports PRIVACY.md into privacy.astro.
+//
+// Key resolution, placeholder interpolation, and the ICU-composite refusal
+// live in one tested place (`src/lib/ui-strings.mjs`, unit-tested by
+// `npm test`): a `{param}` placeholder must be given a value, and a
+// plural/select message is refused rather than rendered raw. (#1106's
+// guides interpolate fabricated example names into a few ARB sentences.)
+import arbSource from "../../../lib/l10n/app_en.arb?raw";
+import { arbString } from "../lib/ui-strings.mjs";
 
 interface Props {
-  /** The ARB key, e.g. "guardianRoleLabelViewer". */
+  /** An ARB key from `lib/l10n/app_en.arb`, e.g. `guardianRoleLabelViewer`. */
   key: string;
   /** Values for `{param}` placeholders (fabricated example names only). */
   values?: Record<string, string>;
+  /** Optional class for the wrapping span; without one, bare text renders. */
+  class?: string;
 }
 
-const { key, values } = Astro.props;
-const text = uiString(key, values);
+const { key, values, class: className } = Astro.props as Props;
+
+const catalog = JSON.parse(arbSource) as Record<string, unknown>;
+const value = arbString(catalog, key, values);
 ---
 
-<span set:text={text} />
+{className ? <span class={className}>{value}</span> : <Fragment>{value}</Fragment>}

@@ -1,0 +1,133 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Screenshot from "../components/Screenshot.astro";
+
+// Issue #1105: "Tracking and viewing." Every factual claim carries a
+// `cite:` comment and a ledger entry in site/claims.md (checked by
+// test/site/site_claims_test.dart). No medical claims: estimate language
+// follows the app's own "Estimates only" framing.
+
+const description =
+  "How logging works in lunarlog: a day's flow, symptoms, tags, and notes; " +
+  "a calendar with estimated bands; and estimates that say how confident " +
+  "they are.";
+---
+
+<BaseLayout title="Tracking and viewing" description={description}>
+  <article class="doc">
+    <h1 class="doc__title">Tracking and viewing</h1>
+    <p class="doc__lede">
+      Logging a day takes seconds; reading it back is a calendar that shows
+      what was logged, what is estimated, and how much to trust the
+      estimate. All of it works with no network at all.
+    </p>
+
+    <section>
+      <h2>Log a day</h2>
+      <!-- cite: PRIVACY.md §2.A (flow levels incl. an explicit "not bleeding today" note; symptoms and numeric measurements as their own records; tags and notes). -->
+      <p>
+        Open a date and record what happened: period flow from an explicit
+        "not bleeding today" note through light, medium, heavy, and super
+        heavy; spotting; the symptoms you track, with intensity where it
+        helps; a numeric reading like a basal-body temperature; personal
+        tags; and a note for the day. Flow and symptoms are stored as their
+        own records tied to their day, not flattened into one text field.
+      </p>
+      <figure class="screenshot-figure">
+        <Screenshot
+          screen="log-day"
+          device="iphone-67"
+          theme="light"
+          alt="The day sheet over a logged day: flow level, tracked tags, and the day's note."
+        />
+        <figcaption>The day sheet over a logged day.</figcaption>
+      </figure>
+    </section>
+
+    <section>
+      <h2>See the month</h2>
+      <!-- cite: the calendar's estimated bands, lib/l10n/app_en.arb (calendarCellPredictedPeriod, calendarCellPmsWindow); rendered screens in tool/screenshots/manifest.dart. -->
+      <p>
+        The month calendar shows logged bleeds and tags at a glance, with
+        the estimated next period, cycle days, and the estimated
+        premenstrual window drawn around them — always labelled as
+        estimates, never styled as fact.
+      </p>
+      <figure class="screenshot-figure">
+        <Screenshot
+          screen="calendar"
+          device="iphone-67"
+          theme="light"
+          alt="The month calendar with logged bleeds and the estimated period band drawn on later dates."
+        />
+        <figcaption>
+          Logged days and the estimated band, side by side on one calendar.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section>
+      <h2>Estimates that show their work</h2>
+      <!-- cite: PRIVACY.md §1 "Estimates From Your Own Logged Data" (computed entirely on device, from logged history only); confidence tiers and the learning copy in lib/l10n/app_en.arb (cycleConfidence*, calendarKeepLogging). -->
+      <p>
+        Estimates are computed entirely on the device, from the cycle
+        history the profile holds — no other signal goes into them. Every
+        estimate carries a confidence tier (high, provisional, rough, or
+        learning), and a profile with too little history says so plainly
+        instead of guessing: "Keep logging — estimated bands appear once a
+        few cycles are recorded."
+      </p>
+      <figure class="screenshot-figure">
+        <Screenshot
+          screen="estimates"
+          device="iphone-67"
+          theme="light"
+          alt="The Today screen at the learning tier: a range estimate with its confidence framing."
+        />
+        <figcaption>
+          A lower-confidence estimate, framed as a range with its tier.
+        </figcaption>
+      </figure>
+      <!-- cite: PRIVACY.md §1 fertile-window paragraph, including the "must not be used to prevent pregnancy" statement. -->
+      <aside class="note">
+        <span class="note__label">Estimates only</span>
+        <p>
+          Estimates are not medical advice. lunarlog also estimates a
+          fertile window and an ovulation day from the same logged history;
+          it must not be used to prevent pregnancy. If something worries
+          you, talk to a clinician.
+        </p>
+      </aside>
+    </section>
+
+    <section>
+      <h2>Works offline, edits included</h2>
+      <!-- cite: PRIVACY.md §1 "Resilient Offline"; §7 "Local Deletion" (tombstoned, permanently removed upon sync). -->
+      <p>
+        Logging, viewing history, and estimates all run from the copy on
+        your device — nothing you do offline is blocked or degraded. You can
+        edit or delete any entry; deletions remove it here first and are
+        permanently removed from the profile's synced copies.
+      </p>
+    </section>
+
+    <section>
+      <h2>The private day note</h2>
+      <!-- cite: PRIVACY.md §5 "Guardian Roles & Read Visibility" (the private-note exception; chosen at write time, never retroactively). -->
+      <p>
+        Every accepted guardian on a profile reads what is logged on it —
+        with one deliberate exception. A day note the profile's subject
+        marks <strong>private</strong> is readable only by them, on their
+        own account, and guardians see a placeholder instead. The choice is
+        made when the note is written; a note already shared cannot be made
+        private afterwards.
+      </p>
+    </section>
+
+    <p class="doc__footer-note">
+      Ready to bring history with you? See
+      <a href="/import">importing</a>. Curious who can see a shared profile?
+      <a href="/family-sharing">Family sharing and roles</a>.
+    </p>
+  </article>
+</BaseLayout>

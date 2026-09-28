@@ -1,19 +1,175 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
+import Screenshot from "../components/Screenshot.astro";
+import UiLabel from "../components/UiLabel.astro";
+
+// Issue #1105: the home page. Sync and multi-guardian family collaboration
+// lead (docs/product/positioning.md); every factual claim carries a
+// `cite:` comment and a ledger entry in site/claims.md, which
+// test/site/site_claims_test.dart checks against the repo. Both sharing
+// directions get equal weight, and the age line matches PRIVACY.md §5.
 
 const tagline =
   "A family cycle tracker built for sharing between the people involved.";
+
+const browserUrl = "https://app.lunarlog.app";
 ---
 
-<BaseLayout
-  title="lunarlog"
-  description={tagline}
->
+<BaseLayout title="lunarlog" description={tagline}>
   <section class="hero">
     <h1 class="hero__title">lunarlog</h1>
     <p class="hero__tagline">{tagline}</p>
-    <a class="button" href="https://app.lunarlog.app"
-      >Use lunarlog in your browser</a
-    >
+    <a class="button" href={browserUrl}>Use lunarlog in your browser</a>
+    <p class="hero__fineprint">
+      Free for personal use. No ads, no data brokers, no tracking networks.
+    </p>
   </section>
+
+  <figure class="screenshot-figure screenshot-figure--hero">
+    <Screenshot
+      screen="today"
+      device="iphone-67"
+      theme="light"
+      loading="eager"
+      alt="The lunarlog Today screen: cycle day, flow logged, and the estimate for the next period with its confidence tier."
+    />
+    <figcaption>
+      The Today screen. The estimate is computed on the device from the
+      history logged on its profile.
+    </figcaption>
+  </figure>
+
+  <section class="home-section">
+    <h2>Built for sharing, not just tracking</h2>
+    <!-- cite: PRIVACY.md §1 "Built For Sync & Family Collaboration"; docs/product/positioning.md "The family-collaboration story". -->
+    <p>
+      One account keeps several profiles, and each profile can be shared
+      with the people who help look after it. A profile syncs across a
+      guardian's own devices, and every entry carries the name of the person
+      who logged it. When two guardians log the same day without knowing,
+      lunarlog merges the entries instead of overwriting one person's
+      writing, and shows both of them what happened.
+    </p>
+    <!-- cite: role names from lib/l10n/app_en.arb via UiLabel; capability facts from lib/domain/models/profile_guardian.dart. -->
+    <p>
+      Sharing runs on four roles —
+      <UiLabel key="guardianRoleLabelPrimaryGuardian" />,
+      <UiLabel key="guardianRoleLabelCoParent" />,
+      <UiLabel key="guardianRoleLabelCaregiver" />, and
+      <UiLabel key="guardianRoleLabelViewer" /> — so the person you invite
+      gets exactly as much access as they need, enforced by the server, not
+      just the app. <a href="/family-sharing">How sharing and roles work</a>.
+    </p>
+
+    <div class="direction-grid">
+      <!-- cite: PRIVACY.md §5 "Her Own Profile (subject membership)"; docs/product/positioning.md "Either side can start". -->
+      <div class="direction-card">
+        <h3>You track for yourself</h3>
+        <p>
+          Start on your own device — no account needed to log. When you want
+          someone alongside you, invite a parent, partner, or caregiver to
+          your profile, as a reader or with hands-on access. You decide the
+          role, and you can revoke it.
+        </p>
+      </div>
+      <!-- cite: PRIVACY.md §5 "Her Own Profile" and "Minimum-Age Policy"; issue #957. -->
+      <div class="direction-card">
+        <h3>You set it up for someone else</h3>
+        <p>
+          Create a profile for a family member and invite them to log it
+          themselves from their own device. For someone under 13, that
+          invitation is the only way the app begins — and accepting it is
+          the record of parental consent.
+        </p>
+      </div>
+    </div>
+    <p>
+      Neither direction is the "real" one, and a parent holding the phone is
+      never assumed to be the person whose cycle it is.
+      <a href="/family-sharing">Both invitations, step by step</a>.
+    </p>
+  </section>
+
+  <section class="home-section">
+    <h2>Works when the network doesn't</h2>
+    <!-- cite: PRIVACY.md §1 "Resilient Offline". -->
+    <p>
+      Logging, history, and estimates all run from the copy on the device —
+      nothing you do offline is blocked or degraded, and what you log syncs
+      to the profile's guardians when a connection returns.
+      <a href="/tracking">What tracking looks like</a>.
+    </p>
+  </section>
+
+  <section class="home-section">
+    <h2>Your data, in and out</h2>
+    <!-- cite: PRIVACY.md §7 (exports, built on-device, no account required); PRIVACY.md §2.A and §4 (Clue, Apple Health, Health Connect import provenance); lib/data/import/clue_importer.dart; lib/data/health/health_import_service.dart. -->
+    <p>
+      Bring history in from Clue, Apple Health, or Health Connect — always
+      started by you, and never over a value you logged by hand. Take
+      everything out, any time, as JSON, CSV, a FHIR summary for clinicians,
+      or a one-page PDF: built on your device, with no account required.
+      <a href="/import">Importing</a> ·
+      <a href="/export">Exporting</a>.
+    </p>
+  </section>
+
+  <section class="home-section">
+    <h2>Estimates, honestly</h2>
+    <!-- cite: the app's own framing, lib/domain/help/help_cards.dart ("Estimates only — not medical advice."); confidence tiers in lib/l10n/app_en.arb (cycleConfidence*). -->
+    <p>
+      Predictions come from the history a profile holds — nothing else — and
+      always arrive with a confidence tier, so a fresh profile says so
+      instead of guessing. They are estimates only, not medical advice. If
+      something worries you, talk to a clinician.
+      <a href="/life-stage-modes">How modes change what is computed</a>.
+    </p>
+  </section>
+
+  <section class="home-section">
+    <h2>Private by design</h2>
+    <!-- cite: PRIVACY.md §1 (no advertising or data brokers; scrubbed telemetry), §6 (device protection; sync is not end-to-end), §5 (minimum-age policy). -->
+    <p>
+      No advertising, no data brokers, no behavioral tracking. Your device
+      copy sits behind its own lock. Sync runs over TLS into row-level-
+      secured storage — and it is not end-to-end encrypted, which the
+      privacy page states plainly along with everything else we know about
+      your data. lunarlog is licensed 13 and up; someone younger uses it
+      only through a parent's invitation.
+      <a href="/privacy-security">Privacy and security</a> ·
+      <a href="/privacy">The full policy</a>.
+    </p>
+  </section>
+
+  <nav class="feature-grid" aria-label="Explore lunarlog">
+    <a class="feature-card" href="/tracking">
+      <h3>Tracking and viewing</h3>
+      <p>Logging a day, reading the calendar, and what the estimates mean.</p>
+    </a>
+    <a class="feature-card" href="/family-sharing">
+      <h3>Family sharing and roles</h3>
+      <p>Invitations in both directions, and what each role can do.</p>
+    </a>
+    <a class="feature-card" href="/life-stage-modes">
+      <h3>Life-stage modes</h3>
+      <p>From first periods to postpartum — the app adapts, your data stays.</p>
+    </a>
+    <a class="feature-card" href="/import">
+      <h3>Import</h3>
+      <p>Bring history in from Clue, Apple Health, or Health Connect.</p>
+    </a>
+    <a class="feature-card" href="/export">
+      <h3>Export</h3>
+      <p>JSON, CSV, FHIR, and a clinician PDF — built on your device.</p>
+    </a>
+    <a class="feature-card" href="/privacy-security">
+      <h3>Privacy and security</h3>
+      <p>What is protected, what is shared, and what is honest about sync.</p>
+    </a>
+  </nav>
+
+  <p class="doc__footer-note">
+    The full privacy policy lives at <a href="/privacy">lunarlog.app/privacy</a>
+    and is the same document the app's own privacy dialog reads.
+  </p>
 </BaseLayout>
