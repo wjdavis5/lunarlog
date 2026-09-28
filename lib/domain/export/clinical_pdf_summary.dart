@@ -394,10 +394,15 @@ Set<String> _labelsOn(
   ),
 };
 
-/// Symptom labels from [entry]'s tags: known taxonomy codes or registered
-/// custom tag codes that are not positive "none today" assertions,
-/// rendered with their display string (disambiguated if taxonomy displays
-/// collide, e.g. "Great (digestion)" vs "Great (stool)").
+/// Symptom labels from [entry]'s tags: registered custom tag codes plus
+/// taxonomy codes that [tags.isSymptomTagCode] classifies as clinical
+/// symptoms (issue #1144 — wellness states like `great_digestion`, the
+/// `medication`/`tests`/`sex_life`/`partying` codes, and the positive
+/// "none today" assertions never appear under the grid's "symptom"
+/// heading). Custom tags stay: the registry exists precisely because a
+/// profile's symptom vocabulary outgrew the curated taxonomy, so its
+/// user-named entries render under the operator's own label. Labels are
+/// display strings, disambiguated if taxonomy displays collide.
 Set<String> _tagLabelsOn(
   DayEntry? entry,
   Map<String, CustomTag> customTagsByCode,
@@ -411,6 +416,7 @@ Set<String> _tagLabelsOn(
       labels.add(customTag.displayName);
       continue;
     }
+    if (!tags.isSymptomTagCode(code)) continue;
     final taxonomyTag = tags.tagByCode(code);
     if (taxonomyTag != null) {
       labels.add(tags.flatDisplayForTag(taxonomyTag));
@@ -421,11 +427,16 @@ Set<String> _tagLabelsOn(
 }
 
 /// Symptom labels from logged option rows: an excluded row (the BBT
-/// per-point flag) and a measurement category are not symptoms.
-/// Spotting resolves to 'Spotting' (Issue #794). Taxonomy codes resolve to
-/// their display strings, custom tag codes to their display names, and
-/// unmapped option codes fall back to their raw code. Free-text Clue tags
-/// (`category == 'tags'`, issue #1117) are excluded, matching the FHIR export.
+/// per-point flag), a measurement category, a birth-control intake row and
+/// a free-text Clue-tags row are not symptoms. Spotting resolves to
+/// 'Spotting' (Issue #794). Taxonomy codes resolve to their display
+/// strings only when [tags.isSymptomTagCode] classifies them as symptoms
+/// (issue #1144 — the Clue importer writes `medication`/`tests`/`sex_life`
+/// rows too, so the same non-symptom codes can arrive via this half as via
+/// tags), custom tag codes to their display names, and unmapped option
+/// codes fall back to their raw code (unknown-never-drop). Free-text Clue
+/// tags (`category == 'tags'`, issue #1117) are excluded, matching the
+/// FHIR export.
 Set<String> _observationLabelsOn(
   List<Observation> observations,
   Map<String, CustomTag> customTagsByCode,
@@ -451,6 +462,16 @@ String? _observationLabel(
   if (observation.category.isMeasurement) return null;
   // Issue #1117: Free-text Clue tags must never appear in clinical exports.
   if (observation.category.wireCode == 'tags') return null;
+  // Birth-control intake (issue #260's six `birth_control_*` categories,
+  // plus the unsuffixed `birth_control` the Clue import writes) is
+  // medication tracking, not a symptom — the same rule the FHIR export's
+  // Problem list applies (issue #1115). Matched on the wire string as well
+  // as the typed family for the same reason the FHIR builder does.
+  if (observation.category.isBirthControl ||
+      observation.category.wireCode == 'birth_control' ||
+      observation.category.wireCode.startsWith('birth_control_')) {
+    return null;
+  }
   if (observation.category == ObservationCategory.spotting) {
     return 'Spotting';
   }
@@ -466,7 +487,12 @@ String? _resolveObservationCodeLabel(
   final customTag = customTagsByCode[symptomCode];
   if (customTag != null) return customTag.displayName;
   final taxonomyTag = tags.tagByCode(symptomCode);
-  if (taxonomyTag != null) return tags.flatDisplayForTag(taxonomyTag);
-  return symptomCode;
+  // Unknown code: kept verbatim (unknown-never-drop) — an unrecognised
+  // import string renders raw rather than being guessed about.
+  if (taxonomyTag == null) return symptomCode;
+  // Known taxonomy code: only a symptom enters the grid (issue #1144).
+  return tags.isSymptomTagCode(symptomCode)
+      ? tags.flatDisplayForTag(taxonomyTag)
+      : null;
 }
 

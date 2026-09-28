@@ -609,6 +609,187 @@ void main() {
     });
   });
 
+  group('isSymptomTagCode — the clinical-export symptom partition '
+      '(issues #1138/#1144)', () {
+    test('keeps the real symptoms both issues name', () {
+      expect(
+        isSymptomTagCode('cramps'),
+        isTrue,
+        reason: 'issue #1144: the one label the mixed day must keep',
+      );
+      for (final code in [
+        'headache',
+        'back_pain',
+        'breast_tenderness',
+        'ovulation',
+        'migraine',
+        'bloating',
+        'nausea',
+        'fatigue',
+        'tired',
+        'exhausted',
+        'acne',
+        'oily_skin',
+        'dry_skin',
+        'gassy',
+        'constipated',
+        'diarrhea',
+        'sweet',
+        'sleep_trouble',
+        'dizziness',
+        'hot_flashes',
+        'night_sweats',
+        'brain_fog',
+        'vaginal_dryness',
+        'irritable',
+        'sad',
+        'anxious',
+        'angry',
+        'indifferent',
+        'sensitive',
+        'mood_swings',
+        'insecure',
+        'distracted',
+        'stressed',
+        'cold_flu_ailments',
+        'allergy',
+        'injury',
+        'fever',
+      ]) {
+        expect(isSymptomTagCode(code), isTrue, reason: code);
+      }
+    });
+
+    test('drops the issue #1144 offender codes by category', () {
+      for (final code in [
+        // medication
+        'pain',
+        'cold_flu_medication',
+        'antihistamine',
+        'antibiotic',
+        // tests
+        'ovulation_negative',
+        'ovulation_positive',
+        'ovulation_peak',
+        'pregnancy_negative',
+        'pregnancy_positive',
+        // sex_life (`no_sex_today` is covered by the positive-assertion
+        // test below)
+        'low_sex_drive',
+        'high_sex_drive',
+        'masturbation',
+        'withdrawal',
+        'protected_sex',
+        'unprotected_sex',
+        'sex_toys',
+        'orgasm',
+        'no_orgasm',
+        'fantasies',
+        'painful_intercourse',
+        // partying
+        'drinks',
+        'cigarettes',
+        'big_night',
+        'hangover',
+        // discharge (fertility indicator, per #1138's own partition)
+        'sticky',
+        'creamy',
+        'egg_white',
+        'atypical',
+        // collection method, exercise, hair, social life, motivation,
+        // leisure-style lifestyle categories
+        'pad',
+        'tampon',
+        'panty_liner',
+        'menstrual_cup',
+        'running',
+        'yoga',
+        'rest_day',
+        'good_hair',
+        'bad_hair',
+        'sociable',
+        'withdrawn',
+        'conflict',
+        'motivated',
+        'unmotivated',
+        'productive',
+        'unproductive',
+      ]) {
+        expect(isSymptomTagCode(code), isFalse, reason: code);
+      }
+    });
+
+    test('drops the wellness/neutral/treatment codes inside kept categories', () {
+      for (final code in [
+        'energetic',
+        'fully_energized',
+        'good_skin',
+        'great_digestion',
+        'great_stool',
+        'normal',
+        'hrt',
+        'happy',
+        'excited',
+        'grateful',
+        'calm',
+        'focused',
+        '0_to_3_hours',
+        '3_to_6_hours',
+        '6_to_9_hours',
+        '9_or_more_hours',
+      ]) {
+        expect(isSymptomTagCode(code), isFalse, reason: code);
+      }
+    });
+
+    test('drops the positive assertions even where their category is kept', () {
+      expect(isSymptomTagCode(kPainFreeCode), isFalse);
+      expect(isSymptomTagCode(kNoSexTodayCode), isFalse);
+      expect(isSymptomTagCode(kDischargeNoneCode), isFalse);
+    });
+
+    test('is false for unknown and registry-only codes — callers decide '
+        'those (issue #1144)', () {
+      expect(isSymptomTagCode('not_a_taxonomy_code'), isFalse);
+      expect(isSymptomTagCode('acupuncture'), isFalse,
+          reason: 'a custom-tag registry code is unclassifiable here; the '
+              'PDF summary renders it deliberately, the FHIR builder drops '
+              'it');
+    });
+
+    test('the three sets partition the whole taxonomy with no overlap and '
+        'no stale wellness code', () {
+      final symptomCodes = <String>{};
+      final otherCodes = <String>{};
+      for (final tag in kTagTaxonomy) {
+        if (isSymptomTagCode(tag.code)) {
+          symptomCodes.add(tag.code);
+        } else {
+          otherCodes.add(tag.code);
+        }
+      }
+      // Every taxonomy code classifies one way or the other…
+      expect(symptomCodes.length + otherCodes.length, kTagTaxonomy.length);
+      // …and every kWellnessTagCodes entry is a real, currently
+      // non-symptom taxonomy code (no stale/renamed code can hide here).
+      for (final code in kWellnessTagCodes) {
+        expect(tagByCode(code), isNotNull, reason: code);
+        expect(symptomCodes.contains(code), isFalse, reason: code);
+        expect(otherCodes.contains(code), isTrue, reason: code);
+      }
+      // A wellness code always lives inside a kept category — if it ever
+      // drifts outside one, the category line alone would already exclude
+      // it and the code-level entry is misleading.
+      for (final code in kWellnessTagCodes) {
+        expect(
+          kSymptomTagCategories.contains(tagByCode(code)!.category),
+          isTrue,
+          reason: code,
+        );
+      }
+    });
+  });
+
   group('flatDisplayForTag (issue #822)', () {
     test('every taxonomy code produces a unique flat display string', () {
       final displays = kTagTaxonomy.map(flatDisplayForTag).toList();
