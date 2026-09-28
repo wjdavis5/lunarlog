@@ -650,8 +650,8 @@ void main() {
         'understanding-ovulation',
       )!;
       final text = body('understanding-ovulation');
-      expect(text, contains('up to 5 days'));
-      expect(text, contains('up to 7 days after sex'));
+      expect(text, contains('usually up to 5'));
+      expect(text, contains('up to 7 days in the fallopian tubes'));
       expect(
         text,
         contains('the day after'),
@@ -670,6 +670,38 @@ void main() {
       expect(nhs.single.retrieved, '2026-09-28');
       expect(article.reviewDate, '2026-09-28');
     });
+
+    test(
+      'the NHS 7-day outer limit is not chained to the 5-day window with a '
+      '"so" (#1163)',
+      () {
+        final text = body('understanding-ovulation');
+        // The 7-day figure is the outer limit of sperm survival, not the
+        // basis of the 5-day window: the sentence must not join the two with
+        // a logical "so".
+        expect(text, isNot(contains('So pregnancy can happen')));
+        expect(
+          text,
+          contains(
+            "That's why pregnancy is most likely from sex in the 5 days "
+            'before ovulation',
+          ),
+          reason:
+              'the 5-day conclusion is asserted as the most-likely window, '
+              'not derived from the 7-day figure',
+        );
+        expect(
+          text,
+          contains('sex a little earlier'),
+          reason: 'the 7-day survival figure still carries a risk caveat',
+        );
+        expect(
+          text,
+          contains('not a birth control method'),
+          reason: 'the adjacent disclaimer stays untouched',
+        );
+      },
+    );
 
     test('cramp article signposts the UK urgent-help route (R7)', () {
       final text = body('why-cramps-happen');
