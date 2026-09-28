@@ -25,6 +25,9 @@ set -euo pipefail
 #     and `X-Robots-Tag: noindex`.
 #   * `/auth/callback?code=smoke` returns 200 `text/html` (the `_redirects`
 #     SPA fallback, not a 404).
+#   * `/privacy.html` returns a 301 to `https://lunarlog.app/privacy`
+#     (issue #1101: the retired second copy of the policy must redirect to
+#     the canonical page, never 404 and never fall through to the SPA).
 #   * `/flutter_bootstrap.js` returns 200 and sets
 #     `"useLocalCanvasKit":true` (issue #1091: otherwise Flutter fetches
 #     CanvasKit from a CDN the deployed CSP blocks).
@@ -50,7 +53,12 @@ FIXTURES_DIR="${WEB_DEPLOY_FIXTURES_DIR:-}"
 
 ROOT_URL="$BASE_URL/"
 CALLBACK_URL="$BASE_URL/auth/callback?code=smoke"
+PRIVACY_REDIRECT_URL="$BASE_URL/privacy.html"
 BOOTSTRAP_URL="$BASE_URL/flutter_bootstrap.js"
+
+# The canonical target `/privacy.html` must redirect to (issue #1101). Exact:
+# the marketing site is the policy's only home.
+PRIVACY_CANONICAL="https://lunarlog.app/privacy"
 
 if [ -n "$FIXTURES_DIR" ]; then
   # Fixtures already hold the settled response; retrying adds nothing.
@@ -69,6 +77,7 @@ fail() {
 fixture_path() {
   case "$1" in
     */auth/callback*) printf '%s' "$FIXTURES_DIR/auth-callback.$2" ;;
+    */privacy.html) printf '%s' "$FIXTURES_DIR/privacy-redirect.$2" ;;
     */flutter_bootstrap.js) printf '%s' "$FIXTURES_DIR/flutter-bootstrap.$2" ;;
     *) printf '%s' "$FIXTURES_DIR/root.$2" ;;
   esac
@@ -207,10 +216,11 @@ expect_header_present() {
 # check_once -- prints the accumulated problems (empty on success) and
 # returns non-zero when any assertion failed.
 check_once() {
-  local root callback bootstrap_headers bootstrap_body problems=""
+  local root callback privacy_redirect bootstrap_headers bootstrap_body problems=""
 
   root="$(fetch_headers "$ROOT_URL" 2>/dev/null || true)"
   callback="$(fetch_headers "$CALLBACK_URL" 2>/dev/null || true)"
+  privacy_redirect="$(fetch_headers "$PRIVACY_REDIRECT_URL" 2>/dev/null || true)"
   bootstrap_headers="$(fetch_headers "$BOOTSTRAP_URL" 2>/dev/null || true)"
   bootstrap_body="$(fetch_body "$BOOTSTRAP_URL" 2>/dev/null || true)"
 
@@ -228,6 +238,12 @@ check_once() {
   # 404 -- the slice-2 email links land here.
   problems="${problems}$(expect_status "$callback" 200 "$CALLBACK_URL")"
   problems="${problems}$(expect_header_prefix "$callback" content-type text/html "$CALLBACK_URL")"
+
+  # The retired `/privacy.html` must 301 to the canonical policy page
+  # (issue #1101) -- not 404, and never the SPA fallback swallowing it with
+  # a 200.
+  problems="${problems}$(expect_status "$privacy_redirect" 301 "$PRIVACY_REDIRECT_URL")"
+  problems="${problems}$(expect_header_exact "$privacy_redirect" location "$PRIVACY_CANONICAL" "$PRIVACY_REDIRECT_URL")"
 
   # `flutter_bootstrap.js` must resolve CanvasKit from the build rather than
   # www.gstatic.com, which the deployed CSP blocks (issue #1091).
@@ -247,7 +263,7 @@ check_once() {
 attempt=1
 while :; do
   if reason="$(check_once)"; then
-    echo "Web deploy smoke check passed for '$BASE_URL' (/, /auth/callback, /flutter_bootstrap.js)."
+    echo "Web deploy smoke check passed for '$BASE_URL' (/, /auth/callback, /privacy.html -> 301, /flutter_bootstrap.js)."
     exit 0
   fi
 

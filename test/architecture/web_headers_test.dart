@@ -220,6 +220,52 @@ void main() {
     });
   });
 
+  // Issue #1101: one canonical privacy policy. The web build used to ship a
+  // second, hand-maintained copy of the policy at `web/privacy.html`; the
+  // file is retired and the path 301s to the marketing site's `/privacy`,
+  // which renders the repo's PRIVACY.md at build time.
+  group('web/_redirects privacy policy canonicalization (issue #1101)', () {
+    late List<RedirectRule> rules;
+
+    setUp(() {
+      final redirects = File('web/_redirects');
+      expect(redirects.existsSync(), isTrue,
+          reason: 'the web build ships web/_redirects for SPA routing');
+      rules = parseRedirects(redirects.readAsStringSync());
+    });
+
+    test('web/privacy.html is retired — the policy has one home', () {
+      expect(File('web/privacy.html').existsSync(), isFalse,
+          reason: 'a second copy of the policy drifts from PRIVACY.md '
+              '(issue #150 shipped exactly that drift once); the canonical '
+              'policy is https://lunarlog.app/privacy');
+    });
+
+    test('/privacy.html 301s to the canonical lunarlog.app/privacy', () {
+      final canonical =
+          rules.where((r) => r.source == '/privacy.html').toList();
+      expect(canonical, hasLength(1),
+          reason: 'exactly one rule owns the retired path');
+      expect(canonical.single.destination, 'https://lunarlog.app/privacy',
+          reason: 'the marketing site renders PRIVACY.md at /privacy');
+      expect(canonical.single.status, 301,
+          reason: 'a permanent redirect so search engines move off the '
+              'retired path');
+    });
+
+    test('the privacy rule precedes the SPA catch-all', () {
+      final privacyIndex = rules.indexWhere((r) => r.source == '/privacy.html');
+      final catchAllIndex =
+          rules.indexWhere((r) => r.source == '/*' && r.status == 200);
+      expect(privacyIndex, greaterThanOrEqualTo(0));
+      expect(catchAllIndex, greaterThanOrEqualTo(0));
+      expect(privacyIndex, lessThan(catchAllIndex),
+          reason: '_redirects matches top-down; below the catch-all the '
+              'privacy path would be swallowed by the 200 rewrite and never '
+              'redirect');
+    });
+  });
+
   // Falsification: a detector that stopped rejecting the broad script
   // allowances would leave the script-src pin vacuously green.
   group('detects the regressions the pins exist to catch', () {

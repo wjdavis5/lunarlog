@@ -102,9 +102,8 @@ this as a skeleton to walk through, not a verbatim transcript.
       Supabase, when separately enabled, is a distinct, independently
       opt-in feature — see `PRIVACY.md` Section 2A).
 - [ ] **Privacy policy URL:** the canonical policy URL already in use
-      elsewhere in Play Console
-      (`https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md`) — the
-      same one `PermissionsRationaleActivity` deep-links to.
+      elsewhere in Play Console (`https://lunarlog.app/privacy`, issue
+      #1101) — the same one `PermissionsRationaleActivity` deep-links to.
 - [ ] **Screenshots / demonstration of the permission-request flow:**
       capture the `PermissionsRationaleActivity` screen and the system
       Health Connect grant dialog on a device with Health Connect

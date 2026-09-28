@@ -11,11 +11,13 @@
     "preview": "astro preview",
     "check:html": "html-validate \"dist/**/*.html\"",
     "check:links": "node scripts/check-internal-links.mjs",
+    "check:privacy-anchors": "node scripts/check-privacy-anchors.mjs",
     "check:external-links": "node scripts/check-external-links.mjs",
     "check:lighthouse": "lhci autorun",
     "check:axe": "node scripts/check-axe.mjs"
   },
   "dependencies": {
+    "@astrojs/markdown-satteri": "0.4.2",
     "@fontsource/fraunces": "5.3.0",
     "@fontsource/inter": "5.3.0",
     "astro": "7.3.5"

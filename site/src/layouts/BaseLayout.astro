@@ -16,7 +16,14 @@ interface Props {
 
 const { title, description, noindex = false } = Astro.props;
 const site = Astro.site ?? new URL("https://lunarlog.app");
-const canonical = new URL(Astro.url.pathname, site).href;
+// `build.format: 'file'` (issue #1101) exposes the on-disk `.html` name in
+// `Astro.url.pathname`, but the public URL never carries it — the Worker
+// serves `/privacy` from `privacy.html` — so derive the canonical from the
+// extensionless path (and the home page stays `https://lunarlog.app/`).
+const canonicalPath = Astro.url.pathname
+  .replace(/\/index\.html$/, "/")
+  .replace(/\.html$/, "");
+const canonical = new URL(canonicalPath, site).href;
 const ogImage = new URL("/og-image.png", site).href;
 const fullTitle = title === "lunarlog" ? title : `${title} — lunarlog`;
 ---
@@ -66,9 +73,7 @@ const fullTitle = title === "lunarlog" ? title : `${title} — lunarlog`;
     <footer class="site-footer">
       <div class="site-footer__inner">
         <span>&copy; {new Date().getFullYear()} lunarlog</span>
-        <a href="https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md"
-          >Privacy policy</a
-        >
+        <a href="/privacy">Privacy policy</a>
       </div>
     </footer>
   </body>
