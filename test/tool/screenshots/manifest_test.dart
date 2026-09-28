@@ -8,6 +8,7 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/ui/components/app_frame.dart';
 
 import '../../../tool/screenshots/manifest.dart';
 
@@ -39,11 +40,24 @@ void main() {
       }
     });
 
-    test('the issue\'s four device classes are all present', () {
+    test('the issue\'s device classes are all present', () {
       expect(
         kScreenshotDevices.map((d) => d.id),
-        containsAll(['iphone-67', 'iphone-61', 'pixel', 'tablet']),
+        containsAll(
+          ['iphone-67', 'iphone-61', 'pixel', 'tablet', 'browser'],
+        ),
       );
+    });
+
+    test('the browser viewport is wider than the #1162 app frame', () {
+      // The point of the browser class (issue #1162): the capture shows
+      // the centred app-frame with its canvas surround, which only exists
+      // above the frame's max width — at or below it the
+      // presentation is unchanged.
+      final browser = kScreenshotDevices.singleWhere(
+        (d) => d.id == 'browser',
+      );
+      expect(browser.logicalWidth, greaterThan(kAppFrameMaxWidth));
     });
 
     test('every device stays inside the stores\' pixel bounds', () {

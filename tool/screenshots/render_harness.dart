@@ -54,6 +54,7 @@ import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/components/app_frame.dart';
 import 'package:lunarlog/ui/components/app_shell.dart';
 import 'package:lunarlog/ui/components/today_log_fab.dart';
 import 'package:lunarlog/ui/content/cycle_literacy_article_sheet.dart';
@@ -485,8 +486,11 @@ ScenePlan sceneFor(ScreenshotWorld world, ScreenshotScreen screen) {
 
 /// The MaterialApp the runner mounts every scene inside: the production
 /// themes (both wired, per the repo's theme-wiring posture), the fixed
-/// locale, and the [kScreenshotBoundaryKey] repaint boundary the capture
-/// rasterizes.
+/// locale, the [kScreenshotBoundaryKey] repaint boundary the capture
+/// rasterizes, and — mirroring `lib/app.dart`'s builder chain, as this
+/// file mirrors its provider scoping — the #1162 [AppFrame] so a
+/// browser-class capture shows the same centred app-frame the production
+/// web build presents.
 Widget screenshotApp({
   required ScreenshotTheme theme,
   required Widget child,
@@ -501,6 +505,11 @@ Widget screenshotApp({
         darkTheme: AppTheme.darkTheme,
         themeMode:
             theme == ScreenshotTheme.light ? ThemeMode.light : ThemeMode.dark,
+        // Issue #1162: the same builder seam the production MaterialApp
+        // wraps its Navigator with — a no-op at every phone-class device
+        // width, the centred frame at the browser class.
+        builder: (context, child) =>
+            AppFrame(child: child ?? const SizedBox.shrink()),
         // The test binding runs in debug mode, which otherwise paints the
         // red "DEBUG" corner banner into every capture.
         debugShowCheckedModeBanner: false,
