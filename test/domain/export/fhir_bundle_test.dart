@@ -817,7 +817,8 @@ void main() {
     });
 
     test('out-of-context tag labels carry their category (issue #1114): '
-        'code.text and the local coding display are self-describing', () {
+        'code.text and the local coding display are self-describing, in '
+        'whichever section #1138 routes them to', () {
       final bundle = build(
         entries: [
           _entry('day-01', profile.id, '2026-04-01', flow: FlowLevel.none, tags: const [
@@ -841,21 +842,30 @@ void main() {
                 .any((c) => (c as Map)['code'] == tag));
         return (obs['code'] as Map)['text'] as String;
       }
-      expect(textFor('withdrawal'), 'Sex: withdrawal method (pull-out)');
+      // `withdrawal` is a sex-life tag: #1138 routes it out of the export
+      // entirely, so its label is never even emitted.
+      expect(
+        tagObs.where((obs) =>
+            ((obs['code'] as Map)['coding'] as List)
+                .any((c) => (c as Map)['code'] == 'withdrawal')),
+        isEmpty,
+      );
+      // Home test results keep their "Home test" labels — now in Results.
       expect(textFor('pregnancy_positive'), 'Home pregnancy test: positive');
       expect(textFor('ovulation_negative'),
           'Home ovulation (LH) test: negative');
-      // The collision disambiguation from flatDisplayForTag is preserved.
+      // The collision disambiguation from flatDisplayForTag is preserved —
+      // now in the Cycle observations section.
       expect(textFor('great_digestion'), 'Great (digestion)');
       expect(textFor('great_stool'), 'Great (stool)');
       // The local coding's display is the same self-describing label.
-      final withdrawal = tagObs.firstWhere((obs) =>
+      final pregnancy = tagObs.firstWhere((obs) =>
           ((obs['code'] as Map)['coding'] as List)
-              .any((c) => (c as Map)['code'] == 'withdrawal'));
-      final local = ((((withdrawal['code'] as Map)['coding'] as List))
+              .any((c) => (c as Map)['code'] == 'pregnancy_positive'));
+      final local = ((((pregnancy['code'] as Map)['coding'] as List))
               .cast<Map>())
           .firstWhere((c) => c['system'] == kSystemLunarlogLocal);
-      expect(local['display'], 'Sex: withdrawal method (pull-out)');
+      expect(local['display'], 'Home pregnancy test: positive');
     });
 
     test('the fallback display for a non-tag row is category-qualified so a '
@@ -871,6 +881,420 @@ void main() {
       // An unattested Clue `tests` option must not read as a lab result.
       expect(fhirLocalDisplayFor('tests', 'pregnancy_test_positive'),
           'Home test: pregnancy test positive');
+    });
+  });
+
+  group('tag routing: problems vs results vs cycle observations (#1138)', () {
+    /// The Composition's sections, keyed by title.
+    Map<String, Map> sectionsOf(Map bundle) {
+      final composition = (bundle['entry'] as List)
+          .cast<Map>()
+          .map((e) => e['resource'] as Map)
+          .firstWhere((r) => r['resourceType'] == 'Composition');
+      return {
+        for (final s in (composition['section'] as List).cast<Map>())
+          s['title'] as String: s,
+      };
+    }
+
+    /// The lunarlog-local coding codes of the Observations a section
+    /// references — one per entry: the tag code itself for a taxonomy tag,
+    /// the `category:option` fallback for a non-tag row.
+    Set<String> localCodesIn(Map bundle, Map section) {
+      final urls = {
+        for (final e in (section['entry'] as List).cast<Map>())
+          e['reference'] as String,
+      };
+      return {
+        for (final e in (bundle['entry'] as List).cast<Map>())
+          if (urls.contains(e['fullUrl']))
+            for (final c
+                in ((e['resource'] as Map)['code'] as Map)['coding'] as List)
+              if ((c as Map)['system'] == kSystemLunarlogLocal)
+                c['code'] as String,
+      };
+    }
+
+    /// Every `Observation.code` coding code anywhere in the Bundle.
+    Set<String> everyObservationCodeIn(Map bundle) => {
+          for (final e in (bundle['entry'] as List).cast<Map>())
+            if ((e['resource'] as Map)['resourceType'] == 'Observation')
+              for (final c in ((e['resource'] as Map)['code'] as Map)['coding']
+                  as List)
+                (c as Map)['code'] as String,
+        };
+
+    test("the issue's acceptance case: a day with great_digestion, "
+        'egg_white, pregnancy_positive, antibiotic and cramps puts only '
+        'cramps in Problems', () {
+      final bundle = build(
+        entries: [
+          _entry('day-01', profile.id, '2026-04-01',
+              flow: FlowLevel.none, tags: const [
+            'great_digestion',
+            'egg_white',
+            'pregnancy_positive',
+            'antibiotic',
+            'cramps',
+          ]),
+        ],
+        obs: const [],
+      );
+      final sections = sectionsOf(bundle);
+      // 11450-4 carries exactly the one symptom.
+      expect(localCodesIn(bundle, sections['Problems']!), {'cramps'});
+      // The narrative matches what the section holds.
+      expect(
+        (sections['Problems']!['text'] as Map)['div'],
+        contains('1 self-reported symptom finding(s) recorded.'),
+      );
+      // The home test is a result, in Results.
+      expect(localCodesIn(bundle, sections['Results']!),
+          {'pregnancy_positive'});
+      // The normal state and the fertility sign are clearly-labelled
+      // non-problem context.
+      expect(localCodesIn(bundle, sections['Cycle observations']!),
+          {'great_digestion', 'egg_white'});
+      // The medication is exported nowhere.
+      expect(everyObservationCodeIn(bundle).contains('antibiotic'), isFalse);
+    });
+
+    test('symptoms across every category stay in Problems', () {
+      const symptoms = [
+        'cramps',
+        'headache',
+        'back_pain',
+        'breast_tenderness',
+        'ovulation',
+        'migraine',
+        'migraine_with_aura',
+        'tired',
+        'exhausted',
+        'fatigue',
+        'sleep_trouble',
+        'acne',
+        'oily_skin',
+        'dry_skin',
+        'bloating',
+        'nausea',
+        'gassy',
+        'constipated',
+        'diarrhea',
+        'cravings',
+        'sweet',
+        'salty',
+        'carbs',
+        'chocolate',
+        'hot_flashes',
+        'night_sweats',
+        'brain_fog',
+        'vaginal_dryness',
+        'dizziness',
+        'irritable',
+        'sad',
+        'angry',
+        'anxious',
+        'sensitive',
+        'mood_swings',
+        'insecure',
+        'indifferent',
+        'distracted',
+        'stressed',
+        'cold_flu_ailments',
+        'allergy',
+        'injury',
+        'fever',
+      ];
+      final bundle = build(
+        entries: [
+          _entry('day-01', profile.id, '2026-04-01',
+              flow: FlowLevel.none, tags: symptoms),
+        ],
+        obs: const [],
+      );
+      expect(localCodesIn(bundle, sectionsOf(bundle)['Problems']!),
+          symptoms.toSet());
+    });
+
+    test('normal/positive states, discharge types, exercise, collection '
+        'method and sleep durations land in the title-only Cycle '
+        'observations section, never Problems', () {
+      const cycleContext = [
+        'pain_free',
+        'energetic',
+        'fully_energized',
+        '0_to_3_hours',
+        '3_to_6_hours',
+        '6_to_9_hours',
+        '9_or_more_hours',
+        'good_skin',
+        'good_hair',
+        'bad_hair',
+        'oily_hair',
+        'dry_hair',
+        'great_digestion',
+        'normal',
+        'great_stool',
+        'happy',
+        'excited',
+        'grateful',
+        'calm',
+        'focused',
+        'motivated',
+        'unmotivated',
+        'productive',
+        'unproductive',
+        'sociable',
+        'supportive',
+        'withdrawn',
+        'conflict',
+        'none',
+        'sticky',
+        'creamy',
+        'egg_white',
+        'atypical',
+        'running',
+        'yoga',
+        'biking',
+        'swimming',
+        'walking',
+        'pilates',
+        'rest_day',
+        'pad',
+        'tampon',
+        'panty_liner',
+        'menstrual_cup',
+      ];
+      final bundle = build(
+        entries: [
+          _entry('day-01', profile.id, '2026-04-01',
+              flow: FlowLevel.none, tags: cycleContext),
+        ],
+        obs: const [],
+      );
+      final sections = sectionsOf(bundle);
+      expect(localCodesIn(bundle, sections['Cycle observations']!),
+          cycleContext.toSet());
+      expect(localCodesIn(bundle, sections['Problems']!), isEmpty);
+      // The section carries no section.code (no verified LOINC code —
+      // R4's Composition.section.code is 0..1) and its narrative says
+      // outright these are not problems.
+      expect(sections['Cycle observations']!.containsKey('code'), isFalse);
+      expect(
+        (sections['Cycle observations']!['text'] as Map)['div'],
+        contains('44 self-reported cycle observation(s) recorded — normal '
+            'states and daily context, not problems.'),
+      );
+    });
+
+    test('home pregnancy/LH test tags are Results entries keeping the '
+        '"Home test" labels', () {
+      final bundle = build(
+        entries: [
+          _entry('day-01', profile.id, '2026-04-01',
+              flow: FlowLevel.none, tags: const [
+            'pregnancy_positive',
+            'pregnancy_negative',
+            'ovulation_peak',
+          ]),
+        ],
+        obs: const [],
+      );
+      final sections = sectionsOf(bundle);
+      expect(localCodesIn(bundle, sections['Results']!),
+          {'pregnancy_positive', 'pregnancy_negative', 'ovulation_peak'});
+      expect(localCodesIn(bundle, sections['Problems']!), isEmpty);
+      final resultsTexts = [
+        for (final e in (bundle['entry'] as List).cast<Map>())
+          if ((e['resource'] as Map)['resourceType'] == 'Observation')
+            (e['resource'] as Map)['code'],
+      ]
+          .map((code) => (code as Map)['text'] as String)
+          .toSet();
+      expect(resultsTexts, contains('Home pregnancy test: positive'));
+      expect(resultsTexts, contains('Home ovulation (LH) test: peak'));
+      expect(
+        (sections['Results']!['text'] as Map)['div'],
+        contains('3 result observation(s) recorded.'),
+      );
+    });
+
+    test('medication tags and the hrt therapy are exported nowhere', () {
+      final bundle = build(
+        entries: [
+          _entry('day-01', profile.id, '2026-04-01',
+              flow: FlowLevel.none, tags: const [
+            'antibiotic',
+            'pain',
+            'cold_flu_medication',
+            'antihistamine',
+            'hrt',
+          ]),
+        ],
+        obs: const [],
+      );
+      final codes = everyObservationCodeIn(bundle);
+      for (final omitted in [
+        'antibiotic',
+        'pain',
+        'cold_flu_medication',
+        'antihistamine',
+        'hrt',
+        'Took an antibiotic',
+        'Took pain medication',
+      ]) {
+        expect(codes.contains(omitted), isFalse, reason: omitted);
+      }
+      expect(
+        _allStrings(bundle).contains('Took an antibiotic'),
+        isFalse,
+      );
+      final sections = sectionsOf(bundle);
+      expect(localCodesIn(bundle, sections['Problems']!), isEmpty);
+      expect(localCodesIn(bundle, sections['Cycle observations']!), isEmpty);
+      expect(localCodesIn(bundle, sections['Results']!), isEmpty);
+    });
+
+    test('sex-life and substance tags are exported nowhere', () {
+      const sexAndSubstance = [
+        'no_sex_today',
+        'low_sex_drive',
+        'high_sex_drive',
+        'masturbation',
+        'withdrawal',
+        'protected_sex',
+        'unprotected_sex',
+        'sex_toys',
+        'orgasm',
+        'no_orgasm',
+        'fantasies',
+        'painful_intercourse',
+        'drinks',
+        'cigarettes',
+        'big_night',
+        'hangover',
+      ];
+      final bundle = build(
+        entries: [
+          _entry('day-01', profile.id, '2026-04-01',
+              flow: FlowLevel.none, tags: sexAndSubstance),
+        ],
+        obs: const [],
+      );
+      final strings = _allStrings(bundle).toSet();
+      for (final omitted in sexAndSubstance) {
+        expect(strings.contains(omitted), isFalse, reason: omitted);
+      }
+      // Their contextual labels never appear either.
+      expect(strings.contains('Sex: High sex drive'), isFalse);
+      expect(strings.contains('Sex: withdrawal method (pull-out)'), isFalse);
+      expect(strings.contains('Alcoholic drinks'), isFalse);
+      final sections = sectionsOf(bundle);
+      expect(localCodesIn(bundle, sections['Problems']!), isEmpty);
+      expect(localCodesIn(bundle, sections['Results']!), isEmpty);
+      expect(localCodesIn(bundle, sections['Cycle observations']!), isEmpty);
+    });
+
+    test('Clue-imported rows route by their tag code when one exists, '
+        'else by category; categories this taxonomy does not know keep the '
+        'problem reading', () {
+      final bundle = build(
+        entries: const [],
+        obs: [
+          // A taxonomy tag code routes exactly as the tag would.
+          _observation('o-tests', 'd', profile.id, '2026-04-01',
+              category: ObservationCategory.custom('tests'),
+              code: 'pregnancy_positive'),
+          // A raw Clue string routes by the row's category.
+          _observation('o-tests-raw', 'd', profile.id, '2026-04-01',
+              category: ObservationCategory.custom('tests'),
+              code: 'pregnancy_test_positive'),
+          _observation('o-sex', 'd', profile.id, '2026-04-01',
+              category: ObservationCategory.custom('sex_life'),
+              code: 'kissing'),
+          _observation('o-med', 'd', profile.id, '2026-04-01',
+              category: ObservationCategory.custom('medication'),
+              code: 'aspirin'),
+          _observation('o-discharge', 'd', profile.id, '2026-04-01',
+              category: ObservationCategory.custom('discharge'),
+              code: 'watery'),
+          _observation('o-exercise', 'd', profile.id, '2026-04-01',
+              category: ObservationCategory.custom('exercise'),
+              code: 'hiking'),
+          // Unknown categories degrade to the problem reading: the
+          // pre-#1138 behavior, never a silent drop.
+          _observation('o-spotting', 'd', profile.id, '2026-04-01',
+              category: ObservationCategory.spotting, code: 'spotting'),
+          _observation('o-mucus', 'd', profile.id, '2026-04-01',
+              category: ObservationCategory.custom('mucus'),
+              code: 'stretchy'),
+          _observation(
+              'o-feelings-raw', 'd', profile.id, '2026-04-01',
+              category: ObservationCategory.custom('feelings'),
+              code: 'blue'),
+          // A tag code in a symptom category stays a problem.
+          _observation('o-pain', 'd', profile.id, '2026-04-01',
+              category: ObservationCategory.pain, code: 'migraine'),
+        ],
+      );
+      final sections = sectionsOf(bundle);
+      // The row whose code IS a taxonomy tag carries the tag's dual coding
+      // (local code = the tag code); the raw Clue string keeps the
+      // category-qualified local fallback.
+      expect(localCodesIn(bundle, sections['Results']!),
+          {'pregnancy_positive', 'tests:pregnancy_test_positive'});
+      expect(localCodesIn(bundle, sections['Cycle observations']!),
+          {'discharge:watery', 'exercise:hiking'});
+      expect(localCodesIn(bundle, sections['Problems']!), {
+        'spotting:spotting',
+        'mucus:stretchy',
+        'feelings:blue',
+        'migraine',
+      });
+      // The omitted rows are nowhere.
+      final strings = _allStrings(bundle).toSet();
+      expect(strings.contains('kissing'), isFalse);
+      expect(strings.contains('aspirin'), isFalse);
+    });
+
+    test('a tests-category row covers the same-day tag for the dedupe: the '
+        'fact appears exactly once, in Results', () {
+      final bundle = build(
+        entries: [
+          _entry('day-01', profile.id, '2026-04-01',
+              flow: FlowLevel.none, tags: const ['pregnancy_positive']),
+        ],
+        obs: [
+          _observation('o1', 'day-01', profile.id, '2026-04-01',
+              category: ObservationCategory.custom('tests'),
+              code: 'pregnancy_positive'),
+        ],
+      );
+      final sections = sectionsOf(bundle);
+      expect(localCodesIn(bundle, sections['Results']!),
+          {'pregnancy_positive'});
+      // No tag-derived duplicate anywhere.
+      expect(
+        everyObservationCodeIn(bundle).where((c) => c == 'pregnancy_positive'),
+        hasLength(1),
+      );
+      expect(localCodesIn(bundle, sections['Problems']!), isEmpty);
+      expect(localCodesIn(bundle, sections['Cycle observations']!), isEmpty);
+    });
+
+    test('the document-level narrative counts all four sections', () {
+      final bundle = build();
+      final composition = (bundle['entry'] as List)
+          .cast<Map>()
+          .map((e) => e['resource'] as Map)
+          .firstWhere((r) => r['resourceType'] == 'Composition');
+      final div = ((composition['text'] as Map)['div']) as String;
+      // Default fixture: 2 flow days -> Results; the BBT row has no value,
+      // so no vital sign; the headache row -> Problems.
+      expect(div, contains('2 Results entries'));
+      expect(div, contains('0 Vital signs entries'));
+      expect(div, contains('1 Problems entry'));
+      expect(div, contains('0 Cycle observations entries'));
     });
   });
 
@@ -1198,11 +1622,13 @@ void main() {
           .map((e) => e['resource'] as Map)
           .firstWhere((r) => r['resourceType'] == 'Composition');
       final sections = (composition['section'] as List).cast<Map>();
-      expect(sections, hasLength(3));
+      expect(sections, hasLength(4));
 
       final results = sections.firstWhere((s) => s['title'] == 'Results');
       final vitals = sections.firstWhere((s) => s['title'] == 'Vital signs');
       final problems = sections.firstWhere((s) => s['title'] == 'Problems');
+      final cycleObs =
+          sections.firstWhere((s) => s['title'] == 'Cycle observations');
       final resultsCoding =
           ((results['code'] as Map)['coding'] as List).first as Map;
       expect(resultsCoding['system'], 'http://loinc.org');
@@ -1219,6 +1645,10 @@ void main() {
       expect(problemsCoding['system'], 'http://loinc.org');
       expect(problemsCoding['code'], '11450-4');
       expect(problemsCoding['display'], 'Problem list - Reported');
+      // The #1138 "Cycle observations" section has no verified LOINC
+      // section code and ships title-only (R4 Composition.section.code is
+      // 0..1) — never a guessed code.
+      expect(cycleObs.containsKey('code'), isFalse);
 
       // history has 3 flow days per period x 4 periods = 12 flow entries,
       // + 2 stat observations.
@@ -1226,6 +1656,7 @@ void main() {
       expect((results['entry'] as List).length, flowAndStatCount);
       expect((vitals['entry'] as List).length, 1);
       expect((problems['entry'] as List).length, 1);
+      expect((cycleObs['entry'] as List), isEmpty);
     });
 
     test('carries every FHIR-required Composition element, plus a '

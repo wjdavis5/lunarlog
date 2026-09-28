@@ -882,4 +882,207 @@ void main() {
       expect(contextualDisplayForTag(tagByCode('happy')!), 'Happy');
     });
   });
+
+  group('tag clinical routing (issue #1138)', () {
+    Set<String> codesWithRole(TagClinicalRole role) => {
+          for (final tag in kTagTaxonomy)
+            if (tagClinicalRole(tag) == role) tag.code,
+        };
+
+    test('pins the full partition of the taxonomy', () {
+      // Symptoms: exactly #1147's isSymptomTagCode true-set — the twelve
+      // kSymptomTagCategories minus kWellnessTagCodes and the positive
+      // assertions.
+      expect(codesWithRole(TagClinicalRole.problem), {
+        'cramps',
+        'headache',
+        'back_pain',
+        'breast_tenderness',
+        'ovulation',
+        'migraine',
+        'migraine_with_aura',
+        'tired',
+        'exhausted',
+        'fatigue',
+        'sleep_trouble',
+        'acne',
+        'oily_skin',
+        'dry_skin',
+        'bloating',
+        'nausea',
+        'gassy',
+        'constipated',
+        'diarrhea',
+        'cravings',
+        'sweet',
+        'salty',
+        'carbs',
+        'chocolate',
+        'hot_flashes',
+        'night_sweats',
+        'brain_fog',
+        'vaginal_dryness',
+        'dizziness',
+        'irritable',
+        'sad',
+        'angry',
+        'anxious',
+        'sensitive',
+        'mood_swings',
+        'insecure',
+        'indifferent',
+        'distracted',
+        'stressed',
+        'cold_flu_ailments',
+        'allergy',
+        'injury',
+        'fever',
+      });
+      // Normal/positive states and cycle context: never a problem.
+      // Includes whole categories the #1147 symptom line leaves out (hair,
+      // motivation, social life) plus the wellness codes inside the mixed
+      // symptom categories.
+      expect(codesWithRole(TagClinicalRole.cycleObservation), {
+        'pain_free',
+        'energetic',
+        'fully_energized',
+        '0_to_3_hours',
+        '3_to_6_hours',
+        '6_to_9_hours',
+        '9_or_more_hours',
+        'good_skin',
+        'good_hair',
+        'bad_hair',
+        'oily_hair',
+        'dry_hair',
+        'great_digestion',
+        'normal',
+        'great_stool',
+        'happy',
+        'excited',
+        'grateful',
+        'calm',
+        'focused',
+        'motivated',
+        'unmotivated',
+        'productive',
+        'unproductive',
+        'sociable',
+        'supportive',
+        'withdrawn',
+        'conflict',
+        'none',
+        'sticky',
+        'creamy',
+        'egg_white',
+        'atypical',
+        'running',
+        'yoga',
+        'biking',
+        'swimming',
+        'walking',
+        'pilates',
+        'rest_day',
+        'pad',
+        'tampon',
+        'panty_liner',
+        'menstrual_cup',
+      });
+      // Home test results.
+      expect(codesWithRole(TagClinicalRole.testResult), {
+        'ovulation_negative',
+        'ovulation_positive',
+        'ovulation_peak',
+        'pregnancy_negative',
+        'pregnancy_positive',
+      });
+      // Not exported by default: medications taken (plus the hot_flashes
+      // category's hrt therapy), sex life, substance use.
+      expect(codesWithRole(TagClinicalRole.notExported), {
+        'pain',
+        'cold_flu_medication',
+        'antihistamine',
+        'antibiotic',
+        'hrt',
+        'no_sex_today',
+        'low_sex_drive',
+        'high_sex_drive',
+        'masturbation',
+        'withdrawal',
+        'protected_sex',
+        'unprotected_sex',
+        'sex_toys',
+        'orgasm',
+        'no_orgasm',
+        'fantasies',
+        'painful_intercourse',
+        'drinks',
+        'cigarettes',
+        'big_night',
+        'hangover',
+      });
+      // The partition is total: every taxonomy code lands in exactly one
+      // role.
+      final total = codesWithRole(TagClinicalRole.problem).length +
+          codesWithRole(TagClinicalRole.cycleObservation).length +
+          codesWithRole(TagClinicalRole.testResult).length +
+          codesWithRole(TagClinicalRole.notExported).length;
+      expect(total, kTagTaxonomy.length);
+    });
+
+    test('isSymptomTagCode mirrors the problem role', () {
+      expect(isSymptomTagCode('cramps'), isTrue);
+      expect(isSymptomTagCode('fever'), isTrue);
+      expect(isSymptomTagCode('irritable'), isTrue);
+      expect(isSymptomTagCode('great_digestion'), isFalse);
+      expect(isSymptomTagCode('egg_white'), isFalse);
+      expect(isSymptomTagCode('pregnancy_positive'), isFalse);
+      expect(isSymptomTagCode('antibiotic'), isFalse);
+      expect(isSymptomTagCode('high_sex_drive'), isFalse);
+      expect(isSymptomTagCode('pain_free'), isFalse);
+      expect(isSymptomTagCode('not_a_tag'), isFalse);
+    });
+
+    test('tagClinicalRoleForCategory routes the uniform categories; a '
+        'kSymptomTagCategories member defaults to problem, everything else '
+        'to cycle context', () {
+      expect(
+          tagClinicalRoleForCategory(TagCategory.tests),
+          TagClinicalRole.testResult);
+      expect(tagClinicalRoleForCategory(TagCategory.medication),
+          TagClinicalRole.notExported);
+      expect(tagClinicalRoleForCategory(TagCategory.sexLife),
+          TagClinicalRole.notExported);
+      expect(tagClinicalRoleForCategory(TagCategory.partying),
+          TagClinicalRole.notExported);
+      expect(tagClinicalRoleForCategory(TagCategory.discharge),
+          TagClinicalRole.cycleObservation);
+      expect(tagClinicalRoleForCategory(TagCategory.exercise),
+          TagClinicalRole.cycleObservation);
+      expect(tagClinicalRoleForCategory(TagCategory.collectionMethod),
+          TagClinicalRole.cycleObservation);
+      // A can-be-a-symptom category: an unknown option cannot pick a half,
+      // so it keeps the pre-#1138 problem reading rather than silently
+      // vanishing.
+      expect(tagClinicalRoleForCategory(TagCategory.feelings),
+          TagClinicalRole.problem);
+      expect(tagClinicalRoleForCategory(TagCategory.digestion),
+          TagClinicalRole.problem);
+      expect(tagClinicalRoleForCategory(TagCategory.ailments),
+          TagClinicalRole.problem);
+      // Categories outside kSymptomTagCategories (hair, motivation, social
+      // life, the unverified ones): their known codes are not symptoms, so
+      // an unknown option there is context, not a problem.
+      expect(tagClinicalRoleForCategory(TagCategory.hair),
+          TagClinicalRole.cycleObservation);
+      expect(tagClinicalRoleForCategory(TagCategory.motivation),
+          TagClinicalRole.cycleObservation);
+      expect(tagClinicalRoleForCategory(TagCategory.socialLife),
+          TagClinicalRole.cycleObservation);
+      expect(tagClinicalRoleForCategory(TagCategory.pms),
+          TagClinicalRole.cycleObservation);
+      expect(tagClinicalRoleForCategory(TagCategory.appointments),
+          TagClinicalRole.cycleObservation);
+    });
+  });
 }

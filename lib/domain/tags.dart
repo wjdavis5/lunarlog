@@ -613,6 +613,119 @@ TagCode? tagByCode(String code) => _tagsByCode[code];
 
 bool isValidTagCode(String code) => _tagsByCode.containsKey(code);
 
+/// Where a taxonomy tag's fact belongs when a consumer separates patient
+/// **problems** from the rest of a day's log (issue #1138). One tag, one
+/// role: the same logged fact can never read as a symptom in one export
+/// and something else in another. The symptom/non-symptom line itself is
+/// [isSymptomTagCode] — #1147's [kSymptomTagCategories] +
+/// [kWellnessTagCodes], shared with the clinician PDF's symptom grid — so
+/// this enum only adds the routing the FHIR export needs beyond it: home
+/// tests are results, medications/sex-life/substance are not exported,
+/// and the remaining non-symptoms are cycle context.
+///
+/// The role is decided **by category first** — the whole categories the
+/// issue names move as a block — then per code inside the mixed symptom
+/// categories, via [isSymptomTagCode].
+enum TagClinicalRole {
+  /// An actual symptom finding — what a Problem list (FHIR LOINC 11450-4)
+  /// or a symptom grid is for. Exactly [isSymptomTagCode]'s true set.
+  problem,
+
+  /// A normal, positive, or neutral state — a wellness or fertility-sign
+  /// observation that must never read as a problem (`great_digestion`,
+  /// `egg_white`, `happy`, a sleep-duration bucket, `pain_free`).
+  cycleObservation,
+
+  /// A home test result (pregnancy / ovulation-LH) — a result, routed to a
+  /// results section while keeping its "Home test" labels, never a problem.
+  testResult,
+
+  /// Not exported to clinical consumers at all by default: medications
+  /// taken (never a problem, and this export carries no medication
+  /// summary), plus the sex-life and substance categories — sensitive on a
+  /// minor's record, and #1138 asks they be left out by default.
+  notExported,
+}
+
+/// The category-uniform roles (issue #1138): every code of these
+/// categories routes identically, so the routing is one data-table lookup
+/// (the same table-not-switch discipline as `_kCategoryWireNames` above).
+/// Categories absent from this map are the mixed symptom categories, whose
+/// positive/symptomatic halves [isSymptomTagCode] separates per code.
+const Map<TagCategory, TagClinicalRole> _kUniformCategoryRoles = {
+  TagCategory.tests: TagClinicalRole.testResult,
+  // Medications taken, sex life, and substance use are omitted from
+  // clinical exports by default (#1138) — not problems, and sensitive on a
+  // minor's record.
+  TagCategory.medication: TagClinicalRole.notExported,
+  TagCategory.sexLife: TagClinicalRole.notExported,
+  TagCategory.partying: TagClinicalRole.notExported,
+  // Fertility signs, activity, and product use: cycle context, never a
+  // problem.
+  TagCategory.discharge: TagClinicalRole.cycleObservation,
+  TagCategory.exercise: TagClinicalRole.cycleObservation,
+  TagCategory.collectionMethod: TagClinicalRole.cycleObservation,
+};
+
+/// The one code outside the `medication` category that is a *therapy*
+/// rather than a symptom: `hrt` rides `hot_flashes` (where Clue attests it)
+/// but routes with the medications — a treatment is not a finding.
+/// ([kWellnessTagCodes] already keeps it off symptom surfaces; this set is
+/// what sends it out of the FHIR export entirely rather than into the
+/// cycle-observations section.)
+const Set<String> _kTherapyTagCodes = {'hrt'};
+
+/// The clinical role of [tag] — the routing decision for every consumer
+/// that separates problems from the rest of the log (issue #1138).
+TagClinicalRole tagClinicalRole(TagCode tag) {
+  final uniform = _kUniformCategoryRoles[tag.category];
+  if (uniform != null) return uniform;
+  if (_kTherapyTagCodes.contains(tag.code)) {
+    return TagClinicalRole.notExported;
+  }
+  // The remaining categories: #1147's symptom line decides — a fever or an
+  // injury IS a problem, `energetic` and stool "Normal" are not.
+  return isSymptomTagCode(tag.code)
+      ? TagClinicalRole.problem
+      : TagClinicalRole.cycleObservation;
+}
+
+/// The category-level default role for an `observations` row whose option
+/// code is **not** a taxonomy code (a raw Clue string the pass-through
+/// wrote verbatim, `clue_option_map.dart`). Uniform categories route as a
+/// block exactly as their taxonomy codes do; a category in
+/// [kSymptomTagCategories] defaults to [TagClinicalRole.problem] — an
+/// unclassifiable option inside a symptom category keeps the pre-#1138
+/// behavior (it shows as a finding) — and every other category routes to
+/// cycle context, matching how its known codes route.
+TagClinicalRole tagClinicalRoleForCategory(TagCategory category) =>
+    switch (category) {
+      TagCategory.tests => TagClinicalRole.testResult,
+      TagCategory.medication ||
+      TagCategory.sexLife ||
+      TagCategory.partying =>
+        TagClinicalRole.notExported,
+      TagCategory.discharge ||
+      TagCategory.exercise ||
+      TagCategory.collectionMethod =>
+        TagClinicalRole.cycleObservation,
+      // fail-closed exactly like kSymptomTagCategories itself: an unknown
+      // option in a can-be-a-symptom category still shows as a finding;
+      // an unknown option anywhere else is context, not a problem.
+      _ => kSymptomTagCategories.contains(category)
+          ? TagClinicalRole.problem
+          : TagClinicalRole.cycleObservation,
+    };
+
+/// The clinical role of a taxonomy [code], or null when [code] is not in
+/// the taxonomy (the caller decides the fallback: the FHIR export skips an
+/// unknown day-entry tag entirely, and routes an unknown `observations` row
+/// option by its category — see [tagClinicalRoleForCategory]).
+TagClinicalRole? tagClinicalRoleForCode(String code) {
+  final tag = tagByCode(code);
+  return tag == null ? null : tagClinicalRole(tag);
+}
+
 final Set<String> _collidingDisplays = () {
   final counts = <String, int>{};
   for (final tag in kTagTaxonomy) {
@@ -653,10 +766,12 @@ const Map<TagCategory, String> _kContextualCategoryLabels = {
 
 /// Per-code contextual labels that no category prefix can express (issue
 /// #1114 and PR #1124 reverification): the label a receiving system shows
-/// in a Problem list, where "Medication: Antibiotic" can read as an
-/// allergy or a current prescription, "Test result: Pregnancy · positive"
-/// as a confirmed laboratory finding, and "Sleep duration: Sleep trouble"
-/// is simply wrong. Checked before the category prefix.
+/// for a tag exported without its category heading — in the Problem list
+/// or wherever #1138's routing places it — where "Medication: Antibiotic"
+/// can read as an allergy or a current prescription, "Test result:
+/// Pregnancy · positive" as a confirmed laboratory finding, and "Sleep
+/// duration: Sleep trouble" is simply wrong. Checked before the category
+/// prefix.
 const Map<String, String> _kContextualCodeLabels = {
   'sleep_trouble': 'Trouble sleeping',
   'pregnancy_positive': 'Home pregnancy test: positive',
