@@ -1,0 +1,164 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+// Issue #1102: the support page App Store Connect requires (App
+// Information → Support URL). In-app feedback leads; the email path and the
+// FAQ follow. There is deliberately no contact form: the site collects
+// nothing (#830's out-of-scope list).
+//
+// Two inputs are deliberately pending (issue #1100 — the owner picks the
+// public support address): the email address itself and the committed
+// response time. They are marked as pending below rather than invented;
+// until they land, this page points at the contact address already
+// published in PRIVACY.md. Do not point App Store Connect at this URL until
+// that follow-up has merged.
+//
+// The FAQ's "guide" mentions are pending #1106 (the how-to guides are not
+// built yet). They are written so each answer stands on its own; when
+// #1106 lands, wire the named guides in as links.
+
+const privacyPolicyUrl = "https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md";
+const privacyContactUrl = `${privacyPolicyUrl}#11-contact-information`;
+const deleteAccountUrl = "/delete-account";
+---
+
+<BaseLayout
+  title="Support"
+  description="Get help with lunarlog: send feedback from inside the app, answers to common questions about sharing, deletion, exports, and where your data lives."
+>
+  <article class="doc">
+    <h1 class="doc__title">Support</h1>
+    <p class="doc__lede">
+      The fastest way to reach us is from inside the app. This page also
+      answers the questions we hear most, and explains how to reach us when
+      you can't open the app.
+    </p>
+
+    <section>
+      <h2>Send feedback from the app</h2>
+      <!-- cite: lib/ui/settings/settings_screen.dart ("Send feedback" tile; "Support history" tile; the signed-out "Contact support" fallback). -->
+      <ol class="doc__steps">
+        <li>
+          Open lunarlog and go to <strong>More</strong> in the bottom bar to
+          reach <strong>Settings</strong>.
+        </li>
+        <li>
+          Tap <strong>Send feedback</strong>. Write what happened — you can
+          choose a category, and attaching a screenshot or diagnostics is
+          always your choice, never automatic.
+        </li>
+      </ol>
+      <p>
+        Replies land in <strong>Settings → Support history</strong>, inside
+        the app. Feedback needs a signed-in account; if you're signed out you
+        will see <strong>Contact support</strong> in the same place instead.
+      </p>
+    </section>
+
+    <section>
+      <h2>Reach us by email</h2>
+      <p>
+        If you can't open the app — or the matter is account or deletion
+        related — you can write to us instead. Tell us what you need; if it's
+        about an account, include the email address the account uses and
+        nothing else.
+      </p>
+      <aside class="note note--pending">
+        <span class="note__label">Pending publication</span>
+        <p>
+          A dedicated support address, and the response time we commit to, are
+          being finalized and will be published here. Until then, the contact
+          address already listed in
+          <a href={privacyContactUrl}>our privacy policy</a> works.
+        </p>
+      </aside>
+    </section>
+
+    <section>
+      <h2>Common questions</h2>
+
+      <h3>How do I delete my account?</h3>
+      <!-- cite: PRIVACY.md §7; the walkthrough lives on the deletion page (issue #1102). -->
+      <p>
+        From <strong>Settings → Account → Delete account</strong>, on every
+        platform. It happens immediately, and the page explains exactly what
+        is and isn't removed — see
+        <a href={deleteAccountUrl}>Delete your account</a>.
+      </p>
+
+      <h3>Who can see a profile I share?</h3>
+      <!-- cite: PRIVACY.md §5 "Guardian Roles & Read Visibility" and "Guardian Notes Are Visible To The Child". -->
+      <p>
+        Every accepted guardian on a profile — whatever their role — can read
+        what's logged on it, with one deliberate exception: a day note the
+        profile's subject marked <strong>private</strong> is visible only to
+        her. Roles decide who can log and manage, not a sliding scale of what
+        they can read.
+      </p>
+
+      <h3>How do I invite my partner, or set a profile up for my daughter?</h3>
+      <p>
+        From the profile's guardian management, you can invite another adult
+        to share a profile you track on — or create a profile for someone else
+        and invite her to log it herself. Both directions are first-class.
+        <!-- TODO(#1106): link the "Setting up a household" and "Inviting someone" guides here once they exist. -->
+        A step-by-step guide is coming.
+      </p>
+
+      <h3>Does lunarlog work without a network?</h3>
+      <!-- cite: PRIVACY.md §7 "Export Your Data" (offline export) and the project's offline-first posture; AGENTS.md project overview. -->
+      <p>
+        Yes. Logging, history, and estimates all work offline, and what you
+        log syncs to your family's devices when a connection returns. Export
+        works offline too — it is built from the copy on your device.
+      </p>
+
+      <h3>Can I get my data out?</h3>
+      <!-- cite: PRIVACY.md §7 (JSON/CSV/FHIR/PDF exports, built on-device). -->
+      <p>
+        Any time, from <strong>Settings → Your data</strong>: a JSON file of
+        everything, two CSV spreadsheets, a FHIR summary for clinicians, and a
+        one-page PDF. All of them are built on your device and handed to your
+        share sheet — no account required.
+      </p>
+
+      <h3>Can I bring data in from Clue or my health app?</h3>
+      <!-- cite: PRIVACY.md §7/§4 and docs/ops/play-health-declaration.md (user-initiated Apple Health / Health Connect import, bounded to the last 30 days); bulk Clue import (issue #167/#172). -->
+      <p>
+        Yes. You can import history from Clue, and import the last 30 days
+        from Apple Health or Health Connect whenever you choose — imports
+        never overwrite a value you logged by hand. It's user-initiated only;
+        lunarlog never reads your health store in the background.
+        <!-- TODO(#1106): link the "Moving your data" guide here once it exists. -->
+        A guide is coming.
+      </p>
+
+      <h3>Is my data encrypted?</h3>
+      <!-- cite: PRIVACY.md §6 ("Cloud Storage Encryption (not end-to-end)", TLS in transit, device-level protection, RLS). Honest posture per #1105. -->
+      <p>
+        On your device, the database is protected by your device's own
+        encryption and unlocked only by your biometric or passcode. In the
+        cloud, data travels over TLS and is stored with standard at-rest
+        encryption — but it is <strong>not end-to-end encrypted</strong>: we
+        protect it with access control and infrastructure encryption rather
+        than keys only you hold. The privacy policy states this plainly, and
+        so do we.
+      </p>
+
+      <h3>Does the app show ads or track me?</h3>
+      <!-- cite: PRIVACY.md §1/§9 (no advertising, tracking = false). -->
+      <p>
+        No ads, no trackers, no analytics on this site. The app's crash
+        reporting is anonymized and scrubbed, and every optional network
+        feature — sync, alerts, feedback — is one you turn on.
+      </p>
+    </section>
+
+    <p class="doc__footer-note">
+      This site collects nothing — no forms, no analytics, no cookies. The
+      answers above summarize
+      <a href={privacyPolicyUrl}>our privacy policy</a>, which is the
+      authoritative version.
+    </p>
+  </article>
+</BaseLayout>
