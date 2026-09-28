@@ -1,0 +1,134 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import UiLabel from "../../components/UiLabel.astro";
+import HelpCard from "../../components/HelpCard.astro";
+
+// Issue #1106, guide 5: reading estimates — the confidence tiers, the
+// "not enough history" state, the irregular-cycles framing, and the late
+// resolver. Every explanation of the prediction engine is the in-app help
+// card rendered from the export (one home per explanation); tier labels
+// and buttons come from the ARB through <UiLabel>; every factual claim
+// carries a `<!-- cite: ... -->` ledger entry checked by
+// `site/scripts/check-claims.mjs`.
+---
+
+<BaseLayout
+  title="Reading estimates"
+  description="What lunarlog's estimate confidence labels mean, why a new profile says there is not enough history yet, and what the irregular-cycles framing changes."
+>
+  <article class="doc">
+    <h1 class="doc__title">Reading estimates</h1>
+    <p class="doc__lede">
+      lunarlog's estimate is the average of recent cycle lengths counted
+      forward from the last logged period start — an honest guess from
+      your own history, and nothing more. It comes with labels that say
+      how much to trust it. Estimates only — never medical advice.
+    </p>
+    <section>
+      <h2>What the estimate is</h2>
+      <HelpCard id="what-estimate-means" />
+    </section>
+
+    <section>
+      <h2>Why a new profile has no estimate</h2>
+      <p>
+        The app waits for three completed cycles before it estimates
+        anything. Until then it says so plainly instead of guessing —
+        <UiLabel key="overviewWhyThreeCompletedCycles" /> is a link, not
+        an error, and the calendar caption reads
+        <UiLabel key="futureExplainerNoEstimate" />.
+        <!-- cite: lib/domain/help/help_cards.dart (whyNoEstimateYet card); lib/domain/prediction/prediction.dart (statusLabel "not enough history yet"); lib/l10n/app_en.arb (futureExplainerNoEstimate, overviewWhyThreeCompletedCycles) -->
+      </p>
+      <HelpCard id="why-no-estimate-yet" />
+    </section>
+
+    <section>
+      <h2>The confidence labels</h2>
+      <p>
+        Every estimate carries one of four labels, and the app summarizes
+        each in place. The labels in the app's own words:
+      </p>
+      <ul>
+        <li>
+          <UiLabel key="cycleConfidenceHigh" /> —
+          <UiLabel key="cycleConfidenceSummaryHigh" />
+        </li>
+        <li>
+          <UiLabel key="cycleConfidenceLearning" /> —
+          <UiLabel key="cycleConfidenceSummaryLearning" />
+        </li>
+        <li>
+          <UiLabel key="cycleConfidenceIrregular" /> —
+          <UiLabel key="cycleConfidenceSummaryIrregular" />
+        </li>
+        <li>
+          <UiLabel key="cycleConfidenceProvisional" /> —
+          <UiLabel key="cycleConfidenceSummaryProvisional" />
+        </li>
+      </ul>
+      <HelpCard id="confidence-levels" />
+      <p>
+        The label matters more than the date: whenever the estimate is not
+        High confidence, the app shows a range of likely days rather than
+        one exact date, and the wider the history spreads, the wider the
+        range.
+        <!-- cite: lib/domain/help/help_cards.dart (confidenceLevels, whatEstimateMeans cards) -->
+      </p>
+    </section>
+
+    <section>
+      <h2>Irregular cycles</h2>
+      <p>
+        For cycles that simply vary — a teenager's first years, or
+        perimenopause — profiles can carry the
+        <UiLabel key="profileIrregularFramingLabel" /> framing:
+      </p>
+      <p class="note">
+        <UiLabel key="profileIrregularFramingHint" />
+      </p>
+      <p>
+        It is a framing switch, not a separate engine: the same honest
+        maths, presented as ranges instead of dates, with no late banner
+        and no late nudges. Teen care mode turns it on by default until
+        cycles steady, and it can be changed any time from
+        <UiLabel key="editProfileAction" />.
+        <!-- cite: lib/l10n/app_en.arb (profileIrregularFramingLabel/Hint); lib/domain/care_modes.dart (teen composes irregular framing on); lib/ui/profiles/first_run_screen.dart (edit profile) -->
+      </p>
+    </section>
+
+    <section>
+      <h2>When the estimate passes</h2>
+      <p>
+        A few days past the estimated date, the app asks what to do
+        rather than nagging. It offers three options, in the app's words:
+        <UiLabel key="lateResolverLogIt" />,
+        <UiLabel key="lateResolverSkipCycle" />, or
+        <UiLabel key="lateResolverRemindMe" />. Logging the period closes
+        the cycle and everything recomputes; skipping leaves the cycle in
+        history but out of the average.
+        <!-- cite: lib/domain/help/help_cards.dart (periodLate, skipCycleOmit cards); lib/ui/overview/late_resolver.dart (three options) -->
+      </p>
+      <HelpCard id="period-late" />
+      <p>
+        And the "late" in that card carries the important caveat: the
+        estimate is an average, and averages miss. A late estimate is
+        arithmetic, not a diagnosis — the card routes worry to a
+        clinician, and so does this guide.
+        <!-- cite: lib/domain/help/help_cards.dart (periodLate card; no individualised medical advice rule) -->
+      </p>
+      <HelpCard id="skip-cycle-omit" />
+    </section>
+
+    <section>
+      <h2>Turning estimates off</h2>
+      <p>
+        Estimates are a feature, not an obligation. A profile can turn
+        them off — <UiLabel key="settingsPredictionsTitle" /> in
+        <UiLabel key="settingsTitle" /> — and keep tracking with no dates
+        predicted at all. When cycles vary widely, the app itself may
+        suggest exactly that.
+        <!-- cite: lib/l10n/app_en.arb (settingsPredictionsTitle, overviewIrregularSuggestionBody); lib/ui/settings/settings_screen.dart (estimates toggle) -->
+      </p>
+    </section>
+  </article>
+</BaseLayout>

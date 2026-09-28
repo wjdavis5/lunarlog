@@ -1,0 +1,64 @@
+/* Styles for the how-to guides only (issue #1106), loaded solely by the
+ * pages that import it (HelpCard.astro and the guides index) — never by
+ * the shared global.css. Global styles are render-blocking on every page
+ * of the site, and #1106's first shared-bundle version cost the Lighthouse
+ * performance budget on the screenshot-heavy /tracking/ page (0.92 against
+ * the 0.95 floor in CI, deterministic across reruns) for styles that page
+ * never uses. Same CSP rules as global.css: external sheet, never inline. */
+
+/* A rendered in-app help card (#139 via the #1103 export pattern): a
+ * bordered aside carrying the card's own source and review date. */
+.help-card {
+  margin: 1.25rem 0;
+  padding: 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--brand-teal);
+  border-radius: 0.75rem;
+}
+
+.help-card__title {
+  margin: 0 0 0.5rem;
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--brand-purple);
+}
+
+.help-card__summary {
+  margin: 0 0 0.75rem;
+  font-weight: 500;
+}
+
+.help-card p {
+  margin: 0 0 0.75rem;
+}
+
+.help-card p:last-child {
+  margin-bottom: 0;
+}
+
+.help-card__source {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.guide-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guide-list__item {
+  margin: 0 0 1.25rem;
+}
+
+.guide-list__link {
+  font-weight: 600;
+  font-size: 1.0625rem;
+}
+
+.guide-list__description {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+}

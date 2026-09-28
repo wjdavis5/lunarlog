@@ -1,0 +1,110 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+// Guide-list styles are guides-only (see styles/guides.css).
+import "../../styles/guides.css";
+
+// Issue #1106: the how-to guides' index — the path from install to a
+// shared household without help. Every guide below quotes its screen
+// names and button labels through the UiLabel component (the app's own
+// ARB strings), reuses the in-app help cards through the #1103 export
+// pattern, and carries a `<!-- cite: ... -->` claims ledger enforced by
+// `site/scripts/check-claims.mjs`.
+
+/** One guide's stable path, title, and one-sentence promise. */
+const GUIDES = [
+  {
+    path: "/guides/getting-started/",
+    title: "Getting started",
+    description:
+      "Install on iPhone or Android — or open the browser version — create the account, set up the first profile, and meet the lock screen.",
+  },
+  {
+    path: "/guides/household-setup/",
+    title: "Setting up a household",
+    description:
+      "Profiles, the four guardian roles, and what each one can see and do.",
+  },
+  {
+    path: "/guides/inviting-someone/",
+    title: "Inviting someone",
+    description:
+      "Two walk-throughs, one for each direction: inviting a guardian into a profile you track on, and inviting the person a profile is about to log it herself.",
+  },
+  {
+    path: "/guides/transferring-ownership/",
+    title: "Transferring ownership",
+    description:
+      "Hand a profile to its subject's own account — a one-way move that keeps every entry's original attribution.",
+  },
+  {
+    path: "/guides/logging-a-day/",
+    title: "Logging a day",
+    description:
+      "Flow, spotting, tags, and notes — plus how editing and deleting work.",
+  },
+  {
+    path: "/guides/reading-estimates/",
+    title: "Reading estimates",
+    description:
+      "What the confidence labels mean, why a new profile shows no estimate yet, and what the irregular-cycles framing changes.",
+  },
+  {
+    path: "/guides/moving-your-data/",
+    title: "Moving your data",
+    description:
+      "Bring history in from Clue or your health app, and take everything out as JSON, CSV, FHIR, or a PDF.",
+  },
+  {
+    path: "/guides/browser-version/",
+    title: "Using the browser version",
+    description:
+      "What a browser keeps and clears, and how to share a computer safely.",
+  },
+];
+---
+
+<BaseLayout
+  title="How-to guides"
+  description="Step-by-step lunarlog guides: getting started, setting up a household, inviting someone, logging, reading estimates, and moving your data."
+>
+  <article class="doc">
+    <h1 class="doc__title">How-to guides</h1>
+    <p class="doc__lede">
+      Everything you need to go from install to a shared household, in the
+      order most families need it. Start anywhere — each guide stands on
+      its own.
+    </p>
+    <section>
+      <h2>The guides</h2>
+      <ul class="guide-list">
+        {
+          GUIDES.map((guide) => (
+            <li class="guide-list__item">
+              <a class="guide-list__link" href={guide.path}>
+                {guide.title}
+              </a>
+              <p class="guide-list__description">{guide.description}</p>
+            </li>
+          ))
+        }
+      </ul>
+    </section>
+    <section>
+      <h2>Two things worth knowing first</h2>
+      <p>
+        lunarlog is built for sharing: an account is how a device joins the
+        household and how a profile reaches the other people who care for
+        it. And nothing leaves the device before that — you can start
+        logging before you ever make an account, and decide later.
+        <!-- cite: docs/product/positioning.md; PRIVACY.md#1-core-principles -->
+      </p>
+      <p>
+        Whichever direction your family comes from — you tracking for
+        yourself and inviting someone in, or someone setting a profile up
+        for you — the guides treat both as equally normal, because both
+        are. Neither one is the "real" way to use lunarlog.
+        <!-- cite: docs/product/positioning.md#this-product-is-not-parent-first-and-not-parent-only -->
+      </p>
+    </section>
+  </article>
+</BaseLayout>

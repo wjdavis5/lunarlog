@@ -1,0 +1,115 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import UiLabel from "../../components/UiLabel.astro";
+import HelpCard from "../../components/HelpCard.astro";
+
+// Issue #1106, guide 7: using the browser version — what the browser
+// keeps, signing out, and shared computers, based on the app's own web
+// disclosure copy (#831's resolution). The disclosure strings are quoted
+// from the ARB through <UiLabel>, the sync explanation reuses the in-app
+// help card, and every factual claim carries a `<!-- cite: ... -->`
+// ledger entry checked by `site/scripts/check-claims.mjs`.
+---
+
+<BaseLayout
+  title="Using the browser version"
+  description="What the browser version of lunarlog keeps and clears, how signing out works, and how to use it safely on a shared computer."
+>
+  <article class="doc">
+    <h1 class="doc__title">Using the browser version</h1>
+    <p class="doc__lede">
+      lunarlog runs in a browser at
+      <a href="https://app.lunarlog.app" rel="noopener">app.lunarlog.app</a>
+      — the same app, with one honest difference you should understand
+      before signing in on one: where a phone keeps your data under the
+      operating system's encryption, a browser keeps its copy unencrypted.
+      This page is exactly that difference, in the app's own words.
+      <!-- cite: lib/ui/web/dev_banner.dart (the two honest browser states); PRIVACY.md#6-security-protections -->
+    </p>
+
+    <section>
+      <h2>What the browser keeps</h2>
+      <p>
+        Signing in to lunarlog in a browser shows a one-time notice first,
+        and it does not mince words. In the app's own disclosure:
+      </p>
+      <p class="note">
+        <UiLabel key="webFirstRunSyncedBody" />
+      </p>
+      <p>
+        A small banner saying the same — <UiLabel
+          key="webBannerSyncedCopy"
+        /> — stays available while you use the browser version. The rule of
+        thumb it teaches: treat a browser session as the copy, not the
+        original. Your account's data lives in your account; the browser
+        holds a working copy of it while you are signed in.
+        <!-- cite: lib/ui/web/dev_banner.dart (synced-state banner + first-run acknowledgement); lib/l10n/app_en.arb (webBannerSyncedCopy, webFirstRunSyncedBody) -->
+      </p>
+      <HelpCard id="sync-what" />
+      <p>
+        The phone apps differ in one more way that matters here: a phone
+        keeps everything behind its screen lock, while the browser version
+        does not add a lock of its own. Anyone at the keyboard with the
+        session open can read what the browser holds — which is why the
+        next section is short and strict.
+        <!-- cite: lib/app_root.dart (gate.requiresUnlock is false on web); lib/startup/gate/local_auth_gate.dart (native always locks) -->
+      </p>
+    </section>
+
+    <section>
+      <h2>Shared computers</h2>
+      <p>
+        On a computer other people use, the habit is simple: sign out
+        when you are done, every time.
+      </p>
+      <ul>
+        <li>
+          Signing out removes the copy from that browser — your account's
+          data stays in your account and can sync again later.
+          <!-- cite: lib/l10n/app_en.arb (webFirstRunSyncedBody, webBannerSyncedCopy); lib/ui/web/dev_banner.dart -->
+        </li>
+        <li>
+          For a stronger clear, the browser version has
+          <UiLabel key="webWipeAction" />, behind a confirmation that names
+          the consequence: <UiLabel key="webWipeConfirmSyncedBody" />
+          Confirm with <UiLabel key="webWipeConfirmAction" />.
+          <!-- cite: lib/ui/web/dev_banner.dart (confirm-guarded wipe, KTD16 device reset); lib/l10n/app_en.arb (webWipe*) -->
+        </li>
+        <li>
+          Signing out of the account on all devices at once — from
+          <UiLabel key="settingsTitle" /> under
+          <UiLabel key="accountSectionTitle" /> — also clears this
+          device's copy, though other devices may keep working for up to
+          an hour: <UiLabel key="accountSignOutEverywhereBody" />
+          <!-- cite: lib/ui/settings/settings_screen.dart (account section); lib/l10n/app_en.arb (accountSignOutEverywhereBody) -->
+        </li>
+      </ul>
+      <p>
+        And the judgment call no guide can make for you: a cycle log for a
+        teenager belongs on her own devices. A shared family computer in a
+        common room, used with her knowledge, is one thing; a borrowed
+        work laptop is another. When in doubt, use your phone.
+        <!-- cite: PRIVACY.md#5-minors-privacy--family-profiles (minors' profiles stay with their guardians) -->
+      </p>
+    </section>
+
+    <section>
+      <h2>What the browser version is good for</h2>
+      <p>
+        A personal computer with a password-protected account of your own:
+        comfortable keyboard-and-screen editing, catching up on a household's
+        profiles from a laptop, or trying lunarlog before installing
+        anything. All the everyday things — logging, reading history,
+        reading estimates — work the same as on a phone; when you go back
+        to your phone, the same account puts the same profiles there.
+        <!-- cite: docs/product/positioning.md (an account is the product's core loop); PRIVACY.md#1-core-principles (resilient offline posture applies to the native apps) -->
+      </p>
+      <p>
+        If the build you open has accounts switched off entirely — a
+        development build — the app says so in place, and keeps its banner
+        up: not for real data. That banner, too, is the app being honest.
+        <!-- cite: lib/ui/web/dev_banner.dart (sync-off state, webBannerDevCopy); lib/config.dart (LUNARLOG_WEB_SYNC) -->
+      </p>
+    </section>
+  </article>
+</BaseLayout>

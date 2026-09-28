@@ -1,0 +1,183 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import UiLabel from "../../components/UiLabel.astro";
+import HelpCard from "../../components/HelpCard.astro";
+
+// Issue #1106, guide 1: getting started on iPhone, Android, and the
+// browser — the account, the first profile, and the lock gate. Every
+// screen name and button label is quoted from the app's own ARB strings
+// through <UiLabel> (an unknown key fails the build), the lock-gate and
+// privacy explanations reuse the in-app help cards, and every factual
+// claim carries a `<!-- cite: ... -->` ledger entry checked by
+// `site/scripts/check-claims.mjs`.
+---
+
+<BaseLayout
+  title="Getting started"
+  description="Install lunarlog on iPhone or Android, or open it in a browser; create the account, set up your first profile, and learn how the lock screen protects what you log."
+>
+  <article class="doc">
+    <h1 class="doc__title">Getting started</h1>
+    <p class="doc__lede">
+      From install to your first logged day, on any device your family
+      uses. The example here follows Sam, who is setting lunarlog up for
+      herself — the <a href="/guides/inviting-someone/">inviting guide</a>
+      picks the story up from there, in both directions.
+    </p>
+
+    <section>
+      <h2>Install, or open the browser version</h2>
+      <p>
+        lunarlog runs on iPhone, on Android, and in a browser. The phone
+        apps are the full experience, including the lock screen and the
+        optional health-app connections; the
+        <a href="/guides/browser-version/">browser version</a> is a real
+        lunarlog too, with its own storage trade-offs, explained on that
+        page.
+      </p>
+      <ol class="doc__steps">
+        <li>
+          On a phone, install lunarlog from the App Store or Google Play.
+          In a browser, go to <a
+            href="https://app.lunarlog.app"
+            rel="noopener">app.lunarlog.app</a
+          >.
+        </li>
+        <li>
+          Open the app. On a phone, everything you log is protected by the
+          device's own screen lock from the very first launch — the lock
+          screen appears before the app's contents, and stays between your
+          data and the world every time after.
+          <!-- cite: lib/startup/gate/local_auth_gate.dart (requiresUnlock is always true on native); lib/gate_controller.dart -->
+        </li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>Set up the first profile</h2>
+      <p>
+        A profile is one person's cycle log — its own name, history, and
+        estimates. Sam's first profile is her own.
+      </p>
+      <ol class="doc__steps">
+        <li>
+          The first screen asks <UiLabel key="firstRunWhoLabel" />. Sam
+          picks <UiLabel key="firstRunWhoMe" /> — the
+          <UiLabel key="firstRunWhoSomeone" /> path is the same flow with
+          the minor flag available, for a profile someone else will log
+          for, at least for now.
+          <!-- cite: lib/ui/profiles/first_run_screen.dart (first-run "who is this profile for" step) -->
+        </li>
+        <li>
+          Enter the person's name under <UiLabel key="firstRunNameLabel" />
+          — a first name or nickname is normal; lunarlog never asks for
+          more.
+          <!-- cite: lib/ui/profiles/first_run_screen.dart (name field) -->
+        </li>
+        <li>
+          A few optional questions follow — when the last period started,
+          typical cycle and period lengths — and every one of them can be
+          skipped: <UiLabel key="firstRunCycleCaption" />. Answers sharpen
+          the early estimates; skipping costs nothing.
+          <!-- cite: lib/ui/profiles/first_run_screen.dart (optional cycle questions, #216) -->
+        </li>
+        <li>
+          Choose the <UiLabel key="firstRunCareModeLabel" /> when it is
+          offered. Standard works for most adults; the life-stage modes
+          change wording and reminders, not what is stored — and the mode
+          can be changed any time from
+          <UiLabel key="editProfileAction" />.
+          <!-- cite: lib/domain/care_modes.dart (modes reframe copy, never data); lib/ui/profiles/first_run_screen.dart -->
+        </li>
+        <li>
+          Tap <UiLabel key="firstRunCreateButton" />. That is the whole
+          setup — logging takes one tap from here, and the
+          <a href="/guides/logging-a-day/">logging guide</a> walks through
+          it.
+          <!-- cite: lib/ui/profiles/first_run_screen.dart (final create step) -->
+        </li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>The account — now or later</h2>
+      <p>
+        You can log for weeks without an account: everything stays on the
+        device. The account is what makes lunarlog more than a private
+        notebook — it syncs a profile across your own devices and carries
+        invitations to the other guardians in the household.
+        <!-- cite: docs/product/positioning.md (the family-collaboration story); PRIVACY.md#1-core-principles -->
+      </p>
+      <p>
+        When you are ready, create it from
+        <UiLabel key="settingsTitle" />: <UiLabel
+          key="accountSignInCreateAccountAction"
+        /> asks for an <UiLabel key="accountSignInEmailLabel" /> and a
+        <UiLabel key="accountSignInPasswordLabel" />, or you can sign in
+        with Google on iPhone and Android, or with Apple on iPhone.
+        <!-- cite: lib/startup/supabase_bootstrap.dart (email/password, Google on iOS+Android, Apple on iOS, passwordless email); lib/config.dart (feature defines) -->
+      </p>
+      <p>
+        Signing in uploads this device's data only after your explicit
+        consent — the app asks first. From then on, profiles and day
+        entries sync between the household's signed-in devices.
+        <!-- cite: lib/domain/help/help_cards.dart (syncWhat card); PRIVACY.md#2-information-we-collect-and-process -->
+      </p>
+      <HelpCard id="privacy-at-a-glance" />
+    </section>
+
+    <section>
+      <h2>The lock screen</h2>
+      <p>
+        On a phone, the app's contents stay behind the device's screen
+        lock. Reopen lunarlog and you will see
+        <UiLabel key="gateLockScreenTitle" /> with a single
+        <UiLabel key="gateLockScreenUnlockButton" /> step:
+        <UiLabel key="gateLockScreenProtectedBody" />.
+        <!-- cite: lib/ui/gate/lock_screen.dart; lib/startup/gate/local_auth_gate.dart -->
+      </p>
+      <p>
+        If the phone has no screen lock at all, the app says so and offers
+        to open the device settings: lunarlog leans on the protection the
+        operating system already provides, so it asks you to add a
+        passcode, PIN, pattern, or biometric lock rather than invent its
+        own.
+        <!-- cite: lib/ui/gate/lock_screen.dart (no-credential state); docs/ops/ios-export-compliance.md (OS at-rest protection posture) -->
+      </p>
+      <p>
+        Two refinements live in <UiLabel key="settingsTitle" /> under
+        <UiLabel key="settingsSectionPrivacySecurity" />: an optional
+        in-app PIN on top of the device credential, and
+        <UiLabel key="settingsRelockTitle" /> — how long the app waits
+        before locking itself again when you step away.
+        <!-- cite: lib/ui/gate/pin_settings_screen.dart (#271 optional PIN layer); lib/gate_controller.dart (inactivity relock) -->
+      </p>
+    </section>
+
+    <section>
+      <h2>Where to go next</h2>
+      <ul>
+        <li>
+          <a href="/guides/logging-a-day/">Logging a day</a> — flow,
+          symptoms, tags, and notes.
+        </li>
+        <li>
+          <a href="/guides/household-setup/">Setting up a household</a> —
+          more profiles, and the four guardian roles.
+        </li>
+        <li>
+          <a href="/guides/inviting-someone/">Inviting someone</a> — bring
+          a parent, partner, or the profile's own subject in.
+        </li>
+      </ul>
+    </section>
+
+    <p class="doc__footer-note">
+      These guides follow the app's own built-in explanations, which work
+      offline: <UiLabel key="settingsHelpTitle" /> in
+      <UiLabel key="settingsTitle" /> has the same cards this site reuses,
+      with their sources and review dates.
+      <!-- cite: lib/ui/settings/settings_screen.dart (help section); lib/domain/help/help_cards.dart -->
+    </p>
+  </article>
+</BaseLayout>

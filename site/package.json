@@ -14,8 +14,10 @@
     "check:links": "node scripts/check-internal-links.mjs",
     "check:privacy-anchors": "node scripts/check-privacy-anchors.mjs",
     "check:external-links": "node scripts/check-external-links.mjs",
+    "check:claims": "node scripts/check-claims.mjs",
     "check:lighthouse": "lhci autorun",
-    "check:axe": "node scripts/check-axe.mjs"
+    "check:axe": "node scripts/check-axe.mjs",
+    "test": "node --test \"scripts/**/*.test.mjs\""
   },
   "dependencies": {
     "@astrojs/markdown-satteri": "0.4.2",

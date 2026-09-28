@@ -13,9 +13,8 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 // published in PRIVACY.md. Do not point App Store Connect at this URL until
 // that follow-up has merged.
 //
-// The FAQ's "guide" mentions are pending #1106 (the how-to guides are not
-// built yet). They are written so each answer stands on its own; when
-// #1106 lands, wire the named guides in as links.
+// The FAQ's guide mentions (#1106) link into the how-to guides, which
+// carry the step-by-step versions of these answers.
 
 const privacyPolicyUrl = "https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md";
 const privacyContactUrl = `${privacyPolicyUrl}#11-contact-information`;
@@ -100,9 +99,10 @@ const deleteAccountUrl = "/delete-account";
       <p>
         From the profile's guardian management, you can invite another adult
         to share a profile you track on — or create a profile for someone else
-        and invite her to log it herself. Both directions are first-class.
-        <!-- TODO(#1106): link the "Setting up a household" and "Inviting someone" guides here once they exist. -->
-        A step-by-step guide is coming.
+        and invite her to log it herself. Both directions are first-class, and
+        the guides walk each one:
+        <a href="/guides/household-setup/">Setting up a household</a> and
+        <a href="/guides/inviting-someone/">Inviting someone</a>.
       </p>
 
       <h3>Does lunarlog work without a network?</h3>
@@ -133,8 +133,8 @@ const deleteAccountUrl = "/delete-account";
         you choose, as far back as your health app has it. Imports never
         overwrite a value you logged by hand. It's user-initiated only;
         lunarlog never reads your health store in the background.
-        <!-- TODO(#1106): link the "Moving your data" guide here once it exists. -->
-        A guide is coming.
+        <a href="/guides/moving-your-data/">Moving your data</a> walks
+        through it.
       </p>
 
       <h3>Is my data encrypted?</h3>

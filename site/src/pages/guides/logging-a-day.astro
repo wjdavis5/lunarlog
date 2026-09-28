@@ -1,0 +1,139 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import UiLabel from "../../components/UiLabel.astro";
+import HelpCard from "../../components/HelpCard.astro";
+
+// Issue #1106, guide 4: logging a day — flow, tracked options, tags and
+// notes (including the private note), plus editing and deleting. The
+// mechanics reuse the in-app help cards; screen names and button labels
+// come from the app's ARB strings through <UiLabel>; every factual claim
+// carries a `<!-- cite: ... -->` ledger entry checked by
+// `site/scripts/check-claims.mjs`.
+---
+
+<BaseLayout
+  title="Logging a day"
+  description="How to log a day in lunarlog: flow and spotting, tracked options, tags, and notes — including private notes — plus how editing and deleting work."
+>
+  <article class="doc">
+    <h1 class="doc__title">Logging a day</h1>
+    <p class="doc__lede">
+      One tap is enough on an ordinary day; everything else is optional.
+      This guide walks a single day's entry — what each part is for, and
+      how to change or remove it later.
+    </p>
+    <section>
+      <h2>One day at a time</h2>
+      <HelpCard id="log-period" />
+    </section>
+
+    <section>
+      <h2>Starting a day</h2>
+      <p>
+        When a period starts, logging it is one tap: the overview offers
+        <UiLabel key="todayCardLogPeriodStartedToday" />. That records the
+        day, marks it as bleeding, and starts a new cycle count —
+        history and estimates update from that single tap.
+        <!-- cite: lib/ui/overview/ (today card quick-log, overviewLoggedSnackbar); lib/domain/help/help_cards.dart (logPeriod, cycleDay cards) -->
+      </p>
+      <p>
+        Days do not have to be logged the day they happen: the calendar
+        opens any past day, so a forgotten day can be filled in later, and
+        logging a few periods start-to-finish is what keeps the
+        estimates sharp.
+        <!-- cite: lib/domain/help/help_cards.dart (logPeriod, periodLengthAverage cards) -->
+      </p>
+      <p>
+        One thing the app will ask about: starting to log bleeding much
+        earlier than expected opens a confirmation —
+        <UiLabel key="daySheetCycleStartDialogTitle" /> — because
+        logging flow starts a new cycle, while spotting never does. It is
+        a checkpoint, not a scolding; either choice keeps the record
+        honest.
+        <!-- cite: lib/l10n/app_en.arb (daySheetCycleStartDialog*); lib/domain/help/help_cards.dart (flowLevels card: spotting is logged separately) -->
+      </p>
+    </section>
+
+    <section>
+      <h2>What a day holds</h2>
+      <p>
+        Each day carries one entry with several parts, all optional beyond
+        the flow itself:
+      </p>
+      <ul>
+        <li>
+          <strong>Flow.</strong> One level per day: <UiLabel
+            key="flowLevelNotBleeding"
+          />, <UiLabel key="flowLevelLight" />, <UiLabel
+            key="flowLevelMedium"
+          />, <UiLabel key="flowLevelHeavy" />, or <UiLabel
+            key="flowLevelSuperHeavy"
+          />. <UiLabel key="flowLevelSpotting" /> is its own tracked
+          option, separate from flow — light staining between periods
+          belongs there, which keeps period boundaries honest.
+          <!-- cite: lib/l10n/app_en.arb (flowLevel*); lib/domain/help/help_cards.dart (flowLevels card) -->
+        </li>
+        <li>
+          <strong>Tracked options.</strong> Pains, feelings, sleep, and
+          other signals, each its own record on the day, each with its own
+          detail where it fits. Logging a few consistently matters more
+          than logging many occasionally.
+          <!-- cite: lib/domain/help/help_cards.dart (trackedSymptoms card) -->
+        </li>
+        <li>
+          <strong>Tags.</strong> Quick labels that make patterns easy to
+          spot later. A day can carry several; the
+          <UiLabel key="daySheetCustomTagsLabel" /> list grows with the
+          household's own words, searchable from the day sheet.
+          <!-- cite: lib/l10n/app_en.arb (daySheetCustomTagsLabel, daySheetTagSearchHint); lib/domain/help/help_cards.dart (tagsNotes card) -->
+        </li>
+        <li>
+          <strong>A note.</strong> <UiLabel key="daySheetNoteLabel" /> is
+          free text — anything a label cannot hold.
+          <!-- cite: lib/l10n/app_en.arb (daySheetNoteLabel); lib/domain/help/help_cards.dart (tagsNotes card) -->
+        </li>
+      </ul>
+      <p>
+        The note has one privacy choice, made when it is written: marking
+        it private keeps it hers alone. Guardians on the profile see that
+        a private note exists — the day shows
+        <UiLabel key="daySheetNotePrivateHidden" /> — but not what it
+        says.
+        <!-- cite: lib/l10n/app_en.arb (daySheetNotePrivate*); PRIVACY.md#5-minors-privacy--family-profiles (private notes visible only to the subject) -->
+      </p>
+    </section>
+
+    <section>
+      <h2>Editing and deleting</h2>
+      <HelpCard id="edit-delete-entry" />
+      <p>
+        To change a day, open it, adjust anything, and
+        <UiLabel key="daySheetSave" /> — saving overwrites that day only.
+        To remove a day's content, <UiLabel key="daySheetDelete" /> from
+        the same place; after confirming
+        <UiLabel key="daySheetDeleteTitle" />, the day keeps its place in
+        the calendar with nothing logged on it, and a snackbar offers
+        <UiLabel key="daySheetUndo" /> for a moment in case the tap was a
+        mistake.
+        <!-- cite: lib/l10n/app_en.arb (daySheetSave/Delete/DeleteTitle/Undo); lib/domain/help/help_cards.dart (editDeleteEntry card) -->
+      </p>
+      <p>
+        There is no deadline on corrections: a mis-logged day can be fixed
+        at any time, and estimates recompute from the corrected history.
+        <!-- cite: lib/domain/help/help_cards.dart (editDeleteEntry card) -->
+      </p>
+    </section>
+
+    <section>
+      <h2>What happens to a logged day</h2>
+      <p>
+        Everything works offline; entries sync to the account's other
+        devices the next time the device is online and signed in. When two
+        guardians log on the same day at once, the entries merge rather
+        than one overwriting the other — tags combine, and each field
+        keeps the newest write.
+        <!-- cite: lib/domain/help/help_cards.dart (logPeriod, offlineMode, syncWhat cards); lib/data/db/storage.dart (same-date conflict resolution) -->
+      </p>
+    </section>
+  </article>
+</BaseLayout>

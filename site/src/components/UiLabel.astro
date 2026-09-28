@@ -12,26 +12,28 @@
 // and a missing file fails the compile), while a runtime `import.meta.url`
 // read would resolve against the bundled prerender chunk under dist/ and
 // miss the repo root. The same shape imports PRIVACY.md into privacy.astro.
+//
+// Key resolution, placeholder interpolation, and the ICU-composite refusal
+// live in one tested place (`src/lib/ui-strings.mjs`, unit-tested by
+// `npm test`): a `{param}` placeholder must be given a value, and a
+// plural/select message is refused rather than rendered raw. (#1106's
+// guides interpolate fabricated example names into a few ARB sentences.)
 import arbSource from "../../../lib/l10n/app_en.arb?raw";
+import { arbString } from "../lib/ui-strings.mjs";
 
 interface Props {
   /** An ARB key from `lib/l10n/app_en.arb`, e.g. `guardianRoleLabelViewer`. */
   key: string;
+  /** Values for `{param}` placeholders (fabricated example names only). */
+  values?: Record<string, string>;
   /** Optional class for the wrapping span; without one, bare text renders. */
   class?: string;
 }
 
-const { key, class: className } = Astro.props as Props;
+const { key, values, class: className } = Astro.props as Props;
 
 const catalog = JSON.parse(arbSource) as Record<string, unknown>;
-const value = catalog[key];
-if (typeof value !== "string" || value === "") {
-  throw new Error(
-    `UiLabel: key "${key}" is not a non-empty string in lib/l10n/app_en.arb. ` +
-      "The app renamed or removed it — update this site's usage in the same " +
-      "change that renamed it (issues #1105/#1106).",
-  );
-}
+const value = arbString(catalog, key, values);
 ---
 
 {className ? <span class={className}>{value}</span> : <Fragment>{value}</Fragment>}

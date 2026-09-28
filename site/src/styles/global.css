@@ -244,6 +244,12 @@ main {
   color: var(--muted);
 }
 
+/* Section styles live in section stylesheets loaded only by that section's
+ * pages, never here: global.css is render-blocking on every page of the
+ * site, and #1106's guide-only rules cost the Lighthouse performance
+ * budget on the screenshot-heavy /tracking/ page (0.92 against the 0.95
+ * floor in CI) for styles that page never uses. See guides.css (#1106). */
+
 .site-footer {
   border-top: 1px solid var(--border);
   background: var(--surface);

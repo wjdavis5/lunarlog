@@ -29,6 +29,16 @@ module.exports = {
         "http://localhost/import/",
         "http://localhost/export/",
         "http://localhost/privacy-security/",
+        // The how-to guides (issue #1106).
+        "http://localhost/guides/",
+        "http://localhost/guides/getting-started/",
+        "http://localhost/guides/household-setup/",
+        "http://localhost/guides/inviting-someone/",
+        "http://localhost/guides/transferring-ownership/",
+        "http://localhost/guides/logging-a-day/",
+        "http://localhost/guides/reading-estimates/",
+        "http://localhost/guides/moving-your-data/",
+        "http://localhost/guides/browser-version/",
       ],
       numberOfRuns: 3,
       settings: {
