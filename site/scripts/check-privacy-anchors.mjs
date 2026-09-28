@@ -51,7 +51,13 @@ const PINNED_H3_IDS = [
   "change-history",
 ];
 
-const html = await readFile(path.join(dist, "privacy.html"), "utf8");
+// Directory build format: the page lands at dist/privacy/index.html and is
+// served at /privacy (the Worker's auto-trailing-slash 308s to /privacy/,
+// the canonical URL).
+const html = await readFile(
+  path.join(dist, "privacy", "index.html"),
+  "utf8",
+);
 
 const headingIds = [...html.matchAll(/<h[123][^>]*\bid="([^"]+)"/g)].map(
   (match) => match[1],

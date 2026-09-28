@@ -18,13 +18,11 @@ export default defineConfig({
     // HTML. The default ('auto') inlines anything under 4 kB; 'never' always
     // emits an external `<link rel="stylesheet">`.
     inlineStylesheets: "never",
-    // `/privacy` as a plain file (issue #1101), not `privacy/index.html`:
-    // the served URL, the `<link rel=canonical>` Astro emits, and the URL
-    // cited in the app and the store listings are then the exact same
-    // `https://lunarlog.app/privacy`, with no trailing-slash redirect in
-    // between. `index.html` and `404.html` (the Worker's 404 page) are
-    // unchanged by this setting.
-    format: "file",
+    // `format` stays Astro's default ('directory'): #1102's /support/ and
+    // /delete-account/ pages (and their Lighthouse budgets) are built on it,
+    // and `/privacy` resolves to the same page through the Worker's
+    // auto-trailing-slash, whose target `/privacy/` is what the canonical
+    // tag then correctly names (issue #1101).
   },
   markdown: {
     // Explicit (rather than the implicit default) so the rewrites below can

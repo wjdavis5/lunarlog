@@ -6592,6 +6592,12 @@ abstract class AppLocalizations {
   /// **'Email me a sign-in link'**
   String get accountSignInMagicLinkSignIn;
 
+  /// Issue #1096: sign-in screen web-only hint pointing Google- and Apple-created accounts at the passwordless email option, shown under the sign-in options because neither provider button renders in a browser.
+  ///
+  /// In en, this message translates to:
+  /// **'Created your account with Google or Apple? Use the emailed sign-in link or code above with the email address that account uses.'**
+  String get accountSignInWebProviderHint;
+
   /// Issue #1004 (tranche 2): delete-account confirmation dialog title.
   ///
   /// In en, this message translates to:

@@ -416,6 +416,56 @@ void main() {
     });
   });
 
+  group('web provider hint (issue #1096: Google- and Apple-created accounts '
+      'on web)', () {
+    final hintCopy = AppLocalizationsEn().accountSignInWebProviderHint;
+
+    Future<void> pumpWebShape(WidgetTester tester,
+            {bool? showWebProviderHint = true}) =>
+        pumpStandalone(
+          tester,
+          showApple: false,
+          showGoogle: false,
+          showPasskeys: false,
+          showWebProviderHint: showWebProviderHint,
+        );
+
+    testWidgets('on web (injected true): the hint renders under the '
+        'sign-in options, below the passwordless entry', (tester) async {
+      await pumpWebShape(tester);
+      expect(key('auth-web-provider-hint'), findsOneWidget);
+      expect(find.text(hintCopy), findsOneWidget);
+      expect(
+        tester.getTopLeft(key('auth-web-provider-hint')).dy,
+        greaterThan(tester.getTopLeft(key('auth-magic-link')).dy),
+        reason: 'the hint sits under the sign-in options, not above them',
+      );
+    });
+
+    testWidgets('on native (injected false): no hint', (tester) async {
+      await pumpStandalone(tester, showWebProviderHint: false);
+      expect(key('auth-web-provider-hint'), findsNothing);
+    });
+
+    testWidgets('the null default follows kIsWeb — false under the host '
+        'test runner, so a native build never shows it without the '
+        'override', (tester) async {
+      expect(kIsWeb, isFalse,
+          reason: 'this pin only means something on a non-web runner');
+      await pumpStandalone(tester);
+      expect(key('auth-web-provider-hint'), findsNothing);
+    });
+
+    testWidgets('persists across the create-account toggle: the steer away '
+        'from minting a second account matters most after that flip',
+        (tester) async {
+      await pumpWebShape(tester);
+      await tester.tap(key('auth-mode-toggle'));
+      await tester.pumpAndSettle();
+      expect(key('auth-web-provider-hint'), findsOneWidget);
+    });
+  });
+
   group('provider buttons and passwordless entry (#2 U4; AE2, AE8, R12)', () {
     testWidgets('showGoogle: false and the null default (empty config on a '
         'non-web platform) render no Google button; true renders it (AE8)', (
@@ -2919,6 +2969,7 @@ Future<StandaloneSignIn> pumpStandalone(
   bool? showApple,
   bool? showGoogle,
   bool? showPasskeys,
+  bool? showWebProviderHint,
   bool embedded = false,
   VoidCallback? onSignedIn,
   Map<String, String>? seed,
@@ -2944,6 +2995,7 @@ Future<StandaloneSignIn> pumpStandalone(
           showApple: showApple,
           showGoogle: showGoogle,
           showPasskeys: showPasskeys,
+          showWebProviderHint: showWebProviderHint,
           embedded: embedded,
           onSignedIn: onSignedIn,
         ),

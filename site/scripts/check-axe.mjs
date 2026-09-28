@@ -23,7 +23,7 @@ const dist = path.resolve(
   "../dist",
 );
 
-const PAGES = ["/", "/privacy"];
+const PAGES = ["/", "/privacy", "/delete-account/", "/support/"];
 
 const MIME = {
   ".css": "text/css; charset=utf-8",

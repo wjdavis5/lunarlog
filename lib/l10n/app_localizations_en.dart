@@ -4120,6 +4120,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get accountSignInMagicLinkSignIn => 'Email me a sign-in link';
 
   @override
+  String get accountSignInWebProviderHint =>
+      'Created your account with Google or Apple? Use the emailed sign-in link or code above with the email address that account uses.';
+
+  @override
   String get accountDeleteDialogTitle => 'Delete account?';
 
   @override
