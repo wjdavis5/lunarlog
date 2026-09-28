@@ -4501,6 +4501,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String crisisLaunchFailed(String number) {
+    return 'This device couldn\'t open that. You can still reach $number from another phone that can call or text.';
+  }
+
+  @override
   String get cycleLiteracyLibraryTitle => 'Cycle Literacy Library';
 
   @override

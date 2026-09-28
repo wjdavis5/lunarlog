@@ -123,12 +123,16 @@ const deleteAccountUrl = "/delete-account";
       </p>
 
       <h3>Can I bring data in from Clue or my health app?</h3>
-      <!-- cite: PRIVACY.md §7/§4 and docs/ops/play-health-declaration.md (user-initiated Apple Health / Health Connect import, bounded to the last 30 days); bulk Clue import (issue #167/#172). -->
+      <!-- cite: PRIVACY.md §7/§4 and docs/ops/play-health-declaration.md (user-initiated
+           Apple Health / Health Connect import, full history — it reads menstrual-flow
+           records as far back as the health store has them, per issue #992, and never
+           overwrites a hand-logged value); bulk Clue import (issue #167/#172). -->
       <p>
-        Yes. You can import history from Clue, and import from Apple Health
-        or Health Connect whenever you choose — imports never overwrite a
-        value you logged by hand. It's user-initiated only; lunarlog never
-        reads your health store in the background.
+        Yes. You can import history from Clue, and import your
+        menstrual-flow history from Apple Health or Health Connect whenever
+        you choose, as far back as your health app has it. Imports never
+        overwrite a value you logged by hand. It's user-initiated only;
+        lunarlog never reads your health store in the background.
         <a href="/guides/moving-your-data/">Moving your data</a> walks
         through it.
       </p>
