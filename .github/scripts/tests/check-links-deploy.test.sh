@@ -21,7 +21,9 @@ CI_WORKFLOW="$SCRIPT_DIR/../../workflows/ci.yml"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-# make_fixtures DIR -- a settled, correct set of live response header dumps.
+# make_fixtures DIR -- a settled, correct set of live response header and
+# body dumps. The HTML routes carry .body fixtures for issue #1139's beacon
+# assertion; the JSON routes are never body-checked.
 make_fixtures() {
   local dir="$1"
   mkdir -p "$dir"
@@ -34,6 +36,9 @@ strict-transport-security: max-age=63072000; includeSubDomains; preload
 x-frame-options: DENY
 referrer-policy: no-referrer
 x-content-type-options: nosniff
+EOF
+  cat >"$dir/home.body" <<'EOF'
+<!DOCTYPE html><html><head><title>lunarlog</title></head><body><h1>lunarlog</h1><p>Private by default.</p></body></html>
 EOF
   cat >"$dir/apple-app-site-association.headers" <<'EOF'
 HTTP/2 200
@@ -50,6 +55,9 @@ referrer-policy: no-referrer
 x-content-type-options: nosniff
 cache-control: public, max-age=300
 EOF
+  cat >"$dir/invite.body" <<'EOF'
+<!DOCTYPE html><html><body>Join a lunarlog profile</body></html>
+EOF
   cat >"$dir/privacy.headers" <<'EOF'
 HTTP/2 307
 date: Fri, 26 Sep 2026 12:00:00 GMT
@@ -60,10 +68,16 @@ HTTP/2 200
 date: Fri, 26 Sep 2026 12:00:00 GMT
 content-type: text/html; charset=utf-8
 EOF
+  cat >"$dir/privacy-slash.body" <<'EOF'
+<!DOCTYPE html><html><body><h1>Privacy policy</h1></body></html>
+EOF
   cat >"$dir/support.headers" <<'EOF'
 HTTP/2 200
 date: Fri, 26 Sep 2026 12:00:00 GMT
 content-type: text/html; charset=utf-8
+EOF
+  cat >"$dir/support.body" <<'EOF'
+<!DOCTYPE html><html><body><h1>Support</h1><p>No ads, no trackers, no analytics on this site.</p></body></html>
 EOF
   cat >"$dir/assetlinks.json.headers" <<'EOF'
 HTTP/2 404
@@ -76,6 +90,9 @@ date: Fri, 26 Sep 2026 12:00:00 GMT
 content-type: text/html; charset=utf-8
 x-content-type-options: nosniff
 EOF
+  cat >"$dir/notfound.body" <<'EOF'
+<!DOCTYPE html><html><body><h1>404</h1></body></html>
+EOF
   cat >"$dir/fhir.headers" <<'EOF'
 HTTP/2 404
 date: Fri, 26 Sep 2026 12:00:00 GMT
@@ -84,13 +101,15 @@ x-content-type-options: nosniff
 EOF
 }
 
-# run_case DIR -- populates $LAST_EXIT and $LAST_LOG.
+# run_case DIR [SCRIPT] -- populates $LAST_EXIT and $LAST_LOG. SCRIPT
+# defaults to the check under test; the beacon-arming cases pass a sed-flipped
+# copy (issue #1139's one-line arming constant) to prove both modes.
 run_case() {
-  local dir="$1"
+  local dir="$1" script="${2:-$SCRIPT}"
   local logfile
   logfile="$(mktemp)"
   set +e
-  LINKS_FIXTURES_DIR="$dir" bash "$SCRIPT" >"$logfile" 2>&1
+  LINKS_FIXTURES_DIR="$dir" bash "$script" >"$logfile" 2>&1
   LAST_EXIT=$?
   set -e
   LAST_LOG="$(cat "$logfile")"
@@ -327,7 +346,73 @@ run_case "$WORK/assetlinks-200"
 assert_exit "an assetlinks.json that resolves refuses (Android is deferred)" 1
 assert_contains "the assetlinks URL is named" "$LAST_LOG" "assetlinks.json"
 
+# --- Cloudflare's Web Analytics beacon: warn by default, armed = hard fail --
+
+# The injector only fires for browser user-agents, so every live fetch in
+# the script presents one; each HTML route's body is then checked. The full
+# injected tag below is issue #1139's QA capture, token elided.
+make_fixtures "$WORK/home-cf-beacon"
+cat >"$WORK/home-cf-beacon/home.body" <<'EOF'
+<!DOCTYPE html><html><head><title>lunarlog</title></head><body><h1>lunarlog</h1><script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v31edd6" integrity="sha512-x" data-cf-beacon='{"version":"2024.11.0","token":"x","r":1,"spa":2}' crossorigin="anonymous"></script></body></html>
+EOF
+
+# Warn-only default (BEACON_MUST_BE_ABSENT=false at the top of the script):
+# the injection is inert (the CSP blocks the script), so it fails nothing --
+# the finding is a loud ::warning:: naming the marker and the owner
+# decision, and the deploy goes green.
+run_case "$WORK/home-cf-beacon"
+assert_exit "an injected Web Analytics beacon warns but passes while unarmed" 0
+assert_contains "the warning is a ::warning:: annotation" "$LAST_LOG" "::warning::"
+assert_contains "the warning names the injection" "$LAST_LOG" "Cloudflare Web Analytics beacon"
+assert_contains "the warning names the arming constant" "$LAST_LOG" "BEACON_MUST_BE_ABSENT"
+assert_contains "the warning names the owner decision (issue #1139)" "$LAST_LOG" "issue #1139"
+assert_not_contains "the unarmed pass emits no error annotation" "$LAST_LOG" "::error::"
+
+# Armed mode: the same fixture hard-fails. The armed script is the original
+# with only the arming constant's line flipped -- proving the flip is one
+# tested line (a rename or move of the constant makes this sed a no-op and
+# this case fails, so the constant cannot silently drift).
+armed_script="$WORK/armed-check-links-deploy.sh"
+sed 's/^BEACON_MUST_BE_ABSENT=false$/BEACON_MUST_BE_ABSENT=true/' "$SCRIPT" >"$armed_script"
+run_case "$WORK/home-cf-beacon" "$armed_script"
+assert_exit "an armed check refuses on the same beacon fixture" 1
+assert_contains "the armed failure is an error annotation" "$LAST_LOG" "::error::"
+assert_contains "the armed failure names the beacon" "$LAST_LOG" "Cloudflare Web Analytics beacon"
+assert_contains "the armed failure names the remediation (issue #1139)" "$LAST_LOG" "issue #1139"
+
+# Arming must not disturb the clean path.
+run_case "$WORK/valid" "$armed_script"
+assert_exit "an armed check still passes a beacon-free origin" 0
+assert_not_contains "the clean armed pass emits no warning" "$LAST_LOG" "::warning::"
+
+# Either marker alone must be caught: the injector's tag shape can change
+# on either side (src host vs data attribute). Both proven armed, where the
+# catch is a hard failure.
+make_fixtures "$WORK/support-cf-src"
+cat >"$WORK/support-cf-src/support.body" <<'EOF'
+<!DOCTYPE html><html><body><h1>Support</h1><script src="https://static.cloudflareinsights.com/beacon.min.js"></script></body></html>
+EOF
+run_case "$WORK/support-cf-src" "$armed_script"
+assert_exit "a cloudflareinsights script src on /support/ refuses when armed (either marker matches)" 1
+assert_contains "the support URL is named" "$LAST_LOG" "/support/"
+
+make_fixtures "$WORK/privacy-slash-cf-attr"
+cat >"$WORK/privacy-slash-cf-attr/privacy-slash.body" <<'EOF'
+<!DOCTYPE html><html><body><h1>Privacy policy</h1><script data-cf-beacon='{"token":"x"}'></script></body></html>
+EOF
+run_case "$WORK/privacy-slash-cf-attr" "$armed_script"
+assert_exit "a data-cf-beacon attribute on /privacy/ refuses when armed (either marker matches)" 1
+
 # --- Wiring -----------------------------------------------------------------
+
+script_sh="$(cat "$SCRIPT")"
+assert_contains "the smoke check presents a browser UA to the live origin (issue #1139)" "$script_sh" '-A "$BROWSER_UA"'
+assert_contains "the smoke check asks the origin for HTML (issue #1139)" "$script_sh" "Accept: text/html"
+assert_contains "the smoke check body-checks every HTML route (issue #1139)" "$script_sh" "expect_body_without_cf_beacon"
+assert_contains "the beacon assertion defaults to warn-only (the owner has not decided)" "$script_sh" "BEACON_MUST_BE_ABSENT=false"
+assert_contains "the warn finding is a ::warning:: annotation" "$script_sh" "::warning::"
+assert_contains "the smoke check matches the beacon's src host (issue #1139)" "$script_sh" "cloudflareinsights"
+assert_contains "the smoke check matches the beacon's data attribute (issue #1139)" "$script_sh" "data-cf-beacon"
 
 site_deploy_yaml="$(cat "$SITE_DEPLOY_WORKFLOW")"
 assert_contains "site-deploy.yml runs the post-deploy smoke check" "$site_deploy_yaml" "check-links-deploy.sh"

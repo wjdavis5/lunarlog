@@ -360,7 +360,26 @@ deploy automation, DNS" follow-up is superseded.
   (`script-src 'self'`, `Cross-Origin-Opener-Policy: same-origin`,
   `Cross-Origin-Embedder-Policy: require-corp`, `Strict-Transport-Security`,
   `X-Robots-Tag: noindex`), `/auth/callback?code=…` reaches the SPA
-  fallback, and `/flutter_bootstrap.js` sets `"useLocalCanvasKit":true`. It
+  fallback, and `/flutter_bootstrap.js` sets `"useLocalCanvasKit":true`.
+  Every live fetch presents a browser user-agent with `Accept: text/html` —
+  Cloudflare injects its Web Analytics beacon into HTML for *browser*
+  user-agents only, so the default curl UA this check used to send saw a
+  clean body while real browsers got a `static.cloudflareinsights.com`
+  script the deployed CSP then blocked (issue #1139) — and the `/` body
+  must carry no beacon (`cloudflareinsights` / `data-cf-beacon`): a
+  third-party analytics script the CSP blocks and PRIVACY.md does not
+  disclose. Because the injection is inert today — the CSP stops the
+  script from executing, so no data flows — the beacon finding is
+  **warn-only by default**: a `::warning::` naming the marker and the
+  owner decision, and the deploy stays green. Each script carries a
+  one-line arming constant at the top (`BEACON_MUST_BE_ABSENT=false`;
+  flipping it to `true` is a reviewed commit) that turns the same finding
+  into a hard failure — flip it once
+  the owner decides (toggle Web Analytics automatic injection off for the
+  zone/Pages project, or keep it and disclose it in PRIVACY.md). The
+  fixture suites cover both modes, so the flip is one tested line.
+  `check-links-deploy.sh` asserts the
+  same over every HTML route of the apex. It
   runs on push to `main` when a path the web client depends on changes
   (`lib/`, `web/`, `assets/`, `pubspec.*`, `l10n.yaml`, the workflow, the
   check scripts), or on `workflow_dispatch`. A `web-deploy` concurrency

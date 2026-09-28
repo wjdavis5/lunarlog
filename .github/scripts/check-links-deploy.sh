@@ -38,13 +38,27 @@ set -euo pipefail
 # listing pointing at a 404. `/support/` (the in-app help link's target and
 # where #1153's copy fix ships) is asserted 200 text/html alongside.
 #
+# Issue #1139 adds the Cloudflare Web Analytics beacon assertion. Cloudflare
+# injects the beacon into HTML responses for *browser* user-agents only --
+# curl's default UA sees a clean body, which is exactly the blind spot the
+# beacon shipped through -- so every live fetch below presents a browser UA
+# with `Accept: text/html`, and every HTML route's body is asserted free of
+# the beacon (`cloudflareinsights` / `data-cf-beacon`): a third-party
+# analytics script the deployed CSP blocks (so the injection is inert
+# today) and PRIVACY.md does not disclose. While BEACON_MUST_BE_ABSENT at
+# the top of this script is false (the default) the finding is a loud
+# ::warning:: and the check passes; flipping that constant to true -- one
+# line, after the owner decides (toggle Web Analytics off, or keep and
+# disclose in PRIVACY.md) -- makes the same finding a hard failure.
+#
 # Input (env):
 #   LINKS_BASE_URL      Origin under test. Defaults to https://lunarlog.app.
 #   LINKS_ATTEMPTS      Number of attempts. Defaults to 18.
 #   LINKS_RETRY_DELAY   Seconds between attempts. Defaults to 5.
-#   LINKS_FIXTURES_DIR  Test seam. When set, response header dumps are read
-#                       from files in this directory instead of the network
-#                       (see `.github/scripts/tests/check-links-deploy.test.sh`),
+#   LINKS_FIXTURES_DIR  Test seam. When set, response header and body dumps
+#                       are read from files in this directory instead of the
+#                       network (see
+#                       `.github/scripts/tests/check-links-deploy.test.sh`),
 #                       and the retry loop collapses to a single attempt.
 #
 # Exit code: 0 when every assertion holds, non-zero otherwise. Each failure
@@ -65,6 +79,25 @@ PRIVACY_URL="$BASE_URL/privacy"
 PRIVACY_PAGE_URL="$BASE_URL/privacy/"
 SUPPORT_URL="$BASE_URL/support/"
 
+# Issue #1139: Cloudflare injects its Web Analytics beacon into HTML
+# responses for *browser* user-agents only -- curl's default UA gets a clean
+# body, which is exactly the blind spot the beacon shipped through. Every
+# live fetch below therefore presents a browser UA and `Accept: text/html`.
+# The headers change nothing for the JSON routes (the AASA, assetlinks,
+# /fhir/* are served by extension, not content negotiation), so the
+# assertions on them keep their meaning.
+BROWSER_UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+
+# Issue #1139 arming switch. The beacon is INERT today -- the apex CSP
+# (script-src 'self') blocks the injected script from executing, so no data
+# flows -- so the default posture is WARN: the deploy goes green with a
+# loud ::warning:: naming the marker and the owner decision. Flip this to
+# true (one line, its own reviewed commit) to make the same finding hard-
+# fail the smoke check: do that when the owner decides they want the
+# forcing function, or as the enforcement half of a keep-and-disclose
+# decision. The decision itself lives in issue #1139.
+BEACON_MUST_BE_ABSENT=false
+
 if [ -n "$FIXTURES_DIR" ]; then
   # Fixtures already hold the settled response; retrying adds nothing.
   ATTEMPTS=1
@@ -78,19 +111,22 @@ fail() {
   exit 1
 }
 
-# fixture_path URL -- the recorded dump for a URL.
+# fixture_path URL KIND -- the recorded dump for a URL ("headers" or
+# "body"). Only the HTML routes ever get a body fetch (issue #1139's beacon
+# assertion is HTML-only; the JSON routes are never body-checked), so only
+# those have .body fixtures.
 fixture_path() {
   case "$1" in
-    */apple-app-site-association) printf '%s' "$FIXTURES_DIR/apple-app-site-association.headers" ;;
-    */assetlinks.json) printf '%s' "$FIXTURES_DIR/assetlinks.json.headers" ;;
-    */invite*) printf '%s' "$FIXTURES_DIR/invite.headers" ;;
-    */fhir/*) printf '%s' "$FIXTURES_DIR/fhir.headers" ;;
-    */privacy/) printf '%s' "$FIXTURES_DIR/privacy-slash.headers" ;;
-    */privacy) printf '%s' "$FIXTURES_DIR/privacy.headers" ;;
-    */support/) printf '%s' "$FIXTURES_DIR/support.headers" ;;
-    */this-page-does-not-exist) printf '%s' "$FIXTURES_DIR/notfound.headers" ;;
-    "$HOME_URL"|"$BASE_URL") printf '%s' "$FIXTURES_DIR/home.headers" ;;
-    *) printf '%s' "$FIXTURES_DIR/unknown.headers" ;;
+    */apple-app-site-association) printf '%s' "$FIXTURES_DIR/apple-app-site-association.$2" ;;
+    */assetlinks.json) printf '%s' "$FIXTURES_DIR/assetlinks.json.$2" ;;
+    */invite*) printf '%s' "$FIXTURES_DIR/invite.$2" ;;
+    */fhir/*) printf '%s' "$FIXTURES_DIR/fhir.$2" ;;
+    */privacy/) printf '%s' "$FIXTURES_DIR/privacy-slash.$2" ;;
+    */privacy) printf '%s' "$FIXTURES_DIR/privacy.$2" ;;
+    */support/) printf '%s' "$FIXTURES_DIR/support.$2" ;;
+    */this-page-does-not-exist) printf '%s' "$FIXTURES_DIR/notfound.$2" ;;
+    "$HOME_URL"|"$BASE_URL") printf '%s' "$FIXTURES_DIR/home.$2" ;;
+    *) printf '%s' "$FIXTURES_DIR/unknown.$2" ;;
   esac
 }
 
@@ -105,14 +141,32 @@ fetch() {
   local url="$1"
   if [ -n "$FIXTURES_DIR" ]; then
     local fixture
-    fixture="$(fixture_path "$url")"
+    fixture="$(fixture_path "$url" headers)"
     [ -f "$fixture" ] || {
       echo "missing fixture: $fixture" >&2
       return 1
     }
     cat "$fixture"
   else
-    curl -sS --max-time 20 -o /dev/null -D - "$url"
+    curl -sS --max-time 20 -A "$BROWSER_UA" -H 'Accept: text/html' -o /dev/null -D - "$url"
+  fi
+}
+
+# fetch_body URL -- prints the response body to stdout. Same fixture seam,
+# timeout cap, and browser-UA headers as `fetch` (issue #1139: the browser
+# UA is what makes the edge's injection visible at all).
+fetch_body() {
+  local url="$1"
+  if [ -n "$FIXTURES_DIR" ]; then
+    local fixture
+    fixture="$(fixture_path "$url" body)"
+    [ -f "$fixture" ] || {
+      echo "missing fixture: $fixture" >&2
+      return 1
+    }
+    cat "$fixture"
+  else
+    curl -sS --max-time 20 -A "$BROWSER_UA" -H 'Accept: text/html' "$url"
   fi
 }
 
@@ -229,10 +283,42 @@ expect_header_absent() {
   fi
 }
 
+# beacon_finding URL -- the finding text for an injected Web Analytics
+# beacon: the accumulated problem text when armed, the body of the
+# ::warning:: line when warn-only.
+beacon_finding() {
+  printf '%s: Cloudflare Web Analytics beacon injected into the HTML (issue #1139) -- turn Web Analytics automatic injection off for the zone/project, or record the decision to keep it and disclose it in PRIVACY.md. ' "$1"
+}
+
+# expect_body_without_cf_beacon BODY URL -- the HTML body must carry no
+# Cloudflare Web Analytics beacon (issue #1139): a third-party analytics
+# script the deployed CSP blocks (so it is inert today) and PRIVACY.md does
+# not disclose. Both spellings the injector emits are matched -- the
+# `static.cloudflareinsights.com` script src and the `data-cf-beacon`
+# attribute -- so a change to the tag's shape on either side still fails.
+# While BEACON_MUST_BE_ABSENT is false (the default) the finding is a loud
+# ::warning:: on the step log and this check still passes -- hard-failing
+# every deploy over an inert injection is the owner's call, not this
+# script's. Flipping the constant to true turns the same finding into an
+# accumulated problem and a hard failure.
+expect_body_without_cf_beacon() {
+  local body="$1" url="$2"
+  case "$body" in
+    *cloudflareinsights*|*data-cf-beacon*) ;;
+    *) return 0 ;;
+  esac
+  if [ "$BEACON_MUST_BE_ABSENT" != "true" ]; then
+    printf '::warning::%s(warn-only while BEACON_MUST_BE_ABSENT=false at the top of this script; flip it once the owner decides)\n' "$(beacon_finding "$url")" >&2
+    return 0
+  fi
+  beacon_finding "$url"
+}
+
 # check_once -- prints the accumulated problems (empty on success) and
 # returns non-zero when any assertion failed.
 check_once() {
   local home aasa invite assetlinks notfound fhir privacy privacy_page support problems=""
+  local home_body invite_body privacy_page_body support_body notfound_body
 
   home="$(fetch "$HOME_URL" 2>/dev/null || true)"
   aasa="$(fetch "$AASA_URL" 2>/dev/null || true)"
@@ -243,6 +329,11 @@ check_once() {
   privacy="$(fetch "$PRIVACY_URL" 2>/dev/null || true)"
   privacy_page="$(fetch "$PRIVACY_PAGE_URL" 2>/dev/null || true)"
   support="$(fetch "$SUPPORT_URL" 2>/dev/null || true)"
+  home_body="$(fetch_body "$HOME_URL" 2>/dev/null || true)"
+  invite_body="$(fetch_body "$INVITE_URL" 2>/dev/null || true)"
+  privacy_page_body="$(fetch_body "$PRIVACY_PAGE_URL" 2>/dev/null || true)"
+  support_body="$(fetch_body "$SUPPORT_URL" 2>/dev/null || true)"
+  notfound_body="$(fetch_body "$NOTFOUND_URL" 2>/dev/null || true)"
 
   # The home page is served by the static-asset layer, so the strict header
   # set from `site/public/_headers` must be attached to it.
@@ -254,6 +345,10 @@ check_once() {
   problems="${problems}$(expect_header_exact "$home" x-frame-options DENY "$HOME_URL")"
   problems="${problems}$(expect_header_exact "$home" referrer-policy no-referrer "$HOME_URL")"
   problems="${problems}$(expect_header_exact "$home" x-content-type-options nosniff "$HOME_URL")"
+
+  # And its HTML, as a browser sees it, must carry no Web Analytics beacon
+  # (issue #1139; see expect_body_without_cf_beacon).
+  problems="${problems}$(expect_body_without_cf_beacon "$home_body" "$HOME_URL")"
 
   # The AASA must be served by the Worker: 200 with no redirect,
   # application/json, and nosniff (index.ts's AASA branch).
@@ -269,6 +364,7 @@ check_once() {
   problems="${problems}$(expect_header_exact "$invite" referrer-policy no-referrer "$INVITE_URL")"
   problems="${problems}$(expect_header_exact "$invite" x-content-type-options nosniff "$INVITE_URL")"
   problems="${problems}$(expect_header_exact "$invite" cache-control "public, max-age=300" "$INVITE_URL")"
+  problems="${problems}$(expect_body_without_cf_beacon "$invite_body" "$INVITE_URL")"
 
   # Issue #1157: the store privacy-policy URL must resolve. `/privacy` (the
   # exact URL both stores list) redirects to `/privacy/`, which serves the
@@ -277,11 +373,13 @@ check_once() {
   problems="${problems}$(expect_redirect_to "$privacy" "/privacy/" "$PRIVACY_URL")"
   problems="${problems}$(expect_status "$privacy_page" 200 "$PRIVACY_PAGE_URL")"
   problems="${problems}$(expect_header_prefix "$privacy_page" content-type text/html "$PRIVACY_PAGE_URL")"
+  problems="${problems}$(expect_body_without_cf_beacon "$privacy_page_body" "$PRIVACY_PAGE_URL")"
 
   # The support page must stay live: it is where the in-app help link goes
   # and where #1153's import-scope copy fix ships.
   problems="${problems}$(expect_status "$support" 200 "$SUPPORT_URL")"
   problems="${problems}$(expect_header_prefix "$support" content-type text/html "$SUPPORT_URL")"
+  problems="${problems}$(expect_body_without_cf_beacon "$support_body" "$SUPPORT_URL")"
 
   # Android is deferred: no assetlinks.json file exists, so this route
   # reaches the Worker and must 404.
@@ -292,6 +390,7 @@ check_once() {
   problems="${problems}$(expect_status "$notfound" 404 "$NOTFOUND_URL")"
   problems="${problems}$(expect_header_prefix "$notfound" content-type text/html "$NOTFOUND_URL")"
   problems="${problems}$(expect_header_absent "$notfound" location "$NOTFOUND_URL")"
+  problems="${problems}$(expect_body_without_cf_beacon "$notfound_body" "$NOTFOUND_URL")"
 
   # Issue #961: the frozen FHIR URIs are reserved. They must be a 404, never
   # a redirect.
