@@ -72,10 +72,13 @@ const description =
         only they can read.
       </p>
       <figure class="screenshot-figure">
+        <!-- Issue #1172: the first-viewport figure is the page's LCP
+             candidate — eager + high priority, not lazy. -->
         <Screenshot
           screen="guardians"
           device="iphone-67"
           theme="light"
+          loading="eager"
           alt="The Manage guardians screen for a shared profile, listing its guardians and their roles."
         />
         <figcaption>Managing the guardians of a shared profile.</figcaption>

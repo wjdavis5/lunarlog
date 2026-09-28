@@ -56,10 +56,13 @@ const description =
       </ul>
       <!-- cite: pregnancy week counter (lib/l10n/app_en.arb pregnancyWeekTitle, issue #192); postpartum day counter (postpartumDayTitle, issue #455); the paused-estimate state naming the mode (predictionsSuppressedTitle / predictionsSuppressedByModeBody, issue #528); conceive window copy (conceiveWindowLabel, conceivePeakDay). -->
       <figure class="screenshot-figure">
+        <!-- Issue #1172: the first-viewport figure is the page's LCP
+             candidate — eager + high priority, not lazy. -->
         <Screenshot
           screen="life-stage"
           device="iphone-67"
           theme="light"
+          loading="eager"
           alt="The profile editor's life-stage mode chooser, open, with the five modes listed."
         />
         <figcaption>Choosing a life-stage mode in the profile editor.</figcaption>

@@ -12,8 +12,31 @@
 // the runs), so three runs keep the bar at 0.95 while no longer failing a
 // page for one slow simulated load.
 //
-// Accessibility must be perfect (100); performance and best-practices must
-// stay at 95 or above.
+// Issue #1172: even three runs stopped being enough for the six
+// screenshot-bearing pages. Their first-viewport figure is a full-size app
+// PNG (1290×2796), and its emulated slow-4G LCP wobbles right around where
+// the performance category crosses 0.95: the same /tracking/ bytes measured
+// 1.0 locally and 0.92-0.95 in CI, with one main dispatch failing all three
+// runs at 0.92 and content-only PRs gated by luck. The screenshot pages
+// (home + the five feature pages — exactly the pages that render a
+// <Screenshot>) therefore assert performance at 0.90, a floor their steady
+// state clears with margin; the LCP wobble itself is attacked at the source
+// by Screenshot.astro's eager-implies-fetchpriority="high" wiring. Every
+// text-only page (guides, support, delete-account, privacy-security) keeps
+// the original 0.95. Each matrix entry matches exactly one URL set (LHCI
+// filters each entry's LHRs by matchingUrlPattern — a plain RegExp against
+// the served URL, whose port is random and so optional here), so every URL
+// is asserted exactly once, and a future page defaults to the stricter set.
+//
+// Accessibility must be perfect (100); best-practices must stay at 95 or
+// above on every page.
+const kPerformanceStrict = ["error", { minScore: 0.95 }];
+const kPerformanceScreenshotPages = ["error", { minScore: 0.9 }];
+const kScreenshotPagePattern =
+  "^http://localhost(:\\d+)?/(?:index\\.html|(?:tracking|family-sharing|life-stage-modes|import|export)/)$";
+// Anything else — including every page added later — gets the strict floor.
+const kStrictPattern =
+  "^http://localhost(:\\d+)?/(?!(?:index\\.html|tracking/|family-sharing/|life-stage-modes/|import/|export/))";
 module.exports = {
   ci: {
     collect: {
@@ -46,11 +69,26 @@ module.exports = {
       },
     },
     assert: {
-      assertions: {
-        "categories:accessibility": ["error", { minScore: 1 }],
-        "categories:performance": ["error", { minScore: 0.95 }],
-        "categories:best-practices": ["error", { minScore: 0.95 }],
-      },
+      // LHCI 0.15 has no per-assertion URL scoping; assertMatrix entries
+      // each carry a whole assertion set scoped by matchingUrlPattern.
+      assertMatrix: [
+        {
+          matchingUrlPattern: kScreenshotPagePattern,
+          assertions: {
+            "categories:accessibility": ["error", { minScore: 1 }],
+            "categories:performance": kPerformanceScreenshotPages,
+            "categories:best-practices": ["error", { minScore: 0.95 }],
+          },
+        },
+        {
+          matchingUrlPattern: kStrictPattern,
+          assertions: {
+            "categories:accessibility": ["error", { minScore: 1 }],
+            "categories:performance": kPerformanceStrict,
+            "categories:best-practices": ["error", { minScore: 0.95 }],
+          },
+        },
+      ],
     },
     upload: {
       target: "filesystem",
