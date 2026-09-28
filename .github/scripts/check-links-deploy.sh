@@ -26,6 +26,18 @@ set -euo pipefail
 #   - the reserved `/fhir/*` URIs (issue #961) are a 404 and never a
 #     redirect.
 #
+# Issue #1157 adds the store privacy-policy assertion. `/privacy` is the
+# Privacy policy URL both stores list (docs/ops/store-declarations.md,
+# docs/ops/play-health-declaration.md, Android's Health Connect rationale
+# screen), and issue #1157 is exactly a deploy where it 404'd for days
+# unnoticed. The asset layer's auto-trailing-slash serves the contract as
+# two hops -- `/privacy` redirects to `/privacy/`, which serves the
+# PRIVACY.md render -- so both are asserted: the bare URL must redirect
+# exactly to `/privacy/`, and `/privacy/` must be 200 text/html. A deploy
+# that drops the privacy page fails here instead of leaving the store
+# listing pointing at a 404. `/support/` (the in-app help link's target and
+# where #1153's copy fix ships) is asserted 200 text/html alongside.
+#
 # Input (env):
 #   LINKS_BASE_URL      Origin under test. Defaults to https://lunarlog.app.
 #   LINKS_ATTEMPTS      Number of attempts. Defaults to 18.
@@ -49,6 +61,9 @@ INVITE_URL="$BASE_URL/invite?code=smoke"
 ASSETLINKS_URL="$BASE_URL/.well-known/assetlinks.json"
 NOTFOUND_URL="$BASE_URL/this-page-does-not-exist"
 FHIR_URL="$BASE_URL/fhir/CodeSystem/cycle-status"
+PRIVACY_URL="$BASE_URL/privacy"
+PRIVACY_PAGE_URL="$BASE_URL/privacy/"
+SUPPORT_URL="$BASE_URL/support/"
 
 if [ -n "$FIXTURES_DIR" ]; then
   # Fixtures already hold the settled response; retrying adds nothing.
@@ -70,6 +85,9 @@ fixture_path() {
     */assetlinks.json) printf '%s' "$FIXTURES_DIR/assetlinks.json.headers" ;;
     */invite*) printf '%s' "$FIXTURES_DIR/invite.headers" ;;
     */fhir/*) printf '%s' "$FIXTURES_DIR/fhir.headers" ;;
+    */privacy/) printf '%s' "$FIXTURES_DIR/privacy-slash.headers" ;;
+    */privacy) printf '%s' "$FIXTURES_DIR/privacy.headers" ;;
+    */support/) printf '%s' "$FIXTURES_DIR/support.headers" ;;
     */this-page-does-not-exist) printf '%s' "$FIXTURES_DIR/notfound.headers" ;;
     "$HOME_URL"|"$BASE_URL") printf '%s' "$FIXTURES_DIR/home.headers" ;;
     *) printf '%s' "$FIXTURES_DIR/unknown.headers" ;;
@@ -135,6 +153,27 @@ expect_status() {
   esac
 }
 
+# expect_redirect_to DUMP WANT_LOCATION URL -- the response must be a 3xx
+# redirect whose location is exactly WANT_LOCATION. Used for the asset
+# layer's auto-trailing-slash hop (`/privacy` -> `/privacy/`): which 3xx
+# code the asset layer picks is its own choice (307 today), so any 3xx
+# passes, but the redirect target is the contract and is matched exactly.
+expect_redirect_to() {
+  local dump="$1" want_location="$2" url="$3"
+  local first="${dump%%$'\n'*}" got
+  case "$first" in
+    "HTTP/"*" 3"[0-9][0-9] | "HTTP/"*" 3"[0-9][0-9]" "*) ;;
+    *)
+      printf '%s: expected a 3xx redirect, got '%s'. ' "$url" "${first:-<no response>}"
+      return 0
+      ;;
+  esac
+  got="$(header_value "$dump" location || true)"
+  if [ "$got" != "$want_location" ]; then
+    printf '%s: expected the redirect to land on '%s', got '%s'. ' "$url" "$want_location" "${got:-<none>}"
+  fi
+}
+
 # expect_header_prefix DUMP NAME PREFIX URL -- the header must be present and
 # its value must start with PREFIX (e.g. `application/json` accepting
 # `application/json; charset=utf-8`).
@@ -193,7 +232,7 @@ expect_header_absent() {
 # check_once -- prints the accumulated problems (empty on success) and
 # returns non-zero when any assertion failed.
 check_once() {
-  local home aasa invite assetlinks notfound fhir problems=""
+  local home aasa invite assetlinks notfound fhir privacy privacy_page support problems=""
 
   home="$(fetch "$HOME_URL" 2>/dev/null || true)"
   aasa="$(fetch "$AASA_URL" 2>/dev/null || true)"
@@ -201,6 +240,9 @@ check_once() {
   assetlinks="$(fetch "$ASSETLINKS_URL" 2>/dev/null || true)"
   notfound="$(fetch "$NOTFOUND_URL" 2>/dev/null || true)"
   fhir="$(fetch "$FHIR_URL" 2>/dev/null || true)"
+  privacy="$(fetch "$PRIVACY_URL" 2>/dev/null || true)"
+  privacy_page="$(fetch "$PRIVACY_PAGE_URL" 2>/dev/null || true)"
+  support="$(fetch "$SUPPORT_URL" 2>/dev/null || true)"
 
   # The home page is served by the static-asset layer, so the strict header
   # set from `site/public/_headers` must be attached to it.
@@ -228,6 +270,19 @@ check_once() {
   problems="${problems}$(expect_header_exact "$invite" x-content-type-options nosniff "$INVITE_URL")"
   problems="${problems}$(expect_header_exact "$invite" cache-control "public, max-age=300" "$INVITE_URL")"
 
+  # Issue #1157: the store privacy-policy URL must resolve. `/privacy` (the
+  # exact URL both stores list) redirects to `/privacy/`, which serves the
+  # PRIVACY.md render; a deploy that drops the privacy page turns one of
+  # the two hops into a 404.
+  problems="${problems}$(expect_redirect_to "$privacy" "/privacy/" "$PRIVACY_URL")"
+  problems="${problems}$(expect_status "$privacy_page" 200 "$PRIVACY_PAGE_URL")"
+  problems="${problems}$(expect_header_prefix "$privacy_page" content-type text/html "$PRIVACY_PAGE_URL")"
+
+  # The support page must stay live: it is where the in-app help link goes
+  # and where #1153's import-scope copy fix ships.
+  problems="${problems}$(expect_status "$support" 200 "$SUPPORT_URL")"
+  problems="${problems}$(expect_header_prefix "$support" content-type text/html "$SUPPORT_URL")"
+
   # Android is deferred: no assetlinks.json file exists, so this route
   # reaches the Worker and must 404.
   problems="${problems}$(expect_status "$assetlinks" 404 "$ASSETLINKS_URL")"
@@ -253,7 +308,7 @@ check_once() {
 attempt=1
 while :; do
   if reason="$(check_once)"; then
-    echo "Site deploy smoke check passed for '$BASE_URL' (home page headers, AASA, /invite, 404, /fhir reservation)."
+    echo "Site deploy smoke check passed for '$BASE_URL' (home page headers, AASA, /invite, /privacy, /support/, 404, /fhir reservation)."
     exit 0
   fi
 
