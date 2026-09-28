@@ -7,6 +7,10 @@
 // `dart run tool/export_help_cards.dart`; an unknown id throws here and
 // fails the build (see `src/lib/help-cards.mjs`).
 import { helpCard, loadHelpCards } from "../lib/help-cards.mjs";
+// The card's styles are guides-only (see styles/guides.css): importing
+// here scopes the extra render-blocking sheet to guide pages, so no other
+// page pays for it.
+import "../styles/guides.css";
 
 interface Props {
   /** The card id from `HelpCards`, e.g. "confidence-levels". */
