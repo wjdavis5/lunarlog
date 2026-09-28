@@ -31,10 +31,8 @@ class CycleLiteracyArticleSheet extends StatelessWidget {
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
-      builder: (context) => CycleLiteracyArticleSheet(
-        article: article,
-        launchUrlFn: launchUrlFn,
-      ),
+      builder: (context) =>
+          CycleLiteracyArticleSheet(article: article, launchUrlFn: launchUrlFn),
     );
   }
 
@@ -74,8 +72,10 @@ class CycleLiteracyArticleSheet extends StatelessWidget {
             Row(
               children: [
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: colorScheme.secondaryContainer,
                     borderRadius: BorderRadius.circular(8),
@@ -115,7 +115,9 @@ class CycleLiteracyArticleSheet extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                color: colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.5,
+                ),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: colorScheme.outlineVariant.withValues(alpha: 0.5),
@@ -143,9 +145,7 @@ class CycleLiteracyArticleSheet extends StatelessWidget {
               for (final p in section.paragraphs) ...[
                 Text(
                   p,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    height: 1.5,
-                  ),
+                  style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
                 ),
                 const SizedBox(height: 12),
               ],
@@ -211,7 +211,13 @@ class CycleLiteracyArticleSheet extends StatelessWidget {
 
 /// Renders a structured crisis support block in a calm, discreet tinted card
 /// with one-tap action targets (Issue #1132).
-class CrisisResourcesCard extends StatelessWidget {
+///
+/// A failed launch is never silent here (Issue #1151): `safeLaunchUrl`
+/// returning `false` — the Wi-Fi-iPad `tel:` failure — or the platform
+/// launcher throwing shows a calm inline line under the buttons that names
+/// the number, so the card's most important information stays visible on a
+/// device that can't place calls.
+class CrisisResourcesCard extends StatefulWidget {
   const CrisisResourcesCard({
     super.key,
     required this.callout,
@@ -222,9 +228,37 @@ class CrisisResourcesCard extends StatelessWidget {
   final LaunchUrlFn? launchUrlFn;
 
   @override
+  State<CrisisResourcesCard> createState() => _CrisisResourcesCardState();
+}
+
+class _CrisisResourcesCardState extends State<CrisisResourcesCard> {
+  /// The dialable number of the last action whose launch failed, or `null`
+  /// while no launch has failed (a later success clears it again).
+  String? _failedNumber;
+
+  Future<void> _launch(CrisisAction action) async {
+    bool launched;
+    try {
+      launched = await safeLaunchUrl(action.uri, launch: widget.launchUrlFn);
+    } catch (_) {
+      // url_launcher can throw (e.g. a PlatformException when the OS refuses
+      // the scheme). Either way the reader must not be left with a silent
+      // button — fall through to the same calm fallback as a `false` result.
+      launched = false;
+    }
+    if (!mounted) return;
+    setState(() {
+      _failedNumber = launched ? null : action.uri.path;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final callout = widget.callout;
+    final failedNumber = _failedNumber;
 
     return Container(
       key: const ValueKey('crisis-resources-card'),
@@ -260,21 +294,32 @@ class CrisisResourcesCard extends StatelessWidget {
                         tapTargetSize: MaterialTapTargetSize.padded,
                         foregroundColor: colorScheme.onSecondaryContainer,
                         side: BorderSide(
-                          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                          color: colorScheme.outlineVariant.withValues(
+                            alpha: 0.5,
+                          ),
                         ),
                       ),
-                      onPressed: () => unawaited(
-                        safeLaunchUrl(
-                          action.uri,
-                          launch: launchUrlFn,
-                        ),
-                      ),
+                      onPressed: () => unawaited(_launch(action)),
                       child: Text(action.label),
                     ),
                   ),
                 ),
             ],
           ),
+          if (failedNumber != null) ...[
+            const SizedBox(height: 12),
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                key: const ValueKey('crisis-launch-failed-note'),
+                l10n.crisisLaunchFailed(failedNumber),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSecondaryContainer,
+                  height: 1.5,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/content/cycle_literacy_library.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
@@ -12,17 +13,19 @@ Future<void> pumpSheet(
   CycleLiteracyArticle article, {
   LaunchUrlFn? launchUrlFn,
 }) async {
-  await tester.pumpWidget(MaterialApp(
-    theme: AppTheme.lightTheme,
-    localizationsDelegates: AppLocalizations.localizationsDelegates,
-    supportedLocales: AppLocalizations.supportedLocales,
-    home: Scaffold(
-      body: CycleLiteracyArticleSheet(
-        article: article,
-        launchUrlFn: launchUrlFn,
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: AppTheme.lightTheme,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: Scaffold(
+        body: CycleLiteracyArticleSheet(
+          article: article,
+          launchUrlFn: launchUrlFn,
+        ),
       ),
     ),
-  ));
+  );
 }
 
 /// Scrolls the sheet far enough to reveal the provenance footer.
@@ -36,8 +39,7 @@ Future<void> scrollToFooter(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets(
-      'Issue #1006: provenance footer says "Last reviewed", not '
+  testWidgets('Issue #1006: provenance footer says "Last reviewed", not '
       '"Last clinical review"', (tester) async {
     final article = CycleLiteracyLibrary.menstrualCyclePhases;
 
@@ -51,8 +53,9 @@ void main() {
     expect(find.textContaining('Last clinical review'), findsNothing);
   });
 
-  testWidgets('Issue #1103: one line per source, publisher — title',
-      (tester) async {
+  testWidgets('Issue #1103: one line per source, publisher — title', (
+    tester,
+  ) async {
     final article = CycleLiteracyLibrary.menstrualCyclePhases;
 
     await pumpSheet(tester, article);
@@ -63,7 +66,7 @@ void main() {
       final expected = source.identifier == null
           ? '${source.publisher.displayName} — ${source.title}'
           : '${source.publisher.displayName} — ${source.title} '
-              '(${source.identifier})';
+                '(${source.identifier})';
       expect(find.text(expected), findsOneWidget);
     }
 
@@ -71,17 +74,15 @@ void main() {
     expect(find.textContaining('Source: '), findsNothing);
   });
 
-  testWidgets('Issue #1103: identifier-bearing sources render in parentheses',
-      (tester) async {
+  testWidgets('Issue #1103: identifier-bearing sources render in parentheses', (
+    tester,
+  ) async {
     final article = CycleLiteracyLibrary.firstPeriodsFirstTwoYears;
 
     await pumpSheet(tester, article);
     await scrollToFooter(tester);
 
-    expect(
-      find.textContaining('(Committee Opinion No. 651)'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('(Committee Opinion No. 651)'), findsOneWidget);
   });
 
   group('Issue #1132 crisis resources rendering and interaction', () {
@@ -129,10 +130,16 @@ void main() {
           await tester.pumpAndSettle();
           expect(buttonFinder, findsOneWidget);
           final size = tester.getSize(buttonFinder);
-          expect(size.width, greaterThanOrEqualTo(44.0),
-              reason: '$label width must be >= 44pt');
-          expect(size.height, greaterThanOrEqualTo(44.0),
-              reason: '$label height must be >= 44pt');
+          expect(
+            size.width,
+            greaterThanOrEqualTo(44.0),
+            reason: '$label width must be >= 44pt',
+          );
+          expect(
+            size.height,
+            greaterThanOrEqualTo(44.0),
+            reason: '$label height must be >= 44pt',
+          );
         }
 
         // Semantics checks
@@ -146,16 +153,18 @@ void main() {
         );
 
         // Tap Call 988
-        final call988Finder =
-            find.byKey(const ValueKey('crisis-action-Call 988'));
+        final call988Finder = find.byKey(
+          const ValueKey('crisis-action-Call 988'),
+        );
         await tester.ensureVisible(call988Finder);
         await tester.tap(call988Finder);
         await tester.pumpAndSettle();
         expect(launched, contains(Uri.parse('tel:988')));
 
         // Tap Text 988
-        final text988Finder =
-            find.byKey(const ValueKey('crisis-action-Text 988'));
+        final text988Finder = find.byKey(
+          const ValueKey('crisis-action-Text 988'),
+        );
         await tester.ensureVisible(text988Finder);
         await tester.tap(text988Finder);
         await tester.pumpAndSettle();
@@ -202,5 +211,119 @@ void main() {
         );
       },
     );
+  });
+
+  group('Issue #1151 crisis launch failure fallback', () {
+    /// Pumps the PMS sheet with [launchUrlFn] and scrolls the crisis card in.
+    Future<void> pumpCrisisCard(
+      WidgetTester tester,
+      LaunchUrlFn launchUrlFn,
+    ) async {
+      await pumpSheet(
+        tester,
+        CycleLiteracyLibrary.pmsVsMoodWhenToAskClinician,
+        launchUrlFn: launchUrlFn,
+      );
+      await tester.dragUntilVisible(
+        find.byKey(const ValueKey('crisis-resources-card')),
+        find.byType(ListView),
+        const Offset(0, -300),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    /// The failure note names [number] and the [actionLabel] button carrying
+    /// it is still visible, so the reader keeps the number on screen.
+    void expectFallback(
+      WidgetTester tester, {
+      required String number,
+      required String actionLabel,
+    }) {
+      final noteFinder = find.byKey(
+        const ValueKey('crisis-launch-failed-note'),
+      );
+      expect(noteFinder, findsOneWidget);
+      final noteText = tester.widget<Text>(noteFinder).data;
+      expect(noteText, isNotNull);
+      expect(noteText, contains(number));
+      expect(
+        find.byKey(ValueKey('crisis-action-$actionLabel')),
+        findsOneWidget,
+        reason: 'the failed number must stay visible on its button',
+      );
+    }
+
+    testWidgets(
+      'a launch that returns false (device can\'t place calls) shows a calm '
+      'fallback naming the number',
+      (tester) async {
+        final launched = <Uri>[];
+
+        await pumpCrisisCard(tester, (
+          url, {
+          mode = LaunchMode.platformDefault,
+        }) async {
+          launched.add(url);
+          return false; // the iPad-shaped failure: nothing opens
+        });
+
+        // No fallback before any tap.
+        expect(
+          find.byKey(const ValueKey('crisis-launch-failed-note')),
+          findsNothing,
+        );
+
+        final call988Finder = find.byKey(
+          const ValueKey('crisis-action-Call 988'),
+        );
+        await tester.ensureVisible(call988Finder);
+        await tester.tap(call988Finder);
+        await tester.pumpAndSettle();
+
+        expect(launched, contains(Uri.parse('tel:988')));
+        expectFallback(tester, number: '988', actionLabel: 'Call 988');
+      },
+    );
+
+    testWidgets(
+      'a launch that throws shows the same fallback naming the number',
+      (tester) async {
+        await pumpCrisisCard(tester, (
+          url, {
+          mode = LaunchMode.platformDefault,
+        }) async {
+          throw PlatformException(
+            code: 'failed to open URL',
+            message: 'Error Domain=LSApplicationWorkspaceErrorDomain',
+          );
+        });
+
+        final call999Finder = find.byKey(const ValueKey('crisis-action-999'));
+        await tester.ensureVisible(call999Finder);
+        await tester.tap(call999Finder);
+        await tester.pumpAndSettle();
+
+        expectFallback(tester, number: '999', actionLabel: '999');
+      },
+    );
+
+    testWidgets('a successful launch shows no fallback', (tester) async {
+      await pumpCrisisCard(
+        tester,
+        (url, {mode = LaunchMode.platformDefault}) async => true,
+      );
+
+      final call988Finder = find.byKey(
+        const ValueKey('crisis-action-Call 988'),
+      );
+      await tester.ensureVisible(call988Finder);
+      await tester.tap(call988Finder);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('crisis-launch-failed-note')),
+        findsNothing,
+      );
+    });
   });
 }
