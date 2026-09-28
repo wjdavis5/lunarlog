@@ -148,8 +148,14 @@ Future<ScreenshotIndexEntry> _renderOne(
         theme == ScreenshotTheme.light ? Brightness.light : Brightness.dark;
     // iPhone-shaped devices render as iOS, the Pixel and the iPad as
     // their own platforms — the same adaptive chrome a real device shows.
-    debugDefaultTargetPlatformOverride =
-        device.id == 'pixel' ? TargetPlatform.android : TargetPlatform.iOS;
+    // The #1162 browser class renders as macOS: a real desktop browser
+    // reports its desktop OS (never iOS), and macOS is the deterministic
+    // stand-in for the desktop-browser posture the app frame presents in.
+    debugDefaultTargetPlatformOverride = switch (device.id) {
+      'pixel' => TargetPlatform.android,
+      'browser' => TargetPlatform.macOS,
+      _ => TargetPlatform.iOS,
+    };
 
     final plan = sceneFor(world, screen);
     // The provider scope wraps the MaterialApp (as lib/app.dart scopes

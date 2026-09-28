@@ -82,6 +82,7 @@ import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/domain/sync/local_row_counts.dart'
     show LocalRowCounter;
 import 'package:lunarlog/observability/route_names.dart';
+import 'package:lunarlog/ui/components/app_frame.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart'
     show confirmedHealthSyncUserId;
@@ -1494,7 +1495,15 @@ class _LunarLogAppState extends State<LunarLogApp>
           // marker, never dismissed by an auth change like the invite
           // banner below it can be.
           child: _wrapWithQaBanner(
-            _wrapWithPendingInviteBanner(child ?? const SizedBox.shrink()),
+            _wrapWithPendingInviteBanner(
+              // Issue #1162: the browser-width presentation wraps the
+              // Navigator itself (innermost in this builder chain), so
+              // every route presents inside the centred app-frame at
+              // desktop-browser widths; the banner strips around it stay
+              // full-width chrome. A no-op at phone widths (and the
+              // 800x600 test-binding default).
+              AppFrame(child: child ?? const SizedBox.shrink()),
+            ),
           ),
         ),
         // U2 Approach 3: `home:` cannot carry a RouteSettings name (it is

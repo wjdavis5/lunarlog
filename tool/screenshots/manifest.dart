@@ -39,7 +39,9 @@ class ScreenshotDevice {
   final double pixelRatio;
 
   /// The store listing size the output PNG matches, recorded in the index
-  /// (App Store 6.7"/6.1"/iPad requirements; Play's Pixel-class 9:16).
+  /// (App Store 6.7"/6.1"/iPad requirements; Play's Pixel-class 9:16; the
+  /// #1162 browser class is not a store size and records its own PNG
+  /// dimensions).
   final (int, int) storePixelSize;
 
   final String description;
@@ -49,9 +51,10 @@ class ScreenshotDevice {
   int get pngHeight => (logicalHeight * pixelRatio).round();
 }
 
-/// The four device classes the issue names: a 6.7" iPhone (App Store
-/// required size), a 6.1" iPhone (the other App Store required size), a
-/// Pixel (Play), and one tablet (iPad 11").
+/// The device classes: a 6.7" iPhone (App Store required size), a 6.1"
+/// iPhone (the other App Store required size), a Pixel (Play), one tablet
+/// (iPad 11"), and — issue #1162 — a desktop-browser viewport so the
+/// gallery carries the browser-width app-frame presentation.
 const List<ScreenshotDevice> kScreenshotDevices = [
   ScreenshotDevice(
     id: 'iphone-67',
@@ -90,6 +93,22 @@ const List<ScreenshotDevice> kScreenshotDevices = [
     pixelRatio: 2.0,
     storePixelSize: (1668, 2388),
     description: 'iPad 11" (App Store tablet size)',
+  ),
+  ScreenshotDevice(
+    id: 'browser',
+    // A small-desktop browser viewport (1280x800), 1.5x device pixel
+    // ratio — 1920x1200 pixels, inside the manifest test's pixel bounds.
+    // Deliberately wider than the #1162 app frame's 834dp target so the
+    // capture shows the centred frame with its canvas surround, not a
+    // full-bleed layout (issue #1162). Not a store listing size — the
+    // recorded storePixelSize is simply its own PNG size.
+    logicalWidth: 1280,
+    logicalHeight: 800,
+    pixelRatio: 1.5,
+    storePixelSize: (1920, 1200),
+    description:
+        'Desktop browser viewport (issue #1162 app-frame presentation; '
+        'not a store size)',
   ),
 ];
 

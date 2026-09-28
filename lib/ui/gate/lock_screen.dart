@@ -23,6 +23,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/components/app_frame.dart';
 import 'package:lunarlog/ui/gate/device_settings_launcher.dart';
 import 'package:lunarlog/ui/gate/pin_unlock_section.dart';
 import 'package:lunarlog/ui/theme/app_theme.dart';
@@ -67,41 +68,48 @@ class LockScreen extends StatelessWidget {
       // (~1.28:1). The [Builder] sits under this app's own `Theme`, so every
       // text style and colour in the subtree comes from the theme actually
       // painting the `Scaffold`.
-      home: Builder(
-        builder: (context) {
-          final theme = Theme.of(context);
-          final l10n = AppLocalizations.of(context);
-          return Scaffold(
-            key: const ValueKey('lock-screen'),
-            body: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Icon(Icons.lock_outline,
-                        size: 56, color: theme.colorScheme.primary),
-                    const SizedBox(height: 16),
-                    Text(l10n.gateLockScreenTitle,
-                        style: theme.textTheme.headlineSmall),
-                    const SizedBox(height: 8),
-                    // #271 D-6: once the PIN step is reached — after a granted
-                    // device credential, or standing alone with none enrolled —
-                    // it replaces the device-credential content entirely.
-                    if (controller.pinRequired)
-                      PinUnlockSection(controller: controller)
-                    else if (controller.denialReason ==
-                        GateDenialReason.noCredentialEnrolled)
-                      ..._noCredentialContent(theme, l10n)
-                    else
-                      ..._normalContent(theme, l10n),
-                  ],
+      // Issue #1162: the gate is the app's front door, so it presents
+      // inside the same centred browser-width frame the main app does (a
+      // no-op at phone widths). Inside the frame the Builder still reads
+      // this MaterialApp's own Theme — AppFrame only constrains width and
+      // paints the canvas.
+      home: AppFrame(
+        child: Builder(
+          builder: (context) {
+            final theme = Theme.of(context);
+            final l10n = AppLocalizations.of(context);
+            return Scaffold(
+              key: const ValueKey('lock-screen'),
+              body: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Icon(Icons.lock_outline,
+                          size: 56, color: theme.colorScheme.primary),
+                      const SizedBox(height: 16),
+                      Text(l10n.gateLockScreenTitle,
+                          style: theme.textTheme.headlineSmall),
+                      const SizedBox(height: 8),
+                      // #271 D-6: once the PIN step is reached — after a granted
+                      // device credential, or standing alone with none enrolled —
+                      // it replaces the device-credential content entirely.
+                      if (controller.pinRequired)
+                        PinUnlockSection(controller: controller)
+                      else if (controller.denialReason ==
+                          GateDenialReason.noCredentialEnrolled)
+                        ..._noCredentialContent(theme, l10n)
+                      else
+                        ..._normalContent(theme, l10n),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
