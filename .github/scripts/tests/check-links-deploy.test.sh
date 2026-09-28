@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Truth table for .github/scripts/check-links-deploy.sh (issues #1090, #1099),
-# plus wiring assertions that site-deploy.yml runs it after the deploy, that
-# site.yml carries the site PR jobs and the weekly external link check, and
-# that ci.yml's release-guards job runs this suite. Run with:
+# Truth table for .github/scripts/check-links-deploy.sh (issues #1090, #1099,
+# #1157), plus wiring assertions that site-deploy.yml runs it after the deploy,
+# that site.yml carries the site PR jobs and the weekly external link check,
+# and that ci.yml's release-guards job runs this suite. Run with:
 #
 #   bash .github/scripts/tests/check-links-deploy.test.sh
 
@@ -49,6 +49,21 @@ content-type: text/html; charset=utf-8
 referrer-policy: no-referrer
 x-content-type-options: nosniff
 cache-control: public, max-age=300
+EOF
+  cat >"$dir/privacy.headers" <<'EOF'
+HTTP/2 307
+date: Fri, 26 Sep 2026 12:00:00 GMT
+location: /privacy/
+EOF
+  cat >"$dir/privacy-slash.headers" <<'EOF'
+HTTP/2 200
+date: Fri, 26 Sep 2026 12:00:00 GMT
+content-type: text/html; charset=utf-8
+EOF
+  cat >"$dir/support.headers" <<'EOF'
+HTTP/2 200
+date: Fri, 26 Sep 2026 12:00:00 GMT
+content-type: text/html; charset=utf-8
 EOF
   cat >"$dir/assetlinks.json.headers" <<'EOF'
 HTTP/2 404
@@ -256,6 +271,51 @@ run_case "$WORK/invite-cache"
 assert_exit "the static-asset cache header on /invite refuses" 1
 assert_contains "the cache-control mismatch is named" "$LAST_LOG" "cache-control"
 
+# --- The store privacy URL fails closed (issue #1157) ------------------------
+
+# The bare URL both stores list. When the privacy page is missing from the
+# deploy (the #1157 failure), the auto-trailing-slash hop disappears and
+# /privacy is a plain 404.
+make_fixtures "$WORK/privacy-404"
+cat >"$WORK/privacy-404/privacy.headers" <<'EOF'
+HTTP/2 404
+content-type: text/html; charset=utf-8
+EOF
+run_case "$WORK/privacy-404"
+assert_exit "a 404 at /privacy refuses (issue #1157)" 1
+assert_contains "the privacy URL is named" "$LAST_LOG" "/privacy"
+
+# The redirect hop must land on the canonical page, not anywhere else.
+make_fixtures "$WORK/privacy-elsewhere"
+cat >"$WORK/privacy-elsewhere/privacy.headers" <<'EOF'
+HTTP/2 307
+location: /support/
+EOF
+run_case "$WORK/privacy-elsewhere"
+assert_exit "a /privacy redirect that misses /privacy/ refuses" 1
+assert_contains "the privacy redirect target is named" "$LAST_LOG" "/privacy/"
+
+# The page itself must be served once the redirect gets there.
+make_fixtures "$WORK/privacy-slash-404"
+cat >"$WORK/privacy-slash-404/privacy-slash.headers" <<'EOF'
+HTTP/2 404
+content-type: text/html; charset=utf-8
+EOF
+run_case "$WORK/privacy-slash-404"
+assert_exit "a 404 at /privacy/ refuses (the page is missing from the deploy)" 1
+assert_contains "the canonical privacy URL is named" "$LAST_LOG" "/privacy/"
+
+# --- The support page fails closed -------------------------------------------
+
+make_fixtures "$WORK/support-404"
+cat >"$WORK/support-404/support.headers" <<'EOF'
+HTTP/2 404
+content-type: text/html; charset=utf-8
+EOF
+run_case "$WORK/support-404"
+assert_exit "a 404 at /support/ refuses" 1
+assert_contains "the support URL is named" "$LAST_LOG" "/support/"
+
 # --- assetlinks must stay a Worker-handled 404 ------------------------------
 
 make_fixtures "$WORK/assetlinks-200"
@@ -276,6 +336,10 @@ assert_contains "site-deploy.yml deploys from site/" "$site_deploy_yaml" "workin
 assert_contains "site-deploy.yml installs the site deps" "$site_deploy_yaml" "npm ci"
 assert_contains "site-deploy.yml builds the site" "$site_deploy_yaml" "npm run build"
 assert_contains "site-deploy.yml caches the site lockfile" "$site_deploy_yaml" "site/package-lock.json"
+# Issue #1157: the deploy's screenshot step must force the material_fonts
+# re-download (#1158's fix) -- a stale runner SDK cache is what took every
+# deploy down and froze the privacy URL at a 404.
+assert_contains "site-deploy.yml's screenshot step forces the material_fonts re-download (issue #1158)" "$site_deploy_yaml" "flutter precache --universal --force"
 
 site_yaml="$(cat "$SITE_WORKFLOW")"
 assert_contains "site.yml is path-filtered to site/**" "$site_yaml" "site/**"
@@ -289,6 +353,11 @@ assert_contains "site.yml runs the Lighthouse budgets" "$site_yaml" "check:light
 assert_contains "site.yml runs axe" "$site_yaml" "check:axe"
 assert_contains "site.yml has the weekly external link check" "$site_yaml" "check:external-links"
 assert_contains "site.yml is scheduled weekly" "$site_yaml" "schedule:"
+# Issue #1157's pre-merge half: the PR workflow runs the same screenshots
+# step on the same runner image, so a fonts failure is caught before the
+# merge, not on the next deploy.
+assert_contains "site.yml renders the app screenshots before the build" "$site_yaml" "npm run screenshots"
+assert_contains "site.yml's screenshot step forces the material_fonts re-download" "$site_yaml" "flutter precache --universal --force"
 
 site_package="$(cat "$SITE_PACKAGE_JSON")"
 assert_contains "site/package.json pins Astro exactly" "$site_package" '"astro": "7.3.5"'
