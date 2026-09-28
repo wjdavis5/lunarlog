@@ -7170,6 +7170,12 @@ abstract class AppLocalizations {
   /// **'Last reviewed: {date}'**
   String cycleLiteracyLastReviewedLine(String date);
 
+  /// Issue #1151: calm inline fallback shown under the crisis card's buttons when a tel:/sms: launch fails or throws. {number} is the dialable number from the failed target, so the reader can still reach help on a device that can't place calls (Wi-Fi iPad, iPod touch, restricted phone).
+  ///
+  /// In en, this message translates to:
+  /// **'This device couldn\'t open that. You can still reach {number} from another phone that can call or text.'**
+  String crisisLaunchFailed(String number);
+
   /// Issue #1004 (tranche 4b): app-bar title of the standalone cycle literacy library.
   ///
   /// In en, this message translates to:
