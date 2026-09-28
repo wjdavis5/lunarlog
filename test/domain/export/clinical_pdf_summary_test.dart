@@ -283,7 +283,8 @@ void main() {
     );
   });
 
-  test('Issue #822: great_digestion and great_stool produce distinct rows', () {
+  test('Issue #1144: great_digestion and great_stool are wellness, not '
+      'symptoms, and never reach the grid', () {
     final withGreat = [
       for (final start in starts)
         _bleed(
@@ -295,19 +296,92 @@ void main() {
         ),
     ];
     final summary = _summary(withGreat);
+    expect(summary.symptomGrid, isEmpty,
+        reason:
+            'Wellness codes are not symptoms (issue #1144); `flatDisplayForTag`'
+            "'s colliding-display disambiguation stays pinned in "
+            'test/domain/tags_test.dart for the surfaces that still render '
+            'these codes');
+  });
+
+  test('Issue #1144: the issue\'s own case — wellness, medication and home '
+      'test tags drop, cramps stays', () {
+    final mixed = [
+      for (final start in starts)
+        _bleed(
+          'm-${start.iso}',
+          start,
+          tags: start == starts[1]
+              ? const [
+                  'great_digestion',
+                  'antibiotic',
+                  'pregnancy_positive',
+                  'cramps',
+                ]
+              : const [],
+        ),
+    ];
+    final summary = _summary(mixed);
     expect(
-      summary.symptomGrid.any((row) => row.label == 'Great'),
-      isFalse,
-      reason: 'Colliding display "Great" must be disambiguated',
+      summary.symptomGrid.map((row) => row.label),
+      ['Cramps'],
     );
-    final digestion = summary.symptomGrid.singleWhere(
-      (row) => row.label == 'Great (digestion)',
-    );
-    final stool = summary.symptomGrid.singleWhere(
-      (row) => row.label == 'Great (stool)',
-    );
-    expect(digestion.counts[0], 1);
-    expect(stool.counts[0], 1);
+  });
+
+  group('Issue #1144 — non-symptom observation rows never reach the grid', () {
+    test('a birth-control intake row is dropped (typed and wire forms)', () {
+      final observations = [
+        _observation(
+          'bc1',
+          starts[1],
+          category: ObservationCategory.birthControlPill,
+        ),
+        _observation(
+          'bc2',
+          starts[2],
+          category: ObservationCategory.fromCode('birth_control'),
+        ),
+      ];
+      final summary = _summary(entries, observations: observations);
+      expect(summary.symptomGrid, isEmpty);
+    });
+
+    test('Clue-imported medication, test, sex-life and partying rows drop '
+        'while a symptom row stays', () {
+      final observations = [
+        _observation('med1', starts[1],
+            category: ObservationCategory.fromCode('medication'),
+            code: 'antibiotic'),
+        _observation('test1', starts[2],
+            category: ObservationCategory.fromCode('tests'),
+            code: 'pregnancy_positive'),
+        _observation('sex1', starts[3],
+            category: ObservationCategory.fromCode('sex_life'),
+            code: 'high_sex_drive'),
+        _observation('party1', starts[4],
+            category: ObservationCategory.fromCode('partying'), code: 'drinks'),
+        _observation('sym1', starts[5],
+            category: ObservationCategory.pain, code: 'cramps'),
+      ];
+      final summary = _summary(entries, observations: observations);
+      expect(
+        summary.symptomGrid.map((row) => row.label),
+        ['Cramps'],
+      );
+    });
+
+    test('an unknown option code still renders raw (unknown-never-drop)', () {
+      final observations = [
+        _observation('u1', starts[1],
+            category: ObservationCategory.fromCode('medication'),
+            code: 'ibuprofen'),
+      ];
+      final summary = _summary(entries, observations: observations);
+      expect(
+        summary.symptomGrid.map((row) => row.label),
+        ['ibuprofen'],
+      );
+    });
   });
 
   test('Issue #794: observation cramps and tag cramps deduplicate to single Cramps row', () {
