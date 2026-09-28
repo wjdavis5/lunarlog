@@ -82,13 +82,16 @@ jobs:
       - name: Generate the app screenshots
         working-directory: site
         run: |
-          # The runner's SDK cache can carry material_fonts.stamp without
-          # the artifact itself (the flutter-action cache restore this
-          # branch observed), which makes precache skip a font the render
-          # harness loads by hand ("Material Icons font not found"). Drop
-          # the stamp so precache re-fetches exactly this artifact.
+          # The runner's cached SDK (flutter-action cache: true) can carry
+          # material_fonts.stamp without a usable artifact — CI runs on this
+          # branch saw precache consider it fresh while the render harness
+          # failed with "Material Icons font not found". Drop the stamp and
+          # --force the re-download; the ls lines leave ground truth in the
+          # log if it ever breaks differently.
           rm -f "$FLUTTER_ROOT/bin/cache/material_fonts.stamp"
-          flutter precache --universal
+          ls -la "$FLUTTER_ROOT/bin/cache/artifacts/material_fonts/" 2>/dev/null || echo "material_fonts missing before precache"
+          flutter precache --universal --force
+          ls -la "$FLUTTER_ROOT/bin/cache/artifacts/material_fonts/"
           flutter pub get
           npm run screenshots
 
