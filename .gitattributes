@@ -8,3 +8,8 @@
 # core.autocrlf would otherwise check it out as CRLF and make the working file
 # differ from the generator's LF output, so pin it LF on every platform.
 site/src/content/literacy/articles.json text eol=lf
+
+# Issue #1106: same freshness contract as the literacy export above —
+# site/src/content/help-cards/cards.json is compared byte-for-byte against
+# tool/export_help_cards.dart's output, so pin it LF on every platform.
+site/src/content/help-cards/cards.json text eol=lf

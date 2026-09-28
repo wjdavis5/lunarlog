@@ -1,0 +1,168 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import UiLabel from "../../components/UiLabel.astro";
+import HelpCard from "../../components/HelpCard.astro";
+
+// Issue #1106, guide 6: moving your data — importing from Clue, Apple
+// Health, or Health Connect, and exporting JSON, CSV, FHIR, or PDF. The
+// export explanation reuses the in-app help card; screen names and button
+// labels come from the ARB through <UiLabel>; every factual claim carries
+// a `<!-- cite: ... -->` ledger entry checked by
+// `site/scripts/check-claims.mjs`.
+---
+
+<BaseLayout
+  title="Moving your data"
+  description="Bring your history into lunarlog from a Clue export or your phone's health app, and take all of it out again as JSON, CSV, FHIR, or a PDF — exports need no account."
+>
+  <article class="doc">
+    <h1 class="doc__title">Moving your data</h1>
+    <p class="doc__lede">
+      Your history is yours: this guide covers bringing it in, and getting
+      it all back out. Everything here happens on your device, at your
+      initiative — lunarlog never reads your other accounts or your health
+      store in the background.
+      <!-- cite: PRIVACY.md#7-data-export--retention--deletion-rights; lib/data/health/health_import_service.dart ("bound, never background") -->
+    </p>
+
+    <section>
+      <h2>Bringing history in from Clue</h2>
+      <p>
+        lunarlog reads the export Clue emails you as a .zip, and turns it
+        into a profile here. During setup, <UiLabel
+          key="firstRunRestore"
+        /> starts this; later, <UiLabel key="settingsSectionYourData" /> in
+        <UiLabel key="settingsTitle" /> does — the picker explains both
+        choices: <UiLabel key="importScreenPickBody" />
+        <!-- cite: lib/ui/profiles/first_run_screen.dart (restore entry); lib/ui/settings/settings_screen.dart (import tile); lib/l10n/app_en.arb (firstRunRestore, importScreenPickBody) -->
+      </p>
+      <ol class="doc__steps">
+        <li>
+          In Clue, request the export. Clue emails you a .zip together
+          with a one-time password for it.
+          <!-- cite: lib/data/import/clue_importer.dart (Clue export .zip + one-time password contract) -->
+        </li>
+        <li>
+          In lunarlog, choose the downloaded .zip. When the app asks, enter
+          the password from Clue's email into
+          <UiLabel key="importClueExportPasswordLabel" /> and continue with
+          <UiLabel key="importClueOpenExport" />.
+          <!-- cite: lib/l10n/app_en.arb (importClueExportPasswordLabel, importClueOpenExport, importCluePasswordPrompt); lib/data/import/clue_importer.dart -->
+        </li>
+        <li>
+          The import creates its own profile —
+          <UiLabel key="importClueNewProfileNote" /> — named from
+          <UiLabel key="importClueProfileNameLabel" />. Confirm with
+          <UiLabel key="importClueImport" />.
+          <!-- cite: lib/l10n/app_en.arb (importClueNewProfileNote/ProfileNameLabel/Import); lib/data/import/clue_importer.dart -->
+        </li>
+      </ol>
+      <p>
+        Anything already logged by hand in lunarlog is never overwritten
+        by an import — your own entries stay yours; the import fills the
+        gaps. A day Clue recorded that you have since re-logged here keeps
+        your version.
+        <!-- cite: lib/data/import/clue_importer.dart (additive merge rule); lib/data/health/health_import_service.dart (the additive rule the Clue importer established) -->
+      </p>
+    </section>
+
+    <section>
+      <h2>From Apple Health or Health Connect</h2>
+      <p>
+        On iPhone, lunarlog can import menstrual-flow history from Apple
+        Health; on Android, from Health Connect — flow and spotting,
+        decided by you, one profile per phone.
+        <!-- cite: lib/data/health/health_import_service.dart (one shared pipeline, #217/#458); AGENTS.md (project overview) -->
+      </p>
+      <p>
+        The switch lives in <UiLabel key="settingsTitle" /> under
+        <UiLabel key="settingsHealthHeader" />:
+        <UiLabel
+          key="settingsHealthSyncTitle"
+          values={{ source: "Apple Health" }}
+        />
+        — on Android the same tile names Health Connect — asks which
+        profile's data this phone may sync. The import itself runs when
+        you tap it: <UiLabel key="healthSyncImportTileSubtitle" />
+        <!-- cite: lib/l10n/app_en.arb (settingsHealthSyncTitle, healthSyncImportTileSubtitle); lib/data/health/health_import_service.dart -->
+      </p>
+      <p>
+        What the import reads, and what it never does:
+      </p>
+      <ul>
+        <li>
+          It reads the flow and spotting history the health store makes
+          available, not a recent window —
+          <UiLabel key="healthSyncFullHistoryNote" />
+          <!-- cite: lib/data/health/health_import_service.dart (whole-history read, issue #992); lib/l10n/app_en.arb (healthSyncFullHistoryNote) -->
+        </li>
+        <li>
+          It never overwrites a value you logged by hand, and it never
+          writes its imports back into the health store — the app's own
+          writes are excluded by source, so the two directions cannot
+          loop.
+          <!-- cite: lib/data/health/health_import_service.dart (merge rules, provenance, echo loop prevention) -->
+        </li>
+        <li>
+          There is no background reading — no observer, no timer. The only
+          way an import runs is you tapping it in Settings.
+          <!-- cite: lib/data/health/health_import_service.dart ("bound, never background") -->
+        </li>
+        <li>
+          One profile is bound to the phone's health connection at a time;
+          unbinding later stops both directions and deletes nothing.
+          <!-- cite: lib/domain/health/health_sync_binding.dart (#153 device binding); lib/l10n/app_en.arb (healthSyncUnbindDialogImportBody) -->
+        </li>
+      </ul>
+      <p>
+        On Android there is one honest limitation the app states in place:
+        symptoms cannot be written to Health Connect, because Health
+        Connect has no symptom categories — flow and spotting still sync;
+        the symptoms stay in lunarlog.
+        <!-- cite: lib/l10n/app_en.arb (settingsHealthSyncSymptomsAndroidLimitation) -->
+      </p>
+    </section>
+
+    <section>
+      <h2>Taking your data out</h2>
+      <HelpCard id="export-data" />
+      <p>
+        Every format lives under <UiLabel key="settingsSectionYourData" />
+        → <UiLabel key="yourDataExportTitle" /> and its neighbours, all
+        built on-device and handed to your share sheet:
+      </p>
+      <ul>
+        <li>
+          <strong><UiLabel key="yourDataExportTitle" /></strong> — a JSON
+          file of every profile and day entry on the device, plus the
+          account's server-side record when you are signed in. lunarlog
+          can restore from its own backup the same way.
+          <!-- cite: lib/domain/export/account_export.dart (#17 U5, on-device); lib/l10n/app_en.arb (yourDataExportSubtitleSignedIn, yourDataImportSubtitle) -->
+        </li>
+        <li>
+          <strong><UiLabel key="settingsCsvExportTitle" /></strong> —
+          spreadsheet-friendly tables of the cycle data.
+          <!-- cite: lib/domain/export/csv_export.dart; lib/l10n/app_en.arb (settingsCsvExportTitle) -->
+        </li>
+        <li>
+          <strong><UiLabel key="settingsClinicalExportFhirTitle" /></strong>
+          — an IPS-shaped FHIR R4 document with coded, self-reported data,
+          for a clinician's system.
+          <!-- cite: lib/domain/export/fhir_bundle.dart (#157); lib/l10n/app_en.arb (settingsClinicalExportSubtitleGeneric) -->
+        </li>
+        <li>
+          <strong><UiLabel key="clinicalPdfExportTitle" /></strong> — a
+          one-page PDF summary of the logged data, for an appointment.
+          <!-- cite: lib/domain/export/clinical_pdf.dart; lib/l10n/app_en.arb (clinicalPdfExportTitle) -->
+        </li>
+      </ul>
+      <p>
+        Exports work fully offline and need no account — the file is built
+        from the copy on your device. On a shared or borrowed phone,
+        remember the file carries everything that device can see; review
+        it before passing it on.
+        <!-- cite: lib/domain/help/help_cards.dart (exportData, offlineMode cards); PRIVACY.md#7-data-export--retention--deletion-rights -->
+      </p>
+    </section>
+  </article>
+</BaseLayout>

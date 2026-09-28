@@ -23,7 +23,22 @@ const dist = path.resolve(
   "../dist",
 );
 
-const PAGES = ["/", "/privacy", "/delete-account/", "/support/"];
+const PAGES = [
+  "/",
+  "/privacy",
+  "/delete-account/",
+  "/support/",
+  // The how-to guides (issue #1106).
+  "/guides/",
+  "/guides/getting-started/",
+  "/guides/household-setup/",
+  "/guides/inviting-someone/",
+  "/guides/transferring-ownership/",
+  "/guides/logging-a-day/",
+  "/guides/reading-estimates/",
+  "/guides/moving-your-data/",
+  "/guides/browser-version/",
+];
 
 const MIME = {
   ".css": "text/css; charset=utf-8",

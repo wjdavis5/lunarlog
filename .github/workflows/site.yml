@@ -94,6 +94,20 @@ jobs:
         working-directory: site
         run: npm run check:privacy-anchors
 
+      - name: Check the guides' claims ledger
+        # Issue #1106: every factual claim in a how-to guide cites the repo
+        # path (or issue) that ships it; a cited path that no longer exists
+        # fails here, so a move or rename cannot strand a guide's evidence.
+        working-directory: site
+        run: npm run check:claims
+
+      - name: Run the site unit tests
+        # Issue #1106: node --test over site/scripts/*.test.mjs — the ARB
+        # loader's build-fails-on-unknown-key rules and the claims-check
+        # functions, which do not need a browser to prove.
+        working-directory: site
+        run: npm test
+
       - name: Run axe against the built site
         working-directory: site
         run: npm run check:axe

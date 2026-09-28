@@ -1,0 +1,154 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import UiLabel from "../../components/UiLabel.astro";
+import HelpCard from "../../components/HelpCard.astro";
+
+// Issue #1106, guide 3: inviting someone, written as separate
+// walk-throughs for both directions — inviting a guardian into a profile
+// you track on, and inviting the profile's subject to log it herself.
+// Positioning rule (docs/product/positioning.md): the two directions get
+// equal weight and neither is framed as the default. Screen names and
+// button labels come from the app's ARB strings through <UiLabel>, the
+// invitation mechanics reuse the in-app help cards, and every factual
+// claim carries a `<!-- cite: ... -->` ledger entry checked by
+// `site/scripts/check-claims.mjs`.
+---
+
+<BaseLayout
+  title="Inviting someone"
+  description="Two walk-throughs: invite a guardian into a profile you track on, or set a profile up for someone and invite her to log it herself. Invitations are single-use links that expire."
+>
+  <article class="doc">
+    <h1 class="doc__title">Inviting someone</h1>
+    <p class="doc__lede">
+      Sharing always starts with one person creating a single-use
+      invitation link, and ends with the other person opening it and
+      accepting. Families arrive from both directions, so this guide is
+      two walk-throughs — read the one that is you, or both.
+    </p>
+    <section>
+      <h2>How an invitation works</h2>
+      <HelpCard id="invitations" />
+    </section>
+
+    <section>
+      <h2>You track for yourself, and invite someone in</h2>
+      <p>
+        Sam has been logging her own cycle and wants her partner Alex to
+        follow along and help log. Alex needs his own lunarlog account on
+        his own device; the invitation carries him in.
+      </p>
+      <ol class="doc__steps">
+        <li>
+          Open the profile's guardian management: from the profile, choose
+          <UiLabel key="profilePickerMenuGuardians" />.
+          <!-- cite: lib/ui/sharing/manage_guardians_screen.dart; lib/l10n/app_en.arb (profilePickerMenuGuardians) -->
+        </li>
+        <li>
+          Choose <UiLabel key="sharingManageGuardiansInviteAction" />. The
+          invitation is created from your lunarlog account, so sign in
+          first if the app asks.
+          <!-- cite: lib/ui/sharing/invite_guardian_dialog.dart; lib/l10n/app_en.arb (firstRunInviteWhyAccount) -->
+        </li>
+        <li>
+          Pick the role the invitation carries — the person accepting
+          cannot choose a higher one than you sent. Alex gets
+          <UiLabel key="guardianRoleLabelCoParent" /> so he can log and
+          manage alongside Sam; a <UiLabel
+            key="guardianRoleLabelCaregiver"
+          /> link is the fit when someone should log but not manage, and a
+          <UiLabel key="guardianRoleLabelViewer" /> link for read-only.
+          <!-- cite: lib/domain/help/help_cards.dart (invitations card); lib/ui/sharing/invite_guardian_dialog.dart (role picker) -->
+        </li>
+        <li>
+          Share the link the app shows —
+          <UiLabel
+            key="inviteCreatedShareGuardian"
+            values={{ profile: "Sam" }}
+          />
+          It works once and expires; Alex can open it on his phone and
+          accept.
+          <!-- cite: lib/ui/sharing/invite_guardian_dialog.dart (created-link share step); lib/domain/help/help_cards.dart (invitations card: single-use, 48h) -->
+        </li>
+        <li>
+          On Alex's side, opening the link shows
+          <UiLabel key="sharingAcceptInviteTitle" /> with the role spelled
+          out; <UiLabel key="sharingAcceptInviteAccept" /> brings Sam's
+          profile onto his device, syncing from then on. Until he accepts,
+          the pending invitation sits in the guardian management list,
+          where Sam can cancel it with
+          <UiLabel key="manageGuardiansCancelInviteTooltip" />.
+          <!-- cite: lib/ui/sharing/accept_invite_sheet.dart; lib/ui/sharing/manage_guardians_screen.dart (pending list + cancel) -->
+        </li>
+      </ol>
+      <p>
+        What Alex sees is the whole profile, under his role — the same
+        entries, estimates, and history Sam sees, in guardian view.
+        <!-- cite: PRIVACY.md#5-minors-privacy--family-profiles (accepted guardians read what is logged) -->
+      </p>
+    </section>
+
+    <section>
+      <h2>You set a profile up for someone, and invite her to log it</h2>
+      <p>
+        Dana's daughter Maya is fifteen and wants to keep her own log.
+        Dana creates the profile on her own phone, logs the early days
+        while Maya settles in, and then hands Maya the invitation — from
+        then on Maya logs on her own phone, and Dana follows along.
+      </p>
+      <ol class="doc__steps">
+        <li>
+          Create the profile: <UiLabel key="profilePickerAddProfileTooltip"
+          /> from <UiLabel key="profilePickerTitle" />, and on
+          <UiLabel key="firstRunWhoLabel" /> choose
+          <UiLabel key="firstRunWhoSomeone" />. Mark
+          <UiLabel key="firstRunMinorLabel" /> for a young person — it
+          keeps the framing right for her age.
+          <!-- cite: lib/ui/profiles/first_run_screen.dart (someone-I-care-for path, minor flag) -->
+        </li>
+        <li>
+          In the new profile's guardian management, choose
+          <UiLabel key="sharingManageGuardiansInviteAction" /> and pick the
+          option addressed to the person the profile is about:
+          <UiLabel key="inviteSubjectOption" values={{ name: "Maya" }} />.
+          <!-- cite: lib/ui/sharing/invite_guardian_dialog.dart (subject invitation option, inviteSubjectOption) -->
+        </li>
+        <li>
+          Share the link with Maya:
+          <UiLabel key="inviteCreatedShareSubject" values={{ name: "Maya" }} />
+          On her phone, she signs in — or creates her account — and
+          accepts. Her screen says it plainly:
+          <UiLabel key="acceptInviteSubjectIntro" values={{ profile: "Maya" }} />
+          <!-- cite: lib/ui/sharing/accept_invite_sheet.dart (subject intro, acceptInviteSubjectIntro); lib/ui/sharing/invite_guardian_dialog.dart (created-link share step) -->
+        </li>
+        <li>
+          From then on the profile is hers to log on her own device, with
+          Dana's access exactly as she chose it. Maya is the profile's
+          subject and logs it; Dana remains its guardian — the
+          <a href="/guides/transferring-ownership/">ownership transfer</a>
+          is a separate, later decision, not a requirement for any of
+          this.
+          <!-- cite: docs/product/positioning.md (ownership transfer is a separate, later decision); lib/ui/sharing/invite_guardian_dialog.dart (subject invitation = caregiver access) -->
+        </li>
+      </ol>
+      <p>
+        A young person accepting an invitation sees an age note as part of
+        the setup — lunarlog is licensed 13 and up, and a parent or
+        guardian's invitation is how a younger teenager uses it.
+        <!-- cite: PRIVACY.md#5-minors-privacy--family-profiles (minimum age); lib/ui/profiles/first_run_screen.dart (parent-invite age acknowledgement, firstRunAgeAcknowledgementParentInviteLabel) -->
+      </p>
+    </section>
+
+    <section>
+      <h2>Changing your mind</h2>
+      <p>
+        An invitation that has not been used can be cancelled from the
+        same guardian management list. A guardian who is already in can be
+        removed there too — removal ends their access immediately and
+        cancels every still-open invitation for that profile; the entries
+        they logged stay, with their original attribution.
+      </p>
+      <HelpCard id="revocation" />
+    </section>
+  </article>
+</BaseLayout>

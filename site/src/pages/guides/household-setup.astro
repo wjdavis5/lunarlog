@@ -1,0 +1,131 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import UiLabel from "../../components/UiLabel.astro";
+import HelpCard from "../../components/HelpCard.astro";
+
+// Issue #1106, guide 2: setting up a household — profiles and the four
+// guardian roles, with what each can see and do. Role names are quoted
+// through <UiLabel> from the app's own ARB keys (never retyped), the
+// roles/minors explanations reuse the in-app help cards, and every
+// factual claim carries a `<!-- cite: ... -->` ledger entry checked by
+// `site/scripts/check-claims.mjs`.
+---
+
+<BaseLayout
+  title="Setting up a household"
+  description="Profiles, and the four guardian roles — Primary Guardian, Co-Parent, Caregiver, and Viewer — with what each can see and do."
+>
+  <article class="doc">
+    <h1 class="doc__title">Setting up a household</h1>
+    <p class="doc__lede">
+      One lunarlog account can look after several people's cycle logs, and
+      each profile can be shared with the people who help care for it.
+      This guide covers the pieces; the
+      <a href="/guides/inviting-someone/">inviting guide</a> covers the
+      handshakes.
+    </p>
+
+    <section>
+      <h2>One profile per person</h2>
+      <p>
+        <UiLabel key="firstRunGuardiansBody" /> Profiles never mix: Sam's
+        log and her daughter Maya's log are two profiles, with separate
+        histories, estimates, and guardian lists, even when both live on
+        the same phone.
+        <!-- cite: lib/domain/help/help_cards.dart (familyProfilesMinors card); lib/ui/profiles/first_run_screen.dart -->
+      </p>
+      <p>
+        Add another profile any time from the profile picker —
+        <UiLabel key="profilePickerTitle" />, reached with
+        <UiLabel key="profileDetailSwitchProfileTooltip" /> from the
+        overview — and <UiLabel key="profilePickerAddProfileTooltip" />
+        walks the same short setup as the first one. Switching profiles is
+        one tap, and a profile you are invited into later appears in the
+        picker under <UiLabel key="profilePickerSharedWithMeHeader" />,
+        with your role next to it.
+        <!-- cite: lib/ui/profiles/profile_picker_screen.dart (picker, add-profile action, shared-with-me section) -->
+      </p>
+      <p>
+        When a profile is for a child or teenager, the
+        <UiLabel key="firstRunMinorLabel" /> flag marks it. It is a label
+        the household controls, and it matters for framing — teen-appropriate
+        wording, and estimates that hedge accordingly — rather than for
+        storage. A minor's profile is never shared beyond its guardians,
+        and when the child is old enough,
+        <a href="/guides/transferring-ownership/">ownership can move</a> to
+        her own account, with every past entry intact.
+        <!-- cite: lib/ui/profiles/first_run_screen.dart (minor flag explainer); lib/domain/help/help_cards.dart (familyProfilesMinors card); PRIVACY.md#5-minors-privacy--family-profiles -->
+      </p>
+    </section>
+
+    <section>
+      <h2>The four guardian roles</h2>
+      <p>
+        Everyone with access to a profile is a guardian, and every
+        guardian has exactly one role on that profile. The app's own
+        summary of what each role allows:
+      </p>
+      <HelpCard id="guardian-roles" />
+      <p>
+        In short, from most to fewest permissions:
+      </p>
+      <ul>
+        <li>
+          <UiLabel key="guardianRoleLabelPrimaryGuardian" /> — owns the
+          profile. Exactly one per profile: edits it, manages guardians,
+          and is the only role that can delete it or hand it over.
+          <!-- cite: lib/domain/models/profile_guardian.dart (GuardianRole); PRIVACY.md#5-minors-privacy--family-profiles -->
+        </li>
+        <li>
+          <UiLabel key="guardianRoleLabelCoParent" /> — logs entries,
+          edits the profile, and manages guardians, but cannot delete the
+          profile or take ownership.
+          <!-- cite: lib/domain/help/help_cards.dart (guardianRoles card) -->
+        </li>
+        <li>
+          <UiLabel key="guardianRoleLabelCaregiver" /> — logs entries, but
+          cannot change the profile itself or manage guardians.
+          <!-- cite: lib/domain/help/help_cards.dart (guardianRoles card) -->
+        </li>
+        <li>
+          <UiLabel key="guardianRoleLabelViewer" /> — read-only; the day
+          sheet opens read-only for them.
+          <!-- cite: lib/domain/help/help_cards.dart (guardianRoles card); lib/l10n/app_en.arb (guardianRoleReadOnlyReasonViewer) -->
+        </li>
+      </ul>
+      <p>
+        Reading is not rationed: every accepted guardian on a profile can
+        read what is logged on it — roles decide who can write and manage,
+        not a sliding scale of visibility. The one deliberate exception is
+        a note the profile's subject marked private, which stays hers.
+        <!-- cite: PRIVACY.md#5-minors-privacy--family-profiles (guardian roles & read visibility); lib/l10n/app_en.arb (daySheetNotePrivateDisclosure) -->
+      </p>
+      <p>
+        Each entry keeps who logged it, so shared logging stays attributed
+        no matter the mix of roles. The role definitions live in the app
+        too: the guardian management screen's
+        <UiLabel key="manageGuardiansAboutRolesTooltip" /> explainer shows
+        the same ladder on any profile.
+        <!-- cite: lib/ui/sharing/manage_guardians_screen.dart (about-roles explainer); lib/domain/help/help_cards.dart (guardianRoles card) -->
+      </p>
+    </section>
+
+    <section>
+      <h2>Households come in more than one shape</h2>
+      <p>
+        The setup above serves an adult tracking for herself, two parents
+        keeping a teenager's log side by side, a caregiver helping someone
+        through treatment — any mix. What the shapes have in common is the
+        direction of trust: a profile's guardians are exactly the people
+        listed on it, no one else ever receives its data, and every
+        addition is an explicit invitation someone accepted.
+        <!-- cite: PRIVACY.md#1-core-principles; PRIVACY.md#4-third-party-service-providers; docs/product/positioning.md (audience) -->
+      </p>
+      <p>
+        Ready to bring someone in? The
+        <a href="/guides/inviting-someone/">inviting guide</a> walks both
+        directions.
+      </p>
+    </section>
+  </article>
+</BaseLayout>

@@ -1,0 +1,32 @@
+---
+// An in-app help card, rendered from the committed export of
+// `lib/domain/help/help_cards.dart` (issues #139 and #1106). A guide
+// reuses the app's own explanation instead of retyping it — one home per
+// explanation, and the card's source and review date travel with it. The
+// export is regenerated and committed by
+// `dart run tool/export_help_cards.dart`; an unknown id throws here and
+// fails the build (see `src/lib/help-cards.mjs`).
+import { helpCard, loadHelpCards } from "../lib/help-cards.mjs";
+
+interface Props {
+  /** The card id from `HelpCards`, e.g. "confidence-levels". */
+  id: string;
+}
+
+const { id } = Astro.props;
+const card = helpCard(loadHelpCards(), id);
+// Each card is a complementary landmark named by its own title — unique
+// per card (html-validate's unique-landmark rule), and the name is what
+// a screen reader's landmark list shows.
+const titleId = `help-card-${card.id}`;
+---
+
+<section class="help-card" aria-labelledby={titleId}>
+  <h3 class="help-card__title" id={titleId}>{card.title}</h3>
+  <p class="help-card__summary">{card.summary}</p>
+  {card.body.map((paragraph) => <p set:text={paragraph} />)}
+  <p class="help-card__source">
+    Source: {card.source} · Last reviewed{" "}
+    <time datetime={card.reviewDate}>{card.reviewDate}</time>
+  </p>
+</section>

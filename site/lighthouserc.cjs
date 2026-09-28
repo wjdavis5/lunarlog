@@ -22,6 +22,16 @@ module.exports = {
         "http://localhost/index.html",
         "http://localhost/delete-account/",
         "http://localhost/support/",
+        // The how-to guides (issue #1106).
+        "http://localhost/guides/",
+        "http://localhost/guides/getting-started/",
+        "http://localhost/guides/household-setup/",
+        "http://localhost/guides/inviting-someone/",
+        "http://localhost/guides/transferring-ownership/",
+        "http://localhost/guides/logging-a-day/",
+        "http://localhost/guides/reading-estimates/",
+        "http://localhost/guides/moving-your-data/",
+        "http://localhost/guides/browser-version/",
       ],
       numberOfRuns: 3,
       settings: {

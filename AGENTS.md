@@ -78,6 +78,15 @@ universal-link routes.
   `edge-functions` job). `site/src/content/literacy/articles.json` is the
   #1103 literacy export, checked byte for byte by
   `test/tool/export_literacy_test.dart`; it is not rendered yet (#1104).
+  `site/src/content/help-cards/cards.json` is the #1106 help-cards export
+  (`dart run tool/export_help_cards.dart`, freshness-checked by
+  `test/tool/export_help_cards_test.dart`); the how-to guides render it
+  through `src/components/HelpCard.astro` and quote every screen name and
+  button label through `src/components/UiLabel.astro`, which reads
+  `lib/l10n/app_en.arb` at build time and fails the build on an unknown
+  key. The guides' factual claims carry `<!-- cite: ... -->` ledger
+  entries enforced by `site/scripts/check-claims.mjs` (cited paths must
+  exist; PRIVACY.md anchors are validated too).
   `site/dist/`, `site/node_modules/`, `site/.astro/` and `site/.lighthouseci/`
   are gitignored.
 - **Zero client JS.** No `client:*` directives and no integrations: loading a

@@ -1,0 +1,22 @@
+---
+// A screen name or button label, quoted from the app's own strings
+// (issue #1106). Guides never retype a label: this renders the current
+// string for `key` from `lib/l10n/app_en.arb`, so a renamed button and a
+// regenerated ARB update every guide in the same merge — and an unknown
+// key throws here, failing the Astro build instead of leaving a stale
+// guide behind. See `src/lib/ui-strings.mjs` for the rules (no ICU
+// composite messages; `{param}` placeholders need `values`).
+import { uiString } from "../lib/ui-strings.mjs";
+
+interface Props {
+  /** The ARB key, e.g. "guardianRoleLabelViewer". */
+  key: string;
+  /** Values for `{param}` placeholders (fabricated example names only). */
+  values?: Record<string, string>;
+}
+
+const { key, values } = Astro.props;
+const text = uiString(key, values);
+---
+
+<span set:text={text} />

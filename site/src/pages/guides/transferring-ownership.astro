@@ -1,0 +1,117 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import UiLabel from "../../components/UiLabel.astro";
+import HelpCard from "../../components/HelpCard.astro";
+
+// Issue #1106: ownership transfer gets its own short guide (issue #4's
+// parent-to-child handover). The mechanics are the in-app help card
+// rendered from the export; role names and buttons come from the ARB
+// through <UiLabel>; every factual claim carries a `<!-- cite: ... -->`
+// ledger entry checked by `site/scripts/check-claims.mjs`.
+---
+
+<BaseLayout
+  title="Transferring ownership"
+  description="How ownership transfer works: a one-way handover of a profile to its subject's own account, with every past entry's original attribution kept."
+>
+  <article class="doc">
+    <h1 class="doc__title">Transferring ownership</h1>
+    <p class="doc__lede">
+      A profile created by a parent does not have to stay hers. When the
+      person it is about is ready — Maya turning sixteen, say — ownership
+      moves to her account in one step, and the parent chooses how, or
+      whether, to stay on.
+    </p>
+    <section>
+      <h2>What a transfer is</h2>
+      <HelpCard id="ownership-transfer" />
+    </section>
+
+    <section>
+      <h2>Before the handover</h2>
+      <p>
+        Transfer is deliberate and one-way — there is no undo, only a new
+        transfer back. A few things to know first:
+      </p>
+      <ul>
+        <li>
+          The transfer does not move data anywhere: the profile and every
+          entry in it stay exactly where they are. What changes is who the
+          account that owns it is, and with it the
+          <UiLabel key="guardianRoleLabelPrimaryGuardian" /> seat.
+          <!-- cite: lib/domain/help/help_cards.dart (ownershipTransfer card); lib/domain/sharing/ownership_transfer_service.dart -->
+        </li>
+        <li>
+          Attribution never changes: every past entry keeps whoever
+          originally logged it, so the record Dana kept during Maya's
+          early days stays marked as Dana's.
+          <!-- cite: lib/domain/help/help_cards.dart (ownershipTransfer card); lib/ui/sharing/claim_profile_sheet.dart (claimProfileBody) -->
+        </li>
+        <li>
+          If the new owner later deletes her account, this profile's
+          history goes with it — worth a conversation before arming the
+          transfer.
+          <!-- cite: lib/l10n/app_en.arb (sharingTransferOwnershipBulletDeleteAccount); lib/ui/sharing/transfer_ownership_screen.dart -->
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>The parent's side</h2>
+      <ol class="doc__steps">
+        <li>
+          Open the profile's guardian management and choose
+          <UiLabel key="manageGuardiansTransferOwnershipTooltip" />. Only
+          the profile's <UiLabel key="guardianRoleLabelPrimaryGuardian" />
+          can arm a transfer.
+          <!-- cite: lib/ui/sharing/transfer_ownership_screen.dart; lib/domain/help/help_cards.dart (ownershipTransfer card) -->
+        </li>
+        <li>
+          Choose the role you keep. The two offers, in the app's words:
+          <UiLabel key="transferOwnershipRoleCoParent" /> or
+          <UiLabel key="transferOwnershipRoleViewer" />. Afterwards that
+          access is an ordinary membership — the new owner can change or
+          remove it at any time.
+          <!-- cite: lib/ui/sharing/transfer_ownership_screen.dart (continuing-role choice, transferOwnershipRole*) -->
+        </li>
+        <li>
+          Confirm. The app states the handover —
+          <UiLabel
+            key="transferOwnershipConfirmBody"
+            values={{ name: "Maya", role: "Co-Parent" }}
+          />
+          — and creates a single-use link that expires after 72 hours.
+          Send it to Maya; the pending transfer shows as
+          <UiLabel key="manageGuardiansWaitingForRedemption" /> until she
+          claims it.
+          <!-- cite: lib/ui/sharing/transfer_ownership_screen.dart (confirm body, 72h link); lib/domain/help/help_cards.dart (ownershipTransfer card) -->
+        </li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>Maya's side</h2>
+      <ol class="doc__steps">
+        <li>
+          Maya opens the link on her own device, signed in to her own
+          account. The claim screen explains it:
+          <UiLabel key="claimProfileBody" />
+          <!-- cite: lib/ui/sharing/claim_profile_sheet.dart (claimProfileBody) -->
+        </li>
+        <li>
+          She confirms with
+          <UiLabel key="claimProfileBecomeGuardianAction" />. Ownership and
+          the primary-guardian seat move to her account in one step; Dana
+          keeps the role she chose, from then on as an ordinary guardian.
+          <!-- cite: lib/ui/sharing/claim_profile_sheet.dart; lib/domain/help/help_cards.dart (ownershipTransfer card) -->
+        </li>
+      </ol>
+      <p>
+        That is the whole ceremony. Nothing about Maya's log changes on
+        the surface — same history, same estimates — and the family keeps
+        sharing it exactly as before, now with its subject as its owner.
+        <!-- cite: docs/product/positioning.md (ownership can move with the family); lib/domain/sharing/ownership_transfer_service.dart -->
+      </p>
+    </section>
+  </article>
+</BaseLayout>
