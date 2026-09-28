@@ -12,6 +12,12 @@ name: Site deploy (Cloudflare Workers)
 # Scope: the static Astro pages, the AASA, and /invite*. Android
 # assetlinks.json is omitted until release fingerprints exist. `/fhir/*` is
 # reserved (issue #961): a plain 404, never a redirect.
+#
+# Issue #1104: the deploy job also generates the app screenshots (from the
+# fabricated dataset in `tool/screenshots/`, at the pinned Flutter SDK)
+# into `site/public/screenshots/` before `astro build` — the PNGs are never
+# committed, so `lib/ui/**` and `tool/screenshots/**` changes redeploy the
+# site with fresh ones.
 
 on:
   push:
@@ -20,6 +26,12 @@ on:
       - 'site/**'
       - '.github/workflows/site-deploy.yml'
       - '.github/scripts/check-links-deploy.sh'
+      # Issue #1104: the site's screenshots are generated here (never
+      # committed), so a change to the app UI they render — or to the
+      # tool that renders them — must redeploy the site with fresh PNGs
+      # (the issue's second acceptance criterion).
+      - 'lib/ui/**'
+      - 'tool/screenshots/**'
   workflow_dispatch:
 
 concurrency:
@@ -34,7 +46,12 @@ jobs:
   deploy:
     name: Build and deploy the site Worker to Cloudflare
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
+    env:
+      # Pinned to the same SDK every other workflow builds with (see
+      # FLUTTER_VERSION in ci.yml) so the screenshots render with the
+      # exact engine the app ships on.
+      FLUTTER_VERSION: '3.47.2'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -45,6 +62,24 @@ jobs:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: 'site/package-lock.json'
+
+      # Issue #1104: generate the app screenshots before the site build.
+      # The PNGs land in site/public/screenshots/ (gitignored — never
+      # committed) and ride the normal public/ -> dist/ copy. Rendered by
+      # `flutter test` over the fabricated dataset in tool/screenshots/ at
+      # the pinned SDK, so the same commit always renders the same bytes.
+      - name: Install the pinned Flutter SDK
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Generate the app screenshots
+        working-directory: site
+        run: |
+          flutter pub get
+          npm run screenshots
 
       - name: Build the site
         # `npm run build` runs `astro sync`, `astro check`, and the static

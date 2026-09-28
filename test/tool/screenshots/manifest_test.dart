@@ -1,0 +1,98 @@
+/// Unit tests for the screenshot manifest (issue #1104): the device
+/// table's pixel math must land exactly on the store sizes it records,
+/// and the screen list must stay a stable, filename-safe gallery order.
+///
+/// The renderer itself (`tool/screenshots/render_screens_test.dart`) is
+/// deliberately NOT run by CI — it writes files and renders dozens of
+/// frames under `flutter test`; these tests pin the pure data it walks.
+library;
+
+import 'package:flutter_test/flutter_test.dart';
+
+import '../../../tool/screenshots/manifest.dart';
+
+void main() {
+  group('device table (#1104)', () {
+    test('ids are unique and filename-safe', () {
+      final ids = kScreenshotDevices.map((d) => d.id).toList();
+      expect(ids.toSet().length, ids.length);
+      for (final id in ids) {
+        expect(id, matches(RegExp(r'^[a-z0-9-]+$')),
+            reason: 'device ids ride in PNG filenames');
+      }
+    });
+
+    test('png dimensions equal logical size x pixel ratio', () {
+      for (final device in kScreenshotDevices) {
+        expect(
+          device.pngWidth,
+          device.storePixelSize.$1,
+          reason: '${device.id}: rendered width must be the recorded '
+              'store width',
+        );
+        expect(
+          device.pngHeight,
+          device.storePixelSize.$2,
+          reason: '${device.id}: rendered height must be the recorded '
+              'store height',
+        );
+      }
+    });
+
+    test('the issue\'s four device classes are all present', () {
+      expect(
+        kScreenshotDevices.map((d) => d.id),
+        containsAll(['iphone-67', 'iphone-61', 'pixel', 'tablet']),
+      );
+    });
+
+    test('every device stays inside the stores\' pixel bounds', () {
+      for (final device in kScreenshotDevices) {
+        expect(device.logicalWidth, greaterThan(0));
+        expect(device.logicalHeight, greaterThan(0));
+        expect(device.pixelRatio, greaterThanOrEqualTo(1));
+        // Play accepts up to 3840px on a side; nothing here should even
+        // approach it.
+        expect(device.pngWidth, lessThanOrEqualTo(2160));
+        expect(device.pngHeight, lessThanOrEqualTo(3840));
+      }
+    });
+  });
+
+  group('screen manifest (#1104)', () {
+    test('ids are unique and filename-safe', () {
+      final ids = kScreenshotScreens.map((s) => s.id).toList();
+      expect(ids.toSet().length, ids.length);
+      for (final id in ids) {
+        expect(id, matches(RegExp(r'^[a-z0-9-]+$')),
+            reason: 'screen ids ride in PNG filenames');
+      }
+    });
+
+    test('the issue\'s scope names all nine screens', () {
+      expect(
+        kScreenshotScreens.map((s) => s.id),
+        containsAll([
+          'today',
+          'calendar',
+          'log-day',
+          'estimates',
+          'guardians',
+          'life-stage',
+          'import',
+          'export',
+          'article',
+        ]),
+      );
+    });
+
+    test('the full cross product the renderer walks', () {
+      // The count the runner's own completion assertion uses; a manifest
+      // edit updates both through this constant, never by hand.
+      final triples = kScreenshotScreens.length *
+          kScreenshotDevices.length *
+          ScreenshotTheme.values.length;
+      expect(triples, kScreenshotScreens.length * kScreenshotDevices.length * 2);
+    });
+  });
+}

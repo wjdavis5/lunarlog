@@ -9,6 +9,7 @@
     "sync": "astro sync",
     "build": "astro sync && astro check && astro build",
     "preview": "astro preview",
+    "screenshots": "node scripts/screenshots.mjs",
     "check:html": "html-validate \"dist/**/*.html\"",
     "check:links": "node scripts/check-internal-links.mjs",
     "check:external-links": "node scripts/check-external-links.mjs",

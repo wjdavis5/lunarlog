@@ -2,7 +2,11 @@ name: Site (marketing site)
 
 # Issue #1099: CI for the Astro marketing site in `site/`. This is a
 # separate, path-filtered workflow on purpose:
-#   - an app PR runs no site jobs (acceptance criterion 2);
+#   - an app PR runs no site jobs (acceptance criterion 2) — with the
+#     issue #1104 exception the path filter below carries: a PR touching
+#     `lib/ui/**` or `tool/screenshots/**` CAN change what the site shows
+#     (the screenshots are rendered from the real UI), so it runs these
+#     checks too;
 #   - it is NOT in ci.yml's `detect-changes` outputs or its "CI required
 #     checks" aggregate, so a site failure can never gate an app release.
 #
@@ -16,6 +20,12 @@ on:
       - 'PRIVACY.md'
       - 'lib/domain/content/**'
       - 'lib/l10n/app_en.arb'
+      # Issue #1104: the site's screenshots are rendered from the app's UI
+      # (tool/screenshots/), so a UI change can change what the site shows
+      # — UI PRs run the site checks, and site-deploy.yml regenerates the
+      # screenshots on the merge.
+      - 'lib/ui/**'
+      - 'tool/screenshots/**'
       - '.github/workflows/site.yml'
   schedule:
     # Mondays 06:23 UTC. The weekly outbound-link check (issue #1099) is a
