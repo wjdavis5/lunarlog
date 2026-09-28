@@ -614,21 +614,21 @@ TagCode? tagByCode(String code) => _tagsByCode[code];
 bool isValidTagCode(String code) => _tagsByCode.containsKey(code);
 
 /// Where a taxonomy tag's fact belongs when a consumer separates patient
-/// **problems** from the rest of a day's log (issue #1138) — the shared
-/// predicate behind the FHIR export's section routing and the clinician
-/// PDF's symptom grid (#1144). One tag, one role: the same logged fact can
-/// never read as a symptom in one export and something else in another.
+/// **problems** from the rest of a day's log (issue #1138). One tag, one
+/// role: the same logged fact can never read as a symptom in one export
+/// and something else in another. The symptom/non-symptom line itself is
+/// [isSymptomTagCode] — #1147's [kSymptomTagCategories] +
+/// [kWellnessTagCodes], shared with the clinician PDF's symptom grid — so
+/// this enum only adds the routing the FHIR export needs beyond it: home
+/// tests are results, medications/sex-life/substance are not exported,
+/// and the remaining non-symptoms are cycle context.
 ///
 /// The role is decided **by category first** — the whole categories the
-/// issue names move as a block (home tests are results; medication,
-/// sex-life and substance tags are not exported at all; discharge,
-/// exercise and collection-method entries are cycle context) — then **by
-/// code** inside the mixed categories that carry both a symptomatic and a
-/// normal/positive half (`great_digestion` and `bloating` share
-/// `digestion`; only one of them is a problem).
+/// issue names move as a block — then per code inside the mixed symptom
+/// categories, via [isSymptomTagCode].
 enum TagClinicalRole {
   /// An actual symptom finding — what a Problem list (FHIR LOINC 11450-4)
-  /// or a symptom grid is for.
+  /// or a symptom grid is for. Exactly [isSymptomTagCode]'s true set.
   problem,
 
   /// A normal, positive, or neutral state — a wellness or fertility-sign
@@ -647,50 +647,12 @@ enum TagClinicalRole {
   notExported,
 }
 
-/// Codes whose fact is a normal/positive state or neutral context rather
-/// than a symptom (issue #1138) — routed out of the problem reading even
-/// though their category otherwise holds symptoms. `pain_free` and the
-/// other [kPositiveAssertionCodes] members need no entry here: two of them
-/// route by category ([kNoSexTodayCode] with `sex_life`,
-/// [kDischargeNoneCode] with `discharge`), and the third is listed for
-/// readability since its category is mixed.
-const Set<String> _kNonProblemTagCodes = {
-  // pain — the positive "no pain today" assertion.
-  kPainFreeCode,
-  // energy — "High energy" is wellness, not a finding (#1144's own list).
-  'energetic',
-  'fully_energized',
-  // sleep — the duration buckets are facts about the night, not complaints;
-  // only `sleep_trouble` is a finding.
-  '0_to_3_hours',
-  '3_to_6_hours',
-  '6_to_9_hours',
-  '9_or_more_hours',
-  // skin / hair — the positive states alongside their symptomatic halves.
-  'good_skin',
-  'good_hair',
-  // digestion / stool — the issue's named "Great (digestion)" and
-  // "Great (stool)", plus stool's "Normal".
-  'great_digestion',
-  'normal',
-  'great_stool',
-  // feelings / mind — positive mood stays out of a problem list.
-  'happy',
-  'excited',
-  'grateful',
-  'indifferent',
-  'calm',
-  'focused',
-  // motivation / social life — the positive halves.
-  'motivated',
-  'productive',
-  'sociable',
-  'supportive',
-};
-
 /// The one code outside the `medication` category that is a *therapy*
 /// rather than a symptom: `hrt` rides `hot_flashes` (where Clue attests it)
 /// but routes with the medications — a treatment is not a finding.
+/// ([kWellnessTagCodes] already keeps it off symptom surfaces; this set is
+/// what sends it out of the FHIR export entirely rather than into the
+/// cycle-observations section.)
 const Set<String> _kTherapyTagCodes = {'hrt'};
 
 /// The clinical role of [tag] — the routing decision for every consumer
@@ -716,27 +678,23 @@ TagClinicalRole tagClinicalRole(TagCode tag) {
       // Fertility signs, activity, and product use: cycle context, never a
       // problem.
       return TagClinicalRole.cycleObservation;
-    // The remaining coded categories are the mixed symptom categories
-    // (pain, energy, sleep, skin, hair, digestion, stool, cravings, body,
-    // feelings, mind, motivation, social life) and `ailments` — a fever or
-    // an injury IS a problem — plus the no-code unverified categories a
-    // taxonomy tag can never carry. The positive/normal codes among them
-    // are exactly [_kNonProblemTagCodes].
     default:
-      return _kNonProblemTagCodes.contains(tag.code)
-          ? TagClinicalRole.cycleObservation
-          : TagClinicalRole.problem;
+      // The remaining categories: #1147's symptom line decides — a fever
+      // or an injury IS a problem, `energetic` and stool "Normal" are not.
+      return isSymptomTagCode(tag.code)
+          ? TagClinicalRole.problem
+          : TagClinicalRole.cycleObservation;
   }
 }
 
 /// The category-level default role for an `observations` row whose option
 /// code is **not** a taxonomy code (a raw Clue string the pass-through
 /// wrote verbatim, `clue_option_map.dart`). Uniform categories route as a
-/// block exactly as their taxonomy codes do; everything else — the mixed
-/// symptom categories, whose positive half is decided per code, and the
-/// option-set-unverified categories — degrades to [TagClinicalRole.problem]:
-/// an unclassifiable option keeps the pre-#1138 behavior (it shows as a
-/// finding) rather than silently disappearing from a clinician's view.
+/// block exactly as their taxonomy codes do; a category in
+/// [kSymptomTagCategories] defaults to [TagClinicalRole.problem] — an
+/// unclassifiable option inside a symptom category keeps the pre-#1138
+/// behavior (it shows as a finding) — and every other category routes to
+/// cycle context, matching how its known codes route.
 TagClinicalRole tagClinicalRoleForCategory(TagCategory category) =>
     switch (category) {
       TagCategory.tests => TagClinicalRole.testResult,
@@ -748,7 +706,12 @@ TagClinicalRole tagClinicalRoleForCategory(TagCategory category) =>
       TagCategory.exercise ||
       TagCategory.collectionMethod =>
         TagClinicalRole.cycleObservation,
-      _ => TagClinicalRole.problem,
+      // fail-closed exactly like kSymptomTagCategories itself: an unknown
+      // option in a can-be-a-symptom category still shows as a finding;
+      // an unknown option anywhere else is context, not a problem.
+      _ => kSymptomTagCategories.contains(category)
+          ? TagClinicalRole.problem
+          : TagClinicalRole.cycleObservation,
     };
 
 /// The clinical role of a taxonomy [code], or null when [code] is not in
@@ -759,13 +722,6 @@ TagClinicalRole? tagClinicalRoleForCode(String code) {
   final tag = tagByCode(code);
   return tag == null ? null : tagClinicalRole(tag);
 }
-
-/// Whether [code] is an actual symptom — the one-line predicate shared by
-/// every surface that renders or counts "symptoms" (the clinician PDF's
-/// symptom grid, issue #1144). False for non-codes and for every tag whose
-/// [TagClinicalRole] is anything but [TagClinicalRole.problem].
-bool isSymptomTagCode(String code) =>
-    tagClinicalRoleForCode(code) == TagClinicalRole.problem;
 
 final Set<String> _collidingDisplays = () {
   final counts = <String, int>{};

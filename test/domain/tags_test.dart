@@ -890,7 +890,9 @@ void main() {
         };
 
     test('pins the full partition of the taxonomy', () {
-      // Symptoms: what a Problem list / symptom grid is for.
+      // Symptoms: exactly #1147's isSymptomTagCode true-set — the twelve
+      // kSymptomTagCategories minus kWellnessTagCodes and the positive
+      // assertions.
       expect(codesWithRole(TagClinicalRole.problem), {
         'cramps',
         'headache',
@@ -906,9 +908,6 @@ void main() {
         'acne',
         'oily_skin',
         'dry_skin',
-        'bad_hair',
-        'oily_hair',
-        'dry_hair',
         'bloating',
         'nausea',
         'gassy',
@@ -931,18 +930,18 @@ void main() {
         'sensitive',
         'mood_swings',
         'insecure',
+        'indifferent',
         'distracted',
         'stressed',
-        'unmotivated',
-        'unproductive',
-        'withdrawn',
-        'conflict',
         'cold_flu_ailments',
         'allergy',
         'injury',
         'fever',
       });
       // Normal/positive states and cycle context: never a problem.
+      // Includes whole categories the #1147 symptom line leaves out (hair,
+      // motivation, social life) plus the wellness codes inside the mixed
+      // symptom categories.
       expect(codesWithRole(TagClinicalRole.cycleObservation), {
         'pain_free',
         'energetic',
@@ -953,19 +952,25 @@ void main() {
         '9_or_more_hours',
         'good_skin',
         'good_hair',
+        'bad_hair',
+        'oily_hair',
+        'dry_hair',
         'great_digestion',
         'normal',
         'great_stool',
         'happy',
         'excited',
         'grateful',
-        'indifferent',
         'calm',
         'focused',
         'motivated',
+        'unmotivated',
         'productive',
+        'unproductive',
         'sociable',
         'supportive',
+        'withdrawn',
+        'conflict',
         'none',
         'sticky',
         'creamy',
@@ -1038,8 +1043,9 @@ void main() {
       expect(isSymptomTagCode('not_a_tag'), isFalse);
     });
 
-    test('tagClinicalRoleForCategory routes the uniform categories and '
-        'degrades everything else to the problem reading', () {
+    test('tagClinicalRoleForCategory routes the uniform categories; a '
+        'kSymptomTagCategories member defaults to problem, everything else '
+        'to cycle context', () {
       expect(
           tagClinicalRoleForCategory(TagCategory.tests),
           TagClinicalRole.testResult);
@@ -1055,19 +1061,28 @@ void main() {
           TagClinicalRole.cycleObservation);
       expect(tagClinicalRoleForCategory(TagCategory.collectionMethod),
           TagClinicalRole.cycleObservation);
-      // Mixed categories: an unknown option cannot pick a half, so it keeps
-      // the pre-#1138 problem reading rather than silently vanishing.
+      // A can-be-a-symptom category: an unknown option cannot pick a half,
+      // so it keeps the pre-#1138 problem reading rather than silently
+      // vanishing.
       expect(tagClinicalRoleForCategory(TagCategory.feelings),
           TagClinicalRole.problem);
       expect(tagClinicalRoleForCategory(TagCategory.digestion),
           TagClinicalRole.problem);
       expect(tagClinicalRoleForCategory(TagCategory.ailments),
           TagClinicalRole.problem);
-      // The option-set-unverified categories likewise.
-      expect(
-          tagClinicalRoleForCategory(TagCategory.pms), TagClinicalRole.problem);
+      // Categories outside kSymptomTagCategories (hair, motivation, social
+      // life, the unverified ones): their known codes are not symptoms, so
+      // an unknown option there is context, not a problem.
+      expect(tagClinicalRoleForCategory(TagCategory.hair),
+          TagClinicalRole.cycleObservation);
+      expect(tagClinicalRoleForCategory(TagCategory.motivation),
+          TagClinicalRole.cycleObservation);
+      expect(tagClinicalRoleForCategory(TagCategory.socialLife),
+          TagClinicalRole.cycleObservation);
+      expect(tagClinicalRoleForCategory(TagCategory.pms),
+          TagClinicalRole.cycleObservation);
       expect(tagClinicalRoleForCategory(TagCategory.appointments),
-          TagClinicalRole.problem);
+          TagClinicalRole.cycleObservation);
     });
   });
 }

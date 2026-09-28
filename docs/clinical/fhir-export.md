@@ -127,10 +127,15 @@ categories that carry both a symptomatic and a normal/positive half:
 A row whose option code is a taxonomy tag routes exactly as that tag
 would (a Clue-imported `pregnancy_positive` and a day-entry tag are the
 same fact); a row with a raw Clue string routes by its category
-(`tagClinicalRoleForCategory`), and a category this taxonomy does not
-know (`spotting`, Clue's `mucus`) keeps the pre-#1138 problem reading
-rather than silently vanishing. The clinician PDF's symptom grid shares
-the same predicate via `isSymptomTagCode` (its own fix is issue #1144).
+(`tagClinicalRoleForCategory` — a `kSymptomTagCategories` member defaults
+to the problem reading so an unclassifiable option in a symptom category
+still shows as a finding, any other category routes to cycle context),
+and a wire category this taxonomy does not know at all (`spotting`,
+Clue's `mucus`) keeps the pre-#1138 problem reading rather than silently
+vanishing. The symptom/non-symptom line is issue #1147's
+`kSymptomTagCategories` + `kWellnessTagCodes` via `isSymptomTagCode` —
+the same predicate the clinician PDF's symptom grid consumes (its fix is
+issue #1144, merged as #1147) — so both exports draw one line.
 
 Each tag-derived Observation's id is a deterministic UUID v5 hash of
 `(profile.id, effectiveDateTime, tag)` — stable across two export runs of
