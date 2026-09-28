@@ -1,0 +1,118 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Screenshot from "../components/Screenshot.astro";
+
+// Issue #1105: "Import" — Clue, Apple Health, Health Connect, plus the
+// round-trip restore of lunarlog's own export. Import is user-initiated
+// only; background health reads are deliberately NOT claimed (issue #993
+// is unshipped). Every claim carries a `cite:` comment and a
+// site/claims.md entry (checked by test/site/site_claims_test.dart).
+
+const description =
+  "Bring your history into lunarlog: import a Clue export file, read " +
+  "Apple Health or Health Connect when you choose, or restore a lunarlog " +
+  "export. Imports never overwrite what you logged by hand.";
+---
+
+<BaseLayout title="Import" description={description}>
+  <article class="doc">
+    <h1 class="doc__title">Import</h1>
+    <p class="doc__lede">
+      History is worth keeping when you move. lunarlog imports from Clue,
+      from Apple Health on iPhone, and from Health Connect on Android —
+      always started by you, always labelled, and never written over
+      something you logged by hand.
+    </p>
+
+    <figure class="screenshot-figure">
+      <Screenshot
+        screen="import"
+        device="iphone-67"
+        theme="light"
+        loading="eager"
+        alt="The import screen over a prepared import plan, showing what will be added."
+      />
+      <figcaption>The import screen, reviewing what an import will add.</figcaption>
+    </figure>
+
+    <section>
+      <h2>From Clue</h2>
+      <!-- cite: lib/data/import/clue_importer.dart (rows stamped source 'clue_import' with checksum-derived source_id, so re-importing the same file is idempotent; issues #190/#199); provenance label in PRIVACY.md §2.A ("Imported from Clue"). -->
+      <p>
+        Export your data from Clue, pick the file in lunarlog, and review
+        what the import will add before it runs. Every imported row is
+        stamped as imported from Clue, so you can always tell imported
+        history from logged history — and importing the same file twice
+        adds nothing twice.
+      </p>
+    </section>
+
+    <section>
+      <h2>From Apple Health or Health Connect</h2>
+      <!-- cite: lib/data/health/health_import_service.dart (user-initiated only; the whole available history read a page at a time, issue #992; hand-logged values never overwritten; own writes excluded by source; provenance stamped; "Bound, never background"); PRIVACY.md §4 health paragraph. -->
+      <p>
+        On iPhone, lunarlog can read menstrual-flow history from Apple
+        Health; on Android, the same from Health Connect. You start each
+        import yourself from Settings — there is no background read and no
+        schedule — and the read covers the whole history the health store
+        holds, a page at a time, however far back it goes.
+      </p>
+      <p>
+        What an import will and will not do:
+      </p>
+      <ul>
+        <li>
+          A value you logged by hand is never overwritten — an imported
+          value fills an empty day or refreshes a day that was itself
+          imported.
+        </li>
+        <li>
+          Entries lunarlog wrote to the health store itself are excluded, so
+          a write-then-import round trip never doubles your history.
+        </li>
+        <li>
+          Imported days are labelled with where they came from, on the same
+          profile the device is bound to.
+        </li>
+        <li>
+          The import is idempotent: if it is interrupted, run it again and
+          nothing is duplicated.
+        </li>
+      </ul>
+      <!-- cite: PRIVACY.md §4 (the four Apple-computed cycle-deviation types read on iOS only, shown as a labelled, dismissible second opinion; never written back). -->
+      <p>
+        On iPhone, an import also surfaces Apple's own computed cycle
+        deviations — irregular or infrequent cycles, prolonged periods,
+        persistent intermenstrual bleeding — as a clearly labelled second
+        opinion beside lunarlog's estimate. It is shown, never merged into
+        your data, and never written back to Apple Health.
+      </p>
+    </section>
+
+    <section>
+      <h2>From a lunarlog export</h2>
+      <!-- cite: lib/domain/import/account_import.dart and lib/data/import/account_importer.dart (issue #140); additive merge — nothing overwritten or deleted (PRIVACY.md §7). -->
+      <p>
+        Moving to a new phone or back onto this one: a JSON file you
+        exported from lunarlog can be read back in. The restore adds what
+        is missing and overwrites nothing — merging, not replacing — and
+        works without an account.
+      </p>
+    </section>
+
+    <section>
+      <h2>What stays put</h2>
+      <!-- cite: PRIVACY.md §2.A storage paragraph ("before you sign in, none of it leaves the device") and §1 "Resilient Offline". -->
+      <p>
+        Importing works on the copy of your data on this device. Nothing
+        leaves the device unless you sign in and turn on sync — the same
+        rule every other write follows.
+      </p>
+    </section>
+
+    <p class="doc__footer-note">
+      Getting data out instead? <a href="/export">Export</a> covers JSON,
+      CSV, FHIR, and the clinician PDF.
+    </p>
+  </article>
+</BaseLayout>

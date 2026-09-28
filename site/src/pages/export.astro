@@ -1,0 +1,111 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Screenshot from "../components/Screenshot.astro";
+
+// Issue #1105: "Export" — JSON, CSV, FHIR, and the clinician PDF, plus the
+// guardian-lens rule for private notes. Every claim carries a `cite:`
+// comment and a site/claims.md entry (checked by
+// test/site/site_claims_test.dart).
+
+const description =
+  "Everything logged in lunarlog comes back out: a JSON archive, two CSV " +
+  "spreadsheets, a FHIR R4 summary for clinicians, and a one-page PDF — " +
+  "built on your device, no account required.";
+---
+
+<BaseLayout title="Export" description={description}>
+  <article class="doc">
+    <h1 class="doc__title">Export</h1>
+    <p class="doc__lede">
+      Your data is yours to take, in the format you need. Settings → Your
+      data builds each file on your device and hands it to your device's
+      share sheet — you choose where it goes. No account is required.
+    </p>
+
+    <figure class="screenshot-figure">
+      <Screenshot
+        screen="export"
+        device="iphone-67"
+        theme="light"
+        loading="eager"
+        alt="Settings — Your data, with the export and restore entry points."
+      />
+      <figcaption>Settings → Your data, where every export lives.</figcaption>
+    </figure>
+
+    <section>
+      <h2>The four exports</h2>
+      <!-- cite: PRIVACY.md §7 "Export Your Data" (JSON; built from the on-device copy; works fully offline and without a cloud account). -->
+      <dl>
+        <dt><strong>Export my data</strong> (JSON)</dt>
+        <dd>
+          Everything on this device — every profile and entry you can see,
+          with each entry's author attribution. Built entirely from the
+          device copy, so it works fully offline, with no account.
+        </dd>
+        <!-- cite: PRIVACY.md §7 "Export as CSV" (cycles + daily_log; notes and tags as columns; formula-injection escaping). -->
+        <dt><strong>Export as CSV</strong></dt>
+        <dd>
+          Two spreadsheet-friendly tables — one row per cycle, one per day
+          — with notes and tags in their own columns. Text that could be
+          read as a spreadsheet formula is escaped, so a CSV opens as data,
+          never as something a spreadsheet executes.
+        </dd>
+        <!-- cite: PRIVACY.md §7 "Export a Clinical Summary (FHIR)" (FHIR R4; LOINC/SNOMED CT where a verified mapping exists, never a guessed code; self-reported labelling; ISP-shaped without claiming compliance; display name only). -->
+        <dt><strong>Export clinical summary</strong> (FHIR)</dt>
+        <dd>
+          One profile's history as a FHIR R4 bundle some patient portals can
+          import directly. Clinical codes are used where a verified mapping
+          exists and lunarlog's own codes elsewhere — never a guessed code —
+          and the file says throughout that the data is self-reported, not a
+          clinician's assessment. It carries only the profile's display
+          name: no email, no account id.
+        </dd>
+        <!-- cite: PRIVACY.md §7 "Export a Clinical Summary (PDF)" (one page, on-device, display name only, never note text); lib/domain/export/clinical_pdf.dart. -->
+        <dt><strong>Export clinical summary</strong> (PDF)</dt>
+        <dd>
+          A one-page, on-device summary for an appointment: the profile's
+          cycle and symptom history, its display name only, and no note
+          text at all.
+        </dd>
+      </dl>
+    </section>
+
+    <section>
+      <h2>You pick the destination</h2>
+      <!-- cite: PRIVACY.md §4 "Clinical export is a user-initiated transfer, not collection" (built on-device, handed to the share sheet; a transfer you control). -->
+      <p>
+        No export is uploaded anywhere by lunarlog. Each file is built on
+        your device and handed to your share sheet — AirDrop, Files, email,
+        or any app you choose. Handing one to a clinician is your transfer,
+        between you and them.
+      </p>
+    </section>
+
+    <section>
+      <h2>What a guardian's export leaves out</h2>
+      <!-- cite: PRIVACY.md §7 "Export Your Data" (guardian-lens rule: a note the subject marked private is omitted from JSON and CSV; FHIR and PDF never include note text at all). -->
+      <p>
+        If you export a profile you share but the profile's subject marked a
+        day note private, that note is not in your file — the same rule the
+        app itself follows. The subject's own export carries their private
+        notes in full.
+      </p>
+    </section>
+
+    <section>
+      <h2>And it goes back in</h2>
+      <!-- cite: lib/domain/import/account_import.dart / lib/data/import/account_importer.dart (issue #140): additive restore, nothing overwritten or deleted. -->
+      <p>
+        A JSON export can be read back into lunarlog on any device — an
+        additive restore that adds what is missing and overwrites nothing.
+        See <a href="/import">Import</a>.
+      </p>
+    </section>
+
+    <p class="doc__footer-note">
+      Exports are one half of owning your data; the other half is
+      <a href="/delete-account">deleting it</a>, in the app, any time.
+    </p>
+  </article>
+</BaseLayout>

@@ -22,6 +22,13 @@ module.exports = {
         "http://localhost/index.html",
         "http://localhost/delete-account/",
         "http://localhost/support/",
+        // Issue #1105 feature pages (home is index.html above).
+        "http://localhost/tracking/",
+        "http://localhost/family-sharing/",
+        "http://localhost/life-stage-modes/",
+        "http://localhost/import/",
+        "http://localhost/export/",
+        "http://localhost/privacy-security/",
       ],
       numberOfRuns: 3,
       settings: {

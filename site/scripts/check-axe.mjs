@@ -23,7 +23,19 @@ const dist = path.resolve(
   "../dist",
 );
 
-const PAGES = ["/", "/privacy", "/delete-account/", "/support/"];
+const PAGES = [
+  "/",
+  "/privacy",
+  "/delete-account/",
+  "/support/",
+  // Issue #1105 feature pages (built as dist/<path>/index.html).
+  "/tracking/",
+  "/family-sharing/",
+  "/life-stage-modes/",
+  "/import/",
+  "/export/",
+  "/privacy-security/",
+];
 
 const MIME = {
   ".css": "text/css; charset=utf-8",
