@@ -5274,6 +5274,10 @@
     "@accountSignInMagicLinkSignIn": {
       "description": "Issue #1004 (tranche 2): sign-in screen magic-link button in sign-in mode."
     },
+    "accountSignInWebProviderHint": "Created your account with Google or Apple? Use the emailed sign-in link or code above with the email address that account uses.",
+    "@accountSignInWebProviderHint": {
+      "description": "Issue #1096: sign-in screen web-only hint pointing Google- and Apple-created accounts at the passwordless email option, shown under the sign-in options because neither provider button renders in a browser."
+    },
     "accountDeleteDialogTitle": "Delete account?",
     "@accountDeleteDialogTitle": {
       "description": "Issue #1004 (tranche 2): delete-account confirmation dialog title."
