@@ -14,7 +14,9 @@
 /// This is **IPS-shaped, not IPS-conformant** (Issue #157 A3-49, modeled on
 /// https://hl7.org/fhir/uv/ips/ IG v2.0.0): the section layout and resource
 /// choices follow the International Patient Summary's shape (Results +
-/// Vital signs + Problems sections, a self-authored Composition), but **no
+/// Vital signs + Problems sections, plus the title-only "Cycle
+/// observations" section issue #1138 added for the self-reported
+/// non-problem entries, over a self-authored Composition), but **no
 /// `meta.profile` is ever asserted** — IPS has required sections
 /// (allergies, medications, problems-as-Condition) this app cannot
 /// populate yet, and claiming the profile while failing validation is
@@ -67,7 +69,7 @@
 /// 4122 §4.3 — deterministic given the same namespace + name), never
 /// `Uuid.v4()`/`DateTime.now()` internally, but not every resource's *name*
 /// is itself independent of [exportedAt]:
-/// - `Patient`, the flow-day `Observation`s, and the tag-derived symptom
+/// - `Patient`, the flow-day `Observation`s, and the tag-derived
 ///   `Observation`s are named from stable domain identity alone
 ///   ([Profile.id]; [DayEntry.id]; `(profile.id, date, tag)`) — two exports
 ///   of the same underlying data produce the *same* ids for these
@@ -109,7 +111,15 @@ import '../models/profile.dart';
 import '../prediction/prediction.dart'
     show ActivePrediction, kMaxCycleDays, kMinCycleDays, kRecencyWindowCycles;
 import '../tags.dart' as tags
-    show contextualDisplayForTag, isValidTagCode, tagByCode;
+    show
+        TagClinicalRole,
+        categoryFromWireName,
+        contextualDisplayForTag,
+        isValidTagCode,
+        tagByCode,
+        tagClinicalRole,
+        tagClinicalRoleForCategory,
+        tagClinicalRoleForCode;
 import 'account_export.dart' show kAccountExportAppName;
 import 'clinical_terminology.dart';
 
@@ -126,7 +136,15 @@ import 'package:uuid/uuid.dart';
 /// length uses SNOMED `161716008`, the tag `code.text`/local displays are
 /// self-describing, and BBT/weight moved into a Vital Signs section
 /// (birth-control intake rows are no longer emitted as Observations).
-const int kFhirExportBundleVersion = 2;
+///
+/// `3` (issue #1138): the self-reported tag/row Observations are routed by
+/// `tags.tagClinicalRole` instead of all landing in Problems — Problems
+/// (11450-4) carries only symptom findings, home pregnancy/LH test results
+/// moved into Results (30954-2, keeping their "Home test" labels),
+/// normal/positive states moved to a new title-only "Cycle observations"
+/// section, and medication, sex-life and substance tags are no longer
+/// exported at all.
+const int kFhirExportBundleVersion = 3;
 
 /// lunarlog's own code system for the version tag ([_versionTag]) — a
 /// distinct URI from [kSystemLunarlogLocal] (clinical concepts) because a
@@ -177,7 +195,9 @@ const ClinicalCode kCompositionTypePatientSummary = ClinicalCode(
 
 /// LOINC `30954-2` — the IPS "Results Section" code, verified the same way
 /// as [kCompositionTypePatientSummary]. Holds the flow and
-/// cycle-statistic `Observation`s.
+/// cycle-statistic `Observation`s and — since issue #1138 — the home
+/// pregnancy/LH test Observations (a test result is a result, wherever it
+/// was logged).
 const ClinicalCode kSectionResults = ClinicalCode(
   system: kSystemLoinc,
   code: '30954-2',
@@ -187,7 +207,11 @@ const ClinicalCode kSectionResults = ClinicalCode(
 );
 
 /// LOINC `11450-4` — the IPS "Problems Section" code, verified the same
-/// way. Holds the self-reported symptom `Observation`s. (These are
+/// way. Holds the self-reported symptom `Observation`s — only symptoms
+/// since issue #1138's `TagClinicalRole` routing (wellness states,
+/// discharge types, positive mood, and the like go to the "Cycle
+/// observations" section; home test results to Results; medications,
+/// sex-life and substance tags are not exported). (These are
 /// `Observation` findings, not `Condition` diagnoses — IPS's Problems
 /// section normally expects Conditions; this export deliberately keeps
 /// self-reported symptom logs as Observations rather than asserting them
@@ -323,10 +347,11 @@ Map<String, Object?> buildFhirDocumentBundle({
   final provenanceRef = _fullUrl('provenance:$idKey');
 
   final flowEntries = _flowEntries(dayEntries, patientRef);
-  final symptomEntries =
-      _symptomEntries(profile, dayEntries, observations, patientRef);
   final vitalSignEntries = _vitalSignEntries(observations, patientRef);
   final statEntries = _statEntries(prediction, idKey, patientRef);
+  final selfReported = _partitionSelfReported(
+    _routedSelfReportedEntries(profile, dayEntries, observations, patientRef),
+  );
 
   final composition = _buildComposition(
     patientRef: patientRef,
@@ -334,9 +359,15 @@ Map<String, Object?> buildFhirDocumentBundle({
     resultsRefs: [
       for (final entry in flowEntries) entry.fullUrl,
       for (final entry in statEntries) entry.fullUrl,
+      // Home pregnancy/LH test results are results (#1138) — they share
+      // this section with the flow and cycle-statistic Observations.
+      for (final entry in selfReported.testResults) entry.fullUrl,
     ],
     vitalSignsRefs: [for (final entry in vitalSignEntries) entry.fullUrl],
-    problemsRefs: [for (final entry in symptomEntries) entry.fullUrl],
+    problemsRefs: [for (final entry in selfReported.problems) entry.fullUrl],
+    cycleObservationsRefs: [
+      for (final entry in selfReported.cycleObservations) entry.fullUrl,
+    ],
   );
   final provenance = _buildProvenance(
     compositionRef: compositionRef,
@@ -349,7 +380,9 @@ Map<String, Object?> buildFhirDocumentBundle({
     (fullUrl: compositionRef, resource: composition),
     (fullUrl: patientRef, resource: _buildPatient(profile)),
     for (final entry in flowEntries) entry,
-    for (final entry in symptomEntries) entry,
+    for (final entry in selfReported.problems) entry,
+    for (final entry in selfReported.testResults) entry,
+    for (final entry in selfReported.cycleObservations) entry,
     for (final entry in vitalSignEntries) entry,
     for (final entry in statEntries) entry,
     (fullUrl: provenanceRef, resource: provenance),
@@ -460,22 +493,61 @@ Map<String, Object?> _flowCoding(FlowLevel flow) => _coding(
       ),
     );
 
-/// Symptom `Observation`s from two sources (Issue #157 review fix — the
-/// `observations` table alone missed every tagged symptom; [DayEntry.tags]
-/// is the app's actual symptom surface, and the day sheet, birth-control
-/// intake and the Clue import all write `observations` rows too, issue
-/// #1116):
-/// - One per live (non-[Observation.excluded]) symptom `observations` row —
-///   [_rowSymptomEntries]. Measurement rows (`bbt`/`weight`) are exported
+/// The self-reported `Observation`s from two sources (Issue #157 review
+/// fix — the `observations` table alone missed every tagged symptom;
+/// [DayEntry.tags] is the app's actual symptom surface, and the day sheet,
+/// birth-control intake and the Clue import all write `observations` rows
+/// too, issue #1116), **partitioned by `tags.tagClinicalRole` instead of
+/// all landing in Problems (issue #1138)**:
+/// - One per live (non-[Observation.excluded]) non-measurement, non-intake
+///   `observations` row. Measurement rows (`bbt`/`weight`) are exported
 ///   as vital signs instead (see [_vitalSignEntries]) and birth-control
 ///   intake rows are not emitted as Observations at all (the A3-48 rule
 ///   `clinical_terminology.dart` documents), so both are filtered out here
 ///   (issue #1115).
-/// - One per tag per day entry, from [DayEntry.tags] — [_tagSymptomEntries]
-///   — **except** when a live `observations` row already carries the same
-///   `(date, code)` pair, so a symptom already captured as an explicit
-///   observation row is never duplicated as a second, tag-derived one.
-List<_ResourceEntry> _symptomEntries(
+/// - One per tag per day entry, from [DayEntry.tags] — **except** when a
+///   live `observations` row already carries the same `(date, code)` pair,
+///   so a fact captured as an explicit observation row is never duplicated
+///   as a second, tag-derived one. The dedupe check runs over every live
+///   row regardless of its role: the row carries the fact to whichever
+///   section its role selects, and the tag must not double it there.
+///
+/// Each entry lands in one of three buckets via its [TagClinicalRole]:
+/// `problem` findings for the Problems section, `testResult` home tests
+/// for Results, `cycleObservation` normal/positive states for the
+/// title-only "Cycle observations" section — while `notExported`
+/// (medication, sex-life, substance) is dropped entirely (issue #1138).
+({List<_ResourceEntry> problems, List<_ResourceEntry> testResults,
+        List<_ResourceEntry> cycleObservations})
+    _partitionSelfReported(
+  List<(_ResourceEntry, tags.TagClinicalRole)> routed,
+) {
+  final problems = <_ResourceEntry>[];
+  final testResults = <_ResourceEntry>[];
+  final cycleObservations = <_ResourceEntry>[];
+  for (final (entry, role) in routed) {
+    switch (role) {
+      case tags.TagClinicalRole.problem:
+        problems.add(entry);
+      case tags.TagClinicalRole.testResult:
+        testResults.add(entry);
+      case tags.TagClinicalRole.cycleObservation:
+        cycleObservations.add(entry);
+      case tags.TagClinicalRole.notExported:
+        break; // Deliberately emitted nowhere (#1138).
+    }
+  }
+  return (
+    problems: problems,
+    testResults: testResults,
+    cycleObservations: cycleObservations,
+  );
+}
+
+/// Every live self-reported row and every deduped day-entry tag, paired
+/// with its [tags.TagClinicalRole] — the partition input
+/// [_partitionSelfReported] buckets.
+List<(_ResourceEntry, tags.TagClinicalRole)> _routedSelfReportedEntries(
   Profile profile,
   List<DayEntry> dayEntries,
   List<Observation> observations,
@@ -488,20 +560,69 @@ List<_ResourceEntry> _symptomEntries(
   // they leave. Measurement (`bbt`/`weight`) rows are vital signs, not
   // symptoms, birth-control intake rows are never Observations
   // (issue #1115), and free-text Clue tags (`category == 'tags'`) must
-  // never leave the device (issue #1117) — none belongs in the Problems section.
-  final liveObservations = [
-    for (final observation in observations)
-      if (!observation.excluded &&
-          !observation.category.isMeasurement &&
-          !_isBirthControlRow(observation) &&
-          !_isFreeTextTagsRow(observation))
-        observation,
-  ];
+  // never leave the device (issue #1117) — none belongs in any section.
+  final liveObservations = _liveSymptomObservations(observations);
   final existingDateCodes = _existingSymptomDateCodes(liveObservations);
   return [
-    ..._rowSymptomEntries(liveObservations, patientRef),
-    ..._tagSymptomEntries(profile, dayEntries, existingDateCodes, patientRef),
+    for (final observation in liveObservations)
+      (
+        (
+          fullUrl: _fullUrl('observation:row:${observation.id}'),
+          resource: _symptomObservation(observation, patientRef),
+        ),
+        _rowRole(observation),
+      ),
+    for (final entry in dayEntries)
+      for (final tag in entry.tags)
+        if (tags.isValidTagCode(tag) &&
+            !existingDateCodes
+                .contains(_dateCodeKey(entry.localDate.iso, tag)))
+          (
+            (
+              // Deterministic v5 id from (profileId, date, tag) — see this
+              // file's "Determinism" doc note: stable across export runs of
+              // the same day entry, and unchanged by #1138's routing (the
+              // same tag always hashes to the same urn:uuid wherever it is
+              // now referenced from).
+              fullUrl: _fullUrl(
+                  'observation:tag:${profile.id}:${entry.localDate.iso}:$tag'),
+              resource: _tagSymptomObservation(entry, tag, patientRef),
+            ),
+            tags.tagClinicalRole(tags.tagByCode(tag)!),
+          ),
   ];
+}
+
+/// The live (non-excluded, non-measurement, non-intake, non-free-text)
+/// `observations` rows the self-reported partition reads — the same filter
+/// every consumer of these rows applies (see [_routedSelfReportedEntries]).
+List<Observation> _liveSymptomObservations(List<Observation> observations) => [
+      for (final observation in observations)
+        if (!observation.excluded &&
+            !observation.category.isMeasurement &&
+            !_isBirthControlRow(observation) &&
+            !_isFreeTextTagsRow(observation))
+          observation,
+    ];
+
+/// The [tags.TagClinicalRole] of a live `observations` row: a row whose
+/// option [Observation.code] is a taxonomy tag routes exactly as that tag
+/// would (a Clue-imported `pregnancy_positive` and a day-entry tag
+/// `pregnancy_positive` are the same fact); otherwise the row's category
+/// wire code decides ([tags.tagClinicalRoleForCategory]) — and a category
+/// this taxonomy does not know (Clue's `mucus`, or `spotting`) degrades to
+/// the problem reading, the pre-#1138 behavior, rather than vanishing.
+tags.TagClinicalRole _rowRole(Observation observation) {
+  final code = observation.code;
+  if (code != null) {
+    final byCode = tags.tagClinicalRoleForCode(code);
+    if (byCode != null) return byCode;
+  }
+  final byCategory =
+      tags.categoryFromWireName(observation.category.wireCode);
+  return byCategory == null
+      ? tags.TagClinicalRole.problem
+      : tags.tagClinicalRoleForCategory(byCategory);
 }
 
 /// Whether [observation] is a birth-control intake row (issue #1115) and so
@@ -631,18 +752,6 @@ String _dateCodeKey(String isoDate, String code) => '$isoDate|$code';
 /// same closed set as the 113-tag taxonomy `dualCodingFor` covers, and a
 /// gap there must degrade to a local coding rather than guess a clinical
 /// code (mirrors `dualCodingFor`'s own "no guessed codes" degrade).
-List<_ResourceEntry> _rowSymptomEntries(
-  List<Observation> liveObservations,
-  String patientRef,
-) =>
-    [
-      for (final observation in liveObservations)
-        (
-          fullUrl: _fullUrl('observation:row:${observation.id}'),
-          resource: _symptomObservation(observation, patientRef),
-        ),
-    ];
-
 Map<String, Object?> _symptomObservation(
   Observation observation,
   String patientRef,
@@ -854,36 +963,9 @@ ClinicalCode _localObservationCoding(Observation observation) => ClinicalCode(
 /// One `Observation` per tag per day entry (Issue #157 review fix), from
 /// [DayEntry.tags] — the app's tagged-symptom surface, alongside the
 /// `observations` rows the day sheet, birth-control intake and the Clue
-/// import also write (issue #1116). Skips a `(date, tag)`
-/// pair already present in [existingDateCodes] (a live `observations` row
-/// covering the same day/code — see [_symptomEntries]'s dedupe note) and
-/// any tag that is not a recognised taxonomy code (defensive: every
-/// [DayEntry.tags] entry is validated against the taxonomy at the write
-/// boundary, but this builder does not re-trust that — an unrecognised
-/// code here degrades to "not exported" rather than a guessed clinical
-/// coding, the same discipline [dualCodingFor] itself enforces).
-List<_ResourceEntry> _tagSymptomEntries(
-  Profile profile,
-  List<DayEntry> dayEntries,
-  Set<String> existingDateCodes,
-  String patientRef,
-) =>
-    [
-      for (final entry in dayEntries)
-        for (final tag in entry.tags)
-          if (tags.isValidTagCode(tag) &&
-              !existingDateCodes.contains(_dateCodeKey(entry.localDate.iso, tag)))
-            (
-              // Deterministic v5 id from (profileId, date, tag) — see this
-              // file's "Determinism" doc note: stable across export runs of
-              // the same day entry, unlike the Bundle/Composition/
-              // Provenance/stat-Observation ids.
-              fullUrl: _fullUrl(
-                  'observation:tag:${profile.id}:${entry.localDate.iso}:$tag'),
-              resource: _tagSymptomObservation(entry, tag, patientRef),
-            ),
-    ];
-
+/// import also write (issue #1116). Routing, dedupe against a live
+/// `observations` row, and the unknown-code drop all happen in
+/// [_routedSelfReportedEntries]; this builds the resource itself.
 Map<String, Object?> _tagSymptomObservation(
   DayEntry entry,
   String tag,
@@ -985,6 +1067,7 @@ Map<String, Object?> _buildComposition({
   required List<String> resultsRefs,
   required List<String> vitalSignsRefs,
   required List<String> problemsRefs,
+  required List<String> cycleObservationsRefs,
 }) =>
     {
       'resourceType': 'Composition',
@@ -1007,7 +1090,8 @@ Map<String, Object?> _buildComposition({
         'div': _narrativeDiv(
           '${_entryCount(resultsRefs.length, 'Results')}, '
           '${_entryCount(vitalSignsRefs.length, 'Vital signs')}, '
-          '${_entryCount(problemsRefs.length, 'Problems')}.',
+          '${_entryCount(problemsRefs.length, 'Problems')}, '
+          '${_entryCount(cycleObservationsRefs.length, 'Cycle observations')}.',
         ),
       },
       'section': [
@@ -1015,8 +1099,12 @@ Map<String, Object?> _buildComposition({
           title: 'Results',
           code: kSectionResults,
           refs: resultsRefs,
-          emptyNarrative: 'No cycle observations recorded.',
-          narrativeSuffix: 'cycle/menstrual observation(s) recorded.',
+          // Now also holds the home pregnancy/LH test results (#1138), so
+          // the narrative names the section's mixed contents by its own
+          // title rather than a "cycle observations" phrase it no longer
+          // owns (that phrase is the next section's).
+          emptyNarrative: 'No results recorded.',
+          narrativeSuffix: 'result observation(s) recorded.',
         ),
         _buildSection(
           title: 'Vital signs',
@@ -1032,6 +1120,18 @@ Map<String, Object?> _buildComposition({
           emptyNarrative: 'No symptom findings recorded.',
           narrativeSuffix: 'self-reported symptom finding(s) recorded.',
         ),
+        // Issue #1138's clearly-non-problem section: the normal/positive
+        // states, fertility signs, and daily context the problem list must
+        // not carry. Narrative says outright that these are not problems.
+        _buildSection(
+          title: 'Cycle observations',
+          code: null,
+          refs: cycleObservationsRefs,
+          emptyNarrative: 'No self-reported cycle observations recorded.',
+          narrativeSuffix:
+              'self-reported cycle observation(s) recorded — normal states '
+              'and daily context, not problems.',
+        ),
       ],
     };
 
@@ -1039,18 +1139,28 @@ Map<String, Object?> _buildComposition({
 /// never raw entry content, so the narrative itself never leaks anything
 /// beyond what the coded `Observation` entries already carry) plus the
 /// section's own `entry` references.
+///
+/// [code] is nullable: every section here has a verified LOINC section
+/// code except "Cycle observations" (#1138) — no verified LOINC code
+/// exists for a patient-stated non-problem observation section (candidates
+/// checked against `tx.fhir.org` $lookup on 2026-09-28: `11369-6` is
+/// LOINC's "History of Immunization note", not general health; `61149-5`
+/// and `75318-0` do not resolve), and R4's `Composition.section.code` is
+/// 0..1 — so that section ships title-only, the same "worse to claim than
+/// omit" discipline as the `meta.profile` omission above.
 Map<String, Object?> _buildSection({
   required String title,
-  required ClinicalCode code,
+  required ClinicalCode? code,
   required List<String> refs,
   required String emptyNarrative,
   required String narrativeSuffix,
 }) =>
     {
       'title': title,
-      'code': {
-        'coding': [_coding(code)],
-      },
+      if (code != null)
+        'code': {
+          'coding': [_coding(code)],
+        },
       'text': {
         'status': 'generated',
         'div': _narrativeDiv(

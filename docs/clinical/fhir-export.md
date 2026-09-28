@@ -28,17 +28,21 @@ through the same share-sheet pattern but as its own file
    elements a FHIR-conformant Composition requires), it carries its own
    document-level `text` narrative (a `status: generated` summary of the
    record counts) — the same discipline each section's own `text.div`
-   already follows, just at the document level. Three sections:
+   already follows, just at the document level. Four sections:
    - **Results** (LOINC `30954-2`) — the menstrual-flow Observations
-     (one per day entry that is a bleed day — see `isBleed` below) and,
-     when available, the two cycle-statistic Observations derived from
-     `ActivePrediction`.
+     (one per day entry that is a bleed day — see `isBleed` below), the
+     two cycle-statistic Observations derived from `ActivePrediction` when
+     available, and — since issue #1138 — the home pregnancy/LH test
+     Observations (a test result is a result, wherever it was logged,
+     keeping its "Home test" labels).
    - **Vital signs** (LOINC `8716-3`, issue #1115) — the BBT and weight
      measurement Observations (see "Measurement rows" below).
-   - **Problems** (LOINC `11450-4`) — the self-reported symptom
+   - **Problems** (LOINC `11450-4`) — the self-reported **symptom**
      Observations: one per live (non-excluded) `observations` table row,
-     plus one per tag per day entry from `DayEntry.tags` (see "Symptom
-     Observations: two sources" below). These are FHIR `Observation`
+     plus one per tag per day entry from `DayEntry.tags`, each routed by
+     `tags.tagClinicalRole` so only symptom findings land here
+     (issue #1138 — see "Self-reported Observations: two sources, four
+     destinations" below). These are FHIR `Observation`
      findings, not `Condition` diagnoses: IPS's Problems section normally
      expects Conditions, and this export deliberately never asserts a
      self-reported symptom log as a diagnosed condition. Problems was
@@ -47,6 +51,18 @@ through the same share-sheet pattern but as its own file
      than silently choosing a wrong-but-quieter section. Measurement rows
      and birth-control intake rows are deliberately **not** here (see
      "Measurement rows" and "Exclusion policy").
+   - **Cycle observations** (no section code, issue #1138) — the
+     normal/positive states, fertility signs, and daily context
+     (`great_digestion`, discharge types, positive mood, sleep durations,
+     exercise, collection method, `pain_free`) that must never read as
+     patient problems. The section ships **title-only**: no verified LOINC
+     section code exists for a patient-stated non-problem observation
+     section (candidates checked against `tx.fhir.org` $lookup,
+     2026-09-28: `11369-6` is "History of Immunization note"; `61149-5`
+     and `75318-0` do not resolve), and R4's `Composition.section.code` is
+     0..1 — the same "worse to claim than omit" discipline as the
+     `meta.profile` omission. Its narrative says outright that its entries
+     are "normal states and daily context, not problems".
    Each section carries a minimal generated narrative (`text.div`) — a
    count and a fixed sentence, never raw entry content, so the narrative
    itself never discloses anything the coded Observations don't already
@@ -54,11 +70,12 @@ through the same share-sheet pattern but as its own file
    `unavailable` on the FHIR core `list-empty-reason` CodeSystem) instead
    of a bare empty `entry` array.
 2. **Patient** — see below.
-3. **Observation** entries — flow-day, symptom, vital-sign, and (if
-   present) cycle-statistic.
+3. **Observation** entries — flow-day, self-reported (symptom / test
+   result / cycle observation), vital-sign, and (if present)
+   cycle-statistic.
 4. **Provenance** — exactly one per Bundle.
 
-## Symptom Observations: two sources (#157 review fix)
+## Self-reported Observations: two sources, four destinations (#157 review fix; #1138 routing)
 
 Early v1 read only the `observations` table (Issue #240's per-option-row
 child table) for symptom findings — but at the time nothing in production
@@ -67,27 +84,60 @@ symptom-logging surface) was silently missing from the export. **That
 "nothing writes it" claim is now stale (issue #1116):** the day sheet
 writes pain, spotting, BBT and weight rows, birth-control intake writes
 its `birth_control_*` rows, and the Clue import writes rows too
-(`birth_control` and other categories). The
-Problems section emits from **both**:
+(`birth_control` and other categories). The self-reported Observations
+emit from **both**:
 
-- One `Observation` per live (`excluded == false`) *symptom* `observations`
-  row, dual-coded via `dualCodingFor` (or the local fallback — see "Coding
-  discipline" below). Measurement (`bbt`/`weight`) rows and birth-control
-  intake rows (`birth_control_*` and the Clue `birth_control` category) are
+- One `Observation` per live (`excluded == false`) non-measurement,
+  non-intake `observations` row, dual-coded via `dualCodingFor` (or the
+  local fallback — see "Coding discipline" below). Measurement
+  (`bbt`/`weight`) rows and birth-control intake rows
+  (`birth_control_*` and the Clue `birth_control` category) are
   filtered out here — see "Measurement rows" and
   "Exclusion policy".
 - One `Observation` per tag per day entry, from `DayEntry.tags`, also
   dual-coded via `dualCodingFor` — **except** when a live `observations`
   row already carries the same `(effectiveDateTime, code)` pair, so a
-  symptom captured both ways is never emitted twice. An `observations`
+  fact captured both ways is never emitted twice. An `observations`
   row with `excluded == true` does *not* count for this dedupe check
   (see "Exclusion policy" below) — an excluded row means there is
-  nothing there to have already captured that symptom.
+  nothing there to have already captured that fact.
+
+### Where each entry lands: `TagClinicalRole` (issue #1138)
+
+Until #1138 every one of those entries went to Problems — so "Great
+(digestion)", egg-white discharge, sex-drive tags, home pregnancy test
+results and "Took an antibiotic" all read as patient problems. The
+shared predicate `tags.tagClinicalRole` (`lib/domain/tags.dart`) now
+routes each entry by category first, then by code inside the mixed
+categories that carry both a symptomatic and a normal/positive half:
+
+- **`problem`** → Problems (11450-4): the symptoms (cramps, headache,
+  bloating, fatigue, irritability, ailments such as fever or injury, …).
+- **`testResult`** → Results (30954-2): the five `tests` codes
+  (pregnancy/LH), keeping their "Home test" labels.
+- **`cycleObservation`** → the title-only "Cycle observations" section:
+  normal/positive states and daily context (`great_*`, stool "Normal",
+  discharge types, positive mood, `pain_free`, sleep-duration buckets,
+  good skin/hair, exercise, collection method).
+- **`notExported`** → emitted nowhere: medications taken (plus the
+  `hot_flashes` category's `hrt`, a therapy routed with them), the whole
+  `sex_life` category, and the substance-use `partying` category —
+  sensitive on a minor's record, omitted by default per the issue.
+
+A row whose option code is a taxonomy tag routes exactly as that tag
+would (a Clue-imported `pregnancy_positive` and a day-entry tag are the
+same fact); a row with a raw Clue string routes by its category
+(`tagClinicalRoleForCategory`), and a category this taxonomy does not
+know (`spotting`, Clue's `mucus`) keeps the pre-#1138 problem reading
+rather than silently vanishing. The clinician PDF's symptom grid shares
+the same predicate via `isSymptomTagCode` (its own fix is issue #1144).
 
 Each tag-derived Observation's id is a deterministic UUID v5 hash of
 `(profile.id, effectiveDateTime, tag)` — stable across two export runs of
 the same day entry, the same guarantee the flow-day and `observations`-row
-Observations already had (see "Determinism" below).
+Observations already had (see "Determinism" below). #1138's routing
+changed where an entry is *referenced from*, never its id: the same tag
+hashes to the same `urn:uuid` wherever it now lands.
 
 ### Tag labels are self-describing (issue #1114)
 
@@ -285,9 +335,14 @@ excluded `observations` row (and its `valueText`) never does either.
 
 `Bundle.meta.tag` carries one entry: `system`
 `https://lunarlog.app/fhir/CodeSystem/export-version`,
-`code` the current `kFhirExportBundleVersion` (`2` as of
-issues #1114/#1115, which changed the pain scale, flow/cycle-length
-coding, tag labels, and the Vital Signs section). A future change to this
+`code` the current `kFhirExportBundleVersion` (`3` as of
+issue #1138, which routed the self-reported tag/row Observations by
+`TagClinicalRole`: Problems carries only symptoms, home test results
+moved to Results, normal/positive states moved to a new title-only
+"Cycle observations" section, and medication/sex-life/substance tags are
+no longer exported; `2` was issues #1114/#1115, which changed the pain
+scale, flow/cycle-length coding, tag labels, and the Vital Signs
+section). A future change to this
 file's mapping bumps that constant so a downstream consumer (or a person
 comparing two exports) can tell the shapes apart.
 
@@ -330,6 +385,11 @@ they don't belong in that file's exhaustively-tested `kLoincCodes` list:
 | `vital-signs` | `http://terminology.hl7.org/CodeSystem/observation-category` | Vital Signs | vital-sign `Observation.category` | `tx.fhir.org` $validate-code, 2026-09-26 |
 | `author` | `http://terminology.hl7.org/CodeSystem/provenance-participant-type` | Author | `Provenance.agent.type` | `tx.fhir.org` $lookup, 2026-09-09 |
 | `unavailable` | `http://terminology.hl7.org/CodeSystem/list-empty-reason` | Unavailable | `Composition.section.emptyReason` | FHIR R4 core CodeSystem / `tx.fhir.org` |
+
+The #1138 "Cycle observations" section appears in no row above on
+purpose: no verified LOINC section code exists for it (candidates checked
+against `tx.fhir.org` $lookup, 2026-09-28 — see "Bundle shape"), so it
+ships title-only rather than with a guessed code.
 
 Observation-level coding (post-#1115/#1116):
 

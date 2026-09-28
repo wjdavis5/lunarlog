@@ -518,6 +518,160 @@ TagCode? tagByCode(String code) => _tagsByCode[code];
 
 bool isValidTagCode(String code) => _tagsByCode.containsKey(code);
 
+/// Where a taxonomy tag's fact belongs when a consumer separates patient
+/// **problems** from the rest of a day's log (issue #1138) — the shared
+/// predicate behind the FHIR export's section routing and the clinician
+/// PDF's symptom grid (#1144). One tag, one role: the same logged fact can
+/// never read as a symptom in one export and something else in another.
+///
+/// The role is decided **by category first** — the whole categories the
+/// issue names move as a block (home tests are results; medication,
+/// sex-life and substance tags are not exported at all; discharge,
+/// exercise and collection-method entries are cycle context) — then **by
+/// code** inside the mixed categories that carry both a symptomatic and a
+/// normal/positive half (`great_digestion` and `bloating` share
+/// `digestion`; only one of them is a problem).
+enum TagClinicalRole {
+  /// An actual symptom finding — what a Problem list (FHIR LOINC 11450-4)
+  /// or a symptom grid is for.
+  problem,
+
+  /// A normal, positive, or neutral state — a wellness or fertility-sign
+  /// observation that must never read as a problem (`great_digestion`,
+  /// `egg_white`, `happy`, a sleep-duration bucket, `pain_free`).
+  cycleObservation,
+
+  /// A home test result (pregnancy / ovulation-LH) — a result, routed to a
+  /// results section while keeping its "Home test" labels, never a problem.
+  testResult,
+
+  /// Not exported to clinical consumers at all by default: medications
+  /// taken (never a problem, and this export carries no medication
+  /// summary), plus the sex-life and substance categories — sensitive on a
+  /// minor's record, and #1138 asks they be left out by default.
+  notExported,
+}
+
+/// Codes whose fact is a normal/positive state or neutral context rather
+/// than a symptom (issue #1138) — routed out of the problem reading even
+/// though their category otherwise holds symptoms. `pain_free` and the
+/// other [kPositiveAssertionCodes] members need no entry here: two of them
+/// route by category ([kNoSexTodayCode] with `sex_life`,
+/// [kDischargeNoneCode] with `discharge`), and the third is listed for
+/// readability since its category is mixed.
+const Set<String> _kNonProblemTagCodes = {
+  // pain — the positive "no pain today" assertion.
+  kPainFreeCode,
+  // energy — "High energy" is wellness, not a finding (#1144's own list).
+  'energetic',
+  'fully_energized',
+  // sleep — the duration buckets are facts about the night, not complaints;
+  // only `sleep_trouble` is a finding.
+  '0_to_3_hours',
+  '3_to_6_hours',
+  '6_to_9_hours',
+  '9_or_more_hours',
+  // skin / hair — the positive states alongside their symptomatic halves.
+  'good_skin',
+  'good_hair',
+  // digestion / stool — the issue's named "Great (digestion)" and
+  // "Great (stool)", plus stool's "Normal".
+  'great_digestion',
+  'normal',
+  'great_stool',
+  // feelings / mind — positive mood stays out of a problem list.
+  'happy',
+  'excited',
+  'grateful',
+  'indifferent',
+  'calm',
+  'focused',
+  // motivation / social life — the positive halves.
+  'motivated',
+  'productive',
+  'sociable',
+  'supportive',
+};
+
+/// The one code outside the `medication` category that is a *therapy*
+/// rather than a symptom: `hrt` rides `hot_flashes` (where Clue attests it)
+/// but routes with the medications — a treatment is not a finding.
+const Set<String> _kTherapyTagCodes = {'hrt'};
+
+/// The clinical role of [tag] — the routing decision for every consumer
+/// that separates problems from the rest of the log (issue #1138).
+TagClinicalRole tagClinicalRole(TagCode tag) {
+  switch (tag.category) {
+    case TagCategory.tests:
+      return TagClinicalRole.testResult;
+    case TagCategory.medication:
+    case TagCategory.sexLife:
+    case TagCategory.partying:
+      // Medications taken, sex life, and substance use are omitted from
+      // clinical exports by default (#1138) — not problems, and sensitive
+      // on a minor's record.
+      return TagClinicalRole.notExported;
+    case TagCategory.hotFlashes:
+      return _kTherapyTagCodes.contains(tag.code)
+          ? TagClinicalRole.notExported
+          : TagClinicalRole.problem;
+    case TagCategory.discharge:
+    case TagCategory.exercise:
+    case TagCategory.collectionMethod:
+      // Fertility signs, activity, and product use: cycle context, never a
+      // problem.
+      return TagClinicalRole.cycleObservation;
+    // The remaining coded categories are the mixed symptom categories
+    // (pain, energy, sleep, skin, hair, digestion, stool, cravings, body,
+    // feelings, mind, motivation, social life) and `ailments` — a fever or
+    // an injury IS a problem — plus the no-code unverified categories a
+    // taxonomy tag can never carry. The positive/normal codes among them
+    // are exactly [_kNonProblemTagCodes].
+    default:
+      return _kNonProblemTagCodes.contains(tag.code)
+          ? TagClinicalRole.cycleObservation
+          : TagClinicalRole.problem;
+  }
+}
+
+/// The category-level default role for an `observations` row whose option
+/// code is **not** a taxonomy code (a raw Clue string the pass-through
+/// wrote verbatim, `clue_option_map.dart`). Uniform categories route as a
+/// block exactly as their taxonomy codes do; everything else — the mixed
+/// symptom categories, whose positive half is decided per code, and the
+/// option-set-unverified categories — degrades to [TagClinicalRole.problem]:
+/// an unclassifiable option keeps the pre-#1138 behavior (it shows as a
+/// finding) rather than silently disappearing from a clinician's view.
+TagClinicalRole tagClinicalRoleForCategory(TagCategory category) =>
+    switch (category) {
+      TagCategory.tests => TagClinicalRole.testResult,
+      TagCategory.medication ||
+      TagCategory.sexLife ||
+      TagCategory.partying =>
+        TagClinicalRole.notExported,
+      TagCategory.discharge ||
+      TagCategory.exercise ||
+      TagCategory.collectionMethod =>
+        TagClinicalRole.cycleObservation,
+      _ => TagClinicalRole.problem,
+    };
+
+/// The clinical role of a taxonomy [code], or null when [code] is not in
+/// the taxonomy (the caller decides the fallback: the FHIR export skips an
+/// unknown day-entry tag entirely, and routes an unknown `observations` row
+/// option by its category — see [tagClinicalRoleForCategory]).
+TagClinicalRole? tagClinicalRoleForCode(String code) {
+  final tag = tagByCode(code);
+  return tag == null ? null : tagClinicalRole(tag);
+}
+
+/// Whether [code] is an actual symptom — the one-line predicate shared by
+/// every surface that renders or counts "symptoms" (the clinician PDF's
+/// symptom grid, issue #1144). False for non-codes and for every tag whose
+/// [TagClinicalRole] is anything but [TagClinicalRole.problem].
+bool isSymptomTagCode(String code) =>
+    tagClinicalRoleForCode(code) == TagClinicalRole.problem;
+
 final Set<String> _collidingDisplays = () {
   final counts = <String, int>{};
   for (final tag in kTagTaxonomy) {
@@ -558,10 +712,12 @@ const Map<TagCategory, String> _kContextualCategoryLabels = {
 
 /// Per-code contextual labels that no category prefix can express (issue
 /// #1114 and PR #1124 reverification): the label a receiving system shows
-/// in a Problem list, where "Medication: Antibiotic" can read as an
-/// allergy or a current prescription, "Test result: Pregnancy · positive"
-/// as a confirmed laboratory finding, and "Sleep duration: Sleep trouble"
-/// is simply wrong. Checked before the category prefix.
+/// for a tag exported without its category heading — in the Problem list
+/// or wherever #1138's routing places it — where "Medication: Antibiotic"
+/// can read as an allergy or a current prescription, "Test result:
+/// Pregnancy · positive" as a confirmed laboratory finding, and "Sleep
+/// duration: Sleep trouble" is simply wrong. Checked before the category
+/// prefix.
 const Map<String, String> _kContextualCodeLabels = {
   'sleep_trouble': 'Trouble sleeping',
   'pregnancy_positive': 'Home pregnancy test: positive',
