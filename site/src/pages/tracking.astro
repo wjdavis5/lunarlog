@@ -34,10 +34,13 @@ const description =
         own records tied to their day, not flattened into one text field.
       </p>
       <figure class="screenshot-figure">
+        <!-- Issue #1172: the first-viewport figure is the page's LCP
+             candidate — eager + high priority, not lazy. -->
         <Screenshot
           screen="log-day"
           device="iphone-67"
           theme="light"
+          loading="eager"
           alt="The day sheet over a logged day: flow level, tracked tags, and the day's note."
         />
         <figcaption>The day sheet over a logged day.</figcaption>

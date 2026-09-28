@@ -62,7 +62,15 @@ interface Props {
   theme?: (typeof kThemes)[number];
   /** Required: what the screenshot shows, for screen readers. */
   alt: string;
-  /** Eager for the first viewport; everything else lazy-loads. */
+  /**
+   * Eager for the first viewport; everything else lazy-loads. Eager also
+   * raises the image's fetch priority (issue #1172): by site convention
+   * the eager screenshot is the page's first-viewport figure — its LCP
+   * candidate — and at the default "auto" priority the request starts only
+   * after layout discovers it, which is exactly the Lighthouse LCP
+   * variance (1.5s vs 3s on identical bytes) that flapped the performance
+   * budget around its 0.95 floor.
+   */
   loading?: "eager" | "lazy";
 }
 
@@ -89,4 +97,12 @@ const src = `/screenshots/${screen}-${device}-${theme}.png`;
 const [width, height] = size;
 ---
 
-<img src={src} width={width} height={height} alt={alt} loading={loading} decoding="async" />
+<img
+  src={src}
+  width={width}
+  height={height}
+  alt={alt}
+  loading={loading}
+  fetchpriority={loading === "eager" ? "high" : undefined}
+  decoding="async"
+/>
