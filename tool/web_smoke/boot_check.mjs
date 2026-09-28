@@ -70,19 +70,6 @@ const ALLOWLIST = [
       'google_sign_in_web plugin registration; Google is hidden on web and ' +
       'the script stays blocked.',
   },
-  {
-    // `sentry_flutter` loads its JS SDK from a hardcoded Sentry CDN URL when a
-    // DSN is configured (`SENTRY_DSN`). The SDK exposes no option to self-host
-    // or skip that bundle cleanly, so `script-src 'self'` blocks it and it
-    // stays blocked. Whether Sentry delivers ANY error on web while its JS SDK
-    // is blocked is UNVERIFIED: `JavascriptTransport.send` goes through that
-    // same JS binding. Tracked in issue #1110. See the PR's "Not done".
-    pattern: /^https:\/\/browser\.sentry-cdn\.com\/.*\/bundle\.tracing(?:\.min)?\.js$/,
-    reason:
-      'sentry_flutter JS SDK CDN; blocked and never loaded (no self-host ' +
-      'option exists). Whether Sentry delivers web errors at all while it is ' +
-      'blocked is unverified; tracked in issue #1110.',
-  },
 ];
 
 const MIME_TYPES = {

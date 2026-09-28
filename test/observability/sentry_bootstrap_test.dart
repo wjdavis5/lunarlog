@@ -7,6 +7,8 @@ import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/observability/sentry_bootstrap.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
@@ -22,8 +24,7 @@ String _json(SentryEvent event) => jsonEncode(event.toJson());
 /// propagate, when it throws.
 class _ThrowingBreadcrumbLog extends BreadcrumbLog {
   @override
-  void record(String category, String name) =>
-      throw StateError('boom');
+  void record(String category, String name) => throw StateError('boom');
 }
 
 /// Never actually sends -- mirrors `scrub_test.dart`'s helper of the same
@@ -50,8 +51,11 @@ Future<SentryTransaction> _realTransaction() async {
     return null; // never actually sent
   };
   final hub = Hub(captureOptions);
-  final tracer =
-      hub.startTransaction('SettingsScreen', 'navigation', bindToScope: false);
+  final tracer = hub.startTransaction(
+    'SettingsScreen',
+    'navigation',
+    bindToScope: false,
+  );
   await tracer.finish();
   return captured!;
 }
@@ -119,14 +123,19 @@ void main() {
 
       // The wired callbacks are the scrubbers.
       final scrubbed = await o.beforeSend!(
-        SentryEvent(tags: {'note': _note}, user: SentryUser(id: 'u1')),
+        SentryEvent(
+          tags: {'note': _note},
+          user: SentryUser(id: 'u1'),
+        ),
         Hint(),
       );
       expect(scrubbed!.user, isNull);
       expect(_json(scrubbed), isNot(contains(_note)));
       expect(
         o.beforeBreadcrumb!(
-            Breadcrumb(category: 'x', data: {'email': _email}), Hint()),
+          Breadcrumb(category: 'x', data: {'email': _email}),
+          Hint(),
+        ),
         isNull,
       );
     });
@@ -135,7 +144,9 @@ void main() {
   group('configureSentryOptions breadcrumb tee (Issue #6, U4; KTD9)', () {
     test('a breadcrumb that survives scrubBreadcrumb is teed into the injected log', () {
       final log = BreadcrumbLog();
-      final options = SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
+      final options = SentryFlutterOptions(
+        dsn: 'https://public@o0.ingest.sentry.io/1',
+      );
       configureSentryOptions(options, dsn: options.dsn!, breadcrumbLog: log);
 
       options.beforeBreadcrumb!(
@@ -148,7 +159,9 @@ void main() {
 
     test('a breadcrumb scrubBreadcrumb drops is not teed', () {
       final log = BreadcrumbLog();
-      final options = SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
+      final options = SentryFlutterOptions(
+        dsn: 'https://public@o0.ingest.sentry.io/1',
+      );
       configureSentryOptions(options, dsn: options.dsn!, breadcrumbLog: log);
 
       options.beforeBreadcrumb!(
@@ -162,15 +175,20 @@ void main() {
     test('AE10 (unit half): a data-only navigation breadcrumb lands as '
         '"navigation: SettingsScreen"', () {
       final log = BreadcrumbLog();
-      final options = SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
+      final options = SentryFlutterOptions(
+        dsn: 'https://public@o0.ingest.sentry.io/1',
+      );
       configureSentryOptions(options, dsn: options.dsn!, breadcrumbLog: log);
 
       options.beforeBreadcrumb!(
-        Breadcrumb(category: 'navigation', data: {
-          'state': 'didPush',
-          'from': 'ProfilePickerScreen',
-          'to': 'SettingsScreen',
-        }),
+        Breadcrumb(
+          category: 'navigation',
+          data: {
+            'state': 'didPush',
+            'from': 'ProfilePickerScreen',
+            'to': 'SettingsScreen',
+          },
+        ),
         Hint(),
       );
 
@@ -182,10 +200,14 @@ void main() {
       'forwards the raw event when a callback throws)', () {
     test('beforeBreadcrumb returns null, not the scrubbed breadcrumb, when '
         'the tee itself throws', () {
-      final options =
-          SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
-      configureSentryOptions(options,
-          dsn: options.dsn!, breadcrumbLog: _ThrowingBreadcrumbLog());
+      final options = SentryFlutterOptions(
+        dsn: 'https://public@o0.ingest.sentry.io/1',
+      );
+      configureSentryOptions(
+        options,
+        dsn: options.dsn!,
+        breadcrumbLog: _ThrowingBreadcrumbLog(),
+      );
 
       final result = options.beforeBreadcrumb!(
         Breadcrumb(category: 'navigation', message: 'overview'),
@@ -197,28 +219,34 @@ void main() {
 
     test('beforeSend on a well-formed event still returns the scrubbed '
         'event (the try/catch does not swallow the success path)', () {
-      final options =
-          SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
+      final options = SentryFlutterOptions(
+        dsn: 'https://public@o0.ingest.sentry.io/1',
+      );
       configureSentryOptions(options, dsn: options.dsn!);
 
-      final result =
-          options.beforeSend!(SentryEvent(message: SentryMessage('ok')), Hint());
+      final result = options.beforeSend!(
+        SentryEvent(message: SentryMessage('ok')),
+        Hint(),
+      );
       expect(result, isA<SentryEvent>());
     });
 
     test('beforeSend returns null, not the raw event, when scrubEvent '
         'itself throws (round 2 of issue #7\'s review: this catch had no '
         'throw-path test)', () {
-      final options =
-          SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
+      final options = SentryFlutterOptions(
+        dsn: 'https://public@o0.ingest.sentry.io/1',
+      );
       configureSentryOptions(
         options,
         dsn: options.dsn!,
         scrubEventFn: (event) => throw StateError('boom'),
       );
 
-      final result =
-          options.beforeSend!(SentryEvent(message: SentryMessage('ok')), Hint());
+      final result = options.beforeSend!(
+        SentryEvent(message: SentryMessage('ok')),
+        Hint(),
+      );
 
       expect(result, isNull);
     });
@@ -228,8 +256,9 @@ void main() {
         'this catch had no throw-path test)', () async {
       final transaction = await _realTransaction();
 
-      final options =
-          SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
+      final options = SentryFlutterOptions(
+        dsn: 'https://public@o0.ingest.sentry.io/1',
+      );
       configureSentryOptions(
         options,
         dsn: options.dsn!,
@@ -259,21 +288,24 @@ void main() {
     });
 
     test('a registered route name is kept verbatim', () {
-      final result =
-          sentryRouteNameExtractor(const RouteSettings(name: 'SettingsScreen'));
+      final result = sentryRouteNameExtractor(
+        const RouteSettings(name: 'SettingsScreen'),
+      );
       expect(result?.name, 'SettingsScreen');
     });
 
     test('an unrecognized/unsafe route name becomes "unknown", same as '
         'scrubRouteName', () {
       final result = sentryRouteNameExtractor(
-          const RouteSettings(name: '/profile/123'));
+        const RouteSettings(name: '/profile/123'),
+      );
       expect(result?.name, 'unknown');
     });
 
     test('arguments are dropped unconditionally, even for a kept name', () {
       final result = sentryRouteNameExtractor(
-          const RouteSettings(name: 'SettingsScreen', arguments: 'secret'));
+        const RouteSettings(name: 'SettingsScreen', arguments: 'secret'),
+      );
       expect(result?.arguments, isNull);
     });
   });
@@ -282,8 +314,9 @@ void main() {
     test('AE5: with no tracesSampleRate passed (configureSentryOptions '
         "defaults to off, decoupled from this test run's real dart-define), "
         'tracesSampleRate is null and isTracingEnabled() is false', () {
-      final options =
-          SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
+      final options = SentryFlutterOptions(
+        dsn: 'https://public@o0.ingest.sentry.io/1',
+      );
       configureSentryOptions(options, dsn: options.dsn!);
 
       expect(options.tracesSampleRate, isNull);
@@ -292,8 +325,9 @@ void main() {
 
     test('an explicit tracesSampleRate is set verbatim, whatever this test '
         "run's real dart-define was", () {
-      final options =
-          SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
+      final options = SentryFlutterOptions(
+        dsn: 'https://public@o0.ingest.sentry.io/1',
+      );
       configureSentryOptions(options, dsn: options.dsn!, tracesSampleRate: 0.2);
 
       expect(options.tracesSampleRate, 0.2);
@@ -301,8 +335,9 @@ void main() {
     });
 
     test('beforeSendTransaction is wired to scrubTransaction', () {
-      final options =
-          SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
+      final options = SentryFlutterOptions(
+        dsn: 'https://public@o0.ingest.sentry.io/1',
+      );
       configureSentryOptions(options, dsn: options.dsn!);
 
       expect(options.beforeSendTransaction, isNotNull);
@@ -314,7 +349,9 @@ void main() {
     late SentryFlutterOptions options;
 
     setUp(() {
-      options = SentryFlutterOptions(dsn: 'https://public@o0.ingest.sentry.io/1');
+      options = SentryFlutterOptions(
+        dsn: 'https://public@o0.ingest.sentry.io/1',
+      );
       configureSentryOptions(options, dsn: options.dsn!);
     });
 
@@ -374,6 +411,215 @@ void main() {
       expect(options.maxRequestBodySize, MaxRequestBodySize.never);
       expect(options.replay.sessionSampleRate, anyOf(isNull, 0.0));
       expect(options.replay.onErrorSampleRate, anyOf(isNull, 0.0));
+    });
+  });
+
+  group('configureSentryOptions web transport swap (issue #1110)', () {
+    test('on web, autoInitializeNativeSdk is off and the transport is the '
+        'Dart ingest transport, not the SDK JS-binding one', () {
+      final options = SentryFlutterOptions(
+        dsn: 'https://public@o0.ingest.sentry.io/1',
+      );
+      configureSentryOptions(
+        options,
+        dsn: options.dsn!,
+        isWeb: true,
+        webHttpClient: MockClient((request) async => http.Response('', 200)),
+      );
+
+      // The pin that keeps `browser.sentry-cdn.com` out of the boot entirely
+      // (and the JS binding it feeds) -- the boot check no longer allowlists
+      // that CDN, so a regression here fails the web boot check in CI.
+      expect(options.autoInitializeNativeSdk, isFalse);
+      expect(options.transport, isA<WebDartSentryTransport>());
+    });
+
+    test('on web, the scrubbers are wired exactly as on native: beforeSend '
+        'drops the deny-listed content', () async {
+      final options = SentryFlutterOptions(
+        dsn: 'https://public@o0.ingest.sentry.io/1',
+      );
+      configureSentryOptions(
+        options,
+        dsn: options.dsn!,
+        isWeb: true,
+        webHttpClient: MockClient((request) async => http.Response('', 200)),
+      );
+
+      final scrubbed = await options.beforeSend!(
+        SentryEvent(
+          tags: {'note': _note},
+          user: SentryUser(id: 'u1'),
+        ),
+        Hint(),
+      );
+      expect(_json(scrubbed!), isNot(contains(_note)));
+      expect(scrubbed.user, isNull);
+      expect(
+        options.beforeBreadcrumb!(
+          Breadcrumb(category: 'x', data: {'email': _email}),
+          Hint(),
+        ),
+        isNull,
+      );
+    });
+
+    test('off web (the flutter-test default and every native build), the '
+        'SDK defaults are left untouched', () {
+      final options = SentryFlutterOptions(
+        dsn: 'https://public@o0.ingest.sentry.io/1',
+      );
+      final sdkTransport = options.transport;
+      configureSentryOptions(options, dsn: options.dsn!, isWeb: false);
+
+      expect(options.autoInitializeNativeSdk, isTrue);
+      expect(options.transport, same(sdkTransport));
+    });
+  });
+
+  group('WebDartSentryTransport (issue #1110)', () {
+    const dsn = 'https://public@o0.ingest.sentry.io/1';
+
+    /// Builds an event-carrying envelope the way the SDK does, plus the
+    /// recording client the transport posts through.
+    (SentryEnvelope, SentryEvent, MockClient, List<http.BaseRequest>)
+    envelopeWithRecordingClient() {
+      final requests = <http.BaseRequest>[];
+      final client = MockClient((request) async {
+        requests.add(request);
+        return http.Response('', 200);
+      });
+      final event = SentryEvent(message: SentryMessage('boom'));
+      final envelope = SentryEnvelope.fromEvent(
+        event,
+        SdkVersion(name: 'test', version: '1'),
+        dsn: dsn,
+      );
+      return (envelope, event, client, requests);
+    }
+
+    WebDartSentryTransport buildTransport(
+      http.Client client, {
+      String dsnValue = dsn,
+    }) => WebDartSentryTransport(
+      dsn: dsnValue,
+      options: SentryOptions(dsn: dsnValue),
+      client: client,
+    );
+
+    test('send POSTs the envelope bytes to the DSN envelope endpoint with '
+        'the SDK wire headers and returns the event id', () async {
+      final (envelope, event, client, requests) = envelopeWithRecordingClient();
+      final transport = buildTransport(client);
+
+      final id = await transport.send(envelope);
+
+      expect(id, event.eventId);
+      expect(requests, hasLength(1));
+      final request = requests.single;
+      // The DSN's `*.ingest.sentry.io` host + envelope path -- exactly the
+      // host the CSP's `connect-src` allowlist already carries.
+      expect(request.url.host, 'o0.ingest.sentry.io');
+      expect(request.url.path, '/api/1/envelope/');
+      expect(request.method, 'POST');
+      expect(request.headers['Content-Type'], 'application/x-sentry-envelope');
+      final auth = request.headers['X-Sentry-Auth']!;
+      expect(auth, startsWith('Sentry sentry_version=7'));
+      expect(auth, contains('sentry_client='));
+      expect(auth, contains('sentry_key=public'));
+      expect(auth, isNot(contains('sentry_secret')));
+      final body = utf8.decode((request as http.Request).bodyBytes);
+      // The envelope framing: header line (carrying the event id) then the
+      // event payload itself.
+      expect(body, contains(event.eventId.toString()));
+      expect(body, contains('boom'));
+    });
+
+    test('a non-2xx ingest response drops the envelope with the SDK empty '
+        'id (no retry, no throw)', () async {
+      final requests = <http.BaseRequest>[];
+      final client = MockClient((request) async {
+        requests.add(request);
+        return http.Response('rate limited', 429);
+      });
+      final (envelope, _, _, _) = envelopeWithRecordingClient();
+
+      final id = await buildTransport(client).send(envelope);
+
+      expect(id, SentryId.empty());
+      expect(requests, hasLength(1));
+    });
+
+    test('a network failure drops the envelope with the SDK empty id, the '
+        "same failure posture as the SDK's JavascriptTransport", () async {
+      final client = MockClient(
+        (request) async => throw http.ClientException('offline'),
+      );
+      final (envelope, _, _, _) = envelopeWithRecordingClient();
+
+      final id = await buildTransport(client).send(envelope);
+
+      expect(id, SentryId.empty());
+    });
+
+    test(
+      'an empty DSN degrades to drop-everything: no request is made',
+      () async {
+        final requests = <http.BaseRequest>[];
+        final client = MockClient((request) async {
+          requests.add(request);
+          return http.Response('', 200);
+        });
+        final (envelope, _, _, _) = envelopeWithRecordingClient();
+
+        final id = await buildTransport(client, dsnValue: '').send(envelope);
+
+        expect(id, SentryId.empty());
+        expect(requests, isEmpty);
+      },
+    );
+
+    test(
+      'a malformed DSN degrades to drop-everything: no request is made',
+      () async {
+        final requests = <http.BaseRequest>[];
+        final client = MockClient((request) async {
+          requests.add(request);
+          return http.Response('', 200);
+        });
+        final (envelope, _, _, _) = envelopeWithRecordingClient();
+
+        final id = await buildTransport(
+          client,
+          dsnValue: 'not-a-dsn',
+        ).send(envelope);
+
+        expect(id, SentryId.empty());
+        expect(requests, isEmpty);
+      },
+    );
+
+    test('a DSN carrying a legacy secret appends sentry_secret to the '
+        'credential header', () async {
+      final requests = <http.BaseRequest>[];
+      final client = MockClient((request) async {
+        requests.add(request);
+        return http.Response('', 200);
+      });
+      const secretDsn = 'https://public:secret@o0.ingest.sentry.io/1';
+      final event = SentryEvent(message: SentryMessage('boom'));
+      final envelope = SentryEnvelope.fromEvent(
+        event,
+        SdkVersion(name: 'test', version: '1'),
+        dsn: secretDsn,
+      );
+
+      await buildTransport(client, dsnValue: secretDsn).send(envelope);
+
+      expect(
+        requests.single.headers['X-Sentry-Auth'],
+        contains('sentry_secret=secret'),
+      );
     });
   });
 }

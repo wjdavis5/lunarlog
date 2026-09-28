@@ -229,15 +229,26 @@ issue #1091). `connect-src` is limited to the app origin, the
 `dleexnnevuuddcgcpztq.supabase.co` project (HTTPS + WSS), the Google Fonts
 fallback host (`https://fonts.gstatic.com`, on-demand glyph fallback only),
 and Sentry's ingest host. `font-src` is `'self' data:` plus that same
-fallback host. Note on Sentry: `sentry_flutter` loads its JS SDK from
-`browser.sentry-cdn.com`, which `script-src 'self'` blocks, and the SDK has no
-option to self-host that bundle. Whether Sentry delivers *any* error on web
-while its JS SDK is blocked is **unverified** — `JavascriptTransport.send`
-goes through the same JS binding — so a browser build configured with a
-`SENTRY_DSN` currently has no confirmed web error reporting; this is tracked
-in issue #1110 (the ingest host stays allowed for the case where it does
-work). `tool/web_smoke/` (Section 6) runs the served policy in a real browser
-on every relevant PR.
+fallback host. Note on Sentry (issue #1110, resolved with option 2): the
+Flutter SDK's own web path is unusable under this CSP — `sentry_flutter`
+injects its JS SDK from a hardcoded `browser.sentry-cdn.com` URL (no
+self-host option) and delivers every envelope through that same JS binding,
+so `script-src 'self'` blocked both the load and the sends. The web build
+therefore sets `autoInitializeNativeSdk = false` (the SDK's own switch to
+skip that script and its init) and sends envelopes from Dart instead:
+`WebDartSentryTransport` (`lib/observability/sentry_bootstrap.dart`) POSTs
+the scrubbed envelope straight to the DSN's `*.ingest.sentry.io` endpoint,
+which `connect-src` has always allowed. The accepted trade-off: errors that
+exist only in the JS layer (engine console errors the browser SDK's global
+handlers would catch outside Dart) are not observable, while Dart errors —
+the ones a Flutter web build produces — are, scrubbed by the same
+`beforeSend` hooks as on native. Allowing `browser.sentry-cdn.com` in
+`script-src` was the rejected alternative (a third-party script on an origin
+holding synced health data and a session token). Live delivery from a real
+browser still needs a one-time check in a `LUNARLOG_WEB_SYNC=true` build
+with a project DSN; the boot check proves the CDN script is gone and the
+policy stays violation-free. `tool/web_smoke/` (Section 6) runs the served
+policy in a real browser on every relevant PR.
 
 **D4 — Local data and token are cleared only by the app's own reset or a
 browser site-data clear; the copy tells the user that.** `WebGuardrails` keeps
