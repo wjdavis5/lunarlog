@@ -87,6 +87,13 @@ jobs:
         working-directory: site
         run: npm run check:links
 
+      - name: Check the privacy page section anchors
+        # Issue #1101: /privacy's section anchors are the deep-link contract
+        # for the in-app privacy dialog. A silent PRIVACY.md heading rename
+        # fails here instead of breaking those links quietly.
+        working-directory: site
+        run: npm run check:privacy-anchors
+
       - name: Run axe against the built site
         working-directory: site
         run: npm run check:axe

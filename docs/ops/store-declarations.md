@@ -117,7 +117,9 @@ below with these exact selections.
 domains (`ios/Runner/PrivacyInfo.xcprivacy:103-106`), and `PRIVACY.md` §9:177
 states "Data Used to Track You: None".
 
-**Privacy policy URL:** `https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md`.
+**Privacy policy URL:** `https://lunarlog.app/privacy` (issue #1101 — the
+canonical policy, built from `PRIVACY.md`; the in-app privacy dialog cites the
+same URL).
 
 **Support URL** (App Store Connect → App Information; issue #1102):
 `https://lunarlog.app/support`. Set it only after the page is deployed (the
@@ -196,7 +198,8 @@ usage strings, not the Play form.
 - [ ] Answer the form's "shared with third parties?" question **No** — the sync
       writes only to the OS-mediated health store; cloud sync is a separate,
       independently opted-in feature (`PRIVACY.md` §4:108).
-- [ ] Privacy policy URL: the same canonical PRIVACY.md link as Data safety.
+- [ ] Privacy policy URL: the same canonical URL as Data safety
+      (`https://lunarlog.app/privacy`, issue #1101).
 - [ ] Capture the `PermissionsRationaleActivity` screen + the system grant
       dialog as the permission-flow screenshots.
 - [ ] After approval, set the `PLAY_HEALTH_DECLARATION_CONFIRMED` repository

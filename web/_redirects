@@ -13,4 +13,12 @@
 # are pinned by `test/architecture/web_headers_test.dart`, so this file and
 # that test move together.
 
+# Issue #1101: the privacy policy lives at one canonical URL, the marketing
+# site's https://lunarlog.app/privacy, rendered from the repo's PRIVACY.md.
+# `web/privacy.html` (a second, hand-maintained copy) is retired; this rule
+# must stay ABOVE the SPA catch-all, which would otherwise swallow the path
+# with a 200 instead of redirecting. Both rules are pinned by
+# `test/architecture/web_headers_test.dart`.
+/privacy.html https://lunarlog.app/privacy 301
+
 /* /index.html 200

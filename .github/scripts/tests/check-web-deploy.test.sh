@@ -38,6 +38,11 @@ HTTP/2 200
 date: Sat, 26 Sep 2026 12:00:00 GMT
 content-type: text/html; charset=utf-8
 EOF
+  cat >"$dir/privacy-redirect.headers" <<'EOF'
+HTTP/2 301
+date: Sat, 26 Sep 2026 12:00:00 GMT
+location: https://lunarlog.app/privacy
+EOF
   cat >"$dir/flutter-bootstrap.headers" <<'EOF'
 HTTP/2 200
 date: Sat, 26 Sep 2026 12:00:00 GMT
@@ -226,6 +231,35 @@ EOF
 run_case "$WORK/bootstrap-cdn"
 assert_exit "a bootstrap without useLocalCanvasKit refuses" 1
 assert_contains "the CanvasKit requirement is named" "$LAST_LOG" "useLocalCanvasKit"
+
+# --- `/privacy.html` fails closed (issue #1101) ------------------------------
+
+make_fixtures "$WORK/privacy-404"
+cat >"$WORK/privacy-404/privacy-redirect.headers" <<'EOF'
+HTTP/2 404
+content-type: text/html; charset=utf-8
+EOF
+run_case "$WORK/privacy-404"
+assert_exit "a 404 on /privacy.html refuses (the retired copy must redirect)" 1
+assert_contains "the privacy URL is named" "$LAST_LOG" "/privacy.html"
+assert_contains "the privacy status mismatch is named" "$LAST_LOG" "expected HTTP 301"
+
+make_fixtures "$WORK/privacy-spa-fallback"
+cat >"$WORK/privacy-spa-fallback/privacy-redirect.headers" <<'EOF'
+HTTP/2 200
+content-type: text/html; charset=utf-8
+EOF
+run_case "$WORK/privacy-spa-fallback"
+assert_exit "the SPA fallback swallowing /privacy.html with a 200 refuses" 1
+
+make_fixtures "$WORK/privacy-wrong-target"
+cat >"$WORK/privacy-wrong-target/privacy-redirect.headers" <<'EOF'
+HTTP/2 301
+location: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md
+EOF
+run_case "$WORK/privacy-wrong-target"
+assert_exit "a 301 to any URL but the canonical policy refuses" 1
+assert_contains "the canonical target is named" "$LAST_LOG" "https://lunarlog.app/privacy"
 
 # --- Wiring -----------------------------------------------------------------
 

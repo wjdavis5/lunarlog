@@ -76,7 +76,7 @@ class PermissionsRationaleActivity : Activity() {
                     Intent(
                         Intent.ACTION_VIEW,
                         Uri.parse(
-                            "https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md"
+                            "https://lunarlog.app/privacy"
                         )
                     )
                 )

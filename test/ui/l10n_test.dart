@@ -362,8 +362,10 @@ void main() {
       expect(
         l10n.settingsPrivacyDialogBody,
         endsWith(
+          // Issue #1101: the canonical policy is the marketing site's
+          // /privacy, built from PRIVACY.md — not the GitHub blob URL.
           'Canonical policy: '
-          'https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md',
+          'https://lunarlog.app/privacy',
         ),
       );
       expect(

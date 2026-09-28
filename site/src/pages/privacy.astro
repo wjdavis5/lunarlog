@@ -1,0 +1,124 @@
+---
+// The canonical privacy policy at lunarlog.app/privacy (issue #1101).
+//
+// This page renders the repository's own `PRIVACY.md` at build time — the
+// one source of the policy. There is deliberately no second, retyped copy in
+// this site: a merged `PRIVACY.md` change rebuilds and redeploys `/privacy`
+// in the same merge (`site-deploy.yml` path-filters on `PRIVACY.md`).
+//
+// Section anchors are Astro's default heading ids (GitHub's slug style, e.g.
+// `#5-minors-privacy--family-profiles`), so an in-app deep link to a section
+// keeps working as long as the heading text does. The expected ids are pinned
+// by `site/scripts/check-privacy-anchors.mjs`, so a silent heading rename
+// fails the site build instead of breaking the links quietly.
+//
+// Repo-relative links inside the document (e.g. `[SECURITY.md](SECURITY.md)`)
+// are rewritten to absolute GitHub URLs by the rehype plugin in
+// `astro.config.mjs`; the document's own absolute links pass through.
+import { Content as PolicyContent } from "../../../PRIVACY.md";
+
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+const description =
+  "How lunarlog stores, shares, and protects your family's cycle data — " +
+  "the complete privacy policy.";
+---
+
+<BaseLayout title="Privacy policy" description={description}>
+  <article class="policy">
+    <PolicyContent />
+  </article>
+</BaseLayout>
+
+<style is:global>
+  /* The policy body is rendered from markdown, so its elements carry no
+   * Astro scope attributes — style them under the `.policy` wrapper instead
+   * of leaking into other pages. Tokens are global.css's design tokens. */
+  .policy {
+    font-size: 1rem;
+  }
+
+  .policy h1 {
+    margin: 0 0 1rem;
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 6vw, 2.75rem);
+    font-weight: 600;
+    line-height: 1.15;
+    color: var(--brand-purple);
+  }
+
+  .policy h2 {
+    margin: 2.5rem 0 0.75rem;
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 1.25;
+    color: var(--brand-purple);
+    scroll-margin-top: 1.5rem;
+  }
+
+  .policy h3 {
+    margin: 1.75rem 0 0.5rem;
+    font-size: 1.1875rem;
+    font-weight: 600;
+    color: var(--brand-purple-strong);
+    scroll-margin-top: 1.5rem;
+  }
+
+  .policy p {
+    margin: 0 0 1rem;
+  }
+
+  .policy ul,
+  .policy ol {
+    margin: 0 0 1rem;
+    padding-left: 1.5rem;
+  }
+
+  .policy li {
+    margin-bottom: 0.5rem;
+  }
+
+  .policy li > ul {
+    margin-top: 0.5rem;
+  }
+
+  .policy a {
+    overflow-wrap: anywhere;
+  }
+
+  .policy hr {
+    margin: 2rem 0;
+    border: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .policy code {
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    font-size: 0.875em;
+    overflow-wrap: anywhere;
+  }
+
+  .policy table {
+    width: 100%;
+    margin: 0 0 1rem;
+    border-collapse: collapse;
+    font-size: 0.9375rem;
+  }
+
+  .policy th,
+  .policy td {
+    padding: 0.5rem 0.625rem;
+    border: 1px solid var(--border);
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .policy th {
+    background: var(--surface);
+    font-weight: 600;
+  }
+</style>

@@ -135,7 +135,10 @@ void main() {
         'the rationale activity file exists and deep-links to the hosted '
         'privacy policy, naming the one-profile-at-a-time statement', () {
       final activity = readRepoFile(_rationaleActivityPath);
-      expect(activity, contains('PRIVACY.md'));
+      // Issue #1101: the canonical policy is https://lunarlog.app/privacy,
+      // the marketing site's build of PRIVACY.md -- the same URL the
+      // in-app privacy dialog and the store listings cite.
+      expect(activity, contains('https://lunarlog.app/privacy'));
       expect(activity, contains('one profile'));
     });
 

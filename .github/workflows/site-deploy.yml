@@ -24,6 +24,9 @@ on:
     branches: [main]
     paths:
       - 'site/**'
+      # Issue #1101: /privacy renders PRIVACY.md at build time, so a policy
+      # change must redeploy the site in the same merge, with no manual step.
+      - 'PRIVACY.md'
       - '.github/workflows/site-deploy.yml'
       - '.github/scripts/check-links-deploy.sh'
       # Issue #1104: the site's screenshots are generated here (never
