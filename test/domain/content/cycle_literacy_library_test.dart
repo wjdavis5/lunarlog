@@ -596,7 +596,126 @@ void main() {
 
     test('every article carries the re-checked review date', () {
       for (final article in CycleLiteracyLibrary.allArticles) {
-        expect(article.reviewDate, '2026-09-26');
+        // Issue #1128 re-checked Article 3's citations when it added the NHS
+        // fertility page (round-2 row R6); the rest keep the #1119 date.
+        final expected = article.id == 'understanding-ovulation'
+            ? '2026-09-28'
+            : '2026-09-26';
+        expect(article.reviewDate, expected, reason: article.id);
+      }
+    });
+  });
+
+  group('Issue #1128 round-3 should-fixes', () {
+    String body(String articleId) {
+      final article = CycleLiteracyLibrary.getArticleById(articleId)!;
+      return article.sections.expand((s) => s.allParagraphs).join(' ');
+    }
+
+    test('Article 9 carries the full CO 651 evaluation list (S1)', () {
+      final text = body('what-irregular-means-at-13');
+      // The seven CO 651 rows #1119 already covered.
+      expect(text, contains('more often than every 21 days'));
+      expect(text, contains('less often than every 45 days'));
+      expect(text, contains('90 days go by without a period'));
+      expect(text, contains('become irregular for several months'));
+      expect(text, contains('bleeding lasts more than 7 days'));
+      expect(text, contains('every 1 to 2 hours'));
+      expect(text, contains('bleeding disorder'));
+      expect(text, contains('by age 15'));
+      expect(text, contains('breasts starting to develop'));
+      // The two items the round-3 verification found missing.
+      expect(
+        text,
+        contains('no breast development by 13'),
+        reason: "CO 651: 'Lack of breast development by age 13 years also "
+            'should be evaluated',
+      );
+      expect(
+        text,
+        contains('no period by 14 with excess hair growth'),
+        reason: 'CO 651 Box 3: not started by 14 with signs of hirsutism',
+      );
+      expect(
+        text,
+        contains('extreme exercise or an eating disorder'),
+        reason:
+            'CO 651 Box 3: not started by 14 with excessive exercise or an '
+            'eating disorder',
+      );
+    });
+
+    test('Article 3 also carries the NHS sperm-survival figure (R6)', () {
+      final article = CycleLiteracyLibrary.getArticleById(
+        'understanding-ovulation',
+      )!;
+      final text = body('understanding-ovulation');
+      expect(text, contains('up to 5 days'));
+      expect(text, contains('up to 7 days after sex'));
+      expect(
+        text,
+        contains('the day after'),
+        reason: 'the ACOG FAQ024 fertile window is unchanged',
+      );
+      expect(text, isNot(contains('6-Day Fertile Window')));
+
+      final nhs = article.sources
+          .where((source) => source.publisher == SourcePublisher.nhs)
+          .toList();
+      expect(nhs, hasLength(1));
+      expect(
+        nhs.single.url,
+        'https://www.nhs.uk/conditions/periods/fertility-in-the-menstrual-cycle/',
+      );
+      expect(nhs.single.retrieved, '2026-09-28');
+      expect(article.reviewDate, '2026-09-28');
+    });
+
+    test('cramp article signposts the UK urgent-help route (R7)', () {
+      final text = body('why-cramps-happen');
+      expect(text, contains('Get help urgently if pain is severe'));
+      expect(text, contains('NHS 111'));
+    });
+
+    test('Article 9 hedges the regularity timeline (R10)', () {
+      final text = body('what-irregular-means-at-13');
+      expect(text, contains('two to three years'));
+      expect(text, contains('six years or more'));
+      expect(
+        text,
+        isNot(contains('after their first period. For some, slight')),
+        reason: 'the unqualified "two to three years" sentence is gone',
+      );
+    });
+
+    test('Article 5 gains the readable NHS PMS source (S4)', () {
+      final article = CycleLiteracyLibrary.getArticleById(
+        'pms-and-progesterone',
+      )!;
+      expect(_hasPublisher(article, SourcePublisher.nhs), isTrue);
+      final nhs = _sourceFor(article, SourcePublisher.nhs);
+      expect(nhs.title, contains('PMS'));
+      expect(nhs.url, 'https://www.nhs.uk/conditions/pre-menstrual-syndrome/');
+    });
+
+    test('Article 5 progesterone rises and then falls (S4 / round-2 R5)', () {
+      final text = body('pms-and-progesterone');
+      expect(text, contains('As progesterone rises and then falls'));
+      expect(text, isNot(contains('plunges')));
+      expect(text, contains('researchers think'));
+      expect(text, contains('may contribute'));
+    });
+
+    test('crisis paragraph still pins the emergency routes (S3)', () {
+      for (final id in [
+        'pms-and-progesterone',
+        'pms-vs-mood-when-to-ask-clinician',
+      ]) {
+        final text = body(id);
+        expect(text, contains('911 in the US and Canada, 999 in the UK'),
+            reason: id);
+        expect(text, contains('A&E'), reason: id);
+        expect(text, contains('Lifeline'), reason: id);
       }
     });
   });
