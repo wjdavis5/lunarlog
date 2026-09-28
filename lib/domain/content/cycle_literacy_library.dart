@@ -99,12 +99,111 @@ class ArticleSource {
   final String retrieved;
 }
 
+/// An actionable crisis-resource contact method (Issue #1132).
+class CrisisAction {
+  const CrisisAction({
+    required this.label,
+    required this.uriString,
+    required this.semanticsLabel,
+  });
+
+  /// Short button label displayed to the reader (e.g. `'Call 988'`).
+  final String label;
+
+  /// External URL string launched when activated (`'tel:988'` or `'sms:988'`).
+  final String uriString;
+
+  /// Parsed URI.
+  Uri get uri => Uri.parse(uriString);
+
+  /// Full accessibility announcement (e.g. `'Call 988, Suicide and Crisis Lifeline'`).
+  final String semanticsLabel;
+}
+
+/// A structured crisis-support callout block within an [ArticleSection]
+/// (Issue #1132).
+///
+/// Set apart in a calm, discreet tinted container with one-tap action
+/// targets for urgent support.
+class CrisisResources {
+  const CrisisResources({
+    required this.text,
+    this.actions = kDefaultCrisisActions,
+  });
+
+  /// The crisis route guidance and context prose.
+  final String text;
+
+  /// Actionable contact routes.
+  final List<CrisisAction> actions;
+
+  /// The standard crisis route contact actions across US, Canada, UK, and NI.
+  static const List<CrisisAction> kDefaultCrisisActions = [
+    CrisisAction(
+      label: 'Call 988',
+      uriString: 'tel:988',
+      semanticsLabel: 'Call 988, Suicide and Crisis Lifeline',
+    ),
+    CrisisAction(
+      label: 'Text 988',
+      uriString: 'sms:988',
+      semanticsLabel: 'Text 988, Suicide and Crisis Lifeline',
+    ),
+    CrisisAction(
+      label: 'Samaritans 116 123',
+      uriString: 'tel:116123',
+      semanticsLabel: 'Call Samaritans on 116 123',
+    ),
+    CrisisAction(
+      label: 'Childline 0800 1111',
+      uriString: 'tel:08001111',
+      semanticsLabel: 'Call Childline on 0800 1111',
+    ),
+    CrisisAction(
+      label: 'NHS 111',
+      uriString: 'tel:111',
+      semanticsLabel: 'Call NHS 111',
+    ),
+    CrisisAction(
+      label: 'Lifeline 0808 808 8000',
+      uriString: 'tel:08088088000',
+      semanticsLabel: 'Call Lifeline on 0808 808 8000',
+    ),
+    CrisisAction(
+      label: '911',
+      uriString: 'tel:911',
+      semanticsLabel: 'Call 911, Emergency services',
+    ),
+    CrisisAction(
+      label: '999',
+      uriString: 'tel:999',
+      semanticsLabel: 'Call 999, Emergency services',
+    ),
+  ];
+}
+
 /// A structured section within a cycle literacy article.
 class ArticleSection {
-  const ArticleSection({required this.heading, required this.paragraphs});
+  const ArticleSection({
+    required this.heading,
+    required this.paragraphs,
+    this.callout,
+  });
 
   final String heading;
   final List<String> paragraphs;
+
+  /// Optional crisis or support callout displayed in a distinct container
+  /// (Issue #1132).
+  final CrisisResources? callout;
+
+  /// Every paragraph of text in this section, including any [callout] text.
+  Iterable<String> get allParagraphs sync* {
+    yield* paragraphs;
+    if (callout != null) {
+      yield callout!.text;
+    }
+  }
 }
 
 /// One bundled, source-referenced cycle literacy article.
@@ -168,6 +267,19 @@ class CycleLiteracyLibrary {
   /// ISO date the citations below were last checked against their publishers
   /// (Issue #1103).
   static const String _retrievedDate = '2026-09-26';
+
+  /// Tiered crisis route wording across US, Canada, UK, and NI (Issues #1111,
+  /// #1119, #1128, #1132).
+  static const String _crisisParagraphText =
+      'If you ever feel hopeless, or have thoughts of hurting yourself or ending '
+      'your life, please tell a trusted adult and get support now. In the US or '
+      'Canada, call or text 988. In the UK, call Samaritans free on 116 123 '
+      '(or Childline on 0800 1111 if you\'re under 19), or call NHS 111 and '
+      'choose the mental health option (in Northern Ireland, call Lifeline '
+      'free on 0808 808 8000). If you might not be able to keep yourself safe, '
+      'or you have already hurt yourself, call your local emergency number '
+      '(911 in the US and Canada, 999 in the UK) or go to the nearest emergency '
+      'department (A&E) now.';
 
   // --- Verified, linkable citations (Issue #1103) ---
   //
@@ -476,9 +588,8 @@ class CycleLiteracyLibrary {
       ),
       ArticleSection(
         heading: 'If You Feel Hopeless or Need Help Now',
-        paragraphs: [
-          'If you ever feel hopeless, or have thoughts of hurting yourself or ending your life, please tell a trusted adult and get support now. In the US or Canada, call or text 988. In the UK, call Samaritans free on 116 123 (or Childline on 0800 1111 if you\'re under 19), or call NHS 111 and choose the mental health option. If you might not be able to keep yourself safe, or you have already hurt yourself, call your local emergency number (911 in the US and Canada, 999 in the UK) or go to the nearest emergency department (A&E) now.',
-        ],
+        paragraphs: [],
+        callout: CrisisResources(text: _crisisParagraphText),
       ),
     ],
   );
@@ -712,8 +823,8 @@ class CycleLiteracyLibrary {
             heading: 'When to Seek Clinical Care',
             paragraphs: [
               'Reach out to a doctor if mood symptoms significantly interfere with daily life, school, work, or relationships, or if you feel overwhelmed or anxious. More severe premenstrual conditions, such as Premenstrual Dysphoric Disorder (PMDD), have treatments that can help, so it\'s worth asking.',
-              'If you ever feel hopeless, or have thoughts of hurting yourself or ending your life, please tell a trusted adult and get support now. In the US or Canada, call or text 988. In the UK, call Samaritans free on 116 123 (or Childline on 0800 1111 if you\'re under 19), or call NHS 111 and choose the mental health option. If you might not be able to keep yourself safe, or you have already hurt yourself, call your local emergency number (911 in the US and Canada, 999 in the UK) or go to the nearest emergency department (A&E) now.',
             ],
+            callout: CrisisResources(text: _crisisParagraphText),
           ),
         ],
       );

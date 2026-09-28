@@ -1,28 +1,40 @@
 /// Bottom sheet for reading a bundled cycle literacy article (Issue #239).
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../domain/content/cycle_literacy_library.dart';
 import '../../l10n/app_localizations.dart';
 import '../../observability/route_names.dart';
+import '../components/safe_launch_url.dart';
 
 class CycleLiteracyArticleSheet extends StatelessWidget {
   const CycleLiteracyArticleSheet({
     super.key,
     required this.article,
+    this.launchUrlFn,
   });
 
   final CycleLiteracyArticle article;
+  final LaunchUrlFn? launchUrlFn;
 
-  static Future<void> show(BuildContext context, CycleLiteracyArticle article) {
+  static Future<void> show(
+    BuildContext context,
+    CycleLiteracyArticle article, {
+    LaunchUrlFn? launchUrlFn,
+  }) {
     return showModalBottomSheet(
       context: context,
       routeSettings: const RouteSettings(name: kRouteCycleLiteracyArticleSheet),
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
-      builder: (context) => CycleLiteracyArticleSheet(article: article),
+      builder: (context) => CycleLiteracyArticleSheet(
+        article: article,
+        launchUrlFn: launchUrlFn,
+      ),
     );
   }
 
@@ -137,6 +149,13 @@ class CycleLiteracyArticleSheet extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
               ],
+              if (section.callout != null) ...[
+                CrisisResourcesCard(
+                  callout: section.callout!,
+                  launchUrlFn: launchUrlFn,
+                ),
+                const SizedBox(height: 12),
+              ],
               const SizedBox(height: 8),
             ],
 
@@ -186,6 +205,78 @@ class CycleLiteracyArticleSheet extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// Renders a structured crisis support block in a calm, discreet tinted card
+/// with one-tap action targets (Issue #1132).
+class CrisisResourcesCard extends StatelessWidget {
+  const CrisisResourcesCard({
+    super.key,
+    required this.callout,
+    this.launchUrlFn,
+  });
+
+  final CrisisResources callout;
+  final LaunchUrlFn? launchUrlFn;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      key: const ValueKey('crisis-resources-card'),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            callout.text,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colorScheme.onSecondaryContainer,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final action in callout.actions)
+                Semantics(
+                  button: true,
+                  label: action.semanticsLabel,
+                  child: ExcludeSemantics(
+                    child: OutlinedButton(
+                      key: ValueKey('crisis-action-${action.label}'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(44, 44),
+                        tapTargetSize: MaterialTapTargetSize.padded,
+                        foregroundColor: colorScheme.onSecondaryContainer,
+                        side: BorderSide(
+                          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                        ),
+                      ),
+                      onPressed: () => unawaited(
+                        safeLaunchUrl(
+                          action.uri,
+                          launch: launchUrlFn,
+                        ),
+                      ),
+                      child: Text(action.label),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
