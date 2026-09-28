@@ -100,10 +100,10 @@ issue #830), and any waitlist or email capture (the site collects nothing).
   page: /
   ships: tool/screenshots/manifest.dart; site/scripts/screenshots.mjs
   issue: #1104
-- claim: The full privacy policy at /privacy is the same document the app's own privacy dialog reads.
+- claim: The full privacy policy lives at /privacy, and the app's own Privacy screen is a short summary of it that links here.
   page: /
-  ships: site/src/pages/privacy.astro (renders PRIVACY.md at build time)
-  issue: #1101
+  ships: site/src/pages/privacy.astro (renders PRIVACY.md at build time); lib/ui/settings/privacy_policy_screen.dart (summary screen whose "Read the full privacy policy" button opens https://lunarlog.app/privacy)
+  issue: #1101; #1164
 
 ## Tracking and viewing — site/src/pages/tracking.astro
 
@@ -297,10 +297,10 @@ issue #830), and any waitlist or email capture (the site collects nothing).
 
 ## Privacy and security — site/src/pages/privacy-security.astro
 
-- claim: The full policy is the canonical PRIVACY.md, rendered at /privacy — the same document the app reads.
+- claim: The full policy is the canonical PRIVACY.md, rendered at /privacy — the app's Privacy screen summarizes it and links here.
   page: /privacy-security
-  ships: site/src/pages/privacy.astro; PRIVACY.md
-  issue: #1101
+  ships: site/src/pages/privacy.astro; PRIVACY.md; lib/ui/settings/privacy_policy_screen.dart (the in-app summary and its full-policy link)
+  issue: #1101; #1164
 - claim: No advertising, no data brokers, no behavioral tracking, no data sale; third parties are a short named list.
   page: /privacy-security
   ships: PRIVACY.md (§1 "No Advertising or Data Brokers"; §3; §4)

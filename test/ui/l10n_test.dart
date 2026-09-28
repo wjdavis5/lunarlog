@@ -342,7 +342,21 @@ void main() {
         l10n.settingsPrivacySubtitle,
         "How your family's data is stored, shared, and kept private",
       );
-      expect(l10n.settingsPrivacyDialogTitle, 'lunarlog Privacy Policy');
+      // Issue #1164: the screen reads as a summary, not the full document.
+      expect(l10n.settingsPrivacyDialogTitle, 'Privacy at a glance');
+      expect(
+        l10n.settingsPrivacySummaryNote,
+        contains('https://lunarlog.app/privacy'),
+      );
+      expect(
+        l10n.settingsPrivacyOpenFullPolicy,
+        'Read the full privacy policy',
+      );
+      // The failure fallback keeps the URL reachable when a launch fails.
+      expect(
+        l10n.settingsPrivacyOpenFullPolicyFailed,
+        contains('https://lunarlog.app/privacy'),
+      );
       expect(
         l10n.settingsPrivacyDialogBody,
         startsWith(
@@ -359,18 +373,15 @@ void main() {
         l10n.settingsPrivacyDialogBody,
         isNot(contains('biometric authentication')),
       );
+      // Issue #1101 named the canonical URL; issue #1164 moved the pointer
+      // out of the plain-text body into the tappable full-policy button.
       expect(
         l10n.settingsPrivacyDialogBody,
-        endsWith(
-          // Issue #1101: the canonical policy is the marketing site's
-          // /privacy, built from PRIVACY.md — not the GitHub blob URL.
-          'Canonical policy: '
-          'https://lunarlog.app/privacy',
-        ),
+        isNot(contains('Canonical policy:')),
       );
       expect(
         l10n.settingsPrivacyDialogBody,
-        contains(
+        endsWith(
           '• Guardian Alerts: Optional push notifications to another '
           'guardian never carry what was logged - only a generic reminder, '
           'via Firebase Cloud Messaging.',

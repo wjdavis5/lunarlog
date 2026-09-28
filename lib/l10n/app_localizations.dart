@@ -1536,16 +1536,34 @@ abstract class AppLocalizations {
   /// **'How your family\'s data is stored, shared, and kept private'**
   String get settingsPrivacySubtitle;
 
-  /// Title of the in-app privacy policy dialog.
+  /// Title of the in-app privacy summary screen (issue #1164): a short summary that links to the full policy, not the full policy itself.
   ///
   /// In en, this message translates to:
-  /// **'lunarlog Privacy Policy'**
+  /// **'Privacy at a glance'**
   String get settingsPrivacyDialogTitle;
 
-  /// Body of the in-app privacy policy dialog; mirrors PRIVACY.md's summary.
+  /// Lead-in note on the privacy summary screen naming the canonical policy URL (issue #1164).
   ///
   /// In en, this message translates to:
-  /// **'lunarlog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device\'s own operating system encryption and shown only behind your device\'s passcode or biometrics.\n• Works Offline: Logging, viewing, and estimates keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Guardian Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://lunarlog.app/privacy'**
+  /// **'This screen is a short summary. The full privacy policy lives at https://lunarlog.app/privacy.'**
+  String get settingsPrivacySummaryNote;
+
+  /// Button on the privacy summary screen opening the full policy at lunarlog.app/privacy (issue #1164).
+  ///
+  /// In en, this message translates to:
+  /// **'Read the full privacy policy'**
+  String get settingsPrivacyOpenFullPolicy;
+
+  /// Calm fallback shown under the button when the full policy fails to open; names the URL so nothing is lost (issue #1164).
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t open the page. You can still read the full policy at https://lunarlog.app/privacy.'**
+  String get settingsPrivacyOpenFullPolicyFailed;
+
+  /// Body of the in-app privacy summary screen; mirrors PRIVACY.md's summary. The canonical-policy pointer moved out of this text into the tappable full-policy button (issue #1164).
+  ///
+  /// In en, this message translates to:
+  /// **'lunarlog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device\'s own operating system encryption and shown only behind your device\'s passcode or biometrics.\n• Works Offline: Logging, viewing, and estimates keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Guardian Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.'**
   String get settingsPrivacyDialogBody;
 
   /// Close action of the settings dialogs.

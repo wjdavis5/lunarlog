@@ -318,7 +318,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(PrivacyPolicyScreen), findsOneWidget);
-      expect(find.text('lunarlog Privacy Policy'), findsOneWidget);
+      // Issue #1164: the summary-first title.
+      expect(find.text('Privacy at a glance'), findsOneWidget);
       expect(find.textContaining('Sync & Family Sharing'), findsOneWidget);
 
       // Close button

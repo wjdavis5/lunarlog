@@ -178,6 +178,26 @@ void main() {
       expect(privacyPage, contains('href="/privacy"'));
     });
 
+    test('the full-policy claim names the app screen as a summary that '
+        'links here, not "the same document" (issue #1164)', () {
+      // The app's screen renders a 1.2k-char ARB summary, so the old
+      // "the same document the app's own privacy dialog reads" wording did
+      // not trace to shipped code. Both claiming pages now say the app
+      // screen summarizes /privacy and links to it.
+      for (final entry in const ['/', '/privacy-security']) {
+        final source = flat(File(pages[entry]!).readAsStringSync());
+        expect(source, contains('Privacy screen summarizes it and links here'),
+            reason: entry);
+        expect(source, isNot(contains('the same document')), reason: entry);
+      }
+      // …and the app side of the claim really ships: the summary screen
+      // opens the canonical URL through the scheme-allowlisted launcher.
+      final screen =
+          File('lib/ui/settings/privacy_policy_screen.dart').readAsStringSync();
+      expect(screen, contains("https://lunarlog.app/privacy"));
+      expect(screen, contains('safeLaunchUrl'));
+    });
+
     test('unshipped features stay unclaimed', () {
       for (final entry in pages.entries) {
         final source = flat(File(entry.value).readAsStringSync());
