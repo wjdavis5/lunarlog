@@ -31,6 +31,13 @@ set -euo pipefail
 #   * `/flutter_bootstrap.js` returns 200 and sets
 #     `"useLocalCanvasKit":true` (issue #1091: otherwise Flutter fetches
 #     CanvasKit from a CDN the deployed CSP blocks).
+#   * the `/` HTML body fetched as a browser carries no Cloudflare Web
+#     Analytics beacon (issue #1139): `cloudflareinsights` /
+#     `data-cf-beacon` in the body means the zone or the Pages project has
+#     automatic Web Analytics switched on -- a third-party analytics script
+#     the deployed CSP blocks and PRIVACY.md does not disclose. The check
+#     stays red until it is turned off (or the decision to keep it is
+#     recorded and disclosed).
 #
 # Input (env):
 #   WEB_DEPLOY_BASE_URL      Origin under test. Defaults to
@@ -55,6 +62,15 @@ ROOT_URL="$BASE_URL/"
 CALLBACK_URL="$BASE_URL/auth/callback?code=smoke"
 PRIVACY_REDIRECT_URL="$BASE_URL/privacy.html"
 BOOTSTRAP_URL="$BASE_URL/flutter_bootstrap.js"
+
+# Issue #1139: Cloudflare injects its Web Analytics beacon into HTML
+# responses for *browser* user-agents only -- curl's default UA gets a clean
+# body, which is exactly the blind spot the beacon shipped through. Every
+# live fetch below therefore presents a browser UA and `Accept: text/html`.
+# The headers change nothing for the non-HTML fetch (flutter_bootstrap.js is
+# served by extension, not content negotiation), so the assertions above
+# keep their meaning.
+BROWSER_UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
 
 # The canonical target `/privacy.html` must redirect to (issue #1101). Exact:
 # the marketing site is the policy's only home.
@@ -100,7 +116,7 @@ fetch_headers() {
     }
     cat "$fixture"
   else
-    curl -sS --max-time 20 -o /dev/null -D - "$url"
+    curl -sS --max-time 20 -A "$BROWSER_UA" -H 'Accept: text/html' -o /dev/null -D - "$url"
   fi
 }
 
@@ -116,7 +132,7 @@ fetch_body() {
     }
     cat "$fixture"
   else
-    curl -sS --max-time 20 "$url"
+    curl -sS --max-time 20 -A "$BROWSER_UA" -H 'Accept: text/html' "$url"
   fi
 }
 
@@ -213,16 +229,32 @@ expect_header_present() {
   fi
 }
 
+# expect_body_without_cf_beacon BODY URL -- the HTML body must carry no
+# Cloudflare Web Analytics beacon (issue #1139): a third-party analytics
+# script the deployed CSP blocks and PRIVACY.md does not disclose. Both
+# spellings the injector emits are matched -- the
+# `static.cloudflareinsights.com` script src and the `data-cf-beacon`
+# attribute -- so a change to the tag's shape on either side still fails.
+expect_body_without_cf_beacon() {
+  local body="$1" url="$2"
+  case "$body" in
+    *cloudflareinsights*|*data-cf-beacon*) ;;
+    *) return 0 ;;
+  esac
+  printf '%s: Cloudflare Web Analytics beacon injected into the HTML (issue #1139) -- turn Web Analytics automatic injection off for the zone/project, or record the decision to keep it and disclose it in PRIVACY.md. ' "$url"
+}
+
 # check_once -- prints the accumulated problems (empty on success) and
 # returns non-zero when any assertion failed.
 check_once() {
-  local root callback privacy_redirect bootstrap_headers bootstrap_body problems=""
+  local root callback privacy_redirect bootstrap_headers bootstrap_body root_body problems=""
 
   root="$(fetch_headers "$ROOT_URL" 2>/dev/null || true)"
   callback="$(fetch_headers "$CALLBACK_URL" 2>/dev/null || true)"
   privacy_redirect="$(fetch_headers "$PRIVACY_REDIRECT_URL" 2>/dev/null || true)"
   bootstrap_headers="$(fetch_headers "$BOOTSTRAP_URL" 2>/dev/null || true)"
   bootstrap_body="$(fetch_body "$BOOTSTRAP_URL" 2>/dev/null || true)"
+  root_body="$(fetch_body "$ROOT_URL" 2>/dev/null || true)"
 
   # `/` is the app shell: 200 HTML carrying every `/*` header declared in
   # `web/_headers`.
@@ -233,6 +265,10 @@ check_once() {
   problems="${problems}$(expect_header_exact "$root" cross-origin-embedder-policy require-corp "$ROOT_URL")"
   problems="${problems}$(expect_header_present "$root" strict-transport-security "$ROOT_URL")"
   problems="${problems}$(expect_header_exact "$root" x-robots-tag noindex "$ROOT_URL")"
+
+  # And the shell itself, as a browser sees it, must carry no Web Analytics
+  # beacon (issue #1139; see expect_body_without_cf_beacon).
+  problems="${problems}$(expect_body_without_cf_beacon "$root_body" "$ROOT_URL")"
 
   # `/auth/callback` must reach the SPA fallback (`web/_redirects`), never a
   # 404 -- the slice-2 email links land here.

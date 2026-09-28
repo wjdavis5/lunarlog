@@ -33,6 +33,9 @@ cross-origin-embedder-policy: require-corp
 strict-transport-security: max-age=63072000; includeSubDomains; preload
 x-robots-tag: noindex
 EOF
+  cat >"$dir/root.body" <<'EOF'
+<!DOCTYPE html><html><head><title>lunarlog</title></head><body><script src="main.dart.js"></script></body></html>
+EOF
   cat >"$dir/auth-callback.headers" <<'EOF'
 HTTP/2 200
 date: Sat, 26 Sep 2026 12:00:00 GMT
@@ -194,6 +197,35 @@ run_case "$WORK/root-robots"
 assert_exit "a non-noindex X-Robots-Tag refuses" 1
 assert_contains "the X-Robots-Tag mismatch is named" "$LAST_LOG" "x-robots-tag"
 
+# --- Cloudflare's Web Analytics beacon fails closed (issue #1139) ------------
+
+# The full injected tag, exactly as Cloudflare's edge emits it into HTML for
+# browser user-agents (issue #1139's QA capture, token elided).
+make_fixtures "$WORK/root-cf-beacon"
+cat >"$WORK/root-cf-beacon/root.body" <<'EOF'
+<!DOCTYPE html><html><head><title>lunarlog</title></head><body><script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v31edd6" integrity="sha512-x" data-cf-beacon='{"version":"2024.11.0","token":"x","r":1,"spa":2}' crossorigin="anonymous"></script></body></html>
+EOF
+run_case "$WORK/root-cf-beacon"
+assert_exit "a Cloudflare Web Analytics beacon injected into / refuses" 1
+assert_contains "the beacon injection is named" "$LAST_LOG" "Cloudflare Web Analytics beacon"
+assert_contains "the remediation (turn it off or disclose it) is named" "$LAST_LOG" "issue #1139"
+
+# Either marker alone must fail: the injector's tag shape can change on
+# either side (src host vs data attribute).
+make_fixtures "$WORK/root-cf-insights-src"
+cat >"$WORK/root-cf-insights-src/root.body" <<'EOF'
+<!DOCTYPE html><html><body><script src="https://static.cloudflareinsights.com/beacon.min.js"></script></body></html>
+EOF
+run_case "$WORK/root-cf-insights-src"
+assert_exit "a cloudflareinsights script src alone refuses (either marker matches)" 1
+
+make_fixtures "$WORK/root-cf-attr"
+cat >"$WORK/root-cf-attr/root.body" <<'EOF'
+<!DOCTYPE html><html><body><script data-cf-beacon='{"token":"x"}'></script></body></html>
+EOF
+run_case "$WORK/root-cf-attr"
+assert_exit "a data-cf-beacon attribute alone refuses (either marker matches)" 1
+
 # --- `/auth/callback` fails closed ------------------------------------------
 
 make_fixtures "$WORK/callback-404"
@@ -262,6 +294,12 @@ assert_exit "a 301 to any URL but the canonical policy refuses" 1
 assert_contains "the canonical target is named" "$LAST_LOG" "https://lunarlog.app/privacy"
 
 # --- Wiring -----------------------------------------------------------------
+
+script_sh="$(cat "$SCRIPT")"
+assert_contains "the smoke check presents a browser UA to the live origin (issue #1139)" "$script_sh" '-A "$BROWSER_UA"'
+assert_contains "the smoke check asks the origin for HTML (issue #1139)" "$script_sh" "Accept: text/html"
+assert_contains "the smoke check matches the beacon's src host (issue #1139)" "$script_sh" "cloudflareinsights"
+assert_contains "the smoke check matches the beacon's data attribute (issue #1139)" "$script_sh" "data-cf-beacon"
 
 deploy_yaml="$(cat "$DEPLOY_WORKFLOW")"
 

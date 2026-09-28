@@ -21,7 +21,9 @@ CI_WORKFLOW="$SCRIPT_DIR/../../workflows/ci.yml"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-# make_fixtures DIR -- a settled, correct set of live response header dumps.
+# make_fixtures DIR -- a settled, correct set of live response header and
+# body dumps. The HTML routes carry .body fixtures for issue #1139's beacon
+# assertion; the JSON routes are never body-checked.
 make_fixtures() {
   local dir="$1"
   mkdir -p "$dir"
@@ -34,6 +36,9 @@ strict-transport-security: max-age=63072000; includeSubDomains; preload
 x-frame-options: DENY
 referrer-policy: no-referrer
 x-content-type-options: nosniff
+EOF
+  cat >"$dir/home.body" <<'EOF'
+<!DOCTYPE html><html><head><title>lunarlog</title></head><body><h1>lunarlog</h1><p>Private by default.</p></body></html>
 EOF
   cat >"$dir/apple-app-site-association.headers" <<'EOF'
 HTTP/2 200
@@ -50,6 +55,9 @@ referrer-policy: no-referrer
 x-content-type-options: nosniff
 cache-control: public, max-age=300
 EOF
+  cat >"$dir/invite.body" <<'EOF'
+<!DOCTYPE html><html><body>Join a lunarlog profile</body></html>
+EOF
   cat >"$dir/privacy.headers" <<'EOF'
 HTTP/2 307
 date: Fri, 26 Sep 2026 12:00:00 GMT
@@ -60,10 +68,16 @@ HTTP/2 200
 date: Fri, 26 Sep 2026 12:00:00 GMT
 content-type: text/html; charset=utf-8
 EOF
+  cat >"$dir/privacy-slash.body" <<'EOF'
+<!DOCTYPE html><html><body><h1>Privacy policy</h1></body></html>
+EOF
   cat >"$dir/support.headers" <<'EOF'
 HTTP/2 200
 date: Fri, 26 Sep 2026 12:00:00 GMT
 content-type: text/html; charset=utf-8
+EOF
+  cat >"$dir/support.body" <<'EOF'
+<!DOCTYPE html><html><body><h1>Support</h1><p>No ads, no trackers, no analytics on this site.</p></body></html>
 EOF
   cat >"$dir/assetlinks.json.headers" <<'EOF'
 HTTP/2 404
@@ -75,6 +89,9 @@ HTTP/2 404
 date: Fri, 26 Sep 2026 12:00:00 GMT
 content-type: text/html; charset=utf-8
 x-content-type-options: nosniff
+EOF
+  cat >"$dir/notfound.body" <<'EOF'
+<!DOCTYPE html><html><body><h1>404</h1></body></html>
 EOF
   cat >"$dir/fhir.headers" <<'EOF'
 HTTP/2 404
@@ -327,7 +344,45 @@ run_case "$WORK/assetlinks-200"
 assert_exit "an assetlinks.json that resolves refuses (Android is deferred)" 1
 assert_contains "the assetlinks URL is named" "$LAST_LOG" "assetlinks.json"
 
+# --- Cloudflare's Web Analytics beacon fails closed (issue #1139) ------------
+
+# The injector only fires for browser user-agents, so every live fetch in
+# the script presents one; each HTML route's body must then be clean. The
+# full injected tag below is issue #1139's QA capture, token elided.
+make_fixtures "$WORK/home-cf-beacon"
+cat >"$WORK/home-cf-beacon/home.body" <<'EOF'
+<!DOCTYPE html><html><head><title>lunarlog</title></head><body><h1>lunarlog</h1><script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v31edd6" integrity="sha512-x" data-cf-beacon='{"version":"2024.11.0","token":"x","r":1,"spa":2}' crossorigin="anonymous"></script></body></html>
+EOF
+run_case "$WORK/home-cf-beacon"
+assert_exit "a Cloudflare Web Analytics beacon on the home page refuses" 1
+assert_contains "the beacon injection is named" "$LAST_LOG" "Cloudflare Web Analytics beacon"
+assert_contains "the remediation (turn it off or disclose it) is named" "$LAST_LOG" "issue #1139"
+
+# /support/ is where the site copy promises "no analytics on this site"
+# (issue #1148) -- pin the second marker spelling there.
+make_fixtures "$WORK/support-cf-src"
+cat >"$WORK/support-cf-src/support.body" <<'EOF'
+<!DOCTYPE html><html><body><h1>Support</h1><script src="https://static.cloudflareinsights.com/beacon.min.js"></script></body></html>
+EOF
+run_case "$WORK/support-cf-src"
+assert_exit "a cloudflareinsights script src on /support/ refuses (either marker matches)" 1
+assert_contains "the support URL is named" "$LAST_LOG" "/support/"
+
+make_fixtures "$WORK/privacy-slash-cf-attr"
+cat >"$WORK/privacy-slash-cf-attr/privacy-slash.body" <<'EOF'
+<!DOCTYPE html><html><body><h1>Privacy policy</h1><script data-cf-beacon='{"token":"x"}'></script></body></html>
+EOF
+run_case "$WORK/privacy-slash-cf-attr"
+assert_exit "a data-cf-beacon attribute on /privacy/ refuses (either marker matches)" 1
+
 # --- Wiring -----------------------------------------------------------------
+
+script_sh="$(cat "$SCRIPT")"
+assert_contains "the smoke check presents a browser UA to the live origin (issue #1139)" "$script_sh" '-A "$BROWSER_UA"'
+assert_contains "the smoke check asks the origin for HTML (issue #1139)" "$script_sh" "Accept: text/html"
+assert_contains "the smoke check body-checks every HTML route (issue #1139)" "$script_sh" "expect_body_without_cf_beacon"
+assert_contains "the smoke check matches the beacon's src host (issue #1139)" "$script_sh" "cloudflareinsights"
+assert_contains "the smoke check matches the beacon's data attribute (issue #1139)" "$script_sh" "data-cf-beacon"
 
 site_deploy_yaml="$(cat "$SITE_DEPLOY_WORKFLOW")"
 assert_contains "site-deploy.yml runs the post-deploy smoke check" "$site_deploy_yaml" "check-links-deploy.sh"
