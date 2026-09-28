@@ -81,6 +81,11 @@ jobs:
       - name: Generate the app screenshots
         working-directory: site
         run: |
+          # The runner's SDK cache lacks the material_fonts artifact the
+          # render harness loads by hand (the same failure #1105 fixed in
+          # site.yml's PR job: "Material Icons font not found");
+          # --universal fetches it.
+          flutter precache --universal
           flutter pub get
           npm run screenshots
 
