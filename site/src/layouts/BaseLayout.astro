@@ -5,6 +5,18 @@ import "@fontsource/inter/latin-600.css";
 import "@fontsource/fraunces/latin-600.css";
 import "../styles/global.css";
 
+// Preload the three latin faces the first viewport actually paints with.
+// Without this, text renders in the fallback family and repaints when the
+// swap lands — a measurable layout shift on the longer content pages that
+// cost the Lighthouse performance budget (issue #1102: /support/ sat at
+// 0.92 against the 0.95 floor). Preloading lets the font arrive alongside
+// the render-blocking CSS, so the first paint already uses the real face.
+// The `?url` imports resolve to the same hashed asset the @fontsource CSS
+// references, so nothing is fetched twice.
+import frauncesLatin600Url from "@fontsource/fraunces/files/fraunces-latin-600-normal.woff2?url";
+import interLatin400Url from "@fontsource/inter/files/inter-latin-400-normal.woff2?url";
+import interLatin600Url from "@fontsource/inter/files/inter-latin-600-normal.woff2?url";
+
 interface Props {
   /** Page title, shown in `<title>` and the OpenGraph tags. */
   title: string;
@@ -32,6 +44,9 @@ const fullTitle = title === "lunarlog" ? title : `${title} — lunarlog`;
     {noindex && <meta name="robots" content="noindex" />}
     <link rel="icon" href="/favicon.png" type="image/png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preload" href={frauncesLatin600Url} as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href={interLatin400Url} as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href={interLatin600Url} as="font" type="font/woff2" crossorigin />
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="lunarlog" />
