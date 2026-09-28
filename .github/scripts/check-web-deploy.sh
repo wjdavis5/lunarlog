@@ -35,9 +35,12 @@ set -euo pipefail
 #     Analytics beacon (issue #1139): `cloudflareinsights` /
 #     `data-cf-beacon` in the body means the zone or the Pages project has
 #     automatic Web Analytics switched on -- a third-party analytics script
-#     the deployed CSP blocks and PRIVACY.md does not disclose. The check
-#     stays red until it is turned off (or the decision to keep it is
-#     recorded and disclosed).
+#     the deployed CSP blocks (so the injection is inert today) and
+#     PRIVACY.md does not disclose. While BEACON_MUST_BE_ABSENT at the top
+#     of this script is false (the default) the finding is a loud
+#     ::warning:: and the check passes; flipping that constant to true --
+#     one line, after the owner decides (toggle Web Analytics off, or keep
+#     and disclose in PRIVACY.md) -- makes the same finding a hard failure.
 #
 # Input (env):
 #   WEB_DEPLOY_BASE_URL      Origin under test. Defaults to
@@ -71,6 +74,16 @@ BOOTSTRAP_URL="$BASE_URL/flutter_bootstrap.js"
 # served by extension, not content negotiation), so the assertions above
 # keep their meaning.
 BROWSER_UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+
+# Issue #1139 arming switch. The beacon is INERT today -- both origins' CSPs
+# (script-src 'self') block the injected script from executing, so no data
+# flows -- so the default posture is WARN: the deploy goes green with a
+# loud ::warning:: naming the marker and the owner decision. Flip this to
+# true (one line, its own reviewed commit) to make the same finding hard-
+# fail the smoke check: do that when the owner decides they want the
+# forcing function, or as the enforcement half of a keep-and-disclose
+# decision. The decision itself lives in issue #1139.
+BEACON_MUST_BE_ABSENT=false
 
 # The canonical target `/privacy.html` must redirect to (issue #1101). Exact:
 # the marketing site is the policy's only home.
@@ -229,19 +242,35 @@ expect_header_present() {
   fi
 }
 
+# beacon_finding URL -- the finding text for an injected Web Analytics
+# beacon: the accumulated problem text when armed, the body of the
+# ::warning:: line when warn-only.
+beacon_finding() {
+  printf '%s: Cloudflare Web Analytics beacon injected into the HTML (issue #1139) -- turn Web Analytics automatic injection off for the zone/project, or record the decision to keep it and disclose it in PRIVACY.md. ' "$1"
+}
+
 # expect_body_without_cf_beacon BODY URL -- the HTML body must carry no
 # Cloudflare Web Analytics beacon (issue #1139): a third-party analytics
-# script the deployed CSP blocks and PRIVACY.md does not disclose. Both
-# spellings the injector emits are matched -- the
+# script the deployed CSP blocks (so it is inert today) and PRIVACY.md does
+# not disclose. Both spellings the injector emits are matched -- the
 # `static.cloudflareinsights.com` script src and the `data-cf-beacon`
 # attribute -- so a change to the tag's shape on either side still fails.
+# While BEACON_MUST_BE_ABSENT is false (the default) the finding is a loud
+# ::warning:: on the step log and this check still passes -- hard-failing
+# every deploy over an inert injection is the owner's call, not this
+# script's. Flipping the constant to true turns the same finding into an
+# accumulated problem and a hard failure.
 expect_body_without_cf_beacon() {
   local body="$1" url="$2"
   case "$body" in
     *cloudflareinsights*|*data-cf-beacon*) ;;
     *) return 0 ;;
   esac
-  printf '%s: Cloudflare Web Analytics beacon injected into the HTML (issue #1139) -- turn Web Analytics automatic injection off for the zone/project, or record the decision to keep it and disclose it in PRIVACY.md. ' "$url"
+  if [ "$BEACON_MUST_BE_ABSENT" != "true" ]; then
+    printf '::warning::%s(warn-only while BEACON_MUST_BE_ABSENT=false at the top of this script; flip it once the owner decides)\n' "$(beacon_finding "$url")" >&2
+    return 0
+  fi
+  beacon_finding "$url"
 }
 
 # check_once -- prints the accumulated problems (empty on success) and

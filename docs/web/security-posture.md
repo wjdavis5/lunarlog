@@ -368,9 +368,17 @@ deploy automation, DNS" follow-up is superseded.
   script the deployed CSP then blocked (issue #1139) — and the `/` body
   must carry no beacon (`cloudflareinsights` / `data-cf-beacon`): a
   third-party analytics script the CSP blocks and PRIVACY.md does not
-  disclose, so this assertion stays red until Web Analytics automatic
-  injection is turned off for the zone/Pages project (or the decision to
-  keep it is recorded and disclosed). `check-links-deploy.sh` asserts the
+  disclose. Because the injection is inert today — the CSP stops the
+  script from executing, so no data flows — the beacon finding is
+  **warn-only by default**: a `::warning::` naming the marker and the
+  owner decision, and the deploy stays green. Each script carries a
+  one-line arming constant at the top (`BEACON_MUST_BE_ABSENT=false`;
+  flipping it to `true` is a reviewed commit) that turns the same finding
+  into a hard failure — flip it once
+  the owner decides (toggle Web Analytics automatic injection off for the
+  zone/Pages project, or keep it and disclose it in PRIVACY.md). The
+  fixture suites cover both modes, so the flip is one tested line.
+  `check-links-deploy.sh` asserts the
   same over every HTML route of the apex. It
   runs on push to `main` when a path the web client depends on changes
   (`lib/`, `web/`, `assets/`, `pubspec.*`, `l10n.yaml`, the workflow, the

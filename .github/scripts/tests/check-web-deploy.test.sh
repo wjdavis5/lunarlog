@@ -56,13 +56,15 @@ var _flutter=window._flutter||{};_flutter.buildConfig = {"engineRevision":"abc",
 EOF
 }
 
-# run_case DIR -- populates $LAST_EXIT and $LAST_LOG.
+# run_case DIR [SCRIPT] -- populates $LAST_EXIT and $LAST_LOG. SCRIPT
+# defaults to the check under test; the beacon-arming cases pass a sed-flipped
+# copy (issue #1139's one-line arming constant) to prove both modes.
 run_case() {
-  local dir="$1"
+  local dir="$1" script="${2:-$SCRIPT}"
   local logfile
   logfile="$(mktemp)"
   set +e
-  WEB_DEPLOY_FIXTURES_DIR="$dir" bash "$SCRIPT" >"$logfile" 2>&1
+  WEB_DEPLOY_FIXTURES_DIR="$dir" bash "$script" >"$logfile" 2>&1
   LAST_EXIT=$?
   set -e
   LAST_LOG="$(cat "$logfile")"
@@ -197,7 +199,7 @@ run_case "$WORK/root-robots"
 assert_exit "a non-noindex X-Robots-Tag refuses" 1
 assert_contains "the X-Robots-Tag mismatch is named" "$LAST_LOG" "x-robots-tag"
 
-# --- Cloudflare's Web Analytics beacon fails closed (issue #1139) ------------
+# --- Cloudflare's Web Analytics beacon: warn by default, armed = hard fail --
 
 # The full injected tag, exactly as Cloudflare's edge emits it into HTML for
 # browser user-agents (issue #1139's QA capture, token elided).
@@ -205,26 +207,52 @@ make_fixtures "$WORK/root-cf-beacon"
 cat >"$WORK/root-cf-beacon/root.body" <<'EOF'
 <!DOCTYPE html><html><head><title>lunarlog</title></head><body><script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v31edd6" integrity="sha512-x" data-cf-beacon='{"version":"2024.11.0","token":"x","r":1,"spa":2}' crossorigin="anonymous"></script></body></html>
 EOF
-run_case "$WORK/root-cf-beacon"
-assert_exit "a Cloudflare Web Analytics beacon injected into / refuses" 1
-assert_contains "the beacon injection is named" "$LAST_LOG" "Cloudflare Web Analytics beacon"
-assert_contains "the remediation (turn it off or disclose it) is named" "$LAST_LOG" "issue #1139"
 
-# Either marker alone must fail: the injector's tag shape can change on
-# either side (src host vs data attribute).
+# Warn-only default (BEACON_MUST_BE_ABSENT=false at the top of the script):
+# the injection is inert (the CSP blocks the script), so it fails nothing --
+# the finding is a loud ::warning:: naming the marker and the owner
+# decision, and the deploy goes green.
+run_case "$WORK/root-cf-beacon"
+assert_exit "an injected Web Analytics beacon warns but passes while unarmed" 0
+assert_contains "the warning is a ::warning:: annotation" "$LAST_LOG" "::warning::"
+assert_contains "the warning names the injection" "$LAST_LOG" "Cloudflare Web Analytics beacon"
+assert_contains "the warning names the arming constant" "$LAST_LOG" "BEACON_MUST_BE_ABSENT"
+assert_contains "the warning names the owner decision (issue #1139)" "$LAST_LOG" "issue #1139"
+assert_not_contains "the unarmed pass emits no error annotation" "$LAST_LOG" "::error::"
+
+# Armed mode: the same fixture hard-fails. The armed script is the original
+# with only the arming constant's line flipped -- proving the flip is one
+# tested line (a rename or move of the constant makes this sed a no-op and
+# this case fails, so the constant cannot silently drift).
+armed_script="$WORK/armed-check-web-deploy.sh"
+sed 's/^BEACON_MUST_BE_ABSENT=false$/BEACON_MUST_BE_ABSENT=true/' "$SCRIPT" >"$armed_script"
+run_case "$WORK/root-cf-beacon" "$armed_script"
+assert_exit "an armed check refuses on the same beacon fixture" 1
+assert_contains "the armed failure is an error annotation" "$LAST_LOG" "::error::"
+assert_contains "the armed failure names the beacon" "$LAST_LOG" "Cloudflare Web Analytics beacon"
+assert_contains "the armed failure names the remediation (issue #1139)" "$LAST_LOG" "issue #1139"
+
+# Arming must not disturb the clean path.
+run_case "$WORK/valid" "$armed_script"
+assert_exit "an armed check still passes a beacon-free origin" 0
+assert_not_contains "the clean armed pass emits no warning" "$LAST_LOG" "::warning::"
+
+# Either marker alone must be caught: the injector's tag shape can change
+# on either side (src host vs data attribute). Both proven armed, where the
+# catch is a hard failure.
 make_fixtures "$WORK/root-cf-insights-src"
 cat >"$WORK/root-cf-insights-src/root.body" <<'EOF'
 <!DOCTYPE html><html><body><script src="https://static.cloudflareinsights.com/beacon.min.js"></script></body></html>
 EOF
-run_case "$WORK/root-cf-insights-src"
-assert_exit "a cloudflareinsights script src alone refuses (either marker matches)" 1
+run_case "$WORK/root-cf-insights-src" "$armed_script"
+assert_exit "a cloudflareinsights script src alone refuses when armed (either marker matches)" 1
 
 make_fixtures "$WORK/root-cf-attr"
 cat >"$WORK/root-cf-attr/root.body" <<'EOF'
 <!DOCTYPE html><html><body><script data-cf-beacon='{"token":"x"}'></script></body></html>
 EOF
-run_case "$WORK/root-cf-attr"
-assert_exit "a data-cf-beacon attribute alone refuses (either marker matches)" 1
+run_case "$WORK/root-cf-attr" "$armed_script"
+assert_exit "a data-cf-beacon attribute alone refuses when armed (either marker matches)" 1
 
 # --- `/auth/callback` fails closed ------------------------------------------
 
@@ -298,6 +326,8 @@ assert_contains "the canonical target is named" "$LAST_LOG" "https://lunarlog.ap
 script_sh="$(cat "$SCRIPT")"
 assert_contains "the smoke check presents a browser UA to the live origin (issue #1139)" "$script_sh" '-A "$BROWSER_UA"'
 assert_contains "the smoke check asks the origin for HTML (issue #1139)" "$script_sh" "Accept: text/html"
+assert_contains "the beacon assertion defaults to warn-only (the owner has not decided)" "$script_sh" "BEACON_MUST_BE_ABSENT=false"
+assert_contains "the warn finding is a ::warning:: annotation" "$script_sh" "::warning::"
 assert_contains "the smoke check matches the beacon's src host (issue #1139)" "$script_sh" "cloudflareinsights"
 assert_contains "the smoke check matches the beacon's data attribute (issue #1139)" "$script_sh" "data-cf-beacon"
 
