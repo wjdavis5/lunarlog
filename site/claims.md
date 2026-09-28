@@ -54,6 +54,9 @@ issue #830), and any waitlist or email capture (the site collects nothing).
 - claim: Same-date edits merge instead of overwriting, and both guardians see what happened.
   page: /
   ships: PRIVACY.md (§2.A "Same-date merge disclosures")
+- claim: The shared month calendar shows what was logged beside the estimated days, always labelled as estimates (issue #1160: the home page links to /tracking for it instead of embedding a second near-the-fold PNG, which cost the Lighthouse performance budget).
+  page: /
+  ships: lib/l10n/app_en.arb (calendarCellPredictedPeriod, calendarCellPmsWindow); PRIVACY.md (§1 "Estimates From Your Own Logged Data")
 - claim: The four roles are named exactly as the app names them (rendered from lib/l10n/app_en.arb via the UiLabel component).
   page: /
   ships: lib/l10n/app_en.arb (guardianRoleLabel*); site/src/components/UiLabel.astro; lib/domain/models/profile_guardian.dart
