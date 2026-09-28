@@ -1,0 +1,138 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+// Issue #1105: "Privacy and security." States the offline-first, no-ads,
+// no-tracking stance, the age policy per PRIVACY.md §5, and — plainly —
+// that sync is not end-to-end encrypted per PRIVACY.md §6. Links the
+// canonical policy at /privacy (issue #1101). Every claim carries a
+// `cite:` comment and a site/claims.md entry (checked by
+// test/site/site_claims_test.dart).
+
+const description =
+  "How lunarlog protects cycle data: locked behind your device's own " +
+  "security, no ads or tracking, and a plain statement of what cloud sync " +
+  "is — and is not.";
+---
+
+<BaseLayout title="Privacy and security" description={description}>
+  <article class="doc">
+    <h1 class="doc__title">Privacy and security</h1>
+    <p class="doc__lede">
+      This app carries some of the most personal data a family has. Here is
+      exactly how it is protected, what is shared when you turn sync on,
+      and where the honest limits are. The full policy — the same document
+      the app reads — lives at <a href="/privacy">lunarlog.app/privacy</a>.
+    </p>
+
+    <section>
+      <h2>The stance</h2>
+      <!-- cite: PRIVACY.md §1 "No Advertising or Data Brokers"; §3 ("We do not use your information for targeted advertising, marketing communications, automated profiling, or behavioral tracking"). -->
+      <ul>
+        <li>No advertising, no data brokers, no behavioral tracking.</li>
+        <li>No data sale, and no third parties beyond a short, named list in
+          the policy.</li>
+        <!-- cite: PRIVACY.md §2.D (client-side scrubber, lib/observability/scrub.dart) and §1 "Minimal, Scrubbed Telemetry"; crash reporting is optional per §2.D. -->
+        <li>Crash reports, when crash reporting is on, are scrubbed on the
+          device first — health data, notes, dates, and identity are
+          removed before anything is sent.</li>
+        <!-- cite: PRIVACY.md §2.B ("creating one remains your choice") and §1 "Resilient Offline". -->
+        <li>An account is optional: logging, history, and estimates work
+          without one, and before you sign in nothing leaves the device.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>On your device</h2>
+      <!-- cite: PRIVACY.md §6 (Device Encryption, Biometric Security, Optional In-App PIN, Inactivity Timeout, Screen Obfuscation, Backup Exclusion bullets). -->
+      <p>
+        The local database sits inside your device's own encryption (iOS
+        Data Protection or Android device encryption), and its contents are
+        shown only after your face, fingerprint, or passcode. On top of
+        that: an optional in-app PIN, automatic relocking after inactivity
+        plus immediate locking when you leave the app, and app-switcher
+        previews that are masked. The database is also excluded from cloud
+        backups on both platforms, so a copy of it never leaves your
+        control.
+      </p>
+    </section>
+
+    <section>
+      <h2>In sync — stated plainly</h2>
+      <!-- cite: PRIVACY.md §6 "Cloud Storage Encryption (not end-to-end)" — the honest posture #1105 requires. -->
+      <p>
+        <strong>Sync is not end-to-end encrypted.</strong> When you sign in
+        and turn sync on, entries travel over TLS (1.2/1.3) and are stored
+        in Supabase's Postgres, which encrypts data at rest with AES-256 —
+        the same platform-level protection any well-run cloud database
+        uses. lunarlog does not encrypt entry content on your device before
+        it reaches Supabase: your entries are readable Postgres columns
+        protected by row-level security and Supabase's own infrastructure
+        controls, not by a cipher only your devices hold. That is the
+        trade-off, stated in the open, and the policy's security section
+        says the same.
+      </p>
+      <!-- cite: PRIVACY.md §6 "Database Row-Level Security"; §1 "Protected at Rest". -->
+      <p>
+        What row-level security means in practice: the database refuses to
+        return a row to anyone whose guardian memberships don't entitle
+        them to it. Each accepted guardian — each role, exactly — sees what
+        <a href="/family-sharing">their role</a> allows, and no more.
+      </p>
+      <!-- cite: PRIVACY.md §6 "Signed-In Browser Build (Web)". -->
+      <p>
+        The browser build gets the same honesty: a signed-in browser keeps
+        synced data and the session in browser storage, which no operating
+        system protects and a browser extension could read. The policy's
+        security section describes exactly what that means.
+      </p>
+    </section>
+
+    <section>
+      <h2>What never leaves with your data</h2>
+      <!-- cite: PRIVACY.md §4 FCM row (push token + internal profile id only; never a note, tag, flow level, date, or profile name; fixed generic text). -->
+      <p>
+        Guardian alerts ride the same push infrastructure as any app's
+        notifications, but the payload carries only a push token and a
+        profile identifier — never a note, tag, flow level, date, or
+        profile name. What appears on a lock screen is fixed generic text.
+      </p>
+    </section>
+
+    <section>
+      <h2>Family data, including minors'</h2>
+      <!-- cite: PRIVACY.md §5 "Minimum-Age Policy" (13+ alone; under-13 only through the parent's "her own profile" invitation, which is the consent record; issue #957); §5 "How Minor Status Is Determined"; §5 "Guardian Notes Are Visible To The Child" (issue #800's transparency). -->
+      <p>
+        lunarlog is licensed for people 13 and older. Someone under 13 does
+        not sign up: a parent creates the profile and invites them through
+        the app, and accepting that invitation is the record of parental
+        consent. Minor profiles get exactly the same protections as adult
+        ones — the same row-level security, the same transport and storage
+        encryption — and nothing about a minor's profile is shared or
+        analyzed. In keeping with the app's own transparency, guardian
+        notes on a young person's profile are visible to every guardian —
+        including the young person, once they hold an account on their own
+        profile. The app never offers a hidden note about a child.
+      </p>
+    </section>
+
+    <section>
+      <h2>Deleting, and how long things are kept</h2>
+      <!-- cite: PRIVACY.md §7 "Account & Cloud Deletion" ("immediately and permanently... normally gone by the time the confirmation completes"); §7 "Server-Side Retention Windows" (30/90/180-day and 1-year hard deletions of bookkeeping records); walkthrough at /delete-account. -->
+      <p>
+        Deleting your account in the app deletes the server rows and the
+        account immediately and permanently — not a request queued for
+        later. Individual entries and whole profiles can be deleted any
+        time. A few narrow bookkeeping records (an alert delivery record,
+        merge disclosures, change history) delete themselves on fixed
+        schedules, measured in weeks or months — the policy's retention
+        section lists every one.
+      </p>
+    </section>
+
+    <p class="doc__footer-note">
+      The complete policy, versions and change history included:
+      <a href="/privacy">lunarlog.app/privacy</a>. Questions:
+      <a href="/support">Support</a>.
+    </p>
+  </article>
+</BaseLayout>

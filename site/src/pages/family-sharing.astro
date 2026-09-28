@@ -1,0 +1,186 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Screenshot from "../components/Screenshot.astro";
+import UiLabel from "../components/UiLabel.astro";
+
+// Issue #1105: "Family sharing and roles." The four role names render
+// through UiLabel (#1106's build-time ARB component), so they always match
+// the app: renaming a role in lib/l10n/app_en.arb fails this site's build
+// instead of leaving a stale page. Both invitation directions get equal
+// weight. Every claim carries a `cite:` comment and a site/claims.md
+// entry (checked by test/site/site_claims_test.dart).
+
+const description =
+  "Share a cycle profile with the people who help look after it: four " +
+  "guardian roles, single-use invitations in both directions, and alerts " +
+  "that never carry what was logged.";
+---
+
+<BaseLayout title="Family sharing and roles" description={description}>
+  <article class="doc">
+    <h1 class="doc__title">Family sharing and roles</h1>
+    <p class="doc__lede">
+      A cycle affects more than one person sometimes. lunarlog is built for
+      that from the ground up: profiles are shared with their guardians,
+      every entry is attributed to the person who logged it, and the server
+      — not just the app — enforces what each role may do.
+    </p>
+
+    <section>
+      <h2>The four roles</h2>
+      <!-- cite: role names from lib/l10n/app_en.arb (guardianRoleLabel*) via UiLabel; capability matrix from lib/domain/models/profile_guardian.dart (canLog, canEditProfile, canManageGuardians, canDeleteProfile); server-side enforcement per PRIVACY.md §5 "Her Own Profile" ("enforced by the server, not just the app"). -->
+      <p>
+        Each guardian on a profile holds one of four roles, and the role is
+        the whole permission model:
+      </p>
+      <table class="role-table">
+        <thead>
+          <tr>
+            <th scope="col">Role</th>
+            <th scope="col">Can log entries</th>
+            <th scope="col">Can edit the profile and manage guardians</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row"><UiLabel key="guardianRoleLabelPrimaryGuardian" /></th>
+            <td>Yes</td>
+            <td>Yes — and only this role can delete the profile or transfer ownership</td>
+          </tr>
+          <tr>
+            <th scope="row"><UiLabel key="guardianRoleLabelCoParent" /></th>
+            <td>Yes</td>
+            <td>Yes</td>
+          </tr>
+          <tr>
+            <th scope="row"><UiLabel key="guardianRoleLabelCaregiver" /></th>
+            <td>Yes</td>
+            <td>No</td>
+          </tr>
+          <tr>
+            <th scope="row"><UiLabel key="guardianRoleLabelViewer" /></th>
+            <td>No — view-only</td>
+            <td>No</td>
+          </tr>
+        </tbody>
+      </table>
+      <!-- cite: PRIVACY.md §5 "Guardian Roles & Read Visibility" (read visibility is role-independent; the private-note exception). -->
+      <p>
+        What a role never changes is reading: every accepted guardian reads
+        everything logged on the profile, whatever their role. The one
+        exception is a day note the profile's subject marked private, which
+        only they can read.
+      </p>
+      <figure class="screenshot-figure">
+        <Screenshot
+          screen="guardians"
+          device="iphone-67"
+          theme="light"
+          alt="The Manage guardians screen for a shared profile, listing its guardians and their roles."
+        />
+        <figcaption>Managing the guardians of a shared profile.</figcaption>
+      </figure>
+    </section>
+
+    <section>
+      <h2>Two ways to start, equally real</h2>
+      <!-- cite: docs/product/positioning.md "Either side can start" ("Neither direction is the 'real' one"); PRIVACY.md §5. -->
+      <p>
+        Either side can start. Neither direction is the "real" one, and
+        nothing in the app assumes a parent is the account holder.
+      </p>
+      <div class="direction-grid">
+        <!-- cite: PRIVACY.md §5 "Guardian Roles & Read Visibility"; single-use invite links in lib/domain/sharing/invite_links.dart (issue #129). -->
+        <div class="direction-card">
+          <h3>You track, and invite someone in</h3>
+          <p>
+            Your profile is yours first. Send a single-use invitation link
+            to a parent, partner, or caregiver and pick their role — a
+            read-only viewer, or a hands-on caregiver or co-parent. You can
+            change the role or revoke it later.
+          </p>
+        </div>
+        <!-- cite: PRIVACY.md §5 "Her Own Profile (subject membership)"; issue #802. Under-13: §5 "Minimum-Age Policy"; issue #957. -->
+        <div class="direction-card">
+          <h3>You set up, and invite them in</h3>
+          <p>
+            Create a profile for a family member, then send the subject
+            invitation — labelled "<UiLabel key="manageGuardiansPendingSubjectLabel" />"
+            on the profile's guardian screen. When they accept, the profile
+            shows up on their device as theirs —
+            "<UiLabel key="profilePickerSubjectSubtitle" />", not a
+            shared-with-you row — their own logging attributed to their
+            name, while guardians keep full access in return. For someone
+            under 13, this invitation is the only way the app begins, and
+            accepting it is the parental-consent record.
+          </p>
+        </div>
+      </div>
+      <!-- cite: PRIVACY.md §5 "Minimum-Age Policy" (13+ to create an account alone; under-13 only through the invitation). -->
+      <p>
+        One age rule runs under both directions: an account is for people
+        13 and older, and someone younger uses the app only through the
+        profile a parent created and invited them to.
+      </p>
+    </section>
+
+    <section>
+      <h2>Ownership can move with the family</h2>
+      <!-- cite: PRIVACY.md §5 "Two-stage custodian model"; lib/domain/sharing/ownership_transfer_service.dart (issue #4). -->
+      <p>
+        A profile a parent created starts under the parent's account. When
+        the person it is about is ready to hold it themselves, the parent
+        transfers ownership to their account in one step — every entry keeps
+        its original "logged by" attribution, and the parent chooses whether
+        to stay on as a co-manager or step back to read-only. After the
+        transfer, the parent's access is an ordinary membership the new
+        owner can revoke like anyone else's.
+      </p>
+    </section>
+
+    <section>
+      <h2>Merging, not overwriting</h2>
+      <!-- cite: PRIVACY.md §2.A "Same-date merge disclosures" (the losing value is kept briefly in a disclosure record; never in a notification; 30-day deletion). -->
+      <p>
+        If two guardians log the same date without knowing, lunarlog merges
+        both entries and shows what happened: the value that lost the merge
+        — say, one guardian's note — is kept briefly so its author can see
+        and recover it in the app. That disclosure is visible only to the
+        profile's guardians, never appears in a notification, and is
+        permanently deleted after 30 days.
+      </p>
+    </section>
+
+    <section>
+      <h2>Alerts that stay generic</h2>
+      <!-- cite: PRIVACY.md §4 FCM row (push token + profile id only; "Never a note, tag, flow level, date, or profile name"); the fixed copy is lib/domain/notifications/scheduling.dart's kReminderTitle/kReminderBody, matched character-for-character by supabase/functions/_shared/notification_copy.ts. -->
+      <p>
+        A guardian can turn on optional push alerts — when another guardian
+        logs an entry, or when an expected entry hasn't arrived. The alert
+        that reaches the lock screen is always the same fixed generic text,
+        never the content: no note, tag, flow level, date, or profile name
+        ever rides along. Alerts are opt-in per guardian, and a build with
+        no push configuration never contacts a push service at all.
+      </p>
+    </section>
+
+    <section>
+      <h2>Sharing an estimate without sharing the log</h2>
+      <!-- cite: PRIVACY.md §5 "Prediction-Only Sharing Excludes Minors" (single-use code; estimate calendar only; never entries, notes, or guardian access; server-refused for minor profiles). -->
+      <p>
+        For adult profiles, the primary guardian can create a
+        prediction-only connection: a single-use code that lets one other
+        account see the estimated period and fertile days on a read-only
+        calendar — never a logged entry, note, or symptom, and never
+        guardian access. It is not available for a minor's profile, and the
+        server refuses it there, not just the app.
+      </p>
+    </section>
+
+    <p class="doc__footer-note">
+      What guardians can and cannot read, and how the whole household's data
+      is protected: <a href="/privacy-security">privacy and security</a>,
+      and the full <a href="/privacy">privacy policy</a>.
+    </p>
+  </article>
+</BaseLayout>

@@ -1,0 +1,113 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Screenshot from "../components/Screenshot.astro";
+
+// Issue #1105: "Life-stage modes." Facts come from the shipped mode system
+// (issue #188): lib/domain/models/lifecycle_mode.dart,
+// supabase/migrations/20260909000000_profile_modes_and_cycle_overrides.sql,
+// and the app copy in lib/l10n/app_en.arb. No medical claims — modes change
+// what the app computes and shows, nothing else.
+
+const description =
+  "Five life-stage modes — Period Tracking, Conceive, Pregnancy, " +
+  "Perimenopause, and Postpartum. Switch any time; nothing you logged is " +
+  "ever rewritten.";
+---
+
+<BaseLayout title="Life-stage modes" description={description}>
+  <article class="doc">
+    <h1 class="doc__title">Life-stage modes</h1>
+    <p class="doc__lede">
+      A cycle tracker that assumes every month is the same kind of month is
+      wrong three or four times a decade. A profile's life-stage mode tells
+      lunarlog what to compute and show — and switching is free, reversible,
+      and never touches what you logged.
+    </p>
+
+    <section>
+      <h2>The five modes</h2>
+      <!-- cite: the closed mode set and its labels, lib/domain/models/lifecycle_mode.dart (LifecycleMode.label; the server CHECK constraint comment); supabase/migrations/20260909000000_profile_modes_and_cycle_overrides.sql. -->
+      <p>
+        Every profile runs in exactly one of five modes, set from the
+        profile editor:
+      </p>
+      <ul>
+        <li>
+          <strong>Period Tracking</strong> — the default: cycles, flow,
+          symptoms, and the estimates built from them.
+        </li>
+        <li>
+          <strong>Conceive</strong> — adds an estimated fertile window and a
+          daily-chance reading, each framed with the research behind it.
+        </li>
+        <li>
+          <strong>Pregnancy</strong> — pauses the period estimate and counts
+          by week from an estimated due date.
+        </li>
+        <li>
+          <strong>Perimenopause</strong> — pauses the period estimate while
+          cycles are still logged and kept.
+        </li>
+        <li>
+          <strong>Postpartum</strong> — pauses the period estimate and
+          counts the days of postpartum, with a gentle offer to log when a
+          first bleed arrives.
+        </li>
+      </ul>
+      <!-- cite: pregnancy week counter (lib/l10n/app_en.arb pregnancyWeekTitle, issue #192); postpartum day counter (postpartumDayTitle, issue #455); the paused-estimate state naming the mode (predictionsSuppressedTitle / predictionsSuppressedByModeBody, issue #528); conceive window copy (conceiveWindowLabel, conceivePeakDay). -->
+      <figure class="screenshot-figure">
+        <Screenshot
+          screen="life-stage"
+          device="iphone-67"
+          theme="light"
+          alt="The profile editor's life-stage mode chooser, open, with the five modes listed."
+        />
+        <figcaption>Choosing a life-stage mode in the profile editor.</figcaption>
+      </figure>
+    </section>
+
+    <section>
+      <h2>Switching never rewrites your history</h2>
+      <!-- cite: lib/domain/models/lifecycle_mode.dart ("Switching is free and reversible: tracked data is kept... a switch never deletes or rewrites day_entries/observations"); issue #188 A2-32. -->
+      <p>
+        Changing modes changes what the app computes and displays — nothing
+        else. Entries, symptoms, tags, and notes are all kept exactly as
+        they were, every switch recomputes estimates from the same history,
+        and you can switch back whenever life changes again.
+      </p>
+    </section>
+
+    <section>
+      <h2>How the modes read</h2>
+      <!-- cite: PRIVACY.md §1 (fertile-window estimate is a calendar-method back-calculation and "must not be used to prevent pregnancy"); lib/l10n/app_en.arb conceivePeakDay (the study framing and percentage). -->
+      <p>
+        In Conceive mode, the fertile window is an estimate derived from the
+        profile's own logged history, and the daily-chance figure arrives
+        with its source study named in the app. It is information, not
+        medical advice — and it must not be used to prevent pregnancy.
+        Pregnancy, Perimenopause, and Postpartum modes say openly that the
+        period estimate is paused, instead of silently showing a stale
+        prediction.
+      </p>
+    </section>
+
+    <section>
+      <h2>Who is reading also matters</h2>
+      <!-- cite: the orthogonal care-mode axis, lib/domain/models/profile_mode.dart (standard/teen/caregiver/irregular; issue #131) and lifecycle_mode.dart's orthogonality note; teen-mode framing copy in lib/l10n/app_en.arb subjectTeenModeDialogBody. -->
+      <p>
+        Modes change what is computed; separately, a profile's reading
+        level — standard, teen, or supported care framing — changes the
+        vocabulary the app uses with whoever is reading. The two axes
+        compose: a teen profile in Period Tracking mode, or an adult
+        profile in Perimenopause mode with a caregiver alongside. A teen
+        profile's reader level is suggested once, never forced.
+      </p>
+    </section>
+
+    <p class="doc__footer-note">
+      Modes sync with everything else a profile shares — see
+      <a href="/family-sharing">family sharing and roles</a>, or how
+      <a href="/tracking">estimates show their confidence</a>.
+    </p>
+  </article>
+</BaseLayout>

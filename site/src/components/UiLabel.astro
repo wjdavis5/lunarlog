@@ -1,0 +1,37 @@
+---
+// Issue #1105/#1106 contract: never type an app string into a site page.
+// A page that needs a screen label, a button title, or a role name renders
+// it through this component, which reads the key from the app's own
+// string catalog (`lib/l10n/app_en.arb`) at build time. Renaming or
+// removing the key in the app fails every future site build here — the
+// stale-guide failure mode #1106 names is closed at the component, not by
+// a reviewer's memory.
+//
+// The arb is pulled in as a Vite `?raw` import rather than a node:fs read:
+// Vite resolves it at bundle time (so `astro dev` and `astro build` agree,
+// and a missing file fails the compile), while a runtime `import.meta.url`
+// read would resolve against the bundled prerender chunk under dist/ and
+// miss the repo root. The same shape imports PRIVACY.md into privacy.astro.
+import arbSource from "../../../lib/l10n/app_en.arb?raw";
+
+interface Props {
+  /** An ARB key from `lib/l10n/app_en.arb`, e.g. `guardianRoleLabelViewer`. */
+  key: string;
+  /** Optional class for the wrapping span; without one, bare text renders. */
+  class?: string;
+}
+
+const { key, class: className } = Astro.props as Props;
+
+const catalog = JSON.parse(arbSource) as Record<string, unknown>;
+const value = catalog[key];
+if (typeof value !== "string" || value === "") {
+  throw new Error(
+    `UiLabel: key "${key}" is not a non-empty string in lib/l10n/app_en.arb. ` +
+      "The app renamed or removed it — update this site's usage in the same " +
+      "change that renamed it (issues #1105/#1106).",
+  );
+}
+---
+
+{className ? <span class={className}>{value}</span> : <Fragment>{value}</Fragment>}
