@@ -647,6 +647,26 @@ enum TagClinicalRole {
   notExported,
 }
 
+/// The category-uniform roles (issue #1138): every code of these
+/// categories routes identically, so the routing is one data-table lookup
+/// (the same table-not-switch discipline as `_kCategoryWireNames` above).
+/// Categories absent from this map are the mixed symptom categories, whose
+/// positive/symptomatic halves [isSymptomTagCode] separates per code.
+const Map<TagCategory, TagClinicalRole> _kUniformCategoryRoles = {
+  TagCategory.tests: TagClinicalRole.testResult,
+  // Medications taken, sex life, and substance use are omitted from
+  // clinical exports by default (#1138) — not problems, and sensitive on a
+  // minor's record.
+  TagCategory.medication: TagClinicalRole.notExported,
+  TagCategory.sexLife: TagClinicalRole.notExported,
+  TagCategory.partying: TagClinicalRole.notExported,
+  // Fertility signs, activity, and product use: cycle context, never a
+  // problem.
+  TagCategory.discharge: TagClinicalRole.cycleObservation,
+  TagCategory.exercise: TagClinicalRole.cycleObservation,
+  TagCategory.collectionMethod: TagClinicalRole.cycleObservation,
+};
+
 /// The one code outside the `medication` category that is a *therapy*
 /// rather than a symptom: `hrt` rides `hot_flashes` (where Clue attests it)
 /// but routes with the medications — a treatment is not a finding.
@@ -658,33 +678,16 @@ const Set<String> _kTherapyTagCodes = {'hrt'};
 /// The clinical role of [tag] — the routing decision for every consumer
 /// that separates problems from the rest of the log (issue #1138).
 TagClinicalRole tagClinicalRole(TagCode tag) {
-  switch (tag.category) {
-    case TagCategory.tests:
-      return TagClinicalRole.testResult;
-    case TagCategory.medication:
-    case TagCategory.sexLife:
-    case TagCategory.partying:
-      // Medications taken, sex life, and substance use are omitted from
-      // clinical exports by default (#1138) — not problems, and sensitive
-      // on a minor's record.
-      return TagClinicalRole.notExported;
-    case TagCategory.hotFlashes:
-      return _kTherapyTagCodes.contains(tag.code)
-          ? TagClinicalRole.notExported
-          : TagClinicalRole.problem;
-    case TagCategory.discharge:
-    case TagCategory.exercise:
-    case TagCategory.collectionMethod:
-      // Fertility signs, activity, and product use: cycle context, never a
-      // problem.
-      return TagClinicalRole.cycleObservation;
-    default:
-      // The remaining categories: #1147's symptom line decides — a fever
-      // or an injury IS a problem, `energetic` and stool "Normal" are not.
-      return isSymptomTagCode(tag.code)
-          ? TagClinicalRole.problem
-          : TagClinicalRole.cycleObservation;
+  final uniform = _kUniformCategoryRoles[tag.category];
+  if (uniform != null) return uniform;
+  if (_kTherapyTagCodes.contains(tag.code)) {
+    return TagClinicalRole.notExported;
   }
+  // The remaining categories: #1147's symptom line decides — a fever or an
+  // injury IS a problem, `energetic` and stool "Normal" are not.
+  return isSymptomTagCode(tag.code)
+      ? TagClinicalRole.problem
+      : TagClinicalRole.cycleObservation;
 }
 
 /// The category-level default role for an `observations` row whose option
