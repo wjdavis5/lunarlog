@@ -148,10 +148,14 @@ void main() {
       // No contact form: the site collects nothing (#830 out-of-scope).
       expect(supportPage, isNot(contains('<form')));
 
-      // Guides are #1106's, not built yet: the FAQ must stand on its own
-      // and carry the TODO rather than link to pages that do not exist.
-      expect(supportPage, contains('TODO(#1106)'));
-      expect(supportPage, isNot(contains('href="/guides')));
+      // The guides exist (#1106): the FAQ links them instead of
+      // duplicating them, and the pending-TODO state is gone. The links
+      // point at real pages — site.yml's internal-link check fails on a
+      // missing target, so a renamed guide fails CI rather than 404ing.
+      expect(supportPage, contains('href="/guides/household-setup/"'));
+      expect(supportPage, contains('href="/guides/inviting-someone/"'));
+      expect(supportPage, contains('href="/guides/moving-your-data/"'));
+      expect(supportPage, isNot(contains('TODO(#1106)')));
     });
 
     test('pages ship zero client-side JavaScript', () {
