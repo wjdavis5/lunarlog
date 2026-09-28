@@ -35,6 +35,25 @@ import 'package:lunarlog/domain/tags.dart';
 /// Minimum window the tool will generate (`--months` is clamped to this).
 const int kMinSeedMonths = 12;
 
+/// Every fabricated profile display name this generator can emit, keyed to
+/// [_adultSpec]/[_teenSpec] below. Single-sourced here (issue #1104) so the
+/// screenshot tool's name allowlist (`tool/screenshots/`) derives from the
+/// same list instead of restating it — a new fabricated profile added here
+/// is automatically legal for the screenshots; a name used anywhere else
+/// fails the tool's own validation and the cross-check test in
+/// `test/tool/screenshots/fabricated_profile_test.dart`. (`final`, not
+/// `const`: Dart's const evaluation cannot read instance fields, and
+/// restating the literals would defeat the single sourcing.)
+final List<String> kSeedProfileNames = [
+  _adultSpec.displayName,
+  _teenSpec.displayName,
+];
+
+/// The fabricated day-note pool the generator draws from, exported
+/// (issue #1104) so the screenshot tool's notes come from the same
+/// fabricated vocabulary instead of a second hand-written list.
+const List<String> kSeedDayNotePool = _notePool;
+
 /// How the seeder describes one run's generation inputs.
 ///
 /// The CLI clamps `--months` to [kMinSeedMonths]; [SeedSpec] itself accepts

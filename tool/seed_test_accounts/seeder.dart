@@ -45,6 +45,13 @@ class SeedRunException implements Exception {
   String toString() => message;
 }
 
+/// The fabricated display label for the seeder's shared-partner guardian
+/// (used as both the invite's `p_recipient_label` and the guardian row's
+/// display name below). Single-sourced (issue #1104) so the screenshot
+/// tool's name allowlist (`tool/screenshots/`) derives the same fabricated
+/// guardian label instead of restating it.
+const String kSeedPartnerGuardianLabel = 'Jordan';
+
 class SeederDeps {
   const SeederDeps({
     required this.config,
@@ -323,7 +330,7 @@ class TestAccountSeeder {
       {
         'p_profile_id': adultProfileId,
         'p_token_hash': _hashToken(predictionToken),
-        'p_recipient_label': 'Jordan (seed partner)',
+        'p_recipient_label': '$kSeedPartnerGuardianLabel (seed partner)',
       },
       target,
     );
@@ -339,7 +346,7 @@ class TestAccountSeeder {
     await _shareProfile(
       profileId: adultProfileId,
       role: 'co_parent',
-      label: 'Jordan (seed partner)',
+      label: '$kSeedPartnerGuardianLabel (seed partner)',
       target: target,
       partner: partner,
     );
@@ -347,7 +354,7 @@ class TestAccountSeeder {
       await _shareProfile(
         profileId: teenProfileId,
         role: 'caregiver',
-        label: 'Jordan (seed partner)',
+        label: '$kSeedPartnerGuardianLabel (seed partner)',
         target: target,
         partner: partner,
       );

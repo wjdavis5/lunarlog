@@ -11,6 +11,7 @@ import 'package:meta/meta.dart';
 
 import 'storage.dart';
 import 'tables.dart';
+import 'ulid.dart';
 
 part 'db.g.dart';
 
@@ -159,12 +160,27 @@ const String kObservationsProfileIndexSql =
   HealthExportLedger,
 ])
 class LunarLogDatabase extends _$LunarLogDatabase {
-  LunarLogDatabase(super.executor);
+  /// [clock] and [ulid] pass straight through to [LunarLogStorage]'s
+  /// existing injection seams (issue #1104): the screenshot tool renders
+  /// from a store whose generated row ids and stamps are frozen to a
+  /// fixed clock, because UI like the profile avatar derives its colour
+  /// from the profile id's ULID bits — wall-clock ids would make two runs
+  /// of the same commit render differently. Production passes neither.
+  LunarLogDatabase(super.executor, {DateTime Function()? clock, UlidGenerator? ulid})
+      : _injectedClock = clock,
+        _injectedUlid = ulid;
+
+  final DateTime Function()? _injectedClock;
+  final UlidGenerator? _injectedUlid;
 
   /// Storage-level API (upserts with monotonic updated_at, tombstone
   /// soft-deletes, UI and full-fidelity reads, and the sync API). Domain
   /// repositories build on top of this.
-  late final LunarLogStorage storage = LunarLogStorage(this);
+  late final LunarLogStorage storage = LunarLogStorage(
+    this,
+    clock: _injectedClock,
+    ulid: _injectedUlid,
+  );
 
   /// Schema history:
   /// * 1 — profiles, day_entries, app_settings, live-entry partial index.
