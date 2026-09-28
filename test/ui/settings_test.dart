@@ -160,8 +160,13 @@ void main() {
     await tester.tap(privacyTile);
     await tester.pumpAndSettle();
 
-    // Verify PrivacyPolicyScreen opened
-    expect(find.text('lunarlog Privacy Policy'), findsOneWidget);
+    // Verify PrivacyPolicyScreen opened (issue #1164: the screen is a
+    // summary now — retitled, with the tappable full-policy action).
+    expect(find.text('Privacy at a glance'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('open-full-privacy-policy')),
+      findsOneWidget,
+    );
     expect(find.textContaining('Sync & Family Sharing'), findsOneWidget);
     expect(find.textContaining('Protected at Rest'), findsOneWidget);
     expect(find.textContaining('Zero Ads & Tracking'), findsOneWidget);
@@ -171,7 +176,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify dialog closed
-    expect(find.text('lunarlog Privacy Policy'), findsNothing);
+    expect(find.text('Privacy at a glance'), findsNothing);
   });
 
   /// A signed-in [AuthController] so `hasFeedback` (R23) can turn true in a

@@ -975,11 +975,22 @@ class AppLocalizationsEn extends AppLocalizations {
       'How your family\'s data is stored, shared, and kept private';
 
   @override
-  String get settingsPrivacyDialogTitle => 'lunarlog Privacy Policy';
+  String get settingsPrivacyDialogTitle => 'Privacy at a glance';
+
+  @override
+  String get settingsPrivacySummaryNote =>
+      'This screen is a short summary. The full privacy policy lives at https://lunarlog.app/privacy.';
+
+  @override
+  String get settingsPrivacyOpenFullPolicy => 'Read the full privacy policy';
+
+  @override
+  String get settingsPrivacyOpenFullPolicyFailed =>
+      'Couldn\'t open the page. You can still read the full policy at https://lunarlog.app/privacy.';
 
   @override
   String get settingsPrivacyDialogBody =>
-      'lunarlog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device\'s own operating system encryption and shown only behind your device\'s passcode or biometrics.\n• Works Offline: Logging, viewing, and estimates keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Guardian Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://lunarlog.app/privacy';
+      'lunarlog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device\'s own operating system encryption and shown only behind your device\'s passcode or biometrics.\n• Works Offline: Logging, viewing, and estimates keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Guardian Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.';
 
   @override
   String get settingsClose => 'Close';
