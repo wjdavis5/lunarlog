@@ -146,7 +146,7 @@
       {
         "heading": "The Fertile Window",
         "paragraphs": [
-          "Although the egg lives for only about a day, sperm can survive for up to 5 days. So pregnancy can happen from sex in the 5 days before ovulation, on the day of ovulation, and — by ACOG's count — the day after.",
+          "Although the egg lives for only about a day, sperm can survive for up to 5 days — and the NHS notes that sperm can survive in the fallopian tubes for up to 7 days after sex. So pregnancy can happen from sex in the 5 days before ovulation, on the day of ovulation, and — by ACOG's count — the day after.",
           "Important note: the dates in this app are estimates from past cycle lengths. They are not a birth control method and must not be used to prevent pregnancy."
         ]
       }
@@ -167,9 +167,17 @@
         "identifier": "N Engl J Med 1995;333:1517-21",
         "url": "https://doi.org/10.1056/NEJM199512073332301",
         "retrieved": "2026-09-26"
+      },
+      {
+        "publisher": "nhs",
+        "publisherName": "National Health Service (UK)",
+        "title": "Periods and fertility in the menstrual cycle",
+        "identifier": null,
+        "url": "https://www.nhs.uk/conditions/periods/fertility-in-the-menstrual-cycle/",
+        "retrieved": "2026-09-28"
       }
     ],
-    "reviewDate": "2026-09-26",
+    "reviewDate": "2026-09-28",
     "relatedSubphases": [
       "ovulation"
     ],
@@ -262,7 +270,7 @@
       {
         "heading": "Serotonin and GABA Interactions",
         "paragraphs": [
-          "Progesterone metabolites (such as allopregnanolone) interact directly with GABA receptors in the brain, which regulate calm and anxiety. As progesterone plunges, researchers think this shifts GABA and serotonin signaling, which may contribute to premenstrual mood sensitivity, sleep disruptions, and sugar cravings.",
+          "Progesterone metabolites (such as allopregnanolone) interact directly with GABA receptors in the brain, which regulate calm and anxiety. As progesterone rises and then falls after ovulation, researchers think this shifts GABA and serotonin signaling, which may contribute to premenstrual mood sensitivity, sleep disruptions, and sugar cravings.",
           "Tracking premenstrual symptoms over several cycles helps identify personal patterns and supports productive discussions with your healthcare provider if symptoms become disruptive."
         ]
       },
@@ -332,6 +340,14 @@
         "identifier": "Green-top Guideline No. 48",
         "url": "https://www.rcog.org.uk/guidance/browse-all-guidance/green-top-guidelines/premenstrual-syndrome-management-green-top-guideline-no-48/",
         "retrieved": "2026-09-26"
+      },
+      {
+        "publisher": "nhs",
+        "publisherName": "National Health Service (UK)",
+        "title": "Premenstrual syndrome (PMS)",
+        "identifier": null,
+        "url": "https://www.nhs.uk/conditions/pre-menstrual-syndrome/",
+        "retrieved": "2026-09-26"
       }
     ],
     "reviewDate": "2026-09-26",
@@ -364,7 +380,7 @@
         "paragraphs": [
           "Prostaglandin levels are highest on the first day or two of a period, which is why cramps are usually worst on Cycle Days 1 and 2.",
           "Prostaglandins can also affect the gut, causing loose stools or nausea, and period pain often spreads to the lower back and thighs.",
-          "While mild to moderate cramps are very common, pain that interferes with school, work, or daily activities warrants an evaluation by a healthcare professional. Get help urgently if pain is severe and pain relievers haven't helped, or if it's much worse than usual. Pain that keeps getting worse over months is also worth checking."
+          "While mild to moderate cramps are very common, pain that interferes with school, work, or daily activities warrants an evaluation by a healthcare professional. Get help urgently if pain is severe and pain relievers haven't helped, or if it's much worse than usual — in the UK, ask for an urgent GP appointment or contact NHS 111. Pain that keeps getting worse over months is also worth checking."
         ]
       }
     ],
@@ -552,7 +568,7 @@
       {
         "heading": "How Long Does It Take to Become Regular?",
         "paragraphs": [
-          "Most adolescents begin experiencing more predictable, ovulatory cycles within two to three years after their first period. For some, slight variation from month to month remains normal throughout life.",
+          "Most adolescents begin experiencing more predictable, ovulatory cycles within two to three years after their first period — and for some it takes six years or more. Slight variation from month to month can remain normal throughout life.",
           "Stress, illness, changes in nutrition, and intense sports training can also temporarily shift cycle timing by pausing ovulation."
         ]
       },
@@ -560,7 +576,7 @@
         "heading": "When to Speak with a Doctor",
         "paragraphs": [
           "While cycle length variation is normal, medical guidelines say to see a healthcare professional if: periods come more often than every 21 days or less often than every 45 days; 90 days go by without a period — even once; periods that had been coming regularly become irregular for several months; bleeding lasts more than 7 days; you need to change a soaked pad or tampon every 1 to 2 hours; or your periods are heavy and you bruise or bleed easily, or someone in your family has a bleeding disorder. If you've had sex and your period is late, take a pregnancy test.",
-          "If you haven't had a first period by age 15, or within 3 years of your breasts starting to develop, that's worth a check-up too."
+          "If you haven't had a first period by age 15, or within 3 years of your breasts starting to develop, that's worth a check-up too. So is having no breast development by 13, or no period by 14 with excess hair growth, or with extreme exercise or an eating disorder."
         ]
       }
     ],

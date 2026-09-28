@@ -268,6 +268,10 @@ class CycleLiteracyLibrary {
   /// (Issue #1103).
   static const String _retrievedDate = '2026-09-26';
 
+  /// Issue #1128 checked Article 3's citations (and added one) on this later
+  /// date; every other article keeps the full-library [_retrievedDate].
+  static const String _round3RetrievedDate = '2026-09-28';
+
   /// Tiered crisis route wording across US, Canada, UK, and NI (Issues #1111,
   /// #1119, #1128, #1132).
   static const String _crisisParagraphText =
@@ -360,6 +364,16 @@ class CycleLiteracyLibrary {
     title: 'Premenstrual syndrome (PMS)',
     url: 'https://www.nhs.uk/conditions/pre-menstrual-syndrome/',
     retrieved: _retrievedDate,
+  );
+
+  /// Verified 2026-09-28 (issue #1128, round-2 row R6): HTTP 200 via
+  /// `curl -sIL` with a browser User-Agent, and the page states "Sperm can
+  /// survive in the fallopian tubes for up to 7 days after sex."
+  static const ArticleSource _nhsFertility = ArticleSource(
+    publisher: SourcePublisher.nhs,
+    title: 'Periods and fertility in the menstrual cycle',
+    url: 'https://www.nhs.uk/conditions/periods/fertility-in-the-menstrual-cycle/',
+    retrieved: _round3RetrievedDate,
   );
 
   static const ArticleSource _whoMenstrualHealth = ArticleSource(
@@ -507,8 +521,8 @@ class CycleLiteracyLibrary {
         summary: 'The science behind the LH surge, egg release, and the biological window of fertility.',
         category: CycleLiteracyCategory.fertility,
         readingTimeMinutes: 3,
-        sources: [_acogFertilityAwareness, _wilcoxOvulationTiming],
-        reviewDate: _currentReviewDate,
+        sources: [_acogFertilityAwareness, _wilcoxOvulationTiming, _nhsFertility],
+        reviewDate: _round3RetrievedDate,
         relatedSubphases: [CycleSubphase.ovulation],
         sections: [
           ArticleSection(
@@ -521,7 +535,7 @@ class CycleLiteracyLibrary {
           ArticleSection(
             heading: 'The Fertile Window',
             paragraphs: [
-              'Although the egg lives for only about a day, sperm can survive for up to 5 days. So pregnancy can happen from sex in the 5 days before ovulation, on the day of ovulation, and — by ACOG\'s count — the day after.',
+              'Although the egg lives for only about a day, sperm can survive for up to 5 days — and the NHS notes that sperm can survive in the fallopian tubes for up to 7 days after sex. So pregnancy can happen from sex in the 5 days before ovulation, on the day of ovulation, and — by ACOG\'s count — the day after.',
               'Important note: the dates in this app are estimates from past cycle lengths. They are not a birth control method and must not be used to prevent pregnancy.',
             ],
           ),
@@ -568,7 +582,7 @@ class CycleLiteracyLibrary {
     summary: 'What researchers think happens in PMS: hormone levels are usually normal, but the brain may be extra sensitive to their rise and fall.',
     category: CycleLiteracyCategory.bodyAndSymptoms,
     readingTimeMinutes: 3,
-    sources: [_acogCpgNo7, _rcogPremenstrualSyndrome],
+    sources: [_acogCpgNo7, _rcogPremenstrualSyndrome, _nhsPms],
     reviewDate: _currentReviewDate,
     relatedSubphases: [CycleSubphase.midLuteal, CycleSubphase.lateLuteal],
     sections: [
@@ -582,7 +596,7 @@ class CycleLiteracyLibrary {
       ArticleSection(
         heading: 'Serotonin and GABA Interactions',
         paragraphs: [
-          'Progesterone metabolites (such as allopregnanolone) interact directly with GABA receptors in the brain, which regulate calm and anxiety. As progesterone plunges, researchers think this shifts GABA and serotonin signaling, which may contribute to premenstrual mood sensitivity, sleep disruptions, and sugar cravings.',
+          'Progesterone metabolites (such as allopregnanolone) interact directly with GABA receptors in the brain, which regulate calm and anxiety. As progesterone rises and then falls after ovulation, researchers think this shifts GABA and serotonin signaling, which may contribute to premenstrual mood sensitivity, sleep disruptions, and sugar cravings.',
           'Tracking premenstrual symptoms over several cycles helps identify personal patterns and supports productive discussions with your healthcare provider if symptoms become disruptive.',
         ],
       ),
@@ -617,7 +631,7 @@ class CycleLiteracyLibrary {
         paragraphs: [
               'Prostaglandin levels are highest on the first day or two of a period, which is why cramps are usually worst on Cycle Days 1 and 2.',
               'Prostaglandins can also affect the gut, causing loose stools or nausea, and period pain often spreads to the lower back and thighs.',
-              'While mild to moderate cramps are very common, pain that interferes with school, work, or daily activities warrants an evaluation by a healthcare professional. Get help urgently if pain is severe and pain relievers haven\'t helped, or if it\'s much worse than usual. Pain that keeps getting worse over months is also worth checking.',
+              'While mild to moderate cramps are very common, pain that interferes with school, work, or daily activities warrants an evaluation by a healthcare professional. Get help urgently if pain is severe and pain relievers haven\'t helped, or if it\'s much worse than usual — in the UK, ask for an urgent GP appointment or contact NHS 111. Pain that keeps getting worse over months is also worth checking.',
         ],
       ),
     ],
@@ -736,7 +750,7 @@ class CycleLiteracyLibrary {
           ArticleSection(
             heading: 'How Long Does It Take to Become Regular?',
             paragraphs: [
-              'Most adolescents begin experiencing more predictable, ovulatory cycles within two to three years after their first period. For some, slight variation from month to month remains normal throughout life.',
+              'Most adolescents begin experiencing more predictable, ovulatory cycles within two to three years after their first period — and for some it takes six years or more. Slight variation from month to month can remain normal throughout life.',
               'Stress, illness, changes in nutrition, and intense sports training can also temporarily shift cycle timing by pausing ovulation.',
             ],
           ),
@@ -744,7 +758,7 @@ class CycleLiteracyLibrary {
             heading: 'When to Speak with a Doctor',
             paragraphs: [
               'While cycle length variation is normal, medical guidelines say to see a healthcare professional if: periods come more often than every 21 days or less often than every 45 days; 90 days go by without a period — even once; periods that had been coming regularly become irregular for several months; bleeding lasts more than 7 days; you need to change a soaked pad or tampon every 1 to 2 hours; or your periods are heavy and you bruise or bleed easily, or someone in your family has a bleeding disorder. If you\'ve had sex and your period is late, take a pregnancy test.',
-              'If you haven\'t had a first period by age 15, or within 3 years of your breasts starting to develop, that\'s worth a check-up too.',
+              'If you haven\'t had a first period by age 15, or within 3 years of your breasts starting to develop, that\'s worth a check-up too. So is having no breast development by 13, or no period by 14 with excess hair growth, or with extreme exercise or an eating disorder.',
             ],
           ),
         ],

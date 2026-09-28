@@ -198,6 +198,42 @@ void main() {
     );
 
     testWidgets(
+      'Issue #1128: the crisis card prose still carries 999, 911 and A&E',
+      (tester) async {
+        final article = CycleLiteracyLibrary.pmsAndProgesterone;
+
+        await pumpSheet(tester, article);
+
+        await tester.dragUntilVisible(
+          find.byKey(const ValueKey('crisis-resources-card')),
+          find.byType(ListView),
+          const Offset(0, -300),
+        );
+        await tester.pumpAndSettle();
+
+        final cardFinder = find.byKey(const ValueKey('crisis-resources-card'));
+        expect(
+          find.descendant(
+            of: cardFinder,
+            matching: find.textContaining('999 in the UK'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: cardFinder,
+            matching: find.textContaining('911 in the US and Canada'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: cardFinder, matching: find.textContaining('A&E')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
       'articles without crisis content do not render crisis resources card',
       (tester) async {
         final article = CycleLiteracyLibrary.menstrualCyclePhases;
