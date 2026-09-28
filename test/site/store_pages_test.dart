@@ -154,6 +154,51 @@ void main() {
       expect(supportPage, isNot(contains('href="/guides')));
     });
 
+    test('health-import answer states the full-history fact (#1153)', () {
+      // Issue #1153: the answer used to say the import covers "the last
+      // 30 days" — a fact PRIVACY.md's change history (September 21, 2026)
+      // and the app itself retired in issue #992. A page written for the
+      // store listing must not understate the read scope of a health-data
+      // permission, so the stale window may not appear anywhere on the
+      // page, in either phrasing.
+      expect(supportPage, isNot(contains('30 days')));
+      expect(supportPage, isNot(contains('30-day')));
+
+      // The full-history wording the issue expects, plus the invariant
+      // that travels with it (never overwrite a hand-logged value).
+      expect(supportPage, contains('as far back as your health app has it'));
+      expect(
+        supportPage,
+        contains('never overwrite a value you logged by hand'),
+      );
+      // The cite comment points at the documents of record and carries
+      // the issue that lifted the cap, not the stale fact itself.
+      expect(supportPage, contains('issue #992'));
+
+      // The shared facts the answer paraphrases, read from their sources
+      // of record so the page and the app cannot drift apart again.
+      final arb = RegExp(
+        r'"healthSyncFullHistoryNote":\s*"([^"]*)"',
+      ).firstMatch(File('lib/l10n/app_en.arb').readAsStringSync())!;
+      expect(
+        arb.group(1)!,
+        contains('everything the health store makes available'),
+      );
+      expect(arb.group(1)!, isNot(contains('30 days')));
+      expect(
+        File('lib/domain/health/health_import.dart').readAsStringSync(),
+        contains('const int kHealthImportPageSize = 500'),
+        reason: 'the paging constant behind the paged full-history read',
+      );
+
+      // AGENTS.md carried the same stale phrase and seeded the page's
+      // wording (issue #1153); it must not inherit it back.
+      expect(
+        File('AGENTS.md').readAsStringSync(),
+        isNot(contains('bounded to the last 30 days')),
+      );
+    });
+
     test('pages ship zero client-side JavaScript', () {
       // The site's own acceptance criterion (#1099): no client JS. A page
       // that grows a script tag fails here before the CSP in _headers does.
