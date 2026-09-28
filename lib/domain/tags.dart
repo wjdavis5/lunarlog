@@ -506,8 +506,103 @@ const Set<TagCategory> kSingleSelectTagCategories = {
 /// is not one of [kPositiveAssertionCodes]' positive "none today"
 /// assertions (Issue #249: `pain_free` is a positive statement, never
 /// counted or rendered as a symptom).
+///
+/// Note this is the *loose* day-sheet question ("is anything symptom-like
+/// logged?") that the calendar dot and Insights have always asked — not the
+/// clinical-export question below. It deliberately keeps its original
+/// meaning so existing surfaces do not change under #1144.
 bool hasSymptomTags(Iterable<String> tags) =>
     tags.any((code) => !kPositiveAssertionCodes.contains(code));
+
+/// The categories whose codes can be clinical symptoms: what a clinician
+/// reads as symptom burden in an export (issue #1144 — the PDF summary's
+/// "Symptom frequency by cycle day" grid; issue #1138 — the FHIR Problem
+/// list). Everything else is wellness tracking, lifestyle, medication,
+/// home test results, fertility indicators, sensitive sex-life data or
+/// substance use — real logged data, but never a "symptom", so clinical
+/// exports that partition by this set must route or drop those codes
+/// rather than render them under a symptom heading.
+///
+/// Deliberately **closed**: a category not listed here is excluded even
+/// though most of the unverified ones (`kUnverifiedTagCategories`) carry no
+/// codes yet — if a code ever ships in one, it stays out of symptom
+/// surfaces until this set is deliberately reviewed, the same fail-closed
+/// default the taxonomy's "no invented placeholder" rule takes.
+const Set<TagCategory> kSymptomTagCategories = {
+  TagCategory.pain,
+  TagCategory.energy,
+  TagCategory.sleep,
+  TagCategory.skin,
+  TagCategory.digestion,
+  TagCategory.stool,
+  TagCategory.cravings,
+  TagCategory.hotFlashes,
+  TagCategory.body,
+  TagCategory.feelings,
+  TagCategory.mind,
+  TagCategory.ailments,
+};
+
+/// Codes *inside* [kSymptomTagCategories] that are still not symptoms:
+/// positive wellness states ("Good skin", "High energy", positive moods),
+/// neutral logged values (stool "Normal", sleep-duration buckets), and a
+/// treatment (`hrt` — a therapy, not a complaint). A code here is dropped
+/// from symptom surfaces exactly like a code outside
+/// [kSymptomTagCategories]; the category line alone cannot express these
+/// because their categories also hold real symptoms (`fatigue` lives in
+/// `energy` next to `energetic`; `acne` in `skin` next to `good_skin`).
+///
+/// Kept code-keyed rather than re-parenting the codes: the code-stability
+/// rule (see the library doc comment) forbids recoding stored values, and
+/// the day sheet keeps tracking wellness deliberately — this set only
+/// decides how *clinical exports* classify them (issues #1138/#1144).
+const Set<String> kWellnessTagCodes = {
+  // energy: positive states (tired/exhausted/fatigue stay symptoms).
+  'energetic',
+  'fully_energized',
+  // sleep: the four duration buckets are logged values, not complaints
+  // (`sleep_trouble` is the category's symptom flag and stays).
+  '0_to_3_hours',
+  '3_to_6_hours',
+  '6_to_9_hours',
+  '9_or_more_hours',
+  // skin: "Good skin" is a positive state (acne/oily/dry stay).
+  'good_skin',
+  // digestion/stool: the "Great"/"Normal" wellness options (the named
+  // offenders in issue #1144; bloating/nausea/gassy/constipated/diarrhea
+  // stay).
+  'great_digestion',
+  'normal',
+  'great_stool',
+  // hot flashes: HRT is the category's one treatment option, not a
+  // symptom.
+  'hrt',
+  // feelings: positive moods (issue #1138's "positive mood" row;
+  // irritable/sad/anxious/mood_swings and friends stay).
+  'happy',
+  'excited',
+  'grateful',
+  // mind: positive/neutral-good states (distracted/stressed stay).
+  'calm',
+  'focused',
+};
+
+/// Whether [code] is a clinical symptom for the clinical exports (issue
+/// #1144): a known [kTagTaxonomy] code whose category is in
+/// [kSymptomTagCategories], minus [kWellnessTagCodes] and
+/// [kPositiveAssertionCodes]' positive assertions. False for custom-tag
+/// registry codes and any unknown code — callers decide those separately
+/// (the PDF summary keeps rendering registered custom tags, since the
+/// registry exists precisely because a profile's symptom vocabulary
+/// outgrew this taxonomy; the FHIR builder degrades unknown codes to "not
+/// exported").
+bool isSymptomTagCode(String code) {
+  if (kPositiveAssertionCodes.contains(code)) return false;
+  final tag = tagByCode(code);
+  if (tag == null) return false;
+  return kSymptomTagCategories.contains(tag.category) &&
+      !kWellnessTagCodes.contains(code);
+}
 
 final Map<String, TagCode> _tagsByCode = {
   for (final tag in kTagTaxonomy) tag.code: tag,

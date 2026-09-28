@@ -203,7 +203,8 @@ void main() {
     expect(text, contains('No symptoms were logged in the cycles shown'));
   });
 
-  test('renders custom tags, disambiguated labels, and spotting in PDF bytes (#834, #822, #794)', () {
+  test('renders custom tags and spotting in PDF bytes, wellness codes '
+      'excluded (#834, #794, #1144)', () {
     final starts = _starts(8);
     final entries = [
       for (final start in starts)
@@ -256,8 +257,51 @@ void main() {
     );
     final text = latin1.decode(buildClinicalPdfDocument(summary));
     expect(text, contains('Acupuncture'));
-    expect(text, contains(r'Great \(digestion\)'));
-    expect(text, contains(r'Great \(stool\)'));
     expect(text, contains('Spotting'));
+    // Issue #1144: wellness codes are not symptoms — the former
+    // "Great (digestion)"/"Great (stool)" grid rows are gone. The colliding
+    // display disambiguation those rows exercised stays pinned in
+    // test/domain/tags_test.dart (`flatDisplayForTag`).
+    expect(text, isNot(contains('Great (')));
+  });
+
+  test('Issue #1144: the symptom grid holds only cramps for a day also '
+      'logged with wellness, medication and home-test tags', () {
+    final starts = _starts(8);
+    final entries = [
+      for (final start in starts)
+        DayEntry(
+          id: 'e-${start.iso}',
+          profileId: 'p1',
+          localDate: start,
+          tz: 'UTC',
+          flow: FlowLevel.medium,
+          tags: start == starts[1]
+              ? const [
+                  'great_digestion',
+                  'antibiotic',
+                  'pregnancy_positive',
+                  'cramps',
+                ]
+              : const [],
+          updatedAt: DateTime.utc(2026, 1, 1),
+        ),
+    ];
+    final summary = buildClinicalPdfSummary(
+      profile: _profile(),
+      dayEntries: entries,
+      range: FhirExportRange(
+        preset: FhirExportRangePreset.last6Cycles,
+        start: starts[1],
+      ),
+      rangeLabel: 'Last 6 cycles',
+      generatedAt: DateTime.utc(2026, 6, 1),
+    );
+    expect(summary.symptomGrid.map((row) => row.label), ['Cramps']);
+    final text = latin1.decode(buildClinicalPdfDocument(summary));
+    expect(text, contains('Cramps'));
+    expect(text, isNot(contains('Antibiotic')));
+    expect(text, isNot(contains('Pregnancy')));
+    expect(text, isNot(contains('Great (')));
   });
 }
