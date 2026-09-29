@@ -379,7 +379,12 @@ deploy automation, DNS" follow-up is superseded.
   zone/Pages project, or keep it and disclose it in PRIVACY.md). The
   fixture suites cover both modes, so the flip is one tested line.
   `check-links-deploy.sh` asserts the
-  same over every HTML route of the apex. It
+  same over every HTML route of the apex — the route list is enumerated
+  from the Astro build output the deploy just uploaded (`site/dist`), not
+  hand-picked: each route must be 200 `text/html` with a beacon-free body,
+  and the unmatched-path check carries the styled 404's beacon assertion
+  because the built `404.html` is served only for unmatched paths
+  (issue #1184). It
   runs on push to `main` when a path the web client depends on changes
   (`lib/`, `web/`, `assets/`, `pubspec.*`, `l10n.yaml`, the workflow, the
   check scripts), or on `workflow_dispatch`. A `web-deploy` concurrency

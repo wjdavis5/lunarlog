@@ -51,10 +51,32 @@ set -euo pipefail
 # line, after the owner decides (toggle Web Analytics off, or keep and
 # disclose in PRIVACY.md) -- makes the same finding a hard failure.
 #
+# Issue #1184 closes the gap between that assertion and the doc claim it
+# backed (docs/web/security-posture.md): the beacon check is not five
+# hand-picked routes, it is every HTML route the built site ships. The
+# route list is enumerated from the Astro build output the deploy just
+# uploaded (one route per .html file under LINKS_SITE_DIST, default
+# <repo>/site/dist resolved from this script's own location), and each
+# route is asserted 200, text/html, and beacon-free. site-deploy.yml
+# builds the site before this check runs, so the wired path always
+# enumerates the exact route set that was deployed. The built 404.html is
+# excluded: the asset layer serves it only for *unmatched* paths, whose
+# check below carries the beacon assertion -- requesting /404 directly
+# would assert the asset layer's incidental serving shape, not any route
+# a browser is ever served. When the build output is absent (only
+# possible when the script runs outside the deploy workflow), the check
+# warns and the beacon assertion covers only the unmatched-path 404 page
+# below.
+#
 # Input (env):
 #   LINKS_BASE_URL      Origin under test. Defaults to https://lunarlog.app.
 #   LINKS_ATTEMPTS      Number of attempts. Defaults to 18.
 #   LINKS_RETRY_DELAY   Seconds between attempts. Defaults to 5.
+#   LINKS_SITE_DIST     Built-site directory the HTML route list is
+#                       enumerated from (issue #1184). Defaults to
+#                       <repo>/site/dist resolved from this script's own
+#                       location; the fixture suite points it at a fake
+#                       build tree.
 #   LINKS_FIXTURES_DIR  Test seam. When set, response header and body dumps
 #                       are read from files in this directory instead of the
 #                       network (see
@@ -68,6 +90,14 @@ BASE_URL="${LINKS_BASE_URL:-https://lunarlog.app}"
 ATTEMPTS="${LINKS_ATTEMPTS:-18}"
 RETRY_DELAY="${LINKS_RETRY_DELAY:-5}"
 FIXTURES_DIR="${LINKS_FIXTURES_DIR:-}"
+
+# Issue #1184: the HTML route list is enumerated from the Astro build
+# output the deploy just uploaded. Resolved from this script's own location
+# so it works from any cwd; site-deploy.yml checks out the repo and builds
+# site/dist before running this script, so the default always finds it.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SITE_DIST="${LINKS_SITE_DIST:-$REPO_ROOT/site/dist}"
+SITE_DIST="${SITE_DIST%/}"
 
 HOME_URL="$BASE_URL/"
 AASA_URL="$BASE_URL/.well-known/apple-app-site-association"
@@ -126,8 +156,41 @@ fixture_path() {
     */support/) printf '%s' "$FIXTURES_DIR/support.$2" ;;
     */this-page-does-not-exist) printf '%s' "$FIXTURES_DIR/notfound.$2" ;;
     "$HOME_URL"|"$BASE_URL") printf '%s' "$FIXTURES_DIR/home.$2" ;;
-    *) printf '%s' "$FIXTURES_DIR/unknown.$2" ;;
+    # Any enumerated route (issue #1184): the URL path becomes the fixture
+    # stem -- leading/trailing slashes stripped, inner slashes dashed
+    # (/guides/getting-started/ -> route-guides-getting-started.*). Pure
+    # parameter expansion: the route loop below calls this once per fetch,
+    # and it must not add a process spawn per route.
+    *)
+      local stem="${1#"$BASE_URL"}"
+      stem="${stem#/}"
+      stem="${stem%/}"
+      printf '%s' "$FIXTURES_DIR/route-${stem//\//-}.$2" ;;
   esac
+}
+
+# enumerated_routes -- prints the URL of every HTML route the built site
+# ships, one per line, sorted (issue #1184). One route per .html file under
+# SITE_DIST: dist/index.html is the home page, <dir>/index.html a
+# directory-format page (Astro's default), any other .html a flat public
+# file (public/invite.html at /invite). 404.html is skipped -- the asset
+# layer serves it only for unmatched paths, and the unmatched-path check in
+# check_once carries its beacon assertion. Returns non-zero when the build
+# output is absent, so the caller can warn and fall back to the built-in
+# routes.
+enumerated_routes() {
+  local f rel
+  [ -d "$SITE_DIST" ] || return 1
+  find "$SITE_DIST" -type f -name '*.html' | LC_ALL=C sort |
+    while IFS= read -r f; do
+      rel="${f#"$SITE_DIST"/}"
+      case "$rel" in
+        404.html) ;;
+        index.html) printf '%s/\n' "$BASE_URL" ;;
+        */index.html) printf '%s/%s/\n' "$BASE_URL" "${rel%/index.html}" ;;
+        *) printf '%s/%s\n' "$BASE_URL" "${rel%.html}" ;;
+      esac
+    done
 }
 
 # fetch URL -- prints the response's HTTP status line and headers to stdout.
@@ -318,7 +381,8 @@ expect_body_without_cf_beacon() {
 # returns non-zero when any assertion failed.
 check_once() {
   local home aasa invite assetlinks notfound fhir privacy privacy_page support problems=""
-  local home_body invite_body privacy_page_body support_body notfound_body
+  local notfound_body
+  local routes route_url route route_body route_problems
 
   home="$(fetch "$HOME_URL" 2>/dev/null || true)"
   aasa="$(fetch "$AASA_URL" 2>/dev/null || true)"
@@ -329,14 +393,12 @@ check_once() {
   privacy="$(fetch "$PRIVACY_URL" 2>/dev/null || true)"
   privacy_page="$(fetch "$PRIVACY_PAGE_URL" 2>/dev/null || true)"
   support="$(fetch "$SUPPORT_URL" 2>/dev/null || true)"
-  home_body="$(fetch_body "$HOME_URL" 2>/dev/null || true)"
-  invite_body="$(fetch_body "$INVITE_URL" 2>/dev/null || true)"
-  privacy_page_body="$(fetch_body "$PRIVACY_PAGE_URL" 2>/dev/null || true)"
-  support_body="$(fetch_body "$SUPPORT_URL" 2>/dev/null || true)"
   notfound_body="$(fetch_body "$NOTFOUND_URL" 2>/dev/null || true)"
 
   # The home page is served by the static-asset layer, so the strict header
-  # set from `site/public/_headers` must be attached to it.
+  # set from `site/public/_headers` must be attached to it. Its body's
+  # beacon assertion (issue #1139) now lives in the route enumeration below
+  # (issue #1184), which covers it like every other HTML route.
   problems="${problems}$(expect_status "$home" 200 "$HOME_URL")"
   problems="${problems}$(expect_header_prefix "$home" content-type text/html "$HOME_URL")"
   problems="${problems}$(expect_header_contains "$home" content-security-policy "default-src 'self'" "$HOME_URL")"
@@ -346,10 +408,6 @@ check_once() {
   problems="${problems}$(expect_header_exact "$home" referrer-policy no-referrer "$HOME_URL")"
   problems="${problems}$(expect_header_exact "$home" x-content-type-options nosniff "$HOME_URL")"
 
-  # And its HTML, as a browser sees it, must carry no Web Analytics beacon
-  # (issue #1139; see expect_body_without_cf_beacon).
-  problems="${problems}$(expect_body_without_cf_beacon "$home_body" "$HOME_URL")"
-
   # The AASA must be served by the Worker: 200 with no redirect,
   # application/json, and nosniff (index.ts's AASA branch).
   problems="${problems}$(expect_status "$aasa" 200 "$AASA_URL")"
@@ -358,13 +416,14 @@ check_once() {
 
   # /invite* must go through the Worker, which puts its own headers on the
   # asset (index.ts's invite branch): text/html, no-referrer, nosniff, and a
-  # short cache.
+  # short cache. Its body's beacon assertion lives in the route enumeration
+  # below (issue #1184) -- the enumerated /invite (from public/invite.html)
+  # reaches the same Worker branch as this query-carrying URL.
   problems="${problems}$(expect_status "$invite" 200 "$INVITE_URL")"
   problems="${problems}$(expect_header_prefix "$invite" content-type text/html "$INVITE_URL")"
   problems="${problems}$(expect_header_exact "$invite" referrer-policy no-referrer "$INVITE_URL")"
   problems="${problems}$(expect_header_exact "$invite" x-content-type-options nosniff "$INVITE_URL")"
   problems="${problems}$(expect_header_exact "$invite" cache-control "public, max-age=300" "$INVITE_URL")"
-  problems="${problems}$(expect_body_without_cf_beacon "$invite_body" "$INVITE_URL")"
 
   # Issue #1157: the store privacy-policy URL must resolve. `/privacy` (the
   # exact URL both stores list) redirects to `/privacy/`, which serves the
@@ -373,20 +432,44 @@ check_once() {
   problems="${problems}$(expect_redirect_to "$privacy" "/privacy/" "$PRIVACY_URL")"
   problems="${problems}$(expect_status "$privacy_page" 200 "$PRIVACY_PAGE_URL")"
   problems="${problems}$(expect_header_prefix "$privacy_page" content-type text/html "$PRIVACY_PAGE_URL")"
-  problems="${problems}$(expect_body_without_cf_beacon "$privacy_page_body" "$PRIVACY_PAGE_URL")"
 
   # The support page must stay live: it is where the in-app help link goes
   # and where #1153's import-scope copy fix ships.
   problems="${problems}$(expect_status "$support" 200 "$SUPPORT_URL")"
   problems="${problems}$(expect_header_prefix "$support" content-type text/html "$SUPPORT_URL")"
-  problems="${problems}$(expect_body_without_cf_beacon "$support_body" "$SUPPORT_URL")"
+
+  # Issue #1184: the beacon assertion (with a 200 text/html precondition, so
+  # a dropped page cannot pass vacuously) now runs over EVERY HTML route the
+  # built site ships, not just the routes the blocks above cover. The route
+  # list is enumerated from the Astro build output the deploy just uploaded
+  # (see enumerated_routes); without it -- only possible outside the deploy
+  # workflow -- a loud warning emits and the beacon assertion shrinks to the
+  # unmatched-path 404 page below.
+  if routes="$(enumerated_routes)"; then
+    while IFS= read -r route_url; do
+      [ -n "$route_url" ] || continue
+      route="$(fetch "$route_url" 2>/dev/null || true)"
+      route_body="$(fetch_body "$route_url" 2>/dev/null || true)"
+      # One command substitution for all three assertions, not one each:
+      # this loop runs once per route per attempt and every $( ) is a fork.
+      route_problems="$(expect_status "$route" 200 "$route_url"
+        expect_header_prefix "$route" content-type text/html "$route_url"
+        expect_body_without_cf_beacon "$route_body" "$route_url")"
+      problems="$problems$route_problems"
+    done <<<"$routes"
+  else
+    printf '::warning::%s: site build output not found at %s -- the HTML routes cannot be enumerated; the beacon assertion covers only the unmatched-path 404 page (issue #1184)\n' "$BASE_URL" "$SITE_DIST" >&2
+  fi
 
   # Android is deferred: no assetlinks.json file exists, so this route
   # reaches the Worker and must 404.
   problems="${problems}$(expect_status "$assetlinks" 404 "$ASSETLINKS_URL")"
 
   # An unmatched path serves the Astro 404 page: a real 404, text/html, and
-  # never a redirect.
+  # never a redirect. Its body's beacon assertion stays here rather than in
+  # the route enumeration below: the built 404.html is served only for
+  # unmatched paths (it is excluded from the enumeration), so this URL is
+  # how a browser actually receives that page.
   problems="${problems}$(expect_status "$notfound" 404 "$NOTFOUND_URL")"
   problems="${problems}$(expect_header_prefix "$notfound" content-type text/html "$NOTFOUND_URL")"
   problems="${problems}$(expect_header_absent "$notfound" location "$NOTFOUND_URL")"
@@ -407,7 +490,7 @@ check_once() {
 attempt=1
 while :; do
   if reason="$(check_once)"; then
-    echo "Site deploy smoke check passed for '$BASE_URL' (home page headers, AASA, /invite, /privacy, /support/, 404, /fhir reservation)."
+    echo "Site deploy smoke check passed for '$BASE_URL' (home page headers, AASA, /invite, /privacy, /support/, 404, /fhir reservation, and a 200-HTML beacon-free check over every HTML route of the built site)."
     exit 0
   fi
 
