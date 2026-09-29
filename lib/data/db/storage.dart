@@ -102,6 +102,7 @@ export '../sync/remote_rows.dart'
         RetryableSyncApplyError,
         SyncTable;
 
+part 'app_settings_storage.dart';
 part 'health_device_storage.dart';
 part 'storage_local_writes.dart';
 part 'storage_queries.dart';
@@ -155,6 +156,7 @@ List<List<T>> chunkedBy<T>(List<T> rows, int size) {
 class LunarLogStorage
     with
         LunarLogStorageQueries,
+        LunarLogStorageAppSettings,
         LunarLogStorageLocalWrites,
         LunarLogStorageSyncMetadata,
         LunarLogStorageHealthDevice,
@@ -193,6 +195,7 @@ class LunarLogStorage
         _generator = ulid ?? _ulid,
         _todayProvider = today ?? LocalDate.today {
     _syncMetadata = SyncCursorStorage(db, _clock);
+    _appSettings = AppSettingsStorage(db, _clock);
     _healthDevice = HealthDeviceStorage(db);
   }
 
@@ -210,6 +213,16 @@ class LunarLogStorage
   /// [SyncMetadataStore] members to.
   @override
   SyncMetadataStore get syncMetadata => _syncMetadata;
+
+  /// The extracted device-local settings store (issue #551 part 1 step 3).
+  /// Shares the same [StorageClock] so a setting's `updated_at` stamp
+  /// follows the same clock every other local write uses.
+  late final AppSettingsStorage _appSettings;
+
+  /// The narrow settings role this class delegates all [AppSettingsStore]
+  /// members to.
+  @override
+  AppSettingsStore get appSettings => _appSettings;
 
   /// The extracted device-local health-table store (issue #551 part 1 step
   /// 3) — never synced, so no clock and no dirty flags, just the database.

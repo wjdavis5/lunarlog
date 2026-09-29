@@ -471,17 +471,9 @@ mixin LunarLogStorageQueries {
         .watch();
   }
 
-  Future<String?> getSetting(String key) async {
-    final row = await (db.select(db.appSettings)
-          ..where((t) => t.key.equals(key)))
-        .getSingleOrNull();
-    return row?.value;
-  }
-
-  Stream<String?> watchSetting(String key) {
-    final query = db.select(db.appSettings)..where((t) => t.key.equals(key));
-    return query.watchSingleOrNull().map((row) => row?.value);
-  }
+  // The device-local settings reads moved to `AppSettingsStorage`
+  // (issue #551 part 1 step 3); the class forwards via
+  // `LunarLogStorageAppSettings`.
 
   // ------------------------------------------------- sync: merge disclosures
 

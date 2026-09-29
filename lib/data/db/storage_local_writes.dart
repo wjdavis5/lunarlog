@@ -435,7 +435,8 @@ class UpsertObservationPayload {
 }
 
 /// Local-write members mixed into [LunarLogStorage].
-mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
+mixin LunarLogStorageLocalWrites
+    on LunarLogStorageQueries, LunarLogStorageAppSettings {
   UlidGenerator get _generator;
   DateTime _now();
 
@@ -2038,28 +2039,9 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
 
   // ------------------------------------------------------------- app settings
 
-  /// Device-local key-value state. Not part of the sync model (open design
-  /// question); `updated_at` kept for uniform change tracking.
-  Future<void> setSetting({
-    required String key,
-    required String value,
-    DateTime? updatedAt,
-  }) async {
-    await db.transaction(() async {
-      final now = (updatedAt ?? _now()).toUtc();
-      final existing = await (db.select(db.appSettings)
-            ..where((t) => t.key.equals(key)))
-          .getSingleOrNull();
-      await db.into(db.appSettings).insertOnConflictUpdate(
-            AppSettingsCompanion.insert(
-              key: key,
-              value: value,
-              updatedAt:
-                  existing == null ? now : _notBefore(now, existing.updatedAt),
-            ),
-          );
-    });
-  }
+  // The device-local settings write moved to `AppSettingsStorage`
+  // (issue #551 part 1 step 3); the class forwards via
+  // `LunarLogStorageAppSettings`.
 
   /// Issue #130: dismisses one merge notice on THIS device only — the
   /// event id joins the profile's device-local dismissal list and the day
@@ -2071,10 +2053,11 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     required String eventId,
   }) async {
     final key = mergeNoticeDismissalsKey(profileId);
-    final stored = await getSetting(key);
+    final stored = await appSettings.getSetting(key);
     final dismissed = appendMergeNoticeDismissal(
         decodeMergeNoticeDismissals(stored), eventId);
-    await setSetting(key: key, value: encodeMergeNoticeDismissals(dismissed));
+    await appSettings.setSetting(
+        key: key, value: encodeMergeNoticeDismissals(dismissed));
   }
 
   /// Clears `dirty` on the row [id] of [table] only when its `local_rev`
