@@ -88,8 +88,11 @@ const Duration kSyncBackoffCap = Duration(minutes: 10);
 /// failures (any successful cycle resets the streak, mirroring
 /// [_consecutiveNetworkFailures]' counter shape). At the 15-minute
 /// [kSyncPeriodicInterval] a day-long storage failure still shows it is
-/// ongoing — twelve events instead of ninety-six — without flooding the
-/// project.
+/// ongoing — thirteen reported cycles a day instead of one event per
+/// cycle — and (issue #1181) the failure path's sibling captures
+/// ([_fail]'s state-write catch, [_safeDirtyCount]'s catch) ride this same
+/// gate, so every capture site costs the reported cycles, not an
+/// unguarded event per cycle apiece.
 const int kSyncCycleCaptureEveryNthFailure = 8;
 
 /// How stale the last full reconciliation may be before another is due
@@ -410,11 +413,13 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// [attachRealtimeSubscribedProbe] rather than the constructor.
   bool Function()? _realtimeSubscribed;
 
-  /// Issue #1171: the Sentry hub the cycle catch-all's capture goes to.
-  /// Null in production — the capture goes through the static
-  /// [Sentry.captureException] like every other capture site; tests stub a
-  /// [Hub] to observe the captured event (the `crash_smoke_test` pattern:
-  /// real SDK, no-op transport, a `beforeSend` recorder).
+  /// Issue #1171: the Sentry hub the cycle failure path's captures go to —
+  /// the catch-all's (issue #1171) and the gated sibling captures on
+  /// [_fail]/[_safeDirtyCount] (issue #1181). Null in production — the
+  /// capture goes through the static [Sentry.captureException] like every
+  /// other capture site; tests stub a [Hub] to observe the captured event
+  /// (the `crash_smoke_test` pattern: real SDK, no-op transport, a
+  /// `beforeSend` recorder).
   final Hub? _sentryHub;
 
   /// Issue #842: attaches (or replaces) the Realtime liveness probe. The
@@ -1186,7 +1191,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       debugPrint('lunarlog sync: cycle error: $error');
     }
     if (_shouldCaptureCycleFailure()) {
-      _captureCycleError(error, stackTrace);
+      _captureCycleError(error, stackTrace, phase: 'cycle');
     }
   }
 
@@ -1197,15 +1202,21 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       _consecutiveCycleFailures == 1 ||
       _consecutiveCycleFailures % kSyncCycleCaptureEveryNthFailure == 0;
 
-  /// Reports [error] to Sentry with a `sync.phase: cycle` tag and an
-  /// exception-type fingerprint, so a failure repeating every periodic
-  /// cycle groups into one issue instead of one event per 15 minutes
-  /// (issue #1171). No payload or row content is attached — the SDK's
-  /// `before_send` scrubber applies as to any capture. Fire-and-forget:
-  /// the cycle's own error bookkeeping must not wait on the network.
-  void _captureCycleError(Object error, StackTrace stackTrace) {
+  /// Reports [error] to Sentry through the injected hub (the static
+  /// capture when none was injected), with a `sync.phase` [phase] tag and
+  /// an exception-type fingerprint on the `lunarlog-sync-cycle` root, so a
+  /// failure repeating every periodic cycle groups into one issue instead
+  /// of one event per 15 minutes (issue #1171). No payload or row content
+  /// is attached — the SDK's `before_send` scrubber applies as to any
+  /// capture. Fire-and-forget: the cycle's own error bookkeeping must not
+  /// wait on the network.
+  void _captureCycleError(
+    Object error,
+    StackTrace stackTrace, {
+    required String phase,
+  }) {
     Future<void> decorate(Scope scope) async {
-      await scope.setTag('sync.phase', 'cycle');
+      await scope.setTag('sync.phase', phase);
       scope.fingerprint = [
         'lunarlog-sync-cycle',
         error.runtimeType.toString(),
@@ -1224,6 +1235,35 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
             stackTrace: stackTrace,
             withScope: decorate,
           ));
+  }
+
+  /// Issue #1181: [_fail]'s state-write catch and [_safeDirtyCount]'s
+  /// catch capture through the same streak gate as the catch-all's capture
+  /// instead of unconditionally every failing cycle. In the long-idle
+  /// closed-database scenario both catches re-fire on the very throw the
+  /// catch-all just reported, every cycle, which re-flooded Sentry
+  /// (~205 events a day) through sites the #1171 rate limit never
+  /// governed.
+  ///
+  /// Consulted, never incremented, here: the streak belongs to the cycle's
+  /// catch-all ([_recordUnexpectedCycleError] bumps it once per failing
+  /// cycle; a successful cycle resets it), so these fire exactly when the
+  /// catch-all's capture does — one reported cycle per streak reports from
+  /// every sibling that actually threw, grouped into one issue per
+  /// exception type by the shared fingerprint. A streak-less route into
+  /// these catches (a transport-error or expired-session [_fail] whose
+  /// state write then also fails) stays quiet until the next unexpected
+  /// failure re-arms the streak: that compound failure is rare, the
+  /// in-memory status and backoff still surface it, and #547's
+  /// per-cycle flood is what this gate exists to close.
+  void _captureGatedSiblingFailure(
+    Object error,
+    StackTrace stackTrace, {
+    required String phase,
+  }) {
+    if (_shouldCaptureCycleFailure()) {
+      _captureCycleError(error, stackTrace, phase: phase);
+    }
   }
 
   String? _confirmedUid() => _auth.confirmedUserId;
@@ -1246,7 +1286,10 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     } catch (e, s) {
       // The status is still surfaced in memory. Issue #547: recorded, not
       // silenced — a persistently failing state write is worth seeing.
-      unawaited(Sentry.captureException(e, stackTrace: s));
+      // Issue #1181: rate-limited with the cycle's own capture — ungated,
+      // this fired every failing cycle and re-flooded Sentry beside the
+      // already-gated catch-all capture.
+      _captureGatedSiblingFailure(e, s, phase: 'state_write');
     }
     if (kind == SyncErrorKind.network) {
       _consecutiveNetworkFailures++;
@@ -1273,8 +1316,9 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     } catch (e, s) {
       // Issue #547: recorded, not silenced — the stale in-memory count is
       // still a reasonable fallback, but a persistently failing count
-      // query is worth seeing.
-      unawaited(Sentry.captureException(e, stackTrace: s));
+      // query is worth seeing. Issue #1181: rate-limited with the cycle's
+      // own capture, same as the state-write catch above.
+      _captureGatedSiblingFailure(e, s, phase: 'dirty_count');
       return _snapshot.dirtyCount;
     }
   }

@@ -6,6 +6,14 @@
 /// way the network-backoff counter is, while `_fail` still records
 /// `lastError: other`.
 ///
+/// Issue #1181: the failure path's two sibling captures — `_fail`'s
+/// state-write catch and `_safeDirtyCount`'s catch — previously fired
+/// unconditionally every failing cycle (the audit's ~205-events-a-day
+/// residual flood) and through the static capture, invisible to any stub
+/// hub. They now ride the same streak gate and go through the same
+/// hub-routed capture under their own `sync.phase` tags, so a test can
+/// watch them the same way.
+///
 /// Captures are observed through a stubbed `Hub` — the real SDK over a
 /// no-op transport with a `beforeSend` recorder, the
 /// `test/observability/crash_smoke_test.dart` pattern — never a global
@@ -48,11 +56,24 @@ class _RecordingHub {
   final events = <SentryEvent>[];
 
   /// The catch-all's captures: tagged `sync.phase: cycle`, so a sibling
-  /// capture from `_fail`'s own failing state write (issue #547 — a
-  /// throwing `readSyncState` fails `_updateState`'s read first) can never
-  /// be mistaken for one.
+  /// capture from `_fail`'s own failing state write or `_safeDirtyCount`
+  /// (issues #547/#1181 — a throwing `readSyncState` fails `_updateState`'s
+  /// read first, and a throwing `dirtyCount` falls back to the stale
+  /// count) can never be mistaken for one.
   List<SentryEvent> get cycleEvents => events
       .where((event) => event.tags?['sync.phase'] == 'cycle')
+      .toList();
+
+  /// `_fail`'s state-write sibling capture (issue #1181: gated and
+  /// hub-routed, tagged `sync.phase: state_write`).
+  List<SentryEvent> get stateWriteEvents => events
+      .where((event) => event.tags?['sync.phase'] == 'state_write')
+      .toList();
+
+  /// `_safeDirtyCount`'s sibling capture (issue #1181: gated and
+  /// hub-routed, tagged `sync.phase: dirty_count`).
+  List<SentryEvent> get dirtyCountEvents => events
+      .where((event) => event.tags?['sync.phase'] == 'dirty_count')
       .toList();
 }
 
@@ -103,6 +124,19 @@ class FailureInjectingStorage extends LunarLogStorage {
     sentryHub: sentry.hub,
   );
   return (rig: rig, storage: storage);
+}
+
+/// The engine's captures are deliberately fire-and-forget (`unawaited`), so
+/// after a cycle returns the hub's async `beforeSend` hop still needs a few
+/// event-loop turns before every recorded event is visible. One turn
+/// suffices for the catch-all's capture (initiated first — the existing
+/// #1171 tests rely on that); the sibling captures trail it by a couple of
+/// hops (issue #1181), so tests asserting on them drain a generous,
+/// deterministic number of turns.
+Future<void> settleCaptures() async {
+  for (var i = 0; i < 8; i++) {
+    await Future<void>.delayed(Duration.zero);
+  }
 }
 
 void main() {
@@ -178,6 +212,73 @@ void main() {
               'proves the failure is still ongoing');
     });
 
+    test('the sibling storage-failure captures ride the same streak gate '
+        '(#1181): a closed-database day reports from every site only on '
+        'the reported cycles', () async {
+      final sentry = _RecordingHub();
+      final (:rig, storage: _) = _failingRig(
+        sentry,
+        readSyncStateError: StateError('closed web database'),
+        dirtyCountError: StateError('closed web database'),
+      );
+      addTearDown(rig.dispose);
+
+      await rig.start();
+      await settleCaptures();
+      expect(sentry.cycleEvents, hasLength(1));
+      expect(sentry.stateWriteEvents, hasLength(1),
+          reason: "_fail's state-write capture is no longer unconditional "
+              '(issue #1181)');
+      expect(sentry.dirtyCountEvents, hasLength(1),
+          reason: '_safeDirtyCount is no longer unconditional '
+              '(issue #1181)');
+      expect(sentry.events, hasLength(3));
+
+      for (var i = 0; i < kSyncCycleCaptureEveryNthFailure - 2; i++) {
+        await rig.sync();
+      }
+      await settleCaptures();
+      expect(sentry.events, hasLength(3),
+          reason: 'streaks 2..${kSyncCycleCaptureEveryNthFailure - 1} stay '
+              "quiet at every capture site, not just the catch-all's");
+
+      await rig.sync();
+      await settleCaptures();
+      expect(sentry.cycleEvents, hasLength(2));
+      expect(sentry.stateWriteEvents, hasLength(2));
+      expect(sentry.dirtyCountEvents, hasLength(2));
+      expect(sentry.events, hasLength(6),
+          reason: 'the every-${kSyncCycleCaptureEveryNthFailure}th cycle '
+              'reports from all three sites — 6 events grouped into one '
+              'issue per streak, not the 18 an unguarded run would flood');
+    });
+
+    test('the sibling captures carry their own sync.phase tag on the shared '
+        'cycle fingerprint: one issue per exception type, never mistaken '
+        'for the catch-all capture', () async {
+      final sentry = _RecordingHub();
+      final (:rig, storage: _) = _failingRig(
+        sentry,
+        readSyncStateError: StateError('closed web database'),
+        dirtyCountError: StateError('closed web database'),
+      );
+      addTearDown(rig.dispose);
+
+      await rig.start();
+      await settleCaptures();
+
+      final stateWrite = sentry.stateWriteEvents.single;
+      expect(stateWrite.tags?['sync.phase'], 'state_write');
+      expect(stateWrite.fingerprint, ['lunarlog-sync-cycle', 'StateError'],
+          reason: 'same fingerprint as the catch-all capture, so every '
+              'reporting site groups into one issue');
+      expect(stateWrite.exceptions!.single.type, 'StateError');
+
+      final dirtyCount = sentry.dirtyCountEvents.single;
+      expect(dirtyCount.tags?['sync.phase'], 'dirty_count');
+      expect(dirtyCount.fingerprint, ['lunarlog-sync-cycle', 'StateError']);
+    });
+
     test('a successful cycle resets the streak: the next failure reports '
         'again', () async {
       final sentry = _RecordingHub();
@@ -203,9 +304,9 @@ void main() {
           reason: 'the streak restarted, so this first failure reports');
     });
 
-    test('a mid-cycle storage failure with a working state write produces '
-        'exactly one event — the catch-all capture is the only one',
-        () async {
+    test('a mid-cycle storage failure with a working state write reports '
+        'from the catch-all and the dirty-count fallback only — the '
+        'state-write sibling has nothing to report', () async {
       final sentry = _RecordingHub();
       final (:rig, storage: _) = _failingRig(
         sentry,
@@ -215,11 +316,17 @@ void main() {
       await rig.bind(uidA);
 
       await rig.start();
+      await settleCaptures();
 
       expect(sentry.cycleEvents, hasLength(1));
-      expect(sentry.events, sentry.cycleEvents,
-          reason: "_fail's own state write succeeds here, so nothing else "
-              'is captured');
+      expect(sentry.dirtyCountEvents, hasLength(1),
+          reason: 'the stale-count fallback capture fires on the streak '
+              'gate like every other site (issue #1181), here on the '
+              'first failure of the streak');
+      expect(sentry.stateWriteEvents, isEmpty,
+          reason: "_fail's own state write succeeds here");
+      expect(sentry.events, hasLength(2),
+          reason: 'nothing else is captured');
       expect(rig.engine.snapshot.lastError, SyncErrorKind.other);
     });
 
