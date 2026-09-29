@@ -251,49 +251,61 @@ void main() {
       );
     });
 
-    test(
-        'Issue LLA-064: a regimen-schedule (pack-driven) prediction never '
-        'gets a fertile window on any forecast cycle', () {
-      final prediction = ActivePrediction(
-        today: _d(2026, 1, 15),
-        lastEpisodeStart: _d(2026, 1, 1),
-        estimatedNextStart: _d(2026, 1, 29),
-        originalEstimatedNextStart: _d(2026, 1, 29),
-        averagedCycleLengths: const [],
-        meanCycleLengthDays: 28,
-        cycleDay: 15,
-        duringEpisode: false,
-        completedCycleCount: 0,
-        validCycleCount: 0,
-        tier: CycleConfidence.high,
-        basis: PredictionBasis.regimenSchedule,
-        forecast: [
-          PredictedCycle(
-            cycleIndex: 1,
-            start: _d(2026, 1, 29),
-            estimatedPeriodLengthDays: 5,
-            tier: CycleConfidence.high,
-            spreadDays: 0,
-          ),
-          PredictedCycle(
-            cycleIndex: 2,
-            start: _d(2026, 2, 26),
-            estimatedPeriodLengthDays: 5,
-            tier: CycleConfidence.high,
-            spreadDays: 0,
-          ),
-        ],
-      );
-      final cycles = deriveForecast(
-        prediction: prediction,
-        today: _d(2026, 1, 15),
-        horizonMonths: 2,
-      );
-      expect(cycles, isNotEmpty);
-      for (final cycle in cycles) {
-        expect(cycle.fertileWindow, isNull);
-      }
-    });
+    // Issue #1133: the gate must key on `basis != statistical`, not on one
+    // named basis — so this suite runs over *every* non-statistical
+    // [PredictionBasis], derived from the enum itself. Reverting the gate
+    // to `== regimenSchedule` (the #1126 regression this guards against)
+    // fails the `statisticalOnHormonalMethod` case, and a basis added
+    // later is covered automatically.
+    final nonStatisticalBases = PredictionBasis.values
+        .where((basis) => basis != PredictionBasis.statistical)
+        .toList();
+
+    for (final basis in nonStatisticalBases) {
+      test(
+          'Issue LLA-064: a non-statistical prediction (basis: $basis) '
+          'never gets a fertile window on any forecast cycle', () {
+        final prediction = ActivePrediction(
+          today: _d(2026, 1, 15),
+          lastEpisodeStart: _d(2026, 1, 1),
+          estimatedNextStart: _d(2026, 1, 29),
+          originalEstimatedNextStart: _d(2026, 1, 29),
+          averagedCycleLengths: const [],
+          meanCycleLengthDays: 28,
+          cycleDay: 15,
+          duringEpisode: false,
+          completedCycleCount: 0,
+          validCycleCount: 0,
+          tier: CycleConfidence.high,
+          basis: basis,
+          forecast: [
+            PredictedCycle(
+              cycleIndex: 1,
+              start: _d(2026, 1, 29),
+              estimatedPeriodLengthDays: 5,
+              tier: CycleConfidence.high,
+              spreadDays: 0,
+            ),
+            PredictedCycle(
+              cycleIndex: 2,
+              start: _d(2026, 2, 26),
+              estimatedPeriodLengthDays: 5,
+              tier: CycleConfidence.high,
+              spreadDays: 0,
+            ),
+          ],
+        );
+        final cycles = deriveForecast(
+          prediction: prediction,
+          today: _d(2026, 1, 15),
+          horizonMonths: 2,
+        );
+        expect(cycles, isNotEmpty);
+        for (final cycle in cycles) {
+          expect(cycle.fertileWindow, isNull);
+        }
+      });
+    }
   });
 
   group('forecastDayCells', () {

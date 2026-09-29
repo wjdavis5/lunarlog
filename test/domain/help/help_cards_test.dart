@@ -236,9 +236,22 @@ void main() {
         'over-reassures', () {
       final copy = _copyOf(HelpCards.byId('period-late')!).toLowerCase();
       expect(copy, contains('take a pregnancy test'));
-      expect(copy, contains('with an iud, a missed period is a reason to '
-          'contact a clinician'));
+      // Issue #1133: the IUD line is copper-specific. Hormonal-IUD users'
+      // periods often stop, so an unqualified "with an IUD" would tell
+      // them a normal missed period is a reason to contact a clinician.
+      expect(copy, contains('with a copper iud, a missed period is a '
+          'reason to contact a clinician'));
+      expect(copy, isNot(contains('with an iud,')));
       expect(copy, isNot(contains('not a statement about anyone')));
+      expect(copy, contains('does not rule anything out'));
+    });
+
+    test('issue #1133: the lateness line states the double negative '
+        'plainly — no "does not mean nothing is wrong"', () {
+      final copy = _copyOf(HelpCards.byId('period-late')!);
+      expect(copy, isNot(contains('does not mean nothing is wrong')));
+      expect(copy, contains('the lateness itself is not a sign that '
+          'anything is wrong'));
       expect(copy, contains('does not rule anything out'));
     });
   });

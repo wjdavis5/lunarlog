@@ -166,7 +166,8 @@ class CycleSubphaseInfo {
   /// support the card. No verified web page stating all four was found.
   static const String kSourceCitation =
       'ACOG Menstrual Cycle infographic (PFSI033); ACOG FAQ024; '
-      'Speroff\'s Clinical Gynecologic Endocrinology (9th ed.)';
+      'Speroff\'s Clinical Gynecologic Endocrinology and Infertility '
+      '(9th ed.)';
   static const String kReviewDate = '2026-09-26';
 }
 

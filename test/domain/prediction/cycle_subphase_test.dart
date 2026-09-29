@@ -22,6 +22,20 @@ void main() {
     });
   });
 
+  group('source citation', () {
+    test('issue #1133: names the Speroff textbook by its full title', () {
+      // The 9th edition's title is "Clinical Gynecologic Endocrinology and
+      // Infertility"; the citation previously truncated it after
+      // "Endocrinology", so the named source was not a real book title.
+      expect(
+        CycleSubphaseInfo.kSourceCitation,
+        'ACOG Menstrual Cycle infographic (PFSI033); ACOG FAQ024; '
+        'Speroff\'s Clinical Gynecologic Endocrinology and Infertility '
+        '(9th ed.)',
+      );
+    });
+  });
+
   group('deriveSubphase', () {
     // 28-day cycle with 5-day bleed starting on 2026-09-01
     // Ovulation estimate ~ Day 14 (2026-09-14)

@@ -956,31 +956,43 @@ void main() {
       );
     });
 
-    test(
-        'Issue LLA-064: fertileWindowSoon never fires for a regimen-schedule '
-        '(pack-driven) prediction, even with a populated forecast', () {
-      final plan = planReminders(
-        today: today,
-        predictions: {
-          'p1': _prediction(
-            today: today,
-            estimatedNextStart: today.addDays(25),
-            forecast: forecastFrom(today.addDays(25)),
-            basis: PredictionBasis.regimenSchedule,
-          ),
-        },
-        configs: {
-          'p1': ReminderConfig.standard.copyWith(
-            fertileWindowSoon: ReminderTypeConfig(
-                enabled: true, leadDays: 2, timeOfDayMinutes: 9 * 60),
-          ),
-        },
-      );
-      expect(
-        plan.where((r) => r.kind == ReminderKind.fertileWindowSoon),
-        isEmpty,
-      );
-    });
+    // Issue #1133: the reminder gate must key on `basis != statistical`,
+    // not on one named basis — so this suite runs over *every*
+    // non-statistical [PredictionBasis], derived from the enum itself.
+    // Reverting the gate to `== regimenSchedule` (the #1126 regression this
+    // guards against) fails the `statisticalOnHormonalMethod` case, and a
+    // basis added later is covered automatically.
+    final nonStatisticalBases = PredictionBasis.values
+        .where((basis) => basis != PredictionBasis.statistical)
+        .toList();
+
+    for (final basis in nonStatisticalBases) {
+      test(
+          'Issue LLA-064: fertileWindowSoon never fires for a non-statistical '
+          'prediction (basis: $basis), even with a populated forecast', () {
+        final plan = planReminders(
+          today: today,
+          predictions: {
+            'p1': _prediction(
+              today: today,
+              estimatedNextStart: today.addDays(25),
+              forecast: forecastFrom(today.addDays(25)),
+              basis: basis,
+            ),
+          },
+          configs: {
+            'p1': ReminderConfig.standard.copyWith(
+              fertileWindowSoon: ReminderTypeConfig(
+                  enabled: true, leadDays: 2, timeOfDayMinutes: 9 * 60),
+            ),
+          },
+        );
+        expect(
+          plan.where((r) => r.kind == ReminderKind.fertileWindowSoon),
+          isEmpty,
+        );
+      });
+    }
 
     test('AC2: fertileWindowSoon cannot fire without a computed window', () {
       // No forecast ⇒ no window ⇒ nothing, never a mis-fire against

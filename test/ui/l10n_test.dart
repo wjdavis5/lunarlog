@@ -243,6 +243,16 @@ void main() {
         'also exclude this cycle from future averages, or turn off estimates '
         'if long cycles are common for this profile.',
       );
+      // Issue #1133: the stale-history card carries the same pregnancy-test
+      // and 90-day prompts as the long-cycle card above.
+      expect(
+        l10n.overviewStaleHistoryBody,
+        'It has been a long time since you logged a period, so cycle '
+        'estimates would not be reliable. Log a period when it starts to '
+        'pick estimates back up. You can also turn estimates off. If '
+        "there's any chance of pregnancy, take a pregnancy test. Going 3 "
+        'months (90 days) without a period is a reason to see a doctor.',
+      );
       expect(l10n.overviewLongCyclePredictionsOff, 'Turn off estimates');
       expect(l10n.overviewIrregularSuggestionTitle, 'Cycles vary a lot');
       expect(
@@ -272,6 +282,29 @@ void main() {
       );
       expect(l10n.householdTimingPastEstimate(1), '1 day past the estimate');
       expect(l10n.householdTimingPastEstimate(4), '4 days past the estimate');
+    });
+
+    testWidgets('insights phase card, both hormonal-contraception branches '
+        '(issue #1133)', (tester) async {
+      final l10n = await pumpL10n(tester);
+      // The pack-driven branch keeps the pack-schedule clause.
+      expect(
+        l10n.phaseInsightsHormonalContraceptionBody,
+        "While you're using the pill, patch, or ring, your estimate follows "
+        'your pack schedule rather than a natural cycle, so cycle phases '
+        "aren't shown. Combined pills, the patch, and the ring usually stop "
+        "ovulation; progestin-only (mini) pills don't always.",
+      );
+      // The no-start-date branch says what is missing and how to switch,
+      // and never claims the estimate follows a pack schedule.
+      expect(
+        l10n.phaseInsightsHormonalNoStartDateBody,
+        "You haven't added when you started this pack, so the estimate uses "
+        'your past cycles. Add your start date in Edit profile to follow '
+        "your pack schedule instead. Cycle phases aren't shown: combined "
+        'pills, the patch, and the ring usually stop ovulation; '
+        "progestin-only (mini) pills don't always.",
+      );
     });
 
     testWidgets('settings screen, including the privacy dialog body', (

@@ -72,24 +72,37 @@ void main() {
     );
   });
 
-  test(
-      'Issue LLA-064: a regimen-schedule (pack-driven) prediction shares no '
-      'fertile/ovulation days, but its period days are unaffected', () {
-    final statistical = buildPredictionProjection(_prediction(today));
-    final regimen = buildPredictionProjection(
-      _prediction(today, basis: PredictionBasis.regimenSchedule),
-    );
+  // Issue #1133: the shared-calendar gate must key on `basis !=
+  // statistical`, not on one named basis — so this suite runs over *every*
+  // non-statistical [PredictionBasis], derived from the enum itself.
+  // Reverting the gate to `== regimenSchedule` (the #1126 regression this
+  // guards against) fails the `statisticalOnHormonalMethod` case, and a
+  // basis added later is covered automatically.
+  final nonStatisticalBases = PredictionBasis.values
+      .where((basis) => basis != PredictionBasis.statistical)
+      .toList();
 
-    expect(regimen.fertileDays, isEmpty);
-    expect(regimen.ovulationDays, isEmpty);
-    expect(statistical.fertileDays, isNotEmpty,
-        reason: 'sanity check: the statistical fixture does derive fertile '
-            'days, so the regimen case above is a real gate, not a fluke '
-            'of the fixture');
-    expect(regimen.periodDays, statistical.periodDays,
-        reason: 'the prediction basis only gates fertility derivation, '
-            'never the period-day forecast itself');
-  });
+  for (final basis in nonStatisticalBases) {
+    test(
+        'Issue LLA-064: a non-statistical prediction (basis: $basis) '
+        'shares no fertile/ovulation days, but its period days are '
+        'unaffected', () {
+      final statistical = buildPredictionProjection(_prediction(today));
+      final suppressed = buildPredictionProjection(
+        _prediction(today, basis: basis),
+      );
+
+      expect(suppressed.fertileDays, isEmpty);
+      expect(suppressed.ovulationDays, isEmpty);
+      expect(statistical.fertileDays, isNotEmpty,
+          reason: 'sanity check: the statistical fixture does derive fertile '
+              'days, so the $basis case above is a real gate, not a fluke '
+              'of the fixture');
+      expect(suppressed.periodDays, statistical.periodDays,
+          reason: 'the prediction basis only gates fertility derivation, '
+              'never the period-day forecast itself');
+    });
+  }
 
   test('current open episode days are included while duringEpisode', () {
     final base = _prediction(today);

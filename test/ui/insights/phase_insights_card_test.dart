@@ -91,6 +91,12 @@ void main() {
       find.textContaining('your estimate follows your pack schedule'),
       findsOneWidget,
     );
+    // Issue #1133: the pack-driven branch keeps the pack-schedule clause —
+    // and must not render the no-start-date branch's copy.
+    expect(
+      find.textContaining("You haven't added when you started this pack"),
+      findsNothing,
+    );
     // Issue #1118: the copy must distinguish combined from progestin-only
     // pills, because about 4 in 10 POP users still ovulate (ACOG FAQ186).
     expect(
@@ -136,6 +142,25 @@ void main() {
 
     expect(
       find.byKey(const ValueKey('phase-insights-regimen-schedule')),
+      findsOneWidget,
+    );
+    // Issue #1133: with no recorded regimen start the estimate comes from
+    // the profile's history, not a pack cadence, so the card says what is
+    // missing and how to switch — and never claims the estimate "follows
+    // your pack schedule" (device-confirmed false on QA pass 154).
+    expect(
+      find.textContaining("You haven't added when you started this pack"),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Edit profile'), findsOneWidget);
+    expect(
+      find.textContaining('your estimate follows your pack schedule'),
+      findsNothing,
+      reason: 'the pack-schedule clause is false on this branch',
+    );
+    // The ovulation-gating half is correct in both branches (#1133).
+    expect(
+      find.textContaining('progestin-only (mini) pills'),
       findsOneWidget,
     );
     expect(find.byKey(const ValueKey('phase-name-text')), findsNothing);

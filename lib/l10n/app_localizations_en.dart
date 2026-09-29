@@ -605,7 +605,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get overviewStaleHistoryBody =>
-      'It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick estimates back up. You can also turn estimates off.';
+      'It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick estimates back up. You can also turn estimates off. If there\'s any chance of pregnancy, take a pregnancy test. Going 3 months (90 days) without a period is a reason to see a doctor.';
 
   @override
   String get overviewStaleHistoryLog => 'Log a period';
@@ -4823,6 +4823,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get phaseInsightsHormonalContraceptionBody =>
       'While you\'re using the pill, patch, or ring, your estimate follows your pack schedule rather than a natural cycle, so cycle phases aren\'t shown. Combined pills, the patch, and the ring usually stop ovulation; progestin-only (mini) pills don\'t always.';
+
+  @override
+  String get phaseInsightsHormonalNoStartDateBody =>
+      'You haven\'t added when you started this pack, so the estimate uses your past cycles. Add your start date in Edit profile to follow your pack schedule instead. Cycle phases aren\'t shown: combined pills, the patch, and the ring usually stop ovulation; progestin-only (mini) pills don\'t always.';
 
   @override
   String phaseInsightsReadArticle(String title) {

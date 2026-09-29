@@ -1130,10 +1130,10 @@ abstract class AppLocalizations {
   /// **'Your history is out of date'**
   String get overviewStaleHistoryTitle;
 
-  /// Issue #859: calm, non-alarming body of the stale-history overview card.
+  /// Issue #859: calm, non-alarming body of the stale-history overview card. Issue #1133: carries the same pregnancy-test and 90-day safety prompts as overviewLongCycleBody and the unusually-long-cycle help card — a stale-history profile can be just as far past a period as an unusually long cycle, and the card previously had neither prompt.
   ///
   /// In en, this message translates to:
-  /// **'It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick estimates back up. You can also turn estimates off.'**
+  /// **'It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick estimates back up. You can also turn estimates off. If there\'s any chance of pregnancy, take a pregnancy test. Going 3 months (90 days) without a period is a reason to see a doctor.'**
   String get overviewStaleHistoryBody;
 
   /// Issue #859: primary action on the stale-history card, logging a period start for today.
@@ -7698,11 +7698,17 @@ abstract class AppLocalizations {
   /// **'In a typical cycle where ovulation happens, around this point:'**
   String get phaseInsightsTypicalCycleLead;
 
-  /// Issue #1118: shown on the Analysis tab in place of the phase card when the prediction is not statistical (pack-driven, or a hormonal method with no recorded start date). Combined hormonal contraception usually suppresses ovulation (ACOG FAQ185), but progestin-only pills do not consistently (ACOG FAQ186: about 4 in 10 users continue to ovulate), so the copy must not claim ovulation never happens.
+  /// Issue #1118: shown on the Analysis tab in place of the phase card when the prediction is pack-driven (a withdrawal-bleed method with a recorded regimen start; PredictionBasis.regimenSchedule). Issue #1133: the no-start-date case now renders phaseInsightsHormonalNoStartDateBody instead, because this card's 'follows your pack schedule' clause is false when no pack anchor exists — the estimate then comes from the profile's own history. Combined hormonal contraception usually suppresses ovulation (ACOG FAQ185), but progestin-only pills do not consistently (ACOG FAQ186: about 4 in 10 users continue to ovulate), so the copy must not claim ovulation never happens.
   ///
   /// In en, this message translates to:
   /// **'While you\'re using the pill, patch, or ring, your estimate follows your pack schedule rather than a natural cycle, so cycle phases aren\'t shown. Combined pills, the patch, and the ring usually stop ovulation; progestin-only (mini) pills don\'t always.'**
   String get phaseInsightsHormonalContraceptionBody;
+
+  /// Issue #1133: shown on the Analysis tab in place of the phase card when the profile's in-effect withdrawal-bleed method has no recorded regimen start (PredictionBasis.statisticalOnHormonalMethod) — the estimate then comes from the profile's history, not a pack cadence, so the pack-schedule clause of phaseInsightsHormonalContraceptionBody would be false (device-confirmed by the owner on QA pass 154). Says what is missing, what the estimate uses instead, and the way to switch. The ovulation-gating half is kept from #1118 verbatim: combined hormonal contraception usually suppresses ovulation (ACOG FAQ185), but progestin-only pills do not consistently (ACOG FAQ186: about 4 in 10 users continue to ovulate).
+  ///
+  /// In en, this message translates to:
+  /// **'You haven\'t added when you started this pack, so the estimate uses your past cycles. Add your start date in Edit profile to follow your pack schedule instead. Cycle phases aren\'t shown: combined pills, the patch, and the ring usually stop ovulation; progestin-only (mini) pills don\'t always.'**
+  String get phaseInsightsHormonalNoStartDateBody;
 
   /// Issue #1004 (tranche 4a): button opening the subphase's context article, naming its title.
   ///
