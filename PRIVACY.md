@@ -1,7 +1,7 @@
 # LunarLog Privacy Policy
 
 **Effective Date:** September 7, 2026  
-**Last Updated:** September 29, 2026 — health imports can now run in the background once you have opted in (Section 4); the signed-in browser build's error-reporting disclosure now states what that build actually sends (Section 6).
+**Last Updated:** September 29, 2026 — health imports can now run in the background once you have opted in (Section 4).
 
 LunarLog ("we", "our", or "the app") is a privacy-first menstrual cycle and symptom tracker built for families: an account syncs a profile across a guardian's own devices and lets it be shared with other guardians — co-parents, caregivers — each with their own role, so sync and multi-guardian collaboration are the product's priority, not a bolted-on option. We believe that reproductive and menstrual health data is deeply personal and sensitive. LunarLog is architected from the ground up to protect your privacy: your data is protected at rest by each device's own operating-system encryption (Section 1), nothing you log is uploaded until you sign in, and the app keeps logging, viewing, and predicting even when you have no network connection.
 
