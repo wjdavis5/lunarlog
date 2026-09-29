@@ -203,6 +203,55 @@ void main() {
       );
     });
 
+    test('health-import answer keeps the spotting half of the '
+        'Health Connect read (#1180)', () {
+      // Issue #1180: the #1153 rewrite fixed the time axis ("30 days" →
+      // full history) but narrowed the type axis to "menstrual-flow
+      // history" for both platforms. On Android the import also reads
+      // intermenstrual-bleeding records — stored as spotting observations,
+      // the same shape the app logs spotting in (PRIVACY.md §4) — and the
+      // site's own guide already said "flow and spotting". An understated
+      // read scope is the one direction a health-data disclosure must not
+      // err in, so the flow-only qualifier may not be applied to both
+      // platforms again.
+      expect(
+        supportPage,
+        contains('flow and spotting history from Health Connect'),
+      );
+      expect(
+        supportPage,
+        isNot(contains(
+          'menstrual-flow history from Apple Health or Health Connect',
+        )),
+        reason: 'the #1153 type-axis narrowing, verbatim',
+      );
+      // The cite comment carries the spot-worthiness note naming the
+      // Health Connect read types, so a rewrite that reads only the
+      // ledger annotation cannot re-narrow the axis either.
+      expect(supportPage, contains('intermenstrual-bleeding'));
+      expect(supportPage, contains('READ_INTERMENSTRUAL_BLEEDING'));
+
+      // The facts the answer paraphrases, read from their sources of
+      // record so the page and the app cannot drift apart.
+      final privacy = flat(File('PRIVACY.md').readAsStringSync());
+      expect(
+        privacy,
+        contains('read menstrual flow and intermenstrual-bleeding records'),
+      );
+      expect(
+        File('android/app/src/main/AndroidManifest.xml').readAsStringSync(),
+        contains('android.permission.health.READ_INTERMENSTRUAL_BLEEDING'),
+        reason: 'the permission behind the Android spotting read',
+      );
+      // The guide (moving-your-data.astro) always carried the correct
+      // per-platform split; the two pages must agree.
+      final guide = flat(
+        File('site/src/pages/guides/moving-your-data.astro')
+            .readAsStringSync(),
+      );
+      expect(guide, contains('flow and spotting'));
+    });
+
     test('pages ship zero client-side JavaScript', () {
       // The site's own acceptance criterion (#1099): no client JS. A page
       // that grows a script tag fails here before the CSP in _headers does.
