@@ -198,6 +198,43 @@ void main() {
       expect(screen, contains('safeLaunchUrl'));
     });
 
+    test('the Health Connect import claim covers flow and spotting (#1180)',
+        () {
+      // Issue #1180: the type axis of the health-import read. On Android,
+      // Health Connect returns menstrual-flow AND intermenstrual-bleeding
+      // records — the latter stored as spotting observations, the shape
+      // the app logs spotting in (PRIVACY.md §4) — so a flow-only claim
+      // understates a health-data read, the one direction a store-facing
+      // disclosure must not err in. The /import page, its cite comment,
+      // and its ledger claim must all keep the spotting half.
+      final importPage =
+          flat(File('site/src/pages/import.astro').readAsStringSync());
+      expect(importPage, contains('flow and spotting history'));
+      expect(importPage, contains('intermenstrual-bleeding'));
+      expect(
+        importPage,
+        isNot(contains('on Android, the same from Health Connect')),
+        reason: 'the narrowing the page used to carry, verbatim',
+      );
+      // The ledger claim paraphrases the page; the two cannot drift apart.
+      expect(flat(ledger), contains('flow and spotting history'));
+      expect(
+        flat(ledger),
+        isNot(contains('Android) imports read menstrual-flow history')),
+      );
+      // The facts the claim paraphrases, read from their sources of record.
+      final privacy = flat(File('PRIVACY.md').readAsStringSync());
+      expect(
+        privacy,
+        contains('read menstrual flow and intermenstrual-bleeding records'),
+      );
+      expect(
+        File('android/app/src/main/AndroidManifest.xml').readAsStringSync(),
+        contains('android.permission.health.READ_INTERMENSTRUAL_BLEEDING'),
+        reason: 'the permission behind the Android spotting read',
+      );
+    });
+
     test('unshipped features stay unclaimed', () {
       for (final entry in pages.entries) {
         final source = flat(File(entry.value).readAsStringSync());

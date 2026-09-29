@@ -49,13 +49,19 @@ const description =
 
     <section>
       <h2>From Apple Health or Health Connect</h2>
-      <!-- cite: lib/data/health/health_import_service.dart (user-initiated only; the whole available history read a page at a time, issue #992; hand-logged values never overwritten; own writes excluded by source; provenance stamped; "Bound, never background"); PRIVACY.md §4 health paragraph. -->
+      <!-- cite: lib/data/health/health_import_service.dart (user-initiated only; the whole
+           available history read a page at a time, issue #992; on Android the read
+           covers menstrual-flow AND intermenstrual-bleeding records — Health Connect's
+           READ_MENSTRUATION and READ_INTERMENSTRUAL_BLEEDING, issue #1180 — and
+           hand-logged values are never overwritten; own writes excluded by source;
+           provenance stamped; "Bound, never background"); PRIVACY.md §4 health paragraph. -->
       <p>
         On iPhone, lunarlog can read menstrual-flow history from Apple
-        Health; on Android, the same from Health Connect. You start each
-        import yourself from Settings — there is no background read and no
-        schedule — and the read covers the whole history the health store
-        holds, a page at a time, however far back it goes.
+        Health; on Android, flow and spotting history from Health Connect.
+        You start each import yourself from Settings — there is no
+        background read and no schedule — and the read covers the whole
+        history the health store holds, a page at a time, however far back
+        it goes.
       </p>
       <p>
         What an import will and will not do:
