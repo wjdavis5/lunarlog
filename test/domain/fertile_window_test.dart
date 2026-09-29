@@ -72,20 +72,33 @@ ActivePrediction _predictionWithForecast({
 }
 
 void main() {
+  // Issue #1133: every ovulation gate must key on `basis != statistical`,
+  // not on one named basis — so the gate tests below run over *every*
+  // non-statistical [PredictionBasis], derived from the enum itself.
+  // Reverting a gate to `== regimenSchedule` (the #1126 regression this
+  // guards against) fails the `statisticalOnHormonalMethod` case, and a
+  // basis added later is covered automatically.
+  final nonStatisticalBases = PredictionBasis.values
+      .where((basis) => basis != PredictionBasis.statistical)
+      .toList();
+
   group('estimateFertileWindow', () {
     test('null prediction -> null (the NotEnoughHistory case)', () {
       expect(estimateFertileWindow(null), isNull);
     });
 
-    test(
-        'Issue LLA-064: a regimen-schedule (pack-driven) prediction -> null '
-        '— a withdrawal-bleed pack cadence carries no ovulatory signal', () {
-      final prediction = _prediction(
-        estimatedNextStart: _d(2026, 8, 29),
-        basis: PredictionBasis.regimenSchedule,
-      );
-      expect(estimateFertileWindow(prediction), isNull);
-    });
+    for (final basis in nonStatisticalBases) {
+      test(
+          'Issue LLA-064: a non-statistical prediction (basis: $basis) -> '
+          'null — a pack cadence or a hormonal method with no recorded '
+          'start date carries no ovulatory signal', () {
+        final prediction = _prediction(
+          estimatedNextStart: _d(2026, 8, 29),
+          basis: basis,
+        );
+        expect(estimateFertileWindow(prediction), isNull);
+      });
+    }
 
     test('Issue #859: a stale-history prediction -> null (no fertile window '
         'derived from a rolled estimate nobody observed)', () {
@@ -187,24 +200,26 @@ void main() {
       expect(currentFertileWindow(null), isNull);
     });
 
-    test(
-        'Issue LLA-064: a regimen-schedule (pack-driven) prediction -> null, '
-        'even with a non-empty forecast', () {
-      final prediction = _predictionWithForecast(
-        today: _d(2026, 8, 20),
-        forecast: [
-          PredictedCycle(
-            cycleIndex: 1,
-            start: LocalDate(2026, 9, 4),
-            estimatedPeriodLengthDays: 4,
-            tier: CycleConfidence.high,
-            spreadDays: 0,
-          ),
-        ],
-        basis: PredictionBasis.regimenSchedule,
-      );
-      expect(currentFertileWindow(prediction), isNull);
-    });
+    for (final basis in nonStatisticalBases) {
+      test(
+          'Issue LLA-064: a non-statistical prediction (basis: $basis) -> '
+          'null, even with a non-empty forecast', () {
+        final prediction = _predictionWithForecast(
+          today: _d(2026, 8, 20),
+          forecast: [
+            PredictedCycle(
+              cycleIndex: 1,
+              start: LocalDate(2026, 9, 4),
+              estimatedPeriodLengthDays: 4,
+              tier: CycleConfidence.high,
+              spreadDays: 0,
+            ),
+          ],
+          basis: basis,
+        );
+        expect(currentFertileWindow(prediction), isNull);
+      });
+    }
 
     test('Issue #859: a stale-history prediction -> null even with a '
         'non-empty forecast', () {

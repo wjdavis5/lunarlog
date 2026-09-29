@@ -59,8 +59,8 @@
       "Logging the period closes the cycle and the whole estimate recomputes. Skipping leaves the cycle in history but out of the average, and moves the estimate one average cycle later.",
       "In the first few years after periods start — and at other times, like perimenopause — cycle lengths vary naturally, and an estimate built on averages will miss more often. That is variation, not a fault. Profiles set to the teen care mode never see this banner: a teen’s cycles are still settling, and \"late\" can read as a failure when nothing is wrong, so those profiles get a quiet \"log it when it comes\" line instead.",
       "The \"irregular cycles\" framing switch is a separate setting. It changes how much the estimate hedges, but it is not what keeps this banner away from a teen — teen mode does that on its own, at every stage.",
-      "A late estimate is only about the maths — it does not mean nothing is wrong, and it does not rule anything out. If something worries you, talk to a doctor or another clinician you trust.",
-      "If there’s any chance of pregnancy, take a pregnancy test. With an IUD, a missed period is a reason to contact a clinician.",
+      "A late estimate is only about the maths — the lateness itself is not a sign that anything is wrong, but it does not rule anything out. If something worries you, talk to a doctor or another clinician you trust.",
+      "If there’s any chance of pregnancy, take a pregnancy test. With a copper IUD, a missed period is a reason to contact a clinician.",
       "Estimates only — not medical advice."
     ],
     "source": "ACOG Committee Opinion 651; ACOG FAQ047",

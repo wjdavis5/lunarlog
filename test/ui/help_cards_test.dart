@@ -65,10 +65,13 @@ void main() {
         (tester) async {
       await _pump(tester, const HelpCardView(card: HelpCards.periodLate));
       expect(find.textContaining('take a pregnancy test'), findsOneWidget);
+      // Issue #1133: copper-specific — hormonal-IUD users' periods often
+      // stop, so the card must not tell them a missed period is a concern.
       expect(
         find.textContaining('missed period is a reason to contact a clinician'),
         findsOneWidget,
       );
+      expect(find.textContaining('copper IUD'), findsOneWidget);
     });
   });
 

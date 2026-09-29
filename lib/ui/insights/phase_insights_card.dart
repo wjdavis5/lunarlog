@@ -31,13 +31,21 @@ class PhaseInsightsCard extends StatelessWidget {
     // carries no ovulatory signal, so the card must show no subphase or
     // ovulation content. See [PredictionBasis]'s own doc comment.
     if (prediction.basis != PredictionBasis.statistical) {
+      // Issue #1133: the two non-statistical bases get different copy. The
+      // pack-driven branch's "follows your pack schedule" clause is false
+      // for the no-start-date branch, whose estimate comes from the
+      // profile's own history (device-confirmed by the owner on QA pass
+      // 154) — so that branch says what is missing and how to switch.
+      final body = prediction.basis == PredictionBasis.statisticalOnHormonalMethod
+          ? l10n.phaseInsightsHormonalNoStartDateBody
+          : l10n.phaseInsightsHormonalContraceptionBody;
       return Card(
         key: const ValueKey('phase-insights-regimen-schedule'),
         margin: const EdgeInsets.symmetric(vertical: 8),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Text(
-            l10n.phaseInsightsHormonalContraceptionBody,
+            body,
             key: const ValueKey('phase-regimen-schedule-text'),
             style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
           ),

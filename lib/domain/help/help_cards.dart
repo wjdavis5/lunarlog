@@ -183,11 +183,12 @@ class HelpCards {
           'changes how much the estimate hedges, but it is not what keeps '
           'this banner away from a teen — teen mode does that on its own, '
           'at every stage.',
-      'A late estimate is only about the maths — it does not mean nothing '
-          'is wrong, and it does not rule anything out. If something worries '
-          'you, talk to a doctor or another clinician you trust.',
+      'A late estimate is only about the maths — the lateness itself is '
+          'not a sign that anything is wrong, but it does not rule anything '
+          'out. If something worries you, talk to a doctor or another '
+          'clinician you trust.',
       'If there\u2019s any chance of pregnancy, take a pregnancy test. With '
-          'an IUD, a missed period is a reason to contact a clinician.',
+          'a copper IUD, a missed period is a reason to contact a clinician.',
       'Estimates only — not medical advice.',
     ],
     source: _periodLateSource,
