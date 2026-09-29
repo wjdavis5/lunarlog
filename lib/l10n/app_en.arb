@@ -1188,9 +1188,9 @@
       }
     }
   },
-  "healthSyncFullHistoryNote": "Imports everything the health store makes available, not a recent window. Background sync is not available yet.",
+  "healthSyncFullHistoryNote": "Imports everything the health store makes available, not a recent window — and keeps itself current in the background once you have run it once.",
   "@healthSyncFullHistoryNote": {
-    "description": "Health sync screen scope note (Issue #992): reads are full-history now; background reads remain deferred."
+    "description": "Health sync screen scope note (Issues #992/#993): reads are full-history, and after the first import the same import keeps itself current in the background — prompt-free, never a write."
   },
   "healthSyncImportStoppedEarly": "The import stopped early after an unusual amount of data. The days already read were kept — run the import again to continue.",
   "@healthSyncImportStoppedEarly": {

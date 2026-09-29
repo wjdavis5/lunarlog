@@ -1482,10 +1482,10 @@ abstract class AppLocalizations {
   /// **'Importing… {samples, plural, =1{1 sample} other{{samples} samples}} read so far.'**
   String healthSyncImportProgress(int samples);
 
-  /// Health sync screen scope note (Issue #992): reads are full-history now; background reads remain deferred.
+  /// Health sync screen scope note (Issues #992/#993): reads are full-history, and after the first import the same import keeps itself current in the background — prompt-free, never a write.
   ///
   /// In en, this message translates to:
-  /// **'Imports everything the health store makes available, not a recent window. Background sync is not available yet.'**
+  /// **'Imports everything the health store makes available, not a recent window — and keeps itself current in the background once you have run it once.'**
   String get healthSyncFullHistoryNote;
 
   /// Health import summary (Issue #992): the pass hit the page cap or saw a repeated cursor, so it stopped rather than spin. Days read so far were still merged; re-running continues safely.

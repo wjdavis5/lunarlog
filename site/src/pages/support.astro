@@ -123,21 +123,30 @@ const deleteAccountUrl = "/delete-account";
       </p>
 
       <h3>Can I bring data in from Clue or my health app?</h3>
-      <!-- cite: PRIVACY.md §7/§4 and docs/ops/play-health-declaration.md (user-initiated
-           Apple Health / Health Connect import, full history — it reads menstrual-flow
-           records on iOS and, on Android, menstrual-flow AND intermenstrual-bleeding
-           records (Health Connect's READ_MENSTRUATION and READ_INTERMENSTRUAL_BLEEDING,
+      <!-- cite: PRIVACY.md §7/§4 and docs/ops/play-health-declaration.md (the first
+           Apple Health / Health Connect import is user-initiated, full history — it
+           reads menstrual-flow records on iOS and, on Android, menstrual-flow AND
+           intermenstrual-bleeding records (Health Connect's READ_MENSTRUATION and
+           READ_INTERMENSTRUAL_BLEEDING,
            android/app/src/main/AndroidManifest.xml), as far back as the health store
            has them, per issue #992, and never overwrites a hand-logged value; spotting
            is half of the Android read, so the type axis must not be narrowed again —
-           issue #1180); bulk Clue import (issue #167/#172). -->
+           issue #1180; since issue #993 the same import also runs prompt-free in the
+           background — Apple Health's background delivery and Android's periodic
+           Health Connect check, #153 guard + #959 probe inside importInBackground, so
+           the background axis must not be denied again either); bulk Clue import
+           (issue #167/#172). -->
       <p>
         Yes. You can import history from Clue, and import your menstrual-flow
         history from Apple Health on iPhone — or your flow and spotting
         history from Health Connect on Android — whenever you choose, as far
         back as your health app has it. Imports never overwrite a value you
-        logged by hand. It's user-initiated only; lunarlog never reads your
-        health store in the background.
+        logged by hand. You start the first import yourself; once a profile
+        is bound, the same import also keeps itself current in the
+        background — Apple Health tells lunarlog when new data lands, and
+        Android checks Health Connect on a schedule — never prompting,
+        never writing, and stopping if you unbind the profile or revoke the
+        health permission.
         <a href="/guides/moving-your-data/">Moving your data</a> walks
         through it.
       </p>
