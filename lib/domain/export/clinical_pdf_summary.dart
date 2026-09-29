@@ -433,10 +433,13 @@ Set<String> _tagLabelsOn(
 /// strings only when [tags.isSymptomTagCode] classifies them as symptoms
 /// (issue #1144 — the Clue importer writes `medication`/`tests`/`sex_life`
 /// rows too, so the same non-symptom codes can arrive via this half as via
-/// tags), custom tag codes to their display names, and unmapped option
-/// codes fall back to their raw code (unknown-never-drop). Free-text Clue
-/// tags (`category == 'tags'`, issue #1117) are excluded, matching the
-/// FHIR export.
+/// tags), custom tag codes to their display names, and an unmapped option
+/// code falls back to its raw code only when its row's category can carry
+/// a symptom (issue #1189 — the same category-level default
+/// [tags.tagClinicalRoleForCategory] gives the FHIR export; see
+/// [_resolveObservationCodeLabel]). Free-text Clue tags
+/// (`category == 'tags'`, issue #1117) are excluded, matching the FHIR
+/// export.
 Set<String> _observationLabelsOn(
   List<Observation> observations,
   Map<String, CustomTag> customTagsByCode,
@@ -476,23 +479,41 @@ String? _observationLabel(
     return 'Spotting';
   }
   final symptomCode = observation.code ?? observation.category.wireCode;
-  return _resolveObservationCodeLabel(symptomCode, customTagsByCode);
+  return _resolveObservationCodeLabel(
+    symptomCode,
+    observation.category.wireCode,
+    customTagsByCode,
+  );
 }
 
 String? _resolveObservationCodeLabel(
   String symptomCode,
+  String categoryWireCode,
   Map<String, CustomTag> customTagsByCode,
 ) {
   if (tags.kPositiveAssertionCodes.contains(symptomCode)) return null;
   final customTag = customTagsByCode[symptomCode];
   if (customTag != null) return customTag.displayName;
   final taxonomyTag = tags.tagByCode(symptomCode);
-  // Unknown code: kept verbatim (unknown-never-drop) — an unrecognised
-  // import string renders raw rather than being guessed about.
-  if (taxonomyTag == null) return symptomCode;
-  // Known taxonomy code: only a symptom enters the grid (issue #1144).
-  return tags.isSymptomTagCode(symptomCode)
-      ? tags.flatDisplayForTag(taxonomyTag)
+  if (taxonomyTag != null) {
+    // Known taxonomy code: only a symptom enters the grid (issue #1144).
+    return tags.isSymptomTagCode(symptomCode)
+        ? tags.flatDisplayForTag(taxonomyTag)
+        : null;
+  }
+  // Unknown code (issue #1189): the row's category decides, exactly as
+  // fhir_bundle.dart's _rowRole routes the same case — verbatim only where
+  // the category can carry a symptom ([tags.kSymptomTagCategories] degrade
+  // to the problem reading), dropped from the grid for
+  // medication/sex_life/partying (not exported) and tests (results, not
+  // symptoms). A category this taxonomy does not know keeps the
+  // fail-open verbatim rendering — the pre-#1138 behavior for an
+  // unrecognised import string — rather than guessing about it.
+  final category = tags.categoryFromWireName(categoryWireCode);
+  if (category == null) return symptomCode;
+  return tags.tagClinicalRoleForCategory(category) ==
+          tags.TagClinicalRole.problem
+      ? symptomCode
       : null;
 }
 
