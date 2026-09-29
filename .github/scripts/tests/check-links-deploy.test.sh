@@ -424,11 +424,33 @@ cat >"$WORK/home-cf-beacon/home.body" <<'EOF'
 <!DOCTYPE html><html><head><title>lunarlog</title></head><body><h1>lunarlog</h1><script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v31edd6" integrity="sha512-x" data-cf-beacon='{"version":"2024.11.0","token":"x","r":1,"spa":2}' crossorigin="anonymous"></script></body></html>
 EOF
 
-# Warn-only default (BEACON_MUST_BE_ABSENT=false at the top of the script):
-# the injection is inert (the CSP blocks the script), so it fails nothing --
-# the finding is a loud ::warning:: naming the marker and the owner
-# decision, and the deploy goes green.
-run_case "$WORK/home-cf-beacon"
+# The arming constant is read out of the script under test, not assumed
+# (issue #1186): the docs (docs/web/security-posture.md) promise that
+# flipping BEACON_MUST_BE_ABSENT to true is a one-line reviewed commit, so
+# the owner's arming commit must not be the commit that turns these suites
+# red. The shipped value decides what the live script below is expected to
+# do, and both modes are forced into copies of the script so both stay
+# proven whichever way the flip was committed. The sed anchors on the
+# constant's own line, so a rename or move of the constant leaves the
+# extraction empty and fails right here -- the constant cannot silently
+# drift.
+BEACON_ARMED="$(sed -n 's/^BEACON_MUST_BE_ABSENT=//p' "$SCRIPT")"
+case "$BEACON_ARMED" in
+  true|false) ;;
+  *)
+    echo "FAIL: the arming constant must be BEACON_MUST_BE_ABSENT=true or =false on its own line in the script under test (got '$BEACON_ARMED')"
+    exit 1
+    ;;
+esac
+
+# Warn-only mode (BEACON_MUST_BE_ABSENT=false): the injection is inert (the
+# CSP blocks the script), so it fails nothing -- the finding is a loud
+# ::warning:: naming the marker and the owner decision, and the deploy goes
+# green. Proven on a copy forced unarmed, so the warn path keeps coverage
+# even after the owner arms the real script (issue #1186).
+unarmed_script="$WORK/unarmed-check-links-deploy.sh"
+sed 's/^BEACON_MUST_BE_ABSENT=.*/BEACON_MUST_BE_ABSENT=false/' "$SCRIPT" >"$unarmed_script"
+run_case "$WORK/home-cf-beacon" "$unarmed_script"
 assert_exit "an injected Web Analytics beacon warns but passes while unarmed" 0
 assert_contains "the warning is a ::warning:: annotation" "$LAST_LOG" "::warning::"
 assert_contains "the warning names the injection" "$LAST_LOG" "Cloudflare Web Analytics beacon"
@@ -436,17 +458,28 @@ assert_contains "the warning names the arming constant" "$LAST_LOG" "BEACON_MUST
 assert_contains "the warning names the owner decision (issue #1139)" "$LAST_LOG" "issue #1139"
 assert_not_contains "the unarmed pass emits no error annotation" "$LAST_LOG" "::error::"
 
-# Armed mode: the same fixture hard-fails. The armed script is the original
-# with only the arming constant's line flipped -- proving the flip is one
-# tested line (a rename or move of the constant makes this sed a no-op and
-# this case fails, so the constant cannot silently drift).
+# Armed mode: the same fixture hard-fails. A copy forced armed whatever the
+# shipped value (see the extraction above for the drift guard).
 armed_script="$WORK/armed-check-links-deploy.sh"
-sed 's/^BEACON_MUST_BE_ABSENT=false$/BEACON_MUST_BE_ABSENT=true/' "$SCRIPT" >"$armed_script"
+sed 's/^BEACON_MUST_BE_ABSENT=.*/BEACON_MUST_BE_ABSENT=true/' "$SCRIPT" >"$armed_script"
 run_case "$WORK/home-cf-beacon" "$armed_script"
 assert_exit "an armed check refuses on the same beacon fixture" 1
 assert_contains "the armed failure is an error annotation" "$LAST_LOG" "::error::"
 assert_contains "the armed failure names the beacon" "$LAST_LOG" "Cloudflare Web Analytics beacon"
 assert_contains "the armed failure names the remediation (issue #1139)" "$LAST_LOG" "issue #1139"
+
+# And the shipped script itself must behave as its own constant declares
+# (issue #1186) -- this is the expectation that follows the reviewed flip.
+run_case "$WORK/home-cf-beacon"
+if [ "$BEACON_ARMED" = "true" ]; then
+  assert_exit "the shipped script refuses on the beacon fixture, as its armed constant declares" 1
+  assert_contains "the shipped armed failure is an error annotation" "$LAST_LOG" "::error::"
+  assert_not_contains "the shipped armed script emits no warning" "$LAST_LOG" "::warning::"
+else
+  assert_exit "the shipped script warns but passes, as its unarmed constant declares" 0
+  assert_contains "the shipped unarmed pass warns" "$LAST_LOG" "::warning::"
+  assert_not_contains "the shipped unarmed pass emits no error annotation" "$LAST_LOG" "::error::"
+fi
 
 # Arming must not disturb the clean path.
 run_case "$WORK/valid" "$armed_script"
