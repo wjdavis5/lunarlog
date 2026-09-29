@@ -471,17 +471,9 @@ mixin LunarLogStorageQueries {
         .watch();
   }
 
-  Future<String?> getSetting(String key) async {
-    final row = await (db.select(db.appSettings)
-          ..where((t) => t.key.equals(key)))
-        .getSingleOrNull();
-    return row?.value;
-  }
-
-  Stream<String?> watchSetting(String key) {
-    final query = db.select(db.appSettings)..where((t) => t.key.equals(key));
-    return query.watchSingleOrNull().map((row) => row?.value);
-  }
+  // The device-local settings reads moved to `AppSettingsStorage`
+  // (issue #551 part 1 step 3); the class forwards via
+  // `LunarLogStorageAppSettings`.
 
   // ------------------------------------------------- sync: merge disclosures
 
@@ -647,23 +639,9 @@ mixin LunarLogStorageQueries {
   /// device holding only those rows is never silently treated as empty).
   Future<LocalRowCounts> countAllRows() => _countAllRowCounts(db);
 
-  /// The device-local `health_sync_state` anchor for [platform], or null
-  /// when never written (Issue #186 — never synced to the server).
-  Future<HealthSyncStateRow?> readHealthSyncAnchor(String platform) async {
-    final row = await (db.select(db.healthSyncState)
-          ..where((t) => t.platform.equals(platform)))
-        .getSingleOrNull();
-    return row;
-  }
-
-  /// Every device-local `health_export_ledger` row for [profileId] (Issue
-  /// #936 — never synced to the server).
-  Future<List<HealthExportLedgerRowData>> readHealthExportLedger(
-    String profileId,
-  ) =>
-      (db.select(db.healthExportLedger)
-            ..where((t) => t.profileId.equals(profileId)))
-          .get();
+  // The device-local health reads moved to `HealthDeviceStorage`
+  // (issue #551 part 1 step 3); the class forwards via
+  // `LunarLogStorageHealthDevice`.
 
   Future<List<ProfileGuardianData>> getGuardiansForProfile(String profileId) =>
       (db.select(db.profileGuardians)..where((t) => t.profileId.equals(profileId)))

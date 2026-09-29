@@ -157,6 +157,22 @@ instance is what makes the collaborator genuinely behaviour-identical.
    `LocalRowCountStore` role, not an allowlist entry — the same move the guard
    exists to force.
 
+3. **#551 part 1, step 3 (the next two families).** `HealthDeviceStorage`
+   and `AppSettingsStorage` were extracted the same way — the two smallest
+   never-synced device-local families, one commit each so every step stayed
+   green on its own. Health was the trivial shape: no clock, no dirty flags,
+   just the database, so the collaborator takes `db` alone. Settings needed
+   the shared-clock rule (its `updated_at` stamp comes from the same
+   `StorageClock` every other local write uses) and surfaced the one new
+   wrinkle: members *inside* the remaining mixins called the moved ones, so
+   `LunarLogStorageLocalWrites` and `LunarLogStorageRemoteApply` added
+   `LunarLogStorageAppSettings` to their `on` clauses and the shim mixin is
+   applied before them in the `with` clause. Direct tests per family on a
+   real `NativeDatabase.memory()`
+   (`test/data/health_device_storage_test.dart`,
+   `test/data/app_settings_storage_test.dart`) mirror the step-2 test's
+   shape and pin the delegation shim too.
+
 ## Related
 
 - Issue #551 (open — split `LunarLogStorage` into role stores; problem 1)
