@@ -102,6 +102,7 @@ export '../sync/remote_rows.dart'
         RetryableSyncApplyError,
         SyncTable;
 
+part 'health_device_storage.dart';
 part 'storage_local_writes.dart';
 part 'storage_queries.dart';
 part 'storage_remote_apply.dart';
@@ -156,6 +157,7 @@ class LunarLogStorage
         LunarLogStorageQueries,
         LunarLogStorageLocalWrites,
         LunarLogStorageSyncMetadata,
+        LunarLogStorageHealthDevice,
         LunarLogStorageRemoteApply
     implements
         ProfileStore,
@@ -191,6 +193,7 @@ class LunarLogStorage
         _generator = ulid ?? _ulid,
         _todayProvider = today ?? LocalDate.today {
     _syncMetadata = SyncCursorStorage(db, _clock);
+    _healthDevice = HealthDeviceStorage(db);
   }
 
   @override
@@ -207,6 +210,15 @@ class LunarLogStorage
   /// [SyncMetadataStore] members to.
   @override
   SyncMetadataStore get syncMetadata => _syncMetadata;
+
+  /// The extracted device-local health-table store (issue #551 part 1 step
+  /// 3) — never synced, so no clock and no dirty flags, just the database.
+  late final HealthDeviceStorage _healthDevice;
+
+  /// The narrow health-device role this class delegates all
+  /// [HealthDeviceStore] members to.
+  @override
+  HealthDeviceStore get healthDevice => _healthDevice;
 
   @override
   final UlidGenerator _generator;

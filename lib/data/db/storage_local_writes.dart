@@ -2297,53 +2297,9 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     );
   }
 
-  /// Upserts the device-local `health_sync_state` anchor for its platform
-  /// (Issue #186 — never synced to the server; keyed by `platform`).
-  Future<void> writeHealthSyncAnchor(HealthSyncStateRow anchor) async {
-    await db
-        .into(db.healthSyncState)
-        .insertOnConflictUpdate(anchor.toCompanion(false));
-  }
-
-  /// Upserts device-local `health_export_ledger` rows keyed by `record_id`
-  /// (Issue #936 — never synced to the server).
-  Future<void> upsertHealthExportLedgerRows(
-    List<HealthExportLedgerRowData> rows,
-  ) async {
-    if (rows.isEmpty) return;
-    await db.batch((batch) {
-      batch.insertAll(
-        db.healthExportLedger,
-        rows,
-        mode: InsertMode.insertOrReplace,
-      );
-    });
-  }
-
-  /// Removes `health_export_ledger` rows by record id (Issue #936) — called
-  /// once the corresponding store samples have actually been deleted.
-  Future<void> deleteHealthExportLedgerRecordIds(
-    List<String> recordIds,
-  ) async {
-    if (recordIds.isEmpty) return;
-    await (db.delete(db.healthExportLedger)
-          ..where((t) => t.recordId.isIn(recordIds)))
-        .go();
-  }
-
-  /// Removes every `health_export_ledger` row for [profileId] (Issue #936)
-  /// — profile and account deletion.
-  Future<void> deleteHealthExportLedgerForProfile(String profileId) async {
-    await (db.delete(db.healthExportLedger)
-          ..where((t) => t.profileId.equals(profileId)))
-        .go();
-  }
-
-  /// Removes every `health_export_ledger` row on the device (Issue #936) —
-  /// unbind.
-  Future<void> clearHealthExportLedger() async {
-    await db.delete(db.healthExportLedger).go();
-  }
+  // The device-local health writes moved to `HealthDeviceStorage`
+  // (issue #551 part 1 step 3); the class forwards via
+  // `LunarLogStorageHealthDevice`.
 
   /// Runs periodic maintenance: sweeps tombstones and reclaims unused storage
   /// space via VACUUM (Issue #203). The sweep itself lives in the extracted
