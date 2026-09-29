@@ -27,6 +27,8 @@ import 'package:lunarlog/data/export/fhir_bundle_writer.dart';
 import 'package:lunarlog/data/export/supabase_account_export_remote_source.dart';
 import 'package:lunarlog/data/feedback/image_picker_attachment_source.dart';
 import 'package:lunarlog/data/feedback/supabase_feedback_service.dart';
+import 'package:lunarlog/data/health/health_background_import_service.dart';
+import 'package:lunarlog/data/health/health_background_import_trigger.dart';
 import 'package:lunarlog/data/health/health_channel.dart';
 import 'package:lunarlog/data/health/health_deviation_service.dart';
 import 'package:lunarlog/data/health/health_flow_write_coordinator.dart';
@@ -790,7 +792,13 @@ HealthFlowWriteCoordinator? buildHealthFlowWriteCoordinator({
 /// port (`createHealthPlatform`) from one platform, so `bindProfile` (the
 /// native guard mirror) and `requestWriteAuthorization` (which now also
 /// requests the read types) are the same calls the write path makes.
-HealthImportRunner? buildHealthImportRunner({
+/// Constructs the concrete import service both seams share (Issues #217
+/// and #458), or null when the feature is gated off — the same
+/// `AppConfig.hasHealthSync` plus wired-store gate. Internal so
+/// [buildHealthImportRunner] (the user-initiated `lib/ui` seam) and
+/// [buildHealthBackgroundImportCoordinator] (the Issue #993 background
+/// seam) hand out different, minimal views of the one instance.
+LocalHealthImportService? _buildHealthImportService({
   required SettingsStore settings,
   required ProfilesRepository profiles,
   required DayEntriesRepository dayEntries,
@@ -823,6 +831,70 @@ HealthImportRunner? buildHealthImportRunner({
     observations: observations,
     guardiansForProfile: guardiansForProfile,
     signedInUserId: signedInUserId,
+  );
+}
+
+/// Constructs the user-initiated OS health-store import runner (Issues #217
+/// and #458), or null when the feature is gated off — the same
+/// `AppConfig.hasHealthSync` plus wired-store gate, but the only health
+/// capability wired on Android. Unlike the write coordinator there is
+/// nothing to start: the runner is a stateless-ish service the Settings
+/// screen calls once per explicit import action.
+///
+/// It is handed the read port (`createHealthImportSource`) and the write
+/// port (`createHealthPlatform`) from one platform, so `bindProfile` (the
+/// native guard mirror) and `requestWriteAuthorization` (which now also
+/// requests the read types) are the same calls the write path makes.
+HealthImportRunner? buildHealthImportRunner({
+  required SettingsStore settings,
+  required ProfilesRepository profiles,
+  required DayEntriesRepository dayEntries,
+  required ObservationsRepository observations,
+  required Future<List<ProfileGuardian>> Function(String profileId)
+  guardiansForProfile,
+  required String? Function() signedInUserId,
+  required bool minorBindingAllowed,
+}) => _buildHealthImportService(
+  settings: settings,
+  profiles: profiles,
+  dayEntries: dayEntries,
+  observations: observations,
+  guardiansForProfile: guardiansForProfile,
+  signedInUserId: signedInUserId,
+  minorBindingAllowed: minorBindingAllowed,
+);
+
+/// Constructs the Issue #993 background-import coordinator — the seam the
+/// platform triggers (iOS's HKObserverQuery, Android's WorkManager job)
+/// drive for a prompt-free pass — or null under the same gate as
+/// [buildHealthImportRunner]. Typed down to the two narrow interfaces so
+/// the coordinator can neither prompt nor reach a write port even by
+/// mistake: the runner view is [HealthBackgroundImportRunner]
+/// (`importInBackground` only) and the trigger view is
+/// [HealthBackgroundImportTrigger] (the two trigger methods only).
+HealthBackgroundImportCoordinator? buildHealthBackgroundImportCoordinator({
+  required SettingsStore settings,
+  required ProfilesRepository profiles,
+  required DayEntriesRepository dayEntries,
+  required ObservationsRepository observations,
+  required Future<List<ProfileGuardian>> Function(String profileId)
+  guardiansForProfile,
+  required String? Function() signedInUserId,
+  required bool minorBindingAllowed,
+}) {
+  final service = _buildHealthImportService(
+    settings: settings,
+    profiles: profiles,
+    dayEntries: dayEntries,
+    observations: observations,
+    guardiansForProfile: guardiansForProfile,
+    signedInUserId: signedInUserId,
+    minorBindingAllowed: minorBindingAllowed,
+  );
+  if (service == null) return null;
+  return HealthBackgroundImportCoordinator(
+    trigger: MethodChannelHealthBackgroundTrigger(),
+    runner: service,
   );
 }
 

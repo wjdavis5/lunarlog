@@ -49,9 +49,13 @@ drops any record whose `dataOrigin` is this app, so lunarlog's own writes
 are never re-imported. **Issue [#992](https://github.com/wjdavis5/lunarlog/issues/992)
 lifted the old 30-day cap:** the import is full-history now, so
 `android.permission.health.READ_HEALTH_DATA_HISTORY` is declared and
-requested (a row was added to the table below). `READ_HEALTH_DATA_IN_BACKGROUND`
-remains undeclared — background reads are still deliberately deferred, and
-the import is user-initiated only. Adding a `READ_*` permission re-triggers
+requested (a row was added to the table below). **Issue
+[#993](https://github.com/wjdavis5/lunarlog/issues/993) added background
+reads:** `READ_HEALTH_DATA_IN_BACKGROUND` is declared (row below), served
+by `HealthBackgroundImportWorker.kt`'s periodic WorkManager job, which
+wakes the running app's Dart side to run the same prompt-free, guarded
+import pass — nothing about the read direction's data types changed.
+Adding a `READ_*` permission re-triggers
 the Play Health apps declaration review: refile this form before any track
 Google reviews ships the build. Extend the table below (never widen the
 manifest silently) as later HS issues
@@ -70,6 +74,7 @@ with the new rows before the next tracked build.
 | `android.permission.health.READ_MENSTRUATION` | Read | Lets the user explicitly import menstrual-flow records another app wrote into Health Connect, so history logged elsewhere does not have to be re-entered. User-initiated only (Settings → Health app sync → Import from Health Connect), reading the whole available history in pages (issue #992; no longer bounded to 30 days), into the one profile bound to this device; records lunarlog itself wrote are excluded by `dataOrigin` so nothing round-trips, and a value the user logged by hand is never overwritten. |
 | `android.permission.health.READ_INTERMENSTRUAL_BLEEDING` | Read | Same rationale as `READ_MENSTRUATION`, for intermenstrual-bleeding records (stored as the app's spotting observations). No derived or predicted value is ever read or written. |
 | `android.permission.health.READ_HEALTH_DATA_HISTORY` | Read | Lets the same user-initiated import read the whole health history rather than only the 30 days preceding the permission grant (Health Connect's default cap). Requested alongside the two menstrual read types; it unlocks no automatic, background, or continuous read — the import still runs only when the user starts it, and every pass pages through the store and stops at the end of the available data. |
+| `android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND` | Read | Lets the same menstrual-data import keep the user's history current without requiring a manual tap every time (issue #993). A periodic WorkManager job wakes the running app and triggers one import pass — the same pass the Settings action runs: the two menstrual read types only, into the one profile bound to this device, records the app itself wrote excluded by `dataOrigin`, a hand-logged value never overwritten, nothing ever written back to Health Connect, no UI, and only outcome counts logged. The pass checks the device-binding guard and the Health Connect granted-permission set first and does nothing when either refuses (an unbound device, a revoked permission, or a never-completed first import are all silent no-ops), so the permission never enables a read the foreground import could not perform. |
 | `android.permission.health.WRITE_CERVICAL_MUCUS` | Write | Lets the user optionally mirror the cervical-mucus observation they log in lunarlog into Health Connect's `CervicalMucusRecord`, so their other health apps can see it. Opt-in, bound profile only, forward-only from grant; the app has no sensation concept, so the required `sensation` field is written as the platform's honest `SENSATION_UNKNOWN`. Write-only — no `READ_CERVICAL_MUCUS` is requested. |
 | `android.permission.health.WRITE_OVULATION_TEST` | Write | Same rationale, for a logged ovulation-test result (`OvulationTestRecord`). The positive/peak distinction collapses to `RESULT_POSITIVE` (Health Connect's own docs describe positive as the possible "peak" result); a domain "high fertility" value does not exist, so `RESULT_HIGH` is deliberately never written. Write-only. |
 | `android.permission.health.WRITE_BASAL_BODY_TEMPERATURE` | Write | Same rationale, for a manually tracked basal-body-temperature reading (`BasalBodyTemperatureRecord`), converted to Celsius before the write and written with the honest `MEASUREMENT_LOCATION_UNKNOWN` (the domain has no measurement-location field). A wearable- or platform-sourced BBT value is deliberately never written, so it can never be conflated with the user's own tracked reading. Write-only. |
@@ -85,14 +90,17 @@ this as a skeleton to walk through, not a verbatim transcript.
       opt-in, can write period/flow, intermenstrual-bleeding,
       cervical-mucus, ovulation-test, and basal-body-temperature records to
       Health Connect so the user's data is available to other health apps
-      they choose to use, and — separately and only when the user starts an
-      import — read the two user-recorded menstrual types back over the
-      full available history, in pages, so history logged in another app
-      does not have to be re-entered (never a predicted or derived value;
-      no background or continuous read; no wearable-sourced value is ever
-      written or conflated with a hand-logged one).
+      they choose to use, and — separately — read the two user-recorded
+      menstrual types back over the full available history, in pages, so
+      history logged in another app does not have to be re-entered. The
+      import runs when the user starts it from Settings, and — once the
+      user has opted in and bound a profile — a periodic background check
+      triggers the same import pass so the history stays current without a
+      manual tap (never a predicted or derived value; nothing is ever
+      written back; no wearable-sourced value is ever written or conflated
+      with a hand-logged one).
 - [ ] **Per-permission justification:** paste the justification column
-      above (or the form's closer equivalent) for each of the eight
+      above (or the form's closer equivalent) for each of the nine
       permissions.
 - [ ] **Data sharing disclosure:** confirm the form's questions about
       whether health data is shared with third parties are answered "no" —
@@ -151,7 +159,13 @@ itself, tracked in "Re-check triggers" below, not by re-flipping).
   permissions and their table rows above, so the re-filed form must
   include them. **Issue #992 triggered a third:** it added
   `READ_HEALTH_DATA_HISTORY` (and its table row) and lifted the 30-day
-  read cap, so the re-filed form must include it too.
+  read cap, so the re-filed form must include it too. **Issue #993
+  triggered a fourth:** it added `READ_HEALTH_DATA_IN_BACKGROUND` (and its
+  table row above) for the periodic background-import job, so the re-filed
+  form must include it too — the row's justification names the exact
+  background flow (same import pass, same guards, no UI, counts-only
+  logging) Google's reviewers ask background-read declarations to
+  demonstrate.
 - `AppConfig.hasHealthSync` flipped to `true` with #173 and the #193/#374
   writes — the form is no longer a draft exercise: it must actually be
   filed (and the release-gate variable above set) before any

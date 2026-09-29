@@ -238,8 +238,11 @@ void main() {
     test('unshipped features stay unclaimed', () {
       for (final entry in pages.entries) {
         final source = flat(File(entry.value).readAsStringSync());
-        // Background health sync is deferred (#993); the store listings are
-        // not live (#830); the site collects nothing (#830 out-of-scope).
+        // Background health sync shipped in-app with #993, but the store
+        // listings are not live (#830) and the site pages (unchanged here)
+        // still make no such claim -- the guard stays conservative: a
+        // marketing claim must be added deliberately, not drift in. The
+        // site collects nothing (#830 out-of-scope).
         expect(source, isNot(contains('background sync')),
             reason: entry.key);
         expect(source, isNot(contains('Download on the')),

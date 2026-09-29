@@ -16,10 +16,16 @@
 ///
 /// ## Invariants this file encodes
 ///
-/// * **User-initiated only.** There is no observer, no background
-///   delivery, and no automatic pass anywhere in this file. The only entry
-///   point is [HealthImportRunner.importNow] — a settings action the
-///   operator triggers.
+/// * **User-initiated, plus one prompt-free background pass.** The
+///   user-initiated entry point is [HealthImportRunner.importNow] — a
+///   settings action the operator triggers. Issue #993 adds exactly one
+///   more: [HealthBackgroundImportRunner.importInBackground], which the
+///   platform triggers (an HKObserverQuery firing on iOS, a WorkManager
+///   job on Android) and which runs the *same* pipeline without ever
+///   prompting — no authorization sheet, no binding write. It probes the
+///   OS permission first (Issue #959's check) and stops silently when it
+///   is not granted, so a background pass can never put a system dialog
+///   in front of the operator.
 /// * **Full history, paged.** An import reads *everything the store will
 ///   return* for the bound profile (Issue #992 — the previous fixed 30-day
 ///   window was a sequencing choice, not a product rule), from
@@ -27,7 +33,8 @@
 ///   channel call or DB write grows with the whole history. Each page is
 ///   bounded by [kHealthImportPageSize], and a pass stops after at most
 ///   [kHealthImportMaxPages] pages so a misbehaving adapter cannot spin.
-///   Background reads stay deferred (#156/A3-16).
+///   Background reads are live as of Issue #993 (the OS delivers them;
+///   the pipeline is unchanged).
 /// * **Resolve each sample's civil date from its own zone.** HealthKit
 ///   samples carry an IANA zone (`HKMetadataKeyTimeZone`) and Health
 ///   Connect records carry their own `zoneOffset`; a sample with neither is
@@ -482,4 +489,41 @@ abstract interface class HealthImportRunner {
   Future<HealthImportSummary> importNow({
     void Function(HealthImportProgress progress)? onProgress,
   });
+}
+
+/// The seam the platform background triggers drive (Issue #993): the same
+/// import pipeline as [HealthImportRunner.importNow], minus everything a
+/// background context must never do. A background pass:
+///
+/// * **never prompts.** No `bindProfile` re-write, no
+///   `requestWriteAuthorization` — the OS permission sheet has no place in
+///   a pass the user did not start. Instead the OS permission is *probed*
+///   (Issue #959's `permissionStatus`), and anything other than
+///   `granted` ends the pass with a
+///   `HealthImportSummary(blocked: HealthPlatformPermissionDenied())`
+///   before a single read. A never-asked install reports `notAsked`, so a
+///   background trigger on a device that never completed the first
+///   user-initiated import is a silent no-op by this contract too.
+/// * **keeps the binding guard.** `HealthSyncBinding.canWrite` runs first,
+///   exactly as in `importNow` — an unbound device or a refused guard
+///   touches no health API.
+/// * **is idempotent.** The same anchored, never-overwrite merge runs, so
+///   an interrupted background pass (iOS may suspend the app mid-pass)
+///   leaves the days it wrote in place and the next pass recomputes the
+///   rest.
+///
+/// Implementations: `LocalHealthImportService` (the one shared pipeline).
+/// The background coordinator that drives it lives in `lib/data/health/`
+/// (`health_background_import_service.dart`); nothing in `lib/ui` may
+/// construct or call this interface — the background pass is not a UI
+/// affordance.
+abstract interface class HealthBackgroundImportRunner {
+  /// Which OS health store this runner reads from — the background log's
+  /// store name.
+  HealthImportPlatform get platform;
+
+  /// Runs one prompt-free background import pass for the currently bound
+  /// profile. Never throws on an expected failure mode; every one becomes
+  /// a blocked summary, exactly as `importNow` documents.
+  Future<HealthImportSummary> importInBackground();
 }

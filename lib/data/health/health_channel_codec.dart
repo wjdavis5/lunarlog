@@ -142,6 +142,20 @@ abstract final class HealthChannelMethods {
   /// a `List` of deviation maps rather than a result string — see
   /// [decodeHealthDeviationReadResult].
   static const readCycleDeviations = 'readCycleDeviations';
+
+  /// The background-import trigger push (Issue #993), native → Dart: an
+  /// `HKObserverQuery` firing (iOS) or the WorkManager job (Android) asks
+  /// the coordinator for one prompt-free pass. Answered by
+  /// `MethodChannelHealthBackgroundTrigger.listen`, never by the platform
+  /// adapters — a Dart→native call with this name is a bug, not a pass.
+  static const onBackgroundImportTriggered = 'onBackgroundImportTriggered';
+
+  /// The background-import trigger pull (Issue #993), Dart → native:
+  /// returns (and clears) whether a trigger fired before the Dart listener
+  /// registered — the startup race iOS's observer can lose. Unguarded like
+  /// `permissionStatus`: it reads a boolean latch, never health data.
+  static const consumePendingBackgroundImportTrigger =
+      'consumePendingBackgroundImportTrigger';
 }
 
 /// The canonical Apple SDK raw integer for each [HealthFlowValue], per

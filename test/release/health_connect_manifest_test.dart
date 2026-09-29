@@ -39,10 +39,14 @@ void main() {
     // BASAL_BODY_TEMPERATURE permission is now required, and the three
     // fertility/measurement WRITE permissions join the expected-present set.
     // Issue #992 adds READ_HEALTH_DATA_HISTORY (the full-history import);
-    // background and sexual-activity remain deliberately absent (#186/#210).
+    // issue #993 adds READ_HEALTH_DATA_IN_BACKGROUND for the periodic
+    // background-import worker (HealthBackgroundImportWorker.kt), so it
+    // joins the expected-present set too. Sexual-activity remains
+    // deliberately absent (#210).
     test(
         'declares the menstruation baseline plus the #228 fertility/measurement '
-        'WRITE permissions plus #992 history -- not background/sexual-activity',
+        'WRITE permissions plus #992 history plus #993 background read -- '
+        'not sexual-activity',
         () {
       for (final permission in [
         'android.permission.health.WRITE_MENSTRUATION',
@@ -55,6 +59,10 @@ void main() {
         // Issue #992: full-history import. Without this permission Health
         // Connect returns only the 30 days before the grant.
         'android.permission.health.READ_HEALTH_DATA_HISTORY',
+        // Issue #993: background reads, served by the periodic
+        // background-import worker -- the same import pass the Settings
+        // tap runs, never a write and never new data types.
+        'android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND',
         // Issue #228: write-only (no read-back in scope), matching
         // HealthConnectAdapter.kt's writePermissions set.
         'android.permission.health.WRITE_CERVICAL_MUCUS',
@@ -68,7 +76,6 @@ void main() {
       // comments name the deferred permissions on purpose, and only an
       // actual android:name declaration grants anything.
       for (final outOfScope in [
-        'READ_HEALTH_DATA_IN_BACKGROUND',
         'SEXUAL_ACTIVITY',
       ]) {
         expect(
@@ -77,6 +84,30 @@ void main() {
           reason: outOfScope,
         );
       }
+    });
+
+    test(
+        'the #993 background-import worker exists and never touches health '
+        'data itself (it wakes Dart; the guarded import stays in Dart)',
+        () {
+      final worker = readRepoFile(
+          'android/app/src/main/kotlin/com/wjdavis5/lunarlog/'
+          'HealthBackgroundImportWorker.kt');
+      // The worker reaches Dart through the one shared channel's trigger
+      // push, and reads only the binding mirror -- no Health Connect client,
+      // no record read, no write call anywhere in the worker.
+      expect(worker, contains('onBackgroundImportTriggered'));
+      expect(worker, contains('HealthConnectAdapter.BOUND_PROFILE_KEY'));
+      expect(worker, isNot(contains('HealthConnectClient')));
+      expect(worker, isNot(contains('getChanges')));
+      expect(worker, isNot(contains('readRecords')));
+      expect(worker, isNot(contains('insert')));
+      // The WorkManager dependency the schedule needs, pinned like the
+      // connect-client above.
+      expect(
+        gradle,
+        contains(RegExp(r'"androidx\.work:work-runtime-ktx:\d+\.\d+\.\d+"')),
+      );
     });
 
     test(
