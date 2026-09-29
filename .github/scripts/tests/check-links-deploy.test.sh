@@ -2,9 +2,9 @@
 set -euo pipefail
 
 # Truth table for .github/scripts/check-links-deploy.sh (issues #1090, #1099,
-# #1157), plus wiring assertions that site-deploy.yml runs it after the deploy,
-# that site.yml carries the site PR jobs and the weekly external link check,
-# and that ci.yml's release-guards job runs this suite. Run with:
+# #1157, #1184), plus wiring assertions that site-deploy.yml runs it after the
+# deploy, that site.yml carries the site PR jobs and the weekly external link
+# check, and that ci.yml's release-guards job runs this suite. Run with:
 #
 #   bash .github/scripts/tests/check-links-deploy.test.sh
 
@@ -21,12 +21,76 @@ CI_WORKFLOW="$SCRIPT_DIR/../../workflows/ci.yml"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
+# make_dist DIR -- the built site's HTML route set the script enumerates
+# from (issue #1184), mirroring site/src/pages plus public/invite.html and
+# the 404 artifact. Keep in sync with the real site: a page added there
+# should appear here so the route loop exercises it.
+make_dist() {
+  local dist="$1/dist" path
+  mkdir -p "$dist/guides"
+  # Flat build artifacts: the home page, the not-found page the asset layer
+  # serves for unmatched paths (excluded from the enumeration), and
+  # public/invite.html served by the Worker's invite branch.
+  printf '<!DOCTYPE html><html><body>home</body></html>\n' >"$dist/index.html"
+  printf '<!DOCTYPE html><html><body>404</body></html>\n' >"$dist/404.html"
+  printf '<!DOCTYPE html><html><body>invite</body></html>\n' >"$dist/invite.html"
+  # Directory-format pages (Astro's default), one index.html each.
+  for path in delete-account export family-sharing import \
+    life-stage-modes privacy-security tracking privacy support guides \
+    guides/browser-version guides/getting-started guides/household-setup \
+    guides/inviting-someone guides/logging-a-day guides/moving-your-data \
+    guides/reading-estimates guides/transferring-ownership; do
+    mkdir -p "$dist/$path"
+    printf '<!DOCTYPE html><html><body>%s</body></html>\n' "$path" >"$dist/$path/index.html"
+  done
+}
+
+# make_route_fixtures DIR DIST -- one clean 200 text/html headers+body pair
+# per enumerated route of the fake dist: the route loop's happy-path
+# response (issue #1184). /, /invite, /privacy/ and /support/ reuse the
+# hand-written fixtures above via the script's own fixture_path cases, so
+# they are skipped here. The stem mirrors the script's fixture_path mapping
+# (leading/trailing slashes stripped, inner slashes dashed) with the same
+# pure parameter expansion -- if either side drifts, the cases below fail
+# on a missing fixture rather than silently skipping a route.
+make_route_fixtures() {
+  local dist="$1" dir="$2" f rel path stem
+  find "$dist" -type f -name '*.html' | LC_ALL=C sort |
+    while IFS= read -r f; do
+      rel="${f#"$dist"/}"
+      case "$rel" in
+        404.html) continue ;;
+        index.html) path="/" ;;
+        */index.html) path="/${rel%/index.html}/" ;;
+        *) path="/${rel%.html}" ;;
+      esac
+      case "$path" in
+        /|/invite|/privacy/|/support/) continue ;;
+      esac
+      stem="${path#/}"
+      stem="${stem%/}"
+      stem="${stem//\//-}"
+      cat >"$dir/route-$stem.headers" <<'EOF'
+HTTP/2 200
+date: Fri, 26 Sep 2026 12:00:00 GMT
+content-type: text/html; charset=utf-8
+EOF
+      cat >"$dir/route-$stem.body" <<EOF
+<!DOCTYPE html><html><body>route $path</body></html>
+EOF
+    done
+}
+
 # make_fixtures DIR -- a settled, correct set of live response header and
 # body dumps. The HTML routes carry .body fixtures for issue #1139's beacon
-# assertion; the JSON routes are never body-checked.
+# assertion; the JSON routes are never body-checked. Also lays down the
+# fake built site (DIR/dist) and its per-route fixtures, so every case runs
+# the #1184 route enumeration over a full route set.
 make_fixtures() {
   local dir="$1"
   mkdir -p "$dir"
+  make_dist "$dir"
+  make_route_fixtures "$dir/dist" "$dir"
   cat >"$dir/home.headers" <<'EOF'
 HTTP/2 200
 date: Fri, 26 Sep 2026 12:00:00 GMT
@@ -101,15 +165,19 @@ x-content-type-options: nosniff
 EOF
 }
 
-# run_case DIR [SCRIPT] -- populates $LAST_EXIT and $LAST_LOG. SCRIPT
+# run_case DIR [SCRIPT] [DIST] -- populates $LAST_EXIT and $LAST_LOG. SCRIPT
 # defaults to the check under test; the beacon-arming cases pass a sed-flipped
-# copy (issue #1139's one-line arming constant) to prove both modes.
+# copy (issue #1139's one-line arming constant) to prove both modes. DIST is
+# the built-site directory the route enumeration reads (issue #1184) and
+# defaults to the fake dist make_fixtures laid down; it is ALWAYS passed as
+# an env var so the suite stays hermetic even where a real site/dist happens
+# to exist (the fallback case passes a path that does not exist on purpose).
 run_case() {
-  local dir="$1" script="${2:-$SCRIPT}"
+  local dir="$1" script="${2:-$SCRIPT}" dist="${3:-$1/dist}"
   local logfile
   logfile="$(mktemp)"
   set +e
-  LINKS_FIXTURES_DIR="$dir" bash "$script" >"$logfile" 2>&1
+  LINKS_FIXTURES_DIR="$dir" LINKS_SITE_DIST="$dist" bash "$script" >"$logfile" 2>&1
   LAST_EXIT=$?
   set -e
   LAST_LOG="$(cat "$logfile")"
@@ -403,12 +471,92 @@ EOF
 run_case "$WORK/privacy-slash-cf-attr" "$armed_script"
 assert_exit "a data-cf-beacon attribute on /privacy/ refuses when armed (either marker matches)" 1
 
+# --- Every HTML route of the built site is asserted (issue #1184) ------------
+
+# The route loop enumerates the fake dist's HTML routes (make_dist above) and
+# asserts each one 200, text/html, and beacon-free. The issue's live finding
+# was exactly a route the five built-in blocks never touched: a beacon on
+# /delete-account/ must be caught like a beacon on the home page --
+# warn-only by default, a hard failure when armed.
+make_fixtures "$WORK/route-cf-beacon"
+cat >"$WORK/route-cf-beacon/route-delete-account.body" <<'EOF'
+<!DOCTYPE html><html><body><h1>Delete account</h1><script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v31edd6" data-cf-beacon='{"token":"x"}'></script></body></html>
+EOF
+run_case "$WORK/route-cf-beacon"
+assert_exit "a beacon on an enumerated route the built-in blocks never touch warns but passes while unarmed" 0
+assert_contains "the route warning names the injected route" "$LAST_LOG" "/delete-account/"
+assert_contains "the route warning names the injection" "$LAST_LOG" "Cloudflare Web Analytics beacon"
+run_case "$WORK/route-cf-beacon" "$armed_script"
+assert_exit "a beacon on an enumerated route refuses when armed (issue #1184)" 1
+assert_contains "the armed route failure names the injected route" "$LAST_LOG" "/delete-account/"
+
+# The loop asserts more than the beacon: a shipped page that stops resolving
+# (a 404 where the deploy shipped a 200 page) is a deploy failure, named by
+# URL -- the vacuous pass a beacon-free 404 body would otherwise get.
+make_fixtures "$WORK/route-404"
+cat >"$WORK/route-404/route-guides-getting-started.headers" <<'EOF'
+HTTP/2 404
+date: Fri, 26 Sep 2026 12:00:00 GMT
+content-type: text/html; charset=utf-8
+EOF
+run_case "$WORK/route-404"
+assert_exit "a shipped route that 404s refuses (issue #1184)" 1
+assert_contains "the dropped route is named" "$LAST_LOG" "/guides/getting-started/"
+assert_not_contains "a non-beacon route failure emits no warning" "$LAST_LOG" "::warning::"
+
+# The 200 must be HTML: the beacon assertion only means anything for
+# text/html, so a route re-served as another type cannot slip through.
+make_fixtures "$WORK/route-plain"
+cat >"$WORK/route-plain/route-tracking.headers" <<'EOF'
+HTTP/2 200
+date: Fri, 26 Sep 2026 12:00:00 GMT
+content-type: text/plain; charset=utf-8
+EOF
+run_case "$WORK/route-plain"
+assert_exit "a shipped route served non-HTML refuses (issue #1184)" 1
+assert_contains "the non-HTML route is named" "$LAST_LOG" "/tracking/"
+
+# A new page in the build output is covered with no script change: the loop
+# enumerates whatever the dist holds, so an added route's fixture pair is
+# picked up by the same enumeration the deploy sees.
+make_fixtures "$WORK/route-added"
+mkdir -p "$WORK/route-added/dist/faq"
+printf '<!DOCTYPE html><html><body>faq</body></html>\n' >"$WORK/route-added/dist/faq/index.html"
+cat >"$WORK/route-added/route-faq.headers" <<'EOF'
+HTTP/2 200
+date: Fri, 26 Sep 2026 12:00:00 GMT
+content-type: text/html; charset=utf-8
+EOF
+cat >"$WORK/route-added/route-faq.body" <<'EOF'
+<!DOCTYPE html><html><body>route /faq/</body></html>
+EOF
+run_case "$WORK/route-added"
+assert_exit "a route added to the build output is enumerated and asserted without a script change (issue #1184)" 0
+
+# Without the build output the loop cannot enumerate: the check warns and
+# falls back to the built-in routes (their status/header assertions still
+# run; the beacon assertion keeps only the unmatched-path 404 page), and
+# still passes an otherwise-correct origin.
+make_fixtures "$WORK/no-dist"
+run_case "$WORK/no-dist" "$SCRIPT" "$WORK/no-such-dist"
+assert_exit "a missing build output warns and falls back to the built-in routes" 0
+assert_contains "the fallback is a loud ::warning::" "$LAST_LOG" "::warning::"
+assert_contains "the fallback names the missing path" "$LAST_LOG" "no-such-dist"
+assert_contains "the fallback names the issue" "$LAST_LOG" "issue #1184"
+
 # --- Wiring -----------------------------------------------------------------
 
 script_sh="$(cat "$SCRIPT")"
 assert_contains "the smoke check presents a browser UA to the live origin (issue #1139)" "$script_sh" '-A "$BROWSER_UA"'
 assert_contains "the smoke check asks the origin for HTML (issue #1139)" "$script_sh" "Accept: text/html"
-assert_contains "the smoke check body-checks every HTML route (issue #1139)" "$script_sh" "expect_body_without_cf_beacon"
+assert_contains "the smoke check body-checks every HTML route (issues #1139, #1184)" "$script_sh" "expect_body_without_cf_beacon"
+# Issue #1184: the route-wide loop enumerates the built site. site-deploy.yml
+# builds the site (asserted above) before the smoke check runs, so the
+# enumeration always sees the just-deployed route set.
+assert_contains "the route-wide assertions enumerate the built site (issue #1184)" "$script_sh" "enumerated_routes"
+assert_contains "the route enumeration is env-overridable so the fixture suite stays hermetic (issue #1184)" "$script_sh" "LINKS_SITE_DIST"
+assert_contains "the route enumeration defaults to the repo's site/dist (issue #1184)" "$script_sh" "site/dist"
+assert_contains "the not-found artifact is excluded from the enumeration (issue #1184)" "$script_sh" "404.html"
 assert_contains "the beacon assertion defaults to warn-only (the owner has not decided)" "$script_sh" "BEACON_MUST_BE_ABSENT=false"
 assert_contains "the warn finding is a ::warning:: annotation" "$script_sh" "::warning::"
 assert_contains "the smoke check matches the beacon's src host (issue #1139)" "$script_sh" "cloudflareinsights"
