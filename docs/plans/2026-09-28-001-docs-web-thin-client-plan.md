@@ -395,10 +395,18 @@ option.
 **D-7 — Docs move with behavior, atomically.** #831's non-negotiable
 ("the build and the disclosure move together") applies to every slice
 that flips a user-visible fact: PRIVACY.md, the guide, and the ARB copy
-land in the same PR as the code. The site's cite-ledger makes this
-mechanically enforced — a cited path that disappears fails the Astro
-build, so deleting `web/drift_worker.js` without the guide rewrite cannot
-merge green.
+land in the same PR as the code. The site's cite-ledger enforces this
+where the ledger actually reaches: a cited path that disappears fails
+the Astro build, and the site workflow runs on any PR touching
+`lib/ui/**` — so deleting `lib/ui/web/dev_banner.dart` (cited five
+times by `site/src/pages/guides/browser-version.astro`) without
+rewriting that guide goes red on `check:claims`. The example this
+decision originally claimed was covered — `web/drift_worker.js` — is
+*not* ledger-cited (no guide names it) and, once slice S2 deletes it,
+never can be; a code-only `web/**` PR does not even trigger the site
+workflow. Its guide rewrite therefore rests on the slice rule itself
+(same PR, reviewer-checked), not on the ledger. (Correction: post-merge
+audit, issue #1182.)
 
 **D-8 — No server-side change of any kind.** No migration, no RLS
 change, no new RPC: `sync_push`, the pull queries, and `export_account_data()`
