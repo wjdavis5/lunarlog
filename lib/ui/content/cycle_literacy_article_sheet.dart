@@ -286,6 +286,13 @@ class _CrisisResourcesCardState extends State<CrisisResourcesCard> {
                 Semantics(
                   button: true,
                   label: action.semanticsLabel,
+                  // TalkBack/VoiceOver double-tap dispatches SemanticsAction.tap
+                  // on this node, so the activation must live on the semantics
+                  // node itself (Issue #1196): the ExcludeSemantics child below
+                  // deliberately strips the OutlinedButton's own semantics to
+                  // keep the custom announced label, which would otherwise leave
+                  // the node announced but unactivatable (actionsBitmask == 0).
+                  onTap: () => unawaited(_launch(action)),
                   child: ExcludeSemantics(
                     child: OutlinedButton(
                       key: ValueKey('crisis-action-${action.label}'),

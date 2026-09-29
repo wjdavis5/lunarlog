@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/content/cycle_literacy_library.dart';
@@ -361,5 +362,113 @@ void main() {
         findsNothing,
       );
     });
+  });
+
+  group('Issue #1196 crisis semantics activation', () {
+    testWidgets(
+      'every crisis node carries the tap action and performing it fires the '
+      'launch (SemanticsOwner walk, no pointer taps)',
+      (tester) async {
+        final launched = <Uri>[];
+        final article = CycleLiteracyLibrary.pmsVsMoodWhenToAskClinician;
+        final actions = [
+          for (final section in article.sections)
+            if (section.callout != null) ...section.callout!.actions,
+        ];
+        // Guard the guard: the walk below means nothing on an article with
+        // no crisis actions.
+        expect(actions, isNotEmpty);
+
+        final semantics = tester.ensureSemantics();
+
+        await pumpSheet(
+          tester,
+          article,
+          launchUrlFn: (url, {mode = LaunchMode.platformDefault}) async {
+            launched.add(url);
+            return true;
+          },
+        );
+
+        // The ListView builds lazily, so the crisis card must be brought
+        // on-screen before the walk. (Scrolling is pointer-driven by
+        // necessity; every activation below is dispatched through the
+        // semantics tree — no pointer taps.)
+        await tester.dragUntilVisible(
+          find.byKey(const ValueKey('crisis-resources-card')),
+          find.byType(ListView),
+          const Offset(0, -300),
+        );
+        await tester.pumpAndSettle();
+
+        // Walk the real SemanticsOwner tree — the same tree TalkBack and
+        // VoiceOver read — collecting every node.
+        final owner = tester.binding.renderViews.single.owner!.semanticsOwner!;
+        expect(owner.rootSemanticsNode, isNotNull);
+        final nodes = <SemanticsNode>[];
+        void walk(SemanticsNode node) {
+          nodes.add(node);
+          for (final child
+              in node.debugListChildrenInOrder(
+                DebugSemanticsDumpOrder.traversalOrder,
+              )) {
+            walk(child);
+          }
+        }
+
+        walk(owner.rootSemanticsNode!);
+
+        for (final action in actions) {
+          final matches = nodes
+              .where(
+                (node) =>
+                    node.getSemanticsData().label == action.semanticsLabel,
+              )
+              .toList();
+          expect(
+            matches,
+            hasLength(1),
+            reason:
+                'exactly one semantics node must announce '
+                '"${action.semanticsLabel}"',
+          );
+
+          final node = matches.single;
+          final data = node.getSemanticsData();
+          // Regression assertion (Issue #1196): the announced crisis node
+          // must be activatable — the tap action must be in its bitmask
+          // (pre-fix every crisis node announced button: true with an
+          // actionsBitmask of 0, so double-tap did nothing).
+          expect(
+            data.hasAction(SemanticsAction.tap),
+            isTrue,
+            reason: '"${action.semanticsLabel}" must support '
+                'SemanticsAction.tap',
+          );
+          expect(
+            data.flagsCollection.isButton,
+            isTrue,
+            reason: '"${action.semanticsLabel}" must stay flagged as a button',
+          );
+
+          // The activation itself: dispatch exactly what a TalkBack/VoiceOver
+          // double-tap dispatches — SemanticsAction.tap on the semantics
+          // node through SemanticsOwner.performAction (mirrors flutter_test's
+          // own SemanticsController.performAction; no pointer events).
+          node.owner!.performAction(node.id, SemanticsAction.tap);
+          await tester.pumpAndSettle();
+          expect(
+            launched,
+            contains(action.uri),
+            reason: 'performing SemanticsAction.tap on '
+                '"${action.semanticsLabel}" must launch ${action.uri}',
+          );
+        }
+
+        // Disposed in the body, not via addTearDown: flutter_test verifies
+        // handles are closed before tearDown callbacks run.
+        semantics.dispose();
+      },
+    );
   });
 }

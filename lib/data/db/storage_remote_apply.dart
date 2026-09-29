@@ -148,6 +148,7 @@ class _PageLookup {
 mixin LunarLogStorageRemoteApply
     on
         LunarLogStorageQueries,
+        LunarLogStorageAppSettings,
         LunarLogStorageLocalWrites,
         LunarLogStorageSyncMetadata {
   // ---------------------------------------------------- sync: remote applies
@@ -2713,7 +2714,7 @@ mixin LunarLogStorageRemoteApply
     if (!discardedNote && !discardedFlow) return;
     final stamp = resolutionStamp.toUtc();
     final key = activityMergeEventsKey(profileId);
-    final stored = await getSetting(key);
+    final stored = await appSettings.getSetting(key);
     final events = appendMergeEvent(decodeMergeEvents(stored), MergeEvent(
       id: '$loserEntryId@${stamp.toIso8601String()}',
       profileId: profileId,
@@ -2724,7 +2725,8 @@ mixin LunarLogStorageRemoteApply
       discardedNote: discardedNote,
       discardedFlow: discardedFlow,
     ));
-    await setSetting(key: key, value: encodeMergeEvents(events), updatedAt: stamp);
+    await appSettings.setSetting(
+        key: key, value: encodeMergeEvents(events), updatedAt: stamp);
   }
 
   /// Issue #130: the synced twin of [_recordMergeDiscardIfAny] — writes

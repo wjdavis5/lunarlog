@@ -370,7 +370,8 @@ void main() {
       );
     });
 
-    test('an unknown option code still renders raw (unknown-never-drop)', () {
+    test('Issue #1189: an unknown option code in a medication category '
+        'never reaches the grid', () {
       final observations = [
         _observation('u1', starts[1],
             category: ObservationCategory.fromCode('medication'),
@@ -378,8 +379,73 @@ void main() {
       ];
       final summary = _summary(entries, observations: observations);
       expect(
+        summary.symptomGrid,
+        isEmpty,
+        reason:
+            'The row routes by category like the FHIR export (not exported), '
+            'so the option string cannot surface under the symptom heading',
+      );
+    });
+  });
+
+  group('Issue #1189 — unknown option codes route by the row\'s category '
+      '(the FHIR export\'s _rowRole default)', () {
+    test('the sensitive categories drop their unknown codes: medication, '
+        'tests, sex_life and partying', () {
+      final observations = [
+        _observation('med1', starts[1],
+            category: ObservationCategory.fromCode('medication'),
+            code: 'ibuprofen'),
+        _observation('test1', starts[2],
+            category: ObservationCategory.fromCode('tests'),
+            code: 'ovulation_predictor'),
+        _observation('sex1', starts[3],
+            category: ObservationCategory.fromCode('sex_life'),
+            code: 'unprotected'),
+        _observation('party1', starts[4],
+            category: ObservationCategory.fromCode('partying'),
+            code: 'two_drinks'),
+      ];
+      final summary = _summary(entries, observations: observations);
+      expect(
+        summary.symptomGrid,
+        isEmpty,
+        reason:
+            'medication/sex_life/partying are not exported and tests route '
+            'to results — none is a symptom row for the grid',
+      );
+    });
+
+    test('an unknown code in a symptom category still renders raw '
+        '(fail-open where a real symptom may hide)', () {
+      final observations = [
+        _observation('p1', starts[1],
+            category: ObservationCategory.pain, code: 'left_temple_throb'),
+        _observation('d1', starts[2],
+            category: ObservationCategory.fromCode('digestion'),
+            code: 'weird_afternoon'),
+      ];
+      final summary = _summary(entries, observations: observations);
+      expect(
         summary.symptomGrid.map((row) => row.label),
-        ['ibuprofen'],
+        containsAll(<String>['left_temple_throb', 'weird_afternoon']),
+      );
+    });
+
+    test('a category the taxonomy does not know still renders raw '
+        '(the pre-#1138 degradation FHIR applies too)', () {
+      final observations = [
+        // Clue's `mucus` type is a category lunarlog's taxonomy does not
+        // know (clue_option_map.dart maps it 1:1), so its unmapped option
+        // strings arrive on a category categoryFromWireName cannot resolve.
+        _observation('m1', starts[1],
+            category: ObservationCategory.fromCode('mucus'),
+            code: 'cloudy_stretch'),
+      ];
+      final summary = _summary(entries, observations: observations);
+      expect(
+        summary.symptomGrid.map((row) => row.label),
+        ['cloudy_stretch'],
       );
     });
   });
