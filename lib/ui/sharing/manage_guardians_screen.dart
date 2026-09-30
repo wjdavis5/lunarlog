@@ -658,6 +658,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
       showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
+        useSafeArea: true,
         routeSettings: const RouteSettings(name: kRouteInviteGuardianSheet),
         // #558: once a single-use invite link is generated, the server never
         // stores its raw token again -- a stray tap outside the dialog must

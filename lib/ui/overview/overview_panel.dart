@@ -558,6 +558,7 @@ class _OverviewPanelState extends State<OverviewPanel>
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       showDragHandle: true,
       routeSettings: const RouteSettings(name: kRouteDaySheetScreen),
       builder: (_) => DaySheet(

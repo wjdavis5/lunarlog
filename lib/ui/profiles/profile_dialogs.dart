@@ -192,6 +192,7 @@ Future<ProfileEditResult?> showProfileEditDialog(
   return showModalBottomSheet<ProfileEditResult>(
     context: context,
     isScrollControlled: true,
+    useSafeArea: true,
     routeSettings: const RouteSettings(name: kRouteProfileEditDialog),
     builder: (dialogContext) => _ProfileEditDialog(
       existing: existing,
