@@ -757,9 +757,10 @@ jobs:
     needs: detect-changes
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: webapp
+    # No job-level `defaults.run.working-directory`: the gate step below
+    # runs BEFORE checkout, when webapp/ does not exist yet — a job-level
+    # default fails the job at that step with "No such file or directory".
+    # Every post-checkout step pins its own working-directory instead.
     steps:
       - name: Check if the web app should run
         id: check_run
@@ -777,8 +778,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         if: steps.check_run.outputs.run == 'true'
         with:
-          # Pinned the way site/ pins it (site.yml): the major, so a
-          # runner-image change cannot move the toolchain.
+          # Pinned to the same major as the site workflow's Node step: the
+          # major only, so a runner-image change cannot move the toolchain.
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: 'webapp/package-lock.json'
@@ -790,6 +791,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.check_run.outputs.run == 'true'
+        working-directory: webapp
         run: npm ci
 
       - name: Deno check and deno test for webapp/worker
@@ -805,14 +807,17 @@ jobs:
 
       - name: Lint (ESLint storage/copy bans + Prettier)
         if: steps.check_run.outputs.run == 'true'
+        working-directory: webapp
         run: npm run lint
 
       - name: Typecheck (strict, against supabase/database.types.ts)
         if: steps.check_run.outputs.run == 'true'
+        working-directory: webapp
         run: npm run typecheck
 
       - name: Unit tests (Vitest)
         if: steps.check_run.outputs.run == 'true'
+        working-directory: webapp
         run: npm run test
 
       - name: Build (Vite, release)
@@ -821,6 +826,7 @@ jobs:
         # them (issue #572). Empty on forks: the app treats empty as
         # "unconfigured", so the build must succeed either way.
         if: steps.check_run.outputs.run == 'true'
+        working-directory: webapp
         env:
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
@@ -828,10 +834,12 @@ jobs:
 
       - name: Install Playwright Chromium
         if: steps.check_run.outputs.run == 'true'
+        working-directory: webapp
         run: npx playwright install --with-deps chromium
 
       - name: E2E (Playwright smoke + axe + nothing-stored guard)
         if: steps.check_run.outputs.run == 'true'
+        working-directory: webapp
         run: npm run e2e
 
   db-tests:
