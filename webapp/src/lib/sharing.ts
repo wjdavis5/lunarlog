@@ -26,6 +26,7 @@
 import { z } from 'zod';
 
 import type { Json } from '../../../supabase/database.types';
+import { webAuth } from './auth';
 import type { AppSupabaseClient } from './supabase';
 import { ulidSchema } from './schemas';
 import { isValidUlid, UlidGenerator } from './ulid';
@@ -246,12 +247,11 @@ async function failureFor(
 }
 
 /**
- * Whether the caller has a session. Reads the client's in-memory session
- * storage — with no stored refresh token there is no network round trip.
+ * Whether the caller has a session (see `sessionUserId` for the two client
+ * kinds and why the storage read can throw on the app client).
  */
 export async function isSignedIn(client: AppSupabaseClient): Promise<boolean> {
-  const { data } = await client.auth.getSession();
-  return data.session !== null;
+  return (await sessionUserId(client)) !== null;
 }
 
 // ---------------------------------------------------------------------------
@@ -593,13 +593,30 @@ export async function fetchCareNotes(
 }
 
 /**
- * The signed-in account's id, or null when there is no session. Reads the
- * client's in-memory session storage (no network without a stored refresh
- * token), the same check `failureFor` makes.
+ * The session user's id, or null when signed out. Two client kinds: a
+ * storage-backed client (test fakes, issue #1252's integration clients)
+ * answers from its in-memory session; the app client carries supabase-js's
+ * `accessToken` option (issue #1250), whose contract makes the `auth`
+ * namespace unusable — the call throws — so the id falls back to the auth
+ * Worker's session (one single-flighted /auth/session probe, user echoed
+ * with the token).
+ */
+export async function sessionUserId(client: AppSupabaseClient): Promise<string | null> {
+  try {
+    const { data } = await client.auth.getSession();
+    return data.session?.user.id ?? null;
+  } catch {
+    const token = await webAuth.getToken().catch(() => null);
+    return token === null ? null : (webAuth.getUser()?.id ?? null);
+  }
+}
+
+/**
+ * The signed-in account's id, or null when there is no session — the same
+ * check `failureFor` makes.
  */
 export async function currentUserId(client: AppSupabaseClient): Promise<string | null> {
-  const { data } = await client.auth.getSession();
-  return data.session?.user.id ?? null;
+  return sessionUserId(client);
 }
 
 // ---------------------------------------------------------------------------

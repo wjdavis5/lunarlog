@@ -62,6 +62,30 @@ drift — the same discipline CI applies to `db.g.dart`:
   `flutter test tool/export_webapp_tokens_generate_test.dart` (re-run that
   after touching `lib/ui/theme/`). Hand-written CSS may reference
   `var(--ll-*)` only; `test/tokens.test.ts` scans for literal colours.
+- **Tag taxonomy** (`src/lib/taxonomy/taxonomy.generated.json`,
+  `scripts/generate-taxonomy.mjs`, issue #1254): the day editor's symptom
+  vocabulary — codes, categories, display labels, the single-select and
+  positive-assertion rules — extracted from the app's own
+  `lib/domain/tags.dart` (and `tracking_preferences.dart`'s
+  minor-visibility set, `care_modes.dart`'s standard category headings),
+  so the web picker speaks the app's taxonomy instead of re-typing it.
+  `test/taxonomy.test.ts` re-runs the builder and fails on drift; when
+  #1251 compiles `lib/domain` to JavaScript, the compiled module replaces
+  this artifact.
+
+## The day editor (issue #1254)
+
+`src/pages/DayPage.tsx` (route `/day/:profileId?date=YYYY-MM-DD`) writes
+every day category — flow, spotting, symptom and test tags, note with the
+#849 privacy rules, PMS, BBT, weight, cycle corrections, life-stage mode —
+through the same `sync_push` RPC the phones use, with client-generated ULID
+ids and client-minted `updated_at`, so the server's last-writer-wins and
+same-date merge rules treat the web as just another device. Reads go
+through `sync_pull` (`src/lib/day/day-data.ts`), never raw `day_entries`
+selects: the #849 private-note mask lives inside `sync_pull`, and a raw
+select would hand a non-subject guardian text they must not hold. The
+per-uid walk cache is page memory only; the storage-empty e2e guard
+covers the day route.
 
 ## Supabase types
 

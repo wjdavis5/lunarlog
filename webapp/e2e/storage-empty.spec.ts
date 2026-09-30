@@ -23,6 +23,11 @@ test('a session leaves every browser store empty', async ({ page }) => {
   await page.goBack();
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
+  // Exercise the day editor (issue #1254): unconfigured, it renders its
+  // sign-in prompt — a page the editor owns, holding only in-memory state.
+  await page.goto('/day/01ARZ3NDEKTSV4RRFFQ69G5FAV');
+  await expect(page.getByText('Sign in to log a day.')).toBeVisible();
+
   // Exercise the invite redemption surface (issue #1255): a link-shaped
   // visit — preview fails closed without a session — must still store
   // nothing, especially not the code.

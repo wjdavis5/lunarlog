@@ -43,6 +43,13 @@ export function TodayPage() {
               <div className="actions">
                 <Link
                   className="nav-link"
+                  to={`/day/${profile.id}`}
+                  aria-label={t('calendarTodayTooltip')}
+                >
+                  {t('calendarTodayTooltip')}
+                </Link>
+                <Link
+                  className="nav-link"
                   to={`/profile/${profile.id}/guardians`}
                   aria-label={t('profilePickerMenuGuardians')}
                 >

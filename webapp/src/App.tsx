@@ -8,6 +8,7 @@ import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { SignInPage } from './pages/SignInPage';
 import { SignUpPage } from './pages/SignUpPage';
+import { DayPage } from './pages/DayPage';
 import { InvitePage } from './pages/InvitePage';
 import { ManageGuardiansPage } from './pages/ManageGuardiansPage';
 import { ProfileNotesPage } from './pages/ProfileNotesPage';
@@ -61,6 +62,9 @@ const router = createBrowserRouter([
       { path: 'forgot-password', element: <ForgotPasswordPage /> },
       { path: 'reset-password', element: <ResetPasswordPage /> },
       { path: 'auth/callback', element: <AuthCallbackPage /> },
+      // Issue #1254: the day editor, one profile at a time; the day itself
+      // is the `date` query parameter (defaults to the browser's today).
+      { path: 'day/:profileId', element: <DayPage /> },
       { path: 'invite', element: <InvitePage /> },
       { path: 'profile/:profileId/guardians', element: <ManageGuardiansPage /> },
       { path: 'profile/:profileId/notes', element: <ProfileNotesPage /> },
