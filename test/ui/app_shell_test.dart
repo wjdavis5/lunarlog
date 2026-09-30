@@ -1039,11 +1039,15 @@ void main() {
       await DriftSettingsStore(h.db.storage)
           .set(SettingsKeys.lastActiveProfile, alice.id);
 
-      // Alice has one entry newer than her device-local last-seen stamp
-      // (unseen activity, so the badge should show); Bob has no last-seen
-      // stamp at all -- a first-ever visit marks nothing New, so his badge
-      // should never show, on this device or any other.
+      // Alice is a *shared* profile (two accepted guardians) with one
+      // entry newer than her device-local last-seen stamp (unseen
+      // activity, so the badge should show; issue #1216 gated the badge
+      // on isShared, so an unshared Alice would no longer light it). Bob
+      // has no last-seen stamp at all -- a first-ever visit marks nothing
+      // New, so his badge should never show, on this device or any other.
       await h.db.storage.applyRemoteRows([
+        guardianRow(alice.id, 'g-alice-mom', 'user-mom', 'primary_guardian'),
+        guardianRow(alice.id, 'g-alice-dad', 'user-dad', 'co_parent'),
         RemoteDayEntryRow(
           id: 'e-alice',
           profileId: alice.id,
