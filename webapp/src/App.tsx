@@ -2,6 +2,9 @@ import { Link, Navigate, Outlet, RouterProvider, createBrowserRouter } from 'rea
 
 import { useT } from './i18n/t';
 import { AuthCallbackPage } from './pages/AuthCallbackPage';
+import { InvitePage } from './pages/InvitePage';
+import { ManageGuardiansPage } from './pages/ManageGuardiansPage';
+import { ProfileNotesPage } from './pages/ProfileNotesPage';
 import { TodayPage } from './pages/TodayPage';
 
 /**
@@ -26,15 +29,19 @@ function Shell() {
   );
 }
 
-// One router per module load; the scaffold has exactly one real route, so
-// any other path goes home. A not-found screen waits for catalogue copy of
-// its own — the no-typed-copy lint bans typing one here.
+// One router per module load. `/invite` is the redemption entry the app's
+// universal links and the site's invite page both point at (issue #1255);
+// `/auth/*` stays the Worker-reserved entry for #1250's ceremony. Any other
+// path goes home.
 const router = createBrowserRouter([
   {
     path: '/',
     element: <Shell />,
     children: [
       { index: true, element: <TodayPage /> },
+      { path: 'invite', element: <InvitePage /> },
+      { path: 'profile/:profileId/guardians', element: <ManageGuardiansPage /> },
+      { path: 'profile/:profileId/notes', element: <ProfileNotesPage /> },
       { path: 'auth/*', element: <AuthCallbackPage /> },
       { path: '*', element: <Navigate replace to="/" /> },
     ],

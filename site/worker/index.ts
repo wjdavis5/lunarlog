@@ -68,6 +68,8 @@ export const INVITE_FALLBACK_HTML = `<!DOCTYPE html>
 </ol>
 <p>If the app is already installed, tap below to open the invitation in it:</p>
 <p><a id="open-in-app" class="open" href="lunarlog://invite" rel="noreferrer noopener">Open in Lunarlog</a></p>
+<p>On a computer, you can accept the invitation in the web app instead (issue #1255):</p>
+<p><a id="open-in-web-app" class="open" href="https://app.lunarlog.app/" rel="noreferrer noopener">Open in the web app</a></p>
 <p>Invitation links expire. If yours no longer works, ask the sender for a fresh one.</p>
 </main>
 <script>
@@ -76,13 +78,15 @@ export const INVITE_FALLBACK_HTML = `<!DOCTYPE html>
     var params = new URLSearchParams(window.location.search);
     var code = params.get('code');
     if (!code) { return; }
-    var target = 'lunarlog://invite?code=' + encodeURIComponent(code);
+    var query = 'code=' + encodeURIComponent(code);
     var profile = params.get('profile');
     var kind = params.get('kind');
-    if (profile) { target += '&profile=' + encodeURIComponent(profile); }
-    if (kind) { target += '&kind=' + encodeURIComponent(kind); }
+    if (profile) { query += '&profile=' + encodeURIComponent(profile); }
+    if (kind) { query += '&kind=' + encodeURIComponent(kind); }
     var openLink = document.getElementById('open-in-app');
-    if (openLink) { openLink.setAttribute('href', target); }
+    if (openLink) { openLink.setAttribute('href', 'lunarlog://invite?' + query); }
+    var webLink = document.getElementById('open-in-web-app');
+    if (webLink) { webLink.setAttribute('href', 'https://app.lunarlog.app/invite?' + query); }
   } catch (e) {
   }
 })();

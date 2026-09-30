@@ -72,6 +72,8 @@ Deno.test("/invite: serves invite.html without redirect and preserves query stri
   const body = await res.text();
   assertStringIncludes(body, "You have a Lunarlog invitation");
   assertStringIncludes(body, "Open in Lunarlog");
+  // Issue #1255: the web-app redemption link ships on the neutral page.
+  assertStringIncludes(body, "Open in the web app");
 });
 
 Deno.test("/invite/*: serves invite.html for subpaths", async () => {
