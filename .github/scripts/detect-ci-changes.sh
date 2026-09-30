@@ -7,6 +7,9 @@
 #   - database: Supabase migrations, RLS, pgTAP tests, schema types
 #   - edge_functions: Supabase Edge Functions & Cloudflare Workers (web/links, web/email)
 #   - release_guards: CI scripts, workflows, and release gate checks
+#   - webapp: the React web client (webapp/, issue #1249) — its own tree,
+#     the schema snapshot it imports, and the arb its message catalogue is
+#     generated from
 #
 # Emits outputs to $GITHUB_OUTPUT (or prints to stdout when unset).
 #
@@ -73,6 +76,7 @@ if [ -z "$changed_files" ]; then
   emit_output "database" "true"
   emit_output "edge_functions" "true"
   emit_output "release_guards" "true"
+  emit_output "webapp" "true"
   exit 0
 fi
 
@@ -83,6 +87,7 @@ app_flutter=false
 database=false
 edge_functions=false
 release_guards=false
+webapp=false
 
 # 2. Classify changed files
 while IFS= read -r file; do
@@ -95,6 +100,7 @@ while IFS= read -r file; do
       database=true
       edge_functions=true
       release_guards=true
+      webapp=true
       ;;
 
     # Database migration workflows -> run release guards and database tests
@@ -125,6 +131,19 @@ while IFS= read -r file; do
       edge_functions=true
       ;;
 
+    # The React web client (issue #1249): its own suite only — the app's
+    # Flutter suites do not cover it.
+    webapp/*)
+      webapp=true
+      ;;
+
+    # The message catalogue's source feeds both the webapp's generated
+    # copy and the Flutter app's localizations.
+    lib/l10n/app_en.arb)
+      webapp=true
+      app_flutter=true
+      ;;
+
     # Standalone marketing site or static marketing pages
     marketing/*)
       # Independent marketing assets do not affect app, database, or functions
@@ -143,9 +162,11 @@ while IFS= read -r file; do
       app_flutter=true
       ;;
 
-    # Local supabase config & generated schema snapshot
+    # Local supabase config & generated schema snapshot (the latter is also
+    # the webapp client's types source, issue #1249)
     supabase/config.toml|supabase/database.types.ts)
       database=true
+      webapp=true
       ;;
 
     # Guard inputs read by Dart release/boundary tests:
@@ -178,3 +199,4 @@ emit_output "app_flutter" "$app_flutter"
 emit_output "database" "$database"
 emit_output "edge_functions" "$edge_functions"
 emit_output "release_guards" "$release_guards"
+emit_output "webapp" "$webapp"

@@ -41,6 +41,7 @@ jobs:
       database: ${{ steps.filter.outputs.database }}
       edge_functions: ${{ steps.filter.outputs.edge_functions }}
       release_guards: ${{ steps.filter.outputs.release_guards }}
+      webapp: ${{ steps.filter.outputs.webapp }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -136,6 +137,16 @@ jobs:
         # project exists before it uploads.
         if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-web-deploy.test.sh
+
+      - name: Run check-webapp-staging tests
+        # Issue #1249: proves the staging Worker's post-deploy smoke check's
+        # truth table (strict CSP without the unsafe-* evaluation paths,
+        # Supabase connect-src, Trusted Types, COOP/HSTS/noindex, the
+        # /auth/* SPA fallback, the #1139 beacon posture) and the wiring —
+        # webapp-deploy.yml runs the check, ci.yml runs this suite, and the
+        # webapp job is NOT part of the store release gate's REQUIRED_CHECKS.
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
+        run: bash .github/scripts/tests/check-webapp-staging.test.sh
 
       - name: Run upload-sentry-symbols-setup tests
         if: steps.check_run.outputs.run == 'true' && !cancelled()
@@ -336,6 +347,16 @@ jobs:
         # project exists before it uploads.
         if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-web-deploy.test.sh
+
+      - name: Run check-webapp-staging tests
+        # Issue #1249: proves the staging Worker's post-deploy smoke check's
+        # truth table (strict CSP without the unsafe-* evaluation paths,
+        # Supabase connect-src, Trusted Types, COOP/HSTS/noindex, the
+        # /auth/* SPA fallback, the #1139 beacon posture) and the wiring —
+        # webapp-deploy.yml runs the check, ci.yml runs this suite, and the
+        # webapp job is NOT part of the store release gate's REQUIRED_CHECKS.
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
+        run: bash .github/scripts/tests/check-webapp-staging.test.sh
 
       - name: Run upload-sentry-symbols-setup tests
         if: steps.check_run.outputs.run == 'true' && !cancelled()
@@ -715,6 +736,111 @@ jobs:
         run: |
           npm ci
           npx wrangler deploy --dry-run
+
+  webapp:
+    # Epic #831 / issue #1249: the React web client (webapp/) CI job —
+    # npm ci, lint, typecheck, unit tests, build, and the Playwright suite
+    # (smoke + axe + the nothing-stored guard) against the built app served
+    # with the staging Worker's real headers.
+    #
+    # Path-filtered (issue #1249): runs only when webapp/**,
+    # supabase/database.types.ts, or lib/l10n/app_en.arb changed — the set
+    # detect-ci-changes.sh classifies as `webapp`. (#1251 adds the domain
+    # module's paths.)
+    #
+    # Deliberately NOT a required check: not in ci-required-checks' needs
+    # below, and not in check-ci-gate.sh's REQUIRED_CHECKS — the issue's
+    # acceptance criterion, so the store release gate stays anchored to the
+    # app's own suites (a path-filtered job in the rollup would also fail
+    # every docs-only PR with a "skipped" dependency).
+    name: Web app (lint, typecheck, unit, build, e2e)
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # No job-level `defaults.run.working-directory`: the gate step below
+    # runs BEFORE checkout, when webapp/ does not exist yet — a job-level
+    # default fails the job at that step with "No such file or directory".
+    # Every post-checkout step pins its own working-directory instead.
+    steps:
+      - name: Check if the web app should run
+        id: check_run
+        run: |
+          if [ "${{ needs.detect-changes.outputs.webapp }}" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No webapp/schema-snapshot/message-catalogue changes detected; skipping the web app suite."
+          fi
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: steps.check_run.outputs.run == 'true'
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        if: steps.check_run.outputs.run == 'true'
+        with:
+          # Pinned to the same major as the site workflow's Node step: the
+          # major only, so a runner-image change cannot move the toolchain.
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: 'webapp/package-lock.json'
+
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        if: steps.check_run.outputs.run == 'true'
+        with:
+          deno-version: v2.x
+
+      - name: Install dependencies
+        if: steps.check_run.outputs.run == 'true'
+        working-directory: webapp
+        run: npm ci
+
+      - name: Deno check and deno test for webapp/worker
+        # The staging Worker's unit tests, the same discipline the
+        # edge-functions job applies to site/worker (issue #1249 keeps the
+        # worker's tests with the worker's CI job: the path filter above is
+        # what gates both).
+        if: steps.check_run.outputs.run == 'true'
+        working-directory: webapp/worker
+        run: |
+          deno check index.ts
+          deno test
+
+      - name: Lint (ESLint storage/copy bans + Prettier)
+        if: steps.check_run.outputs.run == 'true'
+        working-directory: webapp
+        run: npm run lint
+
+      - name: Typecheck (strict, against supabase/database.types.ts)
+        if: steps.check_run.outputs.run == 'true'
+        working-directory: webapp
+        run: npm run typecheck
+
+      - name: Unit tests (Vitest)
+        if: steps.check_run.outputs.run == 'true'
+        working-directory: webapp
+        run: npm run test
+
+      - name: Build (Vite, release)
+        # The client-safe Supabase pair, the same values the Flutter builds
+        # receive and quoted for the same reason ci.yml's other builds quote
+        # them (issue #572). Empty on forks: the app treats empty as
+        # "unconfigured", so the build must succeed either way.
+        if: steps.check_run.outputs.run == 'true'
+        working-directory: webapp
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: npm run build
+
+      - name: Install Playwright Chromium
+        if: steps.check_run.outputs.run == 'true'
+        working-directory: webapp
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E (Playwright smoke + axe + nothing-stored guard)
+        if: steps.check_run.outputs.run == 'true'
+        working-directory: webapp
+        run: npm run e2e
 
   db-tests:
     name: Database tests (pgTAP)

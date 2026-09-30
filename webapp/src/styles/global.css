@@ -1,0 +1,132 @@
+/* The web client's only stylesheet. Every value comes from the generated
+   design tokens (tokens.css, derived from the app theme) — a literal colour
+   here is a test failure (test/tokens.test.ts scans for one), the same
+   single-source discipline the Flutter app enforces in lib/ui/theme/. */
+
+@import '../theme/tokens.css';
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100vh;
+}
+
+body {
+  font-family: var(--ll-font-text);
+  font-size: var(--ll-type-body-medium-font-size);
+  line-height: var(--ll-type-body-medium-line-height);
+  background: var(--ll-surface);
+  color: var(--ll-on-surface);
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--ll-space-3) var(--ll-space-4);
+  background: var(--ll-surface-container);
+  border-bottom: 1px solid var(--ll-outline-variant);
+}
+
+.brand {
+  font-family: var(--ll-font-display);
+  font-size: var(--ll-type-title-large-font-size);
+  line-height: var(--ll-type-title-large-line-height);
+  font-weight: var(--ll-type-title-large-font-weight);
+}
+
+.nav-link {
+  color: var(--ll-primary);
+  text-decoration: none;
+  padding: var(--ll-space-1) var(--ll-space-3);
+  border-radius: var(--ll-r-md);
+}
+
+.nav-link:hover {
+  background: var(--ll-surface-container-high);
+}
+
+.nav-link:focus-visible {
+  outline: 2px solid var(--ll-primary);
+}
+
+.page {
+  width: 100%;
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: var(--ll-space-5) var(--ll-space-4);
+}
+
+.display {
+  font-family: var(--ll-font-display);
+  font-size: var(--ll-type-headline-medium-font-size);
+  line-height: var(--ll-type-headline-medium-line-height);
+  font-weight: var(--ll-type-headline-medium-font-weight);
+  letter-spacing: var(--ll-type-headline-medium-letter-spacing);
+}
+
+.headline {
+  font-size: var(--ll-type-title-large-font-size);
+  line-height: var(--ll-type-title-large-line-height);
+  font-weight: var(--ll-type-title-large-font-weight);
+}
+
+.body {
+  font-size: var(--ll-type-body-large-font-size);
+  line-height: var(--ll-type-body-large-line-height);
+}
+
+.card {
+  margin-top: var(--ll-space-4);
+  padding: var(--ll-space-4);
+  background: var(--ll-surface-container-low);
+  border-radius: var(--ll-r-lg);
+  box-shadow: 0 var(--ll-e1) var(--ll-e1) var(--ll-shadow);
+}
+
+.card-title {
+  margin: 0 0 var(--ll-space-1);
+  font-size: var(--ll-type-title-medium-font-size);
+  line-height: var(--ll-type-title-medium-line-height);
+  font-weight: var(--ll-type-title-medium-font-weight);
+}
+
+.card-body {
+  margin: 0;
+  color: var(--ll-on-surface-variant);
+}
+
+.profile-list {
+  margin: var(--ll-space-4) 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ll-space-2);
+}
+
+.profile-list li {
+  padding: var(--ll-space-2) var(--ll-space-3);
+  background: var(--ll-surface-container);
+  border-radius: var(--ll-r-md);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms;
+    animation-duration: 0ms;
+  }
+}

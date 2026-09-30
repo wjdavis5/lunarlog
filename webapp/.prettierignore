@@ -1,0 +1,10 @@
+package-lock.json
+dist/
+node_modules/
+coverage/
+playwright-report/
+test-results/
+# Generated artifacts; each has its own freshness test.
+src/i18n/messages.en.json
+src/i18n/message-ids.ts
+src/theme/tokens.css

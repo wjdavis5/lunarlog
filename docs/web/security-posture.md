@@ -1,5 +1,13 @@
 # Web security posture
 
+> **Superseded by #831 (React client).** The signed-in web client this
+> document's posture was written for is now the React app in `webapp/`
+> (scaffolded by issue #1249), not the Flutter web build described below.
+> The browser threat model in Section 2 still holds; the Flutter-web
+> specifics (IndexedDB-backed Drift, the `LUNARLOG_WEB_SYNC` gate, the
+> Flutter CSP exceptions) describe the retiring client (issue #1248). The
+> React client's posture lives in `webapp/README.md`.
+
 **Status:** decision record, slice 1 of epic #831. The owner chose **Option A —
 the web build is a first-class client**. This document resolves the KTD9
 posture epic #831 called out: a signed-in browser holds the account's rows and
