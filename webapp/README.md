@@ -71,6 +71,28 @@ migrations. Zod schemas (`src/lib/schemas.ts`) strip unknown keys, so a
 column _addition_ is never a runtime failure — the field is picked up when
 the UI wants it.
 
+## The data layer (issue #1252)
+
+`src/lib/domain.ts` is the one module every web screen reads and writes
+account data through; `src/lib/queries.ts` wraps it in TanStack Query.
+Reads go through **`sync_pull`** — the app's authoritative, guardian-scoped,
+`server_version`-cursor RPC — paged to exhaustion (500 rows/page) so a
+profile's full cycle history loads; `guardian_notes` and `settings`, which
+`sync_pull` does not carry, ride their own RLS-scoped selects paged past
+PostgREST's 1,000-row cap with `.range()`. The `sync_pull` path is chosen
+over raw selects because private-note masking lives only on the RPC paths
+(`mask_day_entry_note`): a raw `select` on `day_entries` passes guardian RLS
+but would return an unmasked private note. Writes go exactly where the
+app's writes go — the **`sync_push`** RPC with client-generated ULID ids
+(`src/lib/ulid.ts`, the Dart `lib/data/db/ulid.dart` algorithm ported) and
+client-generated `updated_at`; per-row rejections come back mapped to the
+offending payload row. Guardian-membership changes ride the sharing RPCs.
+Live updates subscribe to **`public.sync_signals`** (the Realtime
+publication's only table) for the visible profiles and invalidate the
+synced-data query; the wake payload is never treated as data.
+`resetWebDataForSignOut` clears the pull cursors, the merged snapshot, and
+the TanStack cache — all strictly in page memory.
+
 ## Commands
 
 ```
@@ -116,9 +138,16 @@ against the live origin.
 
 The `Web app (lint, typecheck, unit, build, e2e)` job in `ci.yml` is
 path-filtered to `webapp/**`, `supabase/database.types.ts`, and
-`lib/l10n/app_en.arb` (issue #1249; #1251 adds the domain module's paths),
-and runs `deno check`/`deno test` on `worker/` plus the full npm suite and
-the Playwright tests. It is deliberately **not** a required check — not in
+`lib/l10n/app_en.arb` (issue #1249; data-layer paths — `webapp/src/lib/**`
+and `webapp/test/integration/**`, issue #1252 — additionally turn on the
+database suite), and runs `deno check`/`deno test` on `worker/` plus the
+full npm suite and the Playwright tests. The data layer's integration tests
+run in the **`db-tests`** job against the local Supabase stack that job
+already boots for pgTAP (the suite skips itself when no stack is
+reachable); realtime delivery itself is proven manually by
+`supabase/tests/manual/verify_realtime_delivery.mjs` — the db-tests stack
+deliberately excludes the realtime container (AGENTS.md, Migration Flow).
+The webapp job is deliberately **not** a required check — not in
 `.github/scripts/check-ci-gate.sh`'s `REQUIRED_CHECKS` and not in the
 ruleset rollup's `needs:` — so the store release gate stays anchored to the
 app's own suites (the issue's acceptance criterion; a path-filtered job in
@@ -127,9 +156,13 @@ the rollup would fail every docs-only PR with a "skipped" dependency).
 ## Deliberately not here yet
 
 - **Auth** (#1250): the `/auth/*` route and Worker entry are reserved; the
-  page renders catalogue placeholder copy.
-- **Domain module** (#1251): `useProfiles` proves the
-  supabase-js → Zod → TanStack Query path; the real screens come later.
+  page renders catalogue placeholder copy. The data layer (issue #1252)
+  already needs a session to do anything — the session-gated hooks stay
+  idle until one exists, and `resetWebDataForSignOut` is the seam #1250
+  calls on sign-out.
+- **Domain module** (#1251): `useLiveProfiles` proves the
+  supabase-js → `sync_pull` → Zod → TanStack Query path (issue #1252); the
+  real screens come later.
 - **Custom domain** (#1258): staging is workers.dev only.
 - **`/auth/*` Worker special-casing**: none needed yet — the SPA fallback
   serves it; #1250 decides whether the Worker must answer it first.

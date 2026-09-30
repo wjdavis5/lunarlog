@@ -220,6 +220,18 @@ assert_contains "Webapp sets database=false" "$webapp_output" "database=false"
 assert_contains "Webapp sets edge_functions=false" "$webapp_output" "edge_functions=false"
 
 # ---------------------------------------------------------------------------
+# Case 12b: The web data layer (webapp/src/lib/**, webapp/test/integration/**,
+# issue #1252) is typed against the schema snapshot and integration-tested
+# against the live stack, so it also turns on the database suite. UI paths
+# outside src/lib stay webapp-only (Case 12).
+# ---------------------------------------------------------------------------
+web_domain_output="$(run_detect "webapp/src/lib/domain.ts
+webapp/test/integration/domain.integration.test.ts")"
+assert_contains "Web data layer sets webapp=true" "$web_domain_output" "webapp=true"
+assert_contains "Web data layer sets database=true" "$web_domain_output" "database=true"
+assert_contains "Web data layer sets app_flutter=false" "$web_domain_output" "app_flutter=false"
+
+# ---------------------------------------------------------------------------
 # Case 13: The schema snapshot also feeds the webapp's typed client (#1249)
 # ---------------------------------------------------------------------------
 types_output="$(run_detect "supabase/database.types.ts")"
