@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import androidx.activity.ComponentActivity
 import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.HealthConnectFeatures
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.changes.UpsertionChange
 import androidx.health.connect.client.permission.HealthPermission
@@ -154,15 +155,58 @@ class HealthConnectAdapter(context: Context) {
     // Issue #992: READ_HEALTH_DATA_HISTORY lifts Health Connect's default
     // 30-day pre-grant read cap so the import can read the whole history.
     // It is a permission constant rather than a per-record permission, so
-    // it rides this set as-is. READ_HEALTH_DATA_IN_BACKGROUND is still
-    // deliberately absent — the import stays user-initiated only.
+    // it rides this set as-is.
+    // Issue #1211: READ_HEALTH_DATA_IN_BACKGROUND is a Health Connect
+    // *runtime* permission like the record reads — the manifest declaration
+    // #993 shipped is only the precondition, so it joins the requested set
+    // too, but only where the platform actually offers the feature
+    // ([backgroundReadPermissions] answers empty anywhere else, and there
+    // this set is exactly the pre-#1211 shape). The permission is
+    // deliberately NOT part of the granted-all check `permissionStatus`
+    // answers (see [foregroundStatusPermissions] below): a user who
+    // declines background reads can still import by tap, and
+    // HealthBackgroundImportWorker skips its own pass without it.
     private val readPermissions = setOf(
         HealthPermission.getReadPermission(MenstruationFlowRecord::class),
         HealthPermission.getReadPermission(IntermenstrualBleedingRecord::class),
         HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY,
-    )
+    ) + backgroundReadPermissions()
 
     private val allPermissions = writePermissions + readPermissions
+
+    // Issue #1211: the set `permissionStatus`'s "granted" answer requires —
+    // the foreground permissions only. The background read rides the
+    // request sheet (above) but never this check: Health Connect refuses a
+    // background read without it, yet a foreground import works without it,
+    // so requiring it here would report "denied" — and point the settings
+    // deep link — at a user whose tap import is perfectly functional. The
+    // worker gates its own tick instead (see the companion's
+    // [backgroundReadRefused]).
+    private val foregroundStatusPermissions = allPermissions -
+        setOf(HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND)
+
+    // The background-read permission, only where it can actually be
+    // granted. connect-client 1.1.0 has no `isFeatureAvailable` — the
+    // availability check is the feature status (getFeatureStatus against
+    // FEATURE_STATUS_AVAILABLE), which is also what the background-read
+    // documentation requires before requesting. An unavailable Health
+    // Connect or any probe failure answers empty: the failure mode is
+    // deliberately fail-to-not-request, because asking for an
+    // unrequestable permission string would poison the whole sheet.
+    private fun backgroundReadPermissions(): Set<String> = try {
+        val offered = isAvailable() &&
+            HealthConnectClient.getOrCreate(contextApp).features
+                .getFeatureStatus(
+                    HealthConnectFeatures.FEATURE_READ_HEALTH_DATA_IN_BACKGROUND,
+                ) == HealthConnectFeatures.FEATURE_STATUS_AVAILABLE
+        if (offered) {
+            setOf(HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND)
+        } else {
+            emptySet()
+        }
+    } catch (_: Exception) {
+        emptySet()
+    }
 
     // The guard-args half of every guarded call (mirrors
     // encodeGuardArgs in health_channel_codec.dart). StandardMessageCodec
@@ -308,7 +352,11 @@ class HealthConnectAdapter(context: Context) {
                 // reported as "denied" — the actionable state that offers the
                 // settings deep link. Read and write permissions ride the
                 // same requested set (allPermissions), so no read-only denial
-                // can be surfaced on its own.
+                // can be surfaced on its own — with the #1211 exception that
+                // the granted-all comparison runs against
+                // [foregroundStatusPermissions], the set MINUS the
+                // background read: declining only background reads must not
+                // read as a denial of the tap import.
                 // The client owns the PermissionController
                 // (`client.permissionController`); getGrantedPermissions is
                 // its suspend query, so it runs on a coroutine.
@@ -321,8 +369,11 @@ class HealthConnectAdapter(context: Context) {
                     try {
                         val granted = client.permissionController.getGrantedPermissions()
                         result.success(
-                            if (granted.containsAll(allPermissions)) "granted"
-                            else "denied")
+                            if (granted.containsAll(foregroundStatusPermissions)) {
+                                "granted"
+                            } else {
+                                "denied"
+                            })
                     } catch (e: Exception) {
                         result.success("unavailable")
                     }
@@ -1172,11 +1223,44 @@ class HealthConnectAdapter(context: Context) {
     // Issue #993: the companion is internal (not private) so the
     // background-import worker can name the same prefs file, binding key,
     // and channel rather than re-typing them — the mirror and the channel
-    // are the two seams the worker reads and fires through.
+    // are the two seams the worker reads and fires through. Issue #1211
+    // adds the one Health Connect query the worker's tick needs to the
+    // same seam, so the worker itself still holds no Health Connect types
+    // (the guard test pins that).
     companion object {
         const val PREFS_FILE = "lunarlog_health"
         const val BOUND_PROFILE_KEY = "lunarlog.health.boundProfileId"
         const val CHANNEL_NAME = "lunarlog/health"
+
+        // Issue #1211: true exactly when a background pass would be
+        // refused — the background-read feature is offered AND its
+        // permission is not granted. Deliberately false (let the tick run
+        // its usual path) in every can't-tell case: the feature absent
+        // means background reads were never permission-gated, so the
+        // pre-#1211 behavior stands; the SDK unavailable means Dart's #959
+        // probe answers "unavailable" and no-ops anyway; and a query
+        // failure must not invent a refusal. Kept here rather than in the
+        // worker so all Health Connect access stays in the adapter.
+        suspend fun backgroundReadRefused(context: Context): Boolean {
+            return try {
+                if (HealthConnectClient.getSdkStatus(context) !=
+                    HealthConnectClient.SDK_AVAILABLE
+                ) {
+                    return false
+                }
+                val client = HealthConnectClient.getOrCreate(context)
+                val featureOffered = client.features.getFeatureStatus(
+                    HealthConnectFeatures.FEATURE_READ_HEALTH_DATA_IN_BACKGROUND,
+                ) == HealthConnectFeatures.FEATURE_STATUS_AVAILABLE
+                featureOffered && !client.permissionController
+                    .getGrantedPermissions()
+                    .contains(
+                        HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND,
+                    )
+            } catch (_: Exception) {
+                false
+            }
+        }
 
         // Issue #238: the permanent platform limitation, registered
         // explicitly here (the adapter's type registry). Health Connect

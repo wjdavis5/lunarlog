@@ -29,8 +29,12 @@ import kotlinx.coroutines.withTimeoutOrNull
  * device-binding guard, the #959 permission probe, and the
  * never-overwrite merge all live in the Dart pipeline, unchanged. The
  * worker's whole decision surface is: is a profile bound (the same
- * SharedPreferences mirror `HealthConnectAdapter` stores), and is the
- * main Flutter engine alive (see [HealthBackgroundImportBridge])?
+ * SharedPreferences mirror `HealthConnectAdapter` stores), is the
+ * background-read permission usable where the platform gates background
+ * reads on it (issue #1211, asked through
+ * [HealthConnectAdapter.backgroundReadRefused] so the worker itself still
+ * holds no Health Connect types), and is the main Flutter engine alive
+ * (see [HealthBackgroundImportBridge])?
  *
  * **Why "engine alive" is the honest contract.** A WorkManager tick that
  * lands while the activity is merely backgrounded finds the engine (and
@@ -56,6 +60,17 @@ class HealthBackgroundImportWorker(
         // No bound profile → nothing to import; a future unbind also cancels
         // the schedule, so this is the belt to the cancel's suspenders.
         if (prefs.getString(HealthConnectAdapter.BOUND_PROFILE_KEY, null) == null) {
+            return Result.success()
+        }
+        // Issue #1211: where Health Connect offers the background-read
+        // feature but READ_HEALTH_DATA_IN_BACKGROUND is not granted (never
+        // asked, declined, or revoked), Health Connect refuses every read
+        // this trigger could wake — so the tick ends here, before Dart is
+        // woken for a pass that cannot read. Every can't-tell case (feature
+        // absent, SDK gone, query failure) answers false inside the helper
+        // and the tick runs on: the Dart side's #959 probe still gates each
+        // pass on the OS permission it can see.
+        if (HealthConnectAdapter.backgroundReadRefused(applicationContext)) {
             return Result.success()
         }
         val messenger = HealthBackgroundImportBridge.mainEngineMessenger

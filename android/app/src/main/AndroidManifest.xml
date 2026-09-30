@@ -50,8 +50,12 @@
          prompt-free import pass the Settings tap runs — import direction
          only, the #153 device-binding guard and the #959 permission probe
          both run inside the pass, nothing is ever written to Health
-         Connect, no UI is shown, and only counts are logged. Adding it
-         re-triggers Play's Health apps declaration review — see
+         Connect, no UI is shown, and only counts are logged. Issue #1211:
+         this is a runtime permission, so HealthConnectAdapter.kt requests
+         it with the rest of the set wherever the
+         FEATURE_READ_HEALTH_DATA_IN_BACKGROUND feature status is
+         available, and the worker skips its pass without the grant.
+         Adding it re-triggers Play's Health apps declaration review — see
          docs/ops/play-health-declaration.md (its table carries the
          justification this row needs). -->
     <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"/>

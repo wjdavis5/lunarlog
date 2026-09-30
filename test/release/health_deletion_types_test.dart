@@ -274,9 +274,18 @@ void main() {
     });
 
     test('the status is the SDK check plus getGrantedPermissions over '
-        'allPermissions', () {
+        'the foreground status set (issue #1211: allPermissions minus the '
+        'background read)', () {
       expect(kotlin, contains('permissionController.getGrantedPermissions()'));
-      expect(kotlin, contains('granted.containsAll(allPermissions)'));
+      // Issue #1211: the granted-all comparison runs against
+      // foregroundStatusPermissions -- allPermissions minus
+      // PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND -- so a user who
+      // declines only background reads is not branded "denied" (their tap
+      // import still works; the background worker skips its own pass
+      // instead). The subtraction itself is pinned by
+      // health_connect_manifest_test.dart's #1211 test.
+      expect(kotlin,
+          contains('granted.containsAll(foregroundStatusPermissions)'));
     });
 
     test('the settings deep link is Health Connect settings', () {

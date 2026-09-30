@@ -533,7 +533,7 @@ registers no device, and shows no Notifications entry (R17).
       variable records the form as filed — this bullet remains for the
       console-side filing itself, which only the operator can do.
 
-- [ ] **Issue #993 (human steps — background health imports):** two
+- [ ] **Issue #993 (human steps — background health imports):** three
       operator actions this feature needs before the builds that carry it
       ship:
       1. **App Store provisioning profile regenerated once more**, now
@@ -561,6 +561,19 @@ registers no device, and shows no Notifications entry (R17).
          the per-permission justification row and the re-check note live
          in [`play-health-declaration.md`](play-health-declaration.md);
          refile before any track Google reviews ships the build.
+      3. **Android 14+ background-read pass verified on-device
+         (issue #1211).** On a device whose Health Connect offers the
+         background-read feature, run one Settings-tap import with a
+         fabricated profile: the permission sheet must now include the
+         background-read toggle (it is requested with the rest of the
+         set). Grant it, background the app with a bound profile, and wait
+         out an hourly worker tick: the pass imports (the breadcrumb log
+         records `healthBackgroundImport` with counts, never content).
+         Then revoke only the background read in Health Connect's
+         settings and confirm two things: a Settings-tap import still
+         works (the granted-all status check deliberately excludes the
+         background permission), and the next worker tick skips cleanly —
+         no refused pass, no error, no import.
 
 ### Migrations
 
