@@ -6,13 +6,18 @@
 /// "Period expected today" breaking mid-word).
 ///
 /// The fix is the same stacked-layout answer #836 gave the today card:
-/// above [kProfileCardStackedTextScale] ([profileCardStacksTrailingAt])
-/// `ProfileCard` renders the tile full width and moves the trailing
-/// controls beneath it, so these tests pump the card the picker wires
-/// (`profile_picker_screen.dart`'s household trailing — its keys are
-/// mirrored here on purpose, the way `profile_card_test.dart` mirrors the
-/// #126 badge keys) on a phone-width surface at the issue's reported
-/// 3.1x scale and at the default 1.0x, and pin both layouts.
+/// [profileCardStacksTrailingAt] stacks the row — above
+/// [kProfileCardStackedTextScale] whatever the width, and (issue #1246)
+/// on any surface narrower than
+/// [kProfileCardSideBySideWidthPerScale] per unit of text scale, which
+/// is what brings iOS's first accessibility size (~1.62x) on a phone
+/// under the rule. `ProfileCard` renders the tile full width and moves
+/// the trailing controls beneath it, so these tests pump the card the
+/// picker wires (`profile_picker_screen.dart`'s household trailing — its
+/// keys are mirrored here on purpose, the way `profile_card_test.dart`
+/// mirrors the #126 badge keys) on a phone-width surface at the reported
+/// 3.1x scale, at #1246's accessibility-medium (~1.62x), and at the
+/// default 1.0x, and pin the layouts.
 library;
 
 import 'package:flutter/material.dart';
@@ -108,28 +113,81 @@ Future<void> _pumpRow(
 }
 
 void main() {
-  group('profileCardStacksTrailingAt (pure, issue #1233)', () {
-    test('the standard text sizes keep the side-by-side row', () {
-      expect(profileCardStacksTrailingAt(TextScaler.noScaling), isFalse);
-      for (final scale in const [1.0, 1.1, 1.3, 1.5, 1.8]) {
+  group('profileCardStacksTrailingAt (pure, issues #1233/#1246)', () {
+    // The 402-pt surface the issue was found on — the width the pure
+    // assertions below reason about.
+    const double phoneWidth = 402;
+
+    test('the standard text sizes through 1.5x keep the side-by-side row '
+        'on a phone-width surface', () {
+      expect(
+        profileCardStacksTrailingAt(
+          maxWidth: phoneWidth,
+          textScaler: TextScaler.noScaling,
+        ),
+        isFalse,
+      );
+      for (final scale in const [1.0, 1.1, 1.3, 1.5]) {
         expect(
-          profileCardStacksTrailingAt(TextScaler.linear(scale)),
+          profileCardStacksTrailingAt(
+            maxWidth: phoneWidth,
+            textScaler: TextScaler.linear(scale),
+          ),
           isFalse,
-          reason: 'scale $scale is a standard size, not an accessibility one',
+          reason: 'scale $scale still fits beside the trailing controls '
+              'on a $phoneWidth-pt row',
         );
       }
     });
 
-    test('every platform accessibility text size stacks', () {
-      // iOS AX 1.94-3.12 and Android's 2.0+ accessibility steps (the
-      // threshold's doc comment carries the ladders).
-      for (final scale in const [1.94, 2.0, 2.34, 2.62, 3.1, 3.12]) {
+    test('every platform accessibility text size stacks on a phone-width '
+        'surface (#1246 adds the first iOS step, ~1.62x)', () {
+      // iOS AX 1.62-3.12 and Android's 2.0+ accessibility steps (the
+      // thresholds' doc comments carry the ladders). 1.62x stacks through
+      // the width leg; the rest through the scale leg alone.
+      for (final scale in const [1.62, 1.94, 2.0, 2.34, 2.62, 3.1, 3.12]) {
         expect(
-          profileCardStacksTrailingAt(TextScaler.linear(scale)),
+          profileCardStacksTrailingAt(
+            maxWidth: phoneWidth,
+            textScaler: TextScaler.linear(scale),
+          ),
           isTrue,
           reason: 'scale $scale is an accessibility size',
         );
       }
+    });
+
+    test('between the legs, width decides: the same scale stacks on a '
+        'phone but keeps the row on a wide surface (#1246)', () {
+      // 1.8x (largest standard size) on the 402-pt phone: the width leg
+      // stacks — the same surface where #1246's AX-medium case stacks.
+      expect(
+        profileCardStacksTrailingAt(
+          maxWidth: phoneWidth,
+          textScaler: const TextScaler.linear(1.8),
+        ),
+        isTrue,
+      );
+      // The identical scale on a 720-pt tablet surface still fits.
+      expect(
+        profileCardStacksTrailingAt(
+          maxWidth: 720,
+          textScaler: const TextScaler.linear(1.8),
+        ),
+        isFalse,
+      );
+    });
+
+    test('the #1233 scale leg stays width-independent from 1.9x up', () {
+      expect(
+        profileCardStacksTrailingAt(
+          maxWidth: 10000,
+          textScaler: const TextScaler.linear(1.9),
+        ),
+        isTrue,
+        reason: 'every accessibility size from the second iOS step up '
+            'stacks whatever the surface width',
+      );
     });
   });
 
@@ -180,8 +238,44 @@ void main() {
   );
 
   testWidgets(
+    'at iOS accessibility-medium (~1.62x, under the old 1.9 threshold) the '
+    'household row stacks instead of truncating beside the trailing '
+    'controls (#1246)',
+    (tester) async {
+      var logTaps = 0;
+      await _pumpRow(tester, textScale: 1.62, onLogToday: () => logTaps++);
+
+      expect(tester.takeException(), isNull);
+
+      // The width leg of the decision stacks the row: 402-pt surface is
+      // under kProfileCardSideBySideWidthPerScale x 1.62.
+      expect(
+        find.byKey(const ValueKey('profile-card-stacked-actions-p1')),
+        findsOneWidget,
+        reason: 'AX-medium stacks on a phone-width surface now, instead of '
+            'squeezing the signal lines into "Cycle da…"',
+      );
+      expect(
+        tester.getCenter(find.byKey(const ValueKey('log-today-p1'))).dy,
+        greaterThan(tester.getCenter(find.text('Maya')).dy),
+        reason: 'the Log today action renders beneath the name',
+      );
+      // The actions remain the same actions, still tappable.
+      await tester.tap(find.byKey(const ValueKey('log-today-p1')));
+      expect(logTaps, 1);
+      expect(find.byTooltip('Profile actions'), findsOneWidget);
+
+      // The signal line gets the row's full width (its laid-out width is
+      // the string's own width in the test font, never a starved column).
+      final signal =
+          tester.getSize(find.byKey(const ValueKey('household-timing-p1')));
+      expect(signal.width, greaterThan(150));
+    },
+  );
+
+  testWidgets(
     'at the default text size the row keeps its side-by-side layout '
-    '(behaviour unchanged for everyone below the threshold)',
+    '(behaviour unchanged for everyone below the thresholds)',
     (tester) async {
       await _pumpRow(tester);
 
