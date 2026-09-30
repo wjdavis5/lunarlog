@@ -369,6 +369,7 @@ void main() {
       expect(
         householdChangesLine(
           lastSeen: null,
+          isShared: true,
           items: [_item('a', baseline)],
           l10n: _l10n,
         ),
@@ -380,6 +381,7 @@ void main() {
       final baseline = DateTime.utc(2026, 9, 18);
       final count = householdChangesLine(
         lastSeen: baseline,
+        isShared: true,
         items: [
           _item('old', DateTime.utc(2026, 9, 17)),
           _item('boundary', baseline),
@@ -396,6 +398,7 @@ void main() {
       expect(
         householdChangesLine(
           lastSeen: baseline,
+          isShared: true,
           items: [_item('boundary', baseline)],
           l10n: _l10n,
         ),
@@ -408,10 +411,43 @@ void main() {
       expect(
         householdChangesLine(
           lastSeen: baseline,
+          isShared: true,
           items: [_item('new', DateTime.utc(2026, 9, 19))],
           l10n: _l10n,
         ),
         '1 change since you last looked',
+      );
+    });
+
+    test('AC (#1236): an unshared profile never earns the line — the same '
+        'isShared gate hasNewItems puts on the dot', () {
+      final baseline = DateTime.utc(2026, 9, 18);
+      expect(
+        householdChangesLine(
+          lastSeen: baseline,
+          isShared: false,
+          items: [_item('new', DateTime.utc(2026, 9, 19))],
+          l10n: _l10n,
+        ),
+        isNull,
+        reason:
+            'the single-guardian feed never lists these rows, so the '
+            'picker must not promise a count of them',
+      );
+    });
+
+    test('AC (#1236): after the feed visit stamps a new baseline, the '
+        'shared line and the dot\'s predicate clear together', () {
+      final visited = DateTime.utc(2026, 9, 21);
+      expect(
+        householdChangesLine(
+          lastSeen: visited,
+          isShared: true,
+          items: [_item('new', DateTime.utc(2026, 9, 19))],
+          l10n: _l10n,
+        ),
+        isNull,
+        reason: 'post-visit the row matches hasNewItems: quiet, both',
       );
     });
   });
