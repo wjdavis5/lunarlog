@@ -262,40 +262,60 @@ suite('web data layer against the live local stack (issue #1252)', () => {
     });
     createdProfileIds.push(profile.id);
     const day = recentLocalDate();
-    const entryA = newDayEntryPayload({
-      profile_id: profile.id,
-      local_date: day,
-      tz: 'America/New_York',
-      flow: 'light',
-      tags: ['sad', 'irritable'],
-      note: 'Mild cramps in the morning, gone by noon.',
-      pms: true,
-    });
-    const entryB = newDayEntryPayload({
-      profile_id: profile.id,
-      local_date: day,
-      tz: 'America/New_York',
-      flow: 'medium',
-    });
-    const observationBbt = newObservationPayload({
-      day_entry_id: entryA.id,
-      profile_id: profile.id,
-      local_date: day,
-      tz: 'America/New_York',
-      observed_at: new Date().toISOString(),
-      category: 'bbt',
-      value_num: 36.33,
-      unit: 'celsius',
-    });
-    const observationPain = newObservationPayload({
-      day_entry_id: entryA.id,
-      profile_id: profile.id,
-      local_date: day,
-      tz: 'America/New_York',
-      category: 'pain',
-      code: 'cramps',
-      intensity: 3,
-    });
+    // Deterministic last-writer-wins: every stamp comes from an injected
+    // clock ticking one second apart (60s in the past — inside every
+    // server window), so the same-date resolver's winner never depends on
+    // how fast the runner built the payloads. entryA carries the LATEST
+    // stamp on purpose: it is the row the merge must keep.
+    const stampBase = Date.now() - 60_000;
+    let stampTick = 0;
+    const stampedClock = (): Date => new Date(stampBase + stampTick++ * 1_000);
+    const entryA = newDayEntryPayload(
+      {
+        profile_id: profile.id,
+        local_date: day,
+        tz: 'America/New_York',
+        flow: 'light',
+        tags: ['sad', 'irritable'],
+        note: 'Mild cramps in the morning, gone by noon.',
+        pms: true,
+      },
+      () => new Date(stampBase + 9_000),
+    );
+    const entryB = newDayEntryPayload(
+      {
+        profile_id: profile.id,
+        local_date: day,
+        tz: 'America/New_York',
+        flow: 'medium',
+      },
+      () => new Date(stampBase + 5_000),
+    );
+    const observationBbt = newObservationPayload(
+      {
+        day_entry_id: entryA.id,
+        profile_id: profile.id,
+        local_date: day,
+        tz: 'America/New_York',
+        observed_at: new Date(stampBase).toISOString(),
+        category: 'bbt',
+        value_num: 36.33,
+        unit: 'celsius',
+      },
+      stampedClock,
+    );
+    const observationPain = newObservationPayload(
+      {
+        day_entry_id: entryA.id,
+        profile_id: profile.id,
+        local_date: day,
+        tz: 'America/New_York',
+        category: 'pain',
+        code: 'cramps',
+        intensity: 3,
+      },
+      stampedClock,
+    );
 
     const outcome = await pushSyncBatch(owner, {
       profiles: [profile],
@@ -303,14 +323,19 @@ suite('web data layer against the live local stack (issue #1252)', () => {
       observations: [observationBbt, observationPain],
       profile_modes: [newProfileModePayload({ profile_id: profile.id, mode: 'tracking' })],
       cycle_overrides: [
-        newCycleOverridePayload({
-          profile_id: profile.id,
-          cycle_start_date: day,
-          excluded_from_average: true,
-          manual_start: false,
-        }),
+        newCycleOverridePayload(
+          {
+            profile_id: profile.id,
+            cycle_start_date: day,
+            excluded_from_average: true,
+            manual_start: false,
+          },
+          stampedClock,
+        ),
       ],
-      care_notes: [newCareNotePayload({ profile_id: profile.id, body: 'Heat pad helps.' })],
+      care_notes: [
+        newCareNotePayload({ profile_id: profile.id, body: 'Heat pad helps.' }, stampedClock),
+      ],
       visit_prep_items: [
         newVisitPrepItemPayload({
           profile_id: profile.id,
@@ -319,15 +344,35 @@ suite('web data layer against the live local stack (issue #1252)', () => {
         }),
       ],
       guardian_notes: [
-        newGuardianNotePayload({
-          profile_id: profile.id,
-          local_date: day,
-          tz: 'UTC',
-          body: 'Write down sleep hours for the past week',
-        }),
+        newGuardianNotePayload(
+          {
+            profile_id: profile.id,
+            local_date: day,
+            tz: 'UTC',
+            body: 'Write down sleep hours for the past week',
+          },
+          stampedClock,
+        ),
       ],
     });
     // The acceptance criterion: zero rejections for the seed-shaped batch.
+    // If the server rejects a row, name the payload it came from — a bare
+    // id echo is undiagnosable in a CI log.
+    if (outcome.rejected.length > 0) {
+      const named = new Map<string, string>([
+        [profile.id, 'profiles payload'],
+        [entryA.id, 'day_entries payload (the merge winner, stamped +9s)'],
+        [entryB.id, 'day_entries payload (the merge loser, stamped +5s)'],
+        [observationBbt.id, 'observations payload (bbt)'],
+        [observationPain.id, 'observations payload (pain)'],
+      ]);
+      const lines = outcome.rejected.map(
+        (rejection) => named.get(rejection.id ?? '') ?? `unrecognised id ${rejection.id}`,
+      );
+      throw new Error(
+        `seed-shape sync_push rejected ${outcome.rejected.length} row(s): ${lines.join('; ')}`,
+      );
+    }
     expect(outcome.rejected).toEqual([]);
 
     const view = (await pullSyncedData(owner)).data;
