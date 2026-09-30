@@ -118,6 +118,10 @@ class HealthBackgroundImportCoordinator {
   /// words the Settings screen would show.
   String _summaryName(HealthImportSummary summary) {
     if (summary.bound == false) return 'unbound';
+    // Issue #1215: a trigger that fired before the binding's first
+    // user-initiated import completed. Coarse on purpose — it names a
+    // consent state, never a count or a date.
+    if (summary.firstImportNotStarted) return 'notYetStarted';
     final blocked = summary.blocked;
     if (blocked == null) {
       return 'imported(${summary.daysWritten}+${summary.spottingDaysWritten})'

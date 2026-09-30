@@ -258,6 +258,20 @@ void main() {
         contains('guardRefused(notOwner)'),
       );
     });
+
+    test('a pass gated on the first import logs notYetStarted (issue #1215)',
+        () async {
+      runner.result = const HealthImportSummary(firstImportNotStarted: true);
+
+      await coordinator.start();
+      trigger.fire();
+      await pumpEventQueue();
+
+      expect(
+        defaultBreadcrumbLog.snapshot().last,
+        contains('notYetStarted'),
+      );
+    });
   });
 
   group('MethodChannelHealthBackgroundTrigger', () {

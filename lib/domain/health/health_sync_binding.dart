@@ -261,7 +261,10 @@ class HealthSyncBinding {
   /// profile is never persisted even transiently — the deny reason is
   /// returned instead and the stored setting is left untouched. On
   /// success, replaces any existing binding (see the class doc above) and
-  /// returns [HealthSyncCheck.allowed].
+  /// returns [HealthSyncCheck.allowed]. The first-import consent marker
+  /// (Issue #1215) is cleared with the binding it belonged to: a fresh
+  /// binding — same or different profile — re-gates background import
+  /// passes until the person runs an import again.
   Future<HealthSyncCheck> bind({
     required Profile profile,
     required String? signedInUserId,
@@ -276,11 +279,40 @@ class HealthSyncBinding {
     );
     if (!decision.isAllowed) return decision;
     await _settings.set(SettingsKeys.healthStoreProfileId, profile.id);
+    await _clearFirstImportMarker();
     return HealthSyncCheck.allowed;
   }
 
   /// Clears the binding — health sync goes back to off for every profile
-  /// on this device until the operator binds one again.
-  Future<void> unbind() =>
-      _settings.set(SettingsKeys.healthStoreProfileId, '');
+  /// on this device until the operator binds one again. The first-import
+  /// consent marker (Issue #1215) goes with it.
+  Future<void> unbind() async {
+    await _settings.set(SettingsKeys.healthStoreProfileId, '');
+    await _clearFirstImportMarker();
+  }
+
+  /// Whether the first user-initiated import has completed for the current
+  /// binding (Issue #1215). Until it has, a background import pass is a
+  /// silent no-op — the first import is the person's to start, and an
+  /// observer's own first fire or a launch-time trigger must never read
+  /// the store's whole history before that.
+  Future<bool> hasCompletedFirstImport() async {
+    final raw =
+        await _settings.get(SettingsKeys.healthImportFirstPassCompletedMs);
+    return int.tryParse(raw ?? '') != null;
+  }
+
+  /// Records the completion of one user-initiated import pass for the
+  /// current binding (Issue #1215) — the consent the background gate
+  /// reads. Stamped with this class's injected clock; belongs to the
+  /// current binding only, so `bind`/`unbind` clear it.
+  Future<void> markFirstImportCompleted() async {
+    await _settings.set(
+      SettingsKeys.healthImportFirstPassCompletedMs,
+      '${_now().toUtc().millisecondsSinceEpoch}',
+    );
+  }
+
+  Future<void> _clearFirstImportMarker() =>
+      _settings.set(SettingsKeys.healthImportFirstPassCompletedMs, '');
 }

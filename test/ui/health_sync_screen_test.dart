@@ -365,11 +365,23 @@ void main() {
     await pumpScreen(tester, binding: binding);
 
     // Issue #217 rewrote the old "nothing is ever read back" claim: import
-    // exists, but only when the operator starts it.
+    // exists, but only when the operator starts it. Issue #1215 then made
+    // the copy match the enforced gate: the first import is the operator's
+    // to start, and only after it does the import keep itself current in
+    // the background.
     expect(
-      find.textContaining('nothing is read unless you start that import '
-          'yourself'),
+      find.textContaining('you start the first import yourself'),
       findsOneWidget,
+    );
+    expect(
+      find.textContaining(
+          'after it lunarlog keeps the import current in the background'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('nothing is read unless'),
+      findsNothing,
+      reason: 'the pre-#1215 claim, false since the gate shipped, verbatim',
     );
     expect(
       find.textContaining('Only days logged after sync is turned on'),
@@ -703,6 +715,12 @@ void main() {
 
       final tile = find.byKey(const ValueKey('health-sync-import-tile'));
       await tester.scrollUntilVisible(tile, 120);
+      // The coarse scroll stops at first partial visibility, and since the
+      // #1215 copy the forward-only paragraph is long enough that the tile
+      // can still peek in from below the 300 px viewport — a centre tap
+      // would then land off-screen and silently miss. Finish the reveal.
+      await tester.ensureVisible(tile);
+      await tester.pumpAndSettle();
       await tester.tap(tile);
       await tester.pumpAndSettle();
 

@@ -5134,7 +5134,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get healthSyncWriteForwardOnly =>
-      'Only days logged after sync is turned on are written — nothing already in the app is sent on its own. Separately, you can choose to import menstrual flow from the Health app; nothing is read unless you start that import yourself.';
+      'Only days logged after sync is turned on are written — nothing already in the app is sent on its own. Separately, you can import menstrual flow from the Health app — you start the first import yourself, and after it lunarlog keeps the import current in the background.';
 
   @override
   String get healthSyncWriteSymptoms =>
@@ -5142,7 +5142,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get healthSyncImportOnly =>
-      'Only menstrual flow and spotting written by other apps appear here, and only when you start an import yourself — nothing is read or written automatically.';
+      'Only menstrual flow and spotting written by other apps appear here — nothing is written automatically. You start the first import yourself; after it, lunarlog keeps the import current in the background.';
 
   @override
   String get healthSyncDenyMinorOff =>

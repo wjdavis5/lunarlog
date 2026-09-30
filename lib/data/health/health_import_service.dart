@@ -56,15 +56,18 @@
 ///    into the OS store — the loop the two directions would otherwise form.
 ///
 /// **Bound. Two entry points.** [importNow] is the user-initiated pass —
-/// the only thing `lib/ui` calls, from an explicit Settings action. Issue
-/// #993 adds [importInBackground]: the same pipeline minus everything a
-/// background context must never do (no `bindProfile` re-write, no
-/// authorization prompt — the OS permission is *probed* via Issue #959's
-/// `permissionStatus` and anything but `granted` ends the pass before a
-/// single read). The platform triggers behind it (an HKObserverQuery on
-/// iOS, a WorkManager job on Android — see
-/// `health_background_import_service.dart`) are import-only: no write, no
-/// UI, counts-only logging at the coordinator.
+/// the only thing `lib/ui` calls, from an explicit Settings action, and
+/// the only path that stamps a binding's first-import consent marker
+/// (Issue #1215). Issue #993 adds [importInBackground]: the same pipeline
+/// minus everything a background context must never do (no `bindProfile`
+/// re-write, no authorization prompt — and, since Issue #1215, no read at
+/// all until one [importNow] pass has completed for the current binding:
+/// the first import is the person's to start). The OS permission is
+/// *probed* via Issue #959's `permissionStatus` and anything but
+/// `granted` ends the pass before a single read. The platform triggers
+/// behind it (an HKObserverQuery on iOS, a WorkManager job on Android —
+/// see `health_background_import_service.dart`) are import-only: no
+/// write, no UI, counts-only logging at the coordinator.
 ///
 /// **Read-only for computed types.** This service reads menstrual flow and
 /// intermenstrual bleeding only. Apple's four computed cycle-deviation
@@ -407,7 +410,15 @@ class LocalHealthImportService
         _notAllowed(await _platform.requestWriteAuthorization(bound.facts));
     if (blocked != null) return HealthImportSummary(blocked: blocked);
 
-    return _runPass(bound, onProgress);
+    final summary = await _runPass(bound, onProgress);
+    // Issue #1215: a completed pass is the consent the background gate
+    // reads — the person started this import themselves. A pass blocked
+    // before its read (guard, authorization, platform) stamps nothing, so
+    // a first import that never actually ran never opens the gate; a
+    // late-page failure ends in a blocked summary too, and the screen
+    // already asks for a re-run in exactly that case.
+    if (!summary.isBlocked) await _binding.markFirstImportCompleted();
+    return summary;
   }
 
   @override
@@ -427,14 +438,26 @@ class LocalHealthImportService
       );
     }
 
+    // Issue #1215: the first import is the person's to start. Until one
+    // user-initiated pass has completed for this binding, any trigger —
+    // HealthKit's own first fire on a fresh observer, a launch-time
+    // delivery, a WorkManager tick — is a silent no-op: no probe, no read,
+    // no write. Without this gate the store's whole history would land in
+    // the profile on the next launch after binding, before the person ever
+    // tapped Import. Unbinding or re-binding clears the marker with the
+    // binding, so consent always belongs to the current one.
+    if (!await _binding.hasCompletedFirstImport()) {
+      return const HealthImportSummary(firstImportNotStarted: true);
+    }
+
     // Issue #993: a background pass probes the OS permission (Issue #959's
     // own check) and stops before any read unless it is granted. It must
     // never prompt — no `bindProfile` re-write, no `requestWriteAuthorization`
-    // — so a trigger on a device that never completed the first
-    // user-initiated import (`notAsked`) or that had permission revoked
-    // (`denied`) is a silent no-op. Deliberately conservative on iOS, where
-    // the probe covers the write (share) types only: a user who granted the
-    // reads but denied the writes skips background passes too.
+    // — so a trigger on a device that never granted the reads (`notAsked`)
+    // or that had permission revoked (`denied`) is a silent no-op.
+    // Deliberately conservative on iOS, where the probe covers the write
+    // (share) types only: a user who granted the reads but denied the
+    // writes skips background passes too.
     if (await _platform.permissionStatus() !=
         HealthPermissionStatus.granted) {
       return const HealthImportSummary(
