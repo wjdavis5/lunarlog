@@ -1,107 +1,64 @@
 /**
- * ULID generation and validation for client-created rows (issue #1255).
+ * Monotonic-safe ULID generation for the web client (issue #1252).
  *
- * Every synced content row the server accepts carries a 26-character
- * Crockford base32 ULID id — `profiles_id_ulid_check`,
- * `care_notes_id_ulid_check`, `guardian_notes_id_ulid_check` and friends all
- * pin `^[0-9A-HJKMNP-TV-Z]{26}$`, and the Flutter client generates ids from
- * the same spec (`lib/data/db/ulid.dart`). The web client creates
- * guardian-note and care-note rows through `sync_push`, so it must mint ids
- * in exactly that alphabet.
- *
- * Port of `lib/data/db/ulid.dart` (spec: https://github.com/ulid/spec):
- * 48 bits of millisecond timestamp + 80 bits of randomness. The web
- * generator is monotonic within one process instance like the Dart one, so
- * two notes written back-to-back still sort in creation order.
+ * Every id the sync server accepts is a ULID — 26 characters of Crockford
+ * base32 encoding a 128-bit value (48 bits of millisecond timestamp + 80
+ * bits of randomness) — enforced server-side by the tables' own CHECK
+ * constraints (`profiles_id_ulid_check`, `day_entries_id_ulid_check`, … in
+ * 20260903014208_initial_sync_schema.sql) and by `sync_push`'s payload
+ * validation. This module is a line-for-line port of the Dart client's
+ * `lib/data/db/ulid.dart`, so a web-generated id is indistinguishable from
+ * a phone-generated one. ULIDs from one generator sort strictly ascending
+ * even when the clock stands still or regresses, which keeps
+ * client-generated ids stable and sortable for sync.
  */
 
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
-const VALID_ULID = /^[0-9ABCDEFGHJKMNPQRSTVWXYZ]{26}$/;
 
-/** Whether `id` is a syntactically valid ULID (26 Crockford base32 chars). */
+/** Whether [id] is a syntactically valid ULID (26 Crockford base32 chars). */
+// The same shape the server's *_id_ulid_check constraints and sync_push's
+// `c_ulid` pattern enforce; deliberately duplicated here so the client
+// rejects a bad id before a round trip does.
+export const ULID_PATTERN = /^[0-9ABCDEFGHJKMNPQRSTVWXYZ]{26}$/;
+
 export function isValidUlid(id: string): boolean {
-  return VALID_ULID.test(id);
+  return ULID_PATTERN.test(id);
 }
 
-/** The millisecond timestamp encoded in a ULID, or null if `id` is invalid. */
+/** The millisecond timestamp encoded in a ULID, or null if [id] is invalid. */
 export function ulidTimestampMs(id: string): number | null {
   if (!isValidUlid(id)) return null;
   let time = 0;
-  for (let i = 0; i < 10; i++) {
-    const value = CROCKFORD.indexOf(id[i] ?? '');
+  for (let i = 0; i < 10; i += 1) {
+    const value = CROCKFORD.indexOf(id[i] as string);
     if (value < 0) return null;
     time = time * 32 + value;
   }
   return time;
 }
 
-function encodeTime(timeMs: number): string {
-  // 48-bit timestamp -> 10 characters (most significant first).
-  const chars: string[] = new Array(10);
-  let t = timeMs;
-  for (let i = 9; i >= 0; i--) {
-    chars[i] = CROCKFORD[t & 0x1f];
-    t = Math.floor(t / 32);
-  }
-  return chars.join('');
-}
+/** Injected randomness source (80 bits = 10 bytes per ULID). */
+export type RandomBytes = (length: number) => Uint8Array;
 
-function encodeRandomness(bytes: Uint8Array): string {
-  // 80 bits of randomness -> exactly 16 characters of 5 bits each.
-  let out = '';
-  let bitBuffer = 0;
-  let bitCount = 0;
-  for (const byte of bytes) {
-    bitBuffer = ((bitBuffer << 8) | byte) & 0xffff;
-    bitCount += 8;
-    while (bitCount >= 5) {
-      bitCount -= 5;
-      out += CROCKFORD[(bitBuffer >> bitCount) & 0x1f];
-    }
-  }
-  return out;
-}
-
-function increment(bytes: Uint8Array): void {
-  for (let i = bytes.length - 1; i >= 0; i--) {
-    if ((bytes[i] ?? 0) < 255) {
-      bytes[i] = (bytes[i] ?? 0) + 1;
-      return;
-    }
-    bytes[i] = 0;
-  }
-  // Overflow of 80 bits of randomness within one millisecond (~10^24 ids)
-  // is unreachable in practice.
-  throw new Error('ULID randomness overflow within one millisecond');
-}
+/** The browser's cryptographic random source, the default. */
+export const cryptoRandomBytes: RandomBytes = (length) =>
+  crypto.getRandomValues(new Uint8Array(length));
 
 /**
- * Generates monotonic ULIDs. Both seams are injectable so tests can pin the
- * clock and the randomness (the same seams `UlidGenerator` takes in Dart).
+ * Generates monotonic ULIDs. One instance per page load (the data layer
+ * keeps a module singleton); tests may inject a clock and a randomness
+ * source to pin both halves.
  */
 export class UlidGenerator {
-  private lastTimeMs: number | null = null;
-  private lastRandomness: Uint8Array | null = null;
-  private cspBuffer: Uint8Array = new Uint8Array(32);
-  private cspCursor = 32;
+  constructor(clock: () => number = () => Date.now(), random: RandomBytes = cryptoRandomBytes) {
+    this.clock = clock;
+    this.random = random;
+  }
 
   private readonly clock: () => number;
-  private readonly randomByte: () => number;
-
-  constructor(options: { clock?: () => number; randomByte?: () => number } = {}) {
-    this.clock = options.clock ?? (() => Date.now());
-    this.randomByte =
-      options.randomByte ??
-      (() => {
-        // 32 random bytes at a time from the platform CSPRNG, consumed one
-        // byte per call — the same shape as Dart's `Random.secure()`.
-        if (this.cspCursor >= this.cspBuffer.length) {
-          crypto.getRandomValues(this.cspBuffer);
-          this.cspCursor = 0;
-        }
-        return this.cspBuffer[this.cspCursor++] ?? 0;
-      });
-  }
+  private readonly random: RandomBytes;
+  private lastTimeMs: number | null = null;
+  private lastRandomness: Uint8Array | null = null;
 
   /**
    * Returns the next ULID. Guaranteed to sort strictly greater than every
@@ -117,14 +74,11 @@ export class UlidGenerator {
       // Same millisecond (or a clock regression): increment the previous
       // randomness to stay strictly monotonic.
       timeMs = lastTime;
-      randomness = Uint8Array.from(this.lastRandomness ?? new Uint8Array(10));
+      randomness = Uint8Array.of(...(this.lastRandomness as Uint8Array));
       increment(randomness);
     } else {
       timeMs = nowMs;
-      randomness = new Uint8Array(10);
-      for (let i = 0; i < 10; i++) {
-        randomness[i] = this.randomByte();
-      }
+      randomness = this.random(10);
     }
 
     this.lastTimeMs = timeMs;
@@ -132,4 +86,52 @@ export class UlidGenerator {
 
     return encodeTime(timeMs) + encodeRandomness(randomness);
   }
+}
+
+function increment(bytes: Uint8Array): void {
+  for (let i = bytes.length - 1; i >= 0; i -= 1) {
+    if (bytes[i] < 255) {
+      bytes[i] += 1;
+      return;
+    }
+    bytes[i] = 0;
+  }
+  // Overflow of 80 bits of randomness within one millisecond (~10^24 ids)
+  // is unreachable in practice.
+  throw new Error('ULID randomness overflow within one millisecond');
+}
+
+/** 48-bit timestamp -> 10 characters (most significant first). */
+function encodeTime(timeMs: number): string {
+  let t = timeMs;
+  const chars: string[] = new Array<string>(10);
+  for (let i = 9; i >= 0; i -= 1) {
+    chars[i] = CROCKFORD[t & 0x1f];
+    t = Math.floor(t / 32);
+  }
+  return chars.join('');
+}
+
+/** 80 bits of randomness -> exactly 16 characters of 5 bits each. */
+function encodeRandomness(bytes: Uint8Array): string {
+  let out = '';
+  let bitBuffer = 0;
+  let bitCount = 0;
+  for (const byte of bytes) {
+    bitBuffer = (bitBuffer << 8) | byte;
+    bitCount += 8;
+    while (bitCount >= 5) {
+      bitCount -= 5;
+      out += CROCKFORD[(bitBuffer >> bitCount) & 0x1f];
+    }
+  }
+  return out;
+}
+
+/** The page's one generator: monotonic within the page, nothing persisted. */
+const sharedGenerator = new UlidGenerator();
+
+/** Generates the next id for a client-created synced row. */
+export function newUlid(): string {
+  return sharedGenerator.next();
 }

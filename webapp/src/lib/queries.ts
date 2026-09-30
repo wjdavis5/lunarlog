@@ -1,5 +1,8 @@
-import { QueryClient, useQuery } from '@tanstack/react-query';
+import { QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 
+import { getSyncedDataCache, resetWebDataForSignOut, subscribeSyncSignals } from './domain';
+import type { SyncedData } from './domain';
 import { profileListSchema, type ProfileRow } from './schemas';
 import {
   currentUserId,
@@ -36,36 +39,117 @@ export function createAppQueryClient(): QueryClient {
 export const PROFILES_QUERY_KEY = ['profiles'] as const;
 
 /**
- * One network read, validated at the boundary: `select('*')` over `profiles`
- * (RLS scopes the rows to what the signed-in operator may see), then the
- * Zod parse before any component touches a row.
+ * The whole synced dataset, one query: `sync_pull` (cursor-paginated) plus
+ * the two direct selects, validated at the boundary and merged into the
+ * page's in-memory snapshot. The realtime hook below invalidates this key
+ * on every `sync_signals` wake.
  */
-export async function fetchProfiles(client: AppSupabaseClient): Promise<ProfileRow[]> {
-  const { data, error } = await client.from('profiles').select('*').order('sort_order');
-  if (error !== null) {
-    throw new Error(`profiles select failed: ${error.message}`);
+export const SYNCED_DATA_QUERY_KEY = ['synced-data'] as const;
+
+/**
+ * Whether the build is configured AND a session is in memory. The synced
+ * queries stay idle until both hold — `sync_pull` requires an
+ * authenticated caller, and on an unconfigured build (every PR build)
+ * there is no client at all.
+ */
+export function useHasSyncSession(): boolean {
+  const configured = getSupabaseClient() !== null;
+  const [hasSession, setHasSession] = useState(false);
+
+  useEffect(() => {
+    const client = getSupabaseClient();
+    if (client === null) {
+      setHasSession(false);
+      return;
+    }
+    let active = true;
+    const evaluate = (): void => {
+      void client.auth.getSession().then(({ data }) => {
+        if (active) setHasSession(data.session !== null);
+      });
+    };
+    evaluate();
+    const {
+      data: { subscription },
+    } = client.auth.onAuthStateChange(() => {
+      evaluate();
+    });
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  return configured && hasSession;
+}
+
+async function refreshSyncedData(): Promise<SyncedData> {
+  const client = getSupabaseClient();
+  if (client === null) {
+    throw new Error('Supabase is not configured in this build');
   }
-  return profileListSchema.parse(data);
+  return getSyncedDataCache().refresh(client);
+}
+
+/** The synced dataset (profiles, entries, guardians, notes), pulled live. */
+export function useSyncedData() {
+  const enabled = useHasSyncSession();
+  return useQuery({
+    queryKey: SYNCED_DATA_QUERY_KEY,
+    queryFn: refreshSyncedData,
+    enabled,
+  });
 }
 
 /**
- * The shell's first real query. Enabled only when the build is configured;
- * on an unconfigured build (every PR build) it stays idle and the page
- * renders the catalogue copy alone.
+ * The live (non-deleted, non-archived) profiles the operator can see —
+ * RLS-scoped server-side, sorted for display. The shell's profile list.
  */
-export function useProfiles() {
-  const configured = getSupabaseClient() !== null;
-  return useQuery({
-    queryKey: PROFILES_QUERY_KEY,
-    queryFn: () => {
-      const client = getSupabaseClient();
-      if (client === null) {
-        throw new Error('Supabase is not configured in this build');
-      }
-      return fetchProfiles(client);
-    },
-    enabled: configured,
-  });
+export function useLiveProfiles(): ProfileRow[] {
+  const query = useSyncedData();
+  const rows = query.data?.profiles ?? [];
+  return rows
+    .filter((profile) => profile.deleted_at === null && profile.archived_at === null)
+    .sort((a, b) => a.sort_order - b.sort_order || (a.id < b.id ? -1 : 1));
+}
+
+/**
+ * Refetches the synced dataset whenever a `sync_signals` wake arrives for
+ * any of the visible profiles. The signal is content-free — it only ever
+ * means "go re-pull" — so the handler invalidates the one query key and
+ * nothing else. No-op (idle subscription) while signed out.
+ */
+export function useSyncSignalsRefetch(profileIds: string[]): void {
+  const queryClient = useQueryClient();
+  const enabled = useHasSyncSession();
+  // Stable dependency: the subscription re-wires when the id set changes,
+  // not on every parent render that allocated a new array.
+  const profileKey = profileIds.join(',');
+
+  useEffect(() => {
+    if (!enabled || profileKey === '') {
+      return;
+    }
+    const client = getSupabaseClient();
+    if (client === null) {
+      return;
+    }
+    const subscription = subscribeSyncSignals(client, profileKey.split(','), () => {
+      void queryClient.invalidateQueries({ queryKey: SYNCED_DATA_QUERY_KEY });
+    });
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [enabled, queryClient, profileKey]);
+}
+
+/**
+ * Sign-out: drops the synced-data snapshot/cursors and clears the TanStack
+ * cache — the whole point of keeping them in memory. The auth flow calls
+ * this on `SIGNED_OUT`.
+ */
+export function resetWebData(queryClient: QueryClient): void {
+  resetWebDataForSignOut(queryClient);
 }
 
 // --- Sharing and notes queries (issue #1255). Same shape as `useProfiles`:

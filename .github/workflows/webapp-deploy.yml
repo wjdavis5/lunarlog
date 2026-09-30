@@ -18,6 +18,11 @@ name: Web app staging deploy (Cloudflare Workers)
 # #1249), run against the live workers.dev origin — the only place a declared
 # header the origin never serves is visible.
 
+env:
+  # The same pinned SDK every other workflow builds with (the AGENTS.md
+  # SDK-bump procedure lists the workflows that carry this pin).
+  FLUTTER_VERSION: '3.47.2'
+
 on:
   push:
     branches: [main]
@@ -28,6 +33,10 @@ on:
       - 'webapp/**'
       - 'supabase/database.types.ts'
       - 'lib/l10n/app_en.arb'
+      # The Dart domain the client compiles to JavaScript (issue #1251): a
+      # domain change rebuilds the module and redeploys staging with it.
+      - 'lib/domain/**'
+      - 'tool/web_domain/**'
       - '.github/workflows/webapp-deploy.yml'
       - '.github/scripts/check-webapp-staging.sh'
   workflow_dispatch:
@@ -58,6 +67,23 @@ jobs:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: 'webapp/package-lock.json'
+
+      # The compiled Dart domain module (issue #1251) — staging must serve
+      # the same artifact CI's webapp job parity-tested, so the deploy
+      # builds it exactly the same way. The Flutter SDK is required to
+      # resolve the root package's pubspec; `dart compile js` is plain
+      # dart2js (same script output, same CSP cleanliness).
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Compile the Dart domain module (dart2js)
+        run: |
+          flutter pub get
+          dart compile js -O2 --no-source-maps tool/web_domain/main.dart \
+            -o webapp/public/domain/lunarlog_domain.js
+          rm -f webapp/public/domain/lunarlog_domain.js.deps
 
       # The client-safe Supabase pair — the project URL and publishable key,
       # the same values the Flutter builds receive (kept under their old

@@ -3,3 +3,7 @@ dist/
 coverage/
 playwright-report/
 test-results/
+public/domain/*.js
+public/domain/*.js.deps
+public/domain/*.js.map
+public/domain/*.gz

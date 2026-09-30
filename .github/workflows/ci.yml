@@ -744,9 +744,11 @@ jobs:
     # with the staging Worker's real headers.
     #
     # Path-filtered (issue #1249): runs only when webapp/**,
-    # supabase/database.types.ts, or lib/l10n/app_en.arb changed — the set
-    # detect-ci-changes.sh classifies as `webapp`. (#1251 adds the domain
-    # module's paths.)
+    # supabase/database.types.ts, lib/l10n/app_en.arb, or — since #1251 —
+    # lib/domain/** / tool/web_domain/** changed: the set
+    # detect-ci-changes.sh classifies as `webapp`. Data-layer changes
+    # (webapp/src/lib/**, webapp/test/integration/**, issue #1252) also
+    # turn on the `database` suite, so this job runs alongside db-tests.
     #
     # Deliberately NOT a required check: not in ci-required-checks' needs
     # below, and not in check-ci-gate.sh's REQUIRED_CHECKS — the issue's
@@ -783,6 +785,30 @@ jobs:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: 'webapp/package-lock.json'
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        if: steps.check_run.outputs.run == 'true'
+        with:
+          # The same pinned SDK every other job builds with. The webapp
+          # needs it (issue #1251) because the domain module is compiled
+          # from this Flutter package — `dart compile js` must resolve the
+          # root pubspec, whose dependency set requires the Flutter SDK.
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Compile the Dart domain module (dart2js)
+        # Issue #1251: lib/domain → JavaScript via the tool/web_domain
+        # facade. dart2js (not WASM) keeps the module clean under the
+        # staging CSP's `script-src 'self'` — plain script output, no
+        # eval/Function/Wasm — and the parity suite below runs every
+        # committed fixture through this exact artifact, so the compiled
+        # module can never drift from the Dart domain silently.
+        if: steps.check_run.outputs.run == 'true'
+        run: |
+          flutter pub get
+          dart compile js -O2 --no-source-maps tool/web_domain/main.dart \
+            -o webapp/public/domain/lunarlog_domain.js
+          rm -f webapp/public/domain/lunarlog_domain.js.deps
 
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         if: steps.check_run.outputs.run == 'true'
@@ -939,6 +965,37 @@ jobs:
           export LUNARLOG_LOCAL_SUPABASE_PUBLISHABLE_KEY="$ANON_KEY"
           export LUNARLOG_LOCAL_SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
           flutter test test/data/sync/local_supabase_round_trip_test.dart
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        if: steps.check_run.outputs.run == 'true'
+        with:
+          # Pinned to the same major as the webapp job's Node step.
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: 'webapp/package-lock.json'
+
+      - name: Web data-layer integration tests (issue #1252)
+        # Issue #1252's web data layer against the same live stack — the web
+        # sibling of the Dart round trip above (real PostgREST + GoTrue,
+        # real sync_push/sync_pull/sharing RPCs, real RLS): a guardian sees
+        # only their own profiles, a viewer's write is rejected, and the
+        # seed-fixture payload shapes survive the live sync_push with zero
+        # rejections. The suite skips itself when no stack is reachable, so
+        # the webapp job (which starts none) stays green. The realtime
+        # container is deliberately NOT part of this stack (AGENTS.md's
+        # Migration Flow excludes it): the sync_signals subscription wiring
+        # is pinned by the webapp unit suite, and delivery itself is proven
+        # by supabase/tests/manual/verify_realtime_delivery.mjs.
+        if: steps.check_run.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          eval "$(supabase status -o env 2>/dev/null)"
+          export LUNARLOG_LOCAL_SUPABASE_URL="$API_URL"
+          export LUNARLOG_LOCAL_SUPABASE_PUBLISHABLE_KEY="$ANON_KEY"
+          export LUNARLOG_LOCAL_SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
+          cd webapp
+          npm ci
+          npx vitest run test/integration
 
       - name: Stop local Supabase
         if: steps.check_run.outputs.run == 'true' && always()
