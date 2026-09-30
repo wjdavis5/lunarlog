@@ -647,6 +647,60 @@ void main() {
     await disposeActivity(tester, h);
   });
 
+  testWidgets('a single-guardian profile with a fresh entry never lights '
+      'the new dot (issue #1216)', (tester) async {
+    // The dot's old condition (baseline set, a newer row exists) is true
+    // here for one guardian, but the screen it opens returns the
+    // single-guardian quiet state for exactly this profile — the dot can
+    // only point at "Just you for now". One accepted guardian...
+    var h = await pumpActivity(
+      tester,
+      screen: (profile, repository, db) => ProfileDetailScreen(
+        profile: profile,
+        todayProvider: () => kToday,
+      ),
+      seed: (db, profileId) async {
+        await db.storage.applyRemoteRows([
+          guardianRow(profileId, 'user-mom', 'primary_guardian',
+              displayName: 'Mom'),
+          entryRow(profileId, 'e', LocalDate(2026, 8, 19),
+              updatedAt: DateTime.utc(2026, 8, 20),
+              loggedByUserId: 'user-mom'),
+        ]);
+        await db.storage.setSetting(
+          key: activityLastSeenKey(profileId),
+          value: DateTime.utc(2026, 8, 19).toIso8601String(),
+        );
+      },
+    );
+    expect(find.byKey(const ValueKey('activity-feed-button-new')),
+        findsNothing);
+    await disposeActivity(tester, h);
+
+    // ...and the same for a guardian-less (local-only) profile, which the
+    // screen treats as un-shared too.
+    h = await pumpActivity(
+      tester,
+      screen: (profile, repository, db) => ProfileDetailScreen(
+        profile: profile,
+        todayProvider: () => kToday,
+      ),
+      seed: (db, profileId) async {
+        await db.storage.applyRemoteRows([
+          entryRow(profileId, 'e', LocalDate(2026, 8, 19),
+              updatedAt: DateTime.utc(2026, 8, 20)),
+        ]);
+        await db.storage.setSetting(
+          key: activityLastSeenKey(profileId),
+          value: DateTime.utc(2026, 8, 19).toIso8601String(),
+        );
+      },
+    );
+    expect(find.byKey(const ValueKey('activity-feed-button-new')),
+        findsNothing);
+    await disposeActivity(tester, h);
+  });
+
   testWidgets('Manage Guardians offers the Activity action when handed a '
       'repository, and hides it when not', (tester) async {
     final h = await pumpActivity(

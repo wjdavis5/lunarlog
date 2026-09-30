@@ -6,6 +6,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/activity/activity_feed.dart';
+import 'package:lunarlog/domain/activity/activity_feed_snapshot.dart';
 import 'package:lunarlog/domain/activity/merge_events.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
@@ -256,6 +257,87 @@ void main() {
       expect(isActivityNew(item, DateTime.utc(2026, 9, 1)), isTrue);
       expect(isActivityNew(item, DateTime.utc(2026, 9, 2)), isFalse);
       expect(isActivityNew(item, DateTime.utc(2026, 9, 3)), isFalse);
+    });
+  });
+
+  group('ActivityFeedSnapshot.hasNewItems', () {
+    final fresh = ActivityItem(
+      id: 'fresh',
+      kind: ActivityKind.logged,
+      occurredAt: DateTime.utc(2026, 9, 2),
+    );
+    final baseline = DateTime.utc(2026, 9, 1);
+
+    ActivityFeedSnapshot snapshot({
+      required List<ActivityItem> items,
+      required bool isShared,
+      DateTime? lastSeen,
+    }) =>
+        ActivityFeedSnapshot(
+          items: items,
+          guardians: const [],
+          lastSeen: lastSeen,
+          isShared: isShared,
+        );
+
+    test('shared profile, baseline set, a newer row: the dot lights', () {
+      expect(
+        snapshot(
+          items: [fresh],
+          isShared: true,
+          lastSeen: baseline,
+        ).hasNewItems,
+        isTrue,
+      );
+    });
+
+    // Issue #1216: the single-guardian quiet state never lists these rows,
+    // so the dot must not light for the same inputs on an unshared profile.
+    test('unshared profile: never new, whatever the rows and stamp say', () {
+      expect(
+        snapshot(
+          items: [fresh],
+          isShared: false,
+          lastSeen: baseline,
+        ).hasNewItems,
+        isFalse,
+      );
+      expect(
+        snapshot(
+          items: [fresh, fresh],
+          isShared: false,
+          lastSeen: baseline,
+        ).hasNewItems,
+        isFalse,
+      );
+    });
+
+    test('null lastSeen (never opened) is never new, shared or not', () {
+      expect(
+        snapshot(items: [fresh], isShared: true).hasNewItems,
+        isFalse,
+      );
+      expect(
+        snapshot(items: [fresh], isShared: false).hasNewItems,
+        isFalse,
+      );
+    });
+
+    test('shared profile, rows all older than the stamp: not new', () {
+      expect(
+        snapshot(
+          items: [
+            ActivityItem(
+              id: 'old',
+              kind: ActivityKind.logged,
+              occurredAt: DateTime.utc(2026, 8, 31),
+            ),
+          ],
+          isShared: true,
+          lastSeen: baseline,
+        ).hasNewItems,
+        isFalse,
+      );
     });
   });
 

@@ -30,7 +30,14 @@ class ActivityFeedSnapshot {
   final bool isShared;
 
   /// Whether any row is newer than [lastSeen] — drives the entry-point
-  /// "new" dot. Null [lastSeen] (never opened) is never "new".
-  bool get hasNewItems =>
-      lastSeen != null && items.any((item) => isActivityNew(item, lastSeen));
+  /// "new" dot. Null [lastSeen] (never opened) is never "new". Gated on
+  /// [isShared] the same way the screen is (issue #1216): the
+  /// single-guardian quiet state never lists these rows, so a dot earned
+  /// on an unshared profile would always open to "Just you for now" —
+  /// including after the operator's own every log and every Health
+  /// import, teaching the person to ignore the dot for the day it
+  /// actually means something.
+  bool get hasNewItems => lastSeen != null &&
+      isShared &&
+      items.any((item) => isActivityNew(item, lastSeen));
 }
