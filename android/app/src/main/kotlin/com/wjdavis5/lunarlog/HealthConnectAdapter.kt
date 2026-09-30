@@ -86,7 +86,17 @@ class HealthConnectAdapter(context: Context) {
     private val contextApp: Context = context.applicationContext
 
     private val prefs: SharedPreferences =
-        contextApp.getSharedPreferences("lunarlog_health", Context.MODE_PRIVATE)
+        contextApp.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
+
+    init {
+        // Issue #993: app start with a bound profile (re)arms the periodic
+        // background-import job. KEEP policy — this never resets the
+        // schedule's clock; the worker re-checks the binding mirror on
+        // every tick, so an unbound device's tick is a no-op regardless.
+        if (prefs.getString(BOUND_PROFILE_KEY, null) != null) {
+            HealthBackgroundImportScheduler.schedule(contextApp)
+        }
+    }
 
     // Health Connect's permission sheet is an ActivityResult contract, so
     // the launcher must be registered before the activity reaches STARTED
@@ -225,6 +235,10 @@ class HealthConnectAdapter(context: Context) {
                     result.success(decision)
                 } else {
                     prefs.edit().putString(BOUND_PROFILE_KEY, g.profileId).apply()
+                    // Issue #993: a first-ever bind during this session
+                    // arms the periodic background-import job (KEEP policy,
+                    // so re-binds never reset the clock).
+                    HealthBackgroundImportScheduler.schedule(contextApp)
                     result.success("allowed")
                 }
             }
@@ -235,7 +249,21 @@ class HealthConnectAdapter(context: Context) {
                 // re-bind starts from a clean backfill (Issue #458).
                 storedBoundProfileId?.let { editor.remove(changesTokenKey(it)) }
                 editor.apply()
+                // Issue #993: an unbound device stops being woken for
+                // background imports. Best-effort; the Dart-side guard
+                // refuses an unbound pass regardless.
+                HealthBackgroundImportScheduler.cancel(contextApp)
                 result.success(null)
+            }
+
+            "consumePendingBackgroundImportTrigger" -> {
+                // Issue #993: the Dart coordinator's startup pull. Android
+                // has no native-side latch to clear — its worker pushes only
+                // into a live engine (a tick that lands on a restarted
+                // process finds no engine and no-ops) — so the answer is
+                // always false. Unguarded: it reads no health data and
+                // touches no health API.
+                result.success(false)
             }
 
             "requestWriteAuthorization" -> {
@@ -1141,8 +1169,14 @@ class HealthConnectAdapter(context: Context) {
     private fun healthConnectClient(): HealthConnectClient? =
         if (isAvailable()) HealthConnectClient.getOrCreate(contextApp) else null
 
-    private companion object {
+    // Issue #993: the companion is internal (not private) so the
+    // background-import worker can name the same prefs file, binding key,
+    // and channel rather than re-typing them — the mirror and the channel
+    // are the two seams the worker reads and fires through.
+    companion object {
+        const val PREFS_FILE = "lunarlog_health"
         const val BOUND_PROFILE_KEY = "lunarlog.health.boundProfileId"
+        const val CHANNEL_NAME = "lunarlog/health"
 
         // Issue #238: the permanent platform limitation, registered
         // explicitly here (the adapter's type registry). Health Connect

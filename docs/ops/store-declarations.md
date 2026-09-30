@@ -187,6 +187,7 @@ is the cross-reference so both consoles are typed in the same sitting.
 | 6 | `WRITE_CERVICAL_MUCUS` | Write | fertility family (issue #228), write-only |
 | 7 | `WRITE_OVULATION_TEST` | Write | write-only |
 | 8 | `WRITE_BASAL_BODY_TEMPERATURE` | Write | write-only, no wearable-sourced value |
+| 9 | `READ_HEALTH_DATA_IN_BACKGROUND` | Read | background import trigger (issue #993) — read-only; the pass runs the same #153 guard and #959 permission probe |
 
 Symptom and mood health-store writes are **iOS-only** (HealthKit); Health
 Connect has no symptom category types, so they are not part of this Android
@@ -276,7 +277,7 @@ and reconcile `NSPrivacyAccessedAPITypes` — this environment cannot run it
 
 | Trigger | What changes | Declaration(s) to re-file |
 |---|---|---|
-| **#993** background health sync (Apple Health background delivery; Health Connect background reads) | Adds `READ_HEALTH_DATA_IN_BACKGROUND` and background-delivery entitlement; reads become automatic rather than tap-initiated | Play **Health apps** declaration (new permission + justification). Data safety likely unchanged (still on-device only) — confirm whether "collected" changes. App Privacy unchanged on category, but re-check purpose copy. |
+| **#993** background health sync (Apple Health background delivery; Health Connect background reads) — **shipped by #993; the re-file below is now due before the next reviewed track** | Adds `READ_HEALTH_DATA_IN_BACKGROUND` and background-delivery entitlement; reads become automatic rather than tap-initiated | Play **Health apps** declaration (new permission + justification). Data safety likely unchanged (still on-device only) — confirm whether "collected" changes. App Privacy unchanged on category, but re-check purpose copy. |
 | **#831** deployed signed-in web build | Signed-in browser holds synced rows + session in unencrypted browser storage; already disclosed in `PRIVACY.md` §6:133, but the deployed origin is new | Both stores' **security/data-safety** narrative and the Play **data deletion** answer (add "clear browser storage / sign out wipes it"). Apple/Play category list unchanged unless web-only features ship. |
 | **#117** Claude/ChatGPT connector (open, needs ideation) | Would send health data to a third-party AI assistant — a true third party, not a processor | Play Data safety: **Shared = Yes** for Health info (a real change). App Privacy: Health linked and shared. Also `PRIVACY.md` §4. Needs a product decision first. |
 | Any new off-device data type or new recipient | New row in §1 above, new category on both stores | Both declarations + `PRIVACY.md` §9 + `PrivacyInfo.xcprivacy` in the same change. |

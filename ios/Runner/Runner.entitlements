@@ -16,10 +16,18 @@
 	<string>production</string>
 	<!-- Issue #156: HealthKit platform plumbing only -- no clinical-records
 	     access requested (com.apple.developer.healthkit.access left empty).
-	     Background delivery (com.apple.developer.healthkit.background-delivery)
-	     is deliberately NOT added here; it is scoped to #217 (HS-6)/#186
-	     (HS-11) per A3-16, not needed for v1 write-only parity. -->
+	     Issue #993: background delivery
+	     (com.apple.developer.healthkit.background-delivery) is now requested
+	     so the HKObserverQuery registration in AppDelegate.swift's
+	     HealthKitChannelHandler can wake the app for the prompt-free import
+	     pass — the same anchored, never-overwrite pipeline the Settings tap
+	     runs, never a write. The App Store provisioning profile must be
+	     regenerated with this capability (compounding with the Sign in with
+	     Apple, Push, and App Group capabilities already on the App ID) — see
+	     docs/ops/supabase-go-live.md's "Apple / Google store plumbing". -->
 	<key>com.apple.developer.healthkit</key>
+	<true/>
+	<key>com.apple.developer.healthkit.background-delivery</key>
 	<true/>
 	<key>com.apple.developer.healthkit.access</key>
 	<array/>

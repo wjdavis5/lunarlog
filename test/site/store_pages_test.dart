@@ -252,6 +252,44 @@ void main() {
       expect(guide, contains('flow and spotting'));
     });
 
+    test('health-import answer states the background-trigger truth (#993)',
+        () {
+      // Issue #993 shipped background imports; the answer used to deny
+      // them outright ("It's user-initiated only; lunarlog never reads
+      // your health store in the background"). A retired denial may not
+      // survive the feature it denies: the answer now states the bounded
+      // truth — the FIRST import is user-initiated, and once a profile is
+      // bound the same import keeps itself current in the background,
+      // never prompting, never writing, stopping on unbind or revocation.
+      expect(supportPage, contains('in the background'));
+      expect(supportPage, contains('You start the first import yourself'));
+      expect(supportPage, isNot(contains("It's user-initiated only")),
+          reason: 'the pre-#993 denial, verbatim');
+      expect(supportPage, isNot(contains('never reads your')));
+      // The page cites the feature that ships the claim.
+      expect(supportPage, contains('#993'));
+      // The facts the answer paraphrases, read from their sources of
+      // record so the page and the app cannot drift apart.
+      final privacy = flat(File('PRIVACY.md').readAsStringSync());
+      expect(
+        privacy,
+        contains('same import pass can also run in the background'),
+      );
+      expect(
+        File('android/app/src/main/AndroidManifest.xml').readAsStringSync(),
+        contains('android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND'),
+        reason: 'the permission behind the background read',
+      );
+      // The in-app scope note carries the same flip: it used to say
+      // background sync was "not available yet".
+      final arb = RegExp(
+        r'"healthSyncFullHistoryNote":\s*"([^"]*)"',
+      ).firstMatch(File('lib/l10n/app_en.arb').readAsStringSync())!;
+      expect(arb.group(1)!, contains('in the background'));
+      expect(arb.group(1)!, isNot(contains('not available yet')),
+          reason: 'the pre-#993 scope note, verbatim');
+    });
+
     test('pages ship zero client-side JavaScript', () {
       // The site's own acceptance criterion (#1099): no client JS. A page
       // that grows a script tag fails here before the CSP in _headers does.

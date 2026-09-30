@@ -17,10 +17,15 @@
 	<string>development</string>
 	<!-- Issue #156: HealthKit platform plumbing only -- no clinical-records
 	     access requested (com.apple.developer.healthkit.access left empty).
-	     Background delivery (com.apple.developer.healthkit.background-delivery)
-	     is deliberately NOT added here; it is scoped to #217 (HS-6)/#186
-	     (HS-11) per A3-16, not needed for v1 write-only parity. -->
+	     Issue #993: background delivery
+	     (com.apple.developer.healthkit.background-delivery) is now requested
+	     here too, keeping the per-configuration files' capability sets
+	     identical (only the aps-environment value differs, per the PR #109
+	     split above) -- a development-signed Debug build must satisfy the
+	     same entitlements its provisioning profile carries. -->
 	<key>com.apple.developer.healthkit</key>
+	<true/>
+	<key>com.apple.developer.healthkit.background-delivery</key>
 	<true/>
 	<key>com.apple.developer.healthkit.access</key>
 	<array/>

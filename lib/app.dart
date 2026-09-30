@@ -456,6 +456,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     _initHealthImporter();
     _initHealthPermissionProbe();
     _initHealthDeviationInsights();
+    unawaited(_initHealthBackgroundImport());
     _buildReminderCoordinator();
     _initReminderWindowPublisher();
     // Issue #373: started on its own, never nested inside the push-gated
@@ -808,6 +809,30 @@ class _LunarLogAppState extends State<LunarLogApp>
       signedInUserId: () => confirmedHealthSyncUserId(_authController),
       minorBindingAllowed: AppConfig.healthSyncMinorBindingAllowed,
     );
+  }
+
+  /// Issue #993: the background half of the health import. The platform
+  /// triggers (iOS's HKObserverQuery, Android's WorkManager job) fire
+  /// through the shared channel; this starts the coordinator that turns
+  /// each fire into one prompt-free pass of the same pipeline the Settings
+  /// tap runs. AC2: construction (and the platform gating) lives in
+  /// `lib/composition/`; this only starts it — the pass itself never
+  /// prompts, shows UI, or logs health content (counts only, inside the
+  /// coordinator). No field holds the coordinator: the channel handler it
+  /// registers is what keeps it alive, and there is nothing to dispose —
+  /// it lives as long as the app.
+  Future<void> _initHealthBackgroundImport() async {
+    final coordinator = buildHealthBackgroundImportCoordinator(
+      settings: _settings,
+      profiles: _profiles,
+      dayEntries: _dayEntries,
+      observations: _observations,
+      guardiansForProfile: _profileGuardians.getForProfile,
+      signedInUserId: () => confirmedHealthSyncUserId(_authController),
+      minorBindingAllowed: AppConfig.healthSyncMinorBindingAllowed,
+    );
+    if (coordinator == null) return;
+    await coordinator.start();
   }
 
   /// Issue #959: the OS-permission probe the Health sync screen reads. AC2:

@@ -49,19 +49,25 @@ const description =
 
     <section>
       <h2>From Apple Health or Health Connect</h2>
-      <!-- cite: lib/data/health/health_import_service.dart (user-initiated only; the whole
-           available history read a page at a time, issue #992; on Android the read
-           covers menstrual-flow AND intermenstrual-bleeding records — Health Connect's
-           READ_MENSTRUATION and READ_INTERMENSTRUAL_BLEEDING, issue #1180 — and
-           hand-logged values are never overwritten; own writes excluded by source;
-           provenance stamped; "Bound, never background"); PRIVACY.md §4 health paragraph. -->
+      <!-- cite: lib/data/health/health_import_service.dart (the first import is
+           user-initiated; the whole available history read a page at a time, issue
+           #992; on Android the read covers menstrual-flow AND intermenstrual-bleeding
+           records — Health Connect's READ_MENSTRUATION and READ_INTERMENSTRUAL_BLEEDING,
+           issue #1180 — and hand-logged values are never overwritten; own writes
+           excluded by source; provenance stamped; "Bound. Two entry points." — since
+           #993 the same import also runs prompt-free in the background, iOS observer +
+           Android worker, #153 guard and #959 probe inside importInBackground);
+           PRIVACY.md §4 health paragraph. -->
       <p>
         On iPhone, lunarlog can read menstrual-flow history from Apple
         Health; on Android, flow and spotting history from Health Connect.
-        You start each import yourself from Settings — there is no
-        background read and no schedule — and the read covers the whole
-        history the health store holds, a page at a time, however far back
-        it goes.
+        You start the first import yourself from Settings; after that, the
+        same import also keeps itself current in the background — Apple
+        Health tells lunarlog when new data lands, and Android checks Health
+        Connect on a schedule — under the same rules: no prompt, no screen,
+        never a write, and it stops if you unbind the profile or revoke the
+        permission. The read covers the whole history the health store
+        holds, a page at a time, however far back it goes.
       </p>
       <p>
         What an import will and will not do:

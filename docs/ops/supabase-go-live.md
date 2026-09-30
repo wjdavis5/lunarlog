@@ -533,6 +533,35 @@ registers no device, and shows no Notifications entry (R17).
       variable records the form as filed — this bullet remains for the
       console-side filing itself, which only the operator can do.
 
+- [ ] **Issue #993 (human steps — background health imports):** two
+      operator actions this feature needs before the builds that carry it
+      ship:
+      1. **App Store provisioning profile regenerated once more**, now
+         also carrying the HealthKit **background delivery** capability:
+         `Runner.entitlements` and `DebugProfile.entitlements` both request
+         `com.apple.developer.healthkit.background-delivery` (issue #993),
+         so a profile regenerated before this change fails to sign once
+         Xcode notices the mismatch. This is the same regeneration trip the
+         #156 bullet above describes — do all pending capabilities in one
+         pass and replace `IOS_PROVISION_PROFILE_BASE64` afterward. At
+         submission time (issue #21's pass), App Review requires a
+         justification for HealthKit background delivery — use: "lunarlog
+         is a menstrual cycle tracker; with the user's explicit opt-in
+         (one bound profile in Settings) it imports menstrual-flow records
+         the user logged in Apple Health into its own local log so history
+         logged elsewhere does not have to be re-entered. Background
+         delivery lets that same import run without a manual tap every
+         time new data is logged; it reads only, never writes, never
+         shows UI, and stops when the user unbinds the profile or revokes
+         Health permission." The same text lives beside the code in
+         `ios/Runner/Runner.entitlements`'s #993 comment.
+      2. **Play Console Health apps declaration re-filed** for
+         `android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND`
+         (declared by #993 for the periodic background-import worker) —
+         the per-permission justification row and the re-check note live
+         in [`play-health-declaration.md`](play-health-declaration.md);
+         refile before any track Google reviews ships the build.
+
 ### Migrations
 
 - [ ] Supabase MCP `get_advisors` (security and performance) run against the

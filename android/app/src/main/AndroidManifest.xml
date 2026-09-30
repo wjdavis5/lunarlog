@@ -29,11 +29,11 @@
          full-history and paged, which is why READ_HEALTH_DATA_HISTORY is
          declared and requested below (without it Health Connect returns
          only the 30 days preceding the permission grant). Background reads
-         (READ_HEALTH_DATA_IN_BACKGROUND) remain undeclared — the import is
-         still user-initiated only. Extend this list (never widen it
+         (READ_HEALTH_DATA_IN_BACKGROUND) were declared by issue #993 — see
+         its own entry below. Extend this list (never widen it
          silently) as later HS issues add data types — adding one re-triggers
-         Play's Health apps declaration review; do NOT add background or
-         sexual-activity permissions here. -->
+         Play's Health apps declaration review; do NOT add sexual-activity
+         permissions here. -->
     <uses-permission android:name="android.permission.health.WRITE_MENSTRUATION"/>
     <uses-permission android:name="android.permission.health.WRITE_INTERMENSTRUAL_BLEEDING"/>
     <uses-permission android:name="android.permission.health.READ_MENSTRUATION"/>
@@ -44,6 +44,17 @@
          HealthConnectAdapter.kt's readPermissions) and only ever read from —
          never written. -->
     <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_HISTORY"/>
+    <!-- Issue #993: background reads (Android 14+). What it enables here is
+         exactly one flow: HealthBackgroundImportWorker.kt's periodic
+         WorkManager job waking the running app's Dart side to run the same
+         prompt-free import pass the Settings tap runs — import direction
+         only, the #153 device-binding guard and the #959 permission probe
+         both run inside the pass, nothing is ever written to Health
+         Connect, no UI is shown, and only counts are logged. Adding it
+         re-triggers Play's Health apps declaration review — see
+         docs/ops/play-health-declaration.md (its table carries the
+         justification this row needs). -->
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"/>
     <!-- Issue #228: the fertility/measurement family's WRITE permissions.
          Cervical mucus, ovulation test, and basal body temperature are
          distinct Health Connect permissions (unlike the menstruation

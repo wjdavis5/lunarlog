@@ -1,5 +1,5 @@
-/// The user-initiated OS health-store import service (Issues #217/#458,
-/// full-history in #992) — the effectful half of the read direction,
+/// The OS health-store import service (Issues #217/#458, full-history in
+/// #992) — the effectful half of the read direction,
 /// mirroring `health_flow_write_service.dart`'s split between pure mapping
 /// and an injected platform port. One shared pipeline reads Apple Health on
 /// iOS and Health Connect on Android; the injected [HealthImportPlatform]
@@ -55,9 +55,16 @@
 ///    matching observation source) so the write path never echoes it back
 ///    into the OS store — the loop the two directions would otherwise form.
 ///
-/// **Bound, never background.** There is no observer here and no timer; the
-/// only way this runs is [importNow], which `lib/ui` calls from an explicit
-/// Settings action. Background delivery stays deferred (#156/A3-16).
+/// **Bound. Two entry points.** [importNow] is the user-initiated pass —
+/// the only thing `lib/ui` calls, from an explicit Settings action. Issue
+/// #993 adds [importInBackground]: the same pipeline minus everything a
+/// background context must never do (no `bindProfile` re-write, no
+/// authorization prompt — the OS permission is *probed* via Issue #959's
+/// `permissionStatus` and anything but `granted` ends the pass before a
+/// single read). The platform triggers behind it (an HKObserverQuery on
+/// iOS, a WorkManager job on Android — see
+/// `health_background_import_service.dart`) are import-only: no write, no
+/// UI, counts-only logging at the coordinator.
 ///
 /// **Read-only for computed types.** This service reads menstrual flow and
 /// intermenstrual bleeding only. Apple's four computed cycle-deviation
@@ -317,7 +324,8 @@ String? _zoneNameFor(HealthFlowSample sample) {
 /// storage errors propagate, matching the write service's contract.
 /// Decomposed into one private method per stage so each stays under the
 /// quality gate's CRAP ceiling.
-class LocalHealthImportService implements HealthImportRunner {
+class LocalHealthImportService
+    implements HealthImportRunner, HealthBackgroundImportRunner {
   LocalHealthImportService({
     required HealthImportPlatform importPlatform,
     required HealthPlatformStore platform,
@@ -399,6 +407,51 @@ class LocalHealthImportService implements HealthImportRunner {
         _notAllowed(await _platform.requestWriteAuthorization(bound.facts));
     if (blocked != null) return HealthImportSummary(blocked: blocked);
 
+    return _runPass(bound, onProgress);
+  }
+
+  @override
+  Future<HealthImportSummary> importInBackground() async {
+    final bound = await _resolveBound();
+    if (bound == null) return const HealthImportSummary(bound: false);
+
+    final check = await _binding.canWrite(
+      profile: bound.profile,
+      signedInUserId: bound.facts.signedInUserId,
+      ownerUserId: bound.facts.ownerUserId,
+      minorBindingAllowed: _minorBindingAllowed,
+    );
+    if (!check.isAllowed) {
+      return HealthImportSummary(
+        blocked: HealthPlatformResult.refused(check),
+      );
+    }
+
+    // Issue #993: a background pass probes the OS permission (Issue #959's
+    // own check) and stops before any read unless it is granted. It must
+    // never prompt — no `bindProfile` re-write, no `requestWriteAuthorization`
+    // — so a trigger on a device that never completed the first
+    // user-initiated import (`notAsked`) or that had permission revoked
+    // (`denied`) is a silent no-op. Deliberately conservative on iOS, where
+    // the probe covers the write (share) types only: a user who granted the
+    // reads but denied the writes skips background passes too.
+    if (await _platform.permissionStatus() !=
+        HealthPermissionStatus.granted) {
+      return const HealthImportSummary(
+        blocked: HealthPlatformPermissionDenied(),
+      );
+    }
+
+    return _runPass(bound, null);
+  }
+
+  /// The pass body both entry points share: the full-history window, the
+  /// paged read, and the never-overwrite merge. Everything prompt-shaped
+  /// stays in the entry points.
+  Future<HealthImportSummary> _runPass(
+    ({Profile profile, HealthGuardFacts facts}) bound,
+    void Function(HealthImportProgress progress)? onProgress,
+  ) async {
     final window = _window();
     final run = await _readPages(bound.facts, window, onProgress);
     final early = run.earlySummary;

@@ -940,7 +940,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get healthSyncFullHistoryNote =>
-      'Imports everything the health store makes available, not a recent window. Background sync is not available yet.';
+      'Imports everything the health store makes available, not a recent window — and keeps itself current in the background once you have run it once.';
 
   @override
   String get healthSyncImportStoppedEarly =>

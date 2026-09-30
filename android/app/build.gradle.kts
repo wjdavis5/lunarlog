@@ -130,6 +130,13 @@ dependencies {
     // the current stable line (1.2.x is alpha-only as of this writing);
     // the minSdk 26 pin above already satisfies its floor per #166.
     implementation("androidx.health.connect:connect-client:1.1.0")
+    // Issue #993: the periodic background-import job
+    // (HealthBackgroundImportWorker.kt). work-runtime-ktx 2.10.0 is the
+    // current stable line; the compileSdk 37 above satisfies its floor.
+    // The worker touches no health data itself — it wakes the running
+    // engine's Dart side, which runs the same guarded import the Settings
+    // tap runs.
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
     // Issue #992: plain-JVM unit test for the pure HealthImportCursor codec
     // (paging cursor format). The codec deliberately uses only
     // java.util.Base64 and strings — no Health Connect or android.* types —

@@ -235,11 +235,68 @@ void main() {
       );
     });
 
+    test('the background-import disclosure states the shipped truth (#993)',
+        () {
+      // Issue #993 shipped background imports; the pages and the ledger
+      // used to deny them outright ("no background read and no schedule",
+      // "no background reading — no observer, no timer", "nothing runs in
+      // the background or on a schedule"). The same discipline #1180
+      // applied to the type axis applies to the trigger axis: a retired
+      // denial may not resurface, and the new truth must actually claim
+      // the shipped background behavior — never the reverse narrowing.
+      final importPage =
+          flat(File('site/src/pages/import.astro').readAsStringSync());
+      expect(importPage, contains('in the background'));
+      expect(importPage, contains('You start the first import yourself'));
+      expect(
+        importPage,
+        isNot(contains('no background read and no schedule')),
+        reason: 'the pre-#993 denial, verbatim',
+      );
+      final guide = flat(
+        File('site/src/pages/guides/moving-your-data.astro')
+            .readAsStringSync(),
+      );
+      expect(guide, contains('in the background'));
+      expect(
+        guide,
+        isNot(contains('no background reading')),
+        reason: 'the pre-#993 denial, verbatim',
+      );
+      expect(guide, isNot(contains('no observer, no timer')));
+      // The ledger claim paraphrases the pages; the retired stance may not
+      // survive there either, and the shipped triggers must be cited.
+      expect(
+        flat(ledger),
+        isNot(contains('nothing runs in the background or on a schedule')),
+        reason: 'the pre-#993 ledger claim, verbatim',
+      );
+      expect(
+        flat(ledger),
+        contains('keeps itself current in the background'),
+      );
+      expect(
+        File('ios/Runner/AppDelegate.swift').readAsStringSync(),
+        contains('enableBackgroundDelivery'),
+        reason: 'the iOS trigger behind the claim',
+      );
+      expect(
+        File('android/app/src/main/kotlin/com/wjdavis5/lunarlog/'
+                'HealthBackgroundImportWorker.kt')
+            .existsSync(),
+        isTrue,
+        reason: 'the Android trigger the ledger cites must exist',
+      );
+    });
+
     test('unshipped features stay unclaimed', () {
       for (final entry in pages.entries) {
         final source = flat(File(entry.value).readAsStringSync());
-        // Background health sync is deferred (#993); the store listings are
-        // not live (#830); the site collects nothing (#830 out-of-scope).
+        // Background health sync shipped in-app with #993, but the store
+        // listings are not live (#830) and the site pages (unchanged here)
+        // still make no such claim -- the guard stays conservative: a
+        // marketing claim must be added deliberately, not drift in. The
+        // site collects nothing (#830 out-of-scope).
         expect(source, isNot(contains('background sync')),
             reason: entry.key);
         expect(source, isNot(contains('Download on the')),

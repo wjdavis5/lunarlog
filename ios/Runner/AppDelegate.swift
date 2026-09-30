@@ -65,6 +65,14 @@ import UserNotifications
     // channel above; the Kotlin half lives in HealthConnectAdapter.kt.
     HealthKitChannelHandler.register(
       with: engineBridge.applicationRegistrar.messenger())
+
+    // Issue #993: register the read types' background delivery at app
+    // start when a profile is bound (no-op otherwise). HealthKit calls a
+    // freshly registered observer's handler once immediately — that call
+    // is what turns "data changed while the app was dead" into one
+    // prompt-free import pass on this start, via the coordinator's
+    // startup pull.
+    HealthKitChannelHandler.registerBackgroundImportTriggerIfBound()
   }
 
   /// Best effort, matching the Dart caller's own best-effort contract
@@ -449,10 +457,15 @@ enum HealthKitChannelHandler {
   }
 
   static func register(with messenger: FlutterBinaryMessenger) {
-    FlutterMethodChannel(name: channelName, binaryMessenger: messenger)
-      .setMethodCallHandler { call, result in
-        handle(call, result: result)
-      }
+    let channel = FlutterMethodChannel(name: channelName, binaryMessenger: messenger)
+    channel.setMethodCallHandler { call, result in
+      handle(call, result: result)
+    }
+    // Issue #993: the observer handler below pushes the background-import
+    // trigger to Dart through this same channel, so the instance is kept
+    // reachable. It carries no health data — only the trigger ask — and is
+    // nil only before the first (and only) register call.
+    dartChannel = channel
   }
 
   private static func badArgs(_ result: @escaping FlutterResult, _ what: String) {
@@ -541,6 +554,121 @@ enum HealthKitChannelHandler {
     UserDefaults.standard.string(forKey: boundProfileKey)
   }
 
+  // MARK: - Issue #993: background delivery for the read/import direction
+
+  /// The channel the observer handler pushes the background-import trigger
+  /// through (set by `register(with:)`). Carries no health data — only the
+  /// trigger ask the Dart coordinator answers.
+  static var dartChannel: FlutterMethodChannel?
+
+  /// Whether a trigger fired before the Dart side could listen. The
+  /// startup race this latch exists for: `registerBackgroundImportTriggerIfBound`
+  /// runs during engine init — before Dart's `main()` — and HealthKit
+  /// calls a freshly registered observer's handler once immediately, so a
+  /// delivery that arrived while the app was dead can fire before anyone
+  /// listens. `consumePendingBackgroundImportTrigger` reads and clears it.
+  /// Main-thread only (written from the observer handler via the main
+  /// queue), so no lock is needed.
+  static var pendingBackgroundImportTrigger = false
+
+  /// The read types background delivery is enabled for: exactly the two
+  /// types the import reads (Issues #217/#458) — deliberately NOT the
+  /// write types and NOT Apple's computed cycle-deviation types (the
+  /// background path is import-only, and a computed type is never written
+  /// by any path).
+  static var backgroundReadTypes: [HKCategoryType] {
+    [menstrualFlowType, intermenstrualBleedingType]
+  }
+
+  /// Registers the observer query and enables immediate background
+  /// delivery for each read type — called from
+  /// `didInitializeImplicitFlutterEngine` (at app start, only when a
+  /// profile is bound) and from the `bind` case (so a first-ever bind
+  /// during this session does not wait for the next launch to be covered).
+  /// Every step is best-effort: a failure (a hand-signed local build
+  /// without the #993 entitlement, HealthKit unavailable, delivery already
+  /// enabled) is logged coarsely and never throws.
+  ///
+  /// The observer fires → the Dart coordinator runs one prompt-free pass
+  /// of the same import the Settings tap runs (`importInBackground`): no
+  /// write, no UI, the #153 binding guard and the #959 permission probe
+  /// inside the pass. The native side never runs a pass itself — it only
+  /// wakes Dart.
+  static func registerBackgroundImportTriggerIfBound() {
+    guard HKHealthStore.isHealthDataAvailable() else { return }
+    guard storedBoundProfileId != nil else { return }
+    for type in backgroundReadTypes {
+      // The handler's 3rd parameter (this SDK's signature) carries an
+      // error when the query cannot deliver updates (e.g. permission
+      // revoked); the pass itself will then simply see no new data, so it
+      // needs no separate handling here.
+      let query = HKObserverQuery(sampleType: type, predicate: nil) {
+        _, completion, _ in
+        // Apple's contract: the completion must be called promptly or iOS
+        // throttles further background deliveries. The work is NOT done
+        // inside the handler — the Dart pass runs on its own after this.
+        completion()
+        Self.handleObserverFired()
+      }
+      store.execute(query)
+      store.enableBackgroundDelivery(for: type, frequency: .immediate) {
+        success, error in
+        if !success, let error {
+          // Coarse diagnostics only — never health content.
+          NSLog(
+            "lunarlog: health background delivery enable failed: \(error.localizedDescription)"
+          )
+        }
+      }
+    }
+  }
+
+  /// The observer fired: latch the trigger for the startup pull, then push
+  /// to Dart when the channel is live. Fire-and-forget: when Dart answers,
+  /// the latch is cleared (delivered); when nobody is listening yet, the
+  /// latch stays for `consumePendingBackgroundImportTrigger` to pick up at
+  /// the next start. Main-thread only — the latch and the channel call
+  /// share the main queue, so no lock is needed.
+  static func handleObserverFired() {
+    DispatchQueue.main.async {
+      pendingBackgroundImportTrigger = true
+      guard let channel = dartChannel else { return }
+      channel.invokeMethod(
+        "onBackgroundImportTriggered", arguments: nil
+      ) { reply in
+        // A real answer (success or a Dart-side error) means the push was
+        // delivered; only not-implemented (nobody listening yet) leaves
+        // the latch set for the pull.
+        if reply != nil,
+          reply as? NSObject != FlutterMethodNotImplemented
+        {
+          pendingBackgroundImportTrigger = false
+        }
+      }
+    }
+  }
+
+  /// Stops background delivery for the read types (the `unbind` case):
+  /// an unbound device must not be woken for an import its guard would
+  /// refuse anyway. The queries stay registered — harmless, since every
+  /// future push finds no bound profile and is a Dart-side no-op pass.
+  /// Best-effort.
+  static func disableBackgroundImportTrigger() {
+    DispatchQueue.main.async {
+      pendingBackgroundImportTrigger = false
+    }
+    guard HKHealthStore.isHealthDataAvailable() else { return }
+    for type in backgroundReadTypes {
+      store.disableBackgroundDelivery(for: type) { success, error in
+        if !success, let error {
+          NSLog(
+            "lunarlog: health background delivery disable failed: \(error.localizedDescription)"
+          )
+        }
+      }
+    }
+  }
+
   private static func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     let args = call.arguments as? [String: Any]
 
@@ -564,11 +692,25 @@ enum HealthKitChannelHandler {
         return
       }
       UserDefaults.standard.set(g.profileId, forKey: boundProfileKey)
+      // Issue #993: a first-ever bind during this session starts the
+      // background trigger without waiting for the next launch.
+      registerBackgroundImportTriggerIfBound()
       result("allowed")
 
     case "unbind":
       UserDefaults.standard.removeObject(forKey: boundProfileKey)
+      // Issue #993: an unbound device stops being woken for background
+      // imports. Best-effort; the Dart-side guard refuses an unbound pass
+      // regardless.
+      disableBackgroundImportTrigger()
       result(nil)
+
+    case "consumePendingBackgroundImportTrigger":
+      // Issue #993: the Dart coordinator's startup pull — whether a
+      // trigger fired before its listener registered. Unguarded like
+      // `isAvailable`: it reads and clears this handler's own boolean
+      // latch, touching no health data and no health API.
+      result(pendingBackgroundImportTrigger)
 
     case "requestWriteAuthorization":
       guard let g = args.flatMap(GuardArgs.init) else {

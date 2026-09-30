@@ -63,6 +63,13 @@ class _FakePlatform implements HealthPlatformStore {
   int bindCalls = 0;
   int authCalls = 0;
 
+  /// Issue #993: the OS-permission probe the background pass consults
+  /// instead of prompting. Defaults to granted, like an install that
+  /// already completed its first user-initiated pass.
+  HealthPermissionStatus permissionStatusResult =
+      HealthPermissionStatus.granted;
+  int permissionStatusCalls = 0;
+
   @override
   Future<HealthPlatformResult> bindProfile(HealthGuardFacts facts) async {
     bindCalls++;
@@ -75,6 +82,12 @@ class _FakePlatform implements HealthPlatformStore {
   ) async {
     authCalls++;
     return authResult;
+  }
+
+  @override
+  Future<HealthPermissionStatus> permissionStatus() async {
+    permissionStatusCalls++;
+    return permissionStatusResult;
   }
 
   @override
@@ -1100,6 +1113,114 @@ void main() {
       expect(summary.daysWritten, 1);
       expect(dayEntries.saved.single.flow, FlowLevel.heavy);
       expect(dayEntries.saved.single.sourceId, 'iso-heavy');
+    });
+  });
+
+  group('Issue #993 background pass (importInBackground)', () {
+    test('runs the same merge with zero prompts: no bind re-write, no '
+        'authorization request', () async {
+      await bind();
+      source.result = HealthReadResult.samples([
+        _sample(
+          id: 'bg-1',
+          flow: HealthFlowValue.medium,
+          startIso: '2026-09-10T12:00:00Z',
+        ),
+      ]);
+      final summary = await build().importInBackground();
+
+      // The merge is the user-initiated pipeline's: one written day with
+      // the platform's provenance.
+      expect(summary.blocked, isNull);
+      expect(summary.daysWritten, 1);
+      final entry = dayEntries.saved.single;
+      expect(entry.flow, FlowLevel.medium);
+      expect(entry.source, DayEntrySource.healthkit);
+      expect(entry.sourceId, 'bg-1');
+
+      // The background-specific property: the OS permission was probed,
+      // and nothing prompt-shaped ever ran.
+      expect(platform.permissionStatusCalls, 1);
+      expect(platform.bindCalls, 0);
+      expect(platform.authCalls, 0);
+    });
+
+    test('a not-granted OS permission ends the pass before any read',
+        () async {
+      await bind();
+      platform.permissionStatusResult = HealthPermissionStatus.notAsked;
+
+      final summary = await build().importInBackground();
+
+      expect(summary.bound, isTrue);
+      expect(summary.blocked, isA<HealthPlatformPermissionDenied>());
+      expect(source.calls, 0);
+      expect(platform.bindCalls, 0);
+      expect(platform.authCalls, 0);
+      expect(dayEntries.saved, isEmpty);
+    });
+
+    test('a revoked OS permission stops the next background pass', () async {
+      await bind();
+      platform.permissionStatusResult = HealthPermissionStatus.denied;
+
+      final summary = await build().importInBackground();
+
+      expect(summary.blocked, isA<HealthPlatformPermissionDenied>());
+      expect(source.calls, 0);
+    });
+
+    test('the guard runs before the probe: a refused binding touches no '
+        'health API at all', () async {
+      // A stored binding that does not name the profile the pass resolves —
+      // canWrite denies with profileNotBound before the OS permission is
+      // asked. (Binding a minor with the flag off cannot set up the other
+      // deny: the bind itself refuses and stores nothing.)
+      await bind();
+      settings.setSilently(SettingsKeys.healthStoreProfileId, 'someone-else');
+
+      final summary = await build().importInBackground();
+
+      expect(summary.bound, isTrue);
+      final blocked = summary.blocked;
+      expect(blocked, isA<HealthPlatformRefused>());
+      expect(
+        (blocked! as HealthPlatformRefused).check,
+        HealthSyncCheck.profileNotBound,
+      );
+      expect(platform.permissionStatusCalls, 0);
+      expect(source.calls, 0);
+      expect(dayEntries.saved, isEmpty);
+    });
+
+    test('an unbound device is a no-op: no probe, no read', () async {
+      final summary = await build().importInBackground();
+
+      expect(summary.bound, isFalse);
+      expect(platform.permissionStatusCalls, 0);
+      expect(source.calls, 0);
+      expect(dayEntries.saved, isEmpty);
+    });
+
+    test('the Health Connect provenance rides the background merge too',
+        () async {
+      await bind();
+      source.result = HealthReadResult.samples([
+        _offsetSample(
+          id: 'bg-hc-1',
+          flow: HealthFlowValue.light,
+          startIso: '2026-09-11T12:00:00Z',
+        ),
+      ]);
+      final summary = await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importInBackground();
+
+      expect(summary.daysWritten, 1);
+      expect(dayEntries.saved.single.source, DayEntrySource.healthConnect);
+      expect(dayEntries.saved.single.sourceId, 'bg-hc-1');
+      expect(platform.bindCalls, 0);
+      expect(platform.authCalls, 0);
     });
   });
 }

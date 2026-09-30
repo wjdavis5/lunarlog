@@ -38,10 +38,25 @@ class MainActivity : FlutterFragmentActivity() {
         // onCreate) so its permission launcher is registered before the
         // activity reaches STARTED; see HealthConnectAdapter.kt for the
         // native guard mirror every write passes through before any
-        // Health Connect API is touched.
+        // Health Connect API is touched. Constructing it also (re)arms the
+        // #993 periodic background-import job when a profile is bound.
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            "lunarlog/health"
+            HealthConnectAdapter.CHANNEL_NAME
         ).setMethodCallHandler(HealthConnectAdapter(this)::handle)
+        // Issue #993: the background-import worker reaches Dart through the
+        // main engine's messenger. Cleared in onDestroy so a worker tick
+        // that lands during teardown finds no engine and no-ops.
+        HealthBackgroundImportBridge.attach(flutterEngine)
+    }
+
+    override fun onDestroy() {
+        // Issue #993: drop the worker→engine bridge at activity teardown so
+        // a worker tick landing during/after teardown finds no engine and
+        // no-ops (cleanupFlutterEngine is not exposed on
+        // FlutterFragmentActivity; onDestroy always runs on the main
+        // thread, which is the thread the bridge is used from).
+        HealthBackgroundImportBridge.detach()
+        super.onDestroy()
     }
 }
