@@ -1117,9 +1117,90 @@ void main() {
   });
 
   group('Issue #993 background pass (importInBackground)', () {
+    /// Issue #1215: the tests below pin the pipeline's own properties (the
+    /// prompt-free shape, the probe, the provenance), so they open the
+    /// first-import consent gate directly rather than re-proving the
+    /// importNow chain every time — the gate itself has its own tests.
+    Future<void> completeFirstImport() => binding.markFirstImportCompleted();
+
+    test('a background pass before the first user-initiated import is a '
+        'no-op (issue #1215)', () async {
+      await bind();
+      source.result = HealthReadResult.samples([
+        _sample(
+          id: 'bg-early',
+          flow: HealthFlowValue.medium,
+          startIso: '2026-09-10T12:00:00Z',
+        ),
+      ]);
+
+      final summary = await build().importInBackground();
+
+      // The consent gate, not the OS probe: the pass ends before the
+      // permission is even consulted, and nothing is read or written.
+      expect(summary.firstImportNotStarted, isTrue);
+      expect(summary.blocked, isNull);
+      expect(platform.permissionStatusCalls, 0);
+      expect(source.calls, 0);
+      expect(dayEntries.saved, isEmpty);
+    });
+
+    test('the first completed importNow opens the gate (issue #1215)',
+        () async {
+      await bind();
+      // A first import that completes — even over an empty store — is the
+      // consent the gate reads.
+      await build().importNow();
+
+      await build().importInBackground();
+      expect(
+        platform.permissionStatusCalls,
+        1,
+        reason: 'the gate opened past the consent check, all the way to '
+            'the probe',
+      );
+
+      source.result = HealthReadResult.samples([
+        _sample(
+          id: 'bg-after-first',
+          flow: HealthFlowValue.light,
+          startIso: '2026-09-11T12:00:00Z',
+        ),
+      ]);
+      final second = await build().importInBackground();
+      expect(second.daysWritten, 1);
+      expect(dayEntries.saved.single.sourceId, 'bg-after-first');
+    });
+
+    test('a first import that was blocked before its read never opens '
+        'the gate (issue #1215)', () async {
+      await bind();
+      // The authorization sheet is refused: importNow ends blocked, and a
+      // blocked pass stamps no consent.
+      platform.authResult = const HealthPlatformPermissionDenied();
+      final blocked = await build().importNow();
+      expect(blocked.isBlocked, isTrue);
+
+      platform.authResult = const HealthPlatformAllowed();
+      final summary = await build().importInBackground();
+      expect(summary.firstImportNotStarted, isTrue);
+      expect(source.calls, 0);
+    });
+
+    test('re-binding re-gates the background pass (issue #1215)', () async {
+      await bind();
+      await build().importNow();
+      // Same profile, a fresh binding: the consent belonged to the old one.
+      await bind();
+
+      final summary = await build().importInBackground();
+      expect(summary.firstImportNotStarted, isTrue);
+    });
+
     test('runs the same merge with zero prompts: no bind re-write, no '
         'authorization request', () async {
       await bind();
+      await completeFirstImport();
       source.result = HealthReadResult.samples([
         _sample(
           id: 'bg-1',
@@ -1148,6 +1229,7 @@ void main() {
     test('a not-granted OS permission ends the pass before any read',
         () async {
       await bind();
+      await completeFirstImport();
       platform.permissionStatusResult = HealthPermissionStatus.notAsked;
 
       final summary = await build().importInBackground();
@@ -1162,6 +1244,7 @@ void main() {
 
     test('a revoked OS permission stops the next background pass', () async {
       await bind();
+      await completeFirstImport();
       platform.permissionStatusResult = HealthPermissionStatus.denied;
 
       final summary = await build().importInBackground();
@@ -1205,6 +1288,7 @@ void main() {
     test('the Health Connect provenance rides the background merge too',
         () async {
       await bind();
+      await completeFirstImport();
       source.result = HealthReadResult.samples([
         _offsetSample(
           id: 'bg-hc-1',

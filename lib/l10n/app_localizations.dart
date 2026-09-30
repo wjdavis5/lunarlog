@@ -8184,10 +8184,10 @@ abstract class AppLocalizations {
   /// **'Choose the one profile this phone may import health data into. Every other profile stays out of Health Connect entirely.'**
   String get healthSyncImportIntro;
 
-  /// Issue #1004 (tranche 5): forward-only write explanation plus the read-direction disclosure (iOS).
+  /// Issue #1004 (tranche 5): forward-only write explanation plus the read-direction disclosure (iOS). Issue #1215 aligned the read half with the enforced gate: the first import is the person's to start, and only after it does the import keep itself current in the background.
   ///
   /// In en, this message translates to:
-  /// **'Only days logged after sync is turned on are written — nothing already in the app is sent on its own. Separately, you can choose to import menstrual flow from the Health app; nothing is read unless you start that import yourself.'**
+  /// **'Only days logged after sync is turned on are written — nothing already in the app is sent on its own. Separately, you can import menstrual flow from the Health app — you start the first import yourself, and after it lunarlog keeps the import current in the background.'**
   String get healthSyncWriteForwardOnly;
 
   /// Issue #1004 (tranche 5): symptom and mood write disclosure (iOS, #238/#918).
@@ -8196,10 +8196,10 @@ abstract class AppLocalizations {
   /// **'Symptoms you tag — cramps, headache, bloating, and mood — are written to the Health app as symptom entries. Mood tags are written as \'Mood Changes\' without saying which mood.'**
   String get healthSyncWriteSymptoms;
 
-  /// Issue #1004 (tranche 5): import-only explanation (Android, #458).
+  /// Issue #1004 (tranche 5): import-only explanation (Android, #458). Issue #1215 aligned it with the enforced gate: the first import is the person's to start, and only after it does the import keep itself current in the background.
   ///
   /// In en, this message translates to:
-  /// **'Only menstrual flow and spotting written by other apps appear here, and only when you start an import yourself — nothing is read or written automatically.'**
+  /// **'Only menstrual flow and spotting written by other apps appear here — nothing is written automatically. You start the first import yourself; after it, lunarlog keeps the import current in the background.'**
   String get healthSyncImportOnly;
 
   /// Issue #1004 (tranche 5): bind deny reason when minor health sync is off.

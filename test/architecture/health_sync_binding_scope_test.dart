@@ -7,6 +7,11 @@
 /// discipline: walking the source tree with `dart:io`, no lint plugin, no
 /// new dependency.
 ///
+/// Issue #1215 put the binding's first-import consent marker
+/// ([SettingsKeys.healthImportFirstPassCompletedMs]) under the same
+/// discipline — `HealthSyncBinding` is its sole reader/writer too — so the
+/// guards below cover both keys.
+///
 /// Doc-comment mentions (every dartdoc `[SettingsKeys.healthStoreProfileId]`
 /// cross-reference outside `lib/domain/health/` is exactly that — a
 /// pointer to the canonical definition, not a read) are stripped before
@@ -20,8 +25,11 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-/// The qualified reference form every real read/write uses.
-final _reference = RegExp(r'SettingsKeys\.healthStoreProfileId');
+/// The qualified reference form every real read/write uses, for every key
+/// this guard covers.
+final _reference = RegExp(
+  r'SettingsKeys\.health(StoreProfileId|ImportFirstPassCompletedMs)',
+);
 
 /// The call form of the "proposed binding" entry point (Issue #296):
 /// `.canBind(` with the leading dot, so the internal `canBind(` call
@@ -29,11 +37,15 @@ final _reference = RegExp(r'SettingsKeys\.healthStoreProfileId');
 /// prose don't count — only genuine external call sites do.
 final _canBindCall = RegExp(r'\.canBind\(');
 
-/// The raw storage-key literal. Must appear exactly once under `lib/` —
-/// its definition in `settings_store.dart` — and nowhere else (Issue
-/// #296): every other surface must go through the `SettingsKeys`
-/// constant or `HealthSyncBinding`, never re-type the key.
-const String _rawKeyLiteral = "'health_store_profile_id'";
+/// The raw storage-key literals (Issue #296, extended by Issue #1215).
+/// Each must appear exactly once under `lib/` — its definition in
+/// `settings_store.dart` — and nowhere else: every other surface must go
+/// through the `SettingsKeys` constant or `HealthSyncBinding`, never
+/// re-type the key.
+const List<String> _rawKeyLiterals = [
+  "'health_store_profile_id'",
+  "'health_import_first_pass_completed_ms'",
+];
 
 /// Strips `///` doc-comment lines (leading whitespace allowed) so a
 /// dartdoc cross-reference to the constant doesn't count as a read.
@@ -71,9 +83,10 @@ void main() {
           file.path,
     ];
     expect(offenders, isEmpty,
-        reason: 'SettingsKeys.healthStoreProfileId must be read only '
+        reason: 'every guarded binding key (healthStoreProfileId, '
+            'healthImportFirstPassCompletedMs) must be read only '
             'inside lib/domain/health/ (via HealthSyncBinding), but these '
-            'files reference it directly:\n${offenders.join('\n')}');
+            'files reference one directly:\n${offenders.join('\n')}');
   });
 
   test('the guard finds at least the real reads inside '
@@ -155,37 +168,41 @@ void sneaky(SettingsStore s) => s.get(SettingsKeys.healthStoreProfileId);
     );
   });
 
-  test("the literal 'health_store_profile_id' appears nowhere under lib/ "
-      'except its settings_store.dart definition', () {
+  test('each guarded raw key literal appears nowhere under lib/ except '
+      'its settings_store.dart definition', () {
     final files = _dartFilesUnder('lib');
     expect(files, isNotEmpty,
         reason: 'scanned zero files under lib — check the path');
 
     final offenders = [
-      for (final file in files)
-        if (!file.path
-                .replaceAll(r'\', '/')
-                .contains('lib/domain/repositories/settings_store.dart') &&
-            file.readAsStringSync().contains(_rawKeyLiteral))
-          file.path,
+      for (final literal in _rawKeyLiterals)
+        for (final file in files)
+          if (!file.path
+                  .replaceAll(r'\', '/')
+                  .contains('lib/domain/repositories/settings_store.dart') &&
+              file.readAsStringSync().contains(literal))
+            file.path,
     ];
     expect(offenders, isEmpty,
-        reason: "the raw 'health_store_profile_id' key must be typed "
+        reason: 'each guarded raw key literal must be typed '
             'exactly once — every other surface must use '
             'SettingsKeys.healthStoreProfileId or '
+            'SettingsKeys.healthImportFirstPassCompletedMs, via '
             'HealthSyncBinding. Found in:\n${offenders.join('\n')}');
   });
 
-  test('the literal guard finds the definition (falsification coverage)',
+  test('the literal guard finds the definitions (falsification coverage)',
       () {
-    final matches = _dartFilesUnder('lib')
-        .where((f) => f.readAsStringSync().contains(_rawKeyLiteral))
-        .toList();
-    expect(
-      matches.map((f) => f.path.replaceAll(r'\', '/')),
-      contains(contains('lib/domain/repositories/settings_store.dart')),
-      reason: 'expected settings_store.dart to define the raw literal — '
-          'if the definition moved or renamed, update this guard',
-    );
+    for (final literal in _rawKeyLiterals) {
+      final matches = _dartFilesUnder('lib')
+          .where((f) => f.readAsStringSync().contains(literal))
+          .toList();
+      expect(
+        matches.map((f) => f.path.replaceAll(r'\', '/')),
+        contains(contains('lib/domain/repositories/settings_store.dart')),
+        reason: "expected settings_store.dart to define $literal — "
+            'if the definition moved or renamed, update this guard',
+      );
+    }
   });
 }

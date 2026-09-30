@@ -6632,17 +6632,17 @@
     "@healthSyncImportIntro": {
       "description": "Issue #1004 (tranche 5): bind-screen intro on an import-only platform (Android)."
     },
-    "healthSyncWriteForwardOnly": "Only days logged after sync is turned on are written \u2014 nothing already in the app is sent on its own. Separately, you can choose to import menstrual flow from the Health app; nothing is read unless you start that import yourself.",
+    "healthSyncWriteForwardOnly": "Only days logged after sync is turned on are written \u2014 nothing already in the app is sent on its own. Separately, you can import menstrual flow from the Health app \u2014 you start the first import yourself, and after it lunarlog keeps the import current in the background.",
     "@healthSyncWriteForwardOnly": {
-      "description": "Issue #1004 (tranche 5): forward-only write explanation plus the read-direction disclosure (iOS)."
+      "description": "Issue #1004 (tranche 5): forward-only write explanation plus the read-direction disclosure (iOS). Issue #1215 aligned the read half with the enforced gate: the first import is the person's to start, and only after it does the import keep itself current in the background."
     },
     "healthSyncWriteSymptoms": "Symptoms you tag \u2014 cramps, headache, bloating, and mood \u2014 are written to the Health app as symptom entries. Mood tags are written as 'Mood Changes' without saying which mood.",
     "@healthSyncWriteSymptoms": {
       "description": "Issue #1004 (tranche 5): symptom and mood write disclosure (iOS, #238/#918)."
     },
-    "healthSyncImportOnly": "Only menstrual flow and spotting written by other apps appear here, and only when you start an import yourself \u2014 nothing is read or written automatically.",
+    "healthSyncImportOnly": "Only menstrual flow and spotting written by other apps appear here \u2014 nothing is written automatically. You start the first import yourself; after it, lunarlog keeps the import current in the background.",
     "@healthSyncImportOnly": {
-      "description": "Issue #1004 (tranche 5): import-only explanation (Android, #458)."
+      "description": "Issue #1004 (tranche 5): import-only explanation (Android, #458). Issue #1215 aligned it with the enforced gate: the first import is the person's to start, and only after it does the import keep itself current in the background."
     },
     "healthSyncDenyMinorOff": "Minor profiles sync on the same terms as any other profile. This build has minor health sync turned off.",
     "@healthSyncDenyMinorOff": {

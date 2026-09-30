@@ -778,4 +778,77 @@ void main() {
     await settings.set(SettingsKeys.healthStoreProfileId, '');
     expect(await binding.boundProfileId(), isNull);
   });
+
+  group('first-import consent marker (issue #1215)', () {
+    Future<HealthSyncCheck> bindA({String id = 'a'}) => binding.bind(
+          profile: _profile(id: id),
+          signedInUserId: 'u1',
+          ownerUserId: 'u1',
+          minorBindingAllowed: false,
+        );
+
+    test('a fresh binding has not completed a first import', () async {
+      await bindA();
+      expect(await binding.hasCompletedFirstImport(), isFalse);
+    });
+
+    test('markFirstImportCompleted stamps a parsable timestamp', () async {
+      await bindA();
+      await binding.markFirstImportCompleted();
+
+      expect(await binding.hasCompletedFirstImport(), isTrue);
+      final raw = await settings
+          .get(SettingsKeys.healthImportFirstPassCompletedMs);
+      // Epoch milliseconds — the seed a "last updated from the Health app"
+      // line can build on later; an unparsable value must never read as a
+      // completed first import.
+      expect(int.tryParse(raw ?? ''), isNotNull);
+    });
+
+    test('unbind clears the marker with the binding', () async {
+      await bindA();
+      await binding.markFirstImportCompleted();
+      expect(await binding.hasCompletedFirstImport(), isTrue);
+
+      await binding.unbind();
+      expect(await binding.hasCompletedFirstImport(), isFalse);
+    });
+
+    test('re-binding clears the marker, same or different profile', () async {
+      await bindA();
+      await binding.markFirstImportCompleted();
+
+      await bindA();
+      expect(await binding.hasCompletedFirstImport(), isFalse,
+          reason: 'the consent belonged to the old binding');
+
+      await binding.markFirstImportCompleted();
+      await bindA(id: 'b');
+      expect(await binding.hasCompletedFirstImport(), isFalse);
+    });
+
+    test('a refused bind changes nothing — including the marker', () async {
+      await bindA();
+      await binding.markFirstImportCompleted();
+
+      // A minor with the flag off cannot be bound: the bind refuses before
+      // persisting anything, so the existing binding's consent survives.
+      final decision = await binding.bind(
+        profile: _profile(id: 'minor', birthYear: 2015),
+        signedInUserId: 'u1',
+        ownerUserId: 'u1',
+        minorBindingAllowed: false,
+      );
+      expect(decision.isAllowed, isFalse);
+      expect(await binding.boundProfileId(), 'a');
+      expect(await binding.hasCompletedFirstImport(), isTrue);
+    });
+
+    test('an unparsable stored value reads as not-completed (fails shut)',
+        () async {
+      await bindA();
+      await settings.set(SettingsKeys.healthImportFirstPassCompletedMs, 'junk');
+      expect(await binding.hasCompletedFirstImport(), isFalse);
+    });
+  });
 }

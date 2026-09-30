@@ -288,6 +288,36 @@ void main() {
       expect(arb.group(1)!, contains('in the background'));
       expect(arb.group(1)!, isNot(contains('not available yet')),
           reason: 'the pre-#993 scope note, verbatim');
+
+      // Issue #1215: the gate is real now — a background pass runs only
+      // after the person's own first import completes — so the in-app
+      // disclosures that promised "nothing is read unless you start that
+      // import yourself" state the same bounded truth the site states:
+      // you start the first import, the background current-keeping
+      // follows it. Both platform variants are pinned; a half-updated
+      // disclosure would leave the other platform claiming the old,
+      // false absolute.
+      final arbSource = File('lib/l10n/app_en.arb').readAsStringSync();
+      final writeForwardOnly = RegExp(
+        r'"healthSyncWriteForwardOnly":\s*"([^"]*)"',
+      ).firstMatch(arbSource)!;
+      expect(writeForwardOnly.group(1)!,
+          contains('you start the first import yourself'));
+      expect(writeForwardOnly.group(1)!,
+          contains('after it lunarlog keeps the import current'));
+      expect(writeForwardOnly.group(1)!,
+          isNot(contains('nothing is read unless')),
+          reason: 'the pre-#1215 claim, verbatim');
+      final importOnly = RegExp(
+        r'"healthSyncImportOnly":\s*"([^"]*)"',
+      ).firstMatch(arbSource)!;
+      expect(importOnly.group(1)!,
+          contains('You start the first import yourself'));
+      expect(importOnly.group(1)!,
+          contains('after it, lunarlog keeps the import current'));
+      expect(importOnly.group(1)!,
+          isNot(contains('nothing is read or written automatically')),
+          reason: 'the pre-#1215 claim, verbatim');
     });
 
     test('pages ship zero client-side JavaScript', () {

@@ -348,6 +348,7 @@ class HealthImportSummary {
   const HealthImportSummary({
     this.bound = true,
     this.blocked,
+    this.firstImportNotStarted = false,
     this.samplesRead = 0,
     this.daysWritten = 0,
     this.daysUnchanged = 0,
@@ -370,6 +371,14 @@ class HealthImportSummary {
   /// For a denial of read permission the platform returns an empty sample
   /// list instead (HealthKit's opacity), not this field.
   final HealthPlatformResult? blocked;
+
+  /// True when a background pass ended before any read because no
+  /// user-initiated import has completed for the current binding yet
+  /// (Issue #1215) — the first import is the person's to start, so a
+  /// trigger that fires before that is a silent no-op, not a read. Outside
+  /// [blocked] for the same reason [bound] is: the pass never started, so
+  /// there is no platform outcome to report.
+  final bool firstImportNotStarted;
 
   /// How many samples the store returned for the window (after the
   /// implementation's own-source filtering).
@@ -482,6 +491,10 @@ abstract interface class HealthImportRunner {
 
   /// Runs one user-initiated import pass for the currently bound profile.
   ///
+  /// A pass that completes without a blocking outcome stamps the binding's
+  /// first-import consent marker (Issue #1215) — the fact every background
+  /// pass checks before it reads anything.
+  ///
   /// [onProgress], when supplied, is invoked after each page with the
   /// running counts. It must never be assumed to fire (a one-page or empty
   /// import may finish before the first tick) and must never be awaited by
@@ -495,6 +508,12 @@ abstract interface class HealthImportRunner {
 /// import pipeline as [HealthImportRunner.importNow], minus everything a
 /// background context must never do. A background pass:
 ///
+/// * **never precedes consent.** The first import is the person's to
+///   start (Issue #1215): until one [HealthImportRunner.importNow] pass
+///   has completed for the current binding, any trigger — an observer's
+///   own first fire, a launch-time delivery, a WorkManager tick — ends the
+///   pass with [HealthImportSummary.firstImportNotStarted] before the
+///   permission is even probed. Unbinding or re-binding re-gates it.
 /// * **never prompts.** No `bindProfile` re-write, no
 ///   `requestWriteAuthorization` — the OS permission sheet has no place in
 ///   a pass the user did not start. Instead the OS permission is *probed*
@@ -502,8 +521,8 @@ abstract interface class HealthImportRunner {
 ///   `granted` ends the pass with a
 ///   `HealthImportSummary(blocked: HealthPlatformPermissionDenied())`
 ///   before a single read. A never-asked install reports `notAsked`, so a
-///   background trigger on a device that never completed the first
-///   user-initiated import is a silent no-op by this contract too.
+///   background trigger on a device that has not granted the reads is a
+///   silent no-op by this contract too.
 /// * **keeps the binding guard.** `HealthSyncBinding.canWrite` runs first,
 ///   exactly as in `importNow` — an unbound device or a refused guard
 ///   touches no health API.

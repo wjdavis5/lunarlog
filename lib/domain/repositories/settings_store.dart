@@ -111,6 +111,21 @@ abstract final class SettingsKeys {
   /// scheduling metadata — a timestamp, never health content.
   static const String healthSyncWrittenThroughMs = 'health_sync_written_through_ms';
 
+  /// The first-import consent marker for the device's OS health-store
+  /// binding (Issue #1215): epoch milliseconds (UTC) of the completion of
+  /// the one user-initiated import pass that opens this binding's
+  /// background passes, or unset until that pass has run — "the first
+  /// import is yours to start". Written only through `HealthSyncBinding`
+  /// (`lib/domain/health/health_sync_binding.dart`): stamped by
+  /// `markFirstImportCompleted` when `LocalHealthImportService.importNow`
+  /// completes a pass, and cleared alongside [healthStoreProfileId] by
+  /// `bind`/`unbind` — the consent belongs to one binding, exactly like
+  /// [healthSyncWrittenThroughMs], so any new binding re-gates background
+  /// passes until the person starts an import again. Device-local consent
+  /// metadata — a timestamp, never health content.
+  static const String healthImportFirstPassCompletedMs =
+      'health_import_first_pass_completed_ms';
+
   /// Per-profile local reminder configuration (Issue #136, R10/R11), as
   /// the JSON document `encodeReminderConfigs` produces: a versioned map
   /// of profile id -> `ReminderConfig` JSON. Device-local **by design**
