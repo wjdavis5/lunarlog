@@ -41,6 +41,7 @@ class OnboardingCycleAnswers {
     this.typicalCycleLengthDays,
     this.typicalPeriodLengthDays,
     this.birthControlMethod,
+    this.birthControlStartedOn,
     this.lifecycleMode = LifecycleMode.tracking,
     this.estimatedDueDate,
     this.postpartumBirthDate,
@@ -60,6 +61,17 @@ class OnboardingCycleAnswers {
   /// closed list; #260 owns the canonical tracked-method vocabulary),
   /// or null when skipped / "Not answered".
   final String? birthControlMethod;
+
+  /// Issue #1203: the operator-picked day the recorded birth-control
+  /// method started (`yyyy-MM-dd`), collected by the Edit profile sheet's
+  /// "Started on" field for a tracked method. Null when the sheet's field
+  /// was blank or the answer is not a tracked method — the recorder then
+  /// falls back to its issue-#183 rules (stamp today on a method change
+  /// to a tracked one, or on the first write for a tracked method with no
+  /// stored anchor). Never persisted on its own: a start date only means
+  /// something alongside a tracked method answer, so
+  /// [hasPersistableAnswers] does not count it.
+  final String? birthControlStartedOn;
 
   /// Life-stage goal/mode answer (Issue #188's axis — the Clue-style
   /// goal question; #131's care-mode axis is collected separately on the

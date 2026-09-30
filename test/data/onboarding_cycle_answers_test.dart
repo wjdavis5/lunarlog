@@ -232,6 +232,137 @@ void main() {
     expect(row.birthControlStoppedOn, isNull);
   });
 
+  group('birth_control_started_on — the picked anchor (Issue #1203)', () {
+    test('a method change to a tracked one writes the picked date, '
+        'not today', () async {
+      final profileId = await seedProfile();
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(
+          birthControlMethod: 'pill',
+          birthControlStartedOn: '2026-08-15',
+        ),
+      );
+      final row = await db.storage.getProfileMode(profileId);
+      expect(row!.birthControlStartedOn, '2026-08-15',
+          reason: 'the operator picked the true pack start; an assumed '
+              'today is exactly what the field exists to avoid');
+      expect(row.birthControlStoppedOn, isNull);
+    });
+
+    test('an unchanged tracked method with a stored anchor adopts a '
+        'differing picked date (the no-op gate lets the date edit '
+        'through)', () async {
+      final profileId = await seedProfile();
+      await db.storage.upsertProfileMode(
+        profileId: profileId,
+        mode: 'tracking',
+        birthControlMethod: 'patch',
+        birthControlStartedOn: '2026-08-15',
+      );
+      final before = (await db.storage.getProfileMode(profileId))!;
+      // The Edit-profile sheet's audience: the method answer stays put
+      // and only the start date is corrected.
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(
+          birthControlMethod: 'patch',
+          birthControlStartedOn: '2026-08-20',
+        ),
+      );
+      final row = (await db.storage.getProfileMode(profileId))!;
+      expect(row.birthControlStartedOn, '2026-08-20');
+      expect(row.birthControlStoppedOn, isNull);
+      expect(row.localRev, before.localRev + 1,
+          reason: 'a corrected anchor is a real write, not a no-op');
+    });
+
+    test('an unchanged tracked method with NO stored anchor writes the '
+        'picked date (the card scenario)', () async {
+      final profileId = await seedProfile();
+      // The state an import or a pre-#183 row produces, and the state the
+      // Insights no-start-date card tells the operator to fix.
+      await db.storage.upsertProfileMode(
+        profileId: profileId,
+        mode: 'tracking',
+        birthControlMethod: 'pill',
+      );
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(
+          birthControlMethod: 'pill',
+          birthControlStartedOn: '2026-08-15',
+        ),
+      );
+      final row = (await db.storage.getProfileMode(profileId))!;
+      expect(row.birthControlStartedOn, '2026-08-15',
+          reason: 'the anchor the cadence could never otherwise acquire '
+              'now comes from the operator, not from an assumed today');
+    });
+
+    test('an unchanged Save carrying the stored date unchanged stays a '
+        'no-op', () async {
+      final profileId = await seedProfile();
+      await db.storage.upsertProfileMode(
+        profileId: profileId,
+        mode: 'tracking',
+        birthControlMethod: 'pill',
+        birthControlStartedOn: '2026-08-15',
+      );
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(
+          birthControlMethod: 'pill',
+          birthControlStartedOn: '2026-08-15',
+        ),
+      );
+      final row = (await db.storage.getProfileMode(profileId))!;
+      expect(row.localRev, 1,
+          reason: 're-submitting the stored anchor writes nothing — the '
+              'untouched Save keeps its no-op contract');
+    });
+
+    test('a picked date is ignored for a non-tracked answer', () async {
+      final profileId = await seedProfile();
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(
+          birthControlMethod: 'condom',
+          birthControlStartedOn: '2026-08-15',
+        ),
+      );
+      final row = await db.storage.getProfileMode(profileId);
+      expect(row!.birthControlMethod, 'condom');
+      expect(row.birthControlStartedOn, isNull,
+          reason: 'a start date without a tracked method means nothing '
+              'to anchor');
+    });
+
+    test('a blank Started-on field keeps the stamp-today fallback',
+        () async {
+      final profileId = await seedProfile();
+      await db.storage.upsertProfileMode(
+        profileId: profileId,
+        mode: 'tracking',
+        birthControlMethod: 'pill',
+      );
+      // The sheet submits null when the field is left blank ("—"): the
+      // unchanged method would be a no-op but for the missing anchor, so
+      // the first write still stamps today (#183's rule, untouched).
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(
+          lifecycleMode: LifecycleMode.conceive,
+          birthControlMethod: 'pill',
+        ),
+      );
+      final row = (await db.storage.getProfileMode(profileId))!;
+      expect(row.birthControlStartedOn, today.iso,
+          reason: 'no picked date means the #183 fallback rules apply '
+              'verbatim');
+    });
+  });
+
   group('estimated_due_date (Issue #192)', () {
     test('entering pregnancy writes the collected/derived due date', () async {
       final profileId = await seedProfile();
