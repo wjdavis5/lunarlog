@@ -1,0 +1,139 @@
+name: Web app staging deploy (Cloudflare Workers)
+
+# Epic #831 / issue #1249: the React web client's staging deploy path. Builds
+# `webapp/` (Vite + React + TypeScript strict) and deploys it to the
+# `lunarlog-app-staging` Cloudflare Worker — staging ONLY: the origin is the
+# Worker's workers.dev hostname, backed by the production Supabase project
+# and used only with the fabricated accounts from #710. Moving
+# `app.lunarlog.app` over is #1258; this workflow deliberately declares no
+# custom domain.
+#
+# Mirrors site-deploy.yml's credential-gated posture: until the Cloudflare
+# secrets exist, the credential-gated steps (deploy, smoke check) warn and
+# are skipped; the run still succeeds and the verified build is uploaded as
+# an artifact.
+#
+# The smoke check after the deploy is `.github/scripts/check-webapp-staging.sh`
+# (the repurposed check-web-deploy.sh header/beacon assertions, issue #1092 →
+# #1249), run against the live workers.dev origin — the only place a declared
+# header the origin never serves is visible.
+
+on:
+  push:
+    branches: [main]
+    # The same path set the webapp CI job filters on (issue #1249): the
+    # client, its schema snapshot, its message source — plus this workflow
+    # and the smoke check it runs.
+    paths:
+      - 'webapp/**'
+      - 'supabase/database.types.ts'
+      - 'lib/l10n/app_en.arb'
+      - '.github/workflows/webapp-deploy.yml'
+      - '.github/scripts/check-webapp-staging.sh'
+  workflow_dispatch:
+
+# Supersede a queued run when main is pushed to again, but never cancel one
+# mid-deploy: an interrupted upload would leave staging serving a partial or
+# older release.
+concurrency:
+  group: webapp-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  deploy:
+    name: Build and deploy the webapp staging Worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          # Pinned the way site/ pins it (site-deploy.yml): the major, so a
+          # runner-image change cannot move the toolchain.
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: 'webapp/package-lock.json'
+
+      # The client-safe Supabase pair — the project URL and publishable key,
+      # the same values the Flutter builds receive (kept under their old
+      # repository-secret names). They resolve to empty strings on forks;
+      # the app treats empty as "unconfigured", so the build must succeed
+      # either way. No other define exists on web yet.
+      - name: Build the web app
+        working-directory: webapp
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Upload the verified build as an artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: webapp-dist
+          path: webapp/dist
+          retention-days: 7
+
+      - name: Check the Cloudflare credentials
+        id: cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID are not configured; skipping the webapp staging deploy."
+          fi
+
+      - name: Resolve the staging workers.dev hostname
+        # The workers.dev origin carries a per-account subdomain the repo
+        # cannot know (webapp/wrangler.jsonc declares `workers_dev: true` and
+        # no route). Read it from the Cloudflare API so the smoke check below
+        # tests the real origin. A failure here skips only the smoke check —
+        # the deploy itself already succeeded.
+        if: steps.cloudflare.outputs.configured == 'true'
+        id: subdomain
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if subdomain="$(curl -sS --fail --max-time 20 \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain" \
+            | jq -r '.result.subdomain // empty')" && [ -n "$subdomain" ]; then
+            echo "base_url=https://lunarlog-app-staging.${subdomain}.workers.dev" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Could not resolve the account's workers.dev subdomain; skipping the staging smoke check."
+          fi
+
+      - name: Deploy to Cloudflare Workers (staging)
+        if: steps.cloudflare.outputs.configured == 'true'
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Same pin as site-deploy.yml (see its comment: 4.20.0 is the
+          # lowest 4.x that accepts the array form of run_worker_first and
+          # handles the asset directives).
+          wranglerVersion: '4.20.0'
+          workingDirectory: 'webapp'
+          command: deploy --config wrangler.jsonc
+
+      - name: Smoke-check the staging origin
+        # The repurposed check-web-deploy.sh assertions (issue #1249): the
+        # live origin must serve the declared security headers, the real
+        # shell, and the /auth/* SPA fallback. Retries for ~90 s to allow
+        # for edge propagation.
+        if: steps.cloudflare.outputs.configured == 'true' && steps.subdomain.outputs.base_url != ''
+        env:
+          WEBAPP_STAGING_BASE_URL: ${{ steps.subdomain.outputs.base_url }}
+        run: bash .github/scripts/check-webapp-staging.sh

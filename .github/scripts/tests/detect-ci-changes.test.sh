@@ -209,4 +209,34 @@ if failed:
 "
 assert_eq "Dynamic scan of all readRepoFile paths classify to app_flutter=true" "0" "$?"
 
+# ---------------------------------------------------------------------------
+# Case 12: React web client changes (webapp/**, issue #1249)
+# ---------------------------------------------------------------------------
+webapp_output="$(run_detect "webapp/src/App.tsx
+webapp/worker/index.ts")"
+assert_contains "Webapp sets webapp=true" "$webapp_output" "webapp=true"
+assert_contains "Webapp sets app_flutter=false" "$webapp_output" "app_flutter=false"
+assert_contains "Webapp sets database=false" "$webapp_output" "database=false"
+assert_contains "Webapp sets edge_functions=false" "$webapp_output" "edge_functions=false"
+
+# ---------------------------------------------------------------------------
+# Case 13: The schema snapshot also feeds the webapp's typed client (#1249)
+# ---------------------------------------------------------------------------
+types_output="$(run_detect "supabase/database.types.ts")"
+assert_contains "Types snapshot sets webapp=true" "$types_output" "webapp=true"
+assert_contains "Types snapshot sets database=true" "$types_output" "database=true"
+
+# ---------------------------------------------------------------------------
+# Case 14: The arb feeds the webapp catalogue AND the Flutter localizations
+# ---------------------------------------------------------------------------
+arb_output="$(run_detect "lib/l10n/app_en.arb")"
+assert_contains "Arb sets webapp=true" "$arb_output" "webapp=true"
+assert_contains "Arb sets app_flutter=true" "$arb_output" "app_flutter=true"
+
+# ---------------------------------------------------------------------------
+# Case 15: CI workflow / detection script changes run the webapp suite too
+# ---------------------------------------------------------------------------
+assert_contains "CI workflow sets webapp=true" "$ci_output" "webapp=true"
+assert_contains "Detection script itself sets webapp=true" "$script_output" "webapp=true"
+
 print_summary "detect-ci-changes.test.sh"

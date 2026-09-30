@@ -11,6 +11,16 @@ execution: ideation
 
 # Thin-Client Web — Plan for Owner Review (Issue #1173, umbrella #1161)
 
+> **Superseded by #831 (React client).** The thin client this plan designed
+> is being built as the React app in `webapp/` — scaffolded by issue #1249
+> (Vite + React + TypeScript strict, in-memory-only data, the
+> nothing-stored rule enforced by lint and an end-to-end test) — rather
+> than as the evolution of the Flutter web build several sections here
+> analyse. The plan's requirement (the browser keeps nothing at rest) is
+> the same one `webapp/` enforces from its first commit; read this document
+> for the analysis and the decision trail, `webapp/README.md` for the
+> shipped posture.
+
 Date: 2026-09-28 · Branch: `zcode-flow/1173-web-thin-client-plan-doc` ·
 Umbrella: #1161 (open; this plan is what its implementation gates on) ·
 Companion inputs: #831 (the signed-in-web epic this revises), #1091/#1101

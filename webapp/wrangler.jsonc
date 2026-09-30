@@ -1,0 +1,39 @@
+{
+  "name": "lunarlog-app-staging",
+  "compatibility_date": "2026-09-20",
+  "main": "worker/index.ts",
+
+  // Staging only (issue #1249): the workers.dev hostname is this Worker's
+  // only public origin, backed by the production Supabase project and used
+  // only with the fabricated accounts from #710. Moving app.lunarlog.app
+  // over is #1258 — this Worker deliberately declares no custom domain or
+  // route.
+  "workers_dev": true,
+
+  "assets": {
+    // `npm run build` output (Vite). Served through the Worker (see
+    // run_worker_first) so the declared security headers land on every
+    // response, including the SPA fallback.
+    "directory": "./dist",
+    "binding": "ASSETS",
+    // Every path is worker-first: worker/index.ts sets the security headers
+    // unconditionally, so the asset layer's guesses can never win. Array
+    // form — the shape wrangler 4.20.0 accepts (see site/wrangler.jsonc for
+    // the version history).
+    "run_worker_first": ["/*"],
+    // Single-page application: deep links (and the reserved /auth/* entry
+    // for #1250) fall back to index.html, never a 404.
+    "not_found_handling": "single-page-application",
+  },
+
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      // Off deliberately, matching site/wrangler.jsonc (issue #450): the
+      // automatic invocation log retains request URLs and headers.
+      "invocation_logs": false,
+    },
+  },
+}
