@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 
 import { getSyncedDataCache, resetWebDataForSignOut, subscribeSyncSignals } from './domain';
 import type { SyncedData } from './domain';
+import { webAuth } from './auth';
 import type { ProfileRow } from './schemas';
 import { getSupabaseClient } from './supabase';
 
@@ -44,26 +45,32 @@ export function useHasSyncSession(): boolean {
   const [hasSession, setHasSession] = useState(false);
 
   useEffect(() => {
-    const client = getSupabaseClient();
-    if (client === null) {
+    if (getSupabaseClient() === null) {
       setHasSession(false);
       return;
     }
     let active = true;
-    const evaluate = (): void => {
-      void client.auth.getSession().then(({ data }) => {
-        if (active) setHasSession(data.session !== null);
+    // The app client carries supabase-js's `accessToken` option (issue
+    // #1250), whose contract makes the `auth` namespace unusable — calling
+    // `client.auth.getSession()` there throws and takes the React tree with
+    // it (the e2e shell went blank exactly there). The session signal comes
+    // from the in-memory web auth client instead: one `getToken()` probes
+    // the Worker's `/auth/session` (single-flighted, rotates the refresh
+    // cookie) and resolves null when no session exists — signed out, not
+    // crashed.
+    void webAuth
+      .getToken()
+      .then((token) => {
+        if (active) setHasSession(token !== null);
+      })
+      .catch(() => {
+        // A reachable-but-wrong /auth/session (the preview server has no
+        // Worker, so it answers the SPA fallback) rejects the parse — a
+        // signed-out page, not a crashed one.
+        if (active) setHasSession(false);
       });
-    };
-    evaluate();
-    const {
-      data: { subscription },
-    } = client.auth.onAuthStateChange(() => {
-      evaluate();
-    });
     return () => {
       active = false;
-      subscription.unsubscribe();
     };
   }, []);
 
