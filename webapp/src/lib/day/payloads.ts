@@ -15,12 +15,18 @@
 import type {
   CycleOverrideRow,
   DayEntryRow,
-  GuardianMembershipRow,
   ObservationRow,
+  ProfileGuardianRow,
   ProfileRow,
   ProfileModeRow,
 } from '../schemas';
-import { generateUlid, isValidUlid } from '../ulid';
+import { isValidUlid, newUlid } from '../ulid';
+import type {
+  CycleOverridePayload,
+  DayEntryPayload,
+  ObservationPayload,
+  ProfileModePayload,
+} from '../domain';
 import { isIsoLocalDate, validateDayDate } from './day-entry-policy';
 import { isValidBbt, isValidWeight, type BbtUnit, type WeightUnit } from './measurements';
 
@@ -55,8 +61,8 @@ const PROFILE_METADATA_ROLES = ['primary_guardian', 'co_parent'];
 
 export type CallerRole = DayWriterRole | 'viewer';
 
-/** Resolves the editor's role from the caller's accepted membership row. */
-export function resolveCallerRole(membership: GuardianMembershipRow | null): CallerRole {
+/** Resolves the editor's role from the caller's membership row. */
+export function resolveCallerRole(membership: ProfileGuardianRow | null): CallerRole {
   if (membership === null || membership.status !== 'accepted') return 'viewer';
   if (
     membership.role === 'primary_guardian' ||
@@ -128,21 +134,22 @@ export interface LoadedDayView {
   observations: ObservationRow[];
   mode: ProfileModeRow | null;
   cycleOverride: CycleOverrideRow | null;
-  /** The caller's accepted membership, or null when the caller has none. */
-  membership: GuardianMembershipRow | null;
+  /** The caller's membership, or null when the caller has none. */
+  membership: ProfileGuardianRow | null;
 }
 
 // ---------------------------------------------------------------------------
 // Payload rows (the sync_push wire shapes)
 // ---------------------------------------------------------------------------
 
+/** One outgoing payload row: the data layer's push-batch shapes. */
 export type JsonRow = Record<string, unknown>;
 
 export interface SavePlan {
-  dayEntries: JsonRow[];
-  observations: JsonRow[];
-  profileModes: JsonRow[];
-  cycleOverrides: JsonRow[];
+  dayEntries: DayEntryPayload[];
+  observations: ObservationPayload[];
+  profileModes: ProfileModePayload[];
+  cycleOverrides: CycleOverridePayload[];
 }
 
 export type SavePlanField =
@@ -222,7 +229,7 @@ function resolveNotePrivate(edit: DayEdit, view: LoadedDayView): boolean {
  */
 export function buildSavePlan(args: BuildSavePlanArgs): SavePlan {
   const { profileId, dateIso, todayIso, tz, edit, view, nowIso } = args;
-  const nextId = args.newId ?? generateUlid;
+  const nextId = args.newId ?? newUlid;
   if (!isValidUlid(profileId)) {
     throw new DayValidationError('date', 'profile id must be a ULID');
   }
@@ -265,7 +272,7 @@ export function buildSavePlan(args: BuildSavePlanArgs): SavePlan {
   if (note !== null && note.length > MAX_NOTE_LENGTH) {
     throw new DayValidationError('note', `note longer than ${MAX_NOTE_LENGTH} characters`);
   }
-  const dayEntry: JsonRow = {
+  const dayEntry: DayEntryPayload = {
     id: entryId,
     profile_id: profileId,
     local_date: dateIso,
@@ -286,7 +293,7 @@ export function buildSavePlan(args: BuildSavePlanArgs): SavePlan {
     throw new DayValidationError('flow', 'unknown flow level');
   }
 
-  const observations: JsonRow[] = [];
+  const observations: ObservationPayload[] = [];
   const observationIds = observationIdsFor(nextId);
 
   // Spotting (#247): a `category: 'spotting'` observation row exists
@@ -367,7 +374,7 @@ export function buildSavePlan(args: BuildSavePlanArgs): SavePlan {
   // only, exactly like the server's own ladder. Emitted only when changed;
   // the server's per-key containment guards preserve every field this
   // payload omits.
-  const profileModes: JsonRow[] = [];
+  const profileModes: ProfileModePayload[] = [];
   if (edit.mode !== null && edit.mode !== view.mode?.mode) {
     if (!canEditProfileMetadata(role)) {
       throw new DayPermissionError('mode', `${role} cannot edit the life-stage mode`);
@@ -381,7 +388,7 @@ export function buildSavePlan(args: BuildSavePlanArgs): SavePlan {
   }
 
   // Cycle correction (#188): the override row keyed on the edited date.
-  const cycleOverrides: JsonRow[] = [];
+  const cycleOverrides: CycleOverridePayload[] = [];
   const wantsOverride = edit.manualCycleStart || edit.excludeCycleFromAverage;
   const existing = view.cycleOverride;
   const overrideUnchanged =
@@ -418,9 +425,9 @@ export function buildSavePlan(args: BuildSavePlanArgs): SavePlan {
 
   return {
     dayEntries: [dayEntry],
-    observations,
-    profileModes,
-    cycleOverrides,
+    observations: observations as ObservationPayload[],
+    profileModes: profileModes as ProfileModePayload[],
+    cycleOverrides: cycleOverrides as CycleOverridePayload[],
   };
 }
 
@@ -451,7 +458,7 @@ function upsertMeasurement(
   unit: string,
   nowIso: string,
   nextId: () => string,
-): JsonRow[] {
+): ObservationPayload[] {
   const existing = manualRows(view, category);
   if (existing.length > 0) {
     const row = existing[0];
@@ -499,7 +506,7 @@ interface LiveObservationArgs {
   nowIso: string;
 }
 
-function liveObservation(args: LiveObservationArgs): JsonRow {
+function liveObservation(args: LiveObservationArgs): ObservationPayload {
   return {
     id: args.id,
     day_entry_id: args.dayEntryId,
@@ -515,7 +522,7 @@ function liveObservation(args: LiveObservationArgs): JsonRow {
   };
 }
 
-function tombstoneObservation(row: ObservationRow, nowIso: string): JsonRow {
+function tombstoneObservation(row: ObservationRow, nowIso: string): ObservationPayload {
   return {
     id: row.id,
     day_entry_id: row.day_entry_id,

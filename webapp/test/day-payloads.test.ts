@@ -16,8 +16,8 @@ import {
 import type {
   CycleOverrideRow,
   DayEntryRow,
-  GuardianMembershipRow,
   ObservationRow,
+  ProfileGuardianRow,
   ProfileRow,
   ProfileModeRow,
 } from '../src/lib/schemas';
@@ -49,28 +49,38 @@ const nextFixedId = (): string => {
 
 const baseProfile: ProfileRow = {
   id: PROFILE_ID,
+  user_id: '00000000-0000-0000-0000-00000000owner',
   display_name: 'Maya',
   is_minor: false,
   mode: 'standard',
   relationship: 'self',
   birth_year: 1990,
   sort_order: 0,
+  archived_at: null,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+  deleted_at: null,
+  server_version: 1,
   bbt_unit: 'celsius',
   weight_unit: 'kg',
   tracking_preferences: null,
-  created_at: '2026-01-01T00:00:00Z',
-  updated_at: '2026-01-01T00:00:00Z',
 };
 
-const acceptedMembership = (role: string, isSubject = false): GuardianMembershipRow => ({
+const acceptedMembership = (role: string, isSubject = false): ProfileGuardianRow => ({
+  id: '00000000-0000-0000-0000-00000000memb',
   profile_id: PROFILE_ID,
+  user_id: '00000000-0000-0000-0000-00000000user',
   role,
   status: 'accepted',
   is_subject: isSubject ? true : false,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+  server_version: 1,
 });
 
 const baseEntry: DayEntryRow = {
   id: ENTRY_ID,
+  user_id: '00000000-0000-0000-0000-00000000user',
   profile_id: PROFILE_ID,
   local_date: '2026-09-29',
   tz: 'UTC',
@@ -81,8 +91,10 @@ const baseEntry: DayEntryRow = {
   pms: false,
   source: 'manual',
   source_id: null,
+  created_at: '2026-09-29T08:00:00.000Z',
   updated_at: '2026-09-29T08:00:00.000Z',
   deleted_at: null,
+  server_version: 2,
 };
 
 const emptyEdit: DayEdit = {
@@ -103,7 +115,7 @@ const emptyEdit: DayEdit = {
 function viewWith(overrides: {
   entry?: DayEntryRow | null;
   observations?: ObservationRow[];
-  membership?: GuardianMembershipRow | null;
+  membership?: ProfileGuardianRow | null;
   mode?: ProfileModeRow | null;
   cycleOverride?: CycleOverrideRow | null;
   profile?: Partial<ProfileRow>;
@@ -138,8 +150,10 @@ function observation(partial: Partial<ObservationRow>): ObservationRow {
     excluded: false,
     source: partial.source ?? 'manual',
     source_id: null,
+    created_at: '2026-09-29T08:00:00.000Z',
     updated_at: '2026-09-29T08:00:00.000Z',
     deleted_at: null,
+    server_version: 3,
   };
 }
 
@@ -160,7 +174,7 @@ describe('buildSavePlan: the day_entries payload', () => {
     const stored = { ...baseEntry, source: 'clue_import', source_id: 'clue-42' };
     const plan = planFor({ note: 'updated' }, viewWith({ entry: stored }));
     expect(plan.dayEntries).toHaveLength(1);
-    const row = plan.dayEntries[0] as Record<string, unknown>;
+    const row = plan.dayEntries[0] as unknown as Record<string, unknown>;
     expect(row['id']).toBe(ENTRY_ID);
     expect(row['profile_id']).toBe(PROFILE_ID);
     expect(row['local_date']).toBe('2026-09-29');
@@ -184,21 +198,21 @@ describe('buildSavePlan: the day_entries payload', () => {
 
   it('creates a fresh ULID row when the day has none yet', () => {
     const plan = planFor({ note: 'first' }, viewWith({ entry: null }));
-    const row = plan.dayEntries[0] as Record<string, unknown>;
+    const row = plan.dayEntries[0] as unknown as Record<string, unknown>;
     expect(row['id']).not.toBe(ENTRY_ID);
     expect(String(row['id'])).toMatch(/^[0-9ABCDEFGHJKMNPQRSTVWXYZ]{26}$/);
   });
 
   it('writes an explicit flow and the first-class pms marker', () => {
     const plan = planFor({ flow: 'heavy', flowExplicitlySet: true, pms: true }, viewWith({}));
-    const row = plan.dayEntries[0] as Record<string, unknown>;
+    const row = plan.dayEntries[0] as unknown as Record<string, unknown>;
     expect(row['flow']).toBe('heavy');
     expect(row['pms']).toBe(true);
   });
 
   it('empty string note saves as null (the app compose rule)', () => {
     const plan = planFor({ note: '' }, viewWith({}));
-    expect((plan.dayEntries[0] as Record<string, unknown>)['note']).toBeNull();
+    expect((plan.dayEntries[0] as unknown as Record<string, unknown>)['note']).toBeNull();
   });
 
   it('rejects a note past the 2000-char bound before anything is sent', () => {
@@ -257,7 +271,9 @@ describe('buildSavePlan: note privacy (#849)', () => {
       { note: 'secret', notePrivate: true },
       viewWith({ membership: acceptedMembership('primary_guardian', true) }),
     );
-    expect((plan.dayEntries[0] as Record<string, unknown>)['note_private']).toBe(true);
+    expect((plan.dayEntries[0] as unknown as Record<string, unknown>)['note_private']).toBe(
+      true,
+    );
   });
 
   it('locks private on: a private note is never cleared, even by the subject', () => {
@@ -266,7 +282,9 @@ describe('buildSavePlan: note privacy (#849)', () => {
       { note: 'secret', notePrivate: false },
       viewWith({ entry: stored, membership: acceptedMembership('primary_guardian', true) }),
     );
-    expect((plan.dayEntries[0] as Record<string, unknown>)['note_private']).toBe(true);
+    expect((plan.dayEntries[0] as unknown as Record<string, unknown>)['note_private']).toBe(
+      true,
+    );
   });
 
   it('locks private off: a shared note with content can never be made private', () => {
@@ -275,7 +293,9 @@ describe('buildSavePlan: note privacy (#849)', () => {
       { note: 'shared', notePrivate: true },
       viewWith({ entry: stored, membership: acceptedMembership('primary_guardian', true) }),
     );
-    expect((plan.dayEntries[0] as Record<string, unknown>)['note_private']).toBe(false);
+    expect((plan.dayEntries[0] as unknown as Record<string, unknown>)['note_private']).toBe(
+      false,
+    );
   });
 
   it('a non-subject echoes the stored flag, so a masked private note survives their save', () => {
@@ -284,7 +304,9 @@ describe('buildSavePlan: note privacy (#849)', () => {
       { notePrivate: false },
       viewWith({ entry: stored, membership: acceptedMembership('caregiver') }),
     );
-    expect((plan.dayEntries[0] as Record<string, unknown>)['note_private']).toBe(true);
+    expect((plan.dayEntries[0] as unknown as Record<string, unknown>)['note_private']).toBe(
+      true,
+    );
   });
 });
 
@@ -292,10 +314,10 @@ describe('buildSavePlan: spotting (#247)', () => {
   it('creates one spotting observation when toggled on with none stored', () => {
     const plan = planFor({ spotting: true }, viewWith({}));
     const spotting = plan.observations.filter(
-      (row) => (row as Record<string, unknown>)['category'] === 'spotting',
+      (row) => (row as unknown as Record<string, unknown>)['category'] === 'spotting',
     );
     expect(spotting).toHaveLength(1);
-    const row = spotting[0] as Record<string, unknown>;
+    const row = spotting[0] as unknown as Record<string, unknown>;
     expect(row['code']).toBe('spotting');
     expect(row['day_entry_id']).toBe(ENTRY_ID);
     expect(row['source']).toBe('manual');
@@ -305,7 +327,7 @@ describe('buildSavePlan: spotting (#247)', () => {
   it('tombstones every stored spotting row when toggled off', () => {
     const stored = observation({ category: 'spotting', code: 'spotting' });
     const plan = planFor({ spotting: false }, viewWith({ observations: [stored] }));
-    const row = plan.observations[0] as Record<string, unknown>;
+    const row = plan.observations[0] as unknown as Record<string, unknown>;
     expect(row['id']).toBe(stored.id);
     expect(row['deleted_at']).toBe(NOW);
     // Tombstones carry no payload.
@@ -335,9 +357,12 @@ describe('buildSavePlan: spotting (#247)', () => {
       ),
     ).toBe('not_bleeding');
     expect(
-      (planFor({ spotting: true }, viewWith({})).dayEntries[0] as Record<string, unknown>)[
-        'flow'
-      ],
+      (
+        planFor({ spotting: true }, viewWith({})).dayEntries[0] as unknown as Record<
+          string,
+          unknown
+        >
+      )['flow'],
     ).toBe('not_bleeding');
   });
 });
@@ -346,8 +371,8 @@ describe('buildSavePlan: measurements (#457)', () => {
   it('creates a manual bbt row in the unit the profile stores', () => {
     const plan = planFor({ bbt: 36.6 }, viewWith({}));
     const bbt = plan.observations.find(
-      (row) => (row as Record<string, unknown>)['category'] === 'bbt',
-    ) as Record<string, unknown>;
+      (row) => (row as unknown as Record<string, unknown>)['category'] === 'bbt',
+    ) as unknown as Record<string, unknown>;
     expect(bbt).toBeDefined();
     expect(bbt['value_num']).toBe(36.6);
     expect(bbt['unit']).toBe('celsius');
@@ -359,7 +384,7 @@ describe('buildSavePlan: measurements (#457)', () => {
     const stored = observation({ category: 'bbt', value_num: 36.4, unit: 'celsius' });
     const plan = planFor({ bbt: 36.7 }, viewWith({ observations: [stored] }));
     expect(plan.observations).toHaveLength(1);
-    const row = plan.observations[0] as Record<string, unknown>;
+    const row = plan.observations[0] as unknown as Record<string, unknown>;
     expect(row['id']).toBe(stored.id);
     expect(row['value_num']).toBe(36.7);
     expect(row).not.toHaveProperty('deleted_at');
@@ -374,7 +399,7 @@ describe('buildSavePlan: measurements (#457)', () => {
   it('tombstones the stored measurement when the field is cleared', () => {
     const stored = observation({ category: 'weight', value_num: 63.5, unit: 'kg' });
     const plan = planFor({ weight: null }, viewWith({ observations: [stored] }));
-    const row = plan.observations[0] as Record<string, unknown>;
+    const row = plan.observations[0] as unknown as Record<string, unknown>;
     expect(row['id']).toBe(stored.id);
     expect(row['deleted_at']).toBe(NOW);
   });
@@ -421,7 +446,7 @@ describe('buildSavePlan: life-stage mode and cycle corrections (#188)', () => {
 
     const changed = planFor({ mode: 'pregnancy' }, viewWith({}));
     expect(changed.profileModes).toHaveLength(1);
-    const row = changed.profileModes[0] as Record<string, unknown>;
+    const row = changed.profileModes[0] as unknown as Record<string, unknown>;
     expect(row['profile_id']).toBe(PROFILE_ID);
     expect(row['mode']).toBe('pregnancy');
     expect(row['mode_started_on']).toBe('2026-09-29');
@@ -437,7 +462,7 @@ describe('buildSavePlan: life-stage mode and cycle corrections (#188)', () => {
       viewWith({ cycleOverride: null }),
     );
     expect(plan.cycleOverrides).toHaveLength(1);
-    const row = plan.cycleOverrides[0] as Record<string, unknown>;
+    const row = plan.cycleOverrides[0] as unknown as Record<string, unknown>;
     expect(String(row['id'])).toMatch(/^[0-9ABCDEFGHJKMNPQRSTVWXYZ]{26}$/);
     expect(row['manual_start']).toBe(true);
     expect(row['excluded_from_average']).toBe(true);
@@ -454,6 +479,7 @@ describe('buildSavePlan: life-stage mode and cycle corrections (#188)', () => {
       note_id: null,
       updated_at: '2026-09-29T08:00:00.000Z',
       deleted_at: null,
+      server_version: 4,
     };
     const plan = planFor(
       { manualCycleStart: true, excludeCycleFromAverage: false },
@@ -472,12 +498,13 @@ describe('buildSavePlan: life-stage mode and cycle corrections (#188)', () => {
       note_id: null,
       updated_at: '2026-09-29T08:00:00.000Z',
       deleted_at: null,
+      server_version: 4,
     };
     const plan = planFor(
       { manualCycleStart: false, excludeCycleFromAverage: false },
       viewWith({ cycleOverride: stored }),
     );
-    const row = plan.cycleOverrides[0] as Record<string, unknown>;
+    const row = plan.cycleOverrides[0] as unknown as Record<string, unknown>;
     expect(row['id']).toBe(stored.id);
     expect(row['deleted_at']).toBe(NOW);
     expect(row).not.toHaveProperty('manual_start');
@@ -508,7 +535,7 @@ describe('payload keys stay inside the derived allowlists', () => {
       { flow: 'light', flowExplicitlySet: true, tags: ['cramps'], note: 'x', pms: true },
       viewWith({}),
     );
-    for (const key of Object.keys(plan.dayEntries[0] as Record<string, unknown>)) {
+    for (const key of Object.keys(plan.dayEntries[0] as unknown as Record<string, unknown>)) {
       expect(allowlist.has(key)).toBe(true);
     }
   });
@@ -517,7 +544,7 @@ describe('payload keys stay inside the derived allowlists', () => {
     const allowlist = allowlistOf('observations', ['created_at']);
     const plan = planFor({ spotting: true, bbt: 36.6, weight: 63.5 }, viewWith({}));
     for (const row of plan.observations) {
-      for (const key of Object.keys(row as Record<string, unknown>)) {
+      for (const key of Object.keys(row as unknown as Record<string, unknown>)) {
         expect(allowlist.has(key)).toBe(true);
       }
     }
@@ -527,10 +554,12 @@ describe('payload keys stay inside the derived allowlists', () => {
     const modeAllowlist = allowlistOf('profile_modes', []);
     const overrideAllowlist = allowlistOf('cycle_overrides', []);
     const plan = planFor({ mode: 'conceive', manualCycleStart: true }, viewWith({}));
-    for (const key of Object.keys(plan.profileModes[0] as Record<string, unknown>)) {
+    for (const key of Object.keys(plan.profileModes[0] as unknown as Record<string, unknown>)) {
       expect(modeAllowlist.has(key)).toBe(true);
     }
-    for (const key of Object.keys(plan.cycleOverrides[0] as Record<string, unknown>)) {
+    for (const key of Object.keys(
+      plan.cycleOverrides[0] as unknown as Record<string, unknown>,
+    )) {
       expect(overrideAllowlist.has(key)).toBe(true);
     }
   });

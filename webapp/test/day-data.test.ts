@@ -2,52 +2,65 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   DaySaveError,
+  dayViewFromSyncedData,
   fetchDayView,
-  resetPullCursorsForTests,
   saveDay,
 } from '../src/lib/day/day-data';
 import { DayPermissionError, type DayEdit, type LoadedDayView } from '../src/lib/day/payloads';
+import { getSyncedDataCache, type SyncedData } from '../src/lib/domain';
 import type { AppSupabaseClient } from '../src/lib/supabase';
-import type { DayEntryRow, GuardianMembershipRow, ProfileRow } from '../src/lib/schemas';
+import type { DayEntryRow, ProfileGuardianRow, ProfileRow } from '../src/lib/schemas';
 
 /**
  * The day editor's data module against a fake Supabase client (issue
- * #1254): the live-stack behaviour — payload acceptance, merge handbacks,
- * opaque rejections — is the round-trip integration test's job
- * (webapp/test/day-round-trip.local.test.ts, wired into CI's db-tests
- * job). What only these unit tests can pin is the mapping: which field a
- * rejected row id lights up, which server answer is a decline rather than
- * a failure, and how the masked sync_pull walk pages and caches cursors.
+ * #1254). Reads compose the #1252 data layer's shared synced-data cache —
+ * the walk itself is pinned by that layer's own suite and by the live
+ * integration test (test/integration/, CI's db-tests job) — so what only
+ * these unit tests can pin is the derivation (which rows make up one
+ * profile's one day, membership included) and the save mapping (which
+ * field a rejected row id lights up, which server answer is a decline
+ * rather than a failure, and the post-save cache refresh).
  */
 
 const PROFILE_ID = '01M2FWKNG0ZMH2ANCH7R2CM2XZ';
 const ENTRY_ID = '01M2FWKNG0ZMH2ANCH7R2CM2Y2';
 const NOW = '2026-09-30T08:00:00.000Z';
+const UID = '00000000-0000-0000-0000-00000000user';
 
 const baseProfile: ProfileRow = {
   id: PROFILE_ID,
+  user_id: UID,
   display_name: 'Maya',
   is_minor: false,
   mode: 'standard',
   relationship: 'self',
   birth_year: 1990,
   sort_order: 0,
+  archived_at: null,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+  deleted_at: null,
+  server_version: 1,
   bbt_unit: 'celsius',
   weight_unit: 'kg',
   tracking_preferences: null,
-  created_at: '2026-01-01T00:00:00Z',
-  updated_at: '2026-01-01T00:00:00Z',
 };
 
-const membership: GuardianMembershipRow = {
+const membership: ProfileGuardianRow = {
+  id: '00000000-0000-4000-8000-0000000000ea',
   profile_id: PROFILE_ID,
+  user_id: UID,
   role: 'primary_guardian',
   status: 'accepted',
   is_subject: true,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+  server_version: 2,
 };
 
 const storedEntry: DayEntryRow = {
   id: ENTRY_ID,
+  user_id: UID,
   profile_id: PROFILE_ID,
   local_date: '2026-09-29',
   tz: 'UTC',
@@ -58,17 +71,10 @@ const storedEntry: DayEntryRow = {
   pms: false,
   source: 'manual',
   source_id: null,
+  created_at: '2026-09-29T08:00:00.000Z',
   updated_at: '2026-09-29T08:00:00.000Z',
   deleted_at: null,
-};
-
-const baseView: LoadedDayView = {
-  profile: baseProfile,
-  entry: storedEntry,
-  observations: [],
-  membership,
-  mode: null,
-  cycleOverride: null,
+  server_version: 3,
 };
 
 const baseEdit: DayEdit = {
@@ -86,130 +92,156 @@ const baseEdit: DayEdit = {
   excludeCycleFromAverage: false,
 };
 
-/** A chainable, thenable query stub: select().eq().maybeSingle() all resolve
- * to the same configured result. */
-function queryChain(result: { data: unknown; error: { message: string } | null }) {
-  const chain: Record<string, unknown> = {};
-  const resolved = Promise.resolve(result);
-  for (const method of ['select', 'eq', 'is', 'order', 'limit']) {
-    chain[method] = vi.fn().mockReturnValue(chain);
-  }
-  chain.maybeSingle = vi.fn().mockReturnValue(resolved);
-  chain.then = resolved.then.bind(resolved);
-  chain.catch = resolved.catch.bind(resolved);
-  return chain;
-}
-
-/** The sync_pull page: every synced table answers on every call. */
-function pullPage(rows: {
-  profiles?: Record<string, unknown>[];
-  day_entries?: Record<string, unknown>[];
-  observations?: Record<string, unknown>[];
-  profile_modes?: Record<string, unknown>[];
-  cycle_overrides?: Record<string, unknown>[];
-  profile_tag_registry?: Record<string, unknown>[];
-}) {
+function syncedData(rows: Partial<SyncedData>): SyncedData {
   return {
-    profiles: rows.profiles ?? [{ ...baseProfile, server_version: 3 }],
+    profiles: rows.profiles ?? [baseProfile],
     day_entries: rows.day_entries ?? [],
     observations: rows.observations ?? [],
     profile_modes: rows.profile_modes ?? [],
     cycle_overrides: rows.cycle_overrides ?? [],
-    profile_tag_registry: rows.profile_tag_registry ?? [],
+    care_notes: [],
+    visit_prep_items: [],
+    profile_tag_registry: [],
+    profile_guardians: rows.profile_guardians ?? [],
+    guardian_notes: [],
   };
 }
 
-const pulledEntry = { ...storedEntry, server_version: 7 };
-
-/** A fake client: sync_pull answers with `page`, the membership select with
- * `membership`, and every other rpc with `rpcResult`. With `fullPageOnce`,
- * the first sync_pull returns a full 500-row day_entries page and every
- * later one returns an empty page — the drain-then-stop walk. */
-function fakeClient(options?: {
-  page?: ReturnType<typeof pullPage>;
-  fullPageOnce?: boolean;
-  membership?: { data: unknown; error: { message: string } | null };
-  rpcResult?: { data: unknown; error: { message: string } | null };
-  pullError?: { message: string } | null;
-}) {
-  let pullCalls = 0;
-  const rpc = vi.fn().mockImplementation((name: string) => {
-    if (name === 'sync_pull') {
-      pullCalls += 1;
-      const data = options?.pullError
-        ? null
-        : options?.fullPageOnce === true
-          ? pullCalls === 1
-            ? pullPage({
-                day_entries: Array.from({ length: 500 }, (_, i) => ({
-                  ...storedEntry,
-                  id: `ROW${String(i).padStart(21, '0')}`,
-                  local_date: '2026-01-01', // a different day, so the view ignores it
-                  server_version: i + 1,
-                })),
-              })
-            : pullPage({ day_entries: [{ ...pulledEntry, server_version: 501 }] })
-          : (options?.page ?? pullPage({ day_entries: [pulledEntry] }));
-      return Promise.resolve({ data, error: options?.pullError ?? null });
-    }
-    return Promise.resolve(options?.rpcResult ?? { data: {}, error: null });
-  });
-  const from = vi.fn().mockImplementation((table: string) => {
-    if (table !== 'profile_guardians') {
-      throw new Error(`fakeClient: unexpected table '${table}'`);
-    }
-    return queryChain(options?.membership ?? { data: membership, error: null });
-  });
-  return {
-    client: {
-      from,
-      rpc,
-      auth: { getSession: async () => ({ data: { session: { user: { id: 'uid-1' } } } }) },
-    } as unknown as AppSupabaseClient,
-    from,
-    rpc,
-  };
-}
-
-describe('fetchDayView (issue #1254)', () => {
-  beforeEach(() => {
-    resetPullCursorsForTests();
-  });
-
-  it('reads the day through the masked sync_pull walk and resolves the caller role', async () => {
-    const { client } = fakeClient({ page: pullPage({ day_entries: [pulledEntry] }) });
-    const view = await fetchDayView(client, { profileId: PROFILE_ID, dateIso: '2026-09-29' });
+describe('dayViewFromSyncedData (issue #1254)', () => {
+  it('derives the day: live entry, the day observations, mode, override, membership', () => {
+    const otherDay: DayEntryRow = {
+      ...storedEntry,
+      id: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+      local_date: '2026-09-28',
+    };
+    const view = dayViewFromSyncedData(
+      syncedData({
+        day_entries: [otherDay, storedEntry],
+        profile_guardians: [membership],
+      }),
+      PROFILE_ID,
+      '2026-09-29',
+      UID,
+    );
     expect(view.profile.display_name).toBe('Maya');
     expect(view.entry?.id).toBe(ENTRY_ID);
+    expect(view.observations).toEqual([]);
+    expect(view.mode).toBeNull();
+    expect(view.cycleOverride).toBeNull();
     expect(view.membership?.role).toBe('primary_guardian');
     expect(view.customTags).toEqual([]);
   });
 
-  it('advances the session cursors so the next read is an increment', async () => {
-    const { client, rpc } = fakeClient();
-    await fetchDayView(client, { profileId: PROFILE_ID, dateIso: '2026-09-29' });
-    await fetchDayView(client, { profileId: PROFILE_ID, dateIso: '2026-09-29' });
-    const calls = rpc.mock.calls.filter(([name]) => name === 'sync_pull');
-    expect(calls).toHaveLength(2);
-    const cursors = (calls[1] as unknown as [string, { p_cursors: Record<string, number> }])[1];
-    expect(cursors.p_cursors['day_entries']).toBe(7);
-    expect(cursors.p_cursors['profiles']).toBe(3);
+  it('skips tombstoned rows when picking the live entry and override', () => {
+    const view = dayViewFromSyncedData(
+      syncedData({
+        day_entries: [{ ...storedEntry, deleted_at: NOW }],
+        cycle_overrides: [
+          {
+            id: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+            profile_id: PROFILE_ID,
+            cycle_start_date: '2026-09-29',
+            excluded_from_average: true,
+            manual_start: false,
+            updated_at: '2026-09-29T08:00:00.000Z',
+            deleted_at: NOW,
+            server_version: 4,
+          },
+        ],
+      }),
+      PROFILE_ID,
+      '2026-09-29',
+      UID,
+    );
+    expect(view.entry).toBeNull();
+    expect(view.cycleOverride).toBeNull();
   });
 
-  it('keeps walking while a table returns a full page', async () => {
-    const { client, rpc } = fakeClient({ fullPageOnce: true });
+  it('matches the membership to the caller (role and uid), not to any guardian row', () => {
+    const otherGuardian: ProfileGuardianRow = {
+      ...membership,
+      user_id: '00000000-0000-4000-8000-0000000000eb',
+      role: 'viewer',
+    };
+    const view = dayViewFromSyncedData(
+      syncedData({ profile_guardians: [otherGuardian, membership] }),
+      PROFILE_ID,
+      '2026-09-29',
+      UID,
+    );
+    expect(view.membership?.role).toBe('primary_guardian');
+  });
+
+  it('throws the typed error when the profile is not in the snapshot', () => {
+    expect(() =>
+      dayViewFromSyncedData(syncedData({ profiles: [] }), PROFILE_ID, '2026-09-29', UID),
+    ).toThrowError(/not visible/);
+  });
+});
+
+/** A fake client: sync_pull answers with `page` and sync_push with
+ * `rpcResult` — enough for the shared cache and the save path. */
+function fakeClient(options?: {
+  page?: Partial<SyncedData>;
+  rpcResult?: { data: unknown; error: { message: string } | null };
+  pullError?: { message: string } | null;
+}) {
+  // Record cloned args: sync_pull's cursors object is mutated by the
+  // pull loop after the call, and the spy stores the reference.
+  const rpcCalls: [string, unknown][] = [];
+  const rpc = vi.fn().mockImplementation((name: string, args: unknown) => {
+    rpcCalls.push([name, structuredClone(args)]);
+    if (name === 'sync_pull') {
+      return Promise.resolve({
+        data: options?.pullError
+          ? null
+          : {
+              profiles: options?.page?.profiles ?? [],
+              day_entries: options?.page?.day_entries ?? [],
+              observations: options?.page?.observations ?? [],
+              profile_modes: options?.page?.profile_modes ?? [],
+              cycle_overrides: options?.page?.cycle_overrides ?? [],
+              care_notes: [],
+              visit_prep_items: [],
+              profile_tag_registry: [],
+              profile_guardians: options?.page?.profile_guardians ?? [],
+              day_entry_history: [],
+            },
+        error: options?.pullError ?? null,
+      });
+    }
+    return Promise.resolve(options?.rpcResult ?? { data: {}, error: null });
+  });
+  return {
+    client: {
+      rpc,
+      auth: { getSession: async () => ({ data: { session: { user: { id: UID } } } }) },
+    } as unknown as AppSupabaseClient,
+    rpc,
+    rpcCalls,
+  };
+}
+
+describe('fetchDayView (issue #1254, on the shared synced-data cache)', () => {
+  beforeEach(() => {
+    getSyncedDataCache().reset();
+  });
+
+  it('pulls through the cache and derives the view', async () => {
+    const { client, rpcCalls } = fakeClient({
+      page: {
+        profiles: [baseProfile],
+        day_entries: [storedEntry],
+        profile_guardians: [membership],
+      },
+    });
     const view = await fetchDayView(client, { profileId: PROFILE_ID, dateIso: '2026-09-29' });
-    // Two rounds: the full page, then the short page — the cursor moved
-    // past 500 so the walk stopped.
-    expect(rpc).toHaveBeenCalledTimes(2);
+    expect(view.profile.display_name).toBe('Maya');
     expect(view.entry?.id).toBe(ENTRY_ID);
-  });
-
-  it('throws a typed error when the profile is not in the pulled set', async () => {
-    const { client } = fakeClient({ page: pullPage({ profiles: [] }) });
-    await expect(
-      fetchDayView(client, { profileId: PROFILE_ID, dateIso: '2026-09-29' }),
-    ).rejects.toThrowError(/not visible/);
+    expect(view.membership?.role).toBe('primary_guardian');
+    // The first pull starts from empty cursors (cloned at call time — the
+    // pull loop mutates its cursors object after the call returns).
+    expect(rpcCalls[0]).toEqual(['sync_pull', { p_cursors: {} }]);
   });
 
   it('propagates a sync_pull failure as a typed error', async () => {
@@ -220,21 +252,21 @@ describe('fetchDayView (issue #1254)', () => {
       fetchDayView(client, { profileId: PROFILE_ID, dateIso: '2026-09-29' }),
     ).rejects.toThrow('sync_pull requires an authenticated user');
   });
-
-  it('propagates a membership select failure as a typed error', async () => {
-    const { client } = fakeClient({
-      membership: { data: null, error: { message: 'permission denied' } },
-    });
-    await expect(
-      fetchDayView(client, { profileId: PROFILE_ID, dateIso: '2026-09-29' }),
-    ).rejects.toThrow('permission denied');
-  });
 });
 
 describe('saveDay (issue #1254)', () => {
   beforeEach(() => {
-    resetPullCursorsForTests();
+    getSyncedDataCache().reset();
   });
+
+  const view: LoadedDayView = {
+    profile: baseProfile,
+    entry: storedEntry,
+    observations: [],
+    membership,
+    mode: null,
+    cycleOverride: null,
+  };
 
   const saveArgs = {
     profileId: PROFILE_ID,
@@ -242,19 +274,21 @@ describe('saveDay (issue #1254)', () => {
     todayIso: '2026-09-30',
     tz: 'UTC',
     edit: baseEdit,
-    view: baseView,
+    view,
     nowIso: NOW,
   };
 
-  it('pushes one sync_push call carrying the plan arrays', async () => {
+  it('pushes one sync_push batch carrying the plan arrays', async () => {
     const { client, rpc } = fakeClient({
-      rpcResult: { data: { resolved: [], rejected: [], server_now: NOW }, error: null },
+      rpcResult: {
+        data: { resolved: [], rejected: [], server_now: NOW },
+        error: null,
+      },
     });
     const result = await saveDay(client, saveArgs);
     expect(rpc).toHaveBeenCalledWith(
       'sync_push',
       expect.objectContaining({
-        p_profiles: [],
         p_day_entries: [expect.objectContaining({ id: ENTRY_ID, note: 'hello' })],
       }),
     );
@@ -280,30 +314,28 @@ describe('saveDay (issue #1254)', () => {
   });
 
   it('maps an observation rejection to its category (bbt)', async () => {
-    const view: LoadedDayView = {
-      ...baseView,
-      observations: [
-        {
-          id: '01ARZ3NDEK0000000000000BBT',
-          day_entry_id: ENTRY_ID,
-          profile_id: PROFILE_ID,
-          local_date: '2026-09-29',
-          observed_at: null,
-          tz: 'UTC',
-          category: 'bbt',
-          code: null,
-          value_num: 36.4,
-          value_text: null,
-          unit: 'celsius',
-          intensity: null,
-          excluded: false,
-          source: 'manual',
-          source_id: null,
-          updated_at: '2026-09-29T08:00:00.000Z',
-          deleted_at: null,
-        },
-      ],
+    const measurement = {
+      id: '01ARZ3NDEK0000000000000BBT',
+      day_entry_id: ENTRY_ID,
+      profile_id: PROFILE_ID,
+      local_date: '2026-09-29',
+      tz: 'UTC',
+      observed_at: null,
+      category: 'bbt',
+      code: null,
+      value_num: 36.4,
+      value_text: null,
+      unit: 'celsius',
+      intensity: null,
+      excluded: false,
+      source: 'manual',
+      source_id: null,
+      created_at: '2026-09-29T08:00:00.000Z',
+      updated_at: '2026-09-29T08:00:00.000Z',
+      deleted_at: null,
+      server_version: 5,
     };
+    const dayView: LoadedDayView = { ...view, observations: [measurement] };
     const { client } = fakeClient({
       rpcResult: {
         data: {
@@ -317,7 +349,7 @@ describe('saveDay (issue #1254)', () => {
     const result = await saveDay(client, {
       ...saveArgs,
       edit: { ...baseEdit, bbt: 36.6 },
-      view,
+      view: dayView,
     });
     expect(result.rejectedFields).toContain('bbt');
   });
@@ -373,7 +405,7 @@ describe('saveDay (issue #1254)', () => {
   it('refuses to build a plan for a viewer before any call is made', async () => {
     const { client, rpc } = fakeClient();
     const viewerView: LoadedDayView = {
-      ...baseView,
+      ...view,
       membership: { ...membership, role: 'viewer' },
     };
     await expect(saveDay(client, { ...saveArgs, view: viewerView })).rejects.toThrowError(

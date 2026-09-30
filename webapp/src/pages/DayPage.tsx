@@ -35,6 +35,11 @@ import {
   tagsByCategory,
 } from '../lib/day/categories';
 import { useDayView, useSaveDay } from '../lib/day/use-day';
+import {
+  DomainModuleMissingError,
+  getDomainModule,
+  validateDayEntryDate,
+} from '../domain/client';
 
 /**
  * The web day editor (issue #1254): the app day sheet's categories — flow
@@ -148,7 +153,7 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
 
   const client = clientProp === undefined ? getSupabaseClient() : clientProp;
   const day = useDayView(client, profileId, dateIso);
-  const view = day.data;
+  const view = day.view;
   const saveMutation = useSaveDay(client, profileId);
 
   const [edit, setEdit] = useState<DayEdit>(() => editFromView(view));
@@ -178,9 +183,29 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
   const isSubject = view?.membership?.is_subject === true;
   const metadataAllowed = canEditProfileMetadata(role);
 
-  // Date bounds (the #1251 interim policy): an out-of-bounds day renders
-  // read-only with the reason before anything is pushed.
-  const bounds = validateDayDate(dateIso, todayIso, view?.profile.birth_year ?? null);
+  // Date bounds (#848, checked through the compiled domain module when it
+  // is loaded — the #1251 module is the owner of this rule; the pure port
+  // below is the fallback for a build that ships without it). An
+  // out-of-bounds day renders read-only with the reason before anything is
+  // pushed.
+  const bounds = useMemo(() => {
+    const birthYear = view?.profile.birth_year ?? null;
+    try {
+      const result = validateDayEntryDate(getDomainModule(), {
+        date: dateIso,
+        today: todayIso,
+        birthYear: birthYear ?? undefined,
+      });
+      return result.status === 'valid'
+        ? { valid: true as const }
+        : { valid: false as const, violation: result.status };
+    } catch (error) {
+      if (error instanceof DomainModuleMissingError) {
+        return validateDayDate(dateIso, todayIso, birthYear);
+      }
+      throw error;
+    }
+  }, [dateIso, todayIso, view]);
 
   useEffect(() => {
     if (!dirty) return;

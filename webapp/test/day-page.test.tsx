@@ -1,13 +1,14 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppIntlProvider } from '../src/i18n/i18n';
 import { createAppQueryClient } from '../src/lib/queries';
+import { getSyncedDataCache } from '../src/lib/domain';
 import { DayPage } from '../src/pages/DayPage';
 import type { AppSupabaseClient } from '../src/lib/supabase';
-import type { GuardianMembershipRow, ProfileRow } from '../src/lib/schemas';
+import type { ProfileGuardianRow, ProfileRow } from '../src/lib/schemas';
 
 /**
  * The day editor page (issue #1254): the states a signed-in operator moves
@@ -24,21 +25,26 @@ const DATE = '2026-09-29';
 
 const profile: ProfileRow = {
   id: PROFILE_ID,
+  user_id: '00000000-0000-4000-8000-0000000000u1',
   display_name: 'Maya',
   is_minor: false,
   mode: 'standard',
   relationship: 'self',
   birth_year: 1990,
   sort_order: 0,
+  archived_at: null,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+  deleted_at: null,
+  server_version: 1,
   bbt_unit: 'celsius',
   weight_unit: 'kg',
   tracking_preferences: null,
-  created_at: '2026-01-01T00:00:00Z',
-  updated_at: '2026-01-01T00:00:00Z',
 };
 
 const entry = {
   id: ENTRY_ID,
+  user_id: '00000000-0000-4000-8000-0000000000u1',
   profile_id: PROFILE_ID,
   local_date: DATE,
   tz: 'UTC',
@@ -49,28 +55,28 @@ const entry = {
   pms: false,
   source: 'manual',
   source_id: null,
+  created_at: '2026-09-29T08:00:00.000Z',
   updated_at: '2026-09-29T08:00:00.000Z',
   deleted_at: null,
+  server_version: 3,
 };
 
-function membership(role: string, isSubject = true): GuardianMembershipRow {
-  return { profile_id: PROFILE_ID, role, status: 'accepted', is_subject: isSubject };
-}
-
-function queryChain(result: { data: unknown; error: { message: string } | null }) {
-  const chain: Record<string, unknown> = {};
-  const resolved = Promise.resolve(result);
-  for (const method of ['select', 'eq', 'is', 'order', 'limit']) {
-    chain[method] = vi.fn().mockReturnValue(chain);
-  }
-  chain.maybeSingle = vi.fn().mockReturnValue(resolved);
-  chain.then = resolved.then.bind(resolved);
-  chain.catch = resolved.catch.bind(resolved);
-  return chain;
+function membership(role: string, isSubject = true): ProfileGuardianRow {
+  return {
+    id: '00000000-0000-4000-8000-0000000000e1',
+    profile_id: PROFILE_ID,
+    user_id: '00000000-0000-4000-8000-0000000000u1',
+    role,
+    status: 'accepted',
+    is_subject: isSubject,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+    server_version: 2,
+  };
 }
 
 function fakeClient(options?: {
-  membership?: GuardianMembershipRow | null;
+  membership?: ProfileGuardianRow | null;
   rpcResult?: { data: unknown; error: { message: string } | null };
 }) {
   const page = {
@@ -79,7 +85,16 @@ function fakeClient(options?: {
     observations: [],
     profile_modes: [],
     cycle_overrides: [],
+    care_notes: [],
+    visit_prep_items: [],
     profile_tag_registry: [],
+    profile_guardians:
+      options?.membership === undefined
+        ? [membership('primary_guardian')]
+        : options.membership === null
+          ? []
+          : [options.membership],
+    day_entry_history: [],
   };
   const rpc = vi.fn().mockImplementation((name: string) => {
     if (name === 'sync_pull') {
@@ -92,21 +107,18 @@ function fakeClient(options?: {
       },
     );
   });
-  const from = vi.fn().mockImplementation((table: string) => {
-    if (table !== 'profile_guardians') {
-      throw new Error(`fakeClient: unexpected table '${table}'`);
-    }
-    return queryChain({
-      data:
-        options?.membership === undefined ? membership('primary_guardian') : options.membership,
-      error: null,
-    });
+  const from = vi.fn().mockImplementation(() => {
+    throw new Error('fakeClient: unexpected direct select');
   });
   return {
     client: {
       from,
       rpc,
-      auth: { getSession: async () => ({ data: { session: { user: { id: 'uid-1' } } } }) },
+      auth: {
+        getSession: async () => ({
+          data: { session: { user: { id: '00000000-0000-4000-8000-0000000000u1' } } },
+        }),
+      },
     } as unknown as AppSupabaseClient,
     rpc,
   };
@@ -128,6 +140,10 @@ function renderDay(client: AppSupabaseClient | null) {
 }
 
 describe('DayPage (issue #1254)', () => {
+  beforeEach(() => {
+    getSyncedDataCache().reset();
+  });
+
   afterEach(cleanup);
 
   it('asks for sign-in on an unconfigured build', () => {
