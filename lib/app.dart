@@ -453,10 +453,9 @@ class _LunarLogAppState extends State<LunarLogApp>
     _initAuthController();
     _initHealthFlowWriter();
     _initHealthSyncTombstonePropagation();
-    _initHealthImporter();
     _initHealthPermissionProbe();
     _initHealthDeviationInsights();
-    unawaited(_initHealthBackgroundImport());
+    _initHealthImport();
     _buildReminderCoordinator();
     _initReminderWindowPublisher();
     // Issue #373: started on its own, never nested inside the push-gated
@@ -793,14 +792,24 @@ class _LunarLogAppState extends State<LunarLogApp>
     coordinator.start();
   }
 
-  /// Issues #217/#458: the user-initiated OS health-store import runner.
-  /// AC2: construction (and the platform gating) lives in
-  /// `lib/composition/`; this only holds the instance the Settings screen
-  /// reads through a provider. It is not started — unlike the write
-  /// coordinators it has no subscriptions or timers; the only thing that
-  /// runs it is the operator's explicit Settings action.
-  void _initHealthImporter() {
-    _healthImporter = buildHealthImportRunner(
+  /// Issues #217/#458 plus Issue #993, over ONE shared service (issue
+  /// #1212): the user-initiated OS health-store import runner and the
+  /// background coordinator that turns platform triggers (iOS's
+  /// HKObserverQuery, Android's WorkManager job) into prompt-free passes
+  /// of the same pipeline the Settings tap runs. Both seams come from one
+  /// `buildHealthImportSeams` call, so both ride the same
+  /// `LocalHealthImportService` and its one-pass-at-a-time gate — a
+  /// trigger that lands while the user's own import pass runs queues
+  /// behind it instead of interleaving with it. AC2: construction (and
+  /// the platform gating) lives in `lib/composition/`; this only holds
+  /// the runner the Settings screen reads through a provider and starts
+  /// the coordinator — the pass itself never prompts, shows UI, or logs
+  /// health content (counts only, inside the coordinator). No field holds
+  /// the coordinator: the channel handler it registers is what keeps it
+  /// alive, and there is nothing to dispose — it lives as long as the
+  /// app.
+  void _initHealthImport() {
+    final seams = buildHealthImportSeams(
       settings: _settings,
       profiles: _profiles,
       dayEntries: _dayEntries,
@@ -809,30 +818,9 @@ class _LunarLogAppState extends State<LunarLogApp>
       signedInUserId: () => confirmedHealthSyncUserId(_authController),
       minorBindingAllowed: AppConfig.healthSyncMinorBindingAllowed,
     );
-  }
-
-  /// Issue #993: the background half of the health import. The platform
-  /// triggers (iOS's HKObserverQuery, Android's WorkManager job) fire
-  /// through the shared channel; this starts the coordinator that turns
-  /// each fire into one prompt-free pass of the same pipeline the Settings
-  /// tap runs. AC2: construction (and the platform gating) lives in
-  /// `lib/composition/`; this only starts it — the pass itself never
-  /// prompts, shows UI, or logs health content (counts only, inside the
-  /// coordinator). No field holds the coordinator: the channel handler it
-  /// registers is what keeps it alive, and there is nothing to dispose —
-  /// it lives as long as the app.
-  Future<void> _initHealthBackgroundImport() async {
-    final coordinator = buildHealthBackgroundImportCoordinator(
-      settings: _settings,
-      profiles: _profiles,
-      dayEntries: _dayEntries,
-      observations: _observations,
-      guardiansForProfile: _profileGuardians.getForProfile,
-      signedInUserId: () => confirmedHealthSyncUserId(_authController),
-      minorBindingAllowed: AppConfig.healthSyncMinorBindingAllowed,
-    );
-    if (coordinator == null) return;
-    await coordinator.start();
+    if (seams == null) return;
+    _healthImporter = seams.runner;
+    unawaited(seams.coordinator.start());
   }
 
   /// Issue #959: the OS-permission probe the Health sync screen reads. AC2:

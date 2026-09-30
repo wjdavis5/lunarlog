@@ -580,14 +580,49 @@ enum HealthKitChannelHandler {
     [menstrualFlowType, intermenstrualBleedingType]
   }
 
+  /// The observer queries currently registered for the read types, keyed
+  /// by type (issue #1212). `bind` arrives on every health write pass —
+  /// the Dart write service re-asserts the binding mirror per pass — so
+  /// registration must be idempotent: a type already in this registry
+  /// never gets a second `store.execute`. HealthKit calls a freshly
+  /// registered observer's handler once immediately, so a re-executed
+  /// query is both one spurious import pass per bind AND one more live
+  /// query firing on every store change for the rest of the session.
+  /// Main-thread only (engine init and the method-call handler both run
+  /// there), so no lock is needed. `disableBackgroundImportTrigger`
+  /// stops each query and empties the registry on unbind, so a later
+  /// re-bind registers exactly one fresh query per type again.
+  static var registeredObserverQueries: [HKCategoryType: HKObserverQuery] =
+    [:]
+
+  /// Best-effort `enableBackgroundDelivery(.immediate)` for one read
+  /// type: already-enabled delivery is a harmless re-assert (the call is
+  /// idempotent), only a real failure is logged. Shared by the first
+  /// registration and the already-registered re-bind path, which must
+  /// still make sure delivery survived an unbind/enable cycle.
+  private static func enableBackgroundDelivery(for type: HKCategoryType) {
+    store.enableBackgroundDelivery(for: type, frequency: .immediate) {
+      success, error in
+      if !success, let error {
+        // Coarse diagnostics only — never health content.
+        NSLog(
+          "lunarlog: health background delivery enable failed: \(error.localizedDescription)"
+        )
+      }
+    }
+  }
+
   /// Registers the observer query and enables immediate background
   /// delivery for each read type — called from
   /// `didInitializeImplicitFlutterEngine` (at app start, only when a
   /// profile is bound) and from the `bind` case (so a first-ever bind
-  /// during this session does not wait for the next launch to be covered).
-  /// Every step is best-effort: a failure (a hand-signed local build
-  /// without the #993 entitlement, HealthKit unavailable, delivery already
-  /// enabled) is logged coarsely and never throws.
+  /// during this session does not wait for the next launch to be
+  /// covered). Idempotent per session (issue #1212): a type already in
+  /// `registeredObserverQueries` skips straight to re-enabling delivery —
+  /// the `bind` call site itself is NOT the first-ever gate, this
+  /// registry is. Every step is best-effort: a failure (a hand-signed
+  /// local build without the #993 entitlement, HealthKit unavailable,
+  /// delivery already enabled) is logged coarsely and never throws.
   ///
   /// The observer fires → the Dart coordinator runs one prompt-free pass
   /// of the same import the Settings tap runs (`importInBackground`): no
@@ -598,6 +633,14 @@ enum HealthKitChannelHandler {
     guard HKHealthStore.isHealthDataAvailable() else { return }
     guard storedBoundProfileId != nil else { return }
     for type in backgroundReadTypes {
+      guard registeredObserverQueries[type] == nil else {
+        // Issue #1212: this type already has its one query for this
+        // session — do not execute a second one. Only re-assert
+        // background delivery (e.g. after a bind/unbind/re-bind that
+        // disabled it).
+        enableBackgroundDelivery(for: type)
+        continue
+      }
       // The handler's 3rd parameter (this SDK's signature) carries an
       // error when the query cannot deliver updates (e.g. permission
       // revoked); the pass itself will then simply see no new data, so it
@@ -610,16 +653,12 @@ enum HealthKitChannelHandler {
         completion()
         Self.handleObserverFired()
       }
+      // Registered before executed: the immediate first handler call is
+      // queued, never re-entrant here, but the registry-first insert
+      // keeps even a synchronous re-entry from executing a second query.
+      registeredObserverQueries[type] = query
       store.execute(query)
-      store.enableBackgroundDelivery(for: type, frequency: .immediate) {
-        success, error in
-        if !success, let error {
-          // Coarse diagnostics only — never health content.
-          NSLog(
-            "lunarlog: health background delivery enable failed: \(error.localizedDescription)"
-          )
-        }
-      }
+      enableBackgroundDelivery(for: type)
     }
   }
 
@@ -650,8 +689,13 @@ enum HealthKitChannelHandler {
 
   /// Stops background delivery for the read types (the `unbind` case):
   /// an unbound device must not be woken for an import its guard would
-  /// refuse anyway. The queries stay registered — harmless, since every
-  /// future push finds no bound profile and is a Dart-side no-op pass.
+  /// refuse anyway. Issue #1212: the observer queries themselves are
+  /// stopped too (`store.stop`) and the registry emptied — a pre-#1212
+  /// unbind only disabled delivery, leaving the queries live forever, so
+  /// every later re-bind kept adding two more. Stopping them here is what
+  /// makes re-binding register exactly one fresh query per type. Every
+  /// future push would have found no bound profile anyway (a Dart-side
+  /// no-op pass), but a stopped query fires no handler at all.
   /// Best-effort.
   static func disableBackgroundImportTrigger() {
     DispatchQueue.main.async {
@@ -659,6 +703,9 @@ enum HealthKitChannelHandler {
     }
     guard HKHealthStore.isHealthDataAvailable() else { return }
     for type in backgroundReadTypes {
+      if let query = registeredObserverQueries.removeValue(forKey: type) {
+        store.stop(query)
+      }
       store.disableBackgroundDelivery(for: type) { success, error in
         if !success, let error {
           NSLog(
@@ -693,7 +740,11 @@ enum HealthKitChannelHandler {
       }
       UserDefaults.standard.set(g.profileId, forKey: boundProfileKey)
       // Issue #993: a first-ever bind during this session starts the
-      // background trigger without waiting for the next launch.
+      // background trigger without waiting for the next launch. Issue
+      // #1212: this runs on EVERY bind (the write service re-asserts the
+      // binding mirror per write pass), so the register function itself
+      // is idempotent — an already-registered type only re-enables
+      // delivery instead of executing a second observer query.
       registerBackgroundImportTriggerIfBound()
       result("allowed")
 

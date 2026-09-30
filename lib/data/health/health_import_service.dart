@@ -79,6 +79,7 @@
 /// would use, so tests exercise the resolution logic directly.
 library;
 
+import 'dart:async' show Completer;
 import 'dart:isolate' show Isolate;
 
 import 'package:lunarlog/domain/health/day_boundary.dart';
@@ -445,10 +446,40 @@ class LocalHealthImportService
     return _runPass(bound, null);
   }
 
-  /// The pass body both entry points share: the full-history window, the
-  /// paged read, and the never-overwrite merge. Everything prompt-shaped
-  /// stays in the entry points.
+  /// The tail of the last pass that ran on this service (issue #1212).
+  /// Both entry points — the Settings tap and the background coordinator —
+  /// ride this one shared instance (see `buildHealthImportSeams`), and
+  /// both funnel through [_runPass], so this chain is the one place their
+  /// passes can be kept from interleaving: each pass awaits the previous
+  /// pass's FULL completion (including every `_mergeSpotting` read-then-
+  /// save window) before its own first read starts. The coordinator's own
+  /// overlapping-trigger drop only sees background-vs-background; a
+  /// trigger that lands while the user's `importNow` pass is mid-flight
+  /// would otherwise interleave with it. The tail never completes with an
+  /// error: a failed pass releases it through `whenComplete`, and its
+  /// error goes only to its own caller.
+  Future<void> _passTail = Future<void>.value();
+
+  /// The pass body both entry points share, serialized on [_passTail]:
+  /// one pass at a time on this service. Everything prompt-shaped stays
+  /// in the entry points (which run before the queue is joined — the
+  /// guard, the binding mirror, and the Issue #959 probe are read-free
+  /// and race-free).
   Future<HealthImportSummary> _runPass(
+    ({Profile profile, HealthGuardFacts facts}) bound,
+    void Function(HealthImportProgress progress)? onProgress,
+  ) {
+    final previous = _passTail;
+    final released = Completer<void>();
+    _passTail = released.future;
+    return previous
+        .then((_) => _runPassSteps(bound, onProgress))
+        .whenComplete(released.complete);
+  }
+
+  /// The unsynchronized pipeline steps [_runPass] serializes: the
+  /// full-history window, the paged read, and the never-overwrite merge.
+  Future<HealthImportSummary> _runPassSteps(
     ({Profile profile, HealthGuardFacts facts}) bound,
     void Function(HealthImportProgress progress)? onProgress,
   ) async {
