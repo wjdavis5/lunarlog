@@ -389,6 +389,12 @@ void main() {
     'queues behind it — the passes never interleave',
     () async {
       await bind();
+      // Issue #1215: with no completed first import, a background pass is
+      // a silent no-op before the serialization tail is ever reached — the
+      // gate has its own tests. This test pins #1212's overlap contract
+      // (two passes never interleave), so the gate is open before the
+      // overlap starts.
+      await binding.markFirstImportCompleted();
       // One page serving both entry points: a flow day plus an
       // intermenstrual-bleeding record for the SAME date. Two passes
       // merging that page concurrently is exactly the overlap the issue
