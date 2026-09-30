@@ -1,0 +1,738 @@
+{
+  "categories": [
+    {
+      "name": "pain",
+      "wireName": "pain",
+      "label": "Pain"
+    },
+    {
+      "name": "energy",
+      "wireName": "energy",
+      "label": "Energy"
+    },
+    {
+      "name": "sleep",
+      "wireName": "sleep",
+      "label": "Sleep"
+    },
+    {
+      "name": "sleepQuality",
+      "wireName": "sleep_quality",
+      "label": "Sleep quality"
+    },
+    {
+      "name": "skin",
+      "wireName": "skin",
+      "label": "Skin"
+    },
+    {
+      "name": "hair",
+      "wireName": "hair",
+      "label": "Hair"
+    },
+    {
+      "name": "digestion",
+      "wireName": "digestion",
+      "label": "Digestion"
+    },
+    {
+      "name": "stool",
+      "wireName": "stool",
+      "label": "Stool"
+    },
+    {
+      "name": "cravings",
+      "wireName": "cravings",
+      "label": "Cravings"
+    },
+    {
+      "name": "breastsChest",
+      "wireName": "breasts_chest",
+      "label": "Breasts & chest"
+    },
+    {
+      "name": "hotFlashes",
+      "wireName": "hot_flashes",
+      "label": "Hot flashes"
+    },
+    {
+      "name": "urine",
+      "wireName": "urine",
+      "label": "Urine"
+    },
+    {
+      "name": "vulvaVagina",
+      "wireName": "vulva_vagina",
+      "label": "Vulva & vagina"
+    },
+    {
+      "name": "body",
+      "wireName": "body",
+      "label": "Body"
+    },
+    {
+      "name": "feelings",
+      "wireName": "feelings",
+      "label": "Feelings"
+    },
+    {
+      "name": "mind",
+      "wireName": "mind",
+      "label": "Mind"
+    },
+    {
+      "name": "motivation",
+      "wireName": "motivation",
+      "label": "Motivation"
+    },
+    {
+      "name": "socialLife",
+      "wireName": "social_life",
+      "label": "Social life"
+    },
+    {
+      "name": "leisure",
+      "wireName": "leisure",
+      "label": "Leisure"
+    },
+    {
+      "name": "meditation",
+      "wireName": "meditation",
+      "label": "Meditation"
+    },
+    {
+      "name": "pms",
+      "wireName": "pms",
+      "label": "PMS"
+    },
+    {
+      "name": "partying",
+      "wireName": "partying",
+      "label": "Partying"
+    },
+    {
+      "name": "collectionMethod",
+      "wireName": "collection_method",
+      "label": "Collection method"
+    },
+    {
+      "name": "exercise",
+      "wireName": "exercise",
+      "label": "Exercise"
+    },
+    {
+      "name": "appointments",
+      "wireName": "appointments",
+      "label": "Appointments"
+    },
+    {
+      "name": "medication",
+      "wireName": "medication",
+      "label": "Medication"
+    },
+    {
+      "name": "ailments",
+      "wireName": "ailments",
+      "label": "Ailments"
+    },
+    {
+      "name": "supplements",
+      "wireName": "supplements",
+      "label": "Supplements"
+    },
+    {
+      "name": "sexLife",
+      "wireName": "sex_life",
+      "label": "Sex life"
+    },
+    {
+      "name": "discharge",
+      "wireName": "discharge",
+      "label": "Discharge"
+    },
+    {
+      "name": "tests",
+      "wireName": "tests",
+      "label": "Tests"
+    }
+  ],
+  "tags": [
+    {
+      "code": "cramps",
+      "category": "pain",
+      "display": "Cramps"
+    },
+    {
+      "code": "headache",
+      "category": "pain",
+      "display": "Headache"
+    },
+    {
+      "code": "back_pain",
+      "category": "pain",
+      "display": "Back pain"
+    },
+    {
+      "code": "breast_tenderness",
+      "category": "pain",
+      "display": "Breast tenderness"
+    },
+    {
+      "code": "ovulation",
+      "category": "pain",
+      "display": "Ovulation pain"
+    },
+    {
+      "code": "migraine",
+      "category": "pain",
+      "display": "Migraine"
+    },
+    {
+      "code": "migraine_with_aura",
+      "category": "pain",
+      "display": "Migraine with aura"
+    },
+    {
+      "code": "pain_free",
+      "category": "pain",
+      "display": "Pain free"
+    },
+    {
+      "code": "energetic",
+      "category": "energy",
+      "display": "Energetic"
+    },
+    {
+      "code": "fully_energized",
+      "category": "energy",
+      "display": "Fully energized"
+    },
+    {
+      "code": "tired",
+      "category": "energy",
+      "display": "Tired"
+    },
+    {
+      "code": "exhausted",
+      "category": "energy",
+      "display": "Exhausted"
+    },
+    {
+      "code": "fatigue",
+      "category": "energy",
+      "display": "Fatigue"
+    },
+    {
+      "code": "sleep_trouble",
+      "category": "sleep",
+      "display": "Sleep trouble"
+    },
+    {
+      "code": "0_to_3_hours",
+      "category": "sleep",
+      "display": "0-3 hours"
+    },
+    {
+      "code": "3_to_6_hours",
+      "category": "sleep",
+      "display": "3-6 hours"
+    },
+    {
+      "code": "6_to_9_hours",
+      "category": "sleep",
+      "display": "6-9 hours"
+    },
+    {
+      "code": "9_or_more_hours",
+      "category": "sleep",
+      "display": "9+ hours"
+    },
+    {
+      "code": "acne",
+      "category": "skin",
+      "display": "Acne"
+    },
+    {
+      "code": "good_skin",
+      "category": "skin",
+      "display": "Good skin"
+    },
+    {
+      "code": "oily_skin",
+      "category": "skin",
+      "display": "Oily skin"
+    },
+    {
+      "code": "dry_skin",
+      "category": "skin",
+      "display": "Dry skin"
+    },
+    {
+      "code": "good_hair",
+      "category": "hair",
+      "display": "Good hair"
+    },
+    {
+      "code": "bad_hair",
+      "category": "hair",
+      "display": "Bad hair"
+    },
+    {
+      "code": "oily_hair",
+      "category": "hair",
+      "display": "Oily hair"
+    },
+    {
+      "code": "dry_hair",
+      "category": "hair",
+      "display": "Dry hair"
+    },
+    {
+      "code": "bloating",
+      "category": "digestion",
+      "display": "Bloating"
+    },
+    {
+      "code": "nausea",
+      "category": "digestion",
+      "display": "Nausea"
+    },
+    {
+      "code": "gassy",
+      "category": "digestion",
+      "display": "Gassy"
+    },
+    {
+      "code": "great_digestion",
+      "category": "digestion",
+      "display": "Great"
+    },
+    {
+      "code": "normal",
+      "category": "stool",
+      "display": "Normal"
+    },
+    {
+      "code": "constipated",
+      "category": "stool",
+      "display": "Constipated"
+    },
+    {
+      "code": "great_stool",
+      "category": "stool",
+      "display": "Great"
+    },
+    {
+      "code": "diarrhea",
+      "category": "stool",
+      "display": "Diarrhea"
+    },
+    {
+      "code": "cravings",
+      "category": "cravings",
+      "display": "Other craving"
+    },
+    {
+      "code": "sweet",
+      "category": "cravings",
+      "display": "Sweet"
+    },
+    {
+      "code": "salty",
+      "category": "cravings",
+      "display": "Salty"
+    },
+    {
+      "code": "carbs",
+      "category": "cravings",
+      "display": "Carbs"
+    },
+    {
+      "code": "chocolate",
+      "category": "cravings",
+      "display": "Chocolate"
+    },
+    {
+      "code": "hot_flashes",
+      "category": "hotFlashes",
+      "display": "Hot flash"
+    },
+    {
+      "code": "night_sweats",
+      "category": "hotFlashes",
+      "display": "Night sweats"
+    },
+    {
+      "code": "brain_fog",
+      "category": "hotFlashes",
+      "display": "Brain fog"
+    },
+    {
+      "code": "hrt",
+      "category": "hotFlashes",
+      "display": "HRT"
+    },
+    {
+      "code": "vaginal_dryness",
+      "category": "hotFlashes",
+      "display": "Vaginal dryness"
+    },
+    {
+      "code": "dizziness",
+      "category": "body",
+      "display": "Dizziness"
+    },
+    {
+      "code": "irritable",
+      "category": "feelings",
+      "display": "Irritable"
+    },
+    {
+      "code": "happy",
+      "category": "feelings",
+      "display": "Happy"
+    },
+    {
+      "code": "sad",
+      "category": "feelings",
+      "display": "Sad"
+    },
+    {
+      "code": "angry",
+      "category": "feelings",
+      "display": "Angry"
+    },
+    {
+      "code": "anxious",
+      "category": "feelings",
+      "display": "Anxious"
+    },
+    {
+      "code": "indifferent",
+      "category": "feelings",
+      "display": "Indifferent"
+    },
+    {
+      "code": "sensitive",
+      "category": "feelings",
+      "display": "Sensitive"
+    },
+    {
+      "code": "mood_swings",
+      "category": "feelings",
+      "display": "Mood swings"
+    },
+    {
+      "code": "excited",
+      "category": "feelings",
+      "display": "Excited"
+    },
+    {
+      "code": "insecure",
+      "category": "feelings",
+      "display": "Insecure"
+    },
+    {
+      "code": "grateful",
+      "category": "feelings",
+      "display": "Grateful"
+    },
+    {
+      "code": "calm",
+      "category": "mind",
+      "display": "Calm"
+    },
+    {
+      "code": "distracted",
+      "category": "mind",
+      "display": "Distracted"
+    },
+    {
+      "code": "focused",
+      "category": "mind",
+      "display": "Focused"
+    },
+    {
+      "code": "stressed",
+      "category": "mind",
+      "display": "Stressed"
+    },
+    {
+      "code": "motivated",
+      "category": "motivation",
+      "display": "Motivated"
+    },
+    {
+      "code": "unmotivated",
+      "category": "motivation",
+      "display": "Unmotivated"
+    },
+    {
+      "code": "productive",
+      "category": "motivation",
+      "display": "Productive"
+    },
+    {
+      "code": "unproductive",
+      "category": "motivation",
+      "display": "Unproductive"
+    },
+    {
+      "code": "sociable",
+      "category": "socialLife",
+      "display": "Sociable"
+    },
+    {
+      "code": "withdrawn",
+      "category": "socialLife",
+      "display": "Withdrawn"
+    },
+    {
+      "code": "supportive",
+      "category": "socialLife",
+      "display": "Supportive"
+    },
+    {
+      "code": "conflict",
+      "category": "socialLife",
+      "display": "Conflict"
+    },
+    {
+      "code": "drinks",
+      "category": "partying",
+      "display": "Drinks"
+    },
+    {
+      "code": "cigarettes",
+      "category": "partying",
+      "display": "Cigarettes"
+    },
+    {
+      "code": "big_night",
+      "category": "partying",
+      "display": "Big night"
+    },
+    {
+      "code": "hangover",
+      "category": "partying",
+      "display": "Hangover"
+    },
+    {
+      "code": "pad",
+      "category": "collectionMethod",
+      "display": "Pad"
+    },
+    {
+      "code": "tampon",
+      "category": "collectionMethod",
+      "display": "Tampon"
+    },
+    {
+      "code": "panty_liner",
+      "category": "collectionMethod",
+      "display": "Panty liner"
+    },
+    {
+      "code": "menstrual_cup",
+      "category": "collectionMethod",
+      "display": "Menstrual cup"
+    },
+    {
+      "code": "running",
+      "category": "exercise",
+      "display": "Running"
+    },
+    {
+      "code": "yoga",
+      "category": "exercise",
+      "display": "Yoga"
+    },
+    {
+      "code": "biking",
+      "category": "exercise",
+      "display": "Biking"
+    },
+    {
+      "code": "swimming",
+      "category": "exercise",
+      "display": "Swimming"
+    },
+    {
+      "code": "walking",
+      "category": "exercise",
+      "display": "Walking"
+    },
+    {
+      "code": "pilates",
+      "category": "exercise",
+      "display": "Pilates"
+    },
+    {
+      "code": "rest_day",
+      "category": "exercise",
+      "display": "Rest day"
+    },
+    {
+      "code": "pain",
+      "category": "medication",
+      "display": "Pain (medication)"
+    },
+    {
+      "code": "cold_flu_medication",
+      "category": "medication",
+      "display": "Cold/flu (medication)"
+    },
+    {
+      "code": "antihistamine",
+      "category": "medication",
+      "display": "Antihistamine"
+    },
+    {
+      "code": "antibiotic",
+      "category": "medication",
+      "display": "Antibiotic"
+    },
+    {
+      "code": "cold_flu_ailments",
+      "category": "ailments",
+      "display": "Cold/flu (ailments)"
+    },
+    {
+      "code": "allergy",
+      "category": "ailments",
+      "display": "Allergy"
+    },
+    {
+      "code": "injury",
+      "category": "ailments",
+      "display": "Injury"
+    },
+    {
+      "code": "fever",
+      "category": "ailments",
+      "display": "Fever"
+    },
+    {
+      "code": "no_sex_today",
+      "category": "sexLife",
+      "display": "No sex today"
+    },
+    {
+      "code": "low_sex_drive",
+      "category": "sexLife",
+      "display": "Low sex drive"
+    },
+    {
+      "code": "high_sex_drive",
+      "category": "sexLife",
+      "display": "High sex drive"
+    },
+    {
+      "code": "masturbation",
+      "category": "sexLife",
+      "display": "Masturbation"
+    },
+    {
+      "code": "withdrawal",
+      "category": "sexLife",
+      "display": "Withdrawal"
+    },
+    {
+      "code": "protected_sex",
+      "category": "sexLife",
+      "display": "Protected sex"
+    },
+    {
+      "code": "unprotected_sex",
+      "category": "sexLife",
+      "display": "Unprotected sex"
+    },
+    {
+      "code": "sex_toys",
+      "category": "sexLife",
+      "display": "Sex toys"
+    },
+    {
+      "code": "orgasm",
+      "category": "sexLife",
+      "display": "Orgasm"
+    },
+    {
+      "code": "no_orgasm",
+      "category": "sexLife",
+      "display": "No orgasm"
+    },
+    {
+      "code": "fantasies",
+      "category": "sexLife",
+      "display": "Fantasies"
+    },
+    {
+      "code": "painful_intercourse",
+      "category": "sexLife",
+      "display": "Painful intercourse"
+    },
+    {
+      "code": "none",
+      "category": "discharge",
+      "display": "No discharge"
+    },
+    {
+      "code": "sticky",
+      "category": "discharge",
+      "display": "Sticky"
+    },
+    {
+      "code": "creamy",
+      "category": "discharge",
+      "display": "Creamy"
+    },
+    {
+      "code": "egg_white",
+      "category": "discharge",
+      "display": "Egg white"
+    },
+    {
+      "code": "atypical",
+      "category": "discharge",
+      "display": "Atypical"
+    },
+    {
+      "code": "ovulation_negative",
+      "category": "tests",
+      "display": "Ovulation · negative"
+    },
+    {
+      "code": "ovulation_positive",
+      "category": "tests",
+      "display": "Ovulation · positive"
+    },
+    {
+      "code": "ovulation_peak",
+      "category": "tests",
+      "display": "Ovulation · peak"
+    },
+    {
+      "code": "pregnancy_negative",
+      "category": "tests",
+      "display": "Pregnancy · negative"
+    },
+    {
+      "code": "pregnancy_positive",
+      "category": "tests",
+      "display": "Pregnancy · positive"
+    }
+  ],
+  "positiveAssertionCodes": [
+    "pain_free",
+    "no_sex_today",
+    "none"
+  ],
+  "singleSelectCategories": [
+    "discharge"
+  ],
+  "minorDefaultHiddenCategories": [
+    "partying",
+    "sex_life"
+  ]
+}

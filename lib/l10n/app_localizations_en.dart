@@ -5510,4 +5510,152 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get guardianOverviewActionSupplies => 'Supplies';
+
+  @override
+  String webDayPageTitle(Object date, Object profileName) {
+    return '$profileName — $date';
+  }
+
+  @override
+  String get webDayBackToToday => 'Back to today';
+
+  @override
+  String get webDayNeedsSignIn => 'Sign in to log a day.';
+
+  @override
+  String get webDayNoAccess => 'You don\'t have access to this profile.';
+
+  @override
+  String get webDayReadOnlyViewer =>
+      'You have view-only access to this profile.';
+
+  @override
+  String get webDayFlowSection => 'Flow';
+
+  @override
+  String get webDaySpottingToggle => 'Spotting';
+
+  @override
+  String get webDaySymptomsSection => 'Symptoms';
+
+  @override
+  String get webDayTestsSection => 'Tests';
+
+  @override
+  String get webDayMeasurementsSection => 'Measurements';
+
+  @override
+  String webDayBbtLabel(Object unit) {
+    return 'Basal body temperature ($unit)';
+  }
+
+  @override
+  String webDayWeightLabel(Object unit) {
+    return 'Weight ($unit)';
+  }
+
+  @override
+  String get webDayNotesSection => 'Notes';
+
+  @override
+  String get webDayNotePlaceholder => 'How was your day?';
+
+  @override
+  String get webDayNotePrivate => 'Private note';
+
+  @override
+  String get webDayNotePrivateMasked =>
+      'This note is private to the profile subject and hidden from you. Anything you type here is not saved.';
+
+  @override
+  String get webDayNotePrivateLockedOn =>
+      'Private notes can\'t be made shared.';
+
+  @override
+  String get webDayNotePrivateLockedOff =>
+      'A note that was already shared can\'t be made private.';
+
+  @override
+  String get webDayNotePrivateSubjectOnly =>
+      'Only the profile subject can change note privacy.';
+
+  @override
+  String get webDayPmsToggle => 'PMS';
+
+  @override
+  String get webDayCycleSection => 'Cycle corrections';
+
+  @override
+  String get webDayManualStart => 'Cycle started on this day';
+
+  @override
+  String get webDayExcludeFromAverage => 'Exclude this cycle from averages';
+
+  @override
+  String get webDayModeSection => 'Life stage';
+
+  @override
+  String get webDayModeTracking => 'Period tracking';
+
+  @override
+  String get webDayModeConceive => 'Conceive';
+
+  @override
+  String get webDayModePregnancy => 'Pregnancy';
+
+  @override
+  String get webDayModePerimenopause => 'Perimenopause';
+
+  @override
+  String get webDayModePostpartum => 'Postpartum';
+
+  @override
+  String get webDayGuardiansOnly =>
+      'Only the primary guardian or a co-parent can change this.';
+
+  @override
+  String get webDaySave => 'Save';
+
+  @override
+  String get webDaySaving => 'Saving…';
+
+  @override
+  String get webDaySaved => 'Saved';
+
+  @override
+  String get webDaySaveFailed =>
+      'Saving failed — your changes are still here, nothing was lost. Try again.';
+
+  @override
+  String get webDayRejectedField =>
+      'The server rejected this field — check it and try again.';
+
+  @override
+  String get webDayErrorFuture =>
+      'You can\'t log a day more than one day ahead.';
+
+  @override
+  String get webDayErrorBirthYear =>
+      'This day is before the profile\'s birth year.';
+
+  @override
+  String webDayErrorBbtRange(Object max, Object min) {
+    return 'Temperature must be between $min and $max.';
+  }
+
+  @override
+  String webDayErrorWeightRange(Object max, Object min) {
+    return 'Weight must be between $min and $max.';
+  }
+
+  @override
+  String get webDayMergedNotice =>
+      'A device that saved this day earlier was merged into this entry — its symptoms were kept.';
+
+  @override
+  String get webDayDeclinedNotice =>
+      'A newer save from another device won this day — your changes were not applied.';
+
+  @override
+  String get webDayUnsavedWarning => 'Leave with unsaved changes?';
 }

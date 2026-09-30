@@ -5,7 +5,7 @@
   "type": "module",
   "description": "The lunarlog React web client (issue #1249, epic #831): Vite + React + TypeScript strict, in-memory-only data, and the nothing-stored-in-the-browser rule enforced by CI.",
   "scripts": {
-    "generate": "node scripts/generate.mjs",
+    "generate": "node scripts/generate.mjs && node scripts/generate-taxonomy.mjs",
     "predev": "npm run generate",
     "dev": "vite",
     "prebuild": "npm run generate",
