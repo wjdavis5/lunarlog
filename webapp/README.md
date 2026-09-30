@@ -127,7 +127,15 @@ the rollup would fail every docs-only PR with a "skipped" dependency).
 ## Deliberately not here yet
 
 - **Auth** (#1250): the `/auth/*` route and Worker entry are reserved; the
-  page renders catalogue placeholder copy.
+  page renders catalogue placeholder copy. Until it lands there is no web
+  session, so the sharing pages (#1255) render their honest not-signed-in
+  copy and every acceptance criterion that needs two signed-in clients is
+  proven by the unit suite's RPC-level fakes rather than a live browser.
+- **Family sharing** (#1255): `/invite` (guardian invites and `kind=claim`
+  transfers, with the #957 subject acknowledgement), `/profile/:id/guardians`
+  (list, invite, role change, revoke, ownership transfer), and
+  `/profile/:id/notes` (guardian and care notes through `sync_push`) —
+  prediction-connection links stay mobile-only per the epic's "Later" list.
 - **Domain module** (#1251): `useProfiles` proves the
   supabase-js → Zod → TanStack Query path; the real screens come later.
 - **Custom domain** (#1258): staging is workers.dev only.

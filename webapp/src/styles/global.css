@@ -122,6 +122,154 @@ body {
   border-radius: var(--ll-r-md);
 }
 
+/* --- Sharing and notes surfaces (issue 1255). Everything token-derived:
+       a literal colour here is a test failure, like the rest of the file. */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ll-space2);
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: var(--ll-space4);
+}
+
+.button {
+  font: inherit;
+  padding: var(--ll-space2) var(--ll-space4);
+  border: 1px solid var(--ll-primary);
+  border-radius: var(--ll-r-full);
+  background: var(--ll-primary);
+  color: var(--ll-on-primary);
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.button.secondary {
+  background: transparent;
+  color: var(--ll-primary);
+}
+
+.button.danger {
+  background: transparent;
+  border-color: var(--ll-error);
+  color: var(--ll-error);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ll-space1);
+  margin-top: var(--ll-space3);
+}
+
+.field label {
+  color: var(--ll-on-surface-variant);
+}
+
+.field input,
+.field select,
+.field textarea {
+  font: inherit;
+  padding: var(--ll-space2);
+  border: 1px solid var(--ll-outline);
+  border-radius: var(--ll-r-md);
+  background: var(--ll-surface-container-lowest);
+  color: var(--ll-on-surface);
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 4rem;
+}
+
+.row-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ll-space2);
+  margin: var(--ll-space3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ll-space2);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--ll-space3);
+  background: var(--ll-surface-container);
+  border-radius: var(--ll-r-md);
+}
+
+.row-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ll-space1);
+  min-width: 0;
+}
+
+.row-title {
+  margin: 0;
+  font-weight: var(--ll-type-title-medium-font-weight, 500);
+}
+
+.row-sub {
+  margin: 0;
+  color: var(--ll-on-surface-variant);
+}
+
+.badge {
+  display: inline-block;
+  padding: 0 var(--ll-space2);
+  border-radius: var(--ll-r-full);
+  background: var(--ll-secondary-container);
+  color: var(--ll-on-secondary-container);
+}
+
+.error {
+  margin: var(--ll-space3) 0 0;
+  color: var(--ll-error);
+}
+
+.acknowledgement {
+  margin-top: var(--ll-space3);
+  padding: var(--ll-space3);
+  background: var(--ll-surface-container-high);
+  border-radius: var(--ll-r-lg);
+}
+
+.acknowledgement p {
+  margin: 0;
+}
+
+.acknowledgement .hint {
+  margin-top: var(--ll-space1);
+  color: var(--ll-on-surface-variant);
+}
+
+.link-display {
+  margin-top: var(--ll-space3);
+  padding: var(--ll-space3);
+  background: var(--ll-surface-container-high);
+  border-radius: var(--ll-r-md);
+  overflow-wrap: anywhere;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

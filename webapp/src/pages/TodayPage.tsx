@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Link } from 'react-router';
 
 import { useT } from '../i18n/t';
 import { useProfiles } from '../lib/queries';
@@ -10,7 +11,8 @@ function longMonth(now: Date): string {
 /**
  * The scaffold's one real screen: the catalogue-formatted month header and
  * the empty-state card, plus the profiles the operator can see once the
- * build is configured (idle otherwise).
+ * build is configured (idle otherwise) — each linking to its sharing (#1255)
+ * surfaces.
  */
 export function TodayPage() {
   const t = useT();
@@ -33,7 +35,25 @@ export function TodayPage() {
       {profiles.data !== undefined && profiles.data.length > 0 ? (
         <ul className="profile-list">
           {profiles.data.map((profile) => (
-            <li key={profile.id}>{profile.display_name}</li>
+            <li key={profile.id}>
+              {profile.display_name}
+              <div className="actions">
+                <Link
+                  className="nav-link"
+                  to={`/profile/${profile.id}/guardians`}
+                  aria-label={t('profilePickerMenuGuardians')}
+                >
+                  {t('profilePickerMenuGuardians')}
+                </Link>
+                <Link
+                  className="nav-link"
+                  to={`/profile/${profile.id}/notes`}
+                  aria-label={t('guardianNotesSectionTitle')}
+                >
+                  {t('guardianNotesSectionTitle')}
+                </Link>
+              </div>
+            </li>
           ))}
         </ul>
       ) : null}
