@@ -28,10 +28,23 @@
 /// (`fabricated_profile.dart`), the fonts are the bundled TTFs loaded
 /// into the test engine, and the manifest is walked in a stable order —
 /// two runs on the same commit produce byte-identical output on the same
-/// platform. The CI suite deliberately does not run this file (it writes
-/// files and renders dozens of frames); its logic under test lives in the
-/// pure modules (`manifest.dart`, `fabricated_profile.dart`, `index.dart`),
-/// covered by `test/tool/screenshots/`.
+/// platform. The PNGs are never golden-compared (shadow rasterisation
+/// isn't guaranteed pixel-identical across Flutter versions, which issue
+/// #1223 accepts), so that drift is visible but never fatal. The CI
+/// suite deliberately does not run this file (it writes files and
+/// renders dozens of frames); its logic under test lives in the pure
+/// modules (`manifest.dart`, `fabricated_profile.dart`, `index.dart`,
+/// `shadow_guard.dart`), covered by `test/tool/screenshots/`.
+///
+/// Shadows render (issue #1223): the automated test binding pins
+/// `debugDisableShadows` to true for the whole test, and with shadows
+/// disabled an elevated Material shape paints a solid shadow-colour
+/// stroke instead of a blurred shadow — the hard black ring around the
+/// Log today FAB and the hairline on the Today card the site captures
+/// carried. `_renderOne` re-enables shadows around each scene and
+/// restores the binding's value afterwards (the binding asserts the
+/// reset at the end of the test), and the today/light captures run the
+/// `shadow_guard.dart` scan so the artifact cannot return unnoticed.
 library;
 
 import 'dart:io';
@@ -44,11 +57,13 @@ import 'package:flutter/material.dart'
     show Brightness, SizedBox, TargetPlatform;
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/ui/components/today_log_fab.dart';
 
 import 'fabricated_profile.dart';
 import 'index.dart';
 import 'manifest.dart';
 import 'render_harness.dart';
+import 'shadow_guard.dart';
 
 /// Renders the full manifest. One `testWidgets` drives the whole walk so
 /// the fonts load once and the index is written exactly once, after every
@@ -139,6 +154,17 @@ Future<ScreenshotIndexEntry> _renderOne(
 ) async {
   final world = await ScreenshotWorld.create();
   try {
+    // Issue #1223: the automated test binding pins `debugDisableShadows`
+    // to true for the whole test (flutter_test's binding.dart), and a
+    // disabled shadow makes every elevated Material shape paint a solid
+    // shadow-colour stroke (rendering/proxy_box.dart's stand-in for
+    // canvas.drawShadow) instead of a blurred shadow — the hard black
+    // ring around the Log today FAB and the hairline on the Today card
+    // the site captures carried. Marketing captures must show what the
+    // app shows, so the scene pumps and rasterizes with shadows on; the
+    // finally block restores the binding's value, whose end-of-test
+    // invariant asserts the reset.
+    debugDisableShadows = false;
     tester.view.physicalSize = Size(
       device.logicalWidth * device.pixelRatio,
       device.logicalHeight * device.pixelRatio,
@@ -182,6 +208,36 @@ Future<ScreenshotIndexEntry> _renderOne(
       // encodes the PNG off the test's fake clock — both need the real
       // async zone `runAsync` provides.
       final image = await boundary.toImage(pixelRatio: device.pixelRatio);
+      // Issue #1223's regression guard: on the today captures (the
+      // screen and theme the artifacts showed on), the band around the
+      // Log today FAB must hold no opaque pure-black pixel — the
+      // disabled-shadow ring's exact signature. Cheap: one rawRgba read
+      // plus one small scan (`shadow_guard.dart`, unit-tested).
+      if (screen.id == 'today' && theme == ScreenshotTheme.light) {
+        final raw = await image.toByteData(format: ImageByteFormat.rawRgba);
+        if (raw == null) {
+          throw StateError(
+            'rawRgba read returned null for the #1223 shadow guard '
+            '(today/${device.id}/light)',
+          );
+        }
+        final finding = findPureBlackPixel(
+          rgba: raw.buffer.asUint8List(),
+          width: image.width,
+          height: image.height,
+          fab: tester.getRect(find.byType(TodayLogFab)),
+          pixelRatio: device.pixelRatio,
+        );
+        if (finding != null) {
+          throw StateError(
+            'issue #1223 guard: pure-black pixel at ${finding.x}, '
+            '${finding.y} in today/${device.id}/light around the Log '
+            "today FAB — an elevated shape is painting a hard "
+            'shadow-colour ring again; is debugDisableShadows left '
+            'enabled over the scene pump?',
+          );
+        }
+      }
       final byteData = await image.toByteData(format: ImageByteFormat.png);
       if (byteData == null) {
         throw StateError('PNG encoding returned null for '
@@ -213,6 +269,12 @@ Future<ScreenshotIndexEntry> _renderOne(
       storePixelSize: device.storePixelSize,
     );
   } finally {
+    // First thing, always: the test binding asserts at the end of the
+    // test that the painting debug variables are back where it set them
+    // (binding.dart's _verifyInvariants), so the global is restored
+    // before anything here can throw and before the next capture flips
+    // it again.
+    debugDisableShadows = true;
     debugDefaultTargetPlatformOverride = null;
     tester.platformDispatcher.clearPlatformBrightnessTestValue();
     tester.view.resetPhysicalSize();
