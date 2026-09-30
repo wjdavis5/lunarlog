@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { Database } from '../../../supabase/database.types';
 
+import { webAuth } from './auth';
 import { hasSupabase, supabasePublishableKey, supabaseUrl } from './config';
 
 /**
@@ -15,10 +16,13 @@ import { hasSupabase, supabasePublishableKey, supabaseUrl } from './config';
 export type AppSupabaseClient = SupabaseClient<Database>;
 
 /**
- * The only session storage the web client allows: an in-memory adapter.
- * supabase-js would otherwise persist the session to localStorage —
- * exactly the at-rest state the nothing-stored rule bans. The session
- * lives in page memory and dies with the tab; the browser keeps nothing.
+ * An inert storage adapter, wired as belt-and-braces under the `accessToken`
+ * option (issue #1250): that option is what actually keeps supabase-js from
+ * ever touching session storage — per its own contract, the `auth`
+ * namespace is not usable on a client created with it, so no session is
+ * ever persisted or read back. If a future change removed the option, this
+ * adapter would keep the browser at-rest-empty rather than silently
+ * reverting to localStorage.
  */
 export const inMemorySessionStorage = {
   getItem: (_key: string): Promise<string | null> => Promise.resolve(null),
@@ -26,9 +30,19 @@ export const inMemorySessionStorage = {
   removeItem: (_key: string): Promise<void> => Promise.resolve(),
 };
 
-/** Creates the typed client with the in-memory session storage wired in. */
-export function createSupabaseClient(url: string, publishableKey: string): AppSupabaseClient {
+/**
+ * Creates the typed client whose every request carries the in-memory
+ * access token from the web auth client (issue #1250): the browser's only
+ * credential, renewed through the same-origin Worker's /auth/session when
+ * it nears expiry.
+ */
+export function createSupabaseClient(
+  url: string,
+  publishableKey: string,
+  getAccessToken: () => Promise<string | null>,
+): AppSupabaseClient {
   return createClient<Database>(url, publishableKey, {
+    accessToken: getAccessToken,
     auth: { storage: inMemorySessionStorage },
   });
 }
@@ -44,7 +58,9 @@ export function getSupabaseClient(): AppSupabaseClient | null {
     return null;
   }
   if (client === null) {
-    client = createSupabaseClient(supabaseUrl, supabasePublishableKey);
+    client = createSupabaseClient(supabaseUrl, supabasePublishableKey, () =>
+      webAuth.getToken(),
+    );
   }
   return client;
 }

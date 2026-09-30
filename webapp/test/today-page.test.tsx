@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createAppQueryClient } from '../src/lib/queries';
 import { AppIntlProvider } from '../src/i18n/i18n';
 import messages from '../src/i18n/messages.en.json';
-import { AuthCallbackPage } from '../src/pages/AuthCallbackPage';
 import { TodayPage } from '../src/pages/TodayPage';
 
 function renderWithProviders(ui: React.ReactElement, initialPath = '/') {
@@ -47,11 +46,5 @@ describe('TodayPage (issue #1249)', () => {
   });
 });
 
-describe('AuthCallbackPage (issue #1249, real ceremony #1250)', () => {
-  it('renders the sign-in placeholder copy from the catalogue', () => {
-    renderWithProviders(<AuthCallbackPage />, '/auth/callback?code=smoke');
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-      messages['accountSignInTitle'] ?? 'missing',
-    );
-  });
-});
+// The AuthCallbackPage placeholder test lived here (issue #1249); the real
+// PKCE ceremony page (#1250) is covered by test/auth-pages.test.tsx.

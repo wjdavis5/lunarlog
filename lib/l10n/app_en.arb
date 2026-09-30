@@ -2303,6 +2303,30 @@
   "@authFailureLastSignInMethod": {
     "description": "AuthLastSignInMethodFailure copy."
   },
+  "webAuthDifferentBrowserError": "That sign-in link was opened in a different browser. Open the link in the browser where you asked for it, or use the 8-digit code instead.",
+  "@webAuthDifferentBrowserError": {
+    "description": "Issue #1250: web sign-in error when a PKCE sign-in link arrives without this browser's short-lived verifier cookie - the link was requested in another browser (or the cookie expired). Names the 8-digit code as the way through."
+  },
+  "webAuthAppleButtonLabel": "Sign in with Apple",
+  "@webAuthAppleButtonLabel": {
+    "description": "Issue #1250: the web sign-in screen's Apple button, per Apple's button wording (the Google counterpart is accountGoogleButtonLabel)."
+  },
+  "webAuthSignOutAction": "Sign out",
+  "@webAuthSignOutAction": {
+    "description": "Issue #1250: the web sign-in screen's sign-out-this-device action."
+  },
+  "webAuthSignOutEverywhereAction": "Sign out everywhere",
+  "@webAuthSignOutEverywhereAction": {
+    "description": "Issue #1250: the web sign-in screen's sign-out-everywhere action (revokes every device's session; other devices keep working up to the access-token expiry, about an hour)."
+  },
+  "webAuthSendResetAction": "Send reset link",
+  "@webAuthSendResetAction": {
+    "description": "Issue #1250: the web forgot-password screen's submit button."
+  },
+  "webAuthContinueAction": "Continue",
+  "@webAuthContinueAction": {
+    "description": "Issue #1250: the web auth screens' continue action after a completed sign-in or password change."
+  },
   "careNotesRemoveNoteTooltip": "Remove note",
   "@careNotesRemoveNoteTooltip": {
     "description": "Tooltip on a care note's delete icon button."
