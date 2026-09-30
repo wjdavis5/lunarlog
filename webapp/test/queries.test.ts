@@ -11,13 +11,16 @@ function fakeClient(result: { data: unknown; error: { message: string } | null }
 }
 
 const validRow = {
-  id: '0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f',
+  id: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
   display_name: 'Maya',
   is_minor: false,
   mode: 'cycle',
   relationship: 'self',
   birth_year: 1990,
   sort_order: 0,
+  bbt_unit: 'celsius',
+  weight_unit: 'kg',
+  tracking_preferences: null,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
 };
@@ -57,7 +60,7 @@ describe('fetchProfiles (issue #1249)', () => {
 
   it('throws when a row fails validation', async () => {
     const { client } = fakeClient({
-      data: [{ ...validRow, id: 'not-a-uuid' }],
+      data: [{ ...validRow, id: 'not-a-ulid!' }],
       error: null,
     });
     await expect(fetchProfiles(client)).rejects.toThrow();

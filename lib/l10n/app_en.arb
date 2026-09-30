@@ -7109,5 +7109,173 @@
   "guardianOverviewActionSupplies": "Supplies",
   "@guardianOverviewActionSupplies": {
     "description": "Issue #850 U5: guardian-card action opening the supplies list, a section of the care screen."
+  },
+  "webDayPageTitle": "{profileName} — {date}",
+  "@webDayPageTitle": {
+    "description": "Issue #1254: the web day editor's heading — the profile's name and the edited day."
+  },
+  "webDayBackToToday": "Back to today",
+  "@webDayBackToToday": {
+    "description": "Issue #1254: link from the web day editor back to the today screen."
+  },
+  "webDayNeedsSignIn": "Sign in to log a day.",
+  "@webDayNeedsSignIn": {
+    "description": "Issue #1254: shown when the day editor opens without a session (the web sign-in itself is #1250)."
+  },
+  "webDayNoAccess": "You don't have access to this profile.",
+  "@webDayNoAccess": {
+    "description": "Issue #1254: shown when the signed-in operator holds no accepted guardianship for the profile."
+  },
+  "webDayReadOnlyViewer": "You have view-only access to this profile.",
+  "@webDayReadOnlyViewer": {
+    "description": "Issue #1254: banner above the read-only day a viewer sees."
+  },
+  "webDayFlowSection": "Flow",
+  "@webDayFlowSection": {
+    "description": "Issue #1254: the flow chip group's heading."
+  },
+  "webDaySpottingToggle": "Spotting",
+  "@webDaySpottingToggle": {
+    "description": "Issue #1254: the spotting toggle beneath the flow chips — it writes its own observation row, like the app's day sheet."
+  },
+  "webDaySymptomsSection": "Symptoms",
+  "@webDaySymptomsSection": {
+    "description": "Issue #1254: the taxonomy tag picker's heading."
+  },
+  "webDayTestsSection": "Tests",
+  "@webDayTestsSection": {
+    "description": "Issue #1254: heading above the ovulation/pregnancy test-result tags (the taxonomy's tests category)."
+  },
+  "webDayMeasurementsSection": "Measurements",
+  "@webDayMeasurementsSection": {
+    "description": "Issue #1254: heading above the BBT and weight fields."
+  },
+  "webDayBbtLabel": "Basal body temperature ({unit})",
+  "@webDayBbtLabel": {
+    "description": "Issue #1254: the BBT field's label, carrying the profile's display unit."
+  },
+  "webDayWeightLabel": "Weight ({unit})",
+  "@webDayWeightLabel": {
+    "description": "Issue #1254: the weight field's label, carrying the profile's display unit."
+  },
+  "webDayNotesSection": "Notes",
+  "@webDayNotesSection": {
+    "description": "Issue #1254: the note field's heading."
+  },
+  "webDayNotePlaceholder": "How was your day?",
+  "@webDayNotePlaceholder": {
+    "description": "Issue #1254: the note textarea's placeholder."
+  },
+  "webDayNotePrivate": "Private note",
+  "@webDayNotePrivate": {
+    "description": "Issue #1254: the note's privacy toggle."
+  },
+  "webDayNotePrivateMasked": "This note is private to the profile subject and hidden from you. Anything you type here is not saved.",
+  "@webDayNotePrivateMasked": {
+    "description": "Issue #1254: shown to a non-subject guardian instead of a masked private note's content."
+  },
+  "webDayNotePrivateLockedOn": "Private notes can't be made shared.",
+  "@webDayNotePrivateLockedOn": {
+    "description": "Issue #1254: why the privacy toggle is locked on for an already-private note."
+  },
+  "webDayNotePrivateLockedOff": "A note that was already shared can't be made private.",
+  "@webDayNotePrivateLockedOff": {
+    "description": "Issue #1254: why the privacy toggle is locked off for an already-shared note."
+  },
+  "webDayNotePrivateSubjectOnly": "Only the profile subject can change note privacy.",
+  "@webDayNotePrivateSubjectOnly": {
+    "description": "Issue #1254: why the privacy toggle is disabled for a non-subject guardian."
+  },
+  "webDayPmsToggle": "PMS",
+  "@webDayPmsToggle": {
+    "description": "Issue #1254: the first-class PMS marker toggle."
+  },
+  "webDayCycleSection": "Cycle corrections",
+  "@webDayCycleSection": {
+    "description": "Issue #1254: heading above the cycle_overrides controls."
+  },
+  "webDayManualStart": "Cycle started on this day",
+  "@webDayManualStart": {
+    "description": "Issue #1254: the manual cycle-start correction toggle."
+  },
+  "webDayExcludeFromAverage": "Exclude this cycle from averages",
+  "@webDayExcludeFromAverage": {
+    "description": "Issue #1254: the omit-from-average correction toggle."
+  },
+  "webDayModeSection": "Life stage",
+  "@webDayModeSection": {
+    "description": "Issue #1254: heading above the profile_modes picker."
+  },
+  "webDayModeTracking": "Period tracking",
+  "@webDayModeTracking": {
+    "description": "Issue #1254: the tracking life-stage mode."
+  },
+  "webDayModeConceive": "Conceive",
+  "@webDayModeConceive": {
+    "description": "Issue #1254: the conceive life-stage mode."
+  },
+  "webDayModePregnancy": "Pregnancy",
+  "@webDayModePregnancy": {
+    "description": "Issue #1254: the pregnancy life-stage mode."
+  },
+  "webDayModePerimenopause": "Perimenopause",
+  "@webDayModePerimenopause": {
+    "description": "Issue #1254: the perimenopause life-stage mode."
+  },
+  "webDayModePostpartum": "Postpartum",
+  "@webDayModePostpartum": {
+    "description": "Issue #1254: the postpartum life-stage mode."
+  },
+  "webDayGuardiansOnly": "Only the primary guardian or a co-parent can change this.",
+  "@webDayGuardiansOnly": {
+    "description": "Issue #1254: why the cycle-correction and life-stage controls are disabled for a caregiver."
+  },
+  "webDaySave": "Save",
+  "@webDaySave": {
+    "description": "Issue #1254: the day editor's save button."
+  },
+  "webDaySaving": "Saving…",
+  "@webDaySaving": {
+    "description": "Issue #1254: the save button while the push is in flight."
+  },
+  "webDaySaved": "Saved",
+  "@webDaySaved": {
+    "description": "Issue #1254: the status line after a successful save."
+  },
+  "webDaySaveFailed": "Saving failed — your changes are still here, nothing was lost. Try again.",
+  "@webDaySaveFailed": {
+    "description": "Issue #1254: the retry banner when the sync_push call itself fails. The day editor never drops a failed save."
+  },
+  "webDayRejectedField": "The server rejected this field — check it and try again.",
+  "@webDayRejectedField": {
+    "description": "Issue #1254: the inline error beside a field group whose row the server rejected (rejections are opaque: id plus a flag, never a reason)."
+  },
+  "webDayErrorFuture": "You can't log a day more than one day ahead.",
+  "@webDayErrorFuture": {
+    "description": "Issue #1254: the future-date bounds error, matching the app's #848 policy."
+  },
+  "webDayErrorBirthYear": "This day is before the profile's birth year.",
+  "@webDayErrorBirthYear": {
+    "description": "Issue #1254: the pre-birth bounds error."
+  },
+  "webDayErrorBbtRange": "Temperature must be between {min} and {max}.",
+  "@webDayErrorBbtRange": {
+    "description": "Issue #1254: the BBT sanity-range error (#457), in the profile's display unit."
+  },
+  "webDayErrorWeightRange": "Weight must be between {min} and {max}.",
+  "@webDayErrorWeightRange": {
+    "description": "Issue #1254: the weight sanity-range error (#457), in the profile's display unit."
+  },
+  "webDayMergedNotice": "A device that saved this day earlier was merged into this entry — its symptoms were kept.",
+  "@webDayMergedNotice": {
+    "description": "Issue #1254: shown after a save the server resolved as the same-date winner (the losing row's tags were unioned in)."
+  },
+  "webDayDeclinedNotice": "A newer save from another device won this day — your changes were not applied.",
+  "@webDayDeclinedNotice": {
+    "description": "Issue #1254: shown when the server hands back a newer stored copy of the entry, i.e. this save lost last-writer-wins."
+  },
+  "webDayUnsavedWarning": "Leave with unsaved changes?",
+  "@webDayUnsavedWarning": {
+    "description": "Issue #1254: the browser's beforeunload prompt text when the editor holds unsaved edits."
   }
 }

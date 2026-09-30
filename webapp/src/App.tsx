@@ -2,6 +2,7 @@ import { Link, Navigate, Outlet, RouterProvider, createBrowserRouter } from 'rea
 
 import { useT } from './i18n/t';
 import { AuthCallbackPage } from './pages/AuthCallbackPage';
+import { DayPage } from './pages/DayPage';
 import { TodayPage } from './pages/TodayPage';
 
 /**
@@ -35,6 +36,9 @@ const router = createBrowserRouter([
     element: <Shell />,
     children: [
       { index: true, element: <TodayPage /> },
+      // Issue #1254: the day editor, one profile at a time; the day itself
+      // is the `date` query parameter (defaults to the browser's today).
+      { path: 'day/:profileId', element: <DayPage /> },
       { path: 'auth/*', element: <AuthCallbackPage /> },
       { path: '*', element: <Navigate replace to="/" /> },
     ],

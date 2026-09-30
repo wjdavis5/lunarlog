@@ -940,6 +940,28 @@ jobs:
           export LUNARLOG_LOCAL_SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
           flutter test test/data/sync/local_supabase_round_trip_test.dart
 
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        if: steps.check_run.outputs.run == 'true'
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: 'webapp/package-lock.json'
+
+      - name: Web day editor <-> local Supabase round trip (issue #1254)
+        # The web editor's write path (saveDay -> sync_push) against the same
+        # live stack, after the Dart round trip above — the test skips
+        # itself when no stack answers, but this job always has one.
+        if: steps.check_run.outputs.run == 'true'
+        working-directory: webapp
+        run: |
+          set -euo pipefail
+          npm ci
+          eval "$(supabase status -o env 2>/dev/null)"
+          export LUNARLOG_LOCAL_SUPABASE_URL="$API_URL"
+          export LUNARLOG_LOCAL_SUPABASE_PUBLISHABLE_KEY="$ANON_KEY"
+          export LUNARLOG_LOCAL_SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
+          npx vitest run test/day-round-trip.local.test.ts
+
       - name: Stop local Supabase
         if: steps.check_run.outputs.run == 'true' && always()
         run: supabase stop --no-backup

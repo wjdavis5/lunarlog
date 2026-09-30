@@ -8618,6 +8618,258 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Supplies'**
   String get guardianOverviewActionSupplies;
+
+  /// Issue #1254: the web day editor's heading — the profile's name and the edited day.
+  ///
+  /// In en, this message translates to:
+  /// **'{profileName} — {date}'**
+  String webDayPageTitle(Object date, Object profileName);
+
+  /// Issue #1254: link from the web day editor back to the today screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to today'**
+  String get webDayBackToToday;
+
+  /// Issue #1254: shown when the day editor opens without a session (the web sign-in itself is #1250).
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to log a day.'**
+  String get webDayNeedsSignIn;
+
+  /// Issue #1254: shown when the signed-in operator holds no accepted guardianship for the profile.
+  ///
+  /// In en, this message translates to:
+  /// **'You don\'t have access to this profile.'**
+  String get webDayNoAccess;
+
+  /// Issue #1254: banner above the read-only day a viewer sees.
+  ///
+  /// In en, this message translates to:
+  /// **'You have view-only access to this profile.'**
+  String get webDayReadOnlyViewer;
+
+  /// Issue #1254: the flow chip group's heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Flow'**
+  String get webDayFlowSection;
+
+  /// Issue #1254: the spotting toggle beneath the flow chips — it writes its own observation row, like the app's day sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Spotting'**
+  String get webDaySpottingToggle;
+
+  /// Issue #1254: the taxonomy tag picker's heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Symptoms'**
+  String get webDaySymptomsSection;
+
+  /// Issue #1254: heading above the ovulation/pregnancy test-result tags (the taxonomy's tests category).
+  ///
+  /// In en, this message translates to:
+  /// **'Tests'**
+  String get webDayTestsSection;
+
+  /// Issue #1254: heading above the BBT and weight fields.
+  ///
+  /// In en, this message translates to:
+  /// **'Measurements'**
+  String get webDayMeasurementsSection;
+
+  /// Issue #1254: the BBT field's label, carrying the profile's display unit.
+  ///
+  /// In en, this message translates to:
+  /// **'Basal body temperature ({unit})'**
+  String webDayBbtLabel(Object unit);
+
+  /// Issue #1254: the weight field's label, carrying the profile's display unit.
+  ///
+  /// In en, this message translates to:
+  /// **'Weight ({unit})'**
+  String webDayWeightLabel(Object unit);
+
+  /// Issue #1254: the note field's heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes'**
+  String get webDayNotesSection;
+
+  /// Issue #1254: the note textarea's placeholder.
+  ///
+  /// In en, this message translates to:
+  /// **'How was your day?'**
+  String get webDayNotePlaceholder;
+
+  /// Issue #1254: the note's privacy toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Private note'**
+  String get webDayNotePrivate;
+
+  /// Issue #1254: shown to a non-subject guardian instead of a masked private note's content.
+  ///
+  /// In en, this message translates to:
+  /// **'This note is private to the profile subject and hidden from you. Anything you type here is not saved.'**
+  String get webDayNotePrivateMasked;
+
+  /// Issue #1254: why the privacy toggle is locked on for an already-private note.
+  ///
+  /// In en, this message translates to:
+  /// **'Private notes can\'t be made shared.'**
+  String get webDayNotePrivateLockedOn;
+
+  /// Issue #1254: why the privacy toggle is locked off for an already-shared note.
+  ///
+  /// In en, this message translates to:
+  /// **'A note that was already shared can\'t be made private.'**
+  String get webDayNotePrivateLockedOff;
+
+  /// Issue #1254: why the privacy toggle is disabled for a non-subject guardian.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the profile subject can change note privacy.'**
+  String get webDayNotePrivateSubjectOnly;
+
+  /// Issue #1254: the first-class PMS marker toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'PMS'**
+  String get webDayPmsToggle;
+
+  /// Issue #1254: heading above the cycle_overrides controls.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle corrections'**
+  String get webDayCycleSection;
+
+  /// Issue #1254: the manual cycle-start correction toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle started on this day'**
+  String get webDayManualStart;
+
+  /// Issue #1254: the omit-from-average correction toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Exclude this cycle from averages'**
+  String get webDayExcludeFromAverage;
+
+  /// Issue #1254: heading above the profile_modes picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Life stage'**
+  String get webDayModeSection;
+
+  /// Issue #1254: the tracking life-stage mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Period tracking'**
+  String get webDayModeTracking;
+
+  /// Issue #1254: the conceive life-stage mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Conceive'**
+  String get webDayModeConceive;
+
+  /// Issue #1254: the pregnancy life-stage mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Pregnancy'**
+  String get webDayModePregnancy;
+
+  /// Issue #1254: the perimenopause life-stage mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Perimenopause'**
+  String get webDayModePerimenopause;
+
+  /// Issue #1254: the postpartum life-stage mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Postpartum'**
+  String get webDayModePostpartum;
+
+  /// Issue #1254: why the cycle-correction and life-stage controls are disabled for a caregiver.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the primary guardian or a co-parent can change this.'**
+  String get webDayGuardiansOnly;
+
+  /// Issue #1254: the day editor's save button.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get webDaySave;
+
+  /// Issue #1254: the save button while the push is in flight.
+  ///
+  /// In en, this message translates to:
+  /// **'Saving…'**
+  String get webDaySaving;
+
+  /// Issue #1254: the status line after a successful save.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved'**
+  String get webDaySaved;
+
+  /// Issue #1254: the retry banner when the sync_push call itself fails. The day editor never drops a failed save.
+  ///
+  /// In en, this message translates to:
+  /// **'Saving failed — your changes are still here, nothing was lost. Try again.'**
+  String get webDaySaveFailed;
+
+  /// Issue #1254: the inline error beside a field group whose row the server rejected (rejections are opaque: id plus a flag, never a reason).
+  ///
+  /// In en, this message translates to:
+  /// **'The server rejected this field — check it and try again.'**
+  String get webDayRejectedField;
+
+  /// Issue #1254: the future-date bounds error, matching the app's #848 policy.
+  ///
+  /// In en, this message translates to:
+  /// **'You can\'t log a day more than one day ahead.'**
+  String get webDayErrorFuture;
+
+  /// Issue #1254: the pre-birth bounds error.
+  ///
+  /// In en, this message translates to:
+  /// **'This day is before the profile\'s birth year.'**
+  String get webDayErrorBirthYear;
+
+  /// Issue #1254: the BBT sanity-range error (#457), in the profile's display unit.
+  ///
+  /// In en, this message translates to:
+  /// **'Temperature must be between {min} and {max}.'**
+  String webDayErrorBbtRange(Object max, Object min);
+
+  /// Issue #1254: the weight sanity-range error (#457), in the profile's display unit.
+  ///
+  /// In en, this message translates to:
+  /// **'Weight must be between {min} and {max}.'**
+  String webDayErrorWeightRange(Object max, Object min);
+
+  /// Issue #1254: shown after a save the server resolved as the same-date winner (the losing row's tags were unioned in).
+  ///
+  /// In en, this message translates to:
+  /// **'A device that saved this day earlier was merged into this entry — its symptoms were kept.'**
+  String get webDayMergedNotice;
+
+  /// Issue #1254: shown when the server hands back a newer stored copy of the entry, i.e. this save lost last-writer-wins.
+  ///
+  /// In en, this message translates to:
+  /// **'A newer save from another device won this day — your changes were not applied.'**
+  String get webDayDeclinedNotice;
+
+  /// Issue #1254: the browser's beforeunload prompt text when the editor holds unsaved edits.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave with unsaved changes?'**
+  String get webDayUnsavedWarning;
 }
 
 class _AppLocalizationsDelegate

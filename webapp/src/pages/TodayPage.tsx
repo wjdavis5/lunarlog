@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Link } from 'react-router';
 
 import { useT } from '../i18n/t';
 import { useProfiles } from '../lib/queries';
@@ -33,7 +34,11 @@ export function TodayPage() {
       {profiles.data !== undefined && profiles.data.length > 0 ? (
         <ul className="profile-list">
           {profiles.data.map((profile) => (
-            <li key={profile.id}>{profile.display_name}</li>
+            <li key={profile.id}>
+              <Link className="nav-link profile-link" to={`/day/${profile.id}`}>
+                {profile.display_name}
+              </Link>
+            </li>
           ))}
         </ul>
       ) : null}

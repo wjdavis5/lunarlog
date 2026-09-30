@@ -17,6 +17,11 @@ test('a session leaves every browser store empty', async ({ page }) => {
   await page.goBack();
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
+  // Exercise the day editor (issue #1254): unconfigured, it renders its
+  // sign-in prompt — a page the editor owns, holding only in-memory state.
+  await page.goto('/day/01ARZ3NDEKTSV4RRFFQ69G5FAV');
+  await expect(page.getByText('Sign in to log a day.')).toBeVisible();
+
   const emptiness = await page.evaluate(async () => {
     const databases = await indexedDB.databases();
     const cacheNames = await caches.keys();

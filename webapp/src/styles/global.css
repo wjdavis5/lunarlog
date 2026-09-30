@@ -122,6 +122,114 @@ body {
   border-radius: var(--ll-r-md);
 }
 
+/* The day editor (issue 1254). The # prefix is banned in comments here: the
+   colour-literal scanner (test/tokens.test.ts) reads one as a hex value. */
+
+.profile-link {
+  display: block;
+}
+
+.day-group {
+  border: 1px solid var(--ll-outline-variant);
+  margin-top: var(--ll-space-4);
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ll-space-2);
+  margin-top: var(--ll-space-2);
+}
+
+.chip {
+  border: 1px solid var(--ll-outline);
+  background: var(--ll-surface);
+  color: var(--ll-on-surface);
+  border-radius: var(--ll-r-full);
+  padding: var(--ll-space-1) var(--ll-space-3);
+  font: inherit;
+  cursor: pointer;
+}
+
+.chip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.chip-selected {
+  background: var(--ll-primary);
+  border-color: var(--ll-primary);
+  color: var(--ll-on-primary);
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--ll-primary);
+}
+
+.tag-category {
+  margin-top: var(--ll-space-3);
+}
+
+.field-label {
+  display: block;
+  margin-top: var(--ll-space-3);
+}
+
+.field-input {
+  display: block;
+  width: 100%;
+  margin-top: var(--ll-space-1);
+  padding: var(--ll-space-2);
+  font: inherit;
+  color: var(--ll-on-surface);
+  background: var(--ll-surface);
+  border: 1px solid var(--ll-outline);
+  border-radius: var(--ll-r-md);
+}
+
+.field-error {
+  margin: var(--ll-space-2) 0 0;
+  color: var(--ll-error);
+}
+
+.field-hint {
+  margin: var(--ll-space-2) 0 0;
+  color: var(--ll-on-surface-variant);
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--ll-space-2);
+  margin-top: var(--ll-space-2);
+}
+
+.day-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ll-space-3);
+  margin-top: var(--ll-space-4);
+}
+
+.save-button {
+  font: inherit;
+  padding: var(--ll-space-2) var(--ll-space-5);
+  border: none;
+  border-radius: var(--ll-r-full);
+  background: var(--ll-primary);
+  color: var(--ll-on-primary);
+  cursor: pointer;
+}
+
+.save-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.save-status {
+  color: var(--ll-on-surface-variant);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
