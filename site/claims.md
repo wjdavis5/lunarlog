@@ -35,6 +35,10 @@ issue #830), and any waitlist or email capture (the site collects nothing).
   page: /
   ships: site/src/pages/index.astro
   issue: #1105; #831
+- claim: The browser CTA is backed by a browser-width capture of the real app — the #1162 browser device class, rendered by the same scripted screenshot tool.
+  page: /
+  ships: site/src/pages/index.astro; tool/screenshots/manifest.dart (kScreenshotDevices' browser entry); site/src/components/Screenshot.astro (kDevices mirror)
+  issue: #1208; #1162
 - claim: Free for personal use — stated in the hero fineprint alone (issue #1160: no security-speak in the hero; the no-ads stance leads on /privacy-security instead).
   page: /
   ships: README.md (License: PolyForm Noncommercial, free for personal use); pubspec.yaml (no billing dependency)

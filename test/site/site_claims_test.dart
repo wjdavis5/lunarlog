@@ -313,6 +313,62 @@ void main() {
       expect(home, contains('https://app.lunarlog.app'));
     });
 
+    test('the browser CTA is backed by a lazy browser-width capture '
+        '(issue #1208)', () {
+      final home = File(pages['/']!).readAsStringSync();
+      final blocks = RegExp(r'<Screenshot[^>]*?>', dotAll: true)
+          .allMatches(home)
+          .map((match) => match.group(0)!)
+          .toList();
+      final browserBlocks = blocks
+          .where((block) => block.contains('device="browser"'))
+          .toList();
+      expect(browserBlocks, hasLength(1),
+          reason: 'the home page carries exactly one browser-class capture');
+      final block = browserBlocks.single;
+      expect(block, contains('screen="today"'),
+          reason: 'the capture shows the screen the CTA lands on');
+      expect(block, contains('loading="lazy"'),
+          reason: 'the hero eager/LCP slot is taken; a second near-the-fold '
+              'PNG must lazy-load or the 0.90 floor loses its margin '
+              '(issue #1172)');
+      // The issue #1172 convention: the page's FIRST screenshot stays the
+      // eager LCP candidate, so the browser capture must sit after it in
+      // the source (site/scripts/lighthouse-budget.test.mjs pins the same
+      // rule from the site side).
+      expect(blocks.first, contains('loading="eager"'),
+          reason: 'the hero phone capture must remain the eager one');
+    });
+
+    test("Screenshot.astro's kDevices mirror carries every manifest device "
+        'at its PNG size', () {
+      // The component's doc comment promises the mirror fails when it and
+      // the manifest drift; its build-time check only covers ids, so the
+      // pixel sizes are pinned here (test/tool/screenshots/manifest_test.dart
+      // pins the same numbers on the manifest side). Issue #1208: the
+      // browser entry must record the PNG size (1280x800 @1.5 DPR), not
+      // the viewport.
+      final component =
+          File('site/src/components/Screenshot.astro').readAsStringSync();
+      final tableMatch =
+          RegExp(r'const kDevices[^;]*?};', dotAll: true).firstMatch(component);
+      expect(tableMatch, isNotNull,
+          reason: 'Screenshot.astro still declares kDevices');
+      final table = tableMatch!.group(0)!;
+      for (final device in screenshots.kScreenshotDevices) {
+        final entry = RegExp(
+          "['\"]?${device.id}['\"]?\\s*:\\s*\\[(\\d+),\\s*(\\d+)\\]",
+        ).firstMatch(table);
+        expect(entry, isNotNull,
+            reason: 'kDevices misses ${device.id} — the mirror and the '
+                'manifest have drifted');
+        expect(int.parse(entry!.group(1)!), device.pngWidth,
+            reason: '${device.id}: kDevices width must be the PNG width');
+        expect(int.parse(entry.group(2)!), device.pngHeight,
+            reason: '${device.id}: kDevices height must be the PNG height');
+      }
+    });
+
     test('every Screenshot usage names a manifest triple', () {
       final knownScreens =
           screenshots.kScreenshotScreens.map((s) => s.id).toSet();
