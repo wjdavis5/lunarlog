@@ -175,6 +175,56 @@ void main() {
     expect(value.data, '—');
   });
 
+  testWidgets('a stored pre-window birth date opens the picker on the '
+      'window start instead of tripping its initialDate assertion '
+      '(issue #1238)', (tester) async {
+    await _openDialog(
+      tester,
+      // 2019-01-01 is years before the picker's last-24-months window;
+      // import accepts it because only the ISO shape is validated.
+      modes: _FakeModesRepository((
+        mode: LifecycleMode.postpartum,
+        modeStartedOn: '2026-09-10',
+        estimatedDueDate: null,
+        postpartumBirthDate: '2019-01-01',
+        birthControlMethod: null,
+        birthControlStartedOn: null,
+        birthControlStoppedOn: null,
+      )),
+      existing: _profile(),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('January 1, 2019'), findsOneWidget);
+    // Without the clamp this tap throws `initialDate 2019-01-01 … must be
+    // on or after firstDate …` (date_picker.dart's assert) and the picker
+    // never opens.
+    await tester.ensureVisible(
+        find.byKey(const ValueKey('edit-postpartum-birth-date-field')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+        find.byKey(const ValueKey('edit-postpartum-birth-date-field')));
+    await tester.pumpAndSettle();
+
+    final today = LocalDate.today();
+    final dialog = tester.widget<DatePickerDialog>(
+      find.byType(DatePickerDialog),
+    );
+    expect(dialog.initialDate, dialog.firstDate,
+        reason: 'a pre-window stored birth date clamps to the window start '
+            'rather than landing the picker on a month outside it');
+    expect(dialog.initialDate, today.addMonths(-24).toDateTime());
+
+    // Dismissing the picker leaves the stored birth date shown — the clamp
+    // only steers the opening month, never rewrites data.
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+    final value = tester.widget<Text>(
+      find.byKey(const ValueKey('edit-postpartum-birth-date-value')),
+    );
+    expect(value.data, 'January 1, 2019');
+  });
+
   testWidgets('picking a date carries it into the result', (tester) async {
     ProfileEditResult? popped;
     await _openDialog(
