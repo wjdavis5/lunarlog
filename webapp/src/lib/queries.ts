@@ -3,8 +3,21 @@ import { useEffect, useState } from 'react';
 
 import { getSyncedDataCache, resetWebDataForSignOut, subscribeSyncSignals } from './domain';
 import type { SyncedData } from './domain';
-import type { ProfileRow } from './schemas';
-import { getSupabaseClient } from './supabase';
+import { type ProfileRow } from './schemas';
+import {
+  currentUserId,
+  fetchActiveTransfer,
+  fetchCareNotes,
+  fetchGuardianNotesForDate,
+  fetchGuardians,
+  fetchPendingInvites,
+  type ActiveTransferRow,
+  type CareNoteRow,
+  type GuardianNoteRow,
+  type GuardianRow,
+  type PendingInviteRow,
+} from './sharing';
+import { getSupabaseClient, type AppSupabaseClient } from './supabase';
 
 /**
  * TanStack Query, in-memory only (issue #1249): deliberately no persister.
@@ -137,4 +150,102 @@ export function useSyncSignalsRefetch(profileIds: string[]): void {
  */
 export function resetWebData(queryClient: QueryClient): void {
   resetWebDataForSignOut(queryClient);
+}
+
+// --- Sharing and notes queries (issue #1255). Same shape as `useProfiles`:
+//     enabled only on a configured build; the SharingError a wrapper throws
+//     lands on the query as the typed failure the pages render. ------------
+
+export const guardiansQueryKey = (profileId: string) => ['guardians', profileId] as const;
+export const pendingInvitesQueryKey = (profileId: string) =>
+  ['pendingInvites', profileId] as const;
+export const activeTransferQueryKey = (profileId: string) =>
+  ['activeTransfer', profileId] as const;
+export const guardianNotesQueryKey = (profileId: string, localDate: string) =>
+  ['guardianNotes', profileId, localDate] as const;
+export const careNotesQueryKey = (profileId: string) => ['careNotes', profileId] as const;
+
+function useSharingQuery<T>(
+  key: readonly unknown[],
+  fetch: (client: AppSupabaseClient) => Promise<T>,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: key,
+    queryFn: () => {
+      const client = getSupabaseClient();
+      if (client === null) {
+        throw new Error('Supabase is not configured in this build');
+      }
+      return fetch(client);
+    },
+    enabled,
+  });
+}
+
+export function useGuardians(profileId: string | undefined, enabled = true) {
+  const configured = getSupabaseClient() !== null;
+  return useSharingQuery<GuardianRow[]>(
+    guardiansQueryKey(profileId ?? ''),
+    (client) => fetchGuardians(client, profileId ?? ''),
+    configured && enabled && profileId !== undefined,
+  );
+}
+
+export function usePendingInvites(profileId: string | undefined, enabled = true) {
+  const configured = getSupabaseClient() !== null;
+  return useSharingQuery<PendingInviteRow[]>(
+    pendingInvitesQueryKey(profileId ?? ''),
+    (client) => fetchPendingInvites(client, profileId ?? ''),
+    configured && enabled && profileId !== undefined,
+  );
+}
+
+export function useActiveTransfer(profileId: string | undefined, enabled = true) {
+  const configured = getSupabaseClient() !== null;
+  return useSharingQuery<ActiveTransferRow | null>(
+    activeTransferQueryKey(profileId ?? ''),
+    (client) => fetchActiveTransfer(client, profileId ?? ''),
+    configured && enabled && profileId !== undefined,
+  );
+}
+
+export function useGuardianNotes(
+  profileId: string | undefined,
+  localDate: string,
+  enabled = true,
+) {
+  const configured = getSupabaseClient() !== null;
+  return useSharingQuery<GuardianNoteRow[]>(
+    guardianNotesQueryKey(profileId ?? '', localDate),
+    (client) => fetchGuardianNotesForDate(client, profileId ?? '', localDate),
+    configured && enabled && profileId !== undefined,
+  );
+}
+
+export function useCareNotes(profileId: string | undefined, enabled = true) {
+  const configured = getSupabaseClient() !== null;
+  return useSharingQuery<CareNoteRow[]>(
+    careNotesQueryKey(profileId ?? ''),
+    (client) => fetchCareNotes(client, profileId ?? ''),
+    configured && enabled && profileId !== undefined,
+  );
+}
+
+/**
+ * The signed-in account's id, or null. A stable read of the in-memory
+ * session, so "you" markers and the author rules render once it resolves.
+ */
+export function useCurrentUserId(enabled = true) {
+  const configured = getSupabaseClient() !== null;
+  return useQuery({
+    queryKey: ['currentUserId'],
+    queryFn: () => {
+      const client = getSupabaseClient();
+      if (client === null) return Promise.resolve(null);
+      return currentUserId(client);
+    },
+    enabled: configured && enabled,
+    staleTime: Infinity,
+  });
 }

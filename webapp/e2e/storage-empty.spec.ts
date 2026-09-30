@@ -28,6 +28,12 @@ test('a session leaves every browser store empty', async ({ page }) => {
   await page.goto('/day/01ARZ3NDEKTSV4RRFFQ69G5FAV');
   await expect(page.getByText('Sign in to log a day.')).toBeVisible();
 
+  // Exercise the invite redemption surface (issue #1255): a link-shaped
+  // visit — preview fails closed without a session — must still store
+  // nothing, especially not the code.
+  await page.goto('/invite?code=e2e-no-storage-check&profile=&kind=');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+
   const emptiness = await page.evaluate(async () => {
     const databases = await indexedDB.databases();
     const cacheNames = await caches.keys();

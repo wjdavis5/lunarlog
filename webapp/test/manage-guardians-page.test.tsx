@@ -1,0 +1,344 @@
+import { QueryClientProvider } from '@tanstack/react-query';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { AppIntlProvider } from '../src/i18n/i18n';
+import messages from '../src/i18n/messages.en.json';
+import { QueryClient } from '@tanstack/react-query';
+import { SharingError } from '../src/lib/sharing';
+import { ManageGuardiansPage } from '../src/pages/ManageGuardiansPage';
+
+/**
+ * Page tests for the web Manage-guardians surface (issue #1255). The
+ * supabase and sharing modules are partially mocked — the RPC wrappers
+ * become spies, everything else (the role ladder, the Zod boundaries, the
+ * catalogue) runs for real.
+ */
+
+const ULID = '01ARZ3NDEKTSV4RRFFQ69G5FAV';
+const ULID2 = '01ARZ3NDEKTSV4RRFFQ69G5FAW';
+const ME = '0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f';
+const OTHER = '1f1f1f1f-1f1f-4f1f-8f1f-1f1f1f1f1f1f';
+
+const profileRow = {
+  id: ULID,
+  display_name: 'Maya',
+  is_minor: true,
+  mode: 'cycle',
+  relationship: 'daughter',
+  birth_year: 2013,
+  sort_order: 0,
+  deleted_at: null,
+  archived_at: null,
+  server_version: 1,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+};
+
+/** The fake client answers the session gate (`useHasSyncSession`, issue
+ * #1252) — `onAuthStateChange` included, or the effect throws; the synced
+ * profile list itself is seeded into the query cache by `renderPage`
+ * (`useLiveProfiles` reads the ['synced-data'] cache, not a table read);
+ * sharing-table reads and every RPC come from the sharing-module spies. */
+const fakeClient = {
+  auth: {
+    currentUser: { id: ME },
+    getSession: async () => ({ data: { session: { user: { id: ME } } } }),
+    onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+  },
+};
+
+vi.mock('../src/lib/supabase', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  getSupabaseClient: () => fakeClient,
+}));
+
+// The synced-data query's queryFn runs the domain cache refresh (issue
+// #1252) — serve the seeded profiles through that seam so the query
+// resolves instead of rejecting against the fake client.
+const domainMocks = vi.hoisted(() => ({ refresh: vi.fn() }));
+vi.mock('../src/lib/domain', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  getSyncedDataCache: () => ({ refresh: domainMocks.refresh }),
+}));
+
+const sharingMocks = vi.hoisted(() => ({
+  fetchGuardians: vi.fn(),
+  fetchPendingInvites: vi.fn(),
+  fetchActiveTransfer: vi.fn(),
+  currentUserId: vi.fn(() => '0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f'),
+  createGuardianInvitation: vi.fn(),
+  createOwnershipTransfer: vi.fn(),
+  cancelOwnershipTransfer: vi.fn(),
+  revokeGuardian: vi.fn(),
+  revokeGuardianInvitation: vi.fn(),
+  updateGuardianRole: vi.fn(),
+}));
+
+vi.mock('../src/lib/sharing', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  ...sharingMocks,
+}));
+
+/** Matches an element whose full normalized text equals `expected` — the
+ * row copy composes several message fragments into one <p>. */
+function exactText(expected: string) {
+  return (_content: string, element: Element | null) => element?.textContent === expected;
+}
+
+function guardianRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: ULID,
+    profile_id: ULID,
+    user_id: ME,
+    role: 'primary_guardian',
+    status: 'accepted',
+    display_name: 'Mom',
+    invited_by: null,
+    is_subject: false,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+    ...overrides,
+  };
+}
+
+function pendingRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: ULID2,
+    profile_id: ULID,
+    role: 'viewer',
+    recipient_label: 'Nurse',
+    created_at: '2026-09-01T00:00:00Z',
+    expires_at: '2026-09-03T00:00:00Z',
+    is_subject: false,
+    ...overrides,
+  };
+}
+
+function renderPage() {
+  // Retry-free: a rejected query settles on its first failure, so failure-
+  // copy assertions do not wait out TanStack's exponential retry delay.
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  // Seed the synced-data cache (issue #1252's `useLiveProfiles` reads
+  // `['synced-data']`, never a table) instead of the retired profiles read.
+  domainMocks.refresh.mockResolvedValue({ profiles: [profileRow] });
+  queryClient.setQueryData(['synced-data'], { profiles: [profileRow] } as never);
+  return render(
+    <AppIntlProvider>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={[`/profile/${ULID}/guardians`]}>
+          <Routes>
+            <Route path="/" element={<div>home</div>} />
+            <Route path="/profile/:profileId/guardians" element={<ManageGuardiansPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    </AppIntlProvider>,
+  );
+}
+
+function defaultMocks() {
+  sharingMocks.fetchGuardians.mockResolvedValue([
+    guardianRow(),
+    guardianRow({
+      id: ULID2,
+      user_id: OTHER,
+      role: 'caregiver',
+      display_name: 'Grandma',
+    }),
+  ]);
+  sharingMocks.fetchPendingInvites.mockResolvedValue([]);
+  sharingMocks.fetchActiveTransfer.mockResolvedValue(null);
+}
+
+beforeEach(() => {
+  defaultMocks();
+});
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
+
+describe('ManageGuardiansPage (issue #1255)', () => {
+  it('renders the screen title and both guardian rows with role labels', async () => {
+    renderPage();
+    expect(
+      await screen.findByRole('heading', {
+        name: (messages['sharingManageGuardiansScreenTitle'] ?? '').replace(
+          '{profileName}',
+          'Maya',
+        ),
+      }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        exactText(`Mom ${messages['sharingManageGuardiansYouSuffix'] ?? ''}`.trimEnd()),
+      ),
+    ).toBeInTheDocument();
+    expect(await screen.findByText('Grandma')).toBeInTheDocument();
+    expect(
+      screen.getByText((messages['guardianRoleLabelCaregiver'] ?? '') as string),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the subject badge on a subject membership', async () => {
+    sharingMocks.fetchGuardians.mockResolvedValue([guardianRow({ is_subject: true })]);
+    renderPage();
+    expect(
+      await screen.findByText(
+        exactText(
+          `${messages['guardianRoleLabelPrimaryGuardian']} · ${messages['manageGuardiansSubjectBadge']}`,
+        ),
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('offers only ladder-legal roles in the change-role control', async () => {
+    renderPage();
+    const selects = await screen.findAllByLabelText(
+      messages['manageGuardiansChangeRoleTooltip'] ?? '',
+    );
+    // The caregiver row's select (the primary's own row has none).
+    const caregiverSelect = selects[1] ?? selects[0];
+    const options = Array.from(caregiverSelect.querySelectorAll('option')).map(
+      (option) => option.textContent,
+    );
+    expect(options).toContain(messages['guardianRoleLabelCoParent']);
+    expect(options).toContain(messages['guardianRoleLabelViewer']);
+    expect(options).not.toContain(messages['guardianRoleLabelPrimaryGuardian']);
+    fireEvent.change(caregiverSelect, { target: { value: 'co_parent' } });
+    await waitFor(() => {
+      expect(sharingMocks.updateGuardianRole).toHaveBeenCalledWith(
+        fakeClient,
+        ULID,
+        OTHER,
+        'co_parent',
+      );
+    });
+  });
+
+  it('creates an invitation and shows the share link panel', async () => {
+    sharingMocks.createGuardianInvitation.mockResolvedValue({
+      invitation: {
+        id: ULID2,
+        profile_id: ULID,
+        role: 'caregiver',
+        expires_at: '2026-10-02T00:00:00Z',
+      },
+      rawToken: 'T0KEN123',
+    });
+    renderPage();
+    fireEvent.click(await screen.findByText(messages['sharingInviteGuardianCreateLink'] ?? ''));
+    expect(
+      await screen.findByText(messages['sharingInviteGuardianCreatedTitle'] ?? ''),
+    ).toBeInTheDocument();
+    const link = await screen.findByText(
+      (content, element) =>
+        element?.className === 'link-display' && content.includes('/invite?code=T0KEN123'),
+    );
+    expect(link.textContent).toContain(`profile=${ULID}`);
+  });
+
+  it('renders pending invitations with expiry copy and cancels one', async () => {
+    sharingMocks.fetchPendingInvites.mockResolvedValue([
+      pendingRow({ expires_at: '2020-01-01T00:00:00Z', recipient_label: null }),
+    ]);
+    sharingMocks.revokeGuardianInvitation.mockResolvedValue('revoked');
+    renderPage();
+    expect(
+      await screen.findByText(
+        exactText(
+          `${messages['guardianRoleLabelViewer']} · ${messages['sharingManageGuardiansExpiryExpired']}`,
+        ),
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(messages['manageGuardiansWaitingForRedemption'] ?? ''),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText(messages['sharingManageGuardiansCancel'] ?? ''));
+    fireEvent.click(screen.getByText(messages['sharingManageGuardiansCancelInvitation'] ?? ''));
+    await waitFor(() => {
+      expect(sharingMocks.revokeGuardianInvitation).toHaveBeenCalledWith(fakeClient, ULID2);
+    });
+    expect(
+      await screen.findByText(messages['inviteCancellationRevoked'] ?? ''),
+    ).toBeInTheDocument();
+  });
+
+  it('an armed transfer replaces the arm form with the pending card', async () => {
+    sharingMocks.fetchActiveTransfer.mockResolvedValue({
+      id: ULID2,
+      profile_id: ULID,
+      parent_post_transfer_role: 'co_parent',
+      recipient_label: null,
+      expires_at: '2026-10-03T00:00:00Z',
+    });
+    renderPage();
+    expect(
+      await screen.findByText(messages['sharingTransferOwnershipPendingTitle'] ?? ''),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(messages['sharingTransferOwnershipCancelPending'] ?? ''),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(messages['sharingTransferOwnershipAction'] ?? ''),
+    ).not.toBeInTheDocument();
+  });
+
+  it('cancelling the live transfer calls the RPC', async () => {
+    sharingMocks.fetchActiveTransfer.mockResolvedValue({
+      id: ULID2,
+      profile_id: ULID,
+      parent_post_transfer_role: 'viewer',
+      recipient_label: null,
+      expires_at: '2026-10-03T00:00:00Z',
+    });
+    sharingMocks.cancelOwnershipTransfer.mockResolvedValue(undefined);
+    // The post-cancel readback sees the transfer gone (the invalidate
+    // refetch), so the form branch — and its cancelled copy — renders.
+    sharingMocks.fetchActiveTransfer
+      .mockResolvedValueOnce({
+        id: ULID2,
+        profile_id: ULID,
+        parent_post_transfer_role: 'viewer',
+        recipient_label: null,
+        expires_at: '2026-10-03T00:00:00Z',
+      })
+      .mockResolvedValue(null);
+    renderPage();
+    fireEvent.click(
+      await screen.findByText(messages['sharingTransferOwnershipCancelPending'] ?? ''),
+    );
+    await waitFor(() => {
+      expect(sharingMocks.cancelOwnershipTransfer).toHaveBeenCalledWith(fakeClient, ULID2);
+    });
+    expect(
+      await screen.findByText(messages['sharingTransferOwnershipCancelled'] ?? ''),
+    ).toBeInTheDocument();
+  });
+
+  it('a not-signed-in failure renders the sign-in copy (issue #885 posture)', async () => {
+    sharingMocks.fetchGuardians.mockRejectedValue(new SharingError('notSignedIn'));
+    renderPage();
+    expect(
+      await screen.findByText(messages['sharingFailureNotSignedIn'] ?? ''),
+    ).toBeInTheDocument();
+  });
+
+  it('a revoked membership row is never listed', async () => {
+    sharingMocks.fetchGuardians.mockResolvedValue([guardianRow({ status: 'revoked' })]);
+    renderPage();
+    await screen.findByRole('heading', {
+      name: (messages['sharingManageGuardiansScreenTitle'] ?? '').replace(
+        '{profileName}',
+        'Maya',
+      ),
+    });
+    expect(screen.queryByText('Mom')).not.toBeInTheDocument();
+  });
+});

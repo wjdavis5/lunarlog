@@ -10,10 +10,11 @@ function longMonth(now: Date): string {
 
 /**
  * The scaffold's one real screen: the catalogue-formatted month header and
+ * The scaffold's one real screen: the catalogue-formatted month header and
  * the empty-state card, plus the profiles the operator can see once a
- * session is in memory (idle otherwise). Live updates ride the
- * `sync_signals` subscription: any change to a visible profile refetches
- * the synced dataset (issue #1252).
+ * session is in memory (idle otherwise) — each linking to its sharing
+ * (#1255) surfaces. Live updates ride the `sync_signals` subscription: any
+ * change to a visible profile refetches the synced dataset (issue #1252).
  */
 export function TodayPage() {
   const t = useT();
@@ -38,9 +39,30 @@ export function TodayPage() {
         <ul className="profile-list">
           {profiles.map((profile) => (
             <li key={profile.id}>
-              <Link className="nav-link profile-link" to={`/day/${profile.id}`}>
-                {profile.display_name}
-              </Link>
+              {profile.display_name}
+              <div className="actions">
+                <Link
+                  className="nav-link"
+                  to={`/day/${profile.id}`}
+                  aria-label={t('calendarTodayTooltip')}
+                >
+                  {t('calendarTodayTooltip')}
+                </Link>
+                <Link
+                  className="nav-link"
+                  to={`/profile/${profile.id}/guardians`}
+                  aria-label={t('profilePickerMenuGuardians')}
+                >
+                  {t('profilePickerMenuGuardians')}
+                </Link>
+                <Link
+                  className="nav-link"
+                  to={`/profile/${profile.id}/notes`}
+                  aria-label={t('guardianNotesSectionTitle')}
+                >
+                  {t('guardianNotesSectionTitle')}
+                </Link>
+              </div>
             </li>
           ))}
         </ul>

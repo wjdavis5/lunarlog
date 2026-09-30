@@ -129,16 +129,43 @@ body {
   display: block;
 }
 
+/* --- Sharing and notes surfaces (issue 1255). Everything token-derived:
+       a literal colour here is a test failure, like the rest of the file. */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ll-space2);
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: var(--ll-space4);
+}
+
+.button {
+  font: inherit;
+  padding: var(--ll-space2) var(--ll-space4);
+  border: 1px solid var(--ll-primary);
+  border-radius: var(--ll-r-full);
+  background: var(--ll-primary);
+  color: var(--ll-on-primary);
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .day-group {
   border: 1px solid var(--ll-outline-variant);
-  margin-top: var(--ll-space-4);
+  margin-top: var(--ll-space4);
 }
 
 .chip-row {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--ll-space-2);
-  margin-top: var(--ll-space-2);
+  gap: var(--ll-space2);
+  margin-top: var(--ll-space2);
 }
 
 .chip {
@@ -146,14 +173,9 @@ body {
   background: var(--ll-surface);
   color: var(--ll-on-surface);
   border-radius: var(--ll-r-full);
-  padding: var(--ll-space-1) var(--ll-space-3);
+  padding: var(--ll-space1) var(--ll-space3);
   font: inherit;
   cursor: pointer;
-}
-
-.chip:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 
 .chip-selected {
@@ -167,19 +189,19 @@ body {
 }
 
 .tag-category {
-  margin-top: var(--ll-space-3);
+  margin-top: var(--ll-space3);
 }
 
 .field-label {
   display: block;
-  margin-top: var(--ll-space-3);
+  margin-top: var(--ll-space3);
 }
 
 .field-input {
   display: block;
   width: 100%;
-  margin-top: var(--ll-space-1);
-  padding: var(--ll-space-2);
+  margin-top: var(--ll-space1);
+  padding: var(--ll-space2);
   font: inherit;
   color: var(--ll-on-surface);
   background: var(--ll-surface);
@@ -188,32 +210,32 @@ body {
 }
 
 .field-error {
-  margin: var(--ll-space-2) 0 0;
+  margin: var(--ll-space2) 0 0;
   color: var(--ll-error);
 }
 
 .field-hint {
-  margin: var(--ll-space-2) 0 0;
+  margin: var(--ll-space2) 0 0;
   color: var(--ll-on-surface-variant);
 }
 
 .toggle {
   display: flex;
   align-items: center;
-  gap: var(--ll-space-2);
-  margin-top: var(--ll-space-2);
+  gap: var(--ll-space2);
+  margin-top: var(--ll-space2);
 }
 
 .day-actions {
   display: flex;
   align-items: center;
-  gap: var(--ll-space-3);
-  margin-top: var(--ll-space-4);
+  gap: var(--ll-space3);
+  margin-top: var(--ll-space4);
 }
 
 .save-button {
   font: inherit;
-  padding: var(--ll-space-2) var(--ll-space-5);
+  padding: var(--ll-space2) var(--ll-space5);
   border: none;
   border-radius: var(--ll-r-full);
   background: var(--ll-primary);
@@ -228,6 +250,118 @@ body {
 
 .save-status {
   color: var(--ll-on-surface-variant);
+}
+
+.button.secondary {
+  background: transparent;
+  color: var(--ll-primary);
+}
+
+.button.danger {
+  background: transparent;
+  border-color: var(--ll-error);
+  color: var(--ll-error);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ll-space1);
+  margin-top: var(--ll-space3);
+}
+
+.field label {
+  color: var(--ll-on-surface-variant);
+}
+
+.field input,
+.field select,
+.field textarea {
+  font: inherit;
+  padding: var(--ll-space2);
+  border: 1px solid var(--ll-outline);
+  border-radius: var(--ll-r-md);
+  background: var(--ll-surface-container-lowest);
+  color: var(--ll-on-surface);
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 4rem;
+}
+
+.row-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ll-space2);
+  margin: var(--ll-space3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ll-space2);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--ll-space3);
+  background: var(--ll-surface-container);
+  border-radius: var(--ll-r-md);
+}
+
+.row-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ll-space1);
+  min-width: 0;
+}
+
+.row-title {
+  margin: 0;
+  font-weight: var(--ll-type-title-medium-font-weight, 500);
+}
+
+.row-sub {
+  margin: 0;
+  color: var(--ll-on-surface-variant);
+}
+
+.badge {
+  display: inline-block;
+  padding: 0 var(--ll-space2);
+  border-radius: var(--ll-r-full);
+  background: var(--ll-secondary-container);
+  color: var(--ll-on-secondary-container);
+}
+
+.error {
+  margin: var(--ll-space3) 0 0;
+  color: var(--ll-error);
+}
+
+.acknowledgement {
+  margin-top: var(--ll-space3);
+  padding: var(--ll-space3);
+  background: var(--ll-surface-container-high);
+  border-radius: var(--ll-r-lg);
+}
+
+.acknowledgement p {
+  margin: 0;
+}
+
+.acknowledgement .hint {
+  margin-top: var(--ll-space1);
+  color: var(--ll-on-surface-variant);
+}
+
+.link-display {
+  margin-top: var(--ll-space3);
+  padding: var(--ll-space3);
+  background: var(--ll-surface-container-high);
+  border-radius: var(--ll-r-md);
+  overflow-wrap: anywhere;
 }
 
 @media (prefers-reduced-motion: reduce) {
