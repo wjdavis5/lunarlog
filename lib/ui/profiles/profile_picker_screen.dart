@@ -287,9 +287,17 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
           l10n.profilePickerCreated(formatCreatedDate(profile.createdAt,
               locale: dates.calendarLocale(context))),
       onTap: () => context.read<ProfileController>().selectProfile(profile.id),
+      // Issue #1233: the two controls ride in a Wrap, not a Row — at
+      // accessibility text sizes ProfileCard stacks this trailing beneath
+      // the title (see ProfileCard's class doc), and a Wrap reflows its
+      // items to the available width there instead of overflowing the way
+      // a fixed Row would. At the default text size the run fits on one
+      // line and the Wrap sizes exactly like the Row it replaces.
       trailing: household && canLog
-          ? Row(
-              mainAxisSize: MainAxisSize.min,
+          ? Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 4,
+              runSpacing: 4,
               children: [
                 Tooltip(
                   message: l10n.householdLogTodayFor(profile.displayName),

@@ -47,6 +47,31 @@ import 'package:lunarlog/ui/sharing/pending_invite_badge.dart';
 import 'package:lunarlog/ui/theme/lunarlog_colors.dart' show contrastRatio;
 import 'package:lunarlog/ui/theme/tokens.dart';
 
+/// The overall text-scale multiplier at or above which [ProfileCard]
+/// stops sharing the title's line with its trailing control and stacks
+/// the control beneath the title instead (issue #1233).
+///
+/// iOS's accessibility text sizes run 1.62x-3.12x, and already at its
+/// second step (1.94x) a phone-width row's trailing button leaves the
+/// title less room than one word needs — mid-word breaks follow. Android's
+/// standard sizes stop at 2.0x and its accessibility sizes add 2.5x and
+/// up. 1.9 therefore sits just under iOS's second accessibility step, so
+/// every accessibility size stacks while the standard "large" settings
+/// (1.3x-1.8x) keep today's side-by-side row. The overview's today card
+/// stacks its estimate against the confidence chip above 1.2x (#836) —
+/// that pair runs out of room far earlier than a list row with a button,
+/// hence the different threshold.
+@visibleForTesting
+const double kProfileCardStackedTextScale = 1.9;
+
+/// Whether [ProfileCard] lays its trailing control out beneath the title
+/// at [textScaler] instead of beside it (issue #1233). Pure, so the
+/// threshold is pinned directly the way `dayCellMetricsFor`'s metrics
+/// are.
+@visibleForTesting
+bool profileCardStacksTrailingAt(TextScaler textScaler) =>
+    textScaler.scale(1) >= kProfileCardStackedTextScale;
+
 /// The avatar's hue for [profileId], in `[0, 360)` — deterministic and
 /// stable across runs, devices, and the web VM (djb2 kept under 30 bits
 /// so every intermediate stays exactly representable as a web `double`;
@@ -304,6 +329,15 @@ class _ProfileCycleStatusTextState extends State<ProfileCycleStatusText> {
 /// is that tile plus avatar/status; the settings section keeps the bare
 /// tile), keys included, so #126's tests and semantics carry over
 /// unchanged.
+///
+/// Issue #1233: at accessibility text sizes ([TextScaler] at or above
+/// [kProfileCardStackedTextScale]) the trailing control no longer shares
+/// the title's line — `ListTile` gives `trailing` its intrinsic width, so
+/// a scaled text button there starves the title into a glyph-wide column
+/// (the household row's "Log today" rendered names one letter per line).
+/// The card instead stacks: the tile keeps its full-width title and
+/// subtitle column, and the trailing controls render beneath it, aligned
+/// to the row's content inset, as a reflowable wrap.
 class ProfileCard extends StatelessWidget {
   const ProfileCard({
     super.key,
@@ -352,7 +386,12 @@ class ProfileCard extends StatelessWidget {
 
   /// The caller's own trailing control, rendered after the indicator and
   /// badge (the picker's row menu) — the overflow menu this issue
-  /// preserves.
+  /// preserves. At accessibility text sizes (issue #1233) it renders
+  /// beneath the title instead of beside it; see [ProfileCard]'s class
+  /// doc. A trailing that can be wide at large text scales should be a
+  /// [Wrap] (as the picker's is) so it reflows to the stacked width —
+  /// [Wrap] sizes exactly like a `mainAxisSize: min` row when everything
+  /// fits on one line.
   final Widget? trailing;
 
   @override
@@ -360,8 +399,10 @@ class ProfileCard extends StatelessWidget {
     final theme = Theme.of(context);
     final service = predictionService;
     final subtitleText = subtitle;
-    final trailingRow = _trailingRow(context);
-    return ListTile(
+    final stacked =
+        profileCardStacksTrailingAt(MediaQuery.textScalerOf(context));
+    final trailingRow = _trailingRow(context, stacked: stacked);
+    final row = ListTile(
       leading: ProfileAvatar(
         profileId: profile.id,
         displayName: profile.displayName,
@@ -370,37 +411,66 @@ class ProfileCard extends StatelessWidget {
       subtitle: _subtitle(theme, service, subtitleText, subtitleExtra),
       isThreeLine: service != null && subtitleText != null,
       onTap: onTap,
-      trailing: trailingRow,
+      trailing: stacked ? null : trailingRow,
+    );
+    if (!stacked || trailingRow == null) return row;
+    // Issue #1233: at accessibility text sizes the trailing controls move
+    // beneath the tile so the name and the signal lines get the row's
+    // full width (the same stacked-layout answer #836 gave the today
+    // card). Inset to ListTile's own content padding so the actions align
+    // with the row edges; the key lets tests pin both layouts from one
+    // harness.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        row,
+        Padding(
+          key: ValueKey('profile-card-stacked-actions-${profile.id}'),
+          padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
+          child: trailingRow,
+        ),
+      ],
     );
   }
 
   /// The #126 badge assembly (mirroring `ProfileSharingTile`) plus the
   /// caller's own trailing control, or null when nothing renders.
-  Widget? _trailingRow(BuildContext context) {
+  ///
+  /// [stacked] (issue #1233) lays the same controls out as a reflowable
+  /// wrap instead of a fixed row: beneath the title a line break is
+  /// available, so a long localized label wraps instead of recreating the
+  /// overflow it just escaped.
+  Widget? _trailingRow(BuildContext context, {required bool stacked}) {
     final showBadge = sharingService != null &&
         SharingProfileInfo.canShowPendingBadge(info.myRole);
     final showIndicator = info.isCoManaged;
     final extraTrailing = trailing;
     if (!showBadge && !showIndicator && extraTrailing == null) return null;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (showIndicator) _sharedIndicator(context),
-        if (showBadge) ...[
-          const SizedBox(width: 8),
-          PendingInviteBadge(
-            key: ValueKey('pending-invite-badge-${profile.id}'),
-            profileId: profile.id,
-            sharingService: sharingService!,
-            refreshToken: refreshToken,
-          ),
-        ],
-        if (extraTrailing != null) ...[
-          const SizedBox(width: 4),
-          extraTrailing,
-        ],
+    final children = <Widget>[
+      if (showIndicator) _sharedIndicator(context),
+      if (showBadge) ...[
+        const SizedBox(width: 8),
+        PendingInviteBadge(
+          key: ValueKey('pending-invite-badge-${profile.id}'),
+          profileId: profile.id,
+          sharingService: sharingService!,
+          refreshToken: refreshToken,
+        ),
       ],
-    );
+      if (extraTrailing != null) ...[
+        const SizedBox(width: 4),
+        extraTrailing,
+      ],
+    ];
+    if (stacked) {
+      return Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 4,
+        runSpacing: 4,
+        children: children,
+      );
+    }
+    return Row(mainAxisSize: MainAxisSize.min, children: children);
   }
 
   Widget _sharedIndicator(BuildContext context) => Tooltip(
