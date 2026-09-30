@@ -215,6 +215,9 @@ jobs:
         id: version
         env:
           QA_BUILD: ${{ inputs.qa_build }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
         run: |
           set -euo pipefail
 
@@ -230,6 +233,33 @@ jobs:
           # catchable before it ships.
           if [ "$QA_BUILD" = "true" ]; then
             build_number=$(( build_number + 500000 ))
+            range_low=500000
+            range_high=999999
+          else
+            range_low=1000
+            range_high=499999
+          fi
+
+          # Issue #1259: the run counter is monotonic across dispatches but
+          # NOT against App Store Connect -- re-running an old workflow run
+          # keeps its frozen run_number, and expired builds still reserve
+          # their cfBundleVersion (a re-run of run #165 rebuilt build 1165
+          # and altool rejected it with ATTRIBUTE.INVALID.DUPLICATE). Clamp
+          # the number up to one past the highest build already uploaded in
+          # the SAME range, keeping the production/QA namespaces separate.
+          # A failed lookup only warns: a fresh dispatch never needs the
+          # clamp, so an ASC hiccup must not block a release.
+          set +e
+          highest="$( \
+            ASC_APP_ID='6808044149' RANGE_LOW="$range_low" RANGE_HIGH="$range_high" \
+            ruby .github/scripts/asc-highest-build.rb)"
+          asc_status=$?
+          set -e
+          if [ "$asc_status" -ne 0 ]; then
+            echo "::warning::Could not read the highest uploaded build from App Store Connect; trusting the run-counter number ($build_number)."
+          elif [ -n "$highest" ] && [ "$build_number" -le "$highest" ]; then
+            echo "Run-counter build $build_number is not above the highest uploaded build $highest; bumping to $((highest + 1))."
+            build_number=$((highest + 1))
           fi
 
           echo "marketing=$marketing" >> "$GITHUB_OUTPUT"
