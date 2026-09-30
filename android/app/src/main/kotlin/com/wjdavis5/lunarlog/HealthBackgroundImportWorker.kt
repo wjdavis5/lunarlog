@@ -159,7 +159,7 @@ object HealthBackgroundImportScheduler {
 /**
  * The worker→engine bridge: the messenger of the *main* Flutter engine,
  * captured in `MainActivity.configureFlutterEngine` and cleared in
- * `cleanupFlutterEngine`. Nullable by design — a WorkManager tick that
+ * `MainActivity.onDestroy`. Nullable by design — a WorkManager tick that
  * restarts the process without an activity finds null and no-ops (see the
  * worker's class doc).
  */

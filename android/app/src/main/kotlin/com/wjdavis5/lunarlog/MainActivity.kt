@@ -45,13 +45,18 @@ class MainActivity : FlutterFragmentActivity() {
             HealthConnectAdapter.CHANNEL_NAME
         ).setMethodCallHandler(HealthConnectAdapter(this)::handle)
         // Issue #993: the background-import worker reaches Dart through the
-        // main engine's messenger. Cleared in cleanupFlutterEngine so a
-        // worker tick that lands during teardown finds no engine and no-ops.
+        // main engine's messenger. Cleared in onDestroy so a worker tick
+        // that lands during teardown finds no engine and no-ops.
         HealthBackgroundImportBridge.attach(flutterEngine)
     }
 
-    override fun cleanupFlutterEngine(flutterEngine: FlutterEngine) {
+    override fun onDestroy() {
+        // Issue #993: drop the worker→engine bridge at activity teardown so
+        // a worker tick landing during/after teardown finds no engine and
+        // no-ops (cleanupFlutterEngine is not exposed on
+        // FlutterFragmentActivity; onDestroy always runs on the main
+        // thread, which is the thread the bridge is used from).
         HealthBackgroundImportBridge.detach()
-        super.cleanupFlutterEngine(flutterEngine)
+        super.onDestroy()
     }
 }

@@ -598,8 +598,12 @@ enum HealthKitChannelHandler {
     guard HKHealthStore.isHealthDataAvailable() else { return }
     guard storedBoundProfileId != nil else { return }
     for type in backgroundReadTypes {
+      // The handler's 3rd parameter (this SDK's signature) carries an
+      // error when the query cannot deliver updates (e.g. permission
+      // revoked); the pass itself will then simply see no new data, so it
+      // needs no separate handling here.
       let query = HKObserverQuery(sampleType: type, predicate: nil) {
-        _, completion in
+        _, completion, _ in
         // Apple's contract: the completion must be called promptly or iOS
         // throttles further background deliveries. The work is NOT done
         // inside the handler — the Dart pass runs on its own after this.
