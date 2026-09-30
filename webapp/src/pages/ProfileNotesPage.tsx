@@ -10,7 +10,7 @@ import {
   useCurrentUserId,
   useGuardianNotes,
   useGuardians,
-  useProfiles,
+  useLiveProfiles,
 } from '../lib/queries';
 import {
   noteIdGenerator,
@@ -54,8 +54,8 @@ export function ProfileNotesPage() {
   const { profileId } = useParams();
   const t = useT();
   const client = getSupabaseClient();
-  const profiles = useProfiles();
-  const profile = profiles.data?.find((candidate) => candidate.id === profileId) ?? null;
+  const profiles = useLiveProfiles();
+  const profile = profiles.find((candidate) => candidate.id === profileId) ?? null;
   const guardians = useGuardians(profileId, profile !== null);
 
   const [localDate, setLocalDate] = useState(() => localDateToday());
@@ -68,7 +68,7 @@ export function ProfileNotesPage() {
     null;
   const canWrite = myRole !== null && roleCanLog(myRole);
 
-  if (profileId === undefined || (profiles.data !== undefined && profile === null)) {
+  if (profileId === undefined || (profiles.length > 0 && profile === null)) {
     return (
       <main className="page">
         <section className="card">

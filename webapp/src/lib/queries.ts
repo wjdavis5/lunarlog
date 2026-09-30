@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 
 import { getSyncedDataCache, resetWebDataForSignOut, subscribeSyncSignals } from './domain';
 import type { SyncedData } from './domain';
-import { profileListSchema, type ProfileRow } from './schemas';
+import { type ProfileRow } from './schemas';
 import {
   currentUserId,
   fetchActiveTransfer,

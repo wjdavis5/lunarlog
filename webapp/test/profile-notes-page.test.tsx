@@ -28,36 +28,36 @@ const profileRow = {
   relationship: 'daughter',
   birth_year: 2013,
   sort_order: 0,
+  deleted_at: null,
+  archived_at: null,
+  server_version: 1,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
 };
 
-/** The fake client serves `profiles` reads itself (the hook's internal
- * `fetchProfiles` binding is not intercepted by the partial mock below). */
+/** The fake client answers the session gate (`useHasSyncSession`, issue
+ * #1252) — `onAuthStateChange` included, or the effect throws. The synced
+ * profile list is seeded into the query cache by `renderPage`. */
 const fakeClient = {
   auth: {
     currentUser: { id: ME },
     getSession: async () => ({ data: { session: { user: { id: ME } } } }),
-  },
-  from: (table: string) => {
-    if (table !== 'profiles') {
-      throw new Error(`unexpected table read: ${table}`);
-    }
-    return {
-      select: () => ({
-        order: () =>
-          Promise.resolve({
-            data: [profileRow],
-            error: null,
-          }),
-      }),
-    };
+    onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
   },
 };
 
 vi.mock('../src/lib/supabase', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   getSupabaseClient: () => fakeClient,
+}));
+
+// The synced-data query's queryFn runs the domain cache refresh (issue
+// #1252) — serve the seeded profiles through that seam so the query
+// resolves instead of rejecting against the fake client.
+const domainMocks = vi.hoisted(() => ({ refresh: vi.fn() }));
+vi.mock('../src/lib/domain', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  getSyncedDataCache: () => ({ refresh: domainMocks.refresh }),
 }));
 
 const sharingMocks = vi.hoisted(() => ({
@@ -107,6 +107,10 @@ function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  // Seed the synced-data cache (issue #1252's `useLiveProfiles` reads
+  // `['synced-data']`, never a table) instead of the retired profiles read.
+  domainMocks.refresh.mockResolvedValue({ profiles: [profileRow] });
+  queryClient.setQueryData(['synced-data'], { profiles: [profileRow] } as never);
   return render(
     <AppIntlProvider>
       <QueryClientProvider client={queryClient}>

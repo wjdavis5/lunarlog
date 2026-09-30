@@ -3,27 +3,6 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { fetchProfiles, createAppQueryClient, PROFILES_QUERY_KEY } from '../src/lib/queries';
-import type { AppSupabaseClient } from '../src/lib/supabase';
-
-function fakeClient(result: { data: unknown; error: { message: string } | null }) {
-  const order = vi.fn().mockResolvedValue(result);
-  const select = vi.fn().mockReturnValue({ order });
-  const from = vi.fn().mockReturnValue({ select });
-  return { client: { from } as unknown as AppSupabaseClient, from, select, order };
-}
-
-const validRow = {
-  id: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
-  display_name: 'Maya',
-  is_minor: false,
-  mode: 'cycle',
-  relationship: 'self',
-  birth_year: 1990,
-  sort_order: 0,
-  created_at: '2026-01-01T00:00:00Z',
-  updated_at: '2026-01-01T00:00:00Z',
-};
 import {
   createAppQueryClient,
   PROFILES_QUERY_KEY,

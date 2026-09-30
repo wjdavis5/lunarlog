@@ -38,7 +38,6 @@ const timestamp = z.string();
 export const profileSchema = z.object({
   id: ulidId,
   user_id: z.string(),
-export const ulidSchema = ulidId;
   display_name: z.string(),
   is_minor: z.boolean(),
   sort_order: z.number(),
@@ -62,6 +61,9 @@ export const ulidSchema = ulidId;
 export type ProfileRow = z.infer<typeof profileSchema>;
 
 export const profileListSchema = z.array(profileSchema);
+
+/** Shared id schema re-exported for the sharing module (issue #1255). */
+export const ulidSchema = ulidId;
 
 /** One `day_entries` row. A private note arrives masked (note = null) for
  * every non-subject guardian — masking is the server's job (sync_pull), so

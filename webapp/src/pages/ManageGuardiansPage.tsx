@@ -12,7 +12,7 @@ import {
   useCurrentUserId,
   useGuardians,
   usePendingInvites,
-  useProfiles,
+  useLiveProfiles,
 } from '../lib/queries';
 import { subjectInviteAvailable } from '../lib/schemas';
 import {
@@ -104,15 +104,15 @@ export function ManageGuardiansPage() {
   const { profileId } = useParams();
   const t = useT();
   const client = getSupabaseClient();
-  const profiles = useProfiles();
-  const profile = profiles.data?.find((candidate) => candidate.id === profileId) ?? null;
+  const profiles = useLiveProfiles();
+  const profile = profiles.find((candidate) => candidate.id === profileId) ?? null;
 
   const guardians = useGuardians(profileId, profile !== null);
   const pending = usePendingInvites(profileId, profile !== null);
   const transfer = useActiveTransfer(profileId, profile !== null);
   const me = useCurrentUserId(client !== null).data ?? null;
 
-  if (profileId === undefined || (profiles.data !== undefined && profile === null)) {
+  if (profileId === undefined || (profiles.length > 0 && profile === null)) {
     return (
       <main className="page">
         <section className="card">
