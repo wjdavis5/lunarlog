@@ -239,4 +239,18 @@ assert_contains "Arb sets app_flutter=true" "$arb_output" "app_flutter=true"
 assert_contains "CI workflow sets webapp=true" "$ci_output" "webapp=true"
 assert_contains "Detection script itself sets webapp=true" "$script_output" "webapp=true"
 
+# ---------------------------------------------------------------------------
+# Case 16: The Dart domain the web client compiles (#1251) rebuilds and
+# re-tests the webapp AND keeps the app's own Flutter suites
+# ---------------------------------------------------------------------------
+domain_output="$(run_detect "lib/domain/prediction/prediction.dart
+lib/domain/export/account_export.dart")"
+assert_contains "Domain engine sets webapp=true" "$domain_output" "webapp=true"
+assert_contains "Domain engine sets app_flutter=true" "$domain_output" "app_flutter=true"
+
+entrypoint_output="$(run_detect "tool/web_domain/main.dart
+tool/web_domain/facade.dart")"
+assert_contains "Domain facade sets webapp=true" "$entrypoint_output" "webapp=true"
+assert_contains "Domain facade sets app_flutter=true" "$entrypoint_output" "app_flutter=true"
+
 print_summary "detect-ci-changes.test.sh"
