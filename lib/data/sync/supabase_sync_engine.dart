@@ -1198,9 +1198,19 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// Whether this consecutive catch-all failure is one this session reports
   /// to Sentry: the first, then every [kSyncCycleCaptureEveryNthFailure]th
   /// (issue #1171, the same counter shape as the network-backoff streak).
+  ///
+  /// Closed at a streak of 0 (issue #1240): `0 % n == 0` held the gate open
+  /// with no failure armed, and the sibling gate
+  /// ([_captureGatedSiblingFailure]) consults this without incrementing —
+  /// so the streak-less routes into [_fail] (a transport error, an expired
+  /// session) fired the state_write/dirty_count captures on every failing
+  /// cycle. The catch-all always increments before consulting this, so the
+  /// closure only ever bites there, which is the point: those compound
+  /// failures stay quiet until an unexpected failure re-arms the streak.
   bool _shouldCaptureCycleFailure() =>
-      _consecutiveCycleFailures == 1 ||
-      _consecutiveCycleFailures % kSyncCycleCaptureEveryNthFailure == 0;
+      _consecutiveCycleFailures > 0 &&
+      (_consecutiveCycleFailures == 1 ||
+          _consecutiveCycleFailures % kSyncCycleCaptureEveryNthFailure == 0);
 
   /// Reports [error] to Sentry through the injected hub (the static
   /// capture when none was injected), with a `sync.phase` [phase] tag and
