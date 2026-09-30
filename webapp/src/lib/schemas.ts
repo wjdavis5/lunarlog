@@ -62,6 +62,9 @@ export type ProfileRow = z.infer<typeof profileSchema>;
 
 export const profileListSchema = z.array(profileSchema);
 
+/** Shared id schema re-exported for the sharing module (issue #1255). */
+export const ulidSchema = ulidId;
+
 /** One `day_entries` row. A private note arrives masked (note = null) for
  * every non-subject guardian — masking is the server's job (sync_pull), so
  * the client schema just carries the nullable field. */
@@ -306,3 +309,23 @@ export const syncPushResultSchema = z.object({
 });
 
 export type SyncPushResult = z.infer<typeof syncPushResultSchema>;
+
+/**
+ * Whether the subject-invite preset ("her own profile", issue #802) may be
+ * offered for `profile` — the web mirror of `Profile.subjectInviteAvailableAt`
+ * (`lib/domain/models/profile.dart`): the relationship is daughter/son/child,
+ * or the profile counts as a minor today. The server re-checks the pairing.
+ */
+export function subjectInviteAvailable(profile: ProfileRow, today: Date = new Date()): boolean {
+  if (
+    profile.relationship === 'daughter' ||
+    profile.relationship === 'son' ||
+    profile.relationship === 'child'
+  ) {
+    return true;
+  }
+  // `deriveMinorStatus`: a birth year decides, the stored flag is the
+  // fallback — and "minor" means at most 18 this calendar year.
+  if (profile.birth_year !== null) return today.getUTCFullYear() - profile.birth_year <= 18;
+  return profile.is_minor;
+}

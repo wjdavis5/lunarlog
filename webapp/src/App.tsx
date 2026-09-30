@@ -8,6 +8,9 @@ import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { SignInPage } from './pages/SignInPage';
 import { SignUpPage } from './pages/SignUpPage';
+import { InvitePage } from './pages/InvitePage';
+import { ManageGuardiansPage } from './pages/ManageGuardiansPage';
+import { ProfileNotesPage } from './pages/ProfileNotesPage';
 import { TodayPage } from './pages/TodayPage';
 
 /**
@@ -40,9 +43,12 @@ function Shell() {
   );
 }
 
-// One router per module load; any unknown path goes home. A not-found
-// screen waits for catalogue copy of its own — the no-typed-copy lint bans
-// typing one here.
+// One router per module load. `/invite` is the redemption entry the app's
+// universal links and the site's invite page both point at (issue #1255),
+// and `/auth/callback` is where #1250's OAuth/emailed-link ceremonies land;
+// the Worker-reserved `/auth/*` beyond it goes home. Any other path goes
+// home too — a not-found screen waits for catalogue copy of its own (the
+// no-typed-copy lint bans typing one here).
 const router = createBrowserRouter([
   {
     path: '/',
@@ -55,6 +61,9 @@ const router = createBrowserRouter([
       { path: 'forgot-password', element: <ForgotPasswordPage /> },
       { path: 'reset-password', element: <ResetPasswordPage /> },
       { path: 'auth/callback', element: <AuthCallbackPage /> },
+      { path: 'invite', element: <InvitePage /> },
+      { path: 'profile/:profileId/guardians', element: <ManageGuardiansPage /> },
+      { path: 'profile/:profileId/notes', element: <ProfileNotesPage /> },
       { path: 'auth/*', element: <Navigate replace to="/" /> },
       { path: '*', element: <Navigate replace to="/" /> },
     ],
