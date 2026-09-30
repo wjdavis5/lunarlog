@@ -515,10 +515,24 @@ make_fixtures "$WORK/route-cf-beacon"
 cat >"$WORK/route-cf-beacon/route-delete-account.body" <<'EOF'
 <!DOCTYPE html><html><body><h1>Delete account</h1><script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v31edd6" data-cf-beacon='{"token":"x"}'></script></body></html>
 EOF
+# The shipped script itself must behave as its own constant declares
+# (issue #1186) -- the same mode-conditional expectation the home-page case
+# above carries. A bare exit-0 assert here would re-introduce the hard-coded
+# unarmed assumption (issue #1206): the owner's arming commit would turn
+# this suite red, the exact #1186 failure the guard exists to prevent.
 run_case "$WORK/route-cf-beacon"
-assert_exit "a beacon on an enumerated route the built-in blocks never touch warns but passes while unarmed" 0
-assert_contains "the route warning names the injected route" "$LAST_LOG" "/delete-account/"
-assert_contains "the route warning names the injection" "$LAST_LOG" "Cloudflare Web Analytics beacon"
+if [ "$BEACON_ARMED" = "true" ]; then
+  assert_exit "a beacon on an enumerated route the shipped script refuses, as its armed constant declares" 1
+  assert_contains "the shipped armed route failure is an error annotation" "$LAST_LOG" "::error::"
+  assert_contains "the shipped armed route failure names the injected route" "$LAST_LOG" "/delete-account/"
+  assert_not_contains "the shipped armed route failure emits no warning" "$LAST_LOG" "::warning::"
+else
+  assert_exit "a beacon on an enumerated route the built-in blocks never touch warns but passes while unarmed" 0
+  assert_contains "the route warning is a ::warning:: annotation" "$LAST_LOG" "::warning::"
+  assert_contains "the route warning names the injected route" "$LAST_LOG" "/delete-account/"
+  assert_contains "the route warning names the injection" "$LAST_LOG" "Cloudflare Web Analytics beacon"
+  assert_not_contains "the unarmed route pass emits no error annotation" "$LAST_LOG" "::error::"
+fi
 run_case "$WORK/route-cf-beacon" "$armed_script"
 assert_exit "a beacon on an enumerated route refuses when armed (issue #1184)" 1
 assert_contains "the armed route failure names the injected route" "$LAST_LOG" "/delete-account/"
