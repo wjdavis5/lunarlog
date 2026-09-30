@@ -24,7 +24,7 @@ import HelpCard from "../../components/HelpCard.astro";
       touches your health store before you turn the connection on. Once you
       have, the import keeps itself current in the background (issue #993):
       still on your device, still never a write.
-      <!-- cite: PRIVACY.md#7-data-export--retention--deletion-rights; PRIVACY.md §4 background paragraph; lib/data/health/health_import_service.dart ("Bound. Two entry points."); ios/Runner/AppDelegate.swift + HealthBackgroundImportWorker.kt (#993 triggers) -->
+      <!-- cite: PRIVACY.md#7-data-export--retention--deletion-rights; PRIVACY.md#4-third-party-service-providers (the §4 background paragraph); lib/data/health/health_import_service.dart ("Bound. Two entry points."); ios/Runner/AppDelegate.swift (the HKObserverQuery trigger); android/app/src/main/kotlin/com/wjdavis5/lunarlog/HealthBackgroundImportWorker.kt (the periodic trigger) -->
     </p>
 
     <section>
@@ -112,7 +112,7 @@ import HelpCard from "../../components/HelpCard.astro";
           Health Connect on a schedule — under the same rules: it never
           prompts, never shows a screen, never writes, and it stops if you
           unbind the profile or revoke the health permission.
-          <!-- cite: lib/data/health/health_import_service.dart (importInBackground, #993: prompt-free, #153 guard + #959 permission probe); PRIVACY.md §4 background paragraph -->
+          <!-- cite: lib/data/health/health_import_service.dart (importInBackground, #993: prompt-free, #153 guard + #959 permission probe); PRIVACY.md#4-third-party-service-providers (the §4 background paragraph) -->
         </li>
         <li>
           One profile is bound to the phone's health connection at a time;
