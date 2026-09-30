@@ -304,4 +304,154 @@ void main() {
     expect(text, isNot(contains('Pregnancy')));
     expect(text, isNot(contains('Great (')));
   });
+
+  test('Issue #1204: a 40-character custom tag is truncated in the grid '
+      'with a marker and listed in full below it', () {
+    const longLabel = 'Headache behind left eye during exercise';
+    expect(longLabel.length, kMaxCustomTagLabelLength);
+    final starts = _starts(8);
+    final entries = [
+      for (final start in starts)
+        DayEntry(
+          id: 'e-${start.iso}',
+          profileId: 'p1',
+          localDate: start,
+          tz: 'UTC',
+          flow: FlowLevel.medium,
+          tags: start == starts[1] ? const ['long-headache'] : const [],
+          updatedAt: DateTime.utc(2026, 1, 1),
+        ),
+    ];
+    final customTags = [
+      CustomTag(
+        id: 'ct-long-headache',
+        profileId: 'p1',
+        code: 'long-headache',
+        displayName: longLabel,
+        category: 'custom',
+        createdAt: DateTime.utc(2026, 1, 1),
+        updatedAt: DateTime.utc(2026, 1, 1),
+      ),
+    ];
+    final summary = buildClinicalPdfSummary(
+      profile: _profile(),
+      dayEntries: entries,
+      customTags: customTags,
+      range: FhirExportRange(
+        preset: FhirExportRangePreset.last6Cycles,
+        start: starts[1],
+      ),
+      rangeLabel: 'Last 6 cycles',
+      generatedAt: DateTime.utc(2026, 6, 1),
+    );
+    final text = latin1.decode(buildClinicalPdfDocument(summary));
+    // The full label survives the document, in the footer that maps every
+    // shortened grid label back to its full text.
+    expect(text, contains('Labels shortened in the grid:'));
+    expect(text, contains('= $longLabel'));
+    // The grid row itself is the first 21 characters plus the ellipsis, so
+    // the cut is visible. U+2026 travels as the WinAnsi byte 0x85
+    // (minimal_pdf.dart's _winAnsiPunctuation), which latin1 decoding
+    // surfaces as U+0085.
+    expect(text, contains('Headache behind left \u0085'));
+  });
+
+  test('Issue #1204: a label that fits the 22-character column prints '
+      'without a shortened-labels footer', () {
+    const fittingLabel = 'Lower back pain today!';
+    expect(fittingLabel.length, 22);
+    final starts = _starts(8);
+    final entries = [
+      for (final start in starts)
+        DayEntry(
+          id: 'e-${start.iso}',
+          profileId: 'p1',
+          localDate: start,
+          tz: 'UTC',
+          flow: FlowLevel.medium,
+          tags: start == starts[1] ? const ['lower-back'] : const [],
+          updatedAt: DateTime.utc(2026, 1, 1),
+        ),
+    ];
+    final customTags = [
+      CustomTag(
+        id: 'ct-lower-back',
+        profileId: 'p1',
+        code: 'lower-back',
+        displayName: fittingLabel,
+        category: 'custom',
+        createdAt: DateTime.utc(2026, 1, 1),
+        updatedAt: DateTime.utc(2026, 1, 1),
+      ),
+    ];
+    final summary = buildClinicalPdfSummary(
+      profile: _profile(),
+      dayEntries: entries,
+      customTags: customTags,
+      range: FhirExportRange(
+        preset: FhirExportRangePreset.last6Cycles,
+        start: starts[1],
+      ),
+      rangeLabel: 'Last 6 cycles',
+      generatedAt: DateTime.utc(2026, 6, 1),
+    );
+    final text = latin1.decode(buildClinicalPdfDocument(summary));
+    expect(text, contains(fittingLabel));
+    expect(text, isNot(contains('Labels shortened in the grid')));
+  });
+
+  test('Issue #1204: two labels sharing their first 22 characters are both '
+      'mapped to their full text under the grid', () {
+    const eyeLabel = 'Pressure behind left eye';
+    const earLabel = 'Pressure behind left ear';
+    final starts = _starts(8);
+    final entries = [
+      for (final start in starts)
+        DayEntry(
+          id: 'e-${start.iso}',
+          profileId: 'p1',
+          localDate: start,
+          tz: 'UTC',
+          flow: FlowLevel.medium,
+          tags:
+              start == starts[1] ? const ['pressure-eye', 'pressure-ear'] : const [],
+          updatedAt: DateTime.utc(2026, 1, 1),
+        ),
+    ];
+    CustomTag pressureTag(String id, String code, String displayName) =>
+        CustomTag(
+          id: id,
+          profileId: 'p1',
+          code: code,
+          displayName: displayName,
+          category: 'custom',
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 1),
+        );
+    final summary = buildClinicalPdfSummary(
+      profile: _profile(),
+      dayEntries: entries,
+      customTags: [
+        pressureTag('ct-eye', 'pressure-eye', eyeLabel),
+        pressureTag('ct-ear', 'pressure-ear', earLabel),
+      ],
+      range: FhirExportRange(
+        preset: FhirExportRangePreset.last6Cycles,
+        start: starts[1],
+      ),
+      rangeLabel: 'Last 6 cycles',
+      generatedAt: DateTime.utc(2026, 6, 1),
+    );
+    expect(summary.symptomGrid.map((row) => row.label), [
+      // Frequency ties break alphabetically.
+      earLabel,
+      eyeLabel,
+    ]);
+    final text = latin1.decode(buildClinicalPdfDocument(summary));
+    // The grid rows look identical (both cut at the same 21 characters +
+    // ellipsis); the footer is what keeps them distinguishable. Each full
+    // label gets its own footer line, so it appears contiguously.
+    expect(text, contains('= $earLabel'));
+    expect(text, contains('= $eyeLabel'));
+  });
 }
