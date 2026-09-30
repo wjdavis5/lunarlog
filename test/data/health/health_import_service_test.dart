@@ -9,6 +9,8 @@
 /// intermenstrual-bleeding records imported as `spotting` observations.
 library;
 
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/health/health_import_service.dart';
 import 'package:lunarlog/domain/health/health_deviation.dart';
@@ -111,6 +113,11 @@ class _FakeSource implements HealthImportSource {
   String? lastCursor;
   final List<String?> cursorsSeen = [];
 
+  /// Issue #1212's overlap test: when set, the FIRST read awaits this gate
+  /// before returning — holds one pass open inside its read so a test can
+  /// start a second pass while it is mid-flight.
+  Completer<void>? firstReadGate;
+
   @override
   Future<HealthReadResult> readMenstrualFlowPage(
     HealthGuardFacts facts, {
@@ -126,6 +133,8 @@ class _FakeSource implements HealthImportSource {
     cursorsSeen.add(cursor);
     final index = calls;
     calls++;
+    final gate = index == 0 ? firstReadGate : null;
+    if (gate != null && !gate.isCompleted) await gate.future;
     if (pages.isNotEmpty) {
       return index < pages.length
           ? pages[index]
@@ -372,6 +381,73 @@ void main() {
       expect(platform.bindCalls, 1);
       expect(platform.authCalls, 1);
       expect(source.calls, 1);
+    },
+  );
+
+  test(
+    'issue #1212: a background pass fired while an importNow pass runs '
+    'queues behind it — the passes never interleave',
+    () async {
+      await bind();
+      // One page serving both entry points: a flow day plus an
+      // intermenstrual-bleeding record for the SAME date. Two passes
+      // merging that page concurrently is exactly the overlap the issue
+      // describes — each `_mergeSpotting` reads then saves across an
+      // await, so interleaved passes could each see no spotting and each
+      // save one.
+      source.result = HealthReadResult.samples([
+        _sample(
+          id: 'hk-flow',
+          flow: HealthFlowValue.medium,
+          startIso: '2026-09-10T04:00:00Z',
+        ),
+        _bleedingSample(
+          id: 'hk-spotting',
+          startIso: '2026-09-10T05:00:00Z',
+          offset: const Duration(hours: -4),
+        ),
+      ]);
+      final gate = Completer<void>();
+      source.firstReadGate = gate;
+
+      final service = build();
+      final nowPass = service.importNow();
+      // Let pass 1 reach (and hold inside) its first read.
+      await pumpEventQueue();
+
+      final backgroundPass = service.importInBackground();
+      // Pass 2 resolves its binding, passes the guard, probes the
+      // permission — and then must WAIT at `_runPass`'s tail: its read has
+      // not started even once the event queue has fully drained.
+      for (var i = 0; i < 3; i++) {
+        await pumpEventQueue();
+      }
+      expect(
+        source.calls,
+        1,
+        reason: 'the background pass must not read while the '
+            'user-initiated pass is mid-flight',
+      );
+
+      gate.complete();
+      final summaries = await Future.wait([nowPass, backgroundPass]);
+
+      // Both passes ran, strictly one after the other.
+      expect(source.calls, 2);
+      expect(summaries[0].daysWritten, 1);
+      expect(summaries[0].spottingDaysWritten, 1);
+      // Pass 2 saw pass 1's rows: the day is already imported and the
+      // spotting observation already exists — nothing new written.
+      expect(summaries[1].daysUnchanged, 1);
+      expect(summaries[1].spottingDaysWritten, 0);
+      // The duplicate the issue describes never materializes: exactly one
+      // spotting observation for the day despite two passes.
+      expect(
+        observations.saved
+            .where((o) => o.category == ObservationCategory.spotting)
+            .toList(),
+        hasLength(1),
+      );
     },
   );
 

@@ -213,4 +213,72 @@ void main() {
       }
     });
   });
+
+  group('Issue #1212: both import seams ride ONE service instance', () {
+    test('the composition module constructs the import service exactly '
+        'once, through the shared-seams builder', () {
+      final source = _stripComments(
+        _read('lib/composition/app_dependencies.dart'),
+      );
+
+      // One construction site: the concrete service is built a single
+      // time and handed to both seams.
+      expect(
+        'LocalHealthImportService('.allMatches(source),
+        hasLength(1),
+      );
+      // Its private builder is declared once and called once — a second
+      // call site would be a second service with its own one-pass-at-a-
+      // time gate, the two-instance overlap #1212 closed.
+      expect(
+        '_buildHealthImportService('.allMatches(source),
+        hasLength(2),
+        reason: 'declaration + exactly one call site',
+      );
+    });
+
+    test('the app wires the runner and the coordinator from that one '
+        'shared-seams builder', () {
+      final source = _stripComments(_read('lib/app.dart'));
+
+      expect(source, contains('buildHealthImportSeams('));
+      expect(
+        source,
+        isNot(contains('buildHealthImportRunner')),
+        reason: 'the retired per-seam builder constructed its own service '
+            'instance — the importNow/importInBackground overlap #1212 '
+            'closes',
+      );
+      expect(
+        source,
+        isNot(contains('buildHealthBackgroundImportCoordinator')),
+        reason: 'the retired per-seam builder constructed its own service '
+            'instance — the importNow/importInBackground overlap #1212 '
+            'closes',
+      );
+    });
+
+    test('_runPass serializes passes through the shared tail', () {
+      final source = _stripComments(
+        _read('lib/data/health/health_import_service.dart'),
+      );
+      // The service class, not the `_runPass` declaration block: its
+      // record-typed parameters contain `{...}` braces that would truncate
+      // the brace match at the parameter list.
+      final service = _block(
+        source,
+        RegExp(r'class LocalHealthImportService'),
+      );
+
+      // The queue shape: each pass chains onto the previous pass's tail
+      // and releases it only when its own steps have fully settled.
+      expect(service, contains('Future<void> _passTail'));
+      expect(service, contains('final previous = _passTail;'));
+      expect(service, contains('_runPassSteps(bound, onProgress)'));
+      expect(service, contains('.whenComplete(released.complete)'));
+
+      // Both entry points funnel through the serialized _runPass.
+      expect('return _runPass(bound'.allMatches(service), hasLength(2));
+    });
+  });
 }

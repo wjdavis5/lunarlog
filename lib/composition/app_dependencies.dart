@@ -795,9 +795,8 @@ HealthFlowWriteCoordinator? buildHealthFlowWriteCoordinator({
 /// Constructs the concrete import service both seams share (Issues #217
 /// and #458), or null when the feature is gated off — the same
 /// `AppConfig.hasHealthSync` plus wired-store gate. Internal so
-/// [buildHealthImportRunner] (the user-initiated `lib/ui` seam) and
-/// [buildHealthBackgroundImportCoordinator] (the Issue #993 background
-/// seam) hand out different, minimal views of the one instance.
+/// [buildHealthImportSeams] hands out minimal, typed-down views of the
+/// one instance.
 LocalHealthImportService? _buildHealthImportService({
   required SettingsStore settings,
   required ProfilesRepository profiles,
@@ -834,45 +833,38 @@ LocalHealthImportService? _buildHealthImportService({
   );
 }
 
-/// Constructs the user-initiated OS health-store import runner (Issues #217
-/// and #458), or null when the feature is gated off — the same
-/// `AppConfig.hasHealthSync` plus wired-store gate, but the only health
-/// capability wired on Android. Unlike the write coordinator there is
-/// nothing to start: the runner is a stateless-ish service the Settings
-/// screen calls once per explicit import action.
-///
-/// It is handed the read port (`createHealthImportSource`) and the write
-/// port (`createHealthPlatform`) from one platform, so `bindProfile` (the
-/// native guard mirror) and `requestWriteAuthorization` (which now also
-/// requests the read types) are the same calls the write path makes.
-HealthImportRunner? buildHealthImportRunner({
-  required SettingsStore settings,
-  required ProfilesRepository profiles,
-  required DayEntriesRepository dayEntries,
-  required ObservationsRepository observations,
-  required Future<List<ProfileGuardian>> Function(String profileId)
-  guardiansForProfile,
-  required String? Function() signedInUserId,
-  required bool minorBindingAllowed,
-}) => _buildHealthImportService(
-  settings: settings,
-  profiles: profiles,
-  dayEntries: dayEntries,
-  observations: observations,
-  guardiansForProfile: guardiansForProfile,
-  signedInUserId: signedInUserId,
-  minorBindingAllowed: minorBindingAllowed,
-);
-
-/// Constructs the Issue #993 background-import coordinator — the seam the
+/// Both health-import seams over one shared [LocalHealthImportService]
+/// (issue #1212): [runner] is the user-initiated view `lib/ui` drives
+/// (Issues #217 and #458), [coordinator] is the Issue #993 seam the
 /// platform triggers (iOS's HKObserverQuery, Android's WorkManager job)
-/// drive for a prompt-free pass — or null under the same gate as
-/// [buildHealthImportRunner]. Typed down to the two narrow interfaces so
-/// the coordinator can neither prompt nor reach a write port even by
-/// mistake: the runner view is [HealthBackgroundImportRunner]
-/// (`importInBackground` only) and the trigger view is
-/// [HealthBackgroundImportTrigger] (the two trigger methods only).
-HealthBackgroundImportCoordinator? buildHealthBackgroundImportCoordinator({
+/// drive for prompt-free passes. One instance is the point: the service's
+/// own one-pass-at-a-time gate (`_runPass`'s serialization) can only keep
+/// a Settings tap from interleaving with a trigger-driven pass if both
+/// entry points live on the same object.
+typedef HealthImportSeams = ({
+  HealthImportRunner runner,
+  HealthBackgroundImportCoordinator coordinator,
+});
+
+/// Constructs both health-import seams over ONE shared service (issue
+/// #1212), or null when the feature is gated off — the same
+/// `AppConfig.hasHealthSync` plus wired-store gate, but the only health
+/// capability wired on Android.
+///
+/// The service is handed the read port (`createHealthImportSource`) and
+/// the write port (`createHealthPlatform`) from one platform, so
+/// `bindProfile` (the native guard mirror) and `requestWriteAuthorization`
+/// (which now also requests the read types) are the same calls the write
+/// path makes. Each seam stays typed down to its narrow interface: the
+/// coordinator can neither prompt nor reach a write port even by mistake
+/// (its runner view is [HealthBackgroundImportRunner], `importInBackground`
+/// only) and `lib/ui` sees only [HealthImportRunner].
+///
+/// There is deliberately no per-seam constructor any more: before #1212
+/// the two seams each built their own `LocalHealthImportService`, which is
+/// exactly why a background pass could run alongside a Settings tap —
+/// two instances, two independent gates. One builder, one instance.
+HealthImportSeams? buildHealthImportSeams({
   required SettingsStore settings,
   required ProfilesRepository profiles,
   required DayEntriesRepository dayEntries,
@@ -892,17 +884,21 @@ HealthBackgroundImportCoordinator? buildHealthBackgroundImportCoordinator({
     minorBindingAllowed: minorBindingAllowed,
   );
   if (service == null) return null;
-  return HealthBackgroundImportCoordinator(
-    trigger: MethodChannelHealthBackgroundTrigger(),
+  return (
     runner: service,
+    coordinator: HealthBackgroundImportCoordinator(
+      trigger: MethodChannelHealthBackgroundTrigger(),
+      runner: service,
+    ),
   );
 }
 
 /// Constructs the device-local computed-cycle-deviation insight service
 /// (Issue #799, deferred from #217), or null when health sync is gated off —
-/// the same gate and wired platforms as [buildHealthImportRunner]. It shares
-/// that runner's read port, so the "Apple Health noticed…" snapshot is read
-/// over exactly the same guarded channel; it never gains a write surface.
+/// the same gate and wired platforms as [buildHealthImportSeams]'s import
+/// service. It shares that service's read port, so the "Apple Health
+/// noticed…" snapshot is read over exactly the same guarded channel; it
+/// never gains a write surface.
 HealthDeviationInsights? buildHealthDeviationInsights({
   required SettingsStore settings,
   required ProfilesRepository profiles,
