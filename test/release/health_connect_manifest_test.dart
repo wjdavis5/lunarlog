@@ -15,6 +15,7 @@ import 'repo_text_helpers.dart';
 
 const _manifestPath = 'android/app/src/main/AndroidManifest.xml';
 const _gradlePath = 'android/app/build.gradle.kts';
+const _declarationPath = 'docs/ops/play-health-declaration.md';
 const _rationaleActivityPath =
     'android/app/src/main/kotlin/com/wjdavis5/lunarlog/PermissionsRationaleActivity.kt';
 
@@ -83,6 +84,73 @@ void main() {
           isNot(contains('android:name="android.permission.health.$outOfScope"')),
           reason: outOfScope,
         );
+      }
+    });
+
+    // Issue #1237: #1202 added the READ_HEALTH_DATA_IN_BACKGROUND row while
+    // the two read rows two lines above it still carried their pre-#993
+    // "user-initiated only" / "no automatic, background, or continuous
+    // read" denials — and the form's paste instruction submits each
+    // justification verbatim, so the mandated re-file would have declared
+    // both the truth and its contradiction to Google from the same table.
+    // Same bug shape store_pages_test.dart pins for the support page: a
+    // retired denial may not survive the feature it denies.
+    test(
+        'the two read rows state the post-#993/#1215 truth -- no pre-#993 '
+        'denial survives next to the background-read row (#1237)', () {
+      final declaration = readRepoFile(_declarationPath);
+      // READ_MENSTRUATION's justification: the first import is the
+      // person's to start, then the same pass keeps the history current
+      // in the background (issue #993) under the #1215 first-import gate.
+      expect(declaration, contains('The first import is user-initiated'));
+      expect(declaration, contains('periodic background schedule'));
+      expect(declaration, contains('issues #993 and #1215'));
+      // The retired denials, verbatim, pinned absent in both rows.
+      for (final retiredDenial in [
+        // The pre-#993 READ_MENSTRUATION justification's opening claim.
+        'User-initiated only (Settings → Health app sync → '
+            'Import from Health Connect), reading',
+        // The pre-#993 READ_HEALTH_DATA_HISTORY justification.
+        'unlocks no automatic, background, or continuous read',
+        'the import still runs only when the user starts it',
+      ]) {
+        expect(declaration, isNot(contains(retiredDenial)),
+            reason: 'a retired denial may not survive the feature it denies');
+      }
+      // The skeleton's app-description bullet carries the same gate: the
+      // background pass follows the completed first import, not the bind
+      // alone (the same stricter-direction correction PRIVACY.md's ledger
+      // entry for #1215 made).
+      expect(
+        declaration,
+        contains('bound a profile, and run that first import'),
+      );
+      expect(
+        declaration,
+        isNot(contains('opted in and bound a profile')),
+        reason: 'the pre-#1215 app-description precondition, verbatim',
+      );
+    });
+
+    test(
+        'every android.permission.health.* the manifest declares has a row '
+        'in the Play Health apps declaration table', () {
+      final declaration = readRepoFile(_declarationPath);
+      // The declaration doc's own rule ("extend the table below, never
+      // widen the manifest silently") as a drift guard: a permission added
+      // to the manifest without its justification row fails here, before
+      // the re-file checklist can be walked with a row missing. Matches on
+      // android:name attributes only, so the manifest's deliberate
+      // comments about deferred permissions cannot satisfy it.
+      final declared = RegExp(
+        'android:name="(android\\.permission\\.health\\.[A-Z_]+)"',
+      ).allMatches(manifest).map((m) => m.group(1)!).toSet();
+      expect(declared, isNotEmpty, reason: 'the manifest declares health '
+          'permissions; an empty set means this regex stopped matching');
+      for (final permission in declared) {
+        expect(declaration, contains('| `$permission` |'),
+            reason: '$permission is declared in the manifest but has no '
+                'row in the Health apps declaration table');
       }
     });
 
