@@ -11,6 +11,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show SynchronousFuture;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/birth_control.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
@@ -90,11 +91,26 @@ Future<void> pumpCard(
   CyclePredictionService? service,
   Widget? trailing,
   Profile? profile,
+  double textScale = 1.0,
+  Size surface = const Size(800, 600),
 }) async {
+  // Optional text-scale and surface overrides (issue #1246's regression
+  // pumps the card at iOS accessibility-medium on a 402-pt phone surface)
+  // through the MediaQuery override the #1233 harness established — the
+  // defaults reproduce the binding's own 800x600 at 1.0x.
+  tester.view.physicalSize = surface;
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(
     MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context)
+            .copyWith(textScaler: TextScaler.linear(textScale)),
+        child: child!,
+      ),
       home: Scaffold(
         body: ListView(
           children: [
@@ -478,5 +494,54 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Rename'), findsOneWidget);
     });
+
+    testWidgets(
+      'issue #1246: at iOS accessibility-medium (1.62x, under the 1.9 '
+      'scale threshold) on a 402-pt surface the row stacks and the status '
+      'renders untruncated',
+      (tester) async {
+        final entries = _StubDayEntries(_episodes('p-card-1', kSettledStarts));
+        await pumpCard(
+          tester,
+          entries: entries,
+          service: _service(entries),
+          textScale: 1.62,
+          surface: const Size(402, 1200),
+          trailing: const TextButton(
+            onPressed: null,
+            child: Text('Log today'),
+          ),
+        );
+
+        // The width leg of the decision stacks the row: a 402-pt surface
+        // is under kProfileCardSideBySideWidthPerScale x 1.62.
+        expect(tester.takeException(), isNull);
+        expect(
+          find.byKey(
+              const ValueKey('profile-card-stacked-actions-p-card-1')),
+          findsOneWidget,
+          reason: 'AX-medium (~1.62x) stacks on a phone-width surface now — '
+              'this is the row #1246 reported as "Cycle da…"',
+        );
+
+        // The status renders in full: its laid-out width equals the
+        // string's own untruncated width at 1.62x, laid out here with no
+        // width constraint. Under the old rule the side-by-side row
+        // ellipsized it to the space left beside the trailing controls,
+        // so its width clamped to that (smaller) constraint instead.
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.text('Cycle day 28'),
+        );
+        final untruncated = TextPainter(
+          text: TextSpan(text: 'Cycle day 28', style: paragraph.text.style),
+          textDirection: TextDirection.ltr,
+          // The paragraph's own style is stored unscaled (RichText applies
+          // the scaler at layout), so the comparison painter needs it too.
+          textScaler: paragraph.textScaler,
+        )..layout();
+        addTearDown(untruncated.dispose);
+        expect(paragraph.size.width, untruncated.width);
+      },
+    );
   });
 }

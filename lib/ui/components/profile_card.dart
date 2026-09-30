@@ -48,29 +48,59 @@ import 'package:lunarlog/ui/theme/lunarlog_colors.dart' show contrastRatio;
 import 'package:lunarlog/ui/theme/tokens.dart';
 
 /// The overall text-scale multiplier at or above which [ProfileCard]
-/// stops sharing the title's line with its trailing control and stacks
-/// the control beneath the title instead (issue #1233).
+/// always stops sharing the title's line with its trailing control and
+/// stacks the control beneath the title instead, whatever the surface
+/// width (issue #1233).
 ///
 /// iOS's accessibility text sizes run 1.62x-3.12x, and already at its
 /// second step (1.94x) a phone-width row's trailing button leaves the
 /// title less room than one word needs — mid-word breaks follow. Android's
 /// standard sizes stop at 2.0x and its accessibility sizes add 2.5x and
-/// up. 1.9 therefore sits just under iOS's second accessibility step, so
-/// every accessibility size stacks while the standard "large" settings
-/// (1.3x-1.8x) keep today's side-by-side row. The overview's today card
-/// stacks its estimate against the confidence chip above 1.2x (#836) —
-/// that pair runs out of room far earlier than a list row with a button,
-/// hence the different threshold.
+/// up. 1.9 sits just under iOS's second accessibility step, so the scale
+/// leg of [profileCardStacksTrailingAt] stacks every accessibility size
+/// from the second step up regardless of width — the guarantee #1233
+/// shipped. The overview's today card stacks its estimate against the
+/// confidence chip above 1.2x (#836) — that pair runs out of room far
+/// earlier than a list row with a button, hence the different threshold.
 @visibleForTesting
 const double kProfileCardStackedTextScale = 1.9;
 
-/// Whether [ProfileCard] lays its trailing control out beneath the title
-/// at [textScaler] instead of beside it (issue #1233). Pure, so the
-/// threshold is pinned directly the way `dayCellMetricsFor`'s metrics
-/// are.
+/// The row width a side-by-side [ProfileCard] needs per unit of text
+/// scale (issue #1246): below this budget the space left beside the
+/// trailing controls can no longer hold the row's status line, so the
+/// row stacks instead of ellipsizing the status mid-word ("Cycle da…").
+///
+/// Deciding by available width, not scale alone, is #1246's ask: iOS's
+/// FIRST accessibility size (accessibility-medium, ~1.62x) sits under
+/// [kProfileCardStackedTextScale], so on a 402-pt phone its side-by-side
+/// row truncated the cycle day. 256 pt per unit of scale stacks that size
+/// on the 402-pt surface it was reported on (402 < 256 × 1.62) while the
+/// standard sizes through 1.5x keep the side-by-side row there
+/// (256 × 1.5 ≤ 402) — and a wider surface, where those same scales
+/// genuinely do fit, stacks proportionally later.
 @visibleForTesting
-bool profileCardStacksTrailingAt(TextScaler textScaler) =>
-    textScaler.scale(1) >= kProfileCardStackedTextScale;
+const double kProfileCardSideBySideWidthPerScale = 256.0;
+
+/// Whether [ProfileCard] lays its trailing control out beneath the title
+/// instead of beside it (issues #1233, #1246). Two legs:
+///
+/// - the #1233 scale leg: at [kProfileCardStackedTextScale] or above the
+///   row always stacks, whatever the width; and
+/// - the #1246 width leg: below that, the row stacks whenever the
+///   available [maxWidth] falls under
+///   [kProfileCardSideBySideWidthPerScale] per unit of text scale —
+///   first hit by iOS accessibility-medium (~1.62x) on a phone-width
+///   surface.
+///
+/// Pure, so both legs are pinned directly the way `dayCellMetricsFor`'s
+/// metrics are.
+@visibleForTesting
+bool profileCardStacksTrailingAt({
+  required double maxWidth,
+  required TextScaler textScaler,
+}) =>
+    textScaler.scale(1) >= kProfileCardStackedTextScale ||
+    maxWidth < kProfileCardSideBySideWidthPerScale * textScaler.scale(1);
 
 /// The avatar's hue for [profileId], in `[0, 360)` — deterministic and
 /// stable across runs, devices, and the web VM (djb2 kept under 30 bits
@@ -330,14 +360,19 @@ class _ProfileCycleStatusTextState extends State<ProfileCycleStatusText> {
 /// tile), keys included, so #126's tests and semantics carry over
 /// unchanged.
 ///
-/// Issue #1233: at accessibility text sizes ([TextScaler] at or above
-/// [kProfileCardStackedTextScale]) the trailing control no longer shares
-/// the title's line — `ListTile` gives `trailing` its intrinsic width, so
-/// a scaled text button there starves the title into a glyph-wide column
-/// (the household row's "Log today" rendered names one letter per line).
-/// The card instead stacks: the tile keeps its full-width title and
-/// subtitle column, and the trailing controls render beneath it, aligned
-/// to the row's content inset, as a reflowable wrap.
+/// Issue #1233: the trailing control no longer always shares the title's
+/// line — `ListTile` gives `trailing` its intrinsic width, so a scaled
+/// text button there starves the title into a glyph-wide column (the
+/// household row's "Log today" rendered names one letter per line). The
+/// card instead stacks: the tile keeps its full-width title and subtitle
+/// column, and the trailing controls render beneath it, aligned to the
+/// row's content inset, as a reflowable wrap. Issue #1246 made the
+/// stack-or-side-by-side decision available-width aware
+/// ([profileCardStacksTrailingAt] — a [LayoutBuilder] decides): the
+/// scale threshold alone let iOS's first accessibility size
+/// (accessibility-medium, ~1.62x) keep the side-by-side row on a
+/// phone-width surface, where it ellipsized the cycle day to "Cycle
+/// da…".
 class ProfileCard extends StatelessWidget {
   const ProfileCard({
     super.key,
@@ -386,12 +421,12 @@ class ProfileCard extends StatelessWidget {
 
   /// The caller's own trailing control, rendered after the indicator and
   /// badge (the picker's row menu) — the overflow menu this issue
-  /// preserves. At accessibility text sizes (issue #1233) it renders
-  /// beneath the title instead of beside it; see [ProfileCard]'s class
-  /// doc. A trailing that can be wide at large text scales should be a
-  /// [Wrap] (as the picker's is) so it reflows to the stacked width —
-  /// [Wrap] sizes exactly like a `mainAxisSize: min` row when everything
-  /// fits on one line.
+  /// preserves. When the row stacks (issues #1233, #1246 — see
+  /// [profileCardStacksTrailingAt]) it renders beneath the title instead
+  /// of beside it; see [ProfileCard]'s class doc. A trailing that can be
+  /// wide at large text scales should be a [Wrap] (as the picker's is) so
+  /// it reflows to the stacked width — [Wrap] sizes exactly like a
+  /// `mainAxisSize: min` row when everything fits on one line.
   final Widget? trailing;
 
   @override
@@ -399,37 +434,46 @@ class ProfileCard extends StatelessWidget {
     final theme = Theme.of(context);
     final service = predictionService;
     final subtitleText = subtitle;
-    final stacked =
-        profileCardStacksTrailingAt(MediaQuery.textScalerOf(context));
-    final trailingRow = _trailingRow(context, stacked: stacked);
-    final row = ListTile(
-      leading: ProfileAvatar(
-        profileId: profile.id,
-        displayName: profile.displayName,
-      ),
-      title: Text(profile.displayName),
-      subtitle: _subtitle(theme, service, subtitleText, subtitleExtra),
-      isThreeLine: service != null && subtitleText != null,
-      onTap: onTap,
-      trailing: stacked ? null : trailingRow,
-    );
-    if (!stacked || trailingRow == null) return row;
-    // Issue #1233: at accessibility text sizes the trailing controls move
-    // beneath the tile so the name and the signal lines get the row's
-    // full width (the same stacked-layout answer #836 gave the today
-    // card). Inset to ListTile's own content padding so the actions align
-    // with the row edges; the key lets tests pin both layouts from one
-    // harness.
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        row,
-        Padding(
-          key: ValueKey('profile-card-stacked-actions-${profile.id}'),
-          padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
-          child: trailingRow,
-        ),
-      ],
+    // Issue #1246: the stack decision needs the row's real width, so it
+    // runs inside a LayoutBuilder — a scale-only threshold cannot see the
+    // surface a phone-width row runs out of room on.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stacked = profileCardStacksTrailingAt(
+          maxWidth: constraints.maxWidth,
+          textScaler: MediaQuery.textScalerOf(context),
+        );
+        final trailingRow = _trailingRow(context, stacked: stacked);
+        final row = ListTile(
+          leading: ProfileAvatar(
+            profileId: profile.id,
+            displayName: profile.displayName,
+          ),
+          title: Text(profile.displayName),
+          subtitle: _subtitle(theme, service, subtitleText, subtitleExtra),
+          isThreeLine: service != null && subtitleText != null,
+          onTap: onTap,
+          trailing: stacked ? null : trailingRow,
+        );
+        if (!stacked || trailingRow == null) return row;
+        // Issue #1233: at accessibility text sizes the trailing controls
+        // move beneath the tile so the name and the signal lines get the
+        // row's full width (the same stacked-layout answer #836 gave the
+        // today card). Inset to ListTile's own content padding so the
+        // actions align with the row edges; the key lets tests pin both
+        // layouts from one harness.
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            row,
+            Padding(
+              key: ValueKey('profile-card-stacked-actions-${profile.id}'),
+              padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
+              child: trailingRow,
+            ),
+          ],
+        );
+      },
     );
   }
 
