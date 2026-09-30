@@ -266,6 +266,51 @@ void main() {
     expect(_fieldValue(tester), '—');
   });
 
+  testWidgets('a stored pre-window anchor opens the picker on the window '
+      'start instead of tripping its initialDate assertion (issue #1238)',
+      (tester) async {
+    ProfileEditResult? popped;
+    await _openDialog(
+      tester,
+      // 2019-01-01 is years before the picker's five-year window; import
+      // accepts it because only the ISO shape is validated.
+      modes: _FakeModesRepository(_row(
+        birthControlMethod: 'pill',
+        birthControlStartedOn: '2019-01-01',
+      )),
+      onPopped: (result) => popped = result,
+    );
+    await tester.pumpAndSettle();
+
+    final field = find.byKey(const ValueKey('edit-birth-control-start-date-field'));
+    expect(find.textContaining('January 1, 2019'), findsOneWidget);
+    await tester.ensureVisible(field);
+    await tester.pumpAndSettle();
+    // Without the clamp this tap throws `initialDate 2019-01-01 … must be
+    // on or after firstDate …` (date_picker.dart's assert) and the picker
+    // never opens.
+    await tester.tap(field);
+    await tester.pumpAndSettle();
+
+    final today = LocalDate.today();
+    final dialog = tester.widget<DatePickerDialog>(
+      find.byType(DatePickerDialog),
+    );
+    expect(dialog.initialDate, dialog.firstDate,
+        reason: 'a pre-window stored anchor clamps to the window start '
+            'rather than landing the picker on a month outside it');
+    expect(dialog.initialDate, today.addMonths(-60).toDateTime());
+
+    // Dismissing the picker leaves the stored anchor shown and stored —
+    // the clamp only steers the opening month, never rewrites data.
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+    expect(_fieldValue(tester), 'January 1, 2019');
+
+    await _save(tester);
+    expect(popped!.birthControlStartedOn, '2019-01-01');
+  });
+
   testWidgets('picking a date carries it into the result', (tester) async {
     ProfileEditResult? popped;
     await _openDialog(
@@ -292,5 +337,61 @@ void main() {
     final today = LocalDate.today();
     expect(popped!.birthControlStartedOn,
         LocalDate(today.year, today.month, 1).iso);
+  });
+
+  group('pickerInitialDateInWindow (the shared clamp seam behind all three '
+      'profile-mode pickers)', () {
+    final firstDate = DateTime(2021, 9, 30);
+    final lastDate = DateTime(2026, 9, 30);
+    final fallback = DateTime(2026, 9, 30);
+
+    test('a null parsed anchor falls back to the picker default', () {
+      expect(
+        pickerInitialDateInWindow(
+          null,
+          firstDate: firstDate,
+          lastDate: lastDate,
+          fallback: fallback,
+        ),
+        fallback,
+      );
+    });
+
+    test('a pre-window anchor clamps to firstDate', () {
+      expect(
+        pickerInitialDateInWindow(
+          DateTime(2019, 1, 1),
+          firstDate: firstDate,
+          lastDate: lastDate,
+          fallback: fallback,
+        ),
+        firstDate,
+      );
+    });
+
+    test('a post-window anchor clamps to lastDate', () {
+      expect(
+        pickerInitialDateInWindow(
+          DateTime(2027, 6, 1),
+          firstDate: firstDate,
+          lastDate: lastDate,
+          fallback: fallback,
+        ),
+        lastDate,
+      );
+    });
+
+    test('an in-window anchor passes through verbatim', () {
+      final anchor = DateTime(2024, 5, 17);
+      expect(
+        pickerInitialDateInWindow(
+          anchor,
+          firstDate: firstDate,
+          lastDate: lastDate,
+          fallback: fallback,
+        ),
+        same(anchor),
+      );
+    });
   });
 }

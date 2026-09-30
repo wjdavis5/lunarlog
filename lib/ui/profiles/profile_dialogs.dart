@@ -69,6 +69,28 @@ String? acceptedPostpartumBirthDate(
         ? date.iso
         : null;
 
+/// Issue #1238: the `initialDate` a profile-mode date picker opens on —
+/// the parsed stored anchor clamped into the picker's own
+/// [firstDate, lastDate] window. Stored anchors are validated ISO-shape
+/// only on import (`account_import.dart`'s `_parseLocalDate`, upserted
+/// verbatim by `account_importer.dart`), so an anchor outside the window
+/// is reachable in real data; handing it straight to `showDatePicker`
+/// trips the picker's `initialDate` assertion on debug builds and lands a
+/// release picker on a pre-window month. Null (blank or unparseable)
+/// falls back to [fallback]; an in-window anchor passes through unchanged.
+/// This is the seam the picker-clamp unit tests drive directly.
+DateTime pickerInitialDateInWindow(
+  DateTime? parsedStoredAnchor, {
+  required DateTime firstDate,
+  required DateTime lastDate,
+  required DateTime fallback,
+}) {
+  if (parsedStoredAnchor == null) return fallback;
+  if (parsedStoredAnchor.isBefore(firstDate)) return firstDate;
+  if (parsedStoredAnchor.isAfter(lastDate)) return lastDate;
+  return parsedStoredAnchor;
+}
+
 /// Shared birth-year validation: optional (an empty value always validates,
 /// R2), otherwise an integer within [kMinBirthYear]-[kMaxBirthYear]
 /// inclusive, matching the server's CHECK constraint exactly. Issue #1004
@@ -401,18 +423,27 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
     return null;
   }
 
-  /// Manual override: the date picker bound to the derived default.
+  /// Manual override: the date picker bound to the derived default. The
+  /// stored due date (a pre-filled already-pregnant profile's, or an
+  /// imported one) is clamped into the picker's own window before it
+  /// becomes `initialDate` — issue #1238.
   Future<void> _pickDueDate() async {
     final today = LocalDate.today();
+    final firstDate = today.addMonths(-12).toDateTime();
+    final lastDate = today.addMonths(24).toDateTime();
     final initial = _estimatedDueDate == null
         ? null
         : DateTime.tryParse(_estimatedDueDate!);
     final picked = await showDatePicker(
       context: context,
-      initialDate:
-          initial ?? today.addDays(280 - 40).toDateTime(),
-      firstDate: today.addMonths(-12).toDateTime(),
-      lastDate: today.addMonths(24).toDateTime(),
+      initialDate: pickerInitialDateInWindow(
+        initial,
+        firstDate: firstDate,
+        lastDate: lastDate,
+        fallback: today.addDays(280 - 40).toDateTime(),
+      ),
+      firstDate: firstDate,
+      lastDate: lastDate,
       helpText: AppLocalizations.of(context).pregnancyDueDateLabel,
     );
     if (picked == null || !mounted) return;
@@ -647,17 +678,26 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
   /// in the picker itself; the picked value is then passed through
   /// [acceptedPostpartumBirthDate] (the shared [DayEntryPolicy] bounds,
   /// #848) so a date before the profile's known birth year is refused too —
-  /// an invalid pick leaves the shown value unchanged.
+  /// an invalid pick leaves the shown value unchanged. The stored birth
+  /// date is clamped into the picker's own window before it becomes
+  /// `initialDate` — issue #1238.
   Future<void> _pickPostpartumBirthDate() async {
     final today = LocalDate.today();
+    final firstDate = today.addMonths(-24).toDateTime();
+    final lastDate = today.toDateTime();
     final initial = _postpartumBirthDate == null
         ? null
         : DateTime.tryParse(_postpartumBirthDate!);
     final picked = await showDatePicker(
       context: context,
-      initialDate: initial ?? today.toDateTime(),
-      firstDate: today.addMonths(-24).toDateTime(),
-      lastDate: today.toDateTime(),
+      initialDate: pickerInitialDateInWindow(
+        initial,
+        firstDate: firstDate,
+        lastDate: lastDate,
+        fallback: lastDate,
+      ),
+      firstDate: firstDate,
+      lastDate: lastDate,
       helpText: AppLocalizations.of(context).postpartumBirthDateLabel,
     );
     if (picked == null || !mounted) return;
@@ -705,17 +745,27 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
   /// field anchors (the hormonal IUD's 5-year label life; the implant's
   /// 3), matching how far back the reminders/prediction anchor can
   /// meaningfully reach. No extra DayEntryPolicy re-check: unlike the
-  /// Postpartum birth date, a method start has no cross-field rule.
+  /// Postpartum birth date, a method start has no cross-field rule. The
+  /// stored anchor (import validates ISO shape only, so it can predate the
+  /// five-year window) is clamped into the picker's own window before it
+  /// becomes `initialDate` — issue #1238.
   Future<void> _pickBirthControlStartDate() async {
     final today = LocalDate.today();
+    final firstDate = today.addMonths(-60).toDateTime();
+    final lastDate = today.toDateTime();
     final initial = _birthControlStartedOn == null
         ? null
         : DateTime.tryParse(_birthControlStartedOn!);
     final picked = await showDatePicker(
       context: context,
-      initialDate: initial ?? today.toDateTime(),
-      firstDate: today.addMonths(-60).toDateTime(),
-      lastDate: today.toDateTime(),
+      initialDate: pickerInitialDateInWindow(
+        initial,
+        firstDate: firstDate,
+        lastDate: lastDate,
+        fallback: lastDate,
+      ),
+      firstDate: firstDate,
+      lastDate: lastDate,
       helpText: AppLocalizations.of(context).birthControlStartDateLabel,
     );
     if (picked == null || !mounted) return;

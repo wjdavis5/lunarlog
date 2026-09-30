@@ -222,4 +222,51 @@ void main() {
     expect(find.textContaining('June 21, 2027'), findsNothing);
     expect(find.byKey(const ValueKey('edit-due-date-value')), findsOneWidget);
   });
+
+  testWidgets('a stored pre-window due date opens the picker on the window '
+      'start instead of tripping its initialDate assertion (issue #1238)',
+      (tester) async {
+    await _openDialog(
+      tester,
+      // 2019-01-01 is years before the picker's [-12, +24] month window;
+      // import accepts it because only the ISO shape is validated.
+      modes: _FakeModesRepository((
+        mode: LifecycleMode.pregnancy,
+        modeStartedOn: '2026-09-10',
+        estimatedDueDate: '2019-01-01',
+        postpartumBirthDate: null,
+        birthControlMethod: null,
+        birthControlStartedOn: null,
+        birthControlStoppedOn: null,
+      )),
+      existing: _profile(),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('edit-due-date-field')), findsOneWidget);
+    expect(find.textContaining('January 1, 2019'), findsOneWidget);
+    // Without the clamp this tap throws `initialDate 2019-01-01 … must be
+    // on or after firstDate …` (date_picker.dart's assert) and the picker
+    // never opens.
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('edit-due-date-field')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('edit-due-date-field')));
+    await tester.pumpAndSettle();
+
+    final today = LocalDate.today();
+    final dialog = tester.widget<DatePickerDialog>(
+      find.byType(DatePickerDialog),
+    );
+    expect(dialog.initialDate, dialog.firstDate,
+        reason: 'a pre-window stored due date clamps to the window start '
+            'rather than landing the picker on a month outside it');
+    expect(dialog.initialDate, today.addMonths(-12).toDateTime());
+
+    // Dismissing the picker leaves the stored due date shown — the clamp
+    // only steers the opening month, never rewrites data.
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('January 1, 2019'), findsOneWidget);
+  });
 }
