@@ -32,6 +32,7 @@ Future<void> showCustomTagManagerSheet(
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       showDragHandle: true,
       routeSettings: const RouteSettings(name: 'CustomTagManagerSheet'),
       builder: (_) => CustomTagManagerSheet(

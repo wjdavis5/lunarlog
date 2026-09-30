@@ -150,6 +150,7 @@ class _TodayLogFabState extends State<TodayLogFab>
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       showDragHandle: true,
       routeSettings: const RouteSettings(name: kRouteDaySheetScreen),
       builder: (_) => DaySheet(

@@ -689,6 +689,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       routeSettings: const RouteSettings(name: kRouteInviteGuardianSheet),
       isDismissible: false,
       enableDrag: false,

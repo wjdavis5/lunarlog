@@ -1359,6 +1359,7 @@ class _MonthCalendarState extends State<MonthCalendar>
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       showDragHandle: true,
       routeSettings: const RouteSettings(name: kRouteDaySheetScreen),
       builder: (_) => DaySheet(
@@ -1802,6 +1803,7 @@ class _MonthCalendarState extends State<MonthCalendar>
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
+      useSafeArea: true,
       routeSettings: const RouteSettings(name: kRouteCalendarLegendSheet),
       builder: (_) => _calendarInfoSheet(theme, colors),
     );
@@ -1855,6 +1857,7 @@ class _MonthCalendarState extends State<MonthCalendar>
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
+      useSafeArea: true,
       routeSettings: const RouteSettings(name: kRouteCalendarLayersSheet),
       builder: (_) => _LayersChooserSheet(
         active: _computedActiveLayers,
