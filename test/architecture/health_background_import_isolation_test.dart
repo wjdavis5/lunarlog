@@ -277,8 +277,11 @@ void main() {
       expect(service, contains('_runPassSteps(bound, onProgress)'));
       expect(service, contains('.whenComplete(released.complete)'));
 
-      // Both entry points funnel through the serialized _runPass.
-      expect('return _runPass(bound'.allMatches(service), hasLength(2));
+      // Both entry points funnel through the serialized _runPass —
+      // importNow via `await` (since #1221 it inspects the summary to
+      // stamp the first-import consent before returning) and
+      // importInBackground via `return`.
+      expect('_runPass(bound'.allMatches(service), hasLength(2));
     });
   });
 }
