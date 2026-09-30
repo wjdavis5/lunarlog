@@ -134,7 +134,10 @@ void main() {
           // unconfigured default threshold.
           await _entry(db, alice.id, today.addDays(-12));
           // Barb: logged today, and that write landed after the feed's
-          // last-seen baseline — one unread change.
+          // last-seen baseline — one unread change. Her profile is also
+          // the shared one (issue #1236): the changes line takes the same
+          // isShared gate the feed dot reads (#1216), so two accepted
+          // guardians are what earns the line at all.
           await _entry(db, barb.id, today, updatedAt: DateTime.now());
           await db.storage.setSetting(
             key: activityLastSeenKey(barb.id),
@@ -142,6 +145,10 @@ void main() {
                 .subtract(const Duration(days: 5))
                 .toIso8601String(),
           );
+          await db.storage.applyRemoteRows([
+            guardianRow(barb.id, 'user-me', 'primary_guardian'),
+            guardianRow(barb.id, 'user-dad', 'co_parent'),
+          ]);
           // Clare: fresh profile — neither silent nor unread, so no signal
           // lines at all.
         },

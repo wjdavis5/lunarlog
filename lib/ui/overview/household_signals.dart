@@ -30,7 +30,10 @@
 ///   feed's unread count (issue #124): rows newer than the device-local
 ///   last-seen stamp, counted. A profile whose feed was never opened
 ///   carries no baseline, so it never reads "new" — the feed's own
-///   `isActivityNew` discipline, reused unchanged.
+///   `isActivityNew` discipline, reused unchanged — and an unshared
+///   profile never reads "new" either (issue #1236): the line takes the
+///   snapshot's `isShared` gate, the same one `hasNewItems` puts on the
+///   history dot (issue #1216), so the row and the dot agree everywhere.
 ///
 /// The pure functions take exactly what the widget layer already holds
 /// (a prediction, a feed snapshot, entry dates, a threshold) and return
@@ -215,16 +218,27 @@ String? householdSilenceLine({
 }
 
 /// The changes line for the row — [items] is the activity feed snapshot's
-/// newest-first list and [lastSeen] its device-local baseline — or null
-/// when it must not show. Null [lastSeen] (the feed was never opened on
-/// this device) means no baseline exists to be "since", so it is never
-/// new: the exact `isActivityNew` discipline, reused unchanged.
+/// newest-first list, [lastSeen] its device-local baseline, and [isShared]
+/// the snapshot's two-or-more-accepted-guardians gate — or null when it
+/// must not show. Null [lastSeen] (the feed was never opened on this
+/// device) means no baseline exists to be "since", so it is never new: the
+/// exact `isActivityNew` discipline, reused unchanged.
+///
+/// [isShared] gates the whole line exactly the way the feed dot's
+/// `ActivityFeedSnapshot.hasNewItems` is gated (issue #1216, extended to
+/// this line by issue #1236): a single-guardian profile's feed never lists
+/// these rows — opening it renders only "Just you for now" — so a count
+/// earned on one would open to nothing, and the visit itself stamps
+/// last-seen and silently clears what the picker promised. Gating the
+/// predicate here (not at the call site) keeps the picker row and the
+/// history dot reading the same gate, so they cannot disagree again.
 String? householdChangesLine({
   required DateTime? lastSeen,
+  required bool isShared,
   required List<ActivityItem> items,
   required AppLocalizations l10n,
 }) {
-  if (lastSeen == null) return null;
+  if (lastSeen == null || !isShared) return null;
   var count = 0;
   for (final item in items) {
     if (isActivityNew(item, lastSeen)) count++;
@@ -369,6 +383,7 @@ class _HouseholdRowSignalsState extends State<HouseholdRowSignals> {
     );
     final changes = householdChangesLine(
       lastSeen: feed?.lastSeen,
+      isShared: feed?.isShared ?? false,
       items: feed?.items ?? const [],
       l10n: l10n,
     );
