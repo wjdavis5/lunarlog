@@ -798,7 +798,24 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
             ),
             const SizedBox(height: LLSpace.space3),
             Flexible(
+              // Issue #1230: the outlined Name field's floating label paints
+              // half of its line box above the field's top border (Flutter's
+              // `outlinedFloatingY` = -labelHeight * 0.75 / 2 in
+              // input_decorator.dart). `RenderSingleChildViewport` clips its
+              // child only when the content overflows the viewport — true
+              // here for tracked-method profiles and at accessibility text
+              // sizes, since #1217 capped the sheet with `useSafeArea` —
+              // which cut the label's top half off at scroll offset 0. The
+              // headroom below tracks the ambient text scaler because the
+              // overhang does too (measured: ~5.5 dp at 1x, ~11 dp at 2x,
+              // ~17 dp at 3.1x, plus the focused border's stroke), and a
+              // fixed 8 dp padding leaves the label clipped at 2x.
+              // `clipBehavior: Clip.none` was rejected: the sheet's rounded
+              // top needs the viewport's clip.
               child: SingleChildScrollView(
+                padding: EdgeInsets.only(
+                  top: 8 * MediaQuery.textScalerOf(context).scale(1),
+                ),
                 child: Form(
                   key: _formKey,
                   child: Column(
