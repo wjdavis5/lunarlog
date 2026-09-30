@@ -5,6 +5,12 @@ import { expect, test } from '@playwright/test';
  * at-rest surface the browser offers is empty. Later slices extend this
  * test as the client grows; it fails the day anything — the app, a
  * dependency, an injected script — persists so much as a cookie.
+ *
+ * Issue #1252 extends what this page loads: the data layer (synced-data
+ * hooks, ULID generator, the sync_signals wiring) is now part of the
+ * bundle TodayPage mounts, so this session exercises it — the hooks wire
+ * up, find no configured client, and idle — and the emptiness assertions
+ * prove the module left nothing behind either.
  */
 test('a session leaves every browser store empty', async ({ page }) => {
   await page.goto('/');

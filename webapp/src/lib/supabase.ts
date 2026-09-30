@@ -16,36 +16,58 @@ import { hasSupabase, supabasePublishableKey, supabaseUrl } from './config';
 export type AppSupabaseClient = SupabaseClient<Database>;
 
 /**
- * An inert storage adapter, wired as belt-and-braces under the `accessToken`
- * option (issue #1250): that option is what actually keeps supabase-js from
- * ever touching session storage — per its own contract, the `auth`
- * namespace is not usable on a client created with it, so no session is
- * ever persisted or read back. If a future change removed the option, this
- * adapter would keep the browser at-rest-empty rather than silently
- * reverting to localStorage.
+ * A real in-memory session store, one fresh adapter per client instance.
+ *
+ * Under the `accessToken` option (issue #1250) this is belt-and-braces:
+ * that option is what actually keeps supabase-js from ever touching
+ * session storage — per its own contract the `auth` namespace is unusable
+ * on a client created with it, so no session is ever persisted or read
+ * back. If a future change removed the option, this adapter keeps the
+ * browser at-rest-empty rather than silently reverting to localStorage.
+ *
+ * For clients created without the option (issue #1252's integration
+ * fakes) it is the session store itself, and it must be a REAL store:
+ * the scaffold's no-op stub dropped the session the instant supabase-js
+ * re-read it, so every request after a sign-in went out as `anon` and the
+ * synced RPCs (granted to `authenticated` only) failed with "permission
+ * denied". Reads return what was written, nothing ever reaches the
+ * browser's at-rest storage, and one adapter PER client means two clients
+ * (a test's multi-user scenario, or two accounts in one process) can
+ * never read each other's session.
  */
-export const inMemorySessionStorage = {
-  getItem: (_key: string): Promise<string | null> => Promise.resolve(null),
-  setItem: (_key: string, _value: string): Promise<void> => Promise.resolve(),
-  removeItem: (_key: string): Promise<void> => Promise.resolve(),
-};
-
+export function createInMemorySessionStorage() {
+  const store = new Map<string, string>();
+  return {
+    getItem: (key: string): Promise<string | null> => Promise.resolve(store.get(key) ?? null),
+    setItem: (key: string, value: string): Promise<void> => {
+      store.set(key, value);
+      return Promise.resolve();
+    },
+    removeItem: (key: string): Promise<void> => {
+      store.delete(key);
+      return Promise.resolve();
+    },
+  };
+}
 /**
- * Creates the typed client whose every request carries the in-memory
- * access token from the web auth client (issue #1250): the browser's only
- * credential, renewed through the same-origin Worker's /auth/session when
- * it nears expiry.
+ * Creates the typed client. The app client (issue #1250) passes
+ * `getAccessToken`: every request then carries the in-memory access token
+ * from the web auth client, renewed through the same-origin Worker's
+ * `/auth/session` when it nears expiry. Callers that omit it (issue
+ * #1252's integration fakes) get a storage-backed client over its own
+ * per-instance in-memory adapter.
  */
 export function createSupabaseClient(
   url: string,
   publishableKey: string,
-  getAccessToken: () => Promise<string | null>,
+  getAccessToken?: () => Promise<string | null>,
 ): AppSupabaseClient {
   return createClient<Database>(url, publishableKey, {
-    accessToken: getAccessToken,
-    auth: { storage: inMemorySessionStorage },
+    ...(getAccessToken === undefined ? {} : { accessToken: getAccessToken }),
+    auth: { storage: createInMemorySessionStorage() },
   });
 }
+
 
 let client: AppSupabaseClient | null = null;
 
