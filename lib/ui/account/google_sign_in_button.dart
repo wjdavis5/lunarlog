@@ -32,6 +32,14 @@ class GoogleSignInButton extends StatelessWidget {
       button: true,
       enabled: enabled,
       label: label,
+      // TalkBack/VoiceOver double-tap dispatches SemanticsAction.tap on this
+      // node, so the activation must live on the semantics node itself
+      // (Issue #1239): the ExcludeSemantics child below deliberately strips
+      // the InkWell's own semantics, which would otherwise leave the node
+      // announced but unactivatable (actionsBitmask == 0) — the Issue #1196
+      // pattern, see cycle_literacy_article_sheet.dart. Null when disabled,
+      // mirroring the InkWell's onTap.
+      onTap: enabled ? onPressed : null,
       child: ExcludeSemantics(
         child: Opacity(
           opacity: enabled ? 1 : 0.38,
