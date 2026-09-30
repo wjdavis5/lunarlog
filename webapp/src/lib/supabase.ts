@@ -68,7 +68,6 @@ export function createSupabaseClient(
   });
 }
 
-
 let client: AppSupabaseClient | null = null;
 
 /**
