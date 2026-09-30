@@ -265,7 +265,9 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
   const saveResult = saveMutation.data ?? null;
   const rejectedFields: Set<SavePlanField> = new Set(saveResult?.rejectedFields ?? []);
 
-  if (client === null) {
+  // Unconfigured build, or a configured one visited without a session:
+  // both show the sign-in prompt (the web sign-in itself is #1250).
+  if (client === null || day.signedOut) {
     return (
       <main className="page">
         <h1 className="display">{t('gateLockScreenAppTitle')}</h1>

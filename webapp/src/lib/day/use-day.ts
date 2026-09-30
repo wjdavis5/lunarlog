@@ -28,8 +28,10 @@ export function useDayView(
   dateIso: string,
 ) {
   // The membership lookup needs the session user's id; the session lives
-  // in client memory, resolved once per client.
-  const [uid, setUid] = useState('');
+  // in client memory, resolved once per client. `null` = unresolved;
+  // `''` = resolved and signed out (a configured build visited without a
+  // session shows the sign-in prompt, not an access error).
+  const [uid, setUid] = useState<string | null>(null);
   useEffect(() => {
     if (client === null) return;
     let active = true;
@@ -60,7 +62,7 @@ export function useDayView(
 
   const view = useMemo(() => {
     const synced = query.data;
-    if (synced === undefined || uid === '' || notFound) return undefined;
+    if (synced === undefined || uid === null || uid === '' || notFound) return undefined;
     try {
       return dayViewFromSyncedData(synced, profileId, dateIso, uid);
     } catch {
@@ -71,7 +73,8 @@ export function useDayView(
   }, [query.data, uid, notFound, profileId, dateIso]);
 
   return {
-    isPending: query.isPending || (query.isSuccess && uid === ''),
+    isPending: query.isPending || uid === null,
+    signedOut: client !== null && uid === '',
     isError: query.isError || notFound,
     error:
       (query.error as Error | null) ??
