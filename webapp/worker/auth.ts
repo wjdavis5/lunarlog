@@ -48,10 +48,7 @@ export interface AuthEnv {
  * query (`/auth/v1/token?grant_type=password`); everything else is a plain
  * fetch init. Injectable so the tests never touch the network.
  */
-export type SupabaseAuthFetch = (
-  path: string,
-  init: RequestInit,
-) => Promise<Response>;
+export type SupabaseAuthFetch = (path: string, init: RequestInit) => Promise<Response>;
 
 /** The `x-lunarlog-csrf` header name; the client sends the value `1`. */
 export const CSRF_HEADER = 'x-lunarlog-csrf';
@@ -93,10 +90,7 @@ function defaultDeps(publishableKey: string): AuthDeps {
       return base64Url(bytes);
     },
     codeChallenge: async (verifier) => {
-      const digest = await crypto.subtle.digest(
-        'SHA-256',
-        new TextEncoder().encode(verifier),
-      );
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
       return base64Url(new Uint8Array(digest));
     },
   };
@@ -121,8 +115,7 @@ function toClientSession(raw: Record<string, unknown>): ClientSession {
   return {
     access_token: String(raw.access_token),
     expires_in,
-    expires_at:
-      typeof raw.expires_at === 'number' ? raw.expires_at : unixNow() + expires_in,
+    expires_at: typeof raw.expires_at === 'number' ? raw.expires_at : unixNow() + expires_in,
     user: raw.user ?? null,
   };
 }
@@ -262,18 +255,12 @@ async function startPkceEmailFlow(
   body.code_challenge = await deps.codeChallenge(verifier);
   body.code_challenge_method = 's256';
   const target = new URL(`${deps.supabaseUrl}${upstreamPath}`);
-  target.searchParams.set(
-    'redirect_to',
-    `${new URL(request.url).origin}/auth/callback`,
-  );
-  const response = await deps.supabaseFetch(
-    `${target.pathname}${target.search}`,
-    {
-      method: 'POST',
-      headers: upstreamHeaders(request, deps.publishableKey),
-      body: JSON.stringify(body),
-    },
-  );
+  target.searchParams.set('redirect_to', `${new URL(request.url).origin}/auth/callback`);
+  const response = await deps.supabaseFetch(`${target.pathname}${target.search}`, {
+    method: 'POST',
+    headers: upstreamHeaders(request, deps.publishableKey),
+    body: JSON.stringify(body),
+  });
   if (!response.ok) return upstreamError(response);
   return jsonResponse(
     { ok: true },
@@ -301,10 +288,7 @@ async function grantSession(
   return sessionResponse(raw, { 'cache-control': 'no-store' });
 }
 
-async function handlePasswordSignIn(
-  request: Request,
-  deps: AuthDeps,
-): Promise<Response> {
+async function handlePasswordSignIn(request: Request, deps: AuthDeps): Promise<Response> {
   const body = await readJsonBody(request);
   if (typeof body.email !== 'string' || typeof body.password !== 'string') {
     return errorResponse(400, 'email_and_password_required');
@@ -315,10 +299,7 @@ async function handlePasswordSignIn(
   });
 }
 
-async function handlePasswordSignUp(
-  request: Request,
-  deps: AuthDeps,
-): Promise<Response> {
+async function handlePasswordSignUp(request: Request, deps: AuthDeps): Promise<Response> {
   const body = await readJsonBody(request);
   if (typeof body.email !== 'string' || typeof body.password !== 'string') {
     return errorResponse(400, 'email_and_password_required');
@@ -330,10 +311,7 @@ async function handlePasswordSignUp(
   const verifier = deps.randomVerifier();
   const challenge = await deps.codeChallenge(verifier);
   const target = new URL(`${deps.supabaseUrl}/auth/v1/signup`);
-  target.searchParams.set(
-    'redirect_to',
-    `${new URL(request.url).origin}/auth/callback`,
-  );
+  target.searchParams.set('redirect_to', `${new URL(request.url).origin}/auth/callback`);
   const response = await deps.supabaseFetch(`${target.pathname}${target.search}`, {
     method: 'POST',
     headers: upstreamHeaders(request, deps.publishableKey),
@@ -395,10 +373,7 @@ async function handleOtpVerify(request: Request, deps: AuthDeps): Promise<Respon
   return sessionResponse(raw, { 'cache-control': 'no-store' });
 }
 
-async function handlePasswordReset(
-  request: Request,
-  deps: AuthDeps,
-): Promise<Response> {
+async function handlePasswordReset(request: Request, deps: AuthDeps): Promise<Response> {
   const body = await readJsonBody(request);
   if (typeof body.email !== 'string') return errorResponse(400, 'email_required');
   return startPkceEmailFlow(request, deps, '/auth/v1/recover', {
@@ -406,10 +381,7 @@ async function handlePasswordReset(
   });
 }
 
-async function handlePasswordUpdate(
-  request: Request,
-  deps: AuthDeps,
-): Promise<Response> {
+async function handlePasswordUpdate(request: Request, deps: AuthDeps): Promise<Response> {
   const body = await readJsonBody(request);
   if (typeof body.password !== 'string') return errorResponse(400, 'password_required');
   const bearer = bearerOf(request);
@@ -423,10 +395,7 @@ async function handlePasswordUpdate(
   });
   if (!response.ok) return upstreamError(response);
   const raw = (await response.json()) as Record<string, unknown>;
-  return jsonResponse(
-    { ok: true, user: raw },
-    { 'cache-control': 'no-store' },
-  );
+  return jsonResponse({ ok: true, user: raw }, { 'cache-control': 'no-store' });
 }
 
 async function handleCallback(request: Request, deps: AuthDeps): Promise<Response> {
@@ -474,10 +443,7 @@ async function handleOAuthStart(request: Request, deps: AuthDeps): Promise<Respo
   const challenge = await deps.codeChallenge(verifier);
   const target = new URL(`${deps.supabaseUrl}/auth/v1/authorize`);
   target.searchParams.set('provider', provider);
-  target.searchParams.set(
-    'redirect_to',
-    `${new URL(request.url).origin}/auth/callback`,
-  );
+  target.searchParams.set('redirect_to', `${new URL(request.url).origin}/auth/callback`);
   target.searchParams.set('code_challenge', challenge);
   target.searchParams.set('code_challenge_method', 's256');
   return new Response(null, {
@@ -502,14 +468,11 @@ async function handleSignOut(request: Request, deps: AuthDeps): Promise<Response
     // sign-out can still reach GoTrue with a valid JWT.
     const refreshToken = readCookie(request, REFRESH_COOKIE);
     if (refreshToken !== null) {
-      const refreshed = await deps.supabaseFetch(
-        '/auth/v1/token?grant_type=refresh_token',
-        {
-          method: 'POST',
-          headers: upstreamHeaders(request, deps.publishableKey),
-          body: JSON.stringify({ refresh_token: refreshToken }),
-        },
-      );
+      const refreshed = await deps.supabaseFetch('/auth/v1/token?grant_type=refresh_token', {
+        method: 'POST',
+        headers: upstreamHeaders(request, deps.publishableKey),
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
       if (refreshed.ok) {
         const raw = (await refreshed.json()) as Record<string, unknown>;
         if (typeof raw.access_token === 'string') bearer = raw.access_token;

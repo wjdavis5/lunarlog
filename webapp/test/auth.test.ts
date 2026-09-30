@@ -91,9 +91,7 @@ describe('WebAuthClient (issue #1250)', () => {
   });
 
   it('throws AuthError with the upstream code for a failed sign-in', async () => {
-    stubFetch(() =>
-      Promise.resolve(jsonResponse({ error: 'invalid_credentials' }, 400)),
-    );
+    stubFetch(() => Promise.resolve(jsonResponse({ error: 'invalid_credentials' }, 400)));
     await expect(client.signInWithPassword('a@b.co', 'nope')).rejects.toMatchObject({
       code: 'invalid_credentials',
       status: 400,

@@ -81,68 +81,77 @@ Deno.test('non-HTML assets get the headers too', async () => {
   assertEquals(res.headers.get('content-security-policy'), CSP);
 });
 
-Deno.test('auth responses carry the security headers AND their Set-Cookie survives', async () => {
-  // Issue #1250: the auth routes are answered before the asset pipeline,
-  // and the headers are set in place — a rewrap would drop the rotating
-  // refresh cookie exactly when it is being set. The Supabase Auth fetch
-  // is stubbed (the third parameter is the test seam).
-  const env: Env = {
-    ASSETS: fakeAssets(),
-    SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
-  };
-  const res = await worker.fetch(
-    new Request('https://staging.test/auth/password/sign-in', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        origin: 'https://staging.test',
-        'x-lunarlog-csrf': '1',
-      },
-      body: JSON.stringify({ email: 'a@example.com', password: 'x' }),
-    }),
-    env,
-    {
-      supabaseUrl: 'https://supabase.test',
-      publishableKey: 'sb_publishable_test',
-      supabaseFetch: () =>
-        Promise.resolve(
-          new Response(
-            JSON.stringify({
-              access_token: 'a',
-              refresh_token: 'refresh-1',
-              expires_in: 3600,
-              user: null,
-            }),
-            { status: 200, headers: { 'content-type': 'application/json' } },
+Deno.test(
+  'auth responses carry the security headers AND their Set-Cookie survives',
+  async () => {
+    // Issue #1250: the auth routes are answered before the asset pipeline,
+    // and the headers are set in place — a rewrap would drop the rotating
+    // refresh cookie exactly when it is being set. The Supabase Auth fetch
+    // is stubbed (the third parameter is the test seam).
+    const env: Env = {
+      ASSETS: fakeAssets(),
+      SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
+    };
+    const res = await worker.fetch(
+      new Request('https://staging.test/auth/password/sign-in', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'https://staging.test',
+          'x-lunarlog-csrf': '1',
+        },
+        body: JSON.stringify({ email: 'a@example.com', password: 'x' }),
+      }),
+      env,
+      {
+        supabaseUrl: 'https://supabase.test',
+        publishableKey: 'sb_publishable_test',
+        supabaseFetch: () =>
+          Promise.resolve(
+            new Response(
+              JSON.stringify({
+                access_token: 'a',
+                refresh_token: 'refresh-1',
+                expires_in: 3600,
+                user: null,
+              }),
+              { status: 200, headers: { 'content-type': 'application/json' } },
+            ),
           ),
-        ),
-      randomVerifier: () => 'verifier',
-      codeChallenge: async (verifier) => `challenge-${verifier}`,
-    },
-  );
+        randomVerifier: () => 'verifier',
+        codeChallenge: async (verifier) => `challenge-${verifier}`,
+      },
+    );
 
-  assertEquals(res.status, 200);
-  for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
-    assertEquals(res.headers.get(name), value, `header ${name}`);
-  }
-  assertEquals(
-    res.headers.get('set-cookie'),
-    `${REFRESH_COOKIE}=refresh-1; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${REFRESH_MAX_AGE_SECONDS}`,
-  );
-});
+    assertEquals(res.status, 200);
+    for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+      assertEquals(res.headers.get(name), value, `header ${name}`);
+    }
+    assertEquals(
+      res.headers.get('set-cookie'),
+      `${REFRESH_COOKIE}=refresh-1; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${REFRESH_MAX_AGE_SECONDS}`,
+    );
+  },
+);
 
-Deno.test('the SPA lands on /auth/callback GETs; the Worker answers only the POST', async () => {
-  const env: Env = {
-    ASSETS: fakeAssets(),
-    SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
-  };
-  const res = await worker.fetch(
-    new Request('https://staging.test/auth/callback?code=from-provider'),
-    env,
-  );
+Deno.test(
+  'the SPA lands on /auth/callback GETs; the Worker answers only the POST',
+  async () => {
+    const env: Env = {
+      ASSETS: fakeAssets(),
+      SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
+    };
+    const res = await worker.fetch(
+      new Request('https://staging.test/auth/callback?code=from-provider'),
+      env,
+    );
 
-  // The GET falls through to the SPA fallback with the full headers.
-  assertEquals(res.status, 200);
-  assertEquals(res.headers.get('content-security-policy'), CSP);
-  assertEquals(await res.text(), '<!doctype html><html><body><div id="root"></div></body></html>');
-});
+    // The GET falls through to the SPA fallback with the full headers.
+    assertEquals(res.status, 200);
+    assertEquals(res.headers.get('content-security-policy'), CSP);
+    assertEquals(
+      await res.text(),
+      '<!doctype html><html><body><div id="root"></div></body></html>',
+    );
+  },
+);

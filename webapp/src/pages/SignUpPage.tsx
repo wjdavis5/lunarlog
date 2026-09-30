@@ -59,9 +59,7 @@ export function SignUpPage() {
     }
     setEmailError(null);
     sendOtp.mutate({ email: email.trim(), createUser: true });
-    navigate(
-      `/sign-in/code?email=${encodeURIComponent(email.trim())}&mode=signup`,
-    );
+    navigate(`/sign-in/code?email=${encodeURIComponent(email.trim())}&mode=signup`);
   };
 
   return (
@@ -101,9 +99,7 @@ export function SignUpPage() {
             <p className="body">
               {t('accountSignInPasswordLengthHelper', { length: kMinPasswordLength })}
             </p>
-            {passwordError !== null ? (
-              <p className="auth-error">{passwordError}</p>
-            ) : null}
+            {passwordError !== null ? <p className="auth-error">{passwordError}</p> : null}
           </div>
           <div className="auth-actions">
             <button

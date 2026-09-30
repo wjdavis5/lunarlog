@@ -100,9 +100,7 @@ export function AuthCallbackPage() {
           </div>
         </div>
       ) : null}
-      {state.kind === 'idle' ? (
-        <p className="body">{t('accountSignInMagicLinkInfo')}</p>
-      ) : null}
+      {state.kind === 'idle' ? <p className="body">{t('accountSignInMagicLinkInfo')}</p> : null}
     </main>
   );
 }

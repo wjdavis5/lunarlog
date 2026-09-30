@@ -26,9 +26,7 @@ export function ResetPasswordPage() {
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (password.length < kMinPasswordLength) {
-      setFormError(
-        t('accountPasswordRecoveryLengthError', { length: kMinPasswordLength }),
-      );
+      setFormError(t('accountPasswordRecoveryLengthError', { length: kMinPasswordLength }));
       return;
     }
     if (password !== confirm) {
@@ -66,9 +64,7 @@ export function ResetPasswordPage() {
             </p>
           </div>
           <div className="auth-field">
-            <label htmlFor="confirm-password">
-              {t('accountPasswordRecoveryConfirmLabel')}
-            </label>
+            <label htmlFor="confirm-password">{t('accountPasswordRecoveryConfirmLabel')}</label>
             <input
               id="confirm-password"
               type="password"

@@ -24,18 +24,10 @@ describe('authCopyFor (issue #1250)', () => {
     expect(weak.id).toBe('authFailureWeakPassword');
     expect(weak.values?.minLength).toBe(kMinPasswordLength);
     expect(copyCode('signup_disabled')).toBe(messages['authFailureSignUpClosed']);
-    expect(copyCode('identity_already_exists')).toBe(
-      messages['authFailureIdentityTaken'],
-    );
-    expect(copyCode('over_request_rate_limit')).toBe(
-      messages['authFailureRateLimited'],
-    );
-    expect(copyCode('manual_linking_disabled')).toBe(
-      messages['authFailureMisconfigured'],
-    );
-    expect(copyCode('email_provider_disabled')).toBe(
-      messages['authFailureMisconfigured'],
-    );
+    expect(copyCode('identity_already_exists')).toBe(messages['authFailureIdentityTaken']);
+    expect(copyCode('over_request_rate_limit')).toBe(messages['authFailureRateLimited']);
+    expect(copyCode('manual_linking_disabled')).toBe(messages['authFailureMisconfigured']);
+    expect(copyCode('email_provider_disabled')).toBe(messages['authFailureMisconfigured']);
     expect(copyCode('otp_expired')).toBe(messages['authFailureInvalidCode']);
     expect(copyCode('otp_disabled')).toBe(messages['authFailureInvalidCode']);
     expect(copyCode('flow_state_not_found')).toBe(messages['authFailureExpiredLink']);

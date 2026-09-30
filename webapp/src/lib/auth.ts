@@ -61,10 +61,7 @@ async function parseSession(response: Response): Promise<ClientSession> {
     access_token: String(raw.access_token ?? ''),
     expires_in: typeof raw.expires_in === 'number' ? raw.expires_in : 3600,
     expires_at: typeof raw.expires_at === 'number' ? raw.expires_at : 0,
-    user:
-      typeof raw.user === 'object' && raw.user !== null
-        ? (raw.user as WebAuthUser)
-        : null,
+    user: typeof raw.user === 'object' && raw.user !== null ? (raw.user as WebAuthUser) : null,
   };
 }
 
@@ -162,7 +159,10 @@ export class WebAuthClient {
    * confirms emails (its posture): no session exists until the emailed
    * link or 8-digit code completes sign-in.
    */
-  async signUp(email: string, password: string): Promise<'signed_in' | 'confirmation_required'> {
+  async signUp(
+    email: string,
+    password: string,
+  ): Promise<'signed_in' | 'confirmation_required'> {
     const response = await fetch('/auth/password/sign-up', {
       method: 'POST',
       headers: csrfHeaders(),
@@ -263,9 +263,7 @@ export class WebAuthClient {
 
   /** Navigates the browser to the OAuth provider through the Worker. */
   startOAuth(provider: OAuthProvider): void {
-    window.location.assign(
-      `/auth/oauth/start?provider=${encodeURIComponent(provider)}`,
-    );
+    window.location.assign(`/auth/oauth/start?provider=${encodeURIComponent(provider)}`);
   }
 
   /** Drops the in-memory session (the cookie is the Worker's to clear). */

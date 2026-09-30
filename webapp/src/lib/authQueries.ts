@@ -34,9 +34,7 @@ function useInvalidateSession(): () => void {
 }
 
 /** A single /auth/* round trip, with the session query refreshed after. */
-function useAuthMutation<TVariables>(
-  action: (variables: TVariables) => Promise<void>,
-) {
+function useAuthMutation<TVariables>(action: (variables: TVariables) => Promise<void>) {
   const invalidate = useInvalidateSession();
   return useMutation<void, Error, TVariables>({
     mutationFn: action,

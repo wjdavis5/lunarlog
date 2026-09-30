@@ -29,9 +29,8 @@ const fakes = vi.hoisted(() => ({
 }));
 
 vi.mock('../src/lib/auth', async () => {
-  const { AuthError } = await vi.importActual<typeof import('../src/lib/auth')>(
-    '../src/lib/auth',
-  );
+  const { AuthError } =
+    await vi.importActual<typeof import('../src/lib/auth')>('../src/lib/auth');
   return {
     AuthError,
     WebAuthClient: class {},
@@ -95,9 +94,7 @@ describe('SignInPage (issue #1250)', () => {
   });
 
   it('renders the mapped copy for a rejected password', async () => {
-    fakes.signInWithPassword.mockRejectedValue(
-      new AuthError('invalid_credentials', 400),
-    );
+    fakes.signInWithPassword.mockRejectedValue(new AuthError('invalid_credentials', 400));
     renderWithProviders(<SignInPage />, '/sign-in');
     await fill(messages['accountSignInEmailLabel'] ?? '', 'a@b.co');
     await fill(messages['accountSignInPasswordLabel'] ?? '', 'wrong');
@@ -120,13 +117,9 @@ describe('SignInPage (issue #1250)', () => {
 
   it('offers the Google and Apple OAuth starts', () => {
     renderWithProviders(<SignInPage />, '/sign-in');
-    fireEvent.click(
-      screen.getByRole('button', { name: messages['accountGoogleButtonLabel'] }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: messages['accountGoogleButtonLabel'] }));
     expect(fakes.startOAuth).toHaveBeenCalledWith('google');
-    fireEvent.click(
-      screen.getByRole('button', { name: messages['webAuthAppleButtonLabel'] }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: messages['webAuthAppleButtonLabel'] }));
     expect(fakes.startOAuth).toHaveBeenCalledWith('apple');
   });
 });
@@ -164,11 +157,9 @@ describe('CodeEntryPage (issue #1250)', () => {
     fireEvent.click(
       screen.getByRole('button', { name: messages['accountSignInVerifyCodeAction'] }),
     );
-    await waitFor(() => expect(fakes.verifyOtp).toHaveBeenCalledWith(
-      'a@b.co',
-      '12345678',
-      'email',
-    ));
+    await waitFor(() =>
+      expect(fakes.verifyOtp).toHaveBeenCalledWith('a@b.co', '12345678', 'email'),
+    );
   });
 
   it('verifies a recovery code and points at the new-password screen', async () => {
@@ -177,12 +168,12 @@ describe('CodeEntryPage (issue #1250)', () => {
     fireEvent.click(
       screen.getByRole('button', { name: messages['accountSignInVerifyCodeAction'] }),
     );
-    await waitFor(() => expect(fakes.verifyOtp).toHaveBeenCalledWith(
-      'a@b.co',
-      '12345678',
-      'recovery',
-    ));
-    expect(await screen.findByText(messages['accountPasswordRecoveryIntro'])).toBeInTheDocument();
+    await waitFor(() =>
+      expect(fakes.verifyOtp).toHaveBeenCalledWith('a@b.co', '12345678', 'recovery'),
+    );
+    expect(
+      await screen.findByText(messages['accountPasswordRecoveryIntro']),
+    ).toBeInTheDocument();
   });
 
   it('renders the mapped copy for a rejected code', async () => {
@@ -200,9 +191,7 @@ describe('ForgotPasswordPage (issue #1250)', () => {
   it('sends the reset email and shows the reset info with the code path', async () => {
     renderWithProviders(<ForgotPasswordPage />, '/forgot-password');
     await fill(messages['accountSignInEmailLabel'] ?? '', 'a@b.co');
-    fireEvent.click(
-      screen.getByRole('button', { name: messages['webAuthSendResetAction'] }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: messages['webAuthSendResetAction'] }));
     await waitFor(() => expect(fakes.sendPasswordReset).toHaveBeenCalledWith('a@b.co'));
     expect(await screen.findByText(messages['accountSignInResetInfo'])).toBeInTheDocument();
   });
@@ -246,9 +235,7 @@ describe('AuthCallbackPage (issue #1250)', () => {
   });
 
   it('renders the different-browser copy when no verifier cookie exists', async () => {
-    fakes.exchangeCallback.mockRejectedValue(
-      new AuthError('verifier_missing', 401),
-    );
+    fakes.exchangeCallback.mockRejectedValue(new AuthError('verifier_missing', 401));
     renderWithProviders(<AuthCallbackPage />, '/auth/callback?code=abc');
     expect(
       await screen.findByText(messages['webAuthDifferentBrowserError']),
@@ -258,16 +245,12 @@ describe('AuthCallbackPage (issue #1250)', () => {
   it('renders the expired-link copy for a provider error landing', async () => {
     renderWithProviders(<AuthCallbackPage />, '/auth/callback?error=access_denied');
     expect(fakes.exchangeCallback).not.toHaveBeenCalled();
-    expect(
-      await screen.findByText(messages['authFailureExpiredLink']),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(messages['authFailureExpiredLink'])).toBeInTheDocument();
   });
 
   it('renders the magic-link info body when opened bare', async () => {
     renderWithProviders(<AuthCallbackPage />, '/auth/callback');
-    expect(
-      await screen.findByText(messages['accountSignInMagicLinkInfo']),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(messages['accountSignInMagicLinkInfo'])).toBeInTheDocument();
     expect(fakes.exchangeCallback).not.toHaveBeenCalled();
   });
 });

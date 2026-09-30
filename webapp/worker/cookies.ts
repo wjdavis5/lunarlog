@@ -57,9 +57,7 @@ export function buildPkceCookie(value: string): string {
 }
 
 /** Expires one of this module's cookies (sign-out, consumed verifier). */
-export function buildClearedCookie(
-  name: typeof REFRESH_COOKIE | typeof PKCE_COOKIE,
-): string {
+export function buildClearedCookie(name: typeof REFRESH_COOKIE | typeof PKCE_COOKIE): string {
   return `${name}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`;
 }
 
