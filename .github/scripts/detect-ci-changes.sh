@@ -8,8 +8,11 @@
 #   - edge_functions: Supabase Edge Functions & Cloudflare Workers (web/links, web/email)
 #   - release_guards: CI scripts, workflows, and release gate checks
 #   - webapp: the React web client (webapp/, issue #1249) — its own tree,
-#     the schema snapshot it imports, and the arb its message catalogue is
-#     generated from
+#     the schema snapshot it imports, the arb its message catalogue is
+#     generated from, and (issue #1251) the Dart domain the client compiles
+#     to JavaScript (lib/domain/** + tool/web_domain/**: a domain change
+#     rebuilds and re-parity-tests the web client; the domain itself and
+#     the Dart pinning test keep the app_flutter suites too)
 #
 # Emits outputs to $GITHUB_OUTPUT (or prints to stdout when unset).
 #
@@ -144,6 +147,15 @@ while IFS= read -r file; do
     # Flutter suites do not cover it.
     webapp/*)
       webapp=true
+      ;;
+
+    # The Dart domain the web client compiles to JavaScript (issue #1251):
+    # a domain change (engine or facade/entrypoint) rebuilds the module and
+    # reruns the web client's parity suite — and still runs the app's own
+    # Flutter suites, which cover the domain and the Dart pinning test.
+    lib/domain/*|tool/web_domain/*)
+      webapp=true
+      app_flutter=true
       ;;
 
     # The message catalogue's source feeds both the webapp's generated
