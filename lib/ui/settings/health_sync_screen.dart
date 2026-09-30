@@ -816,8 +816,12 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
             ),
           ],
           // Issue #992: the scope decision, stated plainly. Reads are
-          // full-history now; background sync (READ_HEALTH_DATA_IN_BACKGROUND)
-          // remains deliberately deferred.
+          // full-history now, and the #993 background pass runs wherever
+          // Health Connect offers the background-read feature and its
+          // permission is granted (issue #1211: the permission is
+          // requested at runtime with the rest of the set, and the
+          // background worker skips cleanly without it); the copy below is
+          // the user-facing statement of that.
           Padding(
             key: const ValueKey('health-sync-full-history-copy'),
             padding: const EdgeInsets.all(16),

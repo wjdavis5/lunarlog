@@ -94,11 +94,17 @@ void main() {
           'android/app/src/main/kotlin/com/wjdavis5/lunarlog/'
           'HealthBackgroundImportWorker.kt');
       // The worker reaches Dart through the one shared channel's trigger
-      // push, and reads only the binding mirror -- no Health Connect client,
-      // no record read, no write call anywhere in the worker.
+      // push, and reads only the binding mirror -- no Health Connect
+      // client, no record read, no write call anywhere in the worker.
+      // Issue #1211: the one permission gate the tick consults is asked
+      // through HealthConnectAdapter's backgroundReadRefused helper, so
+      // the worker still holds no Health Connect types and queries no
+      // permission set of its own.
       expect(worker, contains('onBackgroundImportTriggered'));
       expect(worker, contains('HealthConnectAdapter.BOUND_PROFILE_KEY'));
+      expect(worker, contains('backgroundReadRefused'));
       expect(worker, isNot(contains('HealthConnectClient')));
+      expect(worker, isNot(contains('getGrantedPermissions')));
       expect(worker, isNot(contains('getChanges')));
       expect(worker, isNot(contains('readRecords')));
       expect(worker, isNot(contains('insert')));
@@ -122,6 +128,47 @@ void main() {
       expect(adapter, contains('PERMISSION_READ_HEALTH_DATA_HISTORY'));
       // The single authorization sheet carries write + read together.
       expect(adapter, contains('allPermissions'));
+    });
+
+    test(
+        'the declared background-read permission is requested at runtime, '
+        'gated on the feature check, and kept out of the granted-all '
+        'status check (issue #1211: declared-in-manifest means '
+        'requested-at-runtime)', () {
+      final adapter =
+          readRepoFile('android/app/src/main/kotlin/com/wjdavis5/lunarlog/'
+              'HealthConnectAdapter.kt');
+      // The #1211 bug shape, pinned in both directions: #993 declared
+      // READ_HEALTH_DATA_IN_BACKGROUND in this manifest while the adapter's
+      // comment still called it "deliberately absent" from the requested
+      // set. Health Connect treats it as a runtime permission, so every
+      // WorkManager-triggered background pass was refused despite the
+      // declaration. Declaring without requesting is the gap; requesting
+      // without declaring fails the grant outright; the two sides must
+      // stay in lockstep.
+      final declared = manifest.contains(
+          'android:name='
+          '"android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"');
+      final requested = adapter.contains(
+          'HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND');
+      expect(requested, declared,
+          reason: 'READ_HEALTH_DATA_IN_BACKGROUND must be declared in the '
+              'manifest and requested by HealthConnectAdapter.kt together');
+      if (declared) {
+        // The request rides the feature check the background-read
+        // documentation requires -- connect-client 1.1.0 has no
+        // isFeatureAvailable, so the check is getFeatureStatus against
+        // FEATURE_STATUS_AVAILABLE.
+        expect(adapter, contains('FEATURE_READ_HEALTH_DATA_IN_BACKGROUND'));
+        expect(adapter, contains('FEATURE_STATUS_AVAILABLE'));
+        // ...and the permission stays OUT of what permissionStatus calls
+        // "granted": foregroundStatusPermissions subtracts it from
+        // allPermissions, so a user who declines background reads can
+        // still import by tap (the worker skips its own pass instead --
+        // pinned in the worker test below).
+        expect(adapter, contains('foregroundStatusPermissions'));
+        expect(adapter, contains('containsAll(foregroundStatusPermissions)'));
+      }
     });
 
     test('declares the Health Connect package-visibility query', () {

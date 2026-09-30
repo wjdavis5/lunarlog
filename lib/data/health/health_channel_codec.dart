@@ -90,15 +90,18 @@
 /// [PlatformException] on the Dart side) instead, carrying the
 /// diagnostic message.
 ///
-/// **Permissions (Issue #992):** `READ_HEALTH_DATA_HISTORY` IS declared
-/// and requested on Android as of #992, so the user-initiated import can
-/// read the whole Health Connect history rather than the platform's
-/// default 30-day pre-grant window. `READ_HEALTH_DATA_IN_BACKGROUND`
-/// (background reads) remains deliberately NOT declared — background
-/// delivery stays deferred (#156/HS-2), so the import is still
-/// user-initiated only and there is no Play background-read declaration to
-/// make. On iOS there is no history/background split: the read set is the
-/// single menstrual-flow type, and full history is simply the query range.
+/// **Permissions (Issues #992/#993/#1211):** `READ_HEALTH_DATA_HISTORY` IS
+/// declared and requested on Android as of #992, so the user-initiated
+/// import can read the whole Health Connect history rather than the
+/// platform's default 30-day pre-grant window.
+/// `READ_HEALTH_DATA_IN_BACKGROUND` is declared (#993) and — since #1211 —
+/// requested with the rest of the read set wherever the platform offers
+/// the background-read feature, so the #993 WorkManager pass can actually
+/// read while the app is backgrounded (the worker skips its pass cleanly
+/// without the grant, and the granted-all status check deliberately
+/// excludes it). On iOS there is no history/background split: the read set
+/// is the single menstrual-flow type, and full history is simply the query
+/// range.
 library;
 
 import 'package:lunarlog/domain/health/day_boundary.dart';
