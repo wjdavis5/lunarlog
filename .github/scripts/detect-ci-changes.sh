@@ -134,6 +134,15 @@ while IFS= read -r file; do
       edge_functions=true
       ;;
 
+    # The web data layer (issue #1252): typed against the schema snapshot
+    # and integration-tested against the live local stack, so its changes
+    # run the database suite too — the same coupling as
+    # supabase/database.types.ts below.
+    webapp/src/lib/*|webapp/test/integration/*)
+      webapp=true
+      database=true
+      ;;
+
     # The React web client (issue #1249): its own suite only — the app's
     # Flutter suites do not cover it.
     webapp/*)

@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 
 import { useT } from '../i18n/t';
-import { useProfiles } from '../lib/queries';
+import { useLiveProfiles, useSyncSignalsRefetch } from '../lib/queries';
 
 function longMonth(now: Date): string {
   return new Intl.DateTimeFormat('en', { month: 'long' }).format(now);
@@ -9,13 +9,16 @@ function longMonth(now: Date): string {
 
 /**
  * The scaffold's one real screen: the catalogue-formatted month header and
- * the empty-state card, plus the profiles the operator can see once the
- * build is configured (idle otherwise).
+ * the empty-state card, plus the profiles the operator can see once a
+ * session is in memory (idle otherwise). Live updates ride the
+ * `sync_signals` subscription: any change to a visible profile refetches
+ * the synced dataset (issue #1252).
  */
 export function TodayPage() {
   const t = useT();
   const now = new Date();
-  const profiles = useProfiles();
+  const profiles = useLiveProfiles();
+  useSyncSignalsRefetch(profiles.map((profile) => profile.id));
 
   useEffect(() => {
     document.title = t('gateLockScreenAppTitle');
@@ -30,9 +33,9 @@ export function TodayPage() {
         <p className="card-title">{t('calendarNoEntriesTitle')}</p>
         <p className="card-body">{t('calendarNoEntriesBody')}</p>
       </section>
-      {profiles.data !== undefined && profiles.data.length > 0 ? (
+      {profiles.length > 0 ? (
         <ul className="profile-list">
-          {profiles.data.map((profile) => (
+          {profiles.map((profile) => (
             <li key={profile.id}>{profile.display_name}</li>
           ))}
         </ul>
