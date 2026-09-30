@@ -1049,6 +1049,7 @@ class _LunarLogAppState extends State<LunarLogApp>
       showModalBottomSheet<void>(
         context: ctx,
         isScrollControlled: true,
+        useSafeArea: true,
         showDragHandle: true,
         routeSettings: const RouteSettings(name: kRouteAcceptInviteSheet),
         builder: (_) => AcceptInviteSheet(
@@ -1090,6 +1091,7 @@ class _LunarLogAppState extends State<LunarLogApp>
       showModalBottomSheet<void>(
         context: ctx,
         isScrollControlled: true,
+        useSafeArea: true,
         showDragHandle: true,
         routeSettings: const RouteSettings(name: kRouteClaimProfileSheet),
         builder: (_) => ClaimProfileSheet(
@@ -1128,6 +1130,7 @@ class _LunarLogAppState extends State<LunarLogApp>
       showModalBottomSheet<void>(
         context: ctx,
         isScrollControlled: true,
+        useSafeArea: true,
         showDragHandle: true,
         routeSettings:
             const RouteSettings(name: kRouteAcceptPredictionConnectionSheet),
