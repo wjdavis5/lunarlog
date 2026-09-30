@@ -89,6 +89,18 @@ assert_contains "the failure names the env var" "$LAST_LOG" "WEBAPP_STAGING_BASE
 
 # --- The header truth table -------------------------------------------------
 
+# edit_fixture FILE SED_SCRIPT -- in-place edit without `sed -i`, whose BSD
+# form (`sed -i ''`, the release-guards-macos job's Bash 3.2/Sed) differs
+# from GNU's: the suffix-less `-i` makes BSD treat the script's next word as
+# the backup suffix and abort with "invalid command code". Pipe to a temp
+# file and move over the original instead — the same shape the other suites
+# use for their arming flips.
+edit_fixture() {
+  local file="$1" script="$2"
+  sed "$script" "$file" >"$file.tmp"
+  mv "$file.tmp" "$file"
+}
+
 make_fixtures "$WORK/no-csp"
 grep -v "^content-security-policy:" "$WORK/valid/root.headers" >"$WORK/no-csp/root.headers"
 run_case "$WORK/no-csp"
@@ -96,43 +108,43 @@ assert_exit "a missing CSP refuses" 1
 assert_contains "the missing CSP is named" "$LAST_LOG" "content-security-policy"
 
 make_fixtures "$WORK/unsafe-inline"
-sed -i "s/script-src 'self'/script-src 'self' 'unsafe-inline'/" "$WORK/unsafe-inline/root.headers"
+edit_fixture "$WORK/unsafe-inline/root.headers" "s/script-src 'self'/script-src 'self' 'unsafe-inline'/"
 run_case "$WORK/unsafe-inline"
 assert_exit "unsafe-inline in the CSP refuses" 1
 assert_contains "the unsafe-inline rejection is named" "$LAST_LOG" "unsafe-inline"
 
 make_fixtures "$WORK/wasm-eval"
-sed -i "s/script-src 'self'/script-src 'self' 'wasm-unsafe-eval'/" "$WORK/wasm-eval/root.headers"
+edit_fixture "$WORK/wasm-eval/root.headers" "s/script-src 'self'/script-src 'self' 'wasm-unsafe-eval'/"
 run_case "$WORK/wasm-eval"
 assert_exit "wasm-unsafe-eval in the CSP refuses" 1
 assert_contains "the wasm-unsafe-eval rejection is named" "$LAST_LOG" "wasm-unsafe-eval"
 
 make_fixtures "$WORK/no-frame-ancestors"
-sed -i "s/; frame-ancestors 'none'//" "$WORK/no-frame-ancestors/root.headers"
+edit_fixture "$WORK/no-frame-ancestors/root.headers" "s/; frame-ancestors 'none'//"
 run_case "$WORK/no-frame-ancestors"
 assert_exit "a missing frame-ancestors 'none' refuses" 1
 assert_contains "the frame-ancestors requirement is named" "$LAST_LOG" "frame-ancestors 'none'"
 
 make_fixtures "$WORK/no-trusted-types"
-sed -i "s/; require-trusted-types-for 'script'//" "$WORK/no-trusted-types/root.headers"
+edit_fixture "$WORK/no-trusted-types/root.headers" "s/; require-trusted-types-for 'script'//"
 run_case "$WORK/no-trusted-types"
 assert_exit "a missing require-trusted-types-for refuses" 1
 assert_contains "the trusted-types requirement is named" "$LAST_LOG" "require-trusted-types-for"
 
 make_fixtures "$WORK/no-supabase-connect"
-sed -i "s/ https:\/\/dleexnnevuuddcgcpztq.supabase.co wss:\/\/dleexnnevuuddcgcpztq.supabase.co//" "$WORK/no-supabase-connect/root.headers"
+edit_fixture "$WORK/no-supabase-connect/root.headers" "s/ https:\/\/dleexnnevuuddcgcpztq.supabase.co wss:\/\/dleexnnevuuddcgcpztq.supabase.co//"
 run_case "$WORK/no-supabase-connect"
 assert_exit "a connect-src without the Supabase project refuses" 1
 assert_contains "the https origin requirement is named" "$LAST_LOG" "https://dleexnnevuuddcgcpztq.supabase.co"
 
 make_fixtures "$WORK/no-wss"
-sed -i "s/ wss:\/\/dleexnnevuuddcgcpztq.supabase.co//" "$WORK/no-wss/root.headers"
+edit_fixture "$WORK/no-wss/root.headers" "s/ wss:\/\/dleexnnevuuddcgcpztq.supabase.co//"
 run_case "$WORK/no-wss"
 assert_exit "a connect-src without the wss origin refuses" 1
 assert_contains "the wss origin requirement is named" "$LAST_LOG" "wss://dleexnnevuuddcgcpztq.supabase.co"
 
 make_fixtures "$WORK/coop"
-sed -i "s/cross-origin-opener-policy: same-origin/cross-origin-opener-policy: unsafe-none/" "$WORK/coop/root.headers"
+edit_fixture "$WORK/coop/root.headers" "s/cross-origin-opener-policy: same-origin/cross-origin-opener-policy: unsafe-none/"
 run_case "$WORK/coop"
 assert_exit "a wrong COOP refuses" 1
 assert_contains "the COOP mismatch is named" "$LAST_LOG" "cross-origin-opener-policy"
@@ -144,7 +156,7 @@ assert_exit "a missing HSTS refuses" 1
 assert_contains "the missing HSTS is named" "$LAST_LOG" "strict-transport-security"
 
 make_fixtures "$WORK/robots"
-sed -i "s/x-robots-tag: noindex/x-robots-tag: index, follow/" "$WORK/robots/root.headers"
+edit_fixture "$WORK/robots/root.headers" "s/x-robots-tag: noindex/x-robots-tag: index, follow/"
 run_case "$WORK/robots"
 assert_exit "a non-noindex X-Robots-Tag refuses" 1
 assert_contains "the X-Robots-Tag mismatch is named" "$LAST_LOG" "x-robots-tag"
