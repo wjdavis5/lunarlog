@@ -8,3 +8,4 @@ test-results/
 src/i18n/messages.en.json
 src/i18n/message-ids.ts
 src/theme/tokens.css
+src/lib/taxonomy/taxonomy.generated.json
