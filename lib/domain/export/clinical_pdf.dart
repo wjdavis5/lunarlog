@@ -20,6 +20,15 @@ import 'minimal_pdf.dart';
 
 const double _kMargin = 50;
 
+/// The symptom grid's fixed label-column width, in monospace characters.
+///
+/// Grid labels are not all short: a custom tag may be up to 40 characters
+/// and an unmapped import option code renders verbatim (issue #1204), so
+/// anything longer is truncated to `width - 1` characters plus an ellipsis
+/// (via [_gridRowLabel]) rather than silently cut, and its full text is
+/// listed below the grid.
+const int _kGridLabelWidth = 22;
+
 /// Renders [summary] to a complete PDF document.
 Uint8List buildClinicalPdfDocument(ClinicalPdfSummary summary) {
   final layout = _PdfLayout();
@@ -164,16 +173,31 @@ void _addSymptomGrid(_PdfLayout layout, ClinicalPdfSummary summary) {
     before: 4,
   );
   layout.line(
-    '${_pad('symptom', 22)}${_gridHeader(maxDay)}',
+    '${_pad('symptom', _kGridLabelWidth)}${_gridHeader(maxDay)}',
     font: PdfFont.courier,
     size: size,
   );
+  final shortenedLabels = <({String truncated, String full})>[];
   for (final row in summary.symptomGrid) {
+    final (:display, :shortened) = _gridRowLabel(row.label);
+    if (shortened) shortenedLabels.add((truncated: display, full: row.label));
     layout.line(
-      '${_pad(row.label, 22)}${_gridCounts(row.counts)}',
+      '$display${_gridCounts(row.counts)}',
       font: PdfFont.courier,
       size: size,
     );
+  }
+  if (shortenedLabels.isNotEmpty) {
+    // Issue #1204: the truncated column must never leave a count
+    // unexplained — every shortened label is mapped back to its full text.
+    // One mapping per paragraph, so a mapping wraps as a whole rather than
+    // ever breaking inside the full label at realistic label lengths (a
+    // 40-character tag maps to a 65-character line, well under one line
+    // at this size).
+    layout.line('Labels shortened in the grid:', size: 8, before: 4);
+    for (final (:truncated, :full) in shortenedLabels) {
+      layout.paragraph('$truncated = $full', size: 8);
+    }
   }
 }
 
@@ -298,10 +322,24 @@ String _formatUtc(DateTime instant) {
 }
 
 /// Right-pads [value] to [width], truncating anything longer so a
-/// monospace column never shifts.
+/// monospace column never shifts. The symptom grid's row labels use
+/// [_gridRowLabel] instead, so a cut is always marked (issue #1204).
 String _pad(String value, int width) => value.length >= width
     ? value.substring(0, width)
     : value.padRight(width);
+
+/// The grid's rendering of a row label: right-padded to [_kGridLabelWidth]
+/// so the monospace column never shifts, with anything longer truncated to
+/// `_kGridLabelWidth - 1` characters plus an ellipsis (issue #1204) so a
+/// cut is visible even mid-word. [shortened] reports whether the label was
+/// cut, so the caller can list its full text below the grid.
+({String display, bool shortened}) _gridRowLabel(String label) =>
+    label.length > _kGridLabelWidth
+        ? (
+            display: '${label.substring(0, _kGridLabelWidth - 1)}…',
+            shortened: true,
+          )
+        : (display: label.padRight(_kGridLabelWidth), shortened: false);
 
 String _trimDouble(double value) => value == value.roundToDouble()
     ? value.toInt().toString()
