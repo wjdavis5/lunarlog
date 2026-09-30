@@ -238,6 +238,7 @@ is compiled to JavaScript once and both platforms run the same engine.
 
 <<<<<<< HEAD
 =======
+
 - **Auth** (#1250): the `/auth/*` route and Worker entry are reserved; the
 - **Auth** (#1250): the `/auth/*` route and Worker entry are reserved; the
   page renders catalogue placeholder copy. The data layer (issue #1252)
@@ -247,7 +248,9 @@ is compiled to JavaScript once and both platforms run the same engine.
   sharing pages (#1255) render their honest not-signed-in copy and every
   acceptance criterion that needs two signed-in clients is proven by the
   unit suite's RPC-level fakes rather than a live browser.
->>>>>>> origin/main
+
+> > > > > > > origin/main
+
 - **Domain screens** (#1251's successors): the compiled module and its
   typed client exist (`src/domain/`); no screen consumes them yet — the
   prediction/history/insights UIs are later slices of the epic. The
