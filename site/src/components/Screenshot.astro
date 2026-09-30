@@ -33,6 +33,10 @@ const kDevices: Record<string, [number, number]> = {
   "iphone-61": [1179, 2556],
   pixel: [1080, 2400],
   tablet: [1668, 2388],
+  // The #1162 browser class: a 1280x800 viewport at 1.5 DPR — its PNG
+  // size is the product, not the viewport (issue #1208 put it on the
+  // home page).
+  browser: [1920, 1200],
 };
 
 const kThemes = ["light", "dark"] as const;
