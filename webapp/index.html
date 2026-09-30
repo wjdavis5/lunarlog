@@ -5,6 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- Belt and braces with the X-Robots-Tag header: staging must not be indexed. -->
     <meta name="robots" content="noindex" />
+    <!--
+      The compiled Dart domain module (issue #1251): dart2js output from
+      tool/web_domain/main.dart. Parser-inserted same-origin script — clean
+      under the CSP's `script-src 'self'` and no Trusted Types sink. Built
+      before the webapp suite runs (see webapp/README.md); a fresh clone
+      without it only logs a 404 here, and src/domain/client.ts fails with
+      a build instruction the first time the app calls the domain.
+    -->
+    <script src="/domain/lunarlog_domain.js"></script>
     <title>lunarlog</title>
   </head>
   <body>

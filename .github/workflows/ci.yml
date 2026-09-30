@@ -744,9 +744,9 @@ jobs:
     # with the staging Worker's real headers.
     #
     # Path-filtered (issue #1249): runs only when webapp/**,
-    # supabase/database.types.ts, or lib/l10n/app_en.arb changed — the set
-    # detect-ci-changes.sh classifies as `webapp`. (#1251 adds the domain
-    # module's paths.)
+    # supabase/database.types.ts, lib/l10n/app_en.arb, or — since #1251 —
+    # lib/domain/** / tool/web_domain/** changed: the set
+    # detect-ci-changes.sh classifies as `webapp`.
     #
     # Deliberately NOT a required check: not in ci-required-checks' needs
     # below, and not in check-ci-gate.sh's REQUIRED_CHECKS — the issue's
@@ -783,6 +783,30 @@ jobs:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: 'webapp/package-lock.json'
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        if: steps.check_run.outputs.run == 'true'
+        with:
+          # The same pinned SDK every other job builds with. The webapp
+          # needs it (issue #1251) because the domain module is compiled
+          # from this Flutter package — `dart compile js` must resolve the
+          # root pubspec, whose dependency set requires the Flutter SDK.
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Compile the Dart domain module (dart2js)
+        # Issue #1251: lib/domain → JavaScript via the tool/web_domain
+        # facade. dart2js (not WASM) keeps the module clean under the
+        # staging CSP's `script-src 'self'` — plain script output, no
+        # eval/Function/Wasm — and the parity suite below runs every
+        # committed fixture through this exact artifact, so the compiled
+        # module can never drift from the Dart domain silently.
+        if: steps.check_run.outputs.run == 'true'
+        run: |
+          flutter pub get
+          dart compile js -O2 --no-source-maps tool/web_domain/main.dart \
+            -o webapp/public/domain/lunarlog_domain.js
+          rm -f webapp/public/domain/lunarlog_domain.js.deps
 
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         if: steps.check_run.outputs.run == 'true'
