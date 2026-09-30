@@ -329,10 +329,13 @@ void main() {
     final row = tester.widget<SwitchListTile>(
       find.byKey(const ValueKey('reminder-birthControlRing-switch')),
     );
+    // Issue #1203: the how-to names Edit profile's Started-on field, not
+    // the retired re-record-the-method workaround (whose only possible
+    // stamp was an assumed today).
     expect(
       (row.subtitle as Text).data,
-      'Waits for a start date on the recorded method — re-record the '
-      'method from Edit profile to set one',
+      'Waits for a start date on the recorded method — add the start '
+      'date in Edit profile to set one',
     );
   });
 

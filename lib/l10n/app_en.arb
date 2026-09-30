@@ -1689,6 +1689,14 @@
   "@birthControlOther": {
     "description": "Birth-control selector option for a method not listed."
   },
+  "birthControlStartDateLabel": "Started on",
+  "@birthControlStartDateLabel": {
+    "description": "Issue #1203: the profile edit sheet's Started-on field label for a tracked birth-control method — the day the current method (or pack) began, written to profile_modes.birth_control_started_on. This is the field the Insights no-start-date card's 'Add your start date in Edit profile' pointer names (issue #1133's card): before this field existed that pointer was false, and the only working path (re-recording the method) stamped an assumed today."
+  },
+  "birthControlStartDateHint": "The day this method (or the current pack) started. Estimates and reminders count from it.",
+  "@birthControlStartDateHint": {
+    "description": "Issue #1203: helper text under the Started-on field, saying what the date is and what consumes it (#183's reminders and #233's pack-schedule estimate)."
+  },
   "birthControlIntakeTaken": "Taken",
   "@birthControlIntakeTaken": {
     "description": "Per-day pill-intake value (Issue #260): the dose was taken on time. Option strings are pending pre-ship verification against a real Clue export (A1-29); the stored wire value is the stable id 'taken', never this label."
@@ -1946,9 +1954,9 @@
   "@reminderKindBirthControlShotSubtitle": {
     "description": "The injection reminder's settings row subtitle (Issue #183). Issue #1118: the shot is due every 13 weeks (ACOG FAQ186; US SPR), and lunarlog anchors the cadence on the recorded start date without re-anchoring per injection, so the reminder cannot claim to sit exactly one week before each due date."
   },
-  "reminderBirthControlNeedsStartDate": "Waits for a start date on the recorded method — re-record the method from Edit profile to set one",
+  "reminderBirthControlNeedsStartDate": "Waits for a start date on the recorded method — add the start date in Edit profile to set one",
   "@reminderBirthControlNeedsStartDate": {
-    "description": "Row subtitle shown when an anchor-based birth-control reminder (patch, ring, shot) is enabled for a method with no recorded start date: without one there is no knowable due date, so nothing fires (Issue #183)."
+    "description": "Row subtitle shown when an anchor-based birth-control reminder (patch, ring, shot) is enabled for a method with no recorded start date: without one there is no knowable due date, so nothing fires (Issue #183). Issue #1203 reworded the how-to: Edit profile now has a Started-on field that writes birth_control_started_on directly, so the old 're-record the method' workaround (whose only possible stamp was an assumed today) is retired."
   },
   "commonNetworkError": "Network error. Please check your connection.",
   "@commonNetworkError": {
@@ -6220,7 +6228,7 @@
     },
     "phaseInsightsHormonalNoStartDateBody": "You haven't added when you started this pack, so the estimate uses your past cycles. Add your start date in Edit profile to follow your pack schedule instead. Cycle phases aren't shown: combined pills, the patch, and the ring usually stop ovulation; progestin-only (mini) pills don't always.",
     "@phaseInsightsHormonalNoStartDateBody": {
-      "description": "Issue #1133: shown on the Analysis tab in place of the phase card when the profile's in-effect withdrawal-bleed method has no recorded regimen start (PredictionBasis.statisticalOnHormonalMethod) — the estimate then comes from the profile's history, not a pack cadence, so the pack-schedule clause of phaseInsightsHormonalContraceptionBody would be false (device-confirmed by the owner on QA pass 154). Says what is missing, what the estimate uses instead, and the way to switch. The ovulation-gating half is kept from #1118 verbatim: combined hormonal contraception usually suppresses ovulation (ACOG FAQ185), but progestin-only pills do not consistently (ACOG FAQ186: about 4 in 10 users continue to ovulate)."
+      "description": "Issue #1133: shown on the Analysis tab in place of the phase card when the profile's in-effect withdrawal-bleed method has no recorded regimen start (PredictionBasis.statisticalOnHormonalMethod) — the estimate then comes from the profile's history, not a pack cadence, so the pack-schedule clause of phaseInsightsHormonalContraceptionBody would be false (device-confirmed by the owner on QA pass 154). Says what is missing, what the estimate uses instead, and the way to switch. The ovulation-gating half is kept from #1118 verbatim: combined hormonal contraception usually suppresses ovulation (ACOG FAQ185), but progestin-only pills do not consistently (ACOG FAQ186: about 4 in 10 users continue to ovulate). Issue #1203: the copy itself is unchanged — the Edit profile sheet's new Started-on field (birthControlStartDateLabel) is exactly the pointer this card names, which is what makes the previously-false instruction true."
     },
     "phaseInsightsReadArticle": "Read: {title}",
     "@phaseInsightsReadArticle": {

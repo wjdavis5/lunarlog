@@ -537,6 +537,10 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
         lifecycleMode: result.lifecycleMode,
         birthControlMethod:
             birthControlStoredValue(result.birthControlChoice),
+        // Issue #1203: the "Started on" field's picked date — written to
+        // birth_control_started_on directly instead of the method-
+        // re-record workaround's assumed-today stamp.
+        birthControlStartedOn: result.birthControlStartedOn,
         estimatedDueDate: result.estimatedDueDate,
         postpartumBirthDate: result.postpartumBirthDate,
       ),

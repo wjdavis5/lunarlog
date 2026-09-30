@@ -10,6 +10,7 @@ import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
+import 'package:lunarlog/domain/birth_control.dart' show BirthControlMethod;
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/logging/day_entry_policy.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
@@ -122,6 +123,7 @@ class ProfileEditResult {
     this.relationship,
     this.lifecycleMode = LifecycleMode.tracking,
     this.birthControlChoice = BirthControlChoice.notAnswered,
+    this.birthControlStartedOn,
     this.estimatedDueDate,
     this.postpartumBirthDate,
   });
@@ -157,6 +159,14 @@ class ProfileEditResult {
   /// Birth-control method answer (Issue #216; free-text storage owned by
   /// #260's future vocabulary). `notAnswered` stores null.
   final BirthControlChoice birthControlChoice;
+
+  /// Issue #1203: the operator-picked day the recorded birth-control
+  /// method started (`yyyy-MM-dd`), from the sheet's "Started on" field —
+  /// shown only while the selected method is a tracked one. Null when the
+  /// field was blank or the selected method is not tracked; the recorder
+  /// then applies its issue-#183 fallback rules (stamp today on a method
+  /// change to a tracked one) exactly as before this field existed.
+  final String? birthControlStartedOn;
 
   /// Issue #192: the estimated due date (`yyyy-MM-dd`) collected when the
   /// life-stage answer is `pregnancy` — pre-filled with the derived
@@ -252,6 +262,21 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
   LifecycleMode _lifecycleMode = LifecycleMode.tracking;
   BirthControlChoice _birthControl = BirthControlChoice.notAnswered;
 
+  /// Issue #1203: the "Started on" date for the birth-control answer —
+  /// the stored `birth_control_started_on` pre-filled for an unchanged
+  /// tracked method, today defaulted for a newly picked tracked method,
+  /// and null when nothing is known (shown as "—"; a blank submit leaves
+  /// the recorder's #183 fallback rules in charge). Never submitted for a
+  /// non-tracked method.
+  String? _birthControlStartedOn;
+
+  /// Issue #1203: the raw `birth_control_method` the loaded
+  /// `profile_modes` row stores, kept so the Started-on field can tell an
+  /// *unchanged* tracked method (keep the stored anchor's prefill) from a
+  /// newly picked one (default today). Null when there is no row (the
+  /// add-profile flow, or no storage wired).
+  String? _storedBirthControlMethod;
+
   /// Issue #192: the pregnancy due-date answer. Null until the mode is
   /// switched to `pregnancy` (which derives the default — see
   /// [_onLifecycleModeChanged]) or a date is picked manually. `_dueDateDerived`
@@ -309,6 +334,11 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
     setState(() {
       _lifecycleMode = row.mode;
       _birthControl = birthControlChoiceForStored(row.birthControlMethod);
+      // Issue #1203: prefill the Started-on field with the stored anchor
+      // so an unchanged tracked method edits from its real date (shown
+      // verbatim; saving an untouched field re-submits it unchanged).
+      _storedBirthControlMethod = row.birthControlMethod;
+      _birthControlStartedOn = row.birthControlStartedOn;
       if (row.mode == LifecycleMode.pregnancy) {
         // An already-pregnant profile edits with its stored due date
         // pre-filled (not a fresh derivation — it is a chosen value).
@@ -421,6 +451,11 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
           relationship: _relationship,
           lifecycleMode: _lifecycleMode,
           birthControlChoice: _birthControl,
+          // Issue #1203: submitted only for a tracked method — a date
+          // alongside a non-tracked answer means nothing to anchor.
+          birthControlStartedOn: _selectedBirthControlIsTracked
+              ? _birthControlStartedOn
+              : null,
           estimatedDueDate: _lifecycleMode == LifecycleMode.pregnancy
               ? _estimatedDueDate
               : null,
@@ -631,6 +666,109 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
       birthYear: widget.existing?.birthYear,
     );
     setState(() => _postpartumBirthDate = accepted ?? _postpartumBirthDate);
+  }
+
+  /// Whether the currently selected birth-control choice maps to a
+  /// tracked method (#260's six) — the exact predicate that decides the
+  /// Started-on field's visibility and whether its value is submitted.
+  bool get _selectedBirthControlIsTracked {
+    final method =
+        BirthControlMethod.fromDb(birthControlStoredValue(_birthControl));
+    return method?.isTracked ?? false;
+  }
+
+  /// Issue #1203: the birth-control dropdown's change handler. A newly
+  /// picked *tracked* method defaults the Started-on field to today (the
+  /// new method is in effect from today — the same day the recorder's
+  /// #183 rule would have stamped invisibly). An unchanged tracked method
+  /// leaves the field exactly as it is — the stored anchor's prefill, an
+  /// empty "—" when no anchor was ever recorded (nothing is assumed; the
+  /// recorder's stamp-today fallback still owns that case), or a date the
+  /// operator already picked. A non-tracked choice hides the field and
+  /// its value is not submitted (nothing is in effect to anchor).
+  void _onBirthControlChanged(BirthControlChoice? value) {
+    final choice = value ?? BirthControlChoice.notAnswered;
+    setState(() {
+      _birthControl = choice;
+      if (!_selectedBirthControlIsTracked) return;
+      final method = birthControlStoredValue(choice);
+      final unchanged = method != null && method == _storedBirthControlMethod;
+      if (!unchanged) _birthControlStartedOn = LocalDate.today().iso;
+    });
+  }
+
+  /// Issue #1203: picks the Started-on date for a tracked birth-control
+  /// method. The picker is past-bounded: nothing after today (a method
+  /// cannot have started in the future), and the far past is unreachable
+  /// too — five years back covers the longest-lived tracked regimen this
+  /// field anchors (the hormonal IUD's 5-year label life; the implant's
+  /// 3), matching how far back the reminders/prediction anchor can
+  /// meaningfully reach. No extra DayEntryPolicy re-check: unlike the
+  /// Postpartum birth date, a method start has no cross-field rule.
+  Future<void> _pickBirthControlStartDate() async {
+    final today = LocalDate.today();
+    final initial = _birthControlStartedOn == null
+        ? null
+        : DateTime.tryParse(_birthControlStartedOn!);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial ?? today.toDateTime(),
+      firstDate: today.addMonths(-60).toDateTime(),
+      lastDate: today.toDateTime(),
+      helpText: AppLocalizations.of(context).birthControlStartDateLabel,
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _birthControlStartedOn = LocalDate.fromDateTime(picked).iso);
+  }
+
+  /// Issue #1203: the Started-on field shown only while the selected
+  /// birth-control method is a tracked one — the stored anchor pre-filled
+  /// (or "—" when none was ever recorded), opening the past-bounded
+  /// picker on tap. This is the field the Insights card's "Add your
+  /// start date in Edit profile" pointer names (#1133's card, #1203's
+  /// fix): it writes the operator's true pack/method start instead of
+  /// sending them through the re-record-the-method workaround whose only
+  /// possible stamp is an assumed today.
+  Widget _birthControlStartDateField(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final iso = _birthControlStartedOn;
+    final LocalDate? start = iso == null ? null : _tryParseIso(iso);
+    final valueText = start == null
+        ? '—'
+        : dates.formatLocalDateMonthDayYear(
+            start,
+            locale: dates.calendarLocale(context),
+          );
+    return MergeSemantics(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            key: const ValueKey('edit-birth-control-start-date-field'),
+            onTap: _pickBirthControlStartDate,
+            child: InputDecorator(
+              decoration: InputDecoration(
+                labelText: l10n.birthControlStartDateLabel,
+              ),
+              child: Text(
+                valueText,
+                key: const ValueKey('edit-birth-control-start-date-value'),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              l10n.birthControlStartDateHint,
+              key: const ValueKey('edit-birth-control-start-date-hint'),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -847,8 +985,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                               key: const ValueKey('edit-birth-control-dropdown'),
                               value: _birthControl,
                               isExpanded: true,
-                              onChanged: (value) => setState(() => _birthControl =
-                                  value ?? BirthControlChoice.notAnswered),
+                              onChanged: _onBirthControlChanged,
                               items: [
                                 for (final choice in BirthControlChoice.values)
                                   DropdownMenuItem<BirthControlChoice>(
@@ -861,6 +998,14 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                           ],
                         ),
                       ),
+                      // Issue #1203: a tracked method's "Started on" date —
+                      // the field the Insights no-start-date card points at.
+                      // Hidden for non-tracked answers: nothing is in effect
+                      // to anchor.
+                      if (_selectedBirthControlIsTracked) ...[
+                        const SizedBox(height: LLSpace.space2),
+                        _birthControlStartDateField(context),
+                      ],
                     ],
                   ),
                 ),

@@ -433,6 +433,26 @@ void main() {
       );
     });
 
+    testWidgets('birth-control start-date copy (issue #1203)', (tester) async {
+      final l10n = await pumpL10n(tester);
+      // The Edit profile sheet's Started-on field: the pointer the
+      // Insights no-start-date card (#1133) names, made real by #1203.
+      expect(l10n.birthControlStartDateLabel, 'Started on');
+      expect(
+        l10n.birthControlStartDateHint,
+        'The day this method (or the current pack) started. Estimates '
+        'and reminders count from it.',
+      );
+      // The reminder row's how-to now names the field instead of the
+      // re-record-the-method workaround whose only stamp was an assumed
+      // today.
+      expect(
+        l10n.reminderBirthControlNeedsStartDate,
+        'Waits for a start date on the recorded method — add the start '
+        'date in Edit profile to set one',
+      );
+    });
+
     testWidgets('first-run flow (#216): extracted pre-existing literals '
         'plus the new onboarding copy', (tester) async {
       final l10n = await pumpL10n(tester);

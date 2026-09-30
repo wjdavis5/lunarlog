@@ -243,6 +243,11 @@ const Map<String, List<String>> _helperCopyFileLiterals = {
     'edit-lifecycle-dropdown',
     'edit-birth-control-label',
     'edit-birth-control-dropdown',
+    // Issue #1203: the tracked-method Started-on field's keys (copy is
+    // arb-backed via birthControlStartDateLabel/Hint).
+    'edit-birth-control-start-date-field',
+    'edit-birth-control-start-date-value',
+    'edit-birth-control-start-date-hint',
   ],
   'lib/ui/care/guardian_notes_section.dart': [
     'guardian-notes-disclosure',

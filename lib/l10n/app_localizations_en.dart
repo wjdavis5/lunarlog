@@ -1331,6 +1331,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get birthControlOther => 'Other';
 
   @override
+  String get birthControlStartDateLabel => 'Started on';
+
+  @override
+  String get birthControlStartDateHint =>
+      'The day this method (or the current pack) started. Estimates and reminders count from it.';
+
+  @override
   String get birthControlIntakeTaken => 'Taken';
 
   @override
@@ -1533,7 +1540,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get reminderBirthControlNeedsStartDate =>
-      'Waits for a start date on the recorded method — re-record the method from Edit profile to set one';
+      'Waits for a start date on the recorded method — add the start date in Edit profile to set one';
 
   @override
   String get commonNetworkError =>

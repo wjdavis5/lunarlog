@@ -19,7 +19,17 @@
 ///   re-recording the same method keeps whatever anchor is stored, a
 ///   method change to a tracked one stamps today, and a non-tracked
 ///   answer clears both — so this write can never wipe the anchor
-///   `DriftProfileModesRepository` wrote for the same answer.
+///   `DriftProfileModesRepository` wrote for the same answer. Issue
+///   #1203's exception: an answer that carries an operator-picked start
+///   date (the Edit profile sheet's "Started on" field) replaces the
+///   stored anchor with that date, so the sheet writes the *true* pack
+///   start instead of sending the operator through the re-record-the-
+///   method workaround whose only stamp is an assumed today.
+/// * A no-op edit over identical values writes nothing at all — no
+///   `local_rev` bump, no dirty flag, nothing for the sync engine to push.
+///   Issue #1203: a picked start date that differs from the stored one is
+///   a change (the only edit the sheet exists to make for the card's
+///   audience), so it passes this gate and writes.
 /// * A no-op edit over identical values writes nothing at all — no
 ///   `local_rev` bump, no dirty flag, nothing for the sync engine to push.
 library;
@@ -52,6 +62,7 @@ class DriftOnboardingCycleAnswersRecorder
     final (bcStartedOn, bcStoppedOn) = birthControlEffectiveDates(
       existing: existing,
       incomingMethod: answers.birthControlMethod,
+      incomingStartedOn: answers.birthControlStartedOn,
       today: _today,
     );
     await _storage.upsertProfileMode(
@@ -116,10 +127,15 @@ class DriftOnboardingCycleAnswersRecorder
 
   /// Whether a write is needed at all: no row plus default answers is the
   /// server's lazy-default contract (nothing to store), and an existing
-  /// row matching the answers exactly is a no-op edit.
+  /// row matching the answers exactly is a no-op edit. Issue #1203: a
+  /// picked start date differing from the stored anchor is itself a
+  /// change — it is the one thing the Edit profile sheet's "Started on"
+  /// field exists to change when the method answer stays put.
   bool _needsWrite(ProfileModeData? existing, OnboardingCycleAnswers answers) {
     if (existing == null) return answers.hasPersistableAnswers;
     return existing.mode != answers.lifecycleMode.toDb() ||
-        existing.birthControlMethod != answers.birthControlMethod;
+        existing.birthControlMethod != answers.birthControlMethod ||
+        (answers.birthControlStartedOn != null &&
+            answers.birthControlStartedOn != existing.birthControlStartedOn);
   }
 }

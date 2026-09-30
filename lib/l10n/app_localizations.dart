@@ -2172,6 +2172,18 @@ abstract class AppLocalizations {
   /// **'Other'**
   String get birthControlOther;
 
+  /// Issue #1203: the profile edit sheet's Started-on field label for a tracked birth-control method — the day the current method (or pack) began, written to profile_modes.birth_control_started_on. This is the field the Insights no-start-date card's 'Add your start date in Edit profile' pointer names (issue #1133's card): before this field existed that pointer was false, and the only working path (re-recording the method) stamped an assumed today.
+  ///
+  /// In en, this message translates to:
+  /// **'Started on'**
+  String get birthControlStartDateLabel;
+
+  /// Issue #1203: helper text under the Started-on field, saying what the date is and what consumes it (#183's reminders and #233's pack-schedule estimate).
+  ///
+  /// In en, this message translates to:
+  /// **'The day this method (or the current pack) started. Estimates and reminders count from it.'**
+  String get birthControlStartDateHint;
+
   /// Per-day pill-intake value (Issue #260): the dose was taken on time. Option strings are pending pre-ship verification against a real Clue export (A1-29); the stored wire value is the stable id 'taken', never this label.
   ///
   /// In en, this message translates to:
@@ -2496,10 +2508,10 @@ abstract class AppLocalizations {
   /// **'Every 12 weeks from the start date (the shot is usually due every 13 weeks)'**
   String get reminderKindBirthControlShotSubtitle;
 
-  /// Row subtitle shown when an anchor-based birth-control reminder (patch, ring, shot) is enabled for a method with no recorded start date: without one there is no knowable due date, so nothing fires (Issue #183).
+  /// Row subtitle shown when an anchor-based birth-control reminder (patch, ring, shot) is enabled for a method with no recorded start date: without one there is no knowable due date, so nothing fires (Issue #183). Issue #1203 reworded the how-to: Edit profile now has a Started-on field that writes birth_control_started_on directly, so the old 're-record the method' workaround (whose only possible stamp was an assumed today) is retired.
   ///
   /// In en, this message translates to:
-  /// **'Waits for a start date on the recorded method — re-record the method from Edit profile to set one'**
+  /// **'Waits for a start date on the recorded method — add the start date in Edit profile to set one'**
   String get reminderBirthControlNeedsStartDate;
 
   /// Issue #545: shared failure copy reused by every …FailureCopy mapper under lib/ui/l10n/ whose domain sealed failure has a plain network-error case (sharing, ownership transfer, prediction connections, notification preferences).
@@ -7704,7 +7716,7 @@ abstract class AppLocalizations {
   /// **'While you\'re using the pill, patch, or ring, your estimate follows your pack schedule rather than a natural cycle, so cycle phases aren\'t shown. Combined pills, the patch, and the ring usually stop ovulation; progestin-only (mini) pills don\'t always.'**
   String get phaseInsightsHormonalContraceptionBody;
 
-  /// Issue #1133: shown on the Analysis tab in place of the phase card when the profile's in-effect withdrawal-bleed method has no recorded regimen start (PredictionBasis.statisticalOnHormonalMethod) — the estimate then comes from the profile's history, not a pack cadence, so the pack-schedule clause of phaseInsightsHormonalContraceptionBody would be false (device-confirmed by the owner on QA pass 154). Says what is missing, what the estimate uses instead, and the way to switch. The ovulation-gating half is kept from #1118 verbatim: combined hormonal contraception usually suppresses ovulation (ACOG FAQ185), but progestin-only pills do not consistently (ACOG FAQ186: about 4 in 10 users continue to ovulate).
+  /// Issue #1133: shown on the Analysis tab in place of the phase card when the profile's in-effect withdrawal-bleed method has no recorded regimen start (PredictionBasis.statisticalOnHormonalMethod) — the estimate then comes from the profile's history, not a pack cadence, so the pack-schedule clause of phaseInsightsHormonalContraceptionBody would be false (device-confirmed by the owner on QA pass 154). Says what is missing, what the estimate uses instead, and the way to switch. The ovulation-gating half is kept from #1118 verbatim: combined hormonal contraception usually suppresses ovulation (ACOG FAQ185), but progestin-only pills do not consistently (ACOG FAQ186: about 4 in 10 users continue to ovulate). Issue #1203: the copy itself is unchanged — the Edit profile sheet's new Started-on field (birthControlStartDateLabel) is exactly the pointer this card names, which is what makes the previously-false instruction true.
   ///
   /// In en, this message translates to:
   /// **'You haven\'t added when you started this pack, so the estimate uses your past cycles. Add your start date in Edit profile to follow your pack schedule instead. Cycle phases aren\'t shown: combined pills, the patch, and the ring usually stop ovulation; progestin-only (mini) pills don\'t always.'**

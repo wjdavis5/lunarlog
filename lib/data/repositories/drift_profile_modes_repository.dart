@@ -29,32 +29,59 @@ import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 ///   [BirthControlMethod.fromDb], so a legacy spelling equals its
 ///   canonical id) keeps both dates exactly as stored — an unrelated edit
 ///   never rewrites method history and never restarts the reminder
-///   cadence — except when a tracked method has *no* start date at all (a
-///   row written before issue #183's anchoring existed): the first save
-///   through either writer stamps today, giving the adherence cadence an
-///   anchor it could never otherwise acquire;
+///   cadence — with two exceptions:
+///   - Issue #1203: an operator-picked [incomingStartedOn] on a tracked
+///     method replaces the stored start (and clears `stopped_on` — a
+///     recorded start says the method is in effect from that day). This
+///     is how the Edit profile sheet's "Started on" field writes the
+///     *true* date instead of the workaround's assumed-today stamp.
+///   - when a tracked method has *no* start date at all (a row written
+///     before issue #183's anchoring existed) and no explicit date was
+///     picked, a write stamps today, giving the adherence cadence an
+///     anchor it could never otherwise acquire. "A write", not "a save":
+///     the onboarding recorder's no-op gate (`_needsWrite`) performs no
+///     write at all for an untouched Save, so through that writer the
+///     stamp lands on the first save that actually changes something —
+///     the doc comment previously promised "the first save through either
+///     writer", which the no-op gate never let come true from the UI
+///     (issue #1203's reconciliation of the two claims);
 /// * a method that changes *to a tracked one* stamps `started_on` with
-///   today and clears `stopped_on` — the new method is in effect from
-///   today, and that date is the anchor the patch/ring/shot due dates
-///   count from;
+///   the picked [incomingStartedOn] when the writer supplies one, today
+///   otherwise, and clears `stopped_on` — the new method is in effect
+///   from that day, and the date is the anchor the patch/ring/shot due
+///   dates count from;
 /// * a method that changes *to a non-tracked answer* (or is cleared)
 ///   clears both — nothing is in effect, so there is nothing to anchor.
+///
+/// [incomingStartedOn] is ignored for a non-tracked answer: a start date
+/// without a tracked method means nothing (the Edit profile sheet only
+/// offers the field for tracked methods; a stray value from another
+/// caller must not sneak an anchor into a non-tracked row).
 (String?, String?) birthControlEffectiveDates({
   required ProfileModeData? existing,
   required String? incomingMethod,
+  String? incomingStartedOn,
   required LocalDate Function() today,
 }) {
   final newMethod = BirthControlMethod.fromDb(incomingMethod);
   final oldMethod = BirthControlMethod.fromDb(existing?.birthControlMethod);
   if (newMethod == oldMethod) {
-    final startedOn = existing?.birthControlStartedOn;
-    if (newMethod != null && newMethod.isTracked && startedOn == null) {
-      return (today().iso, null);
+    if (newMethod != null && newMethod.isTracked) {
+      if (incomingStartedOn != null) {
+        return (incomingStartedOn, null);
+      }
+      final startedOn = existing?.birthControlStartedOn;
+      if (startedOn == null) {
+        return (today().iso, null);
+      }
     }
-    return (startedOn, existing?.birthControlStoppedOn);
+    return (
+      existing?.birthControlStartedOn,
+      existing?.birthControlStoppedOn,
+    );
   }
   if (newMethod != null && newMethod.isTracked) {
-    return (today().iso, null);
+    return (incomingStartedOn ?? today().iso, null);
   }
   return (null, null);
 }
