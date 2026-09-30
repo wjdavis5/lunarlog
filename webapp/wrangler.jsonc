@@ -3,6 +3,13 @@
   "compatibility_date": "2026-09-20",
   "main": "worker/index.ts",
 
+  // Issue #1250: the Worker also answers the same-origin /auth/* API
+  // routes (worker/auth.ts). Its one runtime input is the Supabase
+  // publishable key, a client-safe value set as a Wrangler secret by
+  // webapp-deploy.yml from the SUPABASE_ANON_KEY repository secret —
+  // never committed here, so a fork's build still works (the auth routes
+  // answer 503 auth_not_configured until the secret exists).
+
   // Staging only (issue #1249): the workers.dev hostname is this Worker's
   // only public origin, backed by the production Supabase project and used
   // only with the fabricated accounts from #710. Moving app.lunarlog.app
@@ -21,8 +28,9 @@
     // form — the shape wrangler 4.20.0 accepts (see site/wrangler.jsonc for
     // the version history).
     "run_worker_first": ["/*"],
-    // Single-page application: deep links (and the reserved /auth/* entry
-    // for #1250) fall back to index.html, never a 404.
+    // Single-page application: deep links (the auth screens and the
+    // /auth/callback landing the Worker hands back) fall back to index.html,
+    // never a 404.
     "not_found_handling": "single-page-application",
   },
 

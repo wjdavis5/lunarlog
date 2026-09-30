@@ -9,6 +9,7 @@ import {
   type ProfileTagRegistryRow,
 } from '../schemas';
 import { getSyncedDataCache, pushSyncBatch, type SyncedData } from '../domain';
+import { sessionUserId } from '../sharing';
 import {
   buildSavePlan,
   type SavePlanField,
@@ -129,7 +130,7 @@ export async function fetchDayView(
   client: AppSupabaseClient,
   args: FetchDayArgs,
 ): Promise<DayView> {
-  const uid = (await client.auth.getSession()).data.session?.user.id ?? null;
+  const uid = await sessionUserId(client);
   if (uid === null) {
     throw new DaySaveError('not signed in');
   }

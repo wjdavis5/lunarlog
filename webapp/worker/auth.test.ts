@@ -1,0 +1,559 @@
+import { assertEquals } from 'jsr:@std/assert';
+
+import {
+  CSRF_HEADER,
+  handleAuthRequest,
+  type AuthDeps,
+  type AuthEnv,
+  type SupabaseAuthFetch,
+} from './auth.ts';
+import { PKCE_COOKIE, REFRESH_COOKIE, REFRESH_MAX_AGE_SECONDS } from './cookies.ts';
+
+/**
+ * The /auth/* Worker routes against a stubbed Supabase Auth (issue #1250).
+ * The cookie flags, the rotation, the CSRF gate, the callback's
+ * different-browser error, and the OAuth start's PKCE wiring are the
+ * point; the real-provider runs are #1258's checklist.
+ */
+
+const ORIGIN = 'https://app.test';
+
+interface UpstreamCall {
+  path: string;
+  init: RequestInit;
+}
+
+function sessionBody(refresh: string): Record<string, unknown> {
+  return {
+    access_token: `access-for-${refresh}`,
+    refresh_token: refresh,
+    expires_in: 3600,
+    expires_at: 1700000000,
+    user: { id: 'u1', email: 'a@example.com' },
+  };
+}
+
+/** Builds deps whose upstream is a recorder; refresh tokens tick up per call. */
+function fakeDeps(responder?: (call: UpstreamCall) => Response): {
+  deps: AuthDeps;
+  calls: UpstreamCall[];
+} {
+  const calls: UpstreamCall[] = [];
+  let refreshCounter = 0;
+  const deps: AuthDeps = {
+    supabaseUrl: 'https://supabase.test',
+    publishableKey: 'sb_publishable_test',
+    supabaseFetch: (async (path: string, init: RequestInit) => {
+      calls.push({ path, init });
+      if (responder !== undefined) return responder({ path, init });
+      refreshCounter += 1;
+      return new Response(JSON.stringify(sessionBody(`refresh-${refreshCounter}`)), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as SupabaseAuthFetch,
+    randomVerifier: () => 'verifier-abc',
+    codeChallenge: async (verifier) => `challenge-${verifier}`,
+  };
+  return { deps, calls };
+}
+
+const ENV: AuthEnv = { SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test' };
+
+function post(
+  path: string,
+  body: unknown,
+  options: { origin?: string | null; csrf?: boolean; cookie?: string; bearer?: string } = {},
+): Request {
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  if (options.origin !== null) headers['origin'] = options.origin ?? ORIGIN;
+  if (options.csrf !== false) headers[CSRF_HEADER] = '1';
+  if (options.cookie !== undefined) headers['cookie'] = options.cookie;
+  if (options.bearer !== undefined) headers['authorization'] = `Bearer ${options.bearer}`;
+  return new Request(`${ORIGIN}${path}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+}
+
+/** Reads the error code off a response that may not exist (assert helper). */
+async function errorOf(response: Response | null | undefined): Promise<string> {
+  return ((await response?.json()) as { error: string } | undefined)?.error ?? 'missing';
+}
+
+function get(path: string, options: { cookie?: string; origin?: string | null } = {}): Request {
+  const headers: Record<string, string> = {};
+  if (options.cookie !== undefined) headers['cookie'] = options.cookie;
+  if (options.origin !== null && options.origin !== undefined) {
+    headers['origin'] = options.origin;
+  }
+  return new Request(`${ORIGIN}${path}`, { method: 'GET', headers });
+}
+
+Deno.test(
+  'password sign-in proxies the grant and sets the __Host- refresh cookie',
+  async () => {
+    const { deps, calls } = fakeDeps();
+    const response = await handleAuthRequest(
+      post('/auth/password/sign-in', { email: 'a@example.com', password: 'secret' }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 200);
+    assertEquals(calls.length, 1);
+    assertEquals(calls[0].path, '/auth/v1/token?grant_type=password');
+    const body = JSON.parse(String(calls[0].init.body));
+    assertEquals(body.email, 'a@example.com');
+    const headers = new Headers(calls[0].init.headers);
+    assertEquals(headers.get('apikey'), 'sb_publishable_test');
+
+    const payload = await response?.json();
+    assertEquals(payload.access_token, 'access-for-refresh-1');
+    // The refresh token never rides in the body the browser reads.
+    assertEquals(payload.refresh_token, undefined);
+
+    assertEquals(
+      response?.headers.get('set-cookie'),
+      `${REFRESH_COOKIE}=refresh-1; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${REFRESH_MAX_AGE_SECONDS}`,
+    );
+  },
+);
+
+Deno.test(
+  'session refresh rotates the cookie: the response carries the new token',
+  async () => {
+    const { deps, calls } = fakeDeps(
+      () =>
+        new Response(JSON.stringify(sessionBody('rotated-token')), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+    const response = await handleAuthRequest(
+      get('/auth/session', { cookie: `${REFRESH_COOKIE}=stale-token` }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 200);
+    assertEquals(calls[0].path, '/auth/v1/token?grant_type=refresh_token');
+    assertEquals(JSON.parse(String(calls[0].init.body)).refresh_token, 'stale-token');
+    assertEquals(
+      response?.headers.get('set-cookie'),
+      `${REFRESH_COOKIE}=rotated-token; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${REFRESH_MAX_AGE_SECONDS}`,
+    );
+    const payload = await response?.json();
+    assertEquals(payload.refresh_token, undefined);
+    assertEquals(payload.access_token, 'access-for-rotated-token');
+    assertEquals(payload.user.email, 'a@example.com');
+  },
+);
+
+Deno.test('session without the cookie is a plain signed-out', async () => {
+  const { deps, calls } = fakeDeps();
+  const response = await handleAuthRequest(get('/auth/session'), ENV, deps);
+
+  assertEquals(response?.status, 401);
+  assertEquals(await errorOf(response), 'no_session');
+  assertEquals(calls.length, 0);
+});
+
+Deno.test(
+  'a dead refresh family clears the cookie so the next call is a clean signed-out',
+  async () => {
+    const { deps } = fakeDeps(
+      () => new Response(JSON.stringify({ error_code: 'invalid_grant' }), { status: 400 }),
+    );
+    const response = await handleAuthRequest(
+      get('/auth/session', { cookie: `${REFRESH_COOKIE}=stale` }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 400);
+    assertEquals(await errorOf(response), 'invalid_grant');
+    assertEquals(
+      response?.headers.get('set-cookie'),
+      `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
+    );
+  },
+);
+
+Deno.test(
+  'CSRF: a POST without the app Origin is rejected before any upstream call',
+  async () => {
+    const { deps, calls } = fakeDeps();
+
+    const noOrigin = await handleAuthRequest(
+      post(
+        '/auth/password/sign-in',
+        { email: 'a@example.com', password: 'x' },
+        { origin: null },
+      ),
+      ENV,
+      deps,
+    );
+    assertEquals(noOrigin?.status, 403);
+    assertEquals(await errorOf(noOrigin), 'csrf_rejected');
+
+    const foreign = await handleAuthRequest(
+      post(
+        '/auth/password/sign-in',
+        { email: 'a@example.com', password: 'x' },
+        { origin: 'https://attacker.test' },
+      ),
+      ENV,
+      deps,
+    );
+    assertEquals(foreign?.status, 403);
+
+    const noCustomHeader = await handleAuthRequest(
+      post(
+        '/auth/password/sign-in',
+        { email: 'a@example.com', password: 'x' },
+        { csrf: false },
+      ),
+      ENV,
+      deps,
+    );
+    assertEquals(noCustomHeader?.status, 403);
+
+    // A cross-site GET at the session route is rejected on a present foreign
+    // Origin too, even though GETs carry no custom header.
+    const foreignGet = await handleAuthRequest(
+      get('/auth/session', { origin: 'https://attacker.test' }),
+      ENV,
+      deps,
+    );
+    assertEquals(foreignGet?.status, 403);
+
+    assertEquals(calls.length, 0);
+  },
+);
+
+Deno.test('CSRF: the same-origin POST with the custom header passes through', async () => {
+  const { deps, calls } = fakeDeps();
+  const response = await handleAuthRequest(
+    post('/auth/password/sign-in', { email: 'a@example.com', password: 'x' }),
+    ENV,
+    deps,
+  );
+  assertEquals(response?.status, 200);
+  assertEquals(calls.length, 1);
+});
+
+Deno.test(
+  'the PKCE callback without a verifier cookie is the different-browser case',
+  async () => {
+    const { deps, calls } = fakeDeps();
+    const response = await handleAuthRequest(
+      post('/auth/callback', { code: 'auth-code' }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 401);
+    assertEquals(await errorOf(response), 'verifier_missing');
+    assertEquals(calls.length, 0);
+  },
+);
+
+Deno.test('the PKCE callback exchanges with the cookie verifier and consumes it', async () => {
+  const { deps, calls } = fakeDeps();
+  const response = await handleAuthRequest(
+    post('/auth/callback', { code: 'auth-code' }, { cookie: `${PKCE_COOKIE}=verifier-abc` }),
+    ENV,
+    deps,
+  );
+
+  assertEquals(response?.status, 200);
+  assertEquals(calls[0].path, '/auth/v1/token?grant_type=pkce');
+  assertEquals(JSON.parse(String(calls[0].init.body)), {
+    auth_code: 'auth-code',
+    code_verifier: 'verifier-abc',
+  });
+  const setCookies = response?.headers.getSetCookie() ?? [];
+  assertEquals(setCookies.length, 2);
+  assertEquals(
+    setCookies[0],
+    `${REFRESH_COOKIE}=refresh-1; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${REFRESH_MAX_AGE_SECONDS}`,
+  );
+  assertEquals(
+    setCookies[1],
+    `${PKCE_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
+  );
+});
+
+Deno.test(
+  'a failed callback exchange keeps the verifier (the code may simply be mistyped)',
+  async () => {
+    const { deps } = fakeDeps(
+      () => new Response(JSON.stringify({ error_code: 'invalid_grant' }), { status: 400 }),
+    );
+    const response = await handleAuthRequest(
+      post('/auth/callback', { code: 'spent' }, { cookie: `${PKCE_COOKIE}=verifier-abc` }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 400);
+    assertEquals(await errorOf(response), 'invalid_grant');
+    assertEquals(response?.headers.getSetCookie().length, 0);
+  },
+);
+
+Deno.test(
+  'OAuth start redirects to the provider with the S256 challenge and the verifier cookie',
+  async () => {
+    const { deps, calls } = fakeDeps();
+    const response = await handleAuthRequest(
+      get('/auth/oauth/start?provider=google'),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 302);
+    const location = new URL(response?.headers.get('location') ?? '');
+    assertEquals(
+      location.origin + location.pathname,
+      'https://supabase.test/auth/v1/authorize',
+    );
+    assertEquals(location.searchParams.get('provider'), 'google');
+    assertEquals(location.searchParams.get('redirect_to'), `${ORIGIN}/auth/callback`);
+    assertEquals(location.searchParams.get('code_challenge'), 'challenge-verifier-abc');
+    assertEquals(location.searchParams.get('code_challenge_method'), 's256');
+    assertEquals(
+      response?.headers.get('set-cookie'),
+      `${PKCE_COOKIE}=verifier-abc; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600`,
+    );
+    // Starting OAuth is a pure redirect: no upstream HTTP call.
+    assertEquals(calls.length, 0);
+  },
+);
+
+Deno.test('OAuth start accepts apple and rejects unknown providers', async () => {
+  const { deps } = fakeDeps();
+  const apple = await handleAuthRequest(get('/auth/oauth/start?provider=apple'), ENV, deps);
+  assertEquals(apple?.status, 302);
+  assertEquals(
+    new URL(apple?.headers.get('location') ?? '').searchParams.get('provider'),
+    'apple',
+  );
+
+  const unknown = await handleAuthRequest(get('/auth/oauth/start?provider=blob'), ENV, deps);
+  assertEquals(unknown?.status, 400);
+  assertEquals(await errorOf(unknown), 'unknown_provider');
+});
+
+Deno.test(
+  'otp send wires the PKCE challenge and redirects the emailed link to this origin',
+  async () => {
+    const { deps, calls } = fakeDeps();
+    const response = await handleAuthRequest(
+      post('/auth/otp/send', { email: 'a@example.com', create_user: false }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 200);
+    const target = new URL(`https://supabase.test${calls[0].path}`);
+    assertEquals(target.pathname, '/auth/v1/otp');
+    assertEquals(target.searchParams.get('redirect_to'), `${ORIGIN}/auth/callback`);
+    const body = JSON.parse(String(calls[0].init.body));
+    assertEquals(body.email, 'a@example.com');
+    assertEquals(body.create_user, false);
+    assertEquals(body.code_challenge, 'challenge-verifier-abc');
+    assertEquals(body.code_challenge_method, 's256');
+    assertEquals(
+      response?.headers.get('set-cookie'),
+      `${PKCE_COOKIE}=verifier-abc; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600`,
+    );
+  },
+);
+
+Deno.test('otp verify validates the type allowlist and returns the session', async () => {
+  const { deps, calls } = fakeDeps();
+  const ok = await handleAuthRequest(
+    post('/auth/otp/verify', { email: 'a@example.com', token: ' 1234 5678 ', type: 'email' }),
+    ENV,
+    deps,
+  );
+  assertEquals(ok?.status, 200);
+  assertEquals(calls[0].path, '/auth/v1/verify');
+  assertEquals(JSON.parse(String(calls[0].init.body)), {
+    email: 'a@example.com',
+    token: '12345678',
+    type: 'email',
+  });
+
+  const badType = await handleAuthRequest(
+    post('/auth/otp/verify', { email: 'a@example.com', token: '1', type: 'sms' }),
+    ENV,
+    deps,
+  );
+  assertEquals(badType?.status, 400);
+  assertEquals(await errorOf(badType), 'email_token_type_required');
+});
+
+Deno.test(
+  'password reset points the emailed link at this origin and sets the verifier cookie',
+  async () => {
+    const { deps, calls } = fakeDeps();
+    const response = await handleAuthRequest(
+      post('/auth/password/reset', { email: 'a@example.com' }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 200);
+    const target = new URL(`https://supabase.test${calls[0].path}`);
+    assertEquals(target.pathname, '/auth/v1/recover');
+    assertEquals(target.searchParams.get('redirect_to'), `${ORIGIN}/auth/callback`);
+    assertEquals(
+      JSON.parse(String(calls[0].init.body)).code_challenge,
+      'challenge-verifier-abc',
+    );
+    assertEquals(response?.headers.getSetCookie()[0].startsWith(`${PKCE_COOKIE}=`), true);
+  },
+);
+
+Deno.test('password update forwards the in-memory access token as the bearer', async () => {
+  const { deps, calls } = fakeDeps();
+
+  const noToken = await handleAuthRequest(
+    post('/auth/password/update', { password: 'new password' }),
+    ENV,
+    deps,
+  );
+  assertEquals(noToken?.status, 401);
+
+  const ok = await handleAuthRequest(
+    post('/auth/password/update', { password: 'new password' }, { bearer: 'access-1' }),
+    ENV,
+    deps,
+  );
+  assertEquals(ok?.status, 200);
+  assertEquals(calls[0].path, '/auth/v1/user');
+  const init = calls[0].init;
+  assertEquals(init.method, 'PUT');
+  assertEquals(new Headers(init.headers).get('authorization'), 'Bearer access-1');
+  assertEquals(JSON.parse(String(init.body)).password, 'new password');
+});
+
+Deno.test(
+  'sign-out global revokes upstream and clears the cookie even if upstream fails',
+  async () => {
+    const { deps, calls } = fakeDeps(() => new Response(null, { status: 401 }));
+    const response = await handleAuthRequest(
+      post('/auth/sign-out', { scope: 'global' }, { bearer: 'access-1' }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 200);
+    assertEquals(((await response?.json()) as { ok: boolean } | undefined)?.ok, true);
+    assertEquals(calls[0].path, '/auth/v1/logout?scope=global');
+    assertEquals(
+      response?.headers.get('set-cookie'),
+      `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
+    );
+
+    const badScope = await handleAuthRequest(
+      post('/auth/sign-out', { scope: 'others' }, { bearer: 'access-1' }),
+      ENV,
+      deps,
+    );
+    assertEquals(badScope?.status, 400);
+  },
+);
+
+Deno.test(
+  'sign-out without a live access token refreshes once from the cookie first',
+  async () => {
+    const { deps, calls } = fakeDeps();
+    const response = await handleAuthRequest(
+      post('/auth/sign-out', { scope: 'local' }, { cookie: `${REFRESH_COOKIE}=refresh-1` }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 200);
+    assertEquals(calls[0].path, '/auth/v1/token?grant_type=refresh_token');
+    assertEquals(calls[1].path, '/auth/v1/logout?scope=local');
+    assertEquals(
+      new Headers(calls[1].init.headers).get('authorization'),
+      'Bearer access-for-refresh-1',
+    );
+  },
+);
+
+Deno.test(
+  'sign-up with email confirmation on returns no session but starts the PKCE flow',
+  async () => {
+    const { deps, calls } = fakeDeps(
+      () =>
+        new Response(JSON.stringify({ user: { id: 'u2', email: 'new@example.com' } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+    const response = await handleAuthRequest(
+      post('/auth/password/sign-up', { email: 'new@example.com', password: 'secret' }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 200);
+    const target = new URL(`https://supabase.test${calls[0].path}`);
+    assertEquals(target.pathname, '/auth/v1/signup');
+    assertEquals(target.searchParams.get('redirect_to'), `${ORIGIN}/auth/callback`);
+    const payload = await response?.json();
+    assertEquals(payload.session, false);
+    assertEquals(payload.user.email, 'new@example.com');
+    assertEquals(payload.refresh_token, undefined);
+    // The confirmation link carries a PKCE code this browser can exchange.
+    assertEquals(
+      response?.headers.get('set-cookie')?.startsWith(`${PKCE_COOKIE}=verifier-abc`),
+      true,
+    );
+  },
+);
+
+Deno.test('the real client IP rides to Supabase for its per-IP rate limiting', async () => {
+  const { deps, calls } = fakeDeps();
+  const request = new Request(`${ORIGIN}/auth/password/sign-in`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      origin: ORIGIN,
+      [CSRF_HEADER]: '1',
+      'cf-connecting-ip': '203.0.113.9',
+    },
+    body: JSON.stringify({ email: 'a@example.com', password: 'x' }),
+  });
+  await handleAuthRequest(request, ENV, deps);
+  assertEquals(new Headers(calls[0].init.headers).get('x-forwarded-for'), '203.0.113.9');
+});
+
+Deno.test(
+  'unconfigured builds get a 503, and non-auth paths fall through to the SPA',
+  async () => {
+    const { deps } = fakeDeps();
+    const unconfigured = await handleAuthRequest(
+      get('/auth/session'),
+      { SUPABASE_PUBLISHABLE_KEY: '' },
+      deps,
+    );
+    assertEquals(unconfigured?.status, 503);
+
+    assertEquals(await handleAuthRequest(get('/'), ENV, deps), null);
+    assertEquals(
+      await handleAuthRequest(get('/auth/callback?code=from-provider'), ENV, deps),
+      null,
+    );
+    assertEquals(await handleAuthRequest(get('/auth/somewhere'), ENV, deps), null);
+    assertEquals(await handleAuthRequest(get('/sign-in'), ENV, deps), null);
+  },
+);

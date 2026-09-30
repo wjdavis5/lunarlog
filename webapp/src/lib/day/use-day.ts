@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { SYNCED_DATA_QUERY_KEY } from '../queries';
 import { getSyncedDataCache } from '../domain';
+import { sessionUserId } from '../sharing';
 import type { AppSupabaseClient } from '../supabase';
 import { DaySaveError, dayViewFromSyncedData, saveDay, type SaveDayResult } from './day-data';
 import type { DayEdit, LoadedDayView } from './payloads';
@@ -30,14 +31,21 @@ export function useDayView(
   // The membership lookup needs the session user's id; the session lives
   // in client memory, resolved once per client. `null` = unresolved;
   // `''` = resolved and signed out (a configured build visited without a
-  // session shows the sign-in prompt, not an access error).
+  // session shows the sign-in prompt, not an access error). sessionUserId
+  // covers both client kinds — the app client's accessToken option makes
+  // client.auth itself unusable (issue #1250), so the id comes from the
+  // auth Worker there.
   const [uid, setUid] = useState<string | null>(null);
   useEffect(() => {
     if (client === null) return;
     let active = true;
-    void client.auth.getSession().then(({ data }) => {
-      if (active) setUid(data.session?.user.id ?? '');
-    });
+    void sessionUserId(client)
+      .then((id) => {
+        if (active) setUid(id ?? '');
+      })
+      .catch(() => {
+        if (active) setUid('');
+      });
     return () => {
       active = false;
     };

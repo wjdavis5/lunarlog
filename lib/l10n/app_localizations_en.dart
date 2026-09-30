@@ -1850,6 +1850,25 @@ class AppLocalizationsEn extends AppLocalizations {
       'That is the only way left to sign in to this account. Add another method first.';
 
   @override
+  String get webAuthDifferentBrowserError =>
+      'That sign-in link was opened in a different browser. Open the link in the browser where you asked for it, or use the 8-digit code instead.';
+
+  @override
+  String get webAuthAppleButtonLabel => 'Sign in with Apple';
+
+  @override
+  String get webAuthSignOutAction => 'Sign out';
+
+  @override
+  String get webAuthSignOutEverywhereAction => 'Sign out everywhere';
+
+  @override
+  String get webAuthSendResetAction => 'Send reset link';
+
+  @override
+  String get webAuthContinueAction => 'Continue';
+
+  @override
   String get careNotesRemoveNoteTooltip => 'Remove note';
 
   @override

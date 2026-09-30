@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { Database } from '../../../supabase/database.types';
 
+import { webAuth } from './auth';
 import { hasSupabase, supabasePublishableKey, supabaseUrl } from './config';
 
 /**
@@ -15,22 +16,24 @@ import { hasSupabase, supabasePublishableKey, supabaseUrl } from './config';
 export type AppSupabaseClient = SupabaseClient<Database>;
 
 /**
- * The only session storage the web client allows: an in-memory adapter.
- * supabase-js would otherwise persist the session to localStorage —
- * exactly the at-rest state the nothing-stored rule bans. The session
- * lives in page memory and dies with the tab; the browser keeps nothing.
+ * A real in-memory session store, one fresh adapter per client instance.
  *
- * Issue #1252: the scaffold's version stubbed every method to no-ops,
- * which dropped the session the instant supabase-js re-read it — every
- * request after a sign-in went out as `anon`, and the synced RPCs
- * (`sync_push`/`sync_pull` grant `EXECUTE` to `authenticated` only)
- * failed with "permission denied". This is a real in-memory store: reads
- * return what was written, nothing ever reaches the browser's at-rest
- * storage (the storage-empty e2e guard still holds).
+ * Under the `accessToken` option (issue #1250) this is belt-and-braces:
+ * that option is what actually keeps supabase-js from ever touching
+ * session storage — per its own contract the `auth` namespace is unusable
+ * on a client created with it, so no session is ever persisted or read
+ * back. If a future change removed the option, this adapter keeps the
+ * browser at-rest-empty rather than silently reverting to localStorage.
  *
- * One adapter PER client: every client instance gets its own store, so
- * two clients (a test's multi-user scenario, or two accounts in one
- * process) can never read each other's session.
+ * For clients created without the option (issue #1252's integration
+ * fakes) it is the session store itself, and it must be a REAL store:
+ * the scaffold's no-op stub dropped the session the instant supabase-js
+ * re-read it, so every request after a sign-in went out as `anon` and the
+ * synced RPCs (granted to `authenticated` only) failed with "permission
+ * denied". Reads return what was written, nothing ever reaches the
+ * browser's at-rest storage, and one adapter PER client means two clients
+ * (a test's multi-user scenario, or two accounts in one process) can
+ * never read each other's session.
  */
 export function createInMemorySessionStorage() {
   const store = new Map<string, string>();
@@ -46,10 +49,21 @@ export function createInMemorySessionStorage() {
     },
   };
 }
-
-/** Creates the typed client with its own in-memory session storage wired in. */
-export function createSupabaseClient(url: string, publishableKey: string): AppSupabaseClient {
+/**
+ * Creates the typed client. The app client (issue #1250) passes
+ * `getAccessToken`: every request then carries the in-memory access token
+ * from the web auth client, renewed through the same-origin Worker's
+ * `/auth/session` when it nears expiry. Callers that omit it (issue
+ * #1252's integration fakes) get a storage-backed client over its own
+ * per-instance in-memory adapter.
+ */
+export function createSupabaseClient(
+  url: string,
+  publishableKey: string,
+  getAccessToken?: () => Promise<string | null>,
+): AppSupabaseClient {
   return createClient<Database>(url, publishableKey, {
+    ...(getAccessToken === undefined ? {} : { accessToken: getAccessToken }),
     auth: { storage: createInMemorySessionStorage() },
   });
 }
@@ -65,7 +79,9 @@ export function getSupabaseClient(): AppSupabaseClient | null {
     return null;
   }
   if (client === null) {
-    client = createSupabaseClient(supabaseUrl, supabasePublishableKey);
+    client = createSupabaseClient(supabaseUrl, supabasePublishableKey, () =>
+      webAuth.getToken(),
+    );
   }
   return client;
 }

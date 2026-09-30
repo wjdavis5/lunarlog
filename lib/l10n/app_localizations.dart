@@ -2946,6 +2946,42 @@ abstract class AppLocalizations {
   /// **'That is the only way left to sign in to this account. Add another method first.'**
   String get authFailureLastSignInMethod;
 
+  /// Issue #1250: web sign-in error when a PKCE sign-in link arrives without this browser's short-lived verifier cookie - the link was requested in another browser (or the cookie expired). Names the 8-digit code as the way through.
+  ///
+  /// In en, this message translates to:
+  /// **'That sign-in link was opened in a different browser. Open the link in the browser where you asked for it, or use the 8-digit code instead.'**
+  String get webAuthDifferentBrowserError;
+
+  /// Issue #1250: the web sign-in screen's Apple button, per Apple's button wording (the Google counterpart is accountGoogleButtonLabel).
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in with Apple'**
+  String get webAuthAppleButtonLabel;
+
+  /// Issue #1250: the web sign-in screen's sign-out-this-device action.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out'**
+  String get webAuthSignOutAction;
+
+  /// Issue #1250: the web sign-in screen's sign-out-everywhere action (revokes every device's session; other devices keep working up to the access-token expiry, about an hour).
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out everywhere'**
+  String get webAuthSignOutEverywhereAction;
+
+  /// Issue #1250: the web forgot-password screen's submit button.
+  ///
+  /// In en, this message translates to:
+  /// **'Send reset link'**
+  String get webAuthSendResetAction;
+
+  /// Issue #1250: the web auth screens' continue action after a completed sign-in or password change.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get webAuthContinueAction;
+
   /// Tooltip on a care note's delete icon button.
   ///
   /// In en, this message translates to:

@@ -15,7 +15,7 @@ client epic builds on this scaffold.
 | Layer      | Choice                                                                  | Note                                                       |
 | :--------- | :---------------------------------------------------------------------- | :--------------------------------------------------------- |
 | Build      | Vite 7 + TypeScript 5, `strict`                                         | `npm run build` typechecks first.                          |
-| UI         | React 19 + React Router 7                                               | One shell, one real screen; `auth/*` reserved (#1250).     |
+| UI         | React 19 + React Router 7                                               | One shell; the auth screens (#1250) sit outside `/auth/*`. |
 | Data       | TanStack Query 5, **in-memory only**                                    | No persister, by construction.                             |
 | Backend    | supabase-js v2, typed by `supabase/database.types.ts`                   | The snapshot's first consumer (see below).                 |
 | Validation | Zod at the network boundary                                             | `src/lib/schemas.ts` validates what actually comes back.   |
@@ -36,8 +36,10 @@ directions, and CI fails if any of them regresses:
    real config and fails if the ban stops firing (the acceptance criterion:
    "a lint test proves the storage ban fires").
 2. **supabase-js cannot write a session either**: the client is created with
-   an in-memory storage adapter (`src/lib/supabase.ts`), so even a signed-in
-   session lives only in page memory.
+   the `accessToken` option (`src/lib/supabase.ts`, issue #1250) — per its
+   own contract the `auth` namespace is then unusable, so no session is ever
+   persisted or read back; an inert storage adapter sits underneath as
+   belt-and-braces.
 3. **A Playwright test asserts the browser is empty after a session**
    (`e2e/storage-empty.spec.ts`): all six surfaces measured, all must be
    empty. Later issues extend this test as the client grows.
@@ -177,6 +179,42 @@ ruleset rollup's `needs:` — so the store release gate stays anchored to the
 app's own suites (the issue's acceptance criterion; a path-filtered job in
 the rollup would fail every docs-only PR with a "skipped" dependency).
 
+## Auth (issue #1250)
+
+Sign-in runs entirely through the same-origin Worker (`worker/auth.ts`),
+which proxies Supabase Auth's GoTrue HTTP API. The browser's only credential
+is the **access token in page memory**; the refresh token lives in the
+rotating `__Host-ll_refresh` HttpOnly Secure SameSite=Strict cookie and is
+never in a response body, and the PKCE verifier rides its own short-lived
+`__Host-ll_pkce` HttpOnly SameSite=Lax cookie so the OAuth/emailed links
+land in the same browser. Every state-changing route demands the app's
+`Origin` plus an `x-lunarlog-csrf` custom header (the CSRF gate), on top of
+the SameSite=Strict cookie. supabase-js is created with the `accessToken`
+client option fed from `src/lib/auth.ts`'s in-memory token, renewed through
+`GET /auth/session` (which rotates the cookie) with a single in-flight
+renewal per tab.
+
+- **Routes** (`worker/auth.ts`): password sign-in/sign-up, the emailed
+  8-digit code and magic link (send + verify), Google/Apple PKCE start and
+  the `POST /auth/callback` exchange (the provider's `GET` lands on the SPA
+  page), password reset + update, session refresh, and sign-out on this
+  device or everywhere. Failures carry GoTrue's own error codes so the UI
+  can reuse the app's failure copy (`src/lib/authCopy.ts`).
+- **Upstream shapes** mirror the installed @supabase/auth-js wire format
+  (grants at `/auth/v1/token?grant_type=…`, `redirect_to` as a query
+  parameter, `code_challenge` in the body), verified against
+  `node_modules/@supabase/auth-js`.
+- **Tests**: `worker/auth.test.ts` (Deno) covers the cookie flags,
+  rotation, CSRF rejection, the different-browser `verifier_missing`
+  callback error, and the OAuth start against a stubbed Supabase; the
+  browser side is covered by `test/auth.test.ts`, `test/authCopy.test.ts`,
+  and `test/auth-pages.test.tsx`. Real Google/Apple/email-link sign-in
+  needs #1093's console steps; the live-provider checklist is #1258.
+- **Deploy**: the Worker's publishable key is set as the Wrangler secret
+  `SUPABASE_PUBLISHABLE_KEY` by `webapp-deploy.yml` from the
+  `SUPABASE_ANON_KEY` repository secret (warn-and-skip on forks; the auth
+  routes answer `503 auth_not_configured` until it exists).
+
 ## The Dart domain module (issue #1251)
 
 The web client does not re-implement the app's cycle logic in TypeScript:
@@ -222,6 +260,9 @@ is compiled to JavaScript once and both platforms run the same engine.
 
 ## Deliberately not here yet
 
+<<<<<<< HEAD
+=======
+
 - **Auth** (#1250): the `/auth/*` route and Worker entry are reserved; the
 - **Auth** (#1250): the `/auth/*` route and Worker entry are reserved; the
   page renders catalogue placeholder copy. The data layer (issue #1252)
@@ -231,12 +272,16 @@ is compiled to JavaScript once and both platforms run the same engine.
   sharing pages (#1255) render their honest not-signed-in copy and every
   acceptance criterion that needs two signed-in clients is proven by the
   unit suite's RPC-level fakes rather than a live browser.
+
+> > > > > > > origin/main
+
 - **Domain screens** (#1251's successors): the compiled module and its
   typed client exist (`src/domain/`); no screen consumes them yet — the
   prediction/history/insights UIs are later slices of the epic. The
   raw-data half of that story is the data layer (issue #1252):
   `useLiveProfiles` proves the supabase-js → `sync_pull` → Zod →
   TanStack Query path.
-- **Custom domain** (#1258): staging is workers.dev only.
-- **`/auth/*` Worker special-casing**: none needed yet — the SPA fallback
-  serves it; #1250 decides whether the Worker must answer it first.
+- **Custom domain** (#1258): staging is workers.dev only; that move also
+  re-checks the live-provider flows and how Supabase counts the Worker's
+  rate-limited requests (the Worker already forwards
+  `CF-Connecting-IP` as `X-Forwarded-For`).
