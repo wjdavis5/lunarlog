@@ -12,6 +12,12 @@
 ///   compiled dart2js module against the same file — so the compiled
 ///   module and the Dart domain can never disagree silently.
 ///
+/// A third pin is structural (issue #1272): the Zod schema for every Dart
+/// enum the facade serialises by `.name` must list exactly that enum's
+/// values, whether or not a fixture happens to exercise one — the parity
+/// fixtures alone can't (they only carried 4+-cycle insights, so the
+/// `insufficientData` trend slipped through them).
+///
 /// The comparison is structural (numbers compared numerically, so Dart's
 /// `29.0` matches JavaScript's `29` after JSON round-trip; object key order
 /// ignored; array order significant).
@@ -21,6 +27,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/domain/insights/symptom_trends.dart';
 
 import '../../tool/web_domain/facade.dart';
 
@@ -53,6 +60,43 @@ void main() {
       );
     });
   }
+
+  // Issue #1272: the facade serialises `TrendDirection` by `.name`
+  // (`tool/web_domain/facade.dart`'s `insightsReportToJson`), and the web
+  // client parses every insights response with `symptomPatternSchema`'s
+  // `trend` Zod enum — so the two value sets must match exactly, fixture
+  // coverage or not.
+  test('symptomPatternSchema trend enum mirrors TrendDirection exactly', () {
+    final schemasSource =
+        File('webapp/src/domain/schemas.ts').readAsStringSync();
+    final match = RegExp(r"trend:\s*z\.enum\(\[([^\]]*)\]").firstMatch(
+      schemasSource,
+    );
+    expect(
+      match,
+      isNotNull,
+      reason: 'webapp/src/domain/schemas.ts no longer carries a `trend: '
+          'z.enum([...])` — if it moved or was renamed, update this test '
+          'to read the new shape; if it was removed, the Dart↔web '
+          'boundary for insights is gone and this pin is obsolete.',
+    );
+
+    final schemaValues =
+        RegExp(r"'([^']+)'").allMatches(match!.group(1)!).map((m) => m.group(1)!).toSet();
+    final dartValues = TrendDirection.values.map((value) => value.name).toSet();
+
+    expect(
+      schemaValues,
+      dartValues,
+      reason: 'The `trend` Zod enum in webapp/src/domain/schemas.ts and '
+          "Dart's TrendDirection (lib/domain/insights/symptom_trends.dart) "
+          'have drifted. The facade emits `trend.name` verbatim, so a Dart '
+          'value missing from the schema makes insights() throw a ZodError '
+          'for real users (issue #1272), and a schema value the enum no '
+          'longer has is dead weight hiding the same class of bug. Update '
+          'both sides in the same change.',
+    );
+  });
 }
 
 /// Structural JSON equality: numbers numerically (int/double interchange),

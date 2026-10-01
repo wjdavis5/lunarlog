@@ -12,10 +12,18 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
+import 'package:timezone/data/latest_10y.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
 
 import '../../tool/web_domain/facade.dart';
+import '../../tool/web_domain/iana_aliases.dart';
 
 void main() {
+  // The facade initializes the tz database lazily on its first call; the
+  // zone-assertions below must not depend on test ordering, so initialize
+  // it here too (idempotent — it just reloads the same data).
+  setUpAll(tzdata.initializeTimeZones);
+
   Map<String, Object?> call(String method, Object? request) {
     final response = handleFacadeCall(method, jsonEncode(request));
     return jsonDecode(response) as Map<String, Object?>;
@@ -113,6 +121,22 @@ void main() {
       expect(response['ok'], true);
     });
 
+    test('the bare GMT link name aliases to the database zone', () {
+      // GMT has no active `backward` link since tzdata demoted it to a
+      // Zone (2024b) — it survives via the generator's retired-link list,
+      // and the compiled latest_10y database does not carry it.
+      expect(
+        tz.timeZoneDatabase.locations.containsKey('GMT'),
+        isFalse,
+      );
+      final response = call('cycleHistory', {
+        'today': '2026-09-30',
+        'tz': 'GMT',
+        'entries': [bleedEntry('e1', '2026-09-01')],
+      });
+      expect(response['ok'], true);
+    });
+
     test('a malformed date is a named field error', () {
       final response = call('validateDayEntryDate', {
         'date': '30/09/2026',
@@ -138,6 +162,62 @@ void main() {
       });
       expect(noId['ok'], false);
       expect(noId['error'], contains('id'));
+    });
+  });
+
+  group('IANA legacy link names (issue #1273)', () {
+    // The names from the issue plus the bare UTC/GMT: every one is a link
+    // name the compiled latest_10y database drops, and a browser reporting
+    // it must get a success envelope from every date-math method — the
+    // failure mode being fixed was a total one (predict, cycleHistory and
+    // insights all resolve `tz` before anything else).
+    const legacyNames = [
+      'Asia/Calcutta',
+      'Europe/Kiev',
+      'Asia/Saigon',
+      'Asia/Katmandu',
+      'UTC',
+      'GMT',
+    ];
+
+    for (final legacy in legacyNames) {
+      test('$legacy resolves instead of erroring', () {
+        expect(
+          tz.timeZoneDatabase.locations.containsKey(legacy),
+          isFalse,
+          reason:
+              '$legacy is a fixture name because the database drops it; '
+              'if the database now carries it, this entry is dead weight '
+              'and iana_aliases.dart should be regenerated',
+        );
+        final response = call('cycleHistory', {
+          'today': '2026-09-30',
+          'tz': legacy,
+          'entries': [bleedEntry('e1', '2026-09-01')],
+        });
+        expect(response['ok'], true, reason: 'tz: $legacy');
+      });
+    }
+
+    test('every generated alias resolves to a database zone, and no alias is itself in the database', () {
+      // The whole committed table, not just the sampled names: an alias
+      // whose target the database lacks would still throw, and an alias the
+      // database carries would be shadowed dead weight. Both mean
+      // `tool/web_domain/gen_iana_aliases.dart` must be re-run.
+      kIanaLegacyAliases.forEach((alias, target) {
+        expect(
+          tz.timeZoneDatabase.locations.containsKey(target),
+          isTrue,
+          reason: 'alias "$alias" points at "$target", which the tz '
+              'database does not carry',
+        );
+        expect(
+          tz.timeZoneDatabase.locations.containsKey(alias),
+          isFalse,
+          reason: 'alias "$alias" is itself a database location; the entry '
+              'is dead weight — re-run tool/web_domain/gen_iana_aliases.dart',
+        );
+      });
     });
   });
 

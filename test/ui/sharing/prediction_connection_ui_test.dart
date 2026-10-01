@@ -35,13 +35,13 @@ import 'package:lunarlog/domain/sharing/prediction_projection.dart';
 import 'package:lunarlog/domain/sharing/prediction_projection_publisher.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/ui/account/sign_in_screen.dart';
-import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/overview/estimate_copy.dart'
     show kEstimateDisclaimer, kFertileWindowDisclaimer;
 import 'package:lunarlog/ui/sharing/accept_prediction_connection_sheet.dart';
 import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
 import 'package:lunarlog/ui/sharing/prediction_connection_calendar_screen.dart';
 import 'package:lunarlog/ui/sharing/prediction_connections_screen.dart';
+import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/sharing/share_predictions_dialog.dart';
 import 'package:provider/provider.dart';
@@ -455,38 +455,46 @@ void main() {
             profileId: 'p1',
             profileName: 'Riley',
             service: service,
+            // Pin the starting month: the screen otherwise seeds from the
+            // wall clock, so the September assertions below detonated the
+            // moment the real month rolled to October (shard-0 failure of
+            // 2026-10-01).
+            today: asOf,
           ),
         ),
       );
+      await tester.pumpAndSettle();
 
-      // The screen opens on the CURRENT month: initState anchors the grid
-      // on LocalDate.today(), not on the projection's asOf month. The
-      // expected labels are therefore computed from today — hardcoding
-      // "September 2026" made this test pass only during that one month
-      // (it first failed on 2026-10-01 UTC). The labels come from the same
-      // monthNames helper the screen's header renders with.
-      final names = dates.monthNames();
-      String label(LocalDate month) =>
-          '${names[month.month - 1]} ${month.year}';
-      LocalDate shifted(LocalDate month, int delta) {
-        final total = month.year * 12 + month.month - 1 + delta;
+      // The screen opens on the device's real current month (initState:
+      // `_month = LocalDate.today()`) — derive every expected header label
+      // from the same clock and the same formatter the screen uses. The
+      // hardcoded labels this test once carried ('September 2026', ...)
+      // failed deterministically the first minute their month ended (the
+      // 2026-10-01T00:30Z CI run opened the grid on October).
+      final context = tester.element(
+        find.byType(PredictionConnectionCalendarScreen),
+      );
+      String labelOf(LocalDate month) =>
+          '${dates.monthNames(locale: dates.calendarLocale(context))[month.month - 1]} '
+          '${month.year}';
+      LocalDate shiftMonth(LocalDate month, int delta) {
+        final total = month.year * 12 + (month.month - 1) + delta;
         return LocalDate(total ~/ 12, total % 12 + 1, 1);
       }
 
       final start = LocalDate.today();
-      await tester.pumpAndSettle();
-      expect(find.text(label(start)), findsOneWidget);
+      expect(find.text(labelOf(start)), findsOneWidget);
 
       await tester.tap(find.byIcon(Icons.chevron_right));
       await tester.pumpAndSettle();
-      expect(find.text(label(shifted(start, 1))), findsOneWidget);
+      expect(find.text(labelOf(shiftMonth(start, 1))), findsOneWidget);
 
       await tester.tap(find.byIcon(Icons.chevron_left));
       await tester.pumpAndSettle();
-      expect(find.text(label(start)), findsOneWidget);
+      expect(find.text(labelOf(start)), findsOneWidget);
       await tester.tap(find.byIcon(Icons.chevron_left));
       await tester.pumpAndSettle();
-      expect(find.text(label(shifted(start, -1))), findsOneWidget);
+      expect(find.text(labelOf(shiftMonth(start, -1))), findsOneWidget);
     });
   });
 
