@@ -90,6 +90,10 @@ class _PredictionConnectionCalendarScreenState
   @override
   void initState() {
     super.initState();
+    // The one and only write to _month (issue #1308): a load must never
+    // rewrite it, so refresh and Retry keep the month the recipient
+    // navigated to, and a snapshot published last month opens on the
+    // current month rather than dragging the header into the past.
     _month = widget.today ?? LocalDate.today();
     _loadFuture = _load();
   }
@@ -97,22 +101,15 @@ class _PredictionConnectionCalendarScreenState
   Future<_ProjectionLoad> _load() async {
     final projection =
         await widget.service.fetchProjection(profileId: widget.profileId);
-    if (projection != null) {
-      // Open on the published snapshot's own month, not the device's
-      // current one: this screen is a view of the sharer's projection, and
-      // a month rollover between publish and open must not land the header
-      // on a month the snapshot says nothing about (the calendar grid drew
-      // its markers from the projection all along — only the header chased
-      // the wall clock, which is what made every October run of the
-      // month-navigation test fail).
-      if (mounted) {
-        setState(() {
-          _month = LocalDate(
-              projection.generatedAt.year, projection.generatedAt.month, 1);
-        });
-      }
-      return _ProjectionLoad.projected(projection);
-    }
+    // Deliberately no re-seed of _month here. Issue #1300 briefly reset it
+    // to the snapshot's generatedAt month to chase a test flake; issue
+    // #1308 removed that — every load (including refresh and Retry, the
+    // two _reload() callers) snapped the header back to the snapshot
+    // month, discarding the recipient's navigation, and an old snapshot
+    // opened the calendar on a past month. The month-navigation test
+    // stays rollover-proof without it because it pins the start month
+    // with `today:` instead.
+    if (projection != null) return _ProjectionLoad.projected(projection);
     // Issue #373: a recipient who just redeemed a code lands here before
     // the sharer's device has published anything. Only when this account
     // no longer holds a live connection to the profile is it "ended".
