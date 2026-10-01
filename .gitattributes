@@ -13,3 +13,8 @@ site/src/content/literacy/articles.json text eol=lf
 # site/src/content/help-cards/cards.json is compared byte-for-byte against
 # tool/export_help_cards.dart's output, so pin it LF on every platform.
 site/src/content/help-cards/cards.json text eol=lf
+
+# Issue #1271: same freshness contract as the literacy export above —
+# webapp/test/tokens.test.ts compares tokens.css byte-for-byte against
+# generate.mjs's LF output, so pin it LF on every platform.
+webapp/src/theme/tokens.css text eol=lf
