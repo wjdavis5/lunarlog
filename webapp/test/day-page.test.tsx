@@ -241,6 +241,77 @@ describe('DayPage (issue #1254)', () => {
     ).toBeInTheDocument();
   });
 
+  it('keeps a partly-rejected save dirty: retry enabled, values kept, warning armed', async () => {
+    const { client } = fakeClient({
+      rpcResult: {
+        data: {
+          resolved: [],
+          rejected: [{ id: ENTRY_ID, rejected: true }],
+          server_now: '2026-09-30T08:00:00Z',
+        },
+        error: null,
+      },
+    });
+    // The beforeunload listener is removed only by the effect's cleanup —
+    // i.e. when `dirty` flips false. Zero removals after the save resolved
+    // means the unsaved-edits warning stayed armed (issue #1290).
+    const removeSpy = vi.spyOn(window, 'removeEventListener');
+    try {
+      renderDay(client);
+      const note = await screen.findByLabelText('Notes');
+      fireEvent.change(note, { target: { value: 'rejected day' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      expect(
+        await screen.findByText('The server rejected this field — check it and try again.'),
+      ).toBeInTheDocument();
+      // The push resolved, but the baseline must not absorb what the
+      // server rejected: the edit stays dirty — the typed value survives
+      // the invalidation refetch, Save (retry) stays enabled, and no
+      // saved status shows.
+      expect(screen.getByLabelText('Notes')).toHaveValue('rejected day');
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled());
+      expect(screen.queryByText('Saved')).not.toBeInTheDocument();
+      expect(removeSpy.mock.calls.filter(([type]) => type === 'beforeunload')).toHaveLength(0);
+    } finally {
+      removeSpy.mockRestore();
+    }
+  });
+
+  it('keeps a declined (lost LWW) save dirty with the declined notice', async () => {
+    const { client } = fakeClient({
+      rpcResult: {
+        data: {
+          resolved: [
+            {
+              id: ENTRY_ID,
+              table: 'day_entries',
+              deleted_at: null,
+              updated_at: '2026-09-29T23:00:00.000Z',
+            },
+          ],
+          rejected: [],
+          server_now: '2026-09-30T08:00:00Z',
+        },
+        error: null,
+      },
+    });
+    renderDay(client);
+    const note = await screen.findByLabelText('Notes');
+    fireEvent.change(note, { target: { value: 'declined day' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(
+      await screen.findByText(
+        'A newer save from another device won this day — your changes were not applied.',
+      ),
+    ).toBeInTheDocument();
+    // A decline resolves the mutation too (issue #1290): the edit stays
+    // dirty exactly like a partly-rejected save, so the declined banner's
+    // values survive the refetch and Save stays available for retry.
+    expect(screen.getByLabelText('Notes')).toHaveValue('declined day');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled());
+    expect(screen.queryByText('Saved')).not.toBeInTheDocument();
+  });
+
   it('warns beforeunload only while dirty', async () => {
     const { client } = fakeClient();
     const addSpy = vi.spyOn(window, 'addEventListener');
