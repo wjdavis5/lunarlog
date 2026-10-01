@@ -323,7 +323,8 @@ void main() {
       expect(rows.map((r) => r.serverVersion), [43, 44]);
     });
 
-    test('day entries use the day_entries table', () async {
+    test('day entries ride the masked sync_pull_day_entries RPC (issue '
+        '#1277: the raw whole-row select would need SELECT on note)', () async {
       client = makeClient((_) async => json([entryJson(version: 9)]));
       final rows = await SupabaseSyncTransport(client!).pullPage(
         table: SyncTable.dayEntries,
@@ -331,14 +332,94 @@ void main() {
         limit: 100,
       );
       final request = requests.single;
-      expect(request.url.path, '/rest/v1/day_entries');
-      expect(request.url.queryParameters['server_version'], 'gt.0');
-      expect(request.url.queryParameters['limit'], '100');
+      expect(request.method, 'POST');
+      expect(request.url.path, '/rest/v1/rpc/sync_pull_day_entries');
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      expect(body, {
+        'p_after_version': 0,
+        'p_limit': 100,
+      });
       final row = rows.single as RemoteDayEntryRow;
       expect(row.id, entryId);
       expect(row.tags, ['cramps']);
       expect(row.serverVersion, 9);
       expect(row.updatedAt, DateTime.utc(2026, 9, 1, 10, 0, 0, 500));
+    });
+
+    test('a day_entries page past the RPC cursor carries the cursor '
+        '(issue #1277)', () async {
+      client = makeClient((_) async => json([]));
+      await SupabaseSyncTransport(client!).pullPage(
+        table: SyncTable.dayEntries,
+        afterVersion: 77,
+        limit: 500,
+      );
+      final body = jsonDecode(requests.single.body) as Map<String, dynamic>;
+      expect(body, {
+        'p_after_version': 77,
+        'p_limit': 500,
+      });
+    });
+
+    test('a server predating sync_pull_day_entries (PGRST202) falls back to '
+        'the legacy raw select — the upgrade-skew shape sync_watermark uses '
+        '(issue #1277)', () async {
+      var rpcCalls = 0;
+      client = makeClient((request) async {
+        if (request.url.path == '/rest/v1/rpc/sync_pull_day_entries') {
+          rpcCalls += 1;
+          return json(
+            {'message': 'Could not find the function', 'code': 'PGRST202'},
+            status: 404,
+          );
+        }
+        return json([entryJson(version: 9)]);
+      });
+      final rows = await SupabaseSyncTransport(client!).pullPage(
+        table: SyncTable.dayEntries,
+        afterVersion: 0,
+        limit: 100,
+      );
+      expect(rpcCalls, 1);
+      expect(requests, hasLength(2));
+      expect(requests.last.url.path, '/rest/v1/day_entries');
+      expect(requests.last.url.queryParameters['server_version'], 'gt.0');
+      expect((rows.single as RemoteDayEntryRow).serverVersion, 9);
+    });
+
+    test('any OTHER sync_pull_day_entries failure maps to its transport '
+        'error kind — no silent legacy fallback (issue #1277)', () async {
+      client = makeClient((request) async {
+        if (request.url.path == '/rest/v1/rpc/sync_pull_day_entries') {
+          return json(
+            {'message': 'permission denied', 'code': '42501'},
+            status: 403,
+          );
+        }
+        throw StateError('unexpected second request');
+      });
+      await expectLater(
+        SupabaseSyncTransport(client!).pullPage(
+          table: SyncTable.dayEntries,
+          afterVersion: 0,
+          limit: 100,
+        ),
+        throwsA(isA<SyncTransportAuthError>()),
+      );
+      expect(requests, hasLength(1));
+    });
+
+    test('a sync_pull_day_entries response that is not a JSON array is '
+        '`other` (issue #1277)', () async {
+      client = makeClient((_) async => json({'unexpected': 'shape'}));
+      await expectLater(
+        SupabaseSyncTransport(client!).pullPage(
+          table: SyncTable.dayEntries,
+          afterVersion: 0,
+          limit: 100,
+        ),
+        throwsA(isA<SyncTransportOtherError>()),
+      );
     });
 
     test('profile guardians use the profile_guardians table', () async {
@@ -486,6 +567,29 @@ void main() {
         throwsA(isA<SyncTransportOtherError>()),
       );
     });
+
+    test('a malformed row on the legacy select path (a pre-RPC server) '
+        'fails the pull the same way (issue #1277)', () async {
+      client = makeClient((request) async {
+        if (request.url.path == '/rest/v1/rpc/sync_pull_day_entries') {
+          return json(
+            {'message': 'Could not find the function', 'code': 'PGRST202'},
+            status: 404,
+          );
+        }
+        return json([
+          {...entryJson(version: 45), 'tags': [1, 2]},
+        ]);
+      });
+      await expectLater(
+        SupabaseSyncTransport(client!).pullPage(
+          table: SyncTable.dayEntries,
+          afterVersion: 0,
+          limit: 500,
+        ),
+        throwsA(isA<SyncTransportOtherError>()),
+      );
+    });
   });
 
   group('primePullCycle / pullPage RPC caching (issue #598)', () {
@@ -526,6 +630,26 @@ void main() {
         if (request.url.path.endsWith('/rpc/sync_pull')) {
           return json({'profiles': []});
         }
+        return json([observationJson(version: 5)]);
+      });
+      final transport = SupabaseSyncTransport(client!);
+
+      await transport.primePullCycle({SyncTable.profiles: 0});
+      final rows = await transport.pullPage(
+        table: SyncTable.observations, afterVersion: 0, limit: 500);
+
+      expect(rows, hasLength(1));
+      expect(requests, hasLength(2));
+      expect(requests.last.url.path, '/rest/v1/observations');
+    });
+
+    test('dayEntries not named in primePullCycle\'s cursors falls back to '
+        'the masked page RPC, not the raw select (issue #1277 — the select '
+        'would need SELECT on day_entries.note)', () async {
+      client = makeClient((request) async {
+        if (request.url.path.endsWith('/rpc/sync_pull')) {
+          return json({'profiles': []});
+        }
         return json([entryJson(version: 5)]);
       });
       final transport = SupabaseSyncTransport(client!);
@@ -536,7 +660,7 @@ void main() {
 
       expect(rows, hasLength(1));
       expect(requests, hasLength(2));
-      expect(requests.last.url.path, '/rest/v1/day_entries');
+      expect(requests.last.url.path, '/rest/v1/rpc/sync_pull_day_entries');
     });
 
     test('pullPage falls back to the per-table select when sync_pull was '

@@ -205,6 +205,10 @@ const Map<String, String> _waivedKeys = {
   'p_cursors':
       'issue #598: jsonb object mapping table name to a sync_pull cursor '
           'integer, not content',
+  'p_after_version':
+      'issue #1277: sync_pull_day_entries cursor integer, not content',
+  'p_limit':
+      'issue #1277: sync_pull_day_entries page-size integer, not content',
   'server_version':
       'server-owned monotonic sync-ordering counter (issue #635), not content',
   'access_revoked_at':

@@ -25,6 +25,15 @@ create function pg_temp.resp(n text) returns jsonb language sql as
 create function pg_temp.resolved_row(n text, p_id text) returns jsonb language sql as
   $$ select e from r, jsonb_array_elements(r.v -> 'resolved') e where r.name = n and e ->> 'id' = p_id limit 1 $$;
 
+-- Issue #1277: authenticated no longer holds SELECT on day_entries.note
+-- (the direct-read leak the issue closes), so the note fixture reads below
+-- go through this superuser-side helper instead -- a fixture read, not the
+-- thing under test (the same move #201's migration made for fixture
+-- writes, which went to service_role).
+create function pg_temp.day_note(e text) returns text language sql
+security definer set search_path = ''
+as $$ select d.note from public.day_entries d where d.id = e $$;
+
 select tests.create_supabase_user('user_a');
 select tests.create_supabase_user('user_b');
 
@@ -83,13 +92,13 @@ insert into r select 'e2', public.sync_push('[]'::jsonb,
 select is(pg_temp.resp('e2') -> 'rejected', '[]'::jsonb, 'AE3: nothing rejected');
 select is((select deleted_at from public.day_entries where id = tests.ulid(102)), null,
   'AE3: the greater-updated_at row stays live');
-select is((select note from public.day_entries where id = tests.ulid(102)), 'second',
+select is(pg_temp.day_note(tests.ulid(102)), 'second',
   'AE3: the winner keeps its payload');
 select is((select deleted_at from public.day_entries where id = tests.ulid(101)), pg_temp.ts_at('t2'),
   'AE3: the loser is tombstoned at the winner''s updated_at');
 select is((select updated_at from public.day_entries where id = tests.ulid(101)), pg_temp.ts_at('t2'),
   'AE3: the loser''s updated_at equals the winner''s');
-select is((select note from public.day_entries where id = tests.ulid(101)), null,
+select is(pg_temp.day_note(tests.ulid(101)), null,
   'AE3: the loser''s note is cleared');
 select is((select tags from public.day_entries where id = tests.ulid(101)), '[]'::jsonb,
   'AE3: the loser''s tags are cleared');
@@ -149,7 +158,7 @@ select is((select tags from public.day_entries where id = tests.ulid(105)), '["x
   'equal ts: the incoming loser''s tags are unioned onto the surviving winner (R7, U4)');
 select is((select deleted_at from public.day_entries where id = tests.ulid(106)), pg_temp.ts_at('t1'),
   'equal ts: the larger incoming ULID lands as a tombstone at the winner''s updated_at');
-select is((select note from public.day_entries where id = tests.ulid(106)), null,
+select is(pg_temp.day_note(tests.ulid(106)), null,
   'equal ts: the incoming loser is stored without note');
 select is((select tags from public.day_entries where id = tests.ulid(106)), '[]'::jsonb,
   'equal ts: the incoming loser is stored without tags');
@@ -167,7 +176,7 @@ insert into r select 'lww_older', public.sync_push('[]'::jsonb,
   jsonb_build_array(jsonb_build_object(
     'id', tests.ulid(102), 'profile_id', tests.ulid(1), 'local_date', '2026-09-05',
     'tz', 'UTC', 'flow', 'none', 'note', 'stale', 'updated_at', pg_temp.ts_txt('t0'))));
-select is((select note from public.day_entries where id = tests.ulid(102)), 'second',
+select is(pg_temp.day_note(tests.ulid(102)), 'second',
   'older incoming leaves the stored row unchanged');
 select is((select server_version from public.day_entries where id = tests.ulid(102)),
   (select server_version from sv102), 'older incoming does not rewrite the row');
@@ -178,7 +187,7 @@ insert into r select 'lww_equal_live', public.sync_push('[]'::jsonb,
   jsonb_build_array(jsonb_build_object(
     'id', tests.ulid(102), 'profile_id', tests.ulid(1), 'local_date', '2026-09-05',
     'tz', 'UTC', 'flow', 'none', 'note', 'other-device', 'updated_at', pg_temp.ts_txt('t2'))));
-select is((select note from public.day_entries where id = tests.ulid(102)), 'second',
+select is(pg_temp.day_note(tests.ulid(102)), 'second',
   'equal-and-live incoming leaves the stored row unchanged');
 select is(pg_temp.resolved_row('lww_equal_live', tests.ulid(102)) ->> 'note', 'second',
   'equal-and-live incoming: stored copy returned in resolved');
@@ -190,7 +199,7 @@ insert into r select 'lww_equal_tomb', public.sync_push('[]'::jsonb,
     'updated_at', pg_temp.ts_txt('t2'), 'deleted_at', pg_temp.ts_txt('t2'))));
 select is((select deleted_at from public.day_entries where id = tests.ulid(102)), pg_temp.ts_at('t2'),
   'equal-ts incoming tombstone wins');
-select is((select note from public.day_entries where id = tests.ulid(102)), null,
+select is(pg_temp.day_note(tests.ulid(102)), null,
   'a pushed tombstone is stored without note');
 select is((select tags from public.day_entries where id = tests.ulid(102)), '[]'::jsonb,
   'a pushed tombstone is stored without tags');
@@ -215,7 +224,7 @@ insert into r select 'revive', public.sync_push('[]'::jsonb,
     'updated_at', pg_temp.ts_txt('t3'))));
 select is((select deleted_at from public.day_entries where id = tests.ulid(102)), null,
   'revival: the tombstoned id is live again');
-select is((select note from public.day_entries where id = tests.ulid(102)), 'revived',
+select is(pg_temp.day_note(tests.ulid(102)), 'revived',
   'revival: the new payload is stored');
 select is((select tags from public.day_entries where id = tests.ulid(102)), '["a"]'::jsonb,
   'revival: the new tags are stored');
@@ -239,13 +248,15 @@ create temp table idem_payload as select jsonb_build_array(
     'tz', 'UTC', 'flow', 'none', 'updated_at', pg_temp.ts_txt('t1'), 'deleted_at', pg_temp.ts_txt('t1'))
   ) as p;
 insert into r select 'idem1', public.sync_push('[]'::jsonb, (select p from idem_payload));
+-- Issue #1277: the note projections go through pg_temp.day_note (superuser
+-- helper) -- authenticated no longer holds SELECT on day_entries.note.
 create temp table idem_snap as
-  select id, server_version, updated_at, deleted_at, note, tags, flow
+  select id, server_version, updated_at, deleted_at, pg_temp.day_note(id) as note, tags, flow
     from public.day_entries where id in (tests.ulid(108), tests.ulid(109));
 insert into r select 'idem2', public.sync_push('[]'::jsonb, (select p from idem_payload));
 select is(pg_temp.resp('idem2') -> 'rejected', '[]'::jsonb, 'idempotent: nothing rejected on replay');
 select results_eq(
-  $$select id, server_version, updated_at, deleted_at, note, tags, flow
+  $$select id, server_version, updated_at, deleted_at, pg_temp.day_note(id) as note, tags, flow
       from public.day_entries where id in (tests.ulid(108), tests.ulid(109)) order by id$$,
   $$select id, server_version, updated_at, deleted_at, note, tags, flow from idem_snap order by id$$,
   'idempotent: replaying the payload rewrites nothing (server_version unchanged)');

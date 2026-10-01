@@ -8,7 +8,7 @@
 -- refused for a non-member, proving the DEFINER function's OWN internal
 -- auth.uid()/role/membership checks (never RLS) are what carry that weight.
 begin;
-select plan(11);
+select plan(12);
 
 select tests.create_supabase_user('mom');
 select tests.create_supabase_user('outsider');
@@ -25,8 +25,13 @@ select ok(
   'authenticated has no direct update grant on day_entries (issue #201)'
 );
 select ok(
-  has_table_privilege('authenticated', 'public.day_entries', 'select'),
-  'authenticated keeps its select grant on day_entries -- only writes moved'
+  not has_table_privilege('authenticated', 'public.day_entries', 'select'),
+  'authenticated holds no table-wide select grant on day_entries -- issue #1277 replaced it with a per-column grant'
+);
+select ok(
+  has_column_privilege('authenticated', 'public.day_entries', 'note', 'SELECT') is false
+  and has_column_privilege('authenticated', 'public.day_entries', 'flow', 'SELECT') is true,
+  'that per-column grant excludes exactly note (issue #1277): the private-note text is RPC-only'
 );
 select is(
   (select prosecdef from pg_proc

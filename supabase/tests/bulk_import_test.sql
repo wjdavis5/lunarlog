@@ -20,6 +20,16 @@ create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated, service_role;
 create function pg_temp.snapshot(n text, v jsonb) returns void language sql as
   $$ insert into r values (n, v) on conflict (name) do update set v = excluded.v $$;
+
+-- Issue #1277: authenticated no longer holds SELECT on day_entries.note
+-- (the direct-read leak the issue closes), so the note fixture read below
+-- goes through this superuser-side helper instead -- a fixture read, not
+-- the thing under test (the same move #201's migration made for fixture
+-- writes, which went to service_role).
+create function pg_temp.day_note(e text) returns text language sql
+security definer set search_path = ''
+as $$ select d.note from public.day_entries d where d.id = e $$;
+
 create function pg_temp.resp(n text) returns jsonb language sql as
   $$ select v from r where name = n $$;
 
@@ -423,7 +433,7 @@ select is((select flow from public.day_entries where id = tests.ulid(762)), 'non
   'the tombstone lands with flow forced to none');
 select is((select tags from public.day_entries where id = tests.ulid(762)), '[]'::jsonb,
   'the tombstone lands with tags forced to empty');
-select is((select note from public.day_entries where id = tests.ulid(762)), null,
+select is(pg_temp.day_note(tests.ulid(762)), null,
   'the tombstone lands with note forced to null');
 select isnt((select deleted_at from public.day_entries where id = tests.ulid(762)), null,
   'the row is stored as a tombstone (deleted_at set)');
