@@ -42,6 +42,7 @@ import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
 import 'package:lunarlog/ui/sharing/prediction_connection_calendar_screen.dart';
 import 'package:lunarlog/ui/sharing/prediction_connections_screen.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/sharing/share_predictions_dialog.dart';
 import 'package:provider/provider.dart';
 
@@ -58,6 +59,20 @@ PredictionProjection _projection(
   pmsDays: [asOf.addDays(-4)],
   confidenceTier: confidenceTier,
 );
+
+/// The calendar header text the screen renders for [month] --
+/// `PredictionConnectionCalendarScreen._monthLabel`'s exact expression
+/// (monthNames entry + space + year), mirrored here so the month-navigation
+/// test's expectations move with the formatting instead of being pinned to
+/// one authoring month.
+String _monthHeaderText(LocalDate month) =>
+    '${dates.monthNames()[month.month - 1]} ${month.year}';
+
+/// The screen's own `_shiftMonth` arithmetic, mirrored for expectations.
+LocalDate _shiftMonths(LocalDate month, int delta) {
+  final total = month.year * 12 + (month.month - 1) + delta;
+  return LocalDate(total ~/ 12, total % 12 + 1, 1);
+}
 
 class _FakePredictionConnectionService implements PredictionConnectionService {
   _FakePredictionConnectionService({
@@ -458,18 +473,28 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('September 2026'), findsOneWidget);
+
+      // The screen opens on the current month (its initState uses
+      // LocalDate.today()), so the expected headers are derived from today,
+      // through the same monthNames helper the screen's own header formats
+      // with. The expectations here were once hard-coded to the authoring
+      // month (September/October/August 2026), which made this test a
+      // month-boundary time bomb: every run after 2026-10-01 00:00 UTC
+      // failed it ("Found 0 widgets with text 'September 2026'" -- first
+      // seen on issue #1278's PR, Test (shard 0) attempt 2).
+      final today = LocalDate.today();
+      expect(find.text(_monthHeaderText(today)), findsOneWidget);
 
       await tester.tap(find.byIcon(Icons.chevron_right));
       await tester.pumpAndSettle();
-      expect(find.text('October 2026'), findsOneWidget);
+      expect(find.text(_monthHeaderText(_shiftMonths(today, 1))), findsOneWidget);
 
       await tester.tap(find.byIcon(Icons.chevron_left));
       await tester.pumpAndSettle();
-      expect(find.text('September 2026'), findsOneWidget);
+      expect(find.text(_monthHeaderText(today)), findsOneWidget);
       await tester.tap(find.byIcon(Icons.chevron_left));
       await tester.pumpAndSettle();
-      expect(find.text('August 2026'), findsOneWidget);
+      expect(find.text(_monthHeaderText(_shiftMonths(today, -1))), findsOneWidget);
     });
   });
 
