@@ -295,10 +295,20 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
 
   /// Issue #1203: the raw `birth_control_method` the loaded
   /// `profile_modes` row stores, kept so the Started-on field can tell an
-  /// *unchanged* tracked method (keep the stored anchor's prefill) from a
-  /// newly picked one (default today). Null when there is no row (the
-  /// add-profile flow, or no storage wired).
+  /// *unchanged* tracked method (restore the stored anchor's prefill —
+  /// compared canonically through [BirthControlMethod.fromDb], issue
+  /// #1305) from a newly picked one (default today). Null when there is
+  /// no row (the add-profile flow, or no storage wired).
   String? _storedBirthControlMethod;
+
+  /// Issue #1305: the raw `birth_control_started_on` the loaded
+  /// `profile_modes` row stores, kept so returning the picked method to
+  /// the stored one can restore the true anchor instead of keeping the
+  /// assumed today an intermediate switch stamped into the field. Null
+  /// when the row never recorded one — restoring null keeps the field's
+  /// "—" (nothing is assumed; the recorder's stamp-today fallback still
+  /// owns that case).
+  String? _storedBirthControlStartedOn;
 
   /// Issue #192: the pregnancy due-date answer. Null until the mode is
   /// switched to `pregnancy` (which derives the default — see
@@ -361,6 +371,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
       // so an unchanged tracked method edits from its real date (shown
       // verbatim; saving an untouched field re-submits it unchanged).
       _storedBirthControlMethod = row.birthControlMethod;
+      _storedBirthControlStartedOn = row.birthControlStartedOn;
       _birthControlStartedOn = row.birthControlStartedOn;
       if (row.mode == LifecycleMode.pregnancy) {
         // An already-pregnant profile edits with its stored due date
@@ -721,20 +732,31 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
   /// Issue #1203: the birth-control dropdown's change handler. A newly
   /// picked *tracked* method defaults the Started-on field to today (the
   /// new method is in effect from today — the same day the recorder's
-  /// #183 rule would have stamped invisibly). An unchanged tracked method
-  /// leaves the field exactly as it is — the stored anchor's prefill, an
-  /// empty "—" when no anchor was ever recorded (nothing is assumed; the
-  /// recorder's stamp-today fallback still owns that case), or a date the
-  /// operator already picked. A non-tracked choice hides the field and
-  /// its value is not submitted (nothing is in effect to anchor).
+  /// #183 rule would have stamped invisibly). A tracked method picked
+  /// back to the stored one restores the stored anchor's prefill instead
+  /// of leaving the field as it stands (issue #1305): after a round trip
+  /// (pill → patch → pill) the field holds the assumed today the patch
+  /// switch stamped, and leaving it would Save that today over the true
+  /// anchor. The compare is canonical — through
+  /// [BirthControlMethod.fromDb] — because legacy rows store English
+  /// labels ("Pill") while the picker writes canonical ids ("pill"), and
+  /// a raw-string compare misreads the same method as a change. Restoring
+  /// the stored null (no anchor ever recorded) keeps the field's "—" —
+  /// nothing is assumed; the recorder's stamp-today fallback still owns
+  /// that case. A non-tracked choice hides the field and its value is not
+  /// submitted (nothing is in effect to anchor).
   void _onBirthControlChanged(BirthControlChoice? value) {
     final choice = value ?? BirthControlChoice.notAnswered;
     setState(() {
       _birthControl = choice;
       if (!_selectedBirthControlIsTracked) return;
       final method = birthControlStoredValue(choice);
-      final unchanged = method != null && method == _storedBirthControlMethod;
-      if (!unchanged) _birthControlStartedOn = LocalDate.today().iso;
+      final unchanged = method != null &&
+          _storedBirthControlMethod != null &&
+          BirthControlMethod.fromDb(method) ==
+              BirthControlMethod.fromDb(_storedBirthControlMethod);
+      _birthControlStartedOn =
+          unchanged ? _storedBirthControlStartedOn : LocalDate.today().iso;
     });
   }
 
