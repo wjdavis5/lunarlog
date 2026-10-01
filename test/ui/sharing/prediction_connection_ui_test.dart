@@ -498,6 +498,64 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text(labelOf(shiftMonth(start, -1))), findsOneWidget);
     });
+
+    testWidgets('issue #1308: a refresh keeps the month the recipient '
+        'navigated to, and an old snapshot opens on the current month',
+        (tester) async {
+      // The sharer last published in July; the recipient opens in October.
+      final today = LocalDate(2026, 10, 1);
+      final service = _FakePredictionConnectionService(
+        projection: _projection(LocalDate(2026, 7, 15)),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: PredictionConnectionCalendarScreen(
+            profileId: 'p1',
+            profileName: 'Riley',
+            service: service,
+            today: today,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Opens on the pinned start month, never on the snapshot's July —
+      // before #1308 the first load re-seeded the month from generatedAt.
+      expect(
+        find.byKey(const ValueKey('prediction-grid-2026-10')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('prediction-grid-2026-7')),
+        findsNothing,
+      );
+
+      // Navigate forward across the year boundary (Oct → Jan 2027).
+      for (var i = 0; i < 3; i++) {
+        await tester.tap(find.byIcon(Icons.chevron_right));
+        await tester.pumpAndSettle();
+      }
+      expect(
+        find.byKey(const ValueKey('prediction-grid-2027-1')),
+        findsOneWidget,
+      );
+
+      // A refresh (and equally a Retry — both call _reload()) must not
+      // throw the navigation away by re-seeding from the snapshot month.
+      await tester.tap(find.byKey(const ValueKey('prediction-refresh')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('prediction-grid-2027-1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('prediction-grid-2026-7')),
+        findsNothing,
+      );
+    });
   });
 
   group('PredictionConnectionsScreen', () {
