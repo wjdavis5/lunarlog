@@ -454,6 +454,11 @@ void main() {
             profileId: 'p1',
             profileName: 'Riley',
             service: service,
+            // Pin the starting month: the screen otherwise seeds from the
+            // wall clock, so the September assertions below detonated the
+            // moment the real month rolled to October (shard-0 failure of
+            // 2026-10-01).
+            today: asOf,
           ),
         ),
       );

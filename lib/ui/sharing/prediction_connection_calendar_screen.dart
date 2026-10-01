@@ -44,11 +44,18 @@ class PredictionConnectionCalendarScreen extends StatefulWidget {
     required this.profileId,
     required this.profileName,
     required this.service,
+    this.today,
   });
 
   final String profileId;
   final String profileName;
   final PredictionConnectionService service;
+
+  /// Pins the calendar's starting month. Null (production) seeds from the
+  /// wall clock; tests pass a fixed date so month-label assertions don't
+  /// detonate at every real-world month rollover (the 2026-10-01 shard-0
+  /// failure).
+  final LocalDate? today;
 
   @override
   State<PredictionConnectionCalendarScreen> createState() =>
@@ -83,7 +90,7 @@ class _PredictionConnectionCalendarScreenState
   @override
   void initState() {
     super.initState();
-    _month = LocalDate.today();
+    _month = widget.today ?? LocalDate.today();
     _loadFuture = _load();
   }
 
