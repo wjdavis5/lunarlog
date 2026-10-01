@@ -236,11 +236,7 @@ Deno.test(
       SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
     };
     const { ctx, waited } = fakeContext();
-    const res = await worker.fetch(
-      new Request('https://staging.test/auth/session'),
-      env,
-      ctx,
-    );
+    const res = await worker.fetch(new Request('https://staging.test/auth/session'), env, ctx);
 
     assertEquals(res.status, 401);
     assertEquals(res.headers.get('content-type'), 'application/json');
