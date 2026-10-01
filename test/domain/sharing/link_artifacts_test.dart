@@ -80,5 +80,17 @@ void main() {
       expect(landing, isNot(contains('>code<')));
       expect(landing, contains('open-in-app'));
     });
+
+    test('no web-app button until #1258 serves /invite on app.lunarlog.app', () {
+      // Issue #1279: the "Open in the web app" anchor (issue #1255) pointed
+      // at app.lunarlog.app, still the Flutter web build, which rejects
+      // https invite links (no LUNARLOG_LINK_DOMAIN define) — an invitee's
+      // code was silently dropped. The button returns only at the #1258
+      // cutover, together with the twin pins in
+      // site/scripts/invite-page.test.mjs and site/worker/index.test.ts.
+      expect(landing, isNot(contains('open-in-web-app')));
+      expect(landing, isNot(contains('app.lunarlog.app')));
+      expect(landing, isNot(contains('web app')));
+    });
   });
 }

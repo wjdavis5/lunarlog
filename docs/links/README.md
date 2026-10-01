@@ -48,7 +48,11 @@ repo config. Until then `www.lunarlog.app` is not attached to the Worker.
   `application/json`, no redirects, no file extension in the URL.
 - `assetlinks.json` at `https://lunarlog.app/.well-known/assetlinks.json` (deferred).
 - `invite.html` for `https://lunarlog.app/invite*`, preserving the query
-  string exactly (the code the app needs arrives only in the URL).
+  string exactly (the code the app needs arrives only in the URL). The page
+  deliberately offers only the custom-scheme `Open in Lunarlog` button: the
+  `Open in the web app` button (issue #1255) is withheld until #1258 serves
+  the React client at `app.lunarlog.app` — until then that origin is the
+  Flutter web build, which rejects https invite links (issue #1279).
 
 ## Privacy notes for the hoster
 
