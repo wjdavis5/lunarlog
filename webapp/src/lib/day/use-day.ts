@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { SYNCED_DATA_QUERY_KEY } from '../queries';
 import { getSyncedDataCache } from '../domain';
+import { webAuth } from '../auth';
 import { sessionUserId } from '../sharing';
 import type { AppSupabaseClient } from '../supabase';
 import { DaySaveError, dayViewFromSyncedData, saveDay, type SaveDayResult } from './day-data';
@@ -57,7 +58,9 @@ export function useDayView(
       if (client === null) {
         throw new Error('Supabase is not configured in this build');
       }
-      return getSyncedDataCache().refresh(client);
+      // Tagged with the account it runs under, same as every pull (issue
+      // #1338).
+      return getSyncedDataCache().refresh(client, () => webAuth.getUser()?.id ?? null);
     },
     enabled: client !== null,
     retry: false,

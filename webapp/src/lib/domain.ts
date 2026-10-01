@@ -741,22 +741,55 @@ export function subscribeSyncSignals(
  * from A's `server_version` cursors and skip every B row below them (one
  * global sequence). A refresh whose generation moved returns the current
  * snapshot instead and touches nothing.
+ *
+ * The generation alone cannot see every identity change, though (issue
+ * #1338): a pull that runs entirely *before* any reset has an unchanged
+ * generation, yet it can still run under a different account — the bearer
+ * token comes from the auth client's renewal (GET /auth/session), which
+ * adopts whatever account the shared refresh cookie now holds, while the
+ * shell's watcher notices an account change only when the session query
+ * re-resolves. So each `refresh()` also tags itself with the account it
+ * runs under, re-read through the caller-supplied `readIdentity` before the
+ * pull and again at resolution: a pull that re-identifies itself mid-flight,
+ * or runs under an account the current snapshot was not built for, is
+ * discarded the same way — no cursor advance, no merge — until the watcher's
+ * reset re-bases the cache on the new account.
  */
 export class SyncedDataCache {
   private cursors: SyncPullCursors = emptyCursors();
   private snapshot: SyncedData = emptySyncedData();
   private generation = 0;
+  private identity: string | null = null;
 
-  /** Pulls forward from the session's cursors and merges into the snapshot. */
-  async refresh(client: AppSupabaseClient): Promise<SyncedData> {
+  /**
+   * Pulls forward from the session's cursors and merges into the snapshot.
+   * `readIdentity` is the caller's live read of the signed-in account's id
+   * (the auth client stays out of this module's imports — the caller, whose
+   * queryFn already holds it, supplies the seam).
+   */
+  async refresh(
+    client: AppSupabaseClient,
+    readIdentity: () => string | null,
+  ): Promise<SyncedData> {
     const generation = this.generation;
+    const identityBefore = readIdentity();
     const result = await pullSyncedData(client, { cursors: this.cursors });
-    if (generation !== this.generation) {
-      // The identity reset landed while this pull was in flight: the result
-      // belongs to the previous account. Discard it — no cursor advance, no
-      // merge — and hand back whatever the current session's snapshot holds.
+    const identityAfter = readIdentity();
+    if (
+      generation !== this.generation ||
+      identityBefore !== identityAfter ||
+      (this.identity !== null && identityAfter !== this.identity)
+    ) {
+      // The identity reset landed while this pull was in flight (the
+      // generation moved), or the pull ran under — or re-identified itself
+      // into — an account this snapshot was not built for (issue #1338).
+      // The result belongs to another account: discard it — no cursor
+      // advance, no merge, no tag — and hand back whatever the current
+      // session's snapshot holds until the watcher's reset re-bases the
+      // cache.
       return this.snapshot;
     }
+    this.identity = identityAfter;
     this.cursors = result.cursors;
     this.snapshot = mergeSyncedData(this.snapshot, result.data);
     return this.snapshot;
@@ -770,6 +803,7 @@ export class SyncedDataCache {
   /** Sign-out: forget every cursor and row. Nothing was ever persisted. */
   reset(): void {
     this.generation += 1;
+    this.identity = null;
     this.cursors = emptyCursors();
     this.snapshot = emptySyncedData();
   }

@@ -4,6 +4,7 @@ import {
   bbtRangeIn,
   convertTemperature,
   convertWeight,
+  formatMeasurementValue,
   isValidBbt,
   isValidWeight,
   weightRangeIn,
@@ -65,5 +66,34 @@ describe('measurements (issue #457, web port)', () => {
     expect(bbtRangeIn('celsius')).toEqual({ min: 34.0, max: 42.0 });
     expect(weightRangeIn('lb').min).toBeCloseTo(22.0462, 3);
     expect(weightRangeIn('kg')).toEqual({ min: 10, max: 300 });
+  });
+
+  // Issue #1339: the web port of the app's #457 formatMeasurementValue
+  // (lib/ui/logging/day_sheet.dart:174) — a converted seed must never show
+  // more spurious precision than a person would type by hand.
+  describe('formatMeasurementValue', () => {
+    it('rounds the raw conversion doubles to two decimals, trimming zeros', () => {
+      // The exact doubles the issue names: 36.6 °C and 68 kg converted with
+      // the real constants produce IEEE garbage digits; the display must not.
+      expect(formatMeasurementValue(36.6 * (9 / 5) + 32)).toBe('97.88'); // 97.88000000000001
+      expect(formatMeasurementValue(37 * (9 / 5) + 32)).toBe('98.6'); // 98.60000000000001
+      expect(formatMeasurementValue(68 / 0.45359237)).toBe('149.91'); // 149.91433828571675
+      expect(formatMeasurementValue(150 * 0.45359237)).toBe('68.04'); // 68.0388555
+    });
+
+    it('renders whole and one-decimal values without padding', () => {
+      expect(formatMeasurementValue(37)).toBe('37');
+      expect(formatMeasurementValue(61)).toBe('61');
+      expect(formatMeasurementValue(36.7)).toBe('36.7');
+      expect(formatMeasurementValue(36.75)).toBe('36.75');
+    });
+
+    it('breaks exact-half ties away from zero, matching Dart roundToDouble', () => {
+      // 0.125 is exactly representable, so 0.125 × 100 = 12.5 is a true tie.
+      expect(formatMeasurementValue(0.125)).toBe('0.13');
+      // Math.round alone would round -12.5 toward +infinity (-12); the port
+      // mirrors Dart's away-from-zero instead.
+      expect(formatMeasurementValue(-0.125)).toBe('-0.13');
+    });
   });
 });

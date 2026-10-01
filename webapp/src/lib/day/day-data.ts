@@ -8,8 +8,9 @@ import {
   type ProfileModeRow,
   type ProfileTagRegistryRow,
 } from '../schemas';
-import { getSyncedDataCache, nowSyncStamp, pushSyncBatch, type SyncedData } from '../domain';
 import { sessionUserId } from '../sharing';
+import { getSyncedDataCache, nowSyncStamp, pushSyncBatch, type SyncedData } from '../domain';
+import { webAuth } from '../auth';
 import {
   buildSavePlan,
   type SavePlanField,
@@ -134,7 +135,13 @@ export async function fetchDayView(
   if (uid === null) {
     throw new DaySaveError('not signed in');
   }
-  const synced = await getSyncedDataCache().refresh(client);
+  // The pull is tagged with the account it runs under (issue #1338) — the
+  // live id, re-read inside refresh, never the `uid` resolved above (that
+  // snapshot is exactly what a mid-pull renewal may invalidate).
+  const synced = await getSyncedDataCache().refresh(
+    client,
+    () => webAuth.getUser()?.id ?? null,
+  );
   return dayViewFromSyncedData(synced, args.profileId, args.dateIso, uid);
 }
 
@@ -233,7 +240,9 @@ export async function saveDay(
   // results included) without waiting for the query invalidation.
   if (rejectedFields.length === 0 && !ourEntryDeclined) {
     try {
-      await getSyncedDataCache().refresh(client);
+      // Tagged with the account it runs under, same as every pull (issue
+      // #1338).
+      await getSyncedDataCache().refresh(client, () => webAuth.getUser()?.id ?? null);
     } catch {
       // The invalidation retry covers a failed refresh; never mask a
       // successful save behind it.

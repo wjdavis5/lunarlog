@@ -373,12 +373,15 @@ function guardianRoleSchemaSafe(value: string): GuardianRole | null {
 
 export type GuardianRow = z.infer<typeof guardianRowSchema>;
 
-/** The pending-invite projection — deliberately never `token_hash` (R6). */
+/** The pending-invite projection — deliberately never `token_hash` (R6).
+ * `invited_by` rides along for the cancel ladder (issue #1285): a co-parent
+ * may not cancel a co_parent invitation someone else created. */
 export const pendingInviteRowSchema = z.object({
   id: sharingRowId,
   profile_id: ulidSchema,
   // Fail closed to the least-privileged role, matching the app (#540).
   role: z.string().transform((value) => guardianRoleSchemaSafe(value) ?? 'viewer'),
+  invited_by: z.uuid().nullable(),
   recipient_label: z.string().nullable(),
   created_at: z.string(),
   expires_at: z.string(),
@@ -503,7 +506,8 @@ export const RECENTLY_EXPIRED_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
  * `profileId`'s outstanding invitations, live plus recently expired ones
  * (issue #362). Explicit column list — never `token_hash`, so a screenshot
  * of the pending list is not redeemable (R6/enumeration, mirrored from the
- * app's identical discipline).
+ * app's identical discipline); `invited_by` is read for the cancel ladder
+ * (issue #1285).
  */
 export async function fetchPendingInvites(
   client: AppSupabaseClient,
@@ -513,7 +517,9 @@ export async function fetchPendingInvites(
   const cutoff = new Date(now.getTime() - RECENTLY_EXPIRED_WINDOW_MS).toISOString();
   const { data, error } = await client
     .from('guardian_invitations')
-    .select('id, profile_id, role, recipient_label, created_at, expires_at, is_subject')
+    .select(
+      'id, profile_id, role, invited_by, recipient_label, created_at, expires_at, is_subject',
+    )
     .eq('profile_id', profileId)
     .is('accepted_at', null)
     .is('revoked_at', null)

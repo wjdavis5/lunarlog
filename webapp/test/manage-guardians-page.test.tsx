@@ -112,6 +112,9 @@ function pendingRow(overrides: Record<string, unknown> = {}) {
     id: INVITE_ROW_ID,
     profile_id: ULID,
     role: 'viewer',
+    // Read since issue #1285 for the cancel ladder; the fixture's default
+    // creator is the signed-in primary guardian.
+    invited_by: ME,
     recipient_label: 'Nurse',
     created_at: '2026-09-01T00:00:00Z',
     expires_at: '2026-09-03T00:00:00Z',
@@ -405,5 +408,238 @@ describe('ManageGuardiansPage (issue #1255)', () => {
       ),
     });
     expect(screen.queryByText('Mom')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The role-laddered controls (issue #1285): the server refuses a co-parent's
+ * ownership transfer, co_parent invitation, co_parent/primary removals, and
+ * another co-parent's invite cancellation — and a sole primary guardian's
+ * self-leave — so the page never offers them.
+ */
+describe('ManageGuardiansPage role ladder (issue #1285)', () => {
+  it('a co-parent sees no transfer section but keeps the invite form', async () => {
+    sharingMocks.fetchGuardians.mockResolvedValue([
+      guardianRow({ role: 'co_parent', display_name: 'Dad' }),
+      guardianRow({
+        id: '4f4f4f4f-4f4f-4f4f-8f4f-4f4f4f4f4f4f',
+        user_id: OTHER,
+        role: 'primary_guardian',
+        display_name: 'Mom',
+      }),
+    ]);
+    renderPage();
+    expect(await screen.findByText('Mom')).toBeInTheDocument();
+    // canManage still holds for a co-parent: the invite form is on offer…
+    expect(
+      screen.getByText(messages['sharingInviteGuardianCreateLink'] ?? ''),
+    ).toBeInTheDocument();
+    // …but the transfer arm form is not — `create_ownership_transfer`
+    // answers a co-parent with 42501.
+    expect(
+      screen.queryByText(messages['sharingTransferOwnershipAction'] ?? ''),
+    ).not.toBeInTheDocument();
+  });
+
+  it("a co-parent's invite form neither defaults to nor offers the co_parent preset", async () => {
+    sharingMocks.fetchGuardians.mockResolvedValue([
+      guardianRow({ role: 'co_parent', display_name: 'Dad' }),
+      guardianRow({
+        id: '4f4f4f4f-4f4f-4f4f-8f4f-4f4f4f4f4f4f',
+        user_id: OTHER,
+        role: 'primary_guardian',
+        display_name: 'Mom',
+      }),
+    ]);
+    sharingMocks.createGuardianInvitation.mockResolvedValue({
+      invitation: {
+        id: INVITE_ROW_ID,
+        profile_id: ULID,
+        role: 'caregiver',
+        expires_at: '2026-10-02T00:00:00Z',
+      },
+      rawToken: 'T0KEN123',
+    });
+    renderPage();
+    const inviteSelect = (await screen.findByLabelText(
+      messages['sharingInviteGuardianRoleLabel'] ?? '',
+    )) as HTMLSelectElement;
+    const options = Array.from(inviteSelect.querySelectorAll('option')).map(
+      (option) => option.textContent,
+    );
+    expect(options).not.toContain(messages['sharingInviteGuardianPresetCoParent']);
+    expect(options).toContain(messages['sharingInviteGuardianPresetCaregiver']);
+    // The default falls back to caregiver — the submit the server accepts.
+    expect(inviteSelect.value).toBe('caregiver');
+    fireEvent.click(screen.getByText(messages['sharingInviteGuardianCreateLink'] ?? ''));
+    await waitFor(() => {
+      expect(sharingMocks.createGuardianInvitation).toHaveBeenCalledWith(
+        fakeClient,
+        expect.objectContaining({ role: 'caregiver', subject: false }),
+      );
+    });
+  });
+
+  it("a primary guardian's invite form still offers the co_parent preset by default", async () => {
+    renderPage();
+    const inviteSelect = (await screen.findByLabelText(
+      messages['sharingInviteGuardianRoleLabel'] ?? '',
+    )) as HTMLSelectElement;
+    const options = Array.from(inviteSelect.querySelectorAll('option')).map(
+      (option) => option.textContent,
+    );
+    expect(options).toContain(messages['sharingInviteGuardianPresetCoParent']);
+    expect(inviteSelect.value).toBe('co_parent');
+  });
+
+  it('a co-parent may remove caregivers and viewers, never co-parents or primaries', async () => {
+    sharingMocks.fetchGuardians.mockResolvedValue([
+      guardianRow({ role: 'co_parent', display_name: 'Dad' }),
+      guardianRow({
+        id: '4f4f4f4f-4f4f-4f4f-8f4f-4f4f4f4f4f4f',
+        user_id: OTHER,
+        role: 'primary_guardian',
+        display_name: 'Mom',
+      }),
+      guardianRow({
+        id: '5f5f5f5f-5f5f-5f5f-8f5f-5f5f5f5f5f5f',
+        user_id: '6f6f6f6f-6f6f-4f6f-8f6f-6f6f6f6f6f6f',
+        role: 'co_parent',
+        display_name: 'Uncle',
+      }),
+      guardianRow({
+        id: '7f7f7f7f-7f7f-7f7f-8f7f-7f7f7f7f7f7f',
+        user_id: '8f8f8f8f-8f8f-4f8f-8f8f-8f8f8f8f8f8f',
+        role: 'caregiver',
+        display_name: 'Grandma',
+      }),
+    ]);
+    renderPage();
+    expect(await screen.findByText('Grandma')).toBeInTheDocument();
+    // Exactly one Remove control: the caregiver's. The server refuses a
+    // co-parent revoking a co_parent or primary_guardian with 42501.
+    expect(
+      screen.getAllByText(messages['manageGuardiansRemoveCaregiverTooltip'] ?? ''),
+    ).toHaveLength(1);
+  });
+
+  it('a primary guardian may still remove a co-parent row', async () => {
+    sharingMocks.fetchGuardians.mockResolvedValue([
+      guardianRow(),
+      guardianRow({
+        id: '4f4f4f4f-4f4f-4f4f-8f4f-4f4f4f4f4f4f',
+        user_id: OTHER,
+        role: 'co_parent',
+        display_name: 'Uncle',
+      }),
+    ]);
+    renderPage();
+    expect(await screen.findByText('Uncle')).toBeInTheDocument();
+    expect(
+      screen.getAllByText(messages['manageGuardiansRemoveCaregiverTooltip'] ?? ''),
+    ).toHaveLength(1);
+  });
+
+  it('a sole accepted primary guardian is not offered Leave', async () => {
+    // defaultMocks: the primary plus one accepted caregiver — counting every
+    // accepted role (the pre-#1285 bug) made soleAccepted false and offered
+    // a Leave the server answers with `object_not_in_prerequisite_state`.
+    renderPage();
+    await screen.findByText('Grandma');
+    expect(
+      screen.queryByText(messages['manageGuardiansLeaveProfileTooltip'] ?? ''),
+    ).not.toBeInTheDocument();
+  });
+
+  it('a primary guardian with a co-primary is offered Leave', async () => {
+    sharingMocks.fetchGuardians.mockResolvedValue([
+      guardianRow(),
+      guardianRow({
+        id: '4f4f4f4f-4f4f-4f4f-8f4f-4f4f4f4f4f4f',
+        user_id: OTHER,
+        role: 'primary_guardian',
+        display_name: 'Mom',
+      }),
+    ]);
+    renderPage();
+    expect(await screen.findByText('Mom')).toBeInTheDocument();
+    expect(
+      screen.getByText(messages['manageGuardiansLeaveProfileTooltip'] ?? ''),
+    ).toBeInTheDocument();
+  });
+
+  it('a co-parent is offered Leave for their own row', async () => {
+    sharingMocks.fetchGuardians.mockResolvedValue([
+      guardianRow({ role: 'co_parent', display_name: 'Dad' }),
+      guardianRow({
+        id: '4f4f4f4f-4f4f-4f4f-8f4f-4f4f4f4f4f4f',
+        user_id: OTHER,
+        role: 'primary_guardian',
+        display_name: 'Mom',
+      }),
+    ]);
+    renderPage();
+    // The signed-in co-parent's own row carries the "you" suffix.
+    expect(
+      await screen.findByText(
+        exactText(`Dad ${messages['sharingManageGuardiansYouSuffix'] ?? ''}`.trimEnd()),
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(messages['manageGuardiansLeaveProfileTooltip'] ?? ''),
+    ).toBeInTheDocument();
+  });
+
+  it('a co-parent cannot cancel a co_parent invitation someone else created', async () => {
+    sharingMocks.fetchGuardians.mockResolvedValue([
+      guardianRow({ role: 'co_parent', display_name: 'Dad' }),
+      guardianRow({
+        id: '4f4f4f4f-4f4f-4f4f-8f4f-4f4f4f4f4f4f',
+        user_id: OTHER,
+        role: 'primary_guardian',
+        display_name: 'Mom',
+      }),
+    ]);
+    sharingMocks.fetchPendingInvites.mockResolvedValue([
+      pendingRow({ role: 'co_parent', invited_by: OTHER, recipient_label: null }),
+    ]);
+    renderPage();
+    expect(
+      await screen.findByText(
+        exactText(
+          `${messages['guardianRoleLabelCoParent']} · ${messages['sharingManageGuardiansExpiryExpired']}`,
+        ),
+      ),
+    ).toBeInTheDocument();
+    // The control hides rather than ending in the server's 42501 refusal.
+    expect(
+      screen.queryByText(messages['sharingManageGuardiansCancel'] ?? ''),
+    ).not.toBeInTheDocument();
+    expect(sharingMocks.revokeGuardianInvitation).not.toHaveBeenCalled();
+  });
+
+  it('a co-parent can still cancel a caregiver invitation', async () => {
+    sharingMocks.fetchGuardians.mockResolvedValue([
+      guardianRow({ role: 'co_parent', display_name: 'Dad' }),
+      guardianRow({
+        id: '4f4f4f4f-4f4f-4f4f-8f4f-4f4f4f4f4f4f',
+        user_id: OTHER,
+        role: 'primary_guardian',
+        display_name: 'Mom',
+      }),
+    ]);
+    sharingMocks.fetchPendingInvites.mockResolvedValue([
+      pendingRow({ role: 'caregiver', invited_by: OTHER, recipient_label: 'Nurse' }),
+    ]);
+    sharingMocks.revokeGuardianInvitation.mockResolvedValue('revoked');
+    renderPage();
+    fireEvent.click(await screen.findByText(messages['sharingManageGuardiansCancel'] ?? ''));
+    fireEvent.click(screen.getByText(messages['sharingManageGuardiansCancelInvitation'] ?? ''));
+    await waitFor(() => {
+      expect(sharingMocks.revokeGuardianInvitation).toHaveBeenCalledWith(
+        fakeClient,
+        INVITE_ROW_ID,
+      );
+    });
   });
 });

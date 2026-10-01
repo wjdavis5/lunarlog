@@ -68,6 +68,33 @@ export function isValidWeight(value: number, unit: WeightUnit): boolean {
   return kg >= MIN_WEIGHT_KG && kg <= MAX_WEIGHT_KG;
 }
 
+/**
+ * Formats a BBT/weight value for display in a day editor input (issue
+ * #1339) — the web port of the app's `formatMeasurementValue`
+ * (lib/ui/logging/day_sheet.dart:174, issue #457): up to two decimal
+ * places, trailing zeros trimmed, so a converted seed (36.6 °C reads back
+ * as 97.88000000000001 °F in IEEE doubles) never shows more spurious
+ * precision than a person would type by hand. Display only: callers keep
+ * the unrounded double as the edit state, so the save plan's
+ * untouched-field comparison (payloads.ts's `storedMeasurementEquals`)
+ * stays bit-exact and saving emits no write for an untouched field.
+ */
+export function formatMeasurementValue(value: number): string {
+  // `(value * 100).roundToDouble() / 100` — Dart's roundToDouble breaks
+  // exact-half ties away from zero, so mirror that instead of Math.round's
+  // toward-+infinity tie-break.
+  const scaled = value * 100;
+  const rounded = (scaled < 0 ? -Math.round(-scaled) : Math.round(scaled)) / 100;
+  const fixed = rounded.toFixed(2);
+  if (fixed.endsWith('.00')) {
+    return rounded.toFixed(0);
+  }
+  if (fixed.endsWith('0')) {
+    return rounded.toFixed(1);
+  }
+  return fixed;
+}
+
 /** The BBT sanity range rendered in [unit], for the field's error message. */
 export function bbtRangeIn(unit: BbtUnit): { min: number; max: number } {
   return {

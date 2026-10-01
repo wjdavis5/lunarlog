@@ -14,6 +14,7 @@ import {
   bbtUnitFromDb,
   convertTemperature,
   convertWeight,
+  formatMeasurementValue,
   weightRangeIn,
   weightUnitFromDb,
   type BbtUnit,
@@ -469,13 +470,20 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
             <label className="field-label" htmlFor="day-bbt">
               {t('webDayBbtLabel', { unit: bbtUnit === 'celsius' ? '°C' : '°F' })}
             </label>
+            {/* Issue #1339: both measurement fields display the seed through
+                the app's #457 rounding rule (formatMeasurementValue) — a
+                converted measurement (36.6 °C -> 97.88000000000001 °F) must
+                not show garbage digits against step="0.1". The edit state
+                keeps the unrounded double, so payloads.ts's
+                storedMeasurementEquals stays bit-exact and an untouched
+                field still emits no write. */}
             <input
               id="day-bbt"
               className="field-input"
               type="number"
               step="0.1"
               inputMode="decimal"
-              value={edit.bbt === null ? '' : String(edit.bbt)}
+              value={edit.bbt === null ? '' : formatMeasurementValue(edit.bbt)}
               onChange={(event) =>
                 patch({
                   bbt: event.target.value === '' ? null : Number(event.target.value),
@@ -502,7 +510,7 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
               type="number"
               step="0.1"
               inputMode="decimal"
-              value={edit.weight === null ? '' : String(edit.weight)}
+              value={edit.weight === null ? '' : formatMeasurementValue(edit.weight)}
               onChange={(event) =>
                 patch({
                   weight: event.target.value === '' ? null : Number(event.target.value),
