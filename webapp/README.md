@@ -260,21 +260,6 @@ is compiled to JavaScript once and both platforms run the same engine.
 
 ## Deliberately not here yet
 
-<<<<<<< HEAD
-=======
-
-- **Auth** (#1250): the `/auth/*` route and Worker entry are reserved; the
-- **Auth** (#1250): the `/auth/*` route and Worker entry are reserved; the
-  page renders catalogue placeholder copy. The data layer (issue #1252)
-  already needs a session to do anything — the session-gated hooks stay
-  idle until one exists, and `resetWebDataForSignOut` is the seam #1250
-  calls on sign-out. Until it lands there is no web session, so the
-  sharing pages (#1255) render their honest not-signed-in copy and every
-  acceptance criterion that needs two signed-in clients is proven by the
-  unit suite's RPC-level fakes rather than a live browser.
-
-> > > > > > > origin/main
-
 - **Domain screens** (#1251's successors): the compiled module and its
   typed client exist (`src/domain/`); no screen consumes them yet — the
   prediction/history/insights UIs are later slices of the epic. The
