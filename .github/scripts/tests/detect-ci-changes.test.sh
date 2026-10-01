@@ -265,4 +265,24 @@ tool/web_domain/facade.dart")"
 assert_contains "Domain facade sets webapp=true" "$entrypoint_output" "webapp=true"
 assert_contains "Domain facade sets app_flutter=true" "$entrypoint_output" "app_flutter=true"
 
+# ---------------------------------------------------------------------------
+# Case 20: integration_test/gate_test.dart is read by
+# .github/scripts/tests/ios-simulator-budgets.test.sh (issue #1317), which
+# pins every testWidgets( call's `timeout: _kTestTimeout` bound -- so a
+# gate_test-only PR must run the release-guards suites too. Without that,
+# a breaking gate_test edit merges green (release_guards=false skips the
+# budgets suite) and the next unrelated .github/** PR goes red. It is
+# still a Flutter integration test, so app_flutter stays on as well.
+# ---------------------------------------------------------------------------
+gate_test_output="$(run_detect "integration_test/gate_test.dart")"
+assert_contains "gate_test.dart sets release_guards=true" "$gate_test_output" "release_guards=true"
+assert_contains "gate_test.dart keeps app_flutter=true" "$gate_test_output" "app_flutter=true"
+assert_contains "gate_test.dart sets database=false" "$gate_test_output" "database=false"
+assert_contains "gate_test.dart sets edge_functions=false" "$gate_test_output" "edge_functions=false"
+
+# The rest of integration_test/* keeps the old app_flutter-only mapping.
+other_it_output="$(run_detect "integration_test/smoke_test.dart")"
+assert_contains "other integration tests keep app_flutter=true" "$other_it_output" "app_flutter=true"
+assert_contains "other integration tests keep release_guards=false" "$other_it_output" "release_guards=false"
+
 print_summary "detect-ci-changes.test.sh"

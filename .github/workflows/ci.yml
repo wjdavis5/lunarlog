@@ -213,6 +213,15 @@ jobs:
         if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/ios-simulator-budgets.test.sh
 
+      - name: Run ios-simulator-budgets fail-closed tests
+        # Issue #1317: the budgets suite's gate_test.dart guards must fail
+        # closed -- a missing or gutted gate_test.dart used to compare two
+        # empty `grep -c ... || true` results as equal and pass. This suite
+        # runs the budgets script in a sandbox repo tree and pins each
+        # failure mode's exit status.
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
+        run: bash .github/scripts/tests/ios-simulator-budgets-fail-closed.test.sh
+
       # Issue #266: unlike the scripts above (proven only via their own
       # unit tests here, then invoked for real elsewhere -- e.g.
       # check-destructive-sql.sh against real migration files in
@@ -434,6 +443,15 @@ jobs:
         # never silently outgrow the caps meant to contain it.
         if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/ios-simulator-budgets.test.sh
+
+      - name: Run ios-simulator-budgets fail-closed tests
+        # Issue #1317: the budgets suite's gate_test.dart guards must fail
+        # closed -- a missing or gutted gate_test.dart used to compare two
+        # empty `grep -c ... || true` results as equal and pass. This suite
+        # runs the budgets script in a sandbox repo tree and pins each
+        # failure mode's exit status.
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
+        run: bash .github/scripts/tests/ios-simulator-budgets-fail-closed.test.sh
 
   check:
     # The former "Analyze, test, build web" job, minus the test suite: that

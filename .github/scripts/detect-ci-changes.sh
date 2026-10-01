@@ -198,6 +198,22 @@ while IFS= read -r file; do
       app_flutter=true
       ;;
 
+    # Read by a release-guard suite (issue #1317):
+    # .github/scripts/tests/ios-simulator-budgets.test.sh reads
+    # integration_test/gate_test.dart and pins every testWidgets( call's
+    # `timeout: _kTestTimeout` bound plus the bound's value, so a
+    # gate_test-only change must run the release-guards suites too --
+    # otherwise the budgets suite is skipped, a breaking gate_test edit
+    # merges green, and the next unrelated .github/** PR goes red on an
+    # assertion it never touched. It is still a Flutter integration test,
+    # so the app_flutter suites stay on as well (this arm deliberately
+    # matches before the generic integration_test/* arm below, which is
+    # why it has to restate app_flutter=true itself).
+    integration_test/gate_test.dart)
+      app_flutter=true
+      release_guards=true
+      ;;
+
     # Core Flutter application: Dart code, tests, integration tests, assets, Flutter web client, native Android & iOS
     lib/*|test/*|integration_test/*|android/*|ios/*|assets/*|pubspec.*|analysis_options.yaml|l10n.yaml|dart_defines*|web/*|tool/web_smoke/*|tool/quality/*|tool/quality_gate.dart)
       app_flutter=true

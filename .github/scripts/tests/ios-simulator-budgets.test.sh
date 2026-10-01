@@ -129,8 +129,26 @@ assert_eq "the bound keeps >= 200s of headroom over the measured 495s healthy-co
 # says not to remove them -- pin the invariant here: every testWidgets in
 # gate_test.dart carries the bound, and the bound is still 2 minutes.
 
+# Fail closed (issue #1317): the two `grep -c ... || true` counts below must
+# never compare equal by accident. A missing gate_test.dart leaves both
+# counts empty (grep fails without printing), and a gutted one leaves both
+# at 0 -- either way the assert_eq underneath sees two equal values and
+# passes. Floor both counts first: a missing or gutted gate_test.dart dies
+# loudly here, the same posture as the ci.yml extractions above.
+if [ ! -f "$GATE_TEST" ]; then
+  echo "FAIL: integration_test/gate_test.dart is missing -- this suite pins its per-test bounds"
+  exit 1
+fi
 gate_tests="$(grep -c 'testWidgets(' "$GATE_TEST" || true)"
 gate_bounds="$(grep -c 'timeout: _kTestTimeout' "$GATE_TEST" || true)"
+if [ -z "$gate_tests" ] || [ "$gate_tests" -eq 0 ]; then
+  echo "FAIL: gate_test.dart has no testWidgets( left -- there is nothing left to bound"
+  exit 1
+fi
+if [ -z "$gate_bounds" ] || [ "$gate_bounds" -eq 0 ]; then
+  echo "FAIL: gate_test.dart carries no 'timeout: _kTestTimeout' bound -- the #827 per-test bounds are gone"
+  exit 1
+fi
 assert_eq "every testWidgets in gate_test.dart carries the #827 per-test bound" "$gate_tests" "$gate_bounds"
 assert_contains "the per-test bound stays at the #827 value" \
   "$(cat "$GATE_TEST")" \
