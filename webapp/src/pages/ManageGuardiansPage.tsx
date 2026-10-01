@@ -7,7 +7,8 @@ import {
   activeTransferQueryKey,
   guardiansQueryKey,
   pendingInvitesQueryKey,
-  PROFILES_QUERY_KEY,
+  repullMembershipData,
+  SYNCED_DATA_QUERY_KEY,
   useActiveTransfer,
   useCurrentUserId,
   useGuardians,
@@ -237,9 +238,12 @@ function GuardianRowItem(props: {
     },
     onSuccess: () => {
       if (props.isMe) {
-        // Leaving: the profile leaves this account's view entirely.
-        void queryClient.invalidateQueries({ queryKey: PROFILES_QUERY_KEY });
-        navigate('/');
+        // Leaving: the profile leaves this account's view entirely — and
+        // sync_pull simply stops returning it, with no tombstone (issue
+        // #1282), so the full from-zero re-pull into a fresh snapshot is
+        // what drops it; navigate once the re-pull and the shell
+        // invalidation have landed.
+        void repullMembershipData(queryClient).then(() => navigate('/'));
         return;
       }
       setConfirming(null);
@@ -703,7 +707,11 @@ function TransferSection(props: {
   const refreshKeys = () => {
     void queryClient.invalidateQueries({ queryKey: activeTransferQueryKey(props.profileId) });
     void queryClient.invalidateQueries({ queryKey: guardiansQueryKey(props.profileId) });
-    void queryClient.invalidateQueries({ queryKey: PROFILES_QUERY_KEY });
+    // Arming or cancelling a transfer changes no membership of this
+    // account, so the synced dataset needs only the ordinary invalidation
+    // (the profiles key this used to touch is read by no query — issue
+    // #1282).
+    void queryClient.invalidateQueries({ queryKey: SYNCED_DATA_QUERY_KEY });
   };
 
   const arm = useMutation({

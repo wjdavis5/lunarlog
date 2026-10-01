@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  CURSOR_LOOKBACK,
   emptySyncedData,
   fetchGuardianNotes,
   fetchSettings,
@@ -159,16 +160,23 @@ function profileRow(overrides: Partial<ProfileRow> = {}): ProfileRow {
 
 describe('pullSyncedData (issue #1252)', () => {
   it('pulls one short page and advances cursors to the max server_version', async () => {
-    const { client, calls } = fakeRpcClient(async () => ({
-      data: { profiles: [profileRow()], day_entries: [] },
-      error: null,
-    }));
+    const { client, calls } = fakeRpcClient(async (name) => {
+      if (name === 'sync_watermark') {
+        // A generous watermark clamps nothing — the default for these
+        // structural tests; the clamp itself has its own describe below.
+        return { data: 1_000_000, error: null };
+      }
+      return {
+        data: { profiles: [profileRow({ server_version: 100 })], day_entries: [] },
+        error: null,
+      };
+    });
     const { data, cursors } = await pullSyncedData(client);
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.name).toBe('sync_pull');
+    // The commit-safe watermark is probed once per pull, before the pages.
+    expect(calls.map((call) => call.name)).toEqual(['sync_watermark', 'sync_pull']);
     expect(data.profiles).toHaveLength(1);
     expect(data.profiles[0]?.display_name).toBe('Maya');
-    expect(cursors.profiles).toBe(1);
+    expect(cursors.profiles).toBe(100);
   });
 
   it('pages past the 500-row cap: a full page triggers another round with the advanced cursor', async () => {
@@ -176,7 +184,10 @@ describe('pullSyncedData (issue #1252)', () => {
       profileRow({ id: ULID_A, server_version: i + 1 }),
     );
     let round = 0;
-    const { client, calls } = fakeRpcClient(async (_name, params) => {
+    const { client, calls } = fakeRpcClient(async (name, params) => {
+      if (name === 'sync_watermark') {
+        return { data: 1_000_000, error: null };
+      }
       round += 1;
       if (round === 1) {
         expect(params.p_cursors).toEqual({});
@@ -186,7 +197,7 @@ describe('pullSyncedData (issue #1252)', () => {
       return { data: { profiles: [profileRow({ server_version: 501 })] }, error: null };
     });
     const { data, cursors } = await pullSyncedData(client);
-    expect(calls).toHaveLength(2);
+    expect(calls.filter((call) => call.name === 'sync_pull')).toHaveLength(2);
     expect(data.profiles).toHaveLength(501);
     expect(cursors.profiles).toBe(501);
   });
@@ -218,25 +229,124 @@ describe('pullSyncedData (issue #1252)', () => {
     const fullPage = Array.from({ length: 500 }, (_, i) =>
       profileRow({ server_version: i + 1 }),
     );
-    let calls = 0;
-    const { client } = fakeRpcClient(async () => {
-      calls += 1;
+    let pulls = 0;
+    const { client } = fakeRpcClient(async (name) => {
+      if (name === 'sync_watermark') {
+        return { data: null, error: null };
+      }
+      pulls += 1;
       return { data: { profiles: fullPage }, error: null };
     });
     await expect(pullSyncedData(client, { maxRounds: 3 })).rejects.toThrow(
       'sync_pull did not exhaust within 3 rounds',
     );
-    expect(calls).toBe(3);
+    expect(pulls).toBe(3);
   });
 
   it('a budget the pages fit inside returns normally', async () => {
-    const { client, calls } = fakeRpcClient(async () => ({
-      data: { profiles: [profileRow({ server_version: 1 })] },
-      error: null,
-    }));
+    const { client, calls } = fakeRpcClient(async (name) => {
+      if (name === 'sync_watermark') {
+        return { data: 1_000_000, error: null };
+      }
+      return {
+        data: { profiles: [profileRow({ server_version: 1 })] },
+        error: null,
+      };
+    });
     const { cursors } = await pullSyncedData(client, { maxRounds: 3 });
     expect(cursors.profiles).toBe(1);
-    expect(calls).toHaveLength(1);
+    expect(calls.filter((call) => call.name === 'sync_pull')).toHaveLength(1);
+  });
+});
+
+describe('pullSyncedData cursor clamp (issue #1282)', () => {
+  // The commit-order race (issue #521): a row's `server_version` is
+  // assigned pre-commit, so the highest *pulled* version is not necessarily
+  // the highest *settled* one — advancing the cursor to it unclamped would
+  // strand the late commit below the cursor forever (`server_version >
+  // cursor` is a strict pull).
+  it('clamps the returned cursors to the server watermark when it sits below the pulled maximum', async () => {
+    const { client } = fakeRpcClient(async (name) => {
+      if (name === 'sync_watermark') {
+        return { data: 4800, error: null };
+      }
+      return { data: { profiles: [profileRow({ server_version: 5000 })] }, error: null };
+    });
+    const { cursors } = await pullSyncedData(client);
+    expect(cursors.profiles).toBe(4800);
+  });
+
+  it('accepts a quoted numeric string watermark (a bigint wire shape)', async () => {
+    const { client } = fakeRpcClient(async (name) => {
+      if (name === 'sync_watermark') {
+        return { data: '4800', error: null };
+      }
+      return { data: { profiles: [profileRow({ server_version: 5000 })] }, error: null };
+    });
+    const { cursors } = await pullSyncedData(client);
+    expect(cursors.profiles).toBe(4800);
+  });
+
+  it('falls back to CURSOR_LOOKBACK below the maximum when the watermark RPC fails', async () => {
+    const { client } = fakeRpcClient(async (name) => {
+      if (name === 'sync_watermark') {
+        // A server predating the watermark migration (or any transient
+        // failure): the pull must still succeed, cursor held short of the
+        // page max instead.
+        return { data: null, error: { message: 'function not found in schema cache' } };
+      }
+      return { data: { profiles: [profileRow({ server_version: 5000 })] }, error: null };
+    });
+    const { cursors } = await pullSyncedData(client);
+    expect(cursors.profiles).toBe(5000 - CURSOR_LOOKBACK);
+  });
+
+  it('never regresses a cursor below where the pull started (a stale watermark holds, not moves back)', async () => {
+    const { client } = fakeRpcClient(async (name) => {
+      if (name === 'sync_watermark') {
+        return { data: 100, error: null };
+      }
+      return { data: { profiles: [profileRow({ server_version: 5000 })] }, error: null };
+    });
+    const { cursors } = await pullSyncedData(client, { cursors: { profiles: 4000 } });
+    expect(cursors.profiles).toBe(4000);
+  });
+
+  it('the lookback fallback never regresses a cursor either', async () => {
+    const { client } = fakeRpcClient(async (name) => {
+      if (name === 'sync_watermark') {
+        return { data: null, error: { message: 'unavailable' } };
+      }
+      return { data: { profiles: [profileRow({ server_version: 5000 })] }, error: null };
+    });
+    const { cursors } = await pullSyncedData(client, { cursors: { profiles: 4999 } });
+    // max − 50 would land below the start cursor; the start cursor wins.
+    expect(cursors.profiles).toBe(4999);
+  });
+
+  it('a watermark above the pulled maximum clamps nothing', async () => {
+    const { client } = fakeRpcClient(async (name) => {
+      if (name === 'sync_watermark') {
+        return { data: 900_000, error: null };
+      }
+      return { data: { profiles: [profileRow({ server_version: 5000 })] }, error: null };
+    });
+    const { cursors } = await pullSyncedData(client);
+    expect(cursors.profiles).toBe(5000);
+  });
+
+  it('tables with no rows this pull keep their start cursor under a stale watermark', async () => {
+    const { client } = fakeRpcClient(async (name) => {
+      if (name === 'sync_watermark') {
+        return { data: 100, error: null };
+      }
+      return { data: { profiles: [profileRow({ server_version: 5000 })] }, error: null };
+    });
+    const { cursors } = await pullSyncedData(client, {
+      cursors: { profiles: 0, day_entries: 400 },
+    });
+    expect(cursors.profiles).toBe(100);
+    expect(cursors.day_entries).toBe(400);
   });
 });
 
@@ -635,7 +745,10 @@ describe('SyncedDataCache (issue #1252)', () => {
   it('refreshes from zero cursors, then incrementally from the advanced ones', async () => {
     const cache = new SyncedDataCache();
     let round = 0;
-    const { client, calls } = fakeRpcClient(async (_name, params) => {
+    const { client, calls } = fakeRpcClient(async (name, params) => {
+      if (name === 'sync_watermark') {
+        return { data: 1_000_000, error: null };
+      }
       round += 1;
       if (round === 1) {
         expect(params.p_cursors).toEqual({});
@@ -658,7 +771,7 @@ describe('SyncedDataCache (issue #1252)', () => {
     expect(second.profiles).toHaveLength(1);
     expect(second.profiles[0]?.display_name).toBe('Newer');
     expect(second.profiles[0]?.server_version).toBe(8);
-    expect(calls).toHaveLength(2);
+    expect(calls.filter((call) => call.name === 'sync_pull')).toHaveLength(2);
   });
 
   it('reset forgets cursors and rows (the sign-out path)', async () => {
@@ -698,7 +811,10 @@ describe('SyncedDataCache identity race (issue #1315)', () => {
       },
     );
     let round = 0;
-    const { client } = fakeRpcClient(async (_name, params) => {
+    const { client } = fakeRpcClient(async (name, params) => {
+      if (name === 'sync_watermark') {
+        return { data: 1_000_000, error: null };
+      }
       round += 1;
       if (round === 1) {
         // Account A's pull, held in flight across the reset.
@@ -738,7 +854,10 @@ describe('SyncedDataCache identity tag (issue #1338)', () => {
     let account: string | null = 'user-a';
     const readIdentity = () => account;
     const cursorsSeen: unknown[] = [];
-    const { client } = fakeRpcClient(async (_name, params) => {
+    const { client } = fakeRpcClient(async (name, params) => {
+      if (name === 'sync_watermark') {
+        return { data: 1_000_000, error: null };
+      }
       // Captured before pullSyncedData advances the cursors object this
       // params entry aliases (the #1315 test's note applies here too).
       cursorsSeen.push(structuredClone(params.p_cursors));
@@ -783,6 +902,9 @@ describe('SyncedDataCache identity tag (issue #1338)', () => {
         releasePull = resolve;
       },
     );
+    // Both RPCs the pull now makes (the watermark probe and sync_pull) wait
+    // on the same held response: the probe reads its object payload as "no
+    // watermark", the pull parses its row.
     const { client } = fakeRpcClient(async () => heldPull);
 
     const inFlight = cache.refresh(client, readIdentity); // A's pull, awaiting the network
@@ -807,7 +929,10 @@ describe('SyncedDataCache identity tag (issue #1338)', () => {
   it('keeps merging while the account stays the same', async () => {
     const cache = new SyncedDataCache();
     let round = 0;
-    const { client, calls } = fakeRpcClient(async (_name, params) => {
+    const { client, calls } = fakeRpcClient(async (name, params) => {
+      if (name === 'sync_watermark') {
+        return { data: 1_000_000, error: null };
+      }
       round += 1;
       if (round === 1) {
         expect(params.p_cursors).toEqual({});
@@ -826,7 +951,261 @@ describe('SyncedDataCache identity tag (issue #1338)', () => {
     // the tag never discards a pull that re-resolves to its own account.
     const second = await cache.refresh(client, readIdentity);
     expect(second.profiles[0]?.server_version).toBe(8);
-    expect(calls).toHaveLength(2);
+    expect(calls.filter((call) => call.name === 'sync_pull')).toHaveLength(2);
+  });
+});
+
+describe('SyncedDataCache.repullAll (issue #1282)', () => {
+  const ME = 'user-a';
+  function guardianRow(
+    profileId: string,
+    overrides: Record<string, unknown> = {},
+  ): Record<string, unknown> {
+    return {
+      id: '2f2f2f2f-2f2f-4f2f-8f2f-2f2f2f2f2f2f',
+      profile_id: profileId,
+      user_id: ME,
+      role: 'primary_guardian',
+      status: 'accepted',
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+      server_version: 5,
+      ...overrides,
+    };
+  }
+
+  it('re-pulls from zero into a fresh snapshot: a left profile is dropped, not merged over', async () => {
+    const cache = new SyncedDataCache();
+    const cursorsSeen: unknown[] = [];
+    let pull = 0;
+    const { client } = fakeRpcClient(async (name, params) => {
+      if (name === 'sync_watermark') {
+        return { data: 1_000_000, error: null };
+      }
+      cursorsSeen.push(structuredClone(params.p_cursors));
+      pull += 1;
+      if (pull === 1) {
+        return {
+          data: {
+            profiles: [profileRow({ id: ULID_A, server_version: 900 })],
+            profile_guardians: [guardianRow(ULID_A, { server_version: 901 })],
+          },
+          error: null,
+        };
+      }
+      // After the leave, sync_pull returns nothing for the profile — the
+      // re-pull's response simply lacks it.
+      return { data: { profiles: [], profile_guardians: [] }, error: null };
+    });
+    const readIdentity = () => ME;
+    const first = await cache.refresh(client, readIdentity);
+    expect(first.profiles.map((row) => row.id)).toEqual([ULID_A]);
+
+    const repulled = await cache.repullAll(client, readIdentity);
+    // A fresh snapshot: A is gone entirely (an incremental merge would have
+    // kept it — nothing tombstones a profile the RLS no longer returns).
+    expect(repulled.profiles).toEqual([]);
+    expect(cache.current().profiles).toEqual([]);
+    // The re-pull started from zero cursors, not the session's 900s.
+    expect(cursorsSeen).toEqual([{}, {}]);
+    // And the fresh cursors are the re-pull's (empty here — no rows), so
+    // the next refresh starts over from zero too.
+    const third = await cache.refresh(client, readIdentity);
+    expect(cursorsSeen[2]).toEqual({});
+    expect(third.profiles).toEqual([]);
+  });
+
+  it('brings a joined profile into the snapshot even though its versions sit below the old cursors', async () => {
+    const cache = new SyncedDataCache();
+    let pull = 0;
+    const { client } = fakeRpcClient(async (name, params) => {
+      if (name === 'sync_watermark') {
+        return { data: 1_000_000, error: null };
+      }
+      pull += 1;
+      if (pull === 1) {
+        // The long-standing profile the account already guards; its
+        // versions put the session cursors far above anything the joined
+        // profile (created long ago, accepted just now) will ever carry.
+        expect(params.p_cursors).toEqual({});
+        return {
+          data: {
+            profiles: [profileRow({ id: ULID_A, server_version: 900 })],
+            profile_guardians: [guardianRow(ULID_A, { server_version: 901 })],
+          },
+          error: null,
+        };
+      }
+      // The accept inserts no server_version bump on the joined profile's
+      // rows — the re-pull is the only way its history arrives.
+      expect(params.p_cursors).toEqual({});
+      return {
+        data: {
+          profiles: [
+            profileRow({ id: ULID_A, server_version: 900 }),
+            profileRow({ id: ULID_B, display_name: 'Joined', server_version: 3 }),
+          ],
+          day_entries: [
+            {
+              id: '01ARZ3NDEKTSV4RRFFQ69G5FBV',
+              user_id: 'u',
+              profile_id: ULID_B,
+              local_date: '2026-09-14',
+              tz: 'UTC',
+              flow: 'light',
+              tags: [],
+              note: null,
+              note_private: false,
+              pms: false,
+              source: 'manual',
+              created_at: '2026-09-14T00:00:00Z',
+              updated_at: '2026-09-14T00:00:00Z',
+              deleted_at: null,
+              server_version: 4,
+            },
+          ],
+          profile_guardians: [
+            guardianRow(ULID_A, { server_version: 901 }),
+            guardianRow(ULID_B, {
+              id: '2f2f2f2f-2f2f-4f2f-8f2f-2f2f2f2f2f2e',
+              server_version: 5,
+            }),
+          ],
+        },
+        error: null,
+      };
+    });
+    const readIdentity = () => ME;
+    await cache.refresh(client, readIdentity);
+    const repulled = await cache.repullAll(client, readIdentity);
+    expect(repulled.profiles.map((row) => row.id)).toEqual([ULID_A, ULID_B]);
+    expect(repulled.day_entries.map((row) => row.profile_id)).toEqual([ULID_B]);
+  });
+
+  it('drops profiles absent from the accepted profile_guardians set, with their dependent rows', async () => {
+    const cache = new SyncedDataCache();
+    const { client } = fakeRpcClient(async (name) => {
+      if (name === 'sync_watermark') {
+        return { data: 1_000_000, error: null };
+      }
+      return {
+        data: {
+          profiles: [
+            profileRow({ id: ULID_A, server_version: 900 }),
+            profileRow({ id: ULID_B, display_name: 'Revoked-under-me', server_version: 3 }),
+          ],
+          day_entries: [
+            {
+              id: '01ARZ3NDEKTSV4RRFFQ69G5FBV',
+              user_id: 'u',
+              profile_id: ULID_B,
+              local_date: '2026-09-14',
+              tz: 'UTC',
+              flow: 'light',
+              tags: [],
+              note: null,
+              note_private: false,
+              pms: false,
+              source: 'manual',
+              created_at: '2026-09-14T00:00:00Z',
+              updated_at: '2026-09-14T00:00:00Z',
+              deleted_at: null,
+              server_version: 4,
+            },
+          ],
+          // sync_pull's profile_guardians branch returns every guardian row
+          // on the pulled profiles: mine on A (accepted) and on B (the
+          // stale revoked row this filter exists for).
+          profile_guardians: [
+            guardianRow(ULID_A, { server_version: 901 }),
+            guardianRow(ULID_B, {
+              id: '2f2f2f2f-2f2f-4f2f-8f2f-2f2f2f2f2f2e',
+              status: 'revoked',
+              server_version: 5,
+            }),
+            // Another guardian's accepted row on A — present, but not mine:
+            // it must not put B's data back (the set is keyed on MY rows).
+            guardianRow(ULID_A, {
+              id: '2f2f2f2f-2f2f-4f2f-8f2f-2f2f2f2f2f2d',
+              user_id: 'user-other',
+              server_version: 6,
+            }),
+          ],
+        },
+        error: null,
+      };
+    });
+    const repulled = await cache.repullAll(client, () => ME);
+    expect(repulled.profiles.map((row) => row.id)).toEqual([ULID_A]);
+    expect(repulled.day_entries).toEqual([]);
+    // B's revoked row is gone; both remaining guardian rows sit on A —
+    // mine and the other guardian's (whose row never re-admits B: the set
+    // is derived from THIS account's own rows only).
+    expect(repulled.profile_guardians.map((row) => row.id)).toEqual([
+      '2f2f2f2f-2f2f-4f2f-8f2f-2f2f2f2f2f2f',
+      '2f2f2f2f-2f2f-4f2f-8f2f-2f2f2f2f2f2d',
+    ]);
+  });
+
+  it('discards a re-pull that resolves across a reset (the #1315 guard)', async () => {
+    const cache = new SyncedDataCache();
+    let releasePull!: (value: { data: unknown; error: { message: string } | null }) => void;
+    const heldPull = new Promise<{ data: unknown; error: { message: string } | null }>(
+      (resolve) => {
+        releasePull = resolve;
+      },
+    );
+    let pull = 0;
+    const { client } = fakeRpcClient(async (name) => {
+      if (name === 'sync_watermark') {
+        return { data: 1_000_000, error: null };
+      }
+      pull += 1;
+      return pull === 1
+        ? { data: { profiles: [profileRow({ id: ULID_A, server_version: 7 })] }, error: null }
+        : heldPull;
+    });
+    const readIdentity = () => ME;
+    await cache.refresh(client, readIdentity);
+    const inFlight = cache.repullAll(client, readIdentity);
+    cache.reset(); // the identity boundary lands mid-re-pull
+    releasePull({
+      data: {
+        profiles: [profileRow({ id: ULID_B, display_name: 'Too late', server_version: 9 })],
+      },
+      error: null,
+    });
+    const discarded = await inFlight;
+    // The re-pull's fresh snapshot never lands: the post-reset (empty)
+    // snapshot is handed back and the cache stays empty for the next
+    // account.
+    expect(discarded).toEqual(emptySyncedData());
+    expect(cache.current()).toEqual(emptySyncedData());
+  });
+
+  it('discards a re-pull that ran under an account the snapshot was not built for (the #1338 guard)', async () => {
+    const cache = new SyncedDataCache();
+    let account: string | null = ME;
+    let pull = 0;
+    const { client } = fakeRpcClient(async (name) => {
+      if (name === 'sync_watermark') {
+        return { data: 1_000_000, error: null };
+      }
+      pull += 1;
+      return pull === 1
+        ? { data: { profiles: [profileRow({ id: ULID_A, server_version: 7 })] }, error: null }
+        : {
+            data: {
+              profiles: [profileRow({ id: ULID_B, display_name: 'B-only', server_version: 9 })],
+            },
+            error: null,
+          };
+    });
+    await cache.refresh(client, () => account);
+    account = 'user-b'; // the cookie flipped with no reset in between
+    const discarded = await cache.repullAll(client, () => account);
+    expect(discarded.profiles.map((row) => row.id)).toEqual([ULID_A]);
+    expect(cache.current().profiles.map((row) => row.id)).toEqual([ULID_A]);
   });
 });
 
