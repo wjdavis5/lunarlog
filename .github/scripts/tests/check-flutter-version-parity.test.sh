@@ -8,9 +8,15 @@ set -euo pipefail
 # procedure named four workflows while six pinned the var, so a bump
 # following the prose left staging (site-deploy.yml's screenshot renders,
 # webapp-deploy.yml's dart2js domain module) compiling with the old SDK
-# while CI parity-tested the new one. These fixtures are built in a temp
-# dir; the real repo tree is exercised separately by ci.yml's live
-# "Check workflow Flutter version parity" step (the same split as
+# while CI parity-tested the new one. Issue #1316 hardened the same scan
+# in both directions after site.yml turned up pinning the SDK as a
+# step-level literal the assignment scan could not see: every lowercase
+# `flutter-version:` step input must read `${{ env.FLUTTER_VERSION }}`
+# (a literal fails even when it happens to equal ci.yml's version), and a
+# workflow reading `env.FLUTTER_VERSION` without defining it fails too
+# (flutter-action would install latest stable). These fixtures are built
+# in a temp dir; the real repo tree is exercised separately by ci.yml's
+# live "Check workflow Flutter version parity" step (the same split as
 # check-auth-config). Run with:
 #
 #   bash .github/scripts/tests/check-flutter-version-parity.test.sh
@@ -131,8 +137,12 @@ printf '%s\n' "$site_yml" >"$WORKFLOWS/site-deploy.yml"
 # --- Usage lines are not assignments ----------------------------------
 
 # A workflow whose ONLY FLUTTER_VERSION occurrences are lowercase
-# `flutter-version:` usage steps (no env declaration) carries no pin and
-# must be skipped, not flagged for "missing" or for the reference value.
+# `flutter-version:` usage steps (no env declaration) still carries no
+# pin and must never be flagged for "drifted" or compared against the
+# reference value -- but since issue #1316 it is not skipped either: the
+# step READS env.FLUTTER_VERSION, and with the env line gone
+# flutter-action installs the latest stable, which is exactly the
+# untested-SDK drift the check exists to prevent.
 usage_only_yml='name: Screens
 jobs:
   shots:
@@ -143,9 +153,54 @@ jobs:
 '
 printf '%s\n' "$usage_only_yml" >"$WORKFLOWS/screenshots.yml"
 run_case
-assert_exit "a workflow that only USES env.FLUTTER_VERSION (no declaration) is skipped" 0
-assert_not_contains "the usage-only workflow is not reported" "$LAST_LOG" "screenshots.yml"
+assert_exit "a workflow that only USES env.FLUTTER_VERSION (no declaration) fails" 1
+assert_contains "the undefined-reference error names the file" "$LAST_LOG" "screenshots.yml"
+assert_contains "the undefined-reference error says the env pin is missing" \
+  "$LAST_LOG" "never defines FLUTTER_VERSION"
+error_count="$(printf '%s' "$LAST_LOG" | grep -c '::error::' || true)"
+assert_eq "exactly one error for the undefined reference" "1" "$error_count"
 rm -f "$WORKFLOWS/screenshots.yml"
+
+# --- A literal flutter-version: value fails, matching or not ----------
+
+# site.yml's old shape (issue #1316): the SDK pinned directly on the
+# flutter-action step as a literal. Invisible to the assignment scan, so
+# it must fail on the usage scan -- even when the literal happens to
+# equal ci.yml's version, because the next bump would silently leave it
+# behind. The workflow-without-a-pin fixture above stays unreported.
+literal_pin_yml='name: Site (marketing site)
+jobs:
+  build-and-check:
+    steps:
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '"'"'3.47.2'"'"'
+'
+printf '%s\n' "$literal_pin_yml" >"$WORKFLOWS/site.yml"
+run_case
+assert_exit "a literal flutter-version pin fails even when it equals ci.yml's" 1
+assert_contains "the literal-pin error names the file" "$LAST_LOG" "site.yml"
+assert_contains "the literal-pin error names the offending value" \
+  "$LAST_LOG" "pins flutter-version as the literal '3.47.2'"
+assert_not_contains "the no-flutter workflow is not reported" "$LAST_LOG" "docs-deploy.yml"
+error_count="$(printf '%s' "$LAST_LOG" | grep -c '::error::' || true)"
+assert_eq "exactly one error for one literal pin (no duplicate drift report)" "1" "$error_count"
+
+# Quote style is irrelevant: a double-quoted literal is still a literal.
+literal_double_yml='name: Site (marketing site)
+jobs:
+  build-and-check:
+    steps:
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.2"
+'
+printf '%s\n' "$literal_double_yml" >"$WORKFLOWS/site.yml"
+run_case
+assert_exit "a double-quoted literal flutter-version pin fails too" 1
+assert_contains "the double-quoted literal error names the value unquoted" \
+  "$LAST_LOG" "pins flutter-version as the literal '3.47.2'"
+rm -f "$WORKFLOWS/site.yml"
 
 # --- Double-quoted values compare equal to single-quoted ones ---------
 
@@ -226,14 +281,23 @@ assert_contains "the missing-reference error names the path" "$LAST_LOG" "not fo
 # The unit fixtures above prove the truth table; this last case proves
 # the script works against the real .github/workflows layout the same
 # run's checkout carries -- if the committed tree ever drifts, this suite
-# fails here in addition to the live ci.yml step.
+# fails here in addition to the live ci.yml step. The expected version is
+# read from the real ci.yml (issue #1316) rather than hard-coded, so the
+# fixtures above are the only place a literal version still appears and
+# this assertion never needs to move when the SDK does.
+LIVE_DIR="$SCRIPT_DIR/../../../.github/workflows"
+live_reference="$(grep -E '^[[:space:]]*FLUTTER_VERSION:' "$LIVE_DIR/ci.yml" \
+  | head -n 1 \
+  | sed -E 's/^[[:space:]]*FLUTTER_VERSION:[[:space:]]*//' \
+  | sed -E "s/^'(.*)'\$/\1/")"
+assert_eq "the live ci.yml carries a FLUTTER_VERSION pin to compare against" \
+  "yes" "$([ -n "$live_reference" ] && echo yes || echo no)"
 set +e
-bash "$SCRIPT" "$SCRIPT_DIR/../../../.github/workflows" \
-  "$SCRIPT_DIR/../../../.github/workflows/ci.yml" >"$WORKFLOWS/live.log" 2>&1
+bash "$SCRIPT" "$LIVE_DIR" "$LIVE_DIR/ci.yml" >"$WORKFLOWS/live.log" 2>&1
 LAST_EXIT=$?
 set -e
 LAST_LOG="$(cat "$WORKFLOWS/live.log")"
-assert_exit "the committed tree's six FLUTTER_VERSION pins all match ci.yml" 0
-assert_contains "the live run names the pinned version" "$LAST_LOG" "'3.47.2'"
+assert_exit "the committed tree's pins, flutter-version usages, and env reads all agree" 0
+assert_contains "the live run names ci.yml's pinned version" "$LAST_LOG" "'$live_reference'"
 
 print_summary "check-flutter-version-parity.test.sh"

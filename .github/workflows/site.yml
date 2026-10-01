@@ -53,6 +53,17 @@ jobs:
     # #1105 added the Flutter screenshot render below; Lighthouse runs 3x
     # over ten URLs now. 20 minutes had no headroom for either.
     timeout-minutes: 35
+    # Issue #1316: the SDK pin rides the same FLUTTER_VERSION env var every
+    # other Flutter workflow uses, not a step-level literal — a literal is
+    # invisible to .github/scripts/check-flutter-version-parity.sh and to
+    # AGENTS.md's grep -rl FLUTTER_VERSION enumeration, so the next SDK
+    # bump would leave these screenshots rendering on a stale engine while
+    # the parity gate stayed green. Same job-level shape as site-deploy.yml.
+    env:
+      # Pinned to the same SDK every other workflow builds with (see
+      # FLUTTER_VERSION in ci.yml) so the screenshots render with the
+      # exact engine the app ships on.
+      FLUTTER_VERSION: '3.47.2'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -75,7 +86,7 @@ jobs:
       - name: Install the pinned Flutter SDK
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
-          flutter-version: '3.47.2'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 

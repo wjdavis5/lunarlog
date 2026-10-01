@@ -193,11 +193,13 @@ jobs:
         run: bash .github/scripts/tests/check-auth-config.test.sh
 
       - name: Run check-flutter-version-parity tests
-        # Issue #1276: proves the FLUTTER_VERSION parity check's truth
-        # table -- a job-level pin matching ci.yml's passes, a drifted pin
-        # fails naming the file and both values, comments and lowercase
-        # usage lines are never mistaken for pins, and a missing or
-        # ambiguous reference fails closed.
+        # Issues #1276/#1316: proves the FLUTTER_VERSION parity check's
+        # truth table -- a job-level pin matching ci.yml's passes, a
+        # drifted pin fails naming the file and both values, comments are
+        # never mistaken for pins, a literal `flutter-version:` step
+        # input fails even when it equals ci.yml's version, a workflow
+        # reading env.FLUTTER_VERSION without defining it fails, and a
+        # missing or ambiguous reference fails closed.
         if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-flutter-version-parity.test.sh
 
@@ -239,7 +241,11 @@ jobs:
       # -- every workflow pinning FLUTTER_VERSION must pin ci.yml's
       # version, so AGENTS.md's SDK-bump procedure can no longer leave a
       # deploy workflow (site-deploy, webapp-deploy) building with the
-      # old SDK while CI parity-tests the new one.
+      # old SDK while CI parity-tests the new one. Issue #1316 widened it
+      # after the marketing site's PR workflow turned up pinning the SDK
+      # as a step-level literal the assignment scan never saw: a literal
+      # `flutter-version:` value and an env.FLUTTER_VERSION read with no
+      # definition both fail now.
       - name: Check workflow Flutter version parity
         if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/check-flutter-version-parity.sh
