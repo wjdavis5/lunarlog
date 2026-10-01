@@ -358,6 +358,7 @@ describe('reads', () => {
     const select = calls.find((call) => call.method === 'select');
     const columns = String(select?.args[0]);
     expect(columns).toContain('id');
+    expect(columns).toContain('invited_by');
     expect(columns).not.toContain('token_hash');
     const cutoff = calls.find((call) => call.method === 'gt');
     expect(new Date(String(cutoff?.args[1])).getTime()).toBe(
@@ -372,6 +373,9 @@ describe('reads', () => {
           id: UUID2,
           profile_id: ULID,
           role: 'viewer',
+          // Read since issue #1285 for the cancel ladder (a co-parent may
+          // not cancel a co_parent invitation someone else created).
+          invited_by: UUID,
           recipient_label: 'Nurse',
           created_at: '2026-09-01T00:00:00Z',
           expires_at: '2026-09-30T00:00:00Z',
@@ -383,6 +387,7 @@ describe('reads', () => {
     const rows: PendingInviteRow[] = await fetchPendingInvites(client, ULID);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.id).toBe(UUID2);
+    expect(rows[0]?.invited_by).toBe(UUID);
     expect(rows[0]?.is_subject).toBe(false);
   });
 

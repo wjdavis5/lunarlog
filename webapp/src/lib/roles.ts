@@ -64,6 +64,23 @@ export function roleCanManageGuardians(role: GuardianRole): boolean {
   return role === 'primary_guardian' || role === 'co_parent';
 }
 
+/** Whether `role` may arm an ownership transfer — the server's
+ * `create_ownership_transfer` ("only the accepted primary guardian can
+ * transfer ownership", 20260906180000) and the app's transfer tile, which
+ * `manage_guardians_screen.dart` shows for `callerRole == primaryGuardian`
+ * only. Unknown (`null`) fails closed (issue #1285). */
+export function roleCanTransferOwnership(role: GuardianRole | null): boolean {
+  return role === 'primary_guardian';
+}
+
+/** Whether `role` may mint a co_parent invitation — `create_guardian_invitation`
+ * refuses a co-parent caller with "only the primary guardian can invite a
+ * co-parent" (20260920120000); a co-parent may invite caregivers and viewers
+ * only. Unknown (`null`) fails closed (issue #1285). */
+export function roleCanInviteCoParent(role: GuardianRole | null): boolean {
+  return role === 'primary_guardian';
+}
+
 /** The catalogue message id for `role`'s human label. */
 export function guardianRoleLabelId(role: GuardianRole) {
   switch (role) {
@@ -127,4 +144,71 @@ export function allowedNewRoles(options: {
 }): GuardianRole[] {
   const candidates: GuardianRole[] = ['co_parent', 'caregiver', 'viewer'];
   return candidates.filter((newRole) => canUpdateGuardianRole({ ...options, newRole }));
+}
+
+/**
+ * Whether `callerRole` may revoke `target` — the client mirror of
+ * `revoke_guardian`'s server ladder (20260918160000) and the app's
+ * `_canRevoke` (`lib/ui/sharing/manage_guardians_screen.dart`), added for
+ * the web (issue #1285):
+ *
+ * - Unknown callers (`callerRole` null) never qualify.
+ * - Self: any non-primary guardian may always leave; the sole accepted
+ *   primary guardian may not — the server answers a sole primary's
+ *   self-leave with `object_not_in_prerequisite_state` ("the sole primary
+ *   guardian cannot leave the profile"), so the UI hides it.
+ * - Others: a primary guardian may revoke anyone; a co-parent may revoke
+ *   caregivers and viewers only; caregivers and viewers may revoke nothing.
+ *
+ * `acceptedPrimaryGuardians` is the profile's count of accepted
+ * `primary_guardian` rows (not every accepted role — that miscount is
+ * exactly the Leave bug #1285 fixes).
+ */
+export function canRevokeGuardian(options: {
+  callerRole: GuardianRole | null;
+  target: GuardianRowLike;
+  currentUserId: string | null;
+  acceptedPrimaryGuardians: number;
+}): boolean {
+  const { callerRole, target, currentUserId, acceptedPrimaryGuardians } = options;
+  if (callerRole === null) return false;
+  if (currentUserId !== null && target.user_id === currentUserId) {
+    if (callerRole !== 'primary_guardian') return true;
+    return acceptedPrimaryGuardians > 1;
+  }
+  if (callerRole === 'primary_guardian') return true;
+  if (callerRole === 'co_parent') {
+    return target.role === 'caregiver' || target.role === 'viewer';
+  }
+  return false;
+}
+
+/**
+ * Whether `callerRole` may cancel the invitation — the client mirror of
+ * `revoke_guardian_invitation`'s R3 ladder (20260906190000) and the app's
+ * `_canCancelInvite` (issue #1285):
+ *
+ * - Unknown callers (`callerRole` null) never qualify.
+ * - A primary guardian may cancel any invitation on the profile.
+ * - A co-parent may cancel any invitation except a co_parent one created
+ *   by someone else — the server refuses exactly that shape
+ *   (`caller lacks permission to cancel this invitation`). In practice a
+ *   co-parent never sees a self-created co_parent invitation (only the
+ *   primary guardian can mint one), but the predicate keeps the server's
+ *   `invited_by` test so the mirror cannot drift from it.
+ * - Caregivers, viewers, and unknown callers may cancel nothing.
+ */
+export function canCancelInvitation(options: {
+  callerRole: GuardianRole | null;
+  inviteRole: GuardianRole;
+  invitedBy: string | null;
+  currentUserId: string | null;
+}): boolean {
+  const { callerRole, inviteRole, invitedBy, currentUserId } = options;
+  if (callerRole === null) return false;
+  if (callerRole === 'primary_guardian') return true;
+  if (callerRole === 'co_parent') {
+    return inviteRole !== 'co_parent' || invitedBy === currentUserId;
+  }
+  return false;
 }

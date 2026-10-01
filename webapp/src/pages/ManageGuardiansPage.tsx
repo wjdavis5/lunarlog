@@ -32,8 +32,12 @@ import {
 } from '../lib/sharing';
 import {
   allowedNewRoles,
+  canCancelInvitation,
+  canRevokeGuardian,
   guardianRoleLabelId,
+  roleCanInviteCoParent,
   roleCanManageGuardians,
+  roleCanTransferOwnership,
   type GuardianRole,
 } from '../lib/roles';
 import { getSupabaseClient } from '../lib/supabase';
@@ -126,7 +130,14 @@ export function ManageGuardiansPage() {
     guardians.data?.find((row) => row.user_id === me && row.status === 'accepted')?.role ??
     null;
   const canManage = myRole !== null && roleCanManageGuardians(myRole);
-  const acceptedCount = guardians.data?.filter((row) => row.status === 'accepted').length ?? 0;
+  // Leave/Remove visibility rides the revoke ladder (issue #1285): the
+  // server refuses a sole accepted primary guardian's self-leave, so the
+  // count that decides it is primary guardians only — counting every
+  // accepted role offered Leave to a sole primary with one caregiver.
+  const acceptedPrimaryGuardians =
+    guardians.data?.filter(
+      (row) => row.status === 'accepted' && row.role === 'primary_guardian',
+    ).length ?? 0;
 
   return (
     <main className="page">
@@ -145,7 +156,8 @@ export function ManageGuardiansPage() {
               row={row}
               isMe={me !== null && row.user_id === me}
               myRole={myRole}
-              soleAccepted={acceptedCount <= 1}
+              currentUserId={me}
+              acceptedPrimaryGuardians={acceptedPrimaryGuardians}
               profileId={profileId}
               profileName={profile?.display_name ?? ''}
             />
@@ -161,9 +173,16 @@ export function ManageGuardiansPage() {
         <p className="error">{t(sharingFailureMessageId(failureKindOf(guardians.error)))}</p>
       ) : null}
 
-      {canManage ? <PendingSection invites={pending.data} error={pending.error} /> : null}
+      {canManage ? (
+        <PendingSection
+          invites={pending.data}
+          error={pending.error}
+          myRole={myRole}
+          currentUserId={me}
+        />
+      ) : null}
 
-      {client !== null && profile !== null && canManage ? (
+      {client !== null && profile !== null && roleCanTransferOwnership(myRole) ? (
         <TransferSection
           profileId={profileId}
           profileName={profile.display_name}
@@ -175,6 +194,7 @@ export function ManageGuardiansPage() {
         <InviteSection
           profileId={profileId}
           profileName={profile.display_name}
+          callerRole={myRole}
           subjectAvailable={subjectInviteAvailable(profile)}
         />
       ) : null}
@@ -186,7 +206,8 @@ function GuardianRowItem(props: {
   row: GuardianRow;
   isMe: boolean;
   myRole: GuardianRole | null;
-  soleAccepted: boolean;
+  currentUserId: string | null;
+  acceptedPrimaryGuardians: number;
   profileId: string;
   profileName: string;
 }) {
@@ -285,7 +306,7 @@ function GuardianRowItem(props: {
             {t('manageGuardiansRemoveCaregiverTooltip')}
           </button>
         ) : null}
-        {confirming === null && props.isMe && !props.soleAccepted ? (
+        {confirming === null && rowCanBeLeft(props) ? (
           <button
             type="button"
             className="button danger"
@@ -346,12 +367,54 @@ function GuardianRowItem(props: {
   );
 }
 
-/** The remove control shows for other people's rows, for a manager. */
-function rowCanBeRemoved(props: { isMe: boolean; myRole: GuardianRole | null }): boolean {
-  return !props.isMe && props.myRole !== null && roleCanManageGuardians(props.myRole);
+/**
+ * The revoke ladder for one guardian row (issue #1285) — `canRevokeGuardian`
+ * decides both controls: removing someone else's row, and leaving on the
+ * caller's own. A co-parent may remove caregivers and viewers only (the
+ * server refuses the rest with `insufficient_privilege`), and Leave hides
+ * from the sole accepted primary guardian (`object_not_in_prerequisite_state`).
+ */
+function revokeOptions(props: {
+  row: GuardianRow;
+  isMe: boolean;
+  myRole: GuardianRole | null;
+  currentUserId: string | null;
+  acceptedPrimaryGuardians: number;
+}) {
+  return {
+    callerRole: props.myRole,
+    target: props.row,
+    currentUserId: props.currentUserId,
+    acceptedPrimaryGuardians: props.acceptedPrimaryGuardians,
+  };
 }
 
-function PendingSection(props: { invites: PendingInviteRow[] | undefined; error: unknown }) {
+function rowCanBeRemoved(props: {
+  row: GuardianRow;
+  isMe: boolean;
+  myRole: GuardianRole | null;
+  currentUserId: string | null;
+  acceptedPrimaryGuardians: number;
+}): boolean {
+  return !props.isMe && canRevokeGuardian(revokeOptions(props));
+}
+
+function rowCanBeLeft(props: {
+  row: GuardianRow;
+  isMe: boolean;
+  myRole: GuardianRole | null;
+  currentUserId: string | null;
+  acceptedPrimaryGuardians: number;
+}): boolean {
+  return props.isMe && canRevokeGuardian(revokeOptions(props));
+}
+
+function PendingSection(props: {
+  invites: PendingInviteRow[] | undefined;
+  error: unknown;
+  myRole: GuardianRole | null;
+  currentUserId: string | null;
+}) {
   const t = useT();
   return (
     <section className="card">
@@ -364,14 +427,23 @@ function PendingSection(props: { invites: PendingInviteRow[] | undefined; error:
       ) : null}
       <ul className="row-list">
         {(props.invites ?? []).map((invite) => (
-          <PendingRowItem key={invite.id} invite={invite} />
+          <PendingRowItem
+            key={invite.id}
+            invite={invite}
+            myRole={props.myRole}
+            currentUserId={props.currentUserId}
+          />
         ))}
       </ul>
     </section>
   );
 }
 
-function PendingRowItem(props: { invite: PendingInviteRow }) {
+function PendingRowItem(props: {
+  invite: PendingInviteRow;
+  myRole: GuardianRole | null;
+  currentUserId: string | null;
+}) {
   const t = useT();
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
@@ -396,6 +468,15 @@ function PendingRowItem(props: { invite: PendingInviteRow }) {
 
   const roleLabel = t(guardianRoleLabelId(props.invite.role));
   const inviteLine = `${roleLabel} · ${expiryLabel(props.invite.expires_at, new Date(), t)}`;
+  // Issue #1285: the cancel ladder — a co-parent may not cancel a co_parent
+  // invitation they did not create (the server refuses it), so the control
+  // hides rather than ending in a generic failure.
+  const cancellable = canCancelInvitation({
+    callerRole: props.myRole,
+    inviteRole: props.invite.role,
+    invitedBy: props.invite.invited_by,
+    currentUserId: props.currentUserId,
+  });
   const outcomeMessage = (value: InvitationOutcome) => {
     switch (value) {
       case 'revoked':
@@ -425,7 +506,7 @@ function PendingRowItem(props: { invite: PendingInviteRow }) {
         ) : null}
       </div>
       <div className="actions">
-        {confirming ? (
+        {!cancellable ? null : confirming ? (
           <>
             <button
               type="button"
@@ -463,11 +544,17 @@ function PendingRowItem(props: { invite: PendingInviteRow }) {
 function InviteSection(props: {
   profileId: string;
   profileName: string;
+  callerRole: GuardianRole | null;
   subjectAvailable: boolean;
 }) {
   const t = useT();
   const queryClient = useQueryClient();
-  const [preset, setPreset] = useState<InvitePreset>('co_parent');
+  // Issue #1285: the co_parent preset is a primary-guardian choice — the
+  // server refuses a co-parent's co-parent invitation with 42501, so a
+  // co-parent caller neither defaults to it nor sees it.
+  const [preset, setPreset] = useState<InvitePreset>(
+    roleCanInviteCoParent(props.callerRole) ? 'co_parent' : 'caregiver',
+  );
   const [nickname, setNickname] = useState('');
   const [createdToken, setCreatedToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -518,7 +605,9 @@ function InviteSection(props: {
               disabled={busy}
               onChange={(event) => setPreset(event.target.value as InvitePreset)}
             >
-              <option value="co_parent">{t(presetMessageId('co_parent'))}</option>
+              {roleCanInviteCoParent(props.callerRole) ? (
+                <option value="co_parent">{t(presetMessageId('co_parent'))}</option>
+              ) : null}
               <option value="caregiver">{t(presetMessageId('caregiver'))}</option>
               <option value="viewer">{t(presetMessageId('viewer'))}</option>
               {props.subjectAvailable ? (
