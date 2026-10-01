@@ -208,14 +208,35 @@ describe('pullSyncedData (issue #1252)', () => {
   });
 
   it('guards against paging that never exhausts', async () => {
+    // Runs on an injected budget instead of the production 1,000-round
+    // cap: a real full page means 1,000 rounds of genuine row parsing to
+    // reach the throw — seconds of pure worst-case CPU that put the CI
+    // runner past the 5s default test timeout (issue #1348). Three rounds
+    // assert the same property deterministically: an always-full page
+    // stops the loop at the cap and fails closed with the count in the
+    // message, rather than spinning.
     const fullPage = Array.from({ length: 500 }, (_, i) =>
       profileRow({ server_version: i + 1 }),
     );
-    const { client } = fakeRpcClient(async () => ({
-      data: { profiles: fullPage },
+    let calls = 0;
+    const { client } = fakeRpcClient(async () => {
+      calls += 1;
+      return { data: { profiles: fullPage }, error: null };
+    });
+    await expect(pullSyncedData(client, { maxRounds: 3 })).rejects.toThrow(
+      'sync_pull did not exhaust within 3 rounds',
+    );
+    expect(calls).toBe(3);
+  });
+
+  it('a budget the pages fit inside returns normally', async () => {
+    const { client, calls } = fakeRpcClient(async () => ({
+      data: { profiles: [profileRow({ server_version: 1 })] },
       error: null,
     }));
-    await expect(pullSyncedData(client)).rejects.toThrow('did not exhaust');
+    const { cursors } = await pullSyncedData(client, { maxRounds: 3 });
+    expect(cursors.profiles).toBe(1);
+    expect(calls).toHaveLength(1);
   });
 });
 

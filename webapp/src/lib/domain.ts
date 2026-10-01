@@ -274,15 +274,23 @@ async function pullOnce(
  * for a first load — a profile's full cycle history arrives, not just the
  * recent window), paging until no table returns a full page, and returns
  * the merged rows plus the advanced cursors.
+ *
+ * `maxRounds` overrides the safety cap for the never-exhausts guard's own
+ * test: driving the production 1,000-round budget through a real 500-row
+ * page of parsed rows is pure worst-case CPU (seconds of it, past the
+ * runner's test timeout under CI load — issue #1348) and asserts the same
+ * property on a handful of rounds. Callers omit it; the default stays
+ * `MAX_PULL_ROUNDS`.
  */
 export async function pullSyncedData(
   client: AppSupabaseClient,
-  opts: { cursors?: SyncPullCursors } = {},
+  opts: { cursors?: SyncPullCursors; maxRounds?: number } = {},
 ): Promise<{ data: SyncedData; cursors: SyncPullCursors }> {
+  const maxRounds = opts.maxRounds ?? MAX_PULL_ROUNDS;
   const cursors: SyncPullCursors = { ...emptyCursors(), ...opts.cursors };
   const merged = emptySyncedData();
 
-  for (let round = 0; round < MAX_PULL_ROUNDS; round += 1) {
+  for (let round = 0; round < maxRounds; round += 1) {
     const page = await pullOnce(client, cursors);
     let anyFull = false;
     const append = <K extends SyncCursorTable>(
@@ -312,7 +320,7 @@ export async function pullSyncedData(
       return { data: merged, cursors };
     }
   }
-  throw new Error(`sync_pull did not exhaust within ${MAX_PULL_ROUNDS} rounds`);
+  throw new Error(`sync_pull did not exhaust within ${maxRounds} rounds`);
 }
 
 // ---------------------------------------------------------------------------
