@@ -33,6 +33,7 @@ export function SignInPage() {
   const [emailError, setEmailError] = useState<string | null>(null);
 
   const mutationError = (signIn.error ?? sendOtp.error) as AuthError | null;
+  const mutationCopy = mutationError === null ? null : authCopyFor(mutationError);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -135,8 +136,8 @@ export function SignInPage() {
             {t('accountSignInMagicLinkSignIn')}
           </button>
         </div>
-        {mutationError !== null ? (
-          <p className="auth-error">{t(authCopyFor(mutationError).id)}</p>
+        {mutationCopy !== null ? (
+          <p className="auth-error">{t(mutationCopy.id, mutationCopy.values)}</p>
         ) : null}
       </form>
       <div className="auth-actions" style={{ marginTop: 'var(--ll-space-3)' }}>

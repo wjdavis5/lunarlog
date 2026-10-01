@@ -136,6 +136,24 @@ describe('SignUpPage (issue #1250)', () => {
     expect(fakes.signUp).not.toHaveBeenCalled();
   });
 
+  it('renders the weak-password copy with its value, not the placeholder (issue #1295)', async () => {
+    fakes.signUp.mockRejectedValue(new AuthError('weak_password', 400));
+    renderWithProviders(<SignUpPage />, '/sign-up');
+    await fill(messages['accountSignInEmailLabel'] ?? '', 'a@b.co');
+    await fill(messages['accountSignInPasswordLabel'] ?? '', 'long enough password');
+    fireEvent.click(
+      screen.getByRole('button', { name: messages['accountSignInCreateAccountAction'] }),
+    );
+    // The mapped copy carries {minLength}; the page must pass its values to
+    // the catalogue so the real minimum renders.
+    expect(
+      await screen.findByText(
+        (messages['authFailureWeakPassword'] ?? '').replace('{minLength}', '12'),
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/\{minLength\}/)).not.toBeInTheDocument();
+  });
+
   it('signs up and shows the confirmation copy', async () => {
     renderWithProviders(<SignUpPage />, '/sign-up');
     await fill(messages['accountSignInEmailLabel'] ?? '', 'a@b.co');
@@ -222,6 +240,22 @@ describe('ResetPasswordPage (issue #1250)', () => {
     ).toBeInTheDocument();
     expect(fakes.updatePassword).not.toHaveBeenCalled();
   });
+
+  it('renders the weak-password copy with its value, not the placeholder (issue #1295)', async () => {
+    fakes.updatePassword.mockRejectedValue(new AuthError('weak_password', 400));
+    renderWithProviders(<ResetPasswordPage />, '/reset-password');
+    await fill(messages['accountPasswordRecoveryNewLabel'] ?? '', 'long enough password');
+    await fill(messages['accountPasswordRecoveryConfirmLabel'] ?? '', 'long enough password');
+    fireEvent.click(
+      screen.getByRole('button', { name: messages['accountPasswordRecoverySave'] }),
+    );
+    expect(
+      await screen.findByText(
+        (messages['authFailureWeakPassword'] ?? '').replace('{minLength}', '12'),
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/\{minLength\}/)).not.toBeInTheDocument();
+  });
 });
 
 describe('AuthCallbackPage (issue #1250)', () => {
@@ -246,6 +280,19 @@ describe('AuthCallbackPage (issue #1250)', () => {
     renderWithProviders(<AuthCallbackPage />, '/auth/callback?error=access_denied');
     expect(fakes.exchangeCallback).not.toHaveBeenCalled();
     expect(await screen.findByText(messages['authFailureExpiredLink'])).toBeInTheDocument();
+  });
+
+  it('renders a mapped-copy failure with its values across the state (issue #1295)', async () => {
+    // The failed render is a state away from the failure: the values must
+    // ride along with the id or the placeholder shows raw.
+    fakes.exchangeCallback.mockRejectedValue(new AuthError('weak_password', 400));
+    renderWithProviders(<AuthCallbackPage />, '/auth/callback?code=abc');
+    expect(
+      await screen.findByText(
+        (messages['authFailureWeakPassword'] ?? '').replace('{minLength}', '12'),
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/\{minLength\}/)).not.toBeInTheDocument();
   });
 
   it('renders the magic-link info body when opened bare', async () => {

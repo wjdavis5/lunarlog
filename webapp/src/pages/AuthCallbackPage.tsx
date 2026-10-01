@@ -11,7 +11,10 @@ import { useQueryClient } from '@tanstack/react-query';
 type CallbackState =
   | { kind: 'pending' }
   | { kind: 'signedIn'; recovery: boolean }
-  | { kind: 'failed'; copyId: MessageId }
+  // The mapped copy and its FormatJS values (issue #1295): the render is
+  // a state away from the failure, so the values ride along with the id —
+  // otherwise the weak-password copy would show its raw `{minLength}`.
+  | { kind: 'failed'; copyId: MessageId; values?: Record<string, string | number> }
   | { kind: 'idle' };
 
 /**
@@ -67,7 +70,7 @@ export function AuthCallbackPage() {
           error instanceof AuthError
             ? authCopyFor(error)
             : { id: 'commonSomethingWentWrong' as const };
-        setState({ kind: 'failed', copyId: copy.id });
+        setState({ kind: 'failed', copyId: copy.id, values: copy.values });
       });
   }, [code, providerError, recovery, queryClient]);
 
@@ -94,7 +97,7 @@ export function AuthCallbackPage() {
       ) : null}
       {state.kind === 'failed' ? (
         <div className="auth-info">
-          <p className="body">{t(state.copyId)}</p>
+          <p className="body">{t(state.copyId, state.values)}</p>
           <div className="auth-links">
             <Link to="/sign-in">{t('accountSignInTitle')}</Link>
           </div>
