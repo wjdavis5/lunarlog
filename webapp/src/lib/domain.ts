@@ -627,14 +627,32 @@ export function subscribeSyncSignals(
  * The web session's synced-data state: a merged row snapshot plus the pull
  * cursors, both purely in-memory. One instance per page; `reset()` (sign-
  * out) drops it — the same moment the TanStack cache is cleared.
+ *
+ * Every reset bumps a generation counter, and each `refresh()` captures it
+ * before its pull starts (issue #1315): `resetWebDataForSignOut` clears the
+ * TanStack cache but cannot abort a `queryFn` already awaiting the network,
+ * so a pull started under account A can resolve after account B's reset.
+ * Without the guard that stale resolution would write A's cursors back and
+ * merge A's rows into B's empty snapshot — B's first pull would then start
+ * from A's `server_version` cursors and skip every B row below them (one
+ * global sequence). A refresh whose generation moved returns the current
+ * snapshot instead and touches nothing.
  */
 export class SyncedDataCache {
   private cursors: SyncPullCursors = emptyCursors();
   private snapshot: SyncedData = emptySyncedData();
+  private generation = 0;
 
   /** Pulls forward from the session's cursors and merges into the snapshot. */
   async refresh(client: AppSupabaseClient): Promise<SyncedData> {
+    const generation = this.generation;
     const result = await pullSyncedData(client, { cursors: this.cursors });
+    if (generation !== this.generation) {
+      // The identity reset landed while this pull was in flight: the result
+      // belongs to the previous account. Discard it — no cursor advance, no
+      // merge — and hand back whatever the current session's snapshot holds.
+      return this.snapshot;
+    }
     this.cursors = result.cursors;
     this.snapshot = mergeSyncedData(this.snapshot, result.data);
     return this.snapshot;
@@ -647,6 +665,7 @@ export class SyncedDataCache {
 
   /** Sign-out: forget every cursor and row. Nothing was ever persisted. */
   reset(): void {
+    this.generation += 1;
     this.cursors = emptyCursors();
     this.snapshot = emptySyncedData();
   }

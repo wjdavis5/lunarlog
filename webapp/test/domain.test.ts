@@ -540,6 +540,53 @@ describe('SyncedDataCache (issue #1252)', () => {
   });
 });
 
+describe('SyncedDataCache identity race (issue #1315)', () => {
+  it('discards a pull that resolves after the reset: rows and cursors stay empty', async () => {
+    const cache = new SyncedDataCache();
+    let releaseStalePull!: (value: {
+      data: unknown;
+      error: { message: string } | null;
+    }) => void;
+    const stalePull = new Promise<{ data: unknown; error: { message: string } | null }>(
+      (resolve) => {
+        releaseStalePull = resolve;
+      },
+    );
+    let round = 0;
+    const { client } = fakeRpcClient(async (_name, params) => {
+      round += 1;
+      if (round === 1) {
+        // Account A's pull, held in flight across the reset.
+        return stalePull;
+      }
+      // Account B's first pull starts from zero cursors — server_version is
+      // one global sequence, so A's cursors would have made B skip every
+      // lower-version row. Asserted here, before pullSyncedData advances
+      // the cursors object this params entry aliases.
+      expect(params.p_cursors).toEqual({});
+      return { data: { profiles: [profileRow({ server_version: 9 })] }, error: null };
+    });
+
+    const inFlight = cache.refresh(client); // A's pull, still awaiting the network
+    cache.reset(); // the identity boundary lands mid-pull (resetWebDataForSignOut)
+    releaseStalePull({
+      data: { profiles: [profileRow({ server_version: 7 })] },
+      error: null,
+    });
+
+    // A's rows never merge and A's cursors never land: the stale resolution
+    // returns the post-reset snapshot and touches nothing.
+    const stale = await inFlight;
+    expect(stale).toEqual(emptySyncedData());
+    expect(cache.current()).toEqual(emptySyncedData());
+
+    // B's own pull starts from zero cursors (asserted in the handler) and
+    // B's rows merge onto the still-empty snapshot.
+    const fresh = await cache.refresh(client);
+    expect(fresh.profiles.map((row) => row.server_version)).toEqual([9]);
+  });
+});
+
 describe('mergeSyncedData (issue #1252)', () => {
   it('replaces a stored row when the pulled copy is newer, keeps it when older', () => {
     const base = emptySyncedData();
