@@ -21,8 +21,10 @@ import '../../tool/screenshots/manifest.dart' as screenshots;
 ///   surfaces here and at the Astro build, never as stale prose;
 /// - both invitation directions are present with equal weight;
 /// - the page states plainly that sync is not end-to-end encrypted
-///   (PRIVACY.md §6) and keeps the unshipped features unclaimed
-///   (background health sync, store badges, waitlist/email capture).
+///   (PRIVACY.md §6) and keeps the genuinely unshipped features unclaimed
+///   (store badges, waitlist/email capture — background health sync is NOT
+///   one of them: it shipped in-app with issue #993 and the ledger must
+///   never again list it as unshipped or deferred, issue #1306).
 ///
 /// These assertions read the source files the same way
 /// `test/site/store_pages_test.dart` reads its pages: the pages are static
@@ -275,6 +277,46 @@ void main() {
         flat(ledger),
         contains('keeps itself current in the background'),
       );
+      // The flip missed the ledger's own inventory paragraph (issue #1306):
+      // it kept listing the shipped background pass as unshipped —
+      // "Unshipped features are deliberately absent: background
+      // health-platform sync (issue #993, deferred) ..." — contradicting
+      // the Home and Import claim rows and PRIVACY.md §4. The framing is
+      // the pin, not one retired sentence: every sentence naming the
+      // feature must frame it as shipped, so a re-wrapped or re-worded
+      // "deferred"/"unshipped"/"deliberately absent" phrasing fails too.
+      expect(
+        flat(ledger),
+        isNot(contains(
+          'deliberately absent: background health-platform sync',
+        )),
+        reason: 'the retired inventory framing, verbatim (issue #1306)',
+      );
+      expect(
+        flat(ledger),
+        contains('Background health-platform sync ships in-app'),
+        reason: 'the inventory paragraph states the shipped truth '
+            '(issue #993)',
+      );
+      for (final window in RegExp(
+        r'[^.]*[Bb]ackground health[^.]*\.',
+      ).allMatches(flat(ledger))) {
+        final sentence = window.group(0)!;
+        final lowercased = sentence.toLowerCase();
+        for (final banned in const [
+          'deferred',
+          'unshipped',
+          'deliberately absent',
+        ]) {
+          expect(
+            lowercased,
+            isNot(contains(banned)),
+            reason: 'background health-platform sync shipped (issue #993); '
+                'the ledger may not frame it as "$banned": "$sentence" '
+                '(issue #1306)',
+          );
+        }
+      }
       expect(
         File('ios/Runner/AppDelegate.swift').readAsStringSync(),
         contains('enableBackgroundDelivery'),

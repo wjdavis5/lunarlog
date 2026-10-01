@@ -23,9 +23,12 @@ from the repo root. `issue` entries are semicolon-separated GitHub issue
 numbers. Normative statements that no single file "ships" (positioning
 calls, the default CTA) cite the doc or issue that made the call.
 
-Unshipped features are deliberately absent: background health-platform sync
-(issue #993, deferred), App Store / Google Play badges (listings not live —
-issue #830), and any waitlist or email capture (the site collects nothing).
+Background health-platform sync ships in-app (issue #993): once a profile
+is bound and its first import has completed, the same pass keeps itself
+current in the background (PRIVACY.md §4) — claimed in the Home and Import
+sections below. Unshipped features are deliberately absent: App Store /
+Google Play badges (listings not live — issue #830), and any waitlist or
+email capture (the site collects nothing).
 
 ---
 
