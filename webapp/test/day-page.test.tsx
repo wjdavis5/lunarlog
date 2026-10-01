@@ -78,9 +78,18 @@ function membership(role: string, isSubject = true): ProfileGuardianRow {
 function fakeClient(options?: {
   membership?: ProfileGuardianRow | null;
   rpcResult?: { data: unknown; error: { message: string } | null };
+  trackingPreferences?: unknown;
 }) {
   const page = {
-    profiles: [{ ...profile, server_version: 3 }],
+    profiles: [
+      {
+        ...profile,
+        server_version: 3,
+        ...(options?.trackingPreferences !== undefined
+          ? { tracking_preferences: options.trackingPreferences }
+          : {}),
+      },
+    ],
     day_entries: [{ ...entry, server_version: 7 }],
     observations: [],
     profile_modes: [],
@@ -268,5 +277,39 @@ describe('DayPage (issue #1254)', () => {
       await screen.findByText("You can't log a day more than one day ahead."),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+  });
+
+  // Issue #1291: the ovulation/pregnancy test chips used to render twice —
+  // once from the symptom picker's surfaced-category loop and again from a
+  // dedicated Tests fieldset that ignored tracking_preferences.
+  it('renders the test chips exactly once when the category is enabled', async () => {
+    const { client } = fakeClient();
+    renderDay(client);
+    await screen.findByText('Maya — 2026-09-29');
+    // The default (never-customized, non-minor) profile surfaces every
+    // category, `tests` among them — but only through its own fieldset.
+    expect(screen.getAllByRole('button', { name: 'Ovulation · positive' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Pregnancy · negative' })).toHaveLength(1);
+    expect(screen.getAllByText('Tests')).toHaveLength(1);
+  });
+
+  it('renders no test chips when tracking_preferences disable the category', async () => {
+    const { client } = fakeClient({
+      trackingPreferences: { tests: { enabled: false, sort_order: 0 } },
+    });
+    renderDay(client);
+    await screen.findByText('Maya — 2026-09-29');
+    for (const chip of [
+      'Ovulation · negative',
+      'Ovulation · positive',
+      'Ovulation · peak',
+      'Pregnancy · negative',
+      'Pregnancy · positive',
+    ]) {
+      expect(screen.queryByRole('button', { name: chip })).not.toBeInTheDocument();
+    }
+    expect(screen.queryByText('Tests')).not.toBeInTheDocument();
+    // The rest of the symptom picker is untouched by the `tests` disable.
+    expect(screen.getByRole('button', { name: 'Cramps' })).toBeInTheDocument();
   });
 });
