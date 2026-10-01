@@ -8,7 +8,7 @@ import { createAppQueryClient } from '../src/lib/queries';
 import { getSyncedDataCache } from '../src/lib/domain';
 import { DayPage } from '../src/pages/DayPage';
 import type { AppSupabaseClient } from '../src/lib/supabase';
-import type { ProfileGuardianRow, ProfileRow } from '../src/lib/schemas';
+import type { ObservationRow, ProfileGuardianRow, ProfileRow } from '../src/lib/schemas';
 
 /**
  * The day editor page (issue #1254): the states a signed-in operator moves
@@ -75,8 +75,44 @@ function membership(role: string, isSubject = true): ProfileGuardianRow {
   };
 }
 
+// Deterministic, unique ULIDs for the stored rows this describe inserts —
+// two same-day measurement rows must not collide on id (the synced-data
+// cache merges rows by id, as the server does).
+let measurementIdCounter = 0;
+const nextMeasurementId = (): string => {
+  measurementIdCounter += 1;
+  const base = '01M2FWKNG0';
+  const tail = measurementIdCounter.toString(32).toUpperCase().padStart(16, '0');
+  return base + tail.slice(-16).replace(/[IL OU]/g, '0');
+};
+
+function storedMeasurement(category: string, valueNum: number, unit: string): ObservationRow {
+  return {
+    id: nextMeasurementId(),
+    day_entry_id: ENTRY_ID,
+    profile_id: PROFILE_ID,
+    local_date: DATE,
+    observed_at: null,
+    tz: 'UTC',
+    category,
+    code: null,
+    value_num: valueNum,
+    value_text: null,
+    unit,
+    intensity: null,
+    excluded: false,
+    source: 'manual',
+    source_id: null,
+    created_at: '2026-09-29T08:00:00.000Z',
+    updated_at: '2026-09-29T08:00:00.000Z',
+    deleted_at: null,
+    server_version: 4,
+  };
+}
+
 function fakeClient(options?: {
   membership?: ProfileGuardianRow | null;
+  observations?: ObservationRow[];
   rpcResult?: { data: unknown; error: { message: string } | null };
   trackingPreferences?: unknown;
 }) {
@@ -91,7 +127,7 @@ function fakeClient(options?: {
       },
     ],
     day_entries: [{ ...entry, server_version: 7 }],
-    observations: [],
+    observations: options?.observations ?? [],
     profile_modes: [],
     cycle_overrides: [],
     care_notes: [],
@@ -348,6 +384,52 @@ describe('DayPage (issue #1254)', () => {
       await screen.findByText("You can't log a day more than one day ahead."),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+  });
+
+  describe('measurements stored in the other unit (#1287)', () => {
+    it('seeds the bbt field with the converted value, not the raw stored number', async () => {
+      const { client } = fakeClient({
+        observations: [storedMeasurement('bbt', 98.6, 'fahrenheit')],
+      });
+      renderDay(client);
+      // 98.6 °F is exactly 37 °C — the raw 98.6 would read as out of range.
+      expect(await screen.findByLabelText('Basal body temperature (°C)')).toHaveValue(37);
+      expect(screen.queryByText(/Temperature must be between/)).not.toBeInTheDocument();
+    });
+
+    it('seeds the weight field with the converted value, not the raw stored number', async () => {
+      const { client } = fakeClient({
+        observations: [storedMeasurement('weight', 150, 'lb')],
+      });
+      renderDay(client);
+      // 150 lb ≈ 68.0388555 kg — the raw 150 would read as a valid-but-wrong 150 kg.
+      expect(await screen.findByLabelText('Weight (kg)')).toHaveValue(68.0388555);
+      expect(screen.queryByText(/Weight must be between/)).not.toBeInTheDocument();
+    });
+
+    it('saving an untouched converted measurement emits no observation row', async () => {
+      const { client, rpc } = fakeClient({
+        observations: [
+          storedMeasurement('bbt', 98.6, 'fahrenheit'),
+          storedMeasurement('weight', 150, 'lb'),
+        ],
+      });
+      renderDay(client);
+      const note = await screen.findByLabelText('Notes');
+      fireEvent.change(note, { target: { value: 'tag-only change' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(screen.getByText('Saved')).toBeInTheDocument());
+      expect(rpc).toHaveBeenCalledWith(
+        'sync_push',
+        expect.objectContaining({
+          p_observations: [],
+          p_day_entries: [expect.objectContaining({ note: 'tag-only change' })],
+        }),
+      );
+      // The fields still read the converted values after the round trip.
+      expect(screen.getByLabelText('Basal body temperature (°C)')).toHaveValue(37);
+      expect(screen.getByLabelText('Weight (kg)')).toHaveValue(68.0388555);
+    });
   });
 
   // Issue #1291: the ovulation/pregnancy test chips used to render twice —

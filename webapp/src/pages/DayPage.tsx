@@ -11,7 +11,11 @@ import {
 } from '../lib/day/day-entry-policy';
 import {
   bbtRangeIn,
+  bbtUnitFromDb,
+  convertTemperature,
+  convertWeight,
   weightRangeIn,
+  weightUnitFromDb,
   type BbtUnit,
   type WeightUnit,
 } from '../lib/day/measurements';
@@ -120,6 +124,14 @@ function editFromView(view: LoadedDayView | undefined): DayEdit {
     (o) => o.deleted_at === null && o.category === 'weight' && o.source === 'manual',
   );
   const entry = view.entry;
+  // Issue #1287: a stored measurement keeps the unit it was logged in
+  // (`observations.unit`), which can differ from the profile's current
+  // unit preference — the seed converts it, exactly like the app's day
+  // sheet (lib/ui/logging/day_sheet.dart) does, so the field shows the
+  // physical value in the profile's unit instead of a raw number that
+  // reads as out of range (or silently rewrites the row on save).
+  const bbtUnit = bbtUnitFromDb(view.profile.bbt_unit);
+  const weightUnit = weightUnitFromDb(view.profile.weight_unit);
   return {
     flow: (entry?.flow as DayEdit['flow']) ?? 'none',
     flowExplicitlySet: false,
@@ -128,8 +140,14 @@ function editFromView(view: LoadedDayView | undefined): DayEdit {
     tags: [...(entry?.tags ?? [])],
     note: entry?.note ?? null,
     notePrivate: entry?.note_private ?? false,
-    bbt: bbtRow?.value_num ?? null,
-    weight: weightRow?.value_num ?? null,
+    bbt:
+      bbtRow === undefined || bbtRow.value_num === null
+        ? null
+        : convertTemperature(bbtRow.value_num, bbtUnitFromDb(bbtRow.unit), bbtUnit),
+    weight:
+      weightRow === undefined || weightRow.value_num === null
+        ? null
+        : convertWeight(weightRow.value_num, weightUnitFromDb(weightRow.unit), weightUnit),
     mode: null,
     manualCycleStart: view.cycleOverride?.manual_start ?? false,
     excludeCycleFromAverage: view.cycleOverride?.excluded_from_average ?? false,

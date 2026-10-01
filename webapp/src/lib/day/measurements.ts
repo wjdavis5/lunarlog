@@ -18,6 +18,22 @@
 export type BbtUnit = 'celsius' | 'fahrenheit';
 export type WeightUnit = 'kg' | 'lb';
 
+/**
+ * The unit a stored temperature value is denominated in (`observations.unit`
+ * or `profiles.bbt_unit`) — an unrecognised or null value degrades to the
+ * default (Celsius) rather than throwing, the same rule as the app's
+ * `BbtUnit.fromDb` (lib/domain/models/measurement_unit.dart): a value this
+ * build doesn't recognise must fall back, never crash a pull.
+ */
+export function bbtUnitFromDb(value: string | null | undefined): BbtUnit {
+  return value === 'fahrenheit' ? 'fahrenheit' : 'celsius';
+}
+
+/** The weight counterpart of [bbtUnitFromDb] (default kilograms). */
+export function weightUnitFromDb(value: string | null | undefined): WeightUnit {
+  return value === 'lb' ? 'lb' : 'kg';
+}
+
 /** Basal body temperature sanity floor/ceiling, in Celsius (34.0-42.0 °C). */
 export const MIN_BBT_CELSIUS = 34.0;
 export const MAX_BBT_CELSIUS = 42.0;
