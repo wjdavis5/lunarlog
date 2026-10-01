@@ -1613,6 +1613,10 @@ export type Database = {
       sweep_alert_digests: { Args: never; Returns: number }
       sweep_notification_outbox: { Args: never; Returns: number }
       sync_pull: { Args: { p_cursors?: Json }; Returns: Json }
+      sync_pull_day_entries: {
+        Args: { p_after_version?: number; p_limit?: number }
+        Returns: Json
+      }
       sync_push: {
         Args: {
           p_care_notes?: Json
