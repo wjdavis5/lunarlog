@@ -72,8 +72,9 @@ import { newUlid } from './ulid';
  *
  * **Cache:** everything here lives in page memory — cursors, the merged
  * row snapshot, and the TanStack Query cache (no persister, issue #1249).
- * `resetWebDataForSignOut` clears all three; the auth flow calls it on
- * sign-out.
+ * `resetWebDataForSignOut` clears all three; the auth layer calls it at
+ * every identity boundary (issue #1281) — on sign-out, on session
+ * adoption, and whenever the signed-in user id changes.
  */
 
 /** `sync_pull`'s per-table page cap (c_page_size in the RPC body). */
@@ -716,8 +717,9 @@ export function getSyncedDataCache(): SyncedDataCache {
 
 /**
  * Sign-out: resets the synced-data snapshot/cursors and clears the TanStack
- * Query cache. The auth layer (issue #1250's flow) calls this on
- * `SIGNED_OUT` — after it, nothing of the session remains in memory.
+ * Query cache. The auth layer's mutations call this at every identity
+ * boundary (issue #1281) — after it, nothing of the session remains in
+ * memory.
  */
 export function resetWebDataForSignOut(queryClient: { clear: () => void }): void {
   sharedCache.reset();

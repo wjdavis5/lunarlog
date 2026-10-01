@@ -1,7 +1,7 @@
 import { Link, Navigate, Outlet, RouterProvider, createBrowserRouter } from 'react-router';
 
 import { useT } from './i18n/t';
-import { useAuthSession } from './lib/authQueries';
+import { useAuthSession, useResetWebDataOnIdentityChange } from './lib/authQueries';
 import { AuthCallbackPage } from './pages/AuthCallbackPage';
 import { CodeEntryPage } from './pages/CodeEntryPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
@@ -23,6 +23,9 @@ import { TodayPage } from './pages/TodayPage';
  */
 function Shell() {
   const t = useT();
+  // Issue #1281: when the page's session resolves to a different account,
+  // the synced-data cache goes with the old one — before anything renders.
+  useResetWebDataOnIdentityChange();
   const session = useAuthSession();
   return (
     <div className="app-shell">

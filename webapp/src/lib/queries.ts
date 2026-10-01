@@ -152,8 +152,10 @@ export function useSyncSignalsRefetch(profileIds: string[]): void {
 
 /**
  * Sign-out: drops the synced-data snapshot/cursors and clears the TanStack
- * cache — the whole point of keeping them in memory. The auth flow calls
- * this on `SIGNED_OUT`.
+ * cache — the whole point of keeping them in memory. The auth mutations
+ * call this at every identity boundary (issue #1281): the sign-out mutation
+ * in a `finally`, the sign-in paths on session adoption, and the shell's
+ * identity watcher whenever the signed-in user id changes.
  */
 export function resetWebData(queryClient: QueryClient): void {
   resetWebDataForSignOut(queryClient);
