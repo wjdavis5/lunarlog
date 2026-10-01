@@ -417,6 +417,51 @@ describe('buildSavePlan: measurements (#457)', () => {
   });
 });
 
+describe('buildSavePlan: measurements stored in the other unit (#1287)', () => {
+  // The values the issue names: a row logged under the other unit
+  // preference, read back after the profile's unit changed. The edit
+  // values are exactly what DayPage's editFromView seeds — 98.6 °F is
+  // 37 °C and 150 lb is 68.0388555 kg in IEEE doubles, so the untouched
+  // field compares exactly equal to the converted stored row.
+  it('no-op for a fahrenheit-stored bbt read back under a celsius profile', () => {
+    const stored = observation({ category: 'bbt', value_num: 98.6, unit: 'fahrenheit' });
+    const plan = planFor({ bbt: 37 }, viewWith({ observations: [stored] }));
+    expect(plan.observations).toHaveLength(0);
+  });
+
+  it('writes only a genuinely changed bbt, in the profile unit', () => {
+    const stored = observation({ category: 'bbt', value_num: 98.6, unit: 'fahrenheit' });
+    const plan = planFor({ bbt: 36.8 }, viewWith({ observations: [stored] }));
+    expect(plan.observations).toHaveLength(1);
+    const row = plan.observations[0] as unknown as Record<string, unknown>;
+    expect(row['id']).toBe(stored.id);
+    expect(row['value_num']).toBe(36.8);
+    expect(row['unit']).toBe('celsius');
+  });
+
+  it('no-op for a lb-stored weight read back under a kg profile', () => {
+    const stored = observation({ category: 'weight', value_num: 150, unit: 'lb' });
+    const plan = planFor({ weight: 68.0388555 }, viewWith({ observations: [stored] }));
+    expect(plan.observations).toHaveLength(0);
+  });
+
+  it('writes a genuinely changed weight in the profile unit, not the stored one', () => {
+    const stored = observation({ category: 'weight', value_num: 150, unit: 'lb' });
+    const plan = planFor({ weight: 68 }, viewWith({ observations: [stored] }));
+    expect(plan.observations).toHaveLength(1);
+    const row = plan.observations[0] as unknown as Record<string, unknown>;
+    expect(row['id']).toBe(stored.id);
+    expect(row['value_num']).toBe(68);
+    expect(row['unit']).toBe('kg');
+  });
+
+  it('no-op for a legacy row with no unit whose number already matches (degraded, not rewritten)', () => {
+    const stored = observation({ category: 'bbt', value_num: 36.6, unit: null });
+    const plan = planFor({ bbt: 36.6 }, viewWith({ observations: [stored] }));
+    expect(plan.observations).toHaveLength(0);
+  });
+});
+
 describe('buildSavePlan: roles', () => {
   it('a viewer cannot save anything', () => {
     const view = viewWith({ membership: acceptedMembership('viewer') });

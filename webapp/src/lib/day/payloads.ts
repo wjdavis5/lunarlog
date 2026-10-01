@@ -28,7 +28,16 @@ import type {
   ProfileModePayload,
 } from '../domain';
 import { isIsoLocalDate, validateDayDate } from './day-entry-policy';
-import { isValidBbt, isValidWeight, type BbtUnit, type WeightUnit } from './measurements';
+import {
+  bbtUnitFromDb,
+  convertTemperature,
+  convertWeight,
+  isValidBbt,
+  isValidWeight,
+  weightUnitFromDb,
+  type BbtUnit,
+  type WeightUnit,
+} from './measurements';
 
 /** The seven flow levels the server's `is_valid_flow_level` accepts. */
 export const FLOW_LEVELS = [
@@ -447,6 +456,28 @@ function manualRows(view: LoadedDayView, category: string): ObservationRow[] {
   );
 }
 
+/**
+ * Whether the stored manual measurement row already holds [value]
+ * (denominated in the profile's unit): converts the row's stored value
+ * into [unit] with the same `measurements.ts` conversion `DayPage`'s
+ * `editFromView` seeds the field with, so an untouched converted field
+ * compares exactly equal and saving emits no update for it. A row with
+ * no stored number is never "unchanged" — clearing it stays a write.
+ */
+function storedMeasurementEquals(
+  row: ObservationRow,
+  category: string,
+  value: number,
+  unit: string,
+): boolean {
+  if (row.value_num === null) return false;
+  const stored =
+    category === BBT_CATEGORY
+      ? convertTemperature(row.value_num, bbtUnitFromDb(row.unit), unit as BbtUnit)
+      : convertWeight(row.value_num, weightUnitFromDb(row.unit), unit as WeightUnit);
+  return stored === value;
+}
+
 function upsertMeasurement(
   view: LoadedDayView,
   category: string,
@@ -463,6 +494,12 @@ function upsertMeasurement(
   if (existing.length > 0) {
     const row = existing[0];
     if (row.value_num === value && row.unit === unit) return [];
+    // Issue #1287: the editor seeds the field with the stored value
+    // converted into the profile unit, so an untouched field holds the
+    // same physical quantity denominated differently (98.6 °F reads back
+    // as 37 °C). That is not a change — rewriting the row would only
+    // churn its unit (150 lb -> 68.0388555 kg) on every save of the day.
+    if (storedMeasurementEquals(row, category, value, unit)) return [];
     return [
       {
         id: row.id,
