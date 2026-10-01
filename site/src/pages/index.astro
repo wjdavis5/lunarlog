@@ -177,13 +177,15 @@ const browserUrl = "https://app.lunarlog.app";
 
   <section class="home-section">
     <h2>Your data, in and out</h2>
-    <!-- cite: PRIVACY.md §7 (exports, built on-device, no account required); PRIVACY.md §2.A and §4 (Clue, Apple Health, Health Connect import provenance); lib/data/import/clue_importer.dart; lib/data/health/health_import_service.dart. -->
+    <!-- cite: PRIVACY.md §7 (exports, built on-device, no account required); PRIVACY.md §2.A and §4 (Clue, Apple Health, Health Connect import provenance); lib/data/import/clue_importer.dart; lib/data/health/health_import_service.dart (importInBackground, issue #993 — the background pass follows the completed first import, issue #1215's gate). -->
     <p>
-      Bring history in from Clue, Apple Health, or Health Connect — always
-      started by you, and never over a value you logged by hand. Take
-      everything out, any time, as JSON, CSV, a FHIR summary for
-      clinicians, or a one-page PDF: built on your device, with no account
-      required. <a href="/import">Importing</a> ·
+      Bring history in from Clue, Apple Health, or Health Connect — you
+      start the first import, and once a profile is bound and that first
+      import has completed, the same import keeps itself current in the
+      background, never over a value you logged by hand. Take everything
+      out, any time, as JSON, CSV, a FHIR summary for clinicians, or a
+      one-page PDF: built on your device, with no account required.
+      <a href="/import">Importing</a> ·
       <a href="/export">Exporting</a>.
     </p>
   </section>
