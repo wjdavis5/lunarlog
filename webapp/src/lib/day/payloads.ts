@@ -214,6 +214,45 @@ function allLiveObservations(view: LoadedDayView, category: string): Observation
   return view.observations.filter((o) => o.deleted_at === null && o.category === category);
 }
 
+/** Order-sensitive array equality — tags are stored (and echoed) as-is. */
+function sameTags(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((tag, i) => tag === b[i]);
+}
+
+/**
+ * Whether this save's entry content differs from what the day already
+ * stores (#1289): the gate that decides whether the `day_entries` row
+ * belongs on the wire at all. With no stored row, "differs" means the
+ * edit carries any content at all — an empty save on an empty day (a
+ * mode-only or correction-only change, say) must not mint a flow-`none`,
+ * no-tags entry row.
+ */
+function entryContentChanged(
+  edit: DayEdit,
+  view: LoadedDayView,
+  effectiveFlow: FlowLevel,
+  note: string | null,
+  notePrivate: boolean,
+): boolean {
+  const entry = view.entry;
+  if (entry === null) {
+    return (
+      effectiveFlow !== 'none' ||
+      edit.tags.length > 0 ||
+      note !== null ||
+      edit.pms ||
+      notePrivate
+    );
+  }
+  return (
+    effectiveFlow !== entry.flow ||
+    note !== entry.note ||
+    notePrivate !== entry.note_private ||
+    edit.pms !== entry.pms ||
+    !sameTags(edit.tags, entry.tags)
+  );
+}
+
 /** The note-private flag a save may legitimately write (#849's rules):
  * chosen while the stored note is still empty, never cleared, never set
  * onto an already-shared note. Non-subjects echo whatever they loaded, so
@@ -235,6 +274,15 @@ function resolveNotePrivate(edit: DayEdit, view: LoadedDayView): boolean {
  * Builds the `sync_push` payload rows for one save. The plan carries only
  * the rows that actually changed; empty arrays are the common case and the
  * RPC's defaulted `[]` parameters accept them untouched.
+ *
+ * The `day_entries` row itself is emitted only when an entry field (flow,
+ * tags, note, note privacy, pms) differs from the loaded view's stored row
+ * — or when no row exists yet and the save carries entry content, or a new
+ * observation needs a parent entry (the server refuses a live observation
+ * whose `day_entry_id` does not exist). Issue #1289: a measurement-, mode-
+ * or cycle-correction-only save used to re-push the full row with a fresh
+ * `updated_at`, so a stale editor's flow/tags rode along, won LWW, and
+ * silently reverted a phone's newer save.
  */
 export function buildSavePlan(args: BuildSavePlanArgs): SavePlan {
   const { profileId, dateIso, todayIso, tz, edit, view, nowIso } = args;
@@ -281,6 +329,7 @@ export function buildSavePlan(args: BuildSavePlanArgs): SavePlan {
   if (note !== null && note.length > MAX_NOTE_LENGTH) {
     throw new DayValidationError('note', `note longer than ${MAX_NOTE_LENGTH} characters`);
   }
+  const notePrivate = resolveNotePrivate(edit, view);
   const dayEntry: DayEntryPayload = {
     id: entryId,
     profile_id: profileId,
@@ -289,7 +338,7 @@ export function buildSavePlan(args: BuildSavePlanArgs): SavePlan {
     flow: effectiveFlow,
     tags: [...edit.tags],
     note,
-    note_private: resolveNotePrivate(edit, view),
+    note_private: notePrivate,
     pms: edit.pms,
     source: view.entry?.source ?? 'manual',
     ...(view.entry?.source_id !== null && view.entry?.source_id !== undefined
@@ -432,8 +481,21 @@ export function buildSavePlan(args: BuildSavePlanArgs): SavePlan {
     }
   }
 
+  // #1289: the entry row rides along only when its own content changed —
+  // or, on a day with no entry yet, when a brand-new observation needs the
+  // parent row to exist (the server refuses a live observation whose
+  // `day_entry_id` is unknown; tombstones and updates of stored rows carry
+  // their own ids and need no parent). A live observation payload is one
+  // without a tombstone timestamp.
+  const needsParentEntry =
+    view.entry === null && observations.some((row) => !('deleted_at' in row));
+  const dayEntries: DayEntryPayload[] =
+    entryContentChanged(edit, view, effectiveFlow, note, notePrivate) || needsParentEntry
+      ? [dayEntry]
+      : [];
+
   return {
-    dayEntries: [dayEntry],
+    dayEntries,
     observations: observations as ObservationPayload[],
     profileModes: profileModes as ProfileModePayload[],
     cycleOverrides: cycleOverrides as CycleOverridePayload[],

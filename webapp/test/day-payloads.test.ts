@@ -211,7 +211,10 @@ describe('buildSavePlan: the day_entries payload', () => {
   });
 
   it('empty string note saves as null (the app compose rule)', () => {
-    const plan = planFor({ note: '' }, viewWith({}));
+    // The row is only emitted when the entry changes (#1289), so the
+    // empty-string rule is pinned against a stored note it actually clears.
+    const stored = { ...baseEntry, note: 'written earlier' };
+    const plan = planFor({ note: '' }, viewWith({ entry: stored }));
     expect((plan.dayEntries[0] as unknown as Record<string, unknown>)['note']).toBeNull();
   });
 
@@ -278,8 +281,10 @@ describe('buildSavePlan: note privacy (#849)', () => {
 
   it('locks private on: a private note is never cleared, even by the subject', () => {
     const stored = { ...baseEntry, note_private: true, note: 'secret' };
+    // The note text changes too so the row is actually emitted (#1289) —
+    // the pinned value is the privacy flag the emitted row carries.
     const plan = planFor(
-      { note: 'secret', notePrivate: false },
+      { note: 'secret, kept', notePrivate: false },
       viewWith({ entry: stored, membership: acceptedMembership('primary_guardian', true) }),
     );
     expect((plan.dayEntries[0] as unknown as Record<string, unknown>)['note_private']).toBe(
@@ -290,7 +295,7 @@ describe('buildSavePlan: note privacy (#849)', () => {
   it('locks private off: a shared note with content can never be made private', () => {
     const stored = { ...baseEntry, note_private: false, note: 'shared' };
     const plan = planFor(
-      { note: 'shared', notePrivate: true },
+      { note: 'shared, edited', notePrivate: true },
       viewWith({ entry: stored, membership: acceptedMembership('primary_guardian', true) }),
     );
     expect((plan.dayEntries[0] as unknown as Record<string, unknown>)['note_private']).toBe(
@@ -300,8 +305,10 @@ describe('buildSavePlan: note privacy (#849)', () => {
 
   it('a non-subject echoes the stored flag, so a masked private note survives their save', () => {
     const stored = { ...baseEntry, note_private: true, note: null };
+    // A pms toggle is the change that emits the row; the pinned value is
+    // the echoed flag riding along it (the masked note itself stays null).
     const plan = planFor(
-      { notePrivate: false },
+      { pms: true, notePrivate: false },
       viewWith({ entry: stored, membership: acceptedMembership('caregiver') }),
     );
     expect((plan.dayEntries[0] as unknown as Record<string, unknown>)['note_private']).toBe(
@@ -595,6 +602,93 @@ describe('buildSavePlan: life-stage mode and cycle corrections (#188)', () => {
     expect(row['id']).toBe(stored.id);
     expect(row['deleted_at']).toBe(NOW);
     expect(row).not.toHaveProperty('manual_start');
+  });
+});
+
+describe('buildSavePlan: only changed rows go on the wire (#1289)', () => {
+  // The stale-editor hazard the issue files: a save that touches no entry
+  // field must not re-push the full day_entries row with a fresh
+  // updated_at, or a stale editor's flow/tags win LWW and silently revert
+  // a phone's newer save.
+  it('a measurement-only edit emits no day_entries row', () => {
+    const stored = observation({ category: 'weight', value_num: 63.5, unit: 'kg' });
+    const plan = planFor({ weight: 64 }, viewWith({ observations: [stored] }));
+    expect(plan.observations).toHaveLength(1);
+    expect(plan.dayEntries).toEqual([]);
+  });
+
+  it('clearing a measurement tombstones the observation without re-pushing the entry', () => {
+    const stored = observation({ category: 'bbt', value_num: 36.4, unit: 'celsius' });
+    const plan = planFor({ bbt: null }, viewWith({ observations: [stored] }));
+    expect(plan.observations).toHaveLength(1);
+    expect((plan.observations[0] as unknown as Record<string, unknown>)['deleted_at']).toBe(
+      NOW,
+    );
+    expect(plan.dayEntries).toEqual([]);
+  });
+
+  it('an edit that touches an entry field still emits the full row', () => {
+    const stored = observation({ category: 'weight', value_num: 63.5, unit: 'kg' });
+    const plan = planFor({ weight: 64, pms: true }, viewWith({ observations: [stored] }));
+    expect(plan.observations).toHaveLength(1);
+    expect(plan.dayEntries).toHaveLength(1);
+    expect((plan.dayEntries[0] as unknown as Record<string, unknown>)['pms']).toBe(true);
+  });
+
+  it('a mode-only change on a day with no entry mints no empty entry row', () => {
+    const plan = planFor({ mode: 'pregnancy' }, viewWith({ entry: null }));
+    expect(plan.profileModes).toHaveLength(1);
+    expect(plan.dayEntries).toEqual([]);
+  });
+
+  it('a cycle-correction-only change on a day with no entry mints no empty entry row', () => {
+    const plan = planFor({ manualCycleStart: true }, viewWith({ entry: null }));
+    expect(plan.cycleOverrides).toHaveLength(1);
+    expect(plan.dayEntries).toEqual([]);
+  });
+
+  it('a no-content save on a day with no entry emits nothing at all', () => {
+    const plan = planFor({}, viewWith({ entry: null }));
+    expect(plan.dayEntries).toEqual([]);
+    expect(plan.observations).toEqual([]);
+    expect(plan.profileModes).toEqual([]);
+    expect(plan.cycleOverrides).toEqual([]);
+  });
+
+  it('a new measurement on a day with no entry still mints the parent entry row', () => {
+    // The server refuses a live observation whose day_entry_id is unknown,
+    // so the parent entry must ride along with the first measurement.
+    const plan = planFor({ bbt: 36.6 }, viewWith({ entry: null }));
+    expect(plan.observations).toHaveLength(1);
+    expect(plan.dayEntries).toHaveLength(1);
+    const entry = plan.dayEntries[0] as unknown as Record<string, unknown>;
+    const bbt = plan.observations[0] as unknown as Record<string, unknown>;
+    expect(bbt['day_entry_id']).toBe(entry['id']);
+    expect(entry['flow']).toBe('none');
+    expect(entry['tags']).toEqual([]);
+  });
+
+  it('a first spotting toggle on a day with no entry mints the parent with its flow', () => {
+    const plan = planFor({ spotting: true }, viewWith({ entry: null }));
+    expect(plan.observations).toHaveLength(1);
+    expect(plan.dayEntries).toHaveLength(1);
+    expect((plan.dayEntries[0] as unknown as Record<string, unknown>)['flow']).toBe(
+      'not_bleeding',
+    );
+  });
+
+  it('a legacy spotting-flow row is not churned by an unrelated measurement edit', () => {
+    // The editor seeds flow from the stored row, so a legacy 'spotting'
+    // flow stays stable through a measurement-only save.
+    const spottingRow = observation({ category: 'spotting', code: 'spotting' });
+    const weightRow = observation({ category: 'weight', value_num: 63.5, unit: 'kg' });
+    const stored = { ...baseEntry, flow: 'spotting' as const };
+    const plan = planFor(
+      { flow: 'spotting', spotting: true, weight: 64 },
+      viewWith({ entry: stored, observations: [spottingRow, weightRow] }),
+    );
+    expect(plan.dayEntries).toEqual([]);
+    expect(plan.observations).toHaveLength(1);
   });
 });
 
