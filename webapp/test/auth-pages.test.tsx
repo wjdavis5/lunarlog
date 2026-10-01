@@ -173,6 +173,29 @@ describe('SignInPage (issue #1250)', () => {
       screen.queryByLabelText(messages['accountSignInCodeLabel'] ?? ''),
     ).not.toBeInTheDocument();
   });
+
+  it('shows the send error, not a stale password error, when the send follows a rejected password (issue #1345)', async () => {
+    fakes.signInWithPassword.mockRejectedValue(new AuthError('invalid_credentials', 400));
+    fakes.sendOtp.mockRejectedValue(new AuthError('over_email_send_rate_limit', 429));
+    renderWithRoutes('/sign-in');
+    await fill(messages['accountSignInEmailLabel'] ?? '', 'a@b.co');
+    await fill(messages['accountSignInPasswordLabel'] ?? '', 'wrong');
+    fireEvent.click(screen.getByRole('button', { name: messages['accountSignInAction'] }));
+    expect(await screen.findByText(messages['authFailureWrongPassword'])).toBeInTheDocument();
+    // The send button needs only the email; the password can stay as typed.
+    fireEvent.click(
+      screen.getByRole('button', { name: messages['accountSignInMagicLinkSignIn'] }),
+    );
+    // The send's own failure renders — TanStack keeps a mutation's error
+    // until reset, so without the reset the stale password copy would sit
+    // ahead of it in the `??` forever (issue #1345).
+    expect(
+      await screen.findByText(messages['authFailureRateLimited'] ?? ''),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(messages['authFailureWrongPassword']),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe('SignUpPage (issue #1250)', () => {
@@ -244,6 +267,29 @@ describe('SignUpPage (issue #1250)', () => {
     expect(
       screen.queryByLabelText(messages['accountSignInCodeLabel'] ?? ''),
     ).not.toBeInTheDocument();
+  });
+
+  it('shows the send error, not a stale sign-up error, when the send follows a rejected sign-up (issue #1345)', async () => {
+    fakes.signUp.mockRejectedValue(new AuthError('weak_password', 400));
+    fakes.sendOtp.mockRejectedValue(new AuthError('over_email_send_rate_limit', 429));
+    const weakCopy = (messages['authFailureWeakPassword'] ?? '').replace('{minLength}', '12');
+    renderWithRoutes('/sign-up');
+    await fill(messages['accountSignInEmailLabel'] ?? '', 'a@b.co');
+    await fill(messages['accountSignInPasswordLabel'] ?? '', 'long enough password');
+    fireEvent.click(
+      screen.getByRole('button', { name: messages['accountSignInCreateAccountAction'] }),
+    );
+    expect(await screen.findByText(weakCopy)).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', { name: messages['accountSignInMagicLinkCreate'] }),
+    );
+    // The send's own failure renders — TanStack keeps a mutation's error
+    // until reset, so without the reset the stale sign-up copy would sit
+    // ahead of it in the `??` forever (issue #1345).
+    expect(
+      await screen.findByText(messages['authFailureRateLimited'] ?? ''),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(weakCopy)).not.toBeInTheDocument();
   });
 });
 

@@ -47,6 +47,10 @@ export function SignUpPage() {
     }
     setEmailError(null);
     setPasswordError(null);
+    // A failed send belongs to the send, not to the sign-up attempt that
+    // preceded it (issue #1345): the stale send error must not mask this
+    // attempt's own result.
+    sendOtp.reset();
     signUp.mutate(
       { email: email.trim(), password },
       { onSuccess: (result) => setConfirmationSent(result === 'confirmation_required') },
@@ -59,6 +63,11 @@ export function SignUpPage() {
       return;
     }
     setEmailError(null);
+    // A failed sign-up belongs to the sign-up attempt, not to the send that
+    // follows it (issue #1345): `signUp.error` sits ahead of
+    // `sendOtp.error` in the `??`, so the stale sign-up failure would
+    // permanently mask this send's own error without the reset.
+    signUp.reset();
     // The navigation waits for the send to resolve (issue #1294): a
     // rejected send — rate limit, otp_disabled — must render the mapped
     // copy on this page, not strand the user on the code screen waiting
