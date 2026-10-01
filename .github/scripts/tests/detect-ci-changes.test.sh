@@ -178,6 +178,14 @@ docs/links/apple-app-site-association")"
 assert_contains "Hosted link assets set app_flutter=true" "$links_output" "app_flutter=true"
 assert_contains "Hosted link assets set database=false" "$links_output" "database=false"
 
+# A pure site/public/* change must classify on its own (issue #1344): the
+# site/* arm shadowed the site/public/* alternative entirely, and this
+# case's mixed list used to hide that -- invite.html alone classified
+# app_flutter=false, so link_artifacts_test.dart never ran on such a PR.
+site_public_only_output="$(run_detect "site/public/invite.html")"
+assert_contains "pure site/public change sets app_flutter=true" "$site_public_only_output" "app_flutter=true"
+assert_contains "pure site/public change keeps edge_functions=true" "$site_public_only_output" "edge_functions=true"
+
 # ---------------------------------------------------------------------------
 # Case 19: Dynamic scan: all static paths read by readRepoFile('...') in test/
 # ---------------------------------------------------------------------------
@@ -284,5 +292,78 @@ assert_contains "gate_test.dart sets edge_functions=false" "$gate_test_output" "
 other_it_output="$(run_detect "integration_test/smoke_test.dart")"
 assert_contains "other integration tests keep app_flutter=true" "$other_it_output" "app_flutter=true"
 assert_contains "other integration tests keep release_guards=false" "$other_it_output" "release_guards=false"
+
+# ---------------------------------------------------------------------------
+# Case 21: Release-guard suite inputs (issue #1344) -- the bash suites under
+# .github/scripts/tests/ read repo files via ../../../ and pin what those
+# files carry:
+#   - check-links-deploy.test.sh reads site/package.json (its :18) and
+#     site/public/_headers (its :648) -- the pinned astro/@lhci/cli/
+#     axe-core versions and the CSP/HSTS/X-Frame-Options/
+#     Permissions-Policy headers.
+#   - check-ios-widget-signing.test.sh reads ios/ExportOptions-ci.plist and
+#     both .entitlements files (its :17-19) -- the two-bundle App Group
+#     signing posture (issue #141 / PR #1007).
+# A PR touching only these used to classify release_guards=false, skip both
+# suites, merge green, and turn the next unrelated .github/** PR red (the
+# issue #1317 failure class). Each must match before the generic site/* and
+# ios/* arms, which set only edge_functions/app_flutter.
+# ---------------------------------------------------------------------------
+headers_output="$(run_detect "site/public/_headers")"
+assert_contains "_headers sets release_guards=true" "$headers_output" "release_guards=true"
+assert_contains "_headers keeps edge_functions=true" "$headers_output" "edge_functions=true"
+
+site_pkg_output="$(run_detect "site/package.json")"
+assert_contains "site/package.json sets release_guards=true" "$site_pkg_output" "release_guards=true"
+assert_contains "site/package.json keeps edge_functions=true" "$site_pkg_output" "edge_functions=true"
+
+plist_output="$(run_detect "ios/ExportOptions-ci.plist")"
+assert_contains "ExportOptions-ci.plist sets release_guards=true" "$plist_output" "release_guards=true"
+assert_contains "ExportOptions-ci.plist keeps app_flutter=true" "$plist_output" "app_flutter=true"
+
+entitlements_output="$(run_detect "ios/Runner/Runner.entitlements
+ios/LunarLogWidget/LunarLogWidget.entitlements")"
+assert_contains "entitlements set release_guards=true" "$entitlements_output" "release_guards=true"
+assert_contains "entitlements keep app_flutter=true" "$entitlements_output" "app_flutter=true"
+
+# Other ios/* and site/* files keep their old single-suite mapping -- the
+# arms above are pinned to the files the suites actually read.
+other_ios_output="$(run_detect "ios/Runner/Info.plist")"
+assert_contains "other ios files keep app_flutter=true" "$other_ios_output" "app_flutter=true"
+assert_contains "other ios files keep release_guards=false" "$other_ios_output" "release_guards=false"
+other_site_output="$(run_detect "site/worker/index.ts")"
+assert_contains "other site files keep edge_functions=true" "$other_site_output" "edge_functions=true"
+assert_contains "other site files keep release_guards=false" "$other_site_output" "release_guards=false"
+
+# ---------------------------------------------------------------------------
+# Case 22: Dynamic scan: all repo files read via ../../../ in the bash
+# release-guard suites (issue #1344)
+# ---------------------------------------------------------------------------
+# Mirrors Case 19 for the bash suites: every repository path a suite under
+# .github/scripts/tests/ reads through ../../../ must classify
+# release_guards=true, so a suite cannot silently start pinning a new file
+# that change detection never routes to the release-guards jobs. Directory
+# reads (check-flutter-version-parity.test.sh's .github/workflows) are
+# skipped: a directory itself is never a PR's changed path, and its
+# contents are covered by the generic .github/workflows/* arm. Pure bash
+# on purpose -- driving the detector through a python subprocess breaks on
+# a Windows host (env vars do not cross into WSL bash, so every run would
+# hit the detector's all-true failsafe and the scan could only false-pass).
+scan_failed=0
+while IFS= read -r scan_path; do
+  [ -z "$scan_path" ] && continue
+  [ -f "$scan_path" ] || continue
+  scan_output="$(CHANGED_FILES_OVERRIDE="$scan_path" bash "$SCRIPT")"
+  case "$scan_output" in
+    *"release_guards=true"*) ;;
+    *)
+      echo "FAIL: bash-suite read path $scan_path did not result in release_guards=true (add a release_guards arm to detect-ci-changes.sh)" >&2
+      scan_failed=1
+      ;;
+  esac
+done <<EOF
+$(grep -hoE '\.\./\.\./\.\./[A-Za-z0-9_./-]+' "$SCRIPT_DIR"/*.test.sh | sed 's#^\.\./\.\./\.\./##' | sort -u)
+EOF
+assert_eq "Dynamic scan of all bash-suite ../../../ reads classify to release_guards=true" "0" "$scan_failed"
 
 print_summary "detect-ci-changes.test.sh"

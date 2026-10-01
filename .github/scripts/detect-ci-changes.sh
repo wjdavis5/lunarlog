@@ -129,7 +129,34 @@ while IFS= read -r file; do
       app_flutter=true
       ;;
 
-    # Cloudflare Workers
+    # Release-guard suite inputs (issue #1344), matched before the generic
+    # site/* arm below (which would otherwise swallow them for
+    # edge_functions only): .github/scripts/tests/check-links-deploy.test.sh
+    # reads site/package.json (its :18 -- the pinned astro/@lhci/cli/
+    # axe-core versions and the `astro check` build gate) and
+    # site/public/_headers (its :648 -- the CSP, HSTS, X-Frame-Options and
+    # Permissions-Policy headers), so a breaking edit must run the
+    # release-guards suites -- otherwise it merges green (release_guards=
+    # false skips the suite) and the next unrelated .github/** PR goes red
+    # on an assertion it never touched (issue #1317's failure class).
+    site/package.json|site/public/_headers)
+      edge_functions=true
+      release_guards=true
+      ;;
+
+    # Hosted site assets read by test/domain/sharing/link_artifacts_test.dart.
+    # Matched before the site/* arm below on purpose (issue #1344): that
+    # arm's site/* alternative shadowed site/public/* here, so the
+    # documented app_flutter=true never fired for a pure site/public/*
+    # PR and link_artifacts_test.dart was skipped. edge_functions stays on
+    # -- these assets ship with the Cloudflare site the generic arm covers.
+    site/public/*)
+      app_flutter=true
+      edge_functions=true
+      ;;
+
+    # Cloudflare Workers (site/package.json and site/public/* above match
+    # earlier, with their extra suites)
     site/*|workers/*|web/email/*|web/links/*)
       edge_functions=true
       ;;
@@ -193,8 +220,10 @@ while IFS= read -r file; do
     # Guard inputs read by Dart release/boundary tests:
     #   - AGENTS.md (read by test/release/pgtap_counts_test.dart)
     #   - docs/product/voice-and-copy.md (read by test/release/branding_identity_test.dart)
-    #   - docs/links/* and site/public/* (read by test/domain/sharing/link_artifacts_test.dart)
-    AGENTS.md|docs/product/voice-and-copy.md|docs/links/*|site/public/*)
+    #   - docs/links/* (read by test/domain/sharing/link_artifacts_test.dart)
+    # (site/public/* moved above the generic site/* arm -- issue #1344:
+    #  the site/* alternative shadowed it here, so it never fired.)
+    AGENTS.md|docs/product/voice-and-copy.md|docs/links/*)
       app_flutter=true
       ;;
 
@@ -210,6 +239,20 @@ while IFS= read -r file; do
     # matches before the generic integration_test/* arm below, which is
     # why it has to restate app_flutter=true itself).
     integration_test/gate_test.dart)
+      app_flutter=true
+      release_guards=true
+      ;;
+
+    # Read by a release-guard suite (issue #1344):
+    # .github/scripts/tests/check-ios-widget-signing.test.sh reads
+    # ios/ExportOptions-ci.plist and both .entitlements files (its :17-19)
+    # and pins the two-bundle App Group signing posture they encode, so a
+    # breaking edit must run the release-guards suites too -- otherwise it
+    # merges green and the next unrelated .github/** PR goes red on an
+    # assertion it never touched (issue #1317's failure class). They are
+    # still iOS app sources under the generic ios/* arm below, so
+    # app_flutter stays on as well.
+    ios/ExportOptions-ci.plist|ios/Runner/Runner.entitlements|ios/LunarLogWidget/LunarLogWidget.entitlements)
       app_flutter=true
       release_guards=true
       ;;
