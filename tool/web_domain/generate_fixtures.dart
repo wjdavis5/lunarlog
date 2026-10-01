@@ -502,6 +502,43 @@ List<Map<String, Object?>> _exportCases() {
     profileId: 'profile-2',
     flow: 'light',
   );
+  // Issue #1274: the web client's rows carry tombstones, but the export
+  // document is the app's own tombstone-free shape — a deleted profile is
+  // gone with its nested entries, a deleted entry is gone from its live
+  // profile. The compiled module is pinned to the same exclusion through
+  // the Vitest parity suite.
+  final tombstoneTargetEntries = _cycleEntries(
+    cycleLengths: const [28, 28],
+    firstStart: '2026-08-01',
+    tombstoneAt: '2026-08-29',
+  );
+  Map<String, Object?> exportProfile(
+    String id,
+    String displayName,
+    List<Map<String, Object?>> dayEntries, {
+    String? deletedAt,
+  }) => {
+    'id': id,
+    'displayName': displayName,
+    'isMinor': false,
+    'mode': 'standard',
+    'irregularFraming': null,
+    'bbtUnit': 'celsius',
+    'weightUnit': 'kg',
+    'sortOrder': 0,
+    'archivedAt': null,
+    'createdAt': '2026-01-01T00:00:00.000Z',
+    'updatedAt': '2026-09-01T00:00:00.000Z',
+    'birthYear': 1990,
+    'relationship': null,
+    'lastPeriodStart': null,
+    'typicalCycleLengthDays': null,
+    'typicalPeriodLengthDays': null,
+    'trackingPreferences': null,
+    'deletedAt': ?deletedAt,
+    'dayEntries': dayEntries,
+    'profileMode': null,
+  };
   return [
     _case('buildExport.two-profiles', 'buildExport', {
       'exportedAt': '2026-09-30T10:00:00.000Z',
@@ -561,6 +598,23 @@ List<Map<String, Object?>> _exportCases() {
             'birthControlStoppedOn': null,
           },
         },
+      ],
+    }),
+    _case('buildExport.tombstones-excluded', 'buildExport', {
+      'exportedAt': '2026-09-30T10:00:00.000Z',
+      'appVersion': '1.2.3',
+      'profiles': [
+        exportProfile('profile-1', 'Ada', tombstoneTargetEntries),
+        exportProfile(
+          'profile-dead',
+          'Deleted profile',
+          _cycleEntries(
+            cycleLengths: const [28],
+            firstStart: '2026-08-01',
+            profileId: 'profile-dead',
+          ),
+          deletedAt: '2026-09-10T00:00:00.000Z',
+        ),
       ],
     }),
   ];

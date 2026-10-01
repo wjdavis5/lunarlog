@@ -265,6 +265,46 @@ void main() {
       // nothing.
       expect(data['episodeCount'], 1);
     });
+
+    test('a tombstone-only predict input computes from zero episodes', () {
+      // Issue #1274 audit: predict must behave as if the device had fed it
+      // live-only repository rows — a deleted bleed day is not history.
+      final response = call('predict', {
+        'today': '2026-09-30',
+        'tz': 'UTC',
+        'entries': [
+          {
+            ...bleedEntry('e1', '2026-09-01'),
+            'deletedAt': '2026-09-02T00:00:00.000Z',
+          },
+        ],
+      });
+      expect(response['ok'], true);
+      final data = response['data']! as Map<String, Object?>;
+      expect(data['kind'], 'notEnoughHistory');
+      expect(data['episodeCount'], 0);
+    });
+
+    test('a tombstone-only insights input analyzes zero cycles', () {
+      // Same audit, insights side: no deleted tag may resurface as a
+      // symptom pattern or analyzed cycle.
+      final response = call('insights', {
+        'today': '2026-09-30',
+        'tz': 'UTC',
+        'entries': [
+          {
+            ...bleedEntry('e1', '2026-09-01', pms: true),
+            'tags': ['cramps'],
+            'deletedAt': '2026-09-02T00:00:00.000Z',
+          },
+        ],
+      });
+      expect(response['ok'], true);
+      final data = response['data']! as Map<String, Object?>;
+      expect(data['analyzedCycleCount'], 0);
+      expect(data['hasEnoughData'], false);
+      expect(data['symptomPatterns'], <Object?>[]);
+    });
   });
 
   group('resolution order', () {
@@ -350,6 +390,82 @@ void main() {
       expect(call('buildExport', noVersion)['error'], contains('appVersion'));
       final noProfiles = exportRequest()..remove('profiles');
       expect(call('buildExport', noProfiles)['error'], contains('profiles'));
+    });
+
+    test('tombstoned profiles and entries never reach the document', () {
+      // Issue #1274: buildAccountExport's contract is tombstone-free
+      // inputs (the export row shape has no deletedAt at all), so the
+      // facade — the web client's stand-in for the live-only repositories
+      // — must filter before it calls. Before the fix this request put a
+      // deleted profile (and another profile's deleted entry) into the
+      // export as live rows, and restoring the file on a phone recreated
+      // the deleted data.
+      final request = exportRequest()
+        ..['profiles'] = [
+          {
+            'id': 'p1',
+            'displayName': 'Ada',
+            'createdAt': '2026-01-01T00:00:00.000Z',
+            'updatedAt': '2026-09-01T00:00:00.000Z',
+            'dayEntries': [
+              bleedEntry('e1', '2026-09-01'),
+              {
+                ...bleedEntry('e2', '2026-09-02'),
+                'deletedAt': '2026-09-03T00:00:00.000Z',
+              },
+            ],
+          },
+          {
+            'id': 'p2',
+            'displayName': 'Deleted profile',
+            'createdAt': '2026-01-01T00:00:00.000Z',
+            'updatedAt': '2026-09-01T00:00:00.000Z',
+            'deletedAt': '2026-09-10T00:00:00.000Z',
+            'dayEntries': [bleedEntry('e3', '2026-09-05')],
+          },
+        ];
+      final response = call('buildExport', request);
+      expect(response['ok'], true);
+      final data = response['data']! as Map<String, Object?>;
+      final profiles = data['profiles']! as List<Object?>;
+      // The tombstoned profile p2 is gone entirely — its (live) entry e3
+      // goes with it, the way the document nests entries under profiles.
+      expect(
+        [for (final p in profiles) (p! as Map<String, Object?>)['id']],
+        ['p1'],
+      );
+      // The live profile keeps only its live entry.
+      final entries =
+          (profiles.single as Map<String, Object?>)['dayEntries']!
+              as List<Object?>;
+      expect(
+        [for (final e in entries) (e! as Map<String, Object?>)['id']],
+        ['e1'],
+      );
+      // And the export shape never carries a tombstone key.
+      expect(jsonEncode(data), isNot(contains('deletedAt')));
+    });
+
+    test('an all-tombstoned profiles list exports an empty document', () {
+      // The request-level non-empty guard is about the request shape, not
+      // about how many rows survive the tombstone filter — the device's
+      // own builder behaves the same way (an empty live set produces an
+      // empty profiles list, not a failure).
+      final request = exportRequest()
+        ..['profiles'] = [
+          {
+            'id': 'p1',
+            'displayName': 'Ada',
+            'createdAt': '2026-01-01T00:00:00.000Z',
+            'updatedAt': '2026-09-01T00:00:00.000Z',
+            'deletedAt': '2026-09-10T00:00:00.000Z',
+            'dayEntries': [bleedEntry('e1', '2026-09-01')],
+          },
+        ];
+      final response = call('buildExport', request);
+      expect(response['ok'], true);
+      final data = response['data']! as Map<String, Object?>;
+      expect(data['profiles'], <Object?>[]);
     });
   });
 

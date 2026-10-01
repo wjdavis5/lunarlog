@@ -29,7 +29,14 @@
 /// codec then feeds prediction, history, insights, and the export builder.
 /// Two documented extensions beyond the export row: `profileId` (the export
 /// nests entries under a profile; a flat request needs the id supplied) and
-/// `deletedAt` (export files exclude tombstones; the web client has them).
+/// `deletedAt` (the web client holds tombstones the device repositories
+/// never return). `deletedAt` is accepted on input and then dropped: every
+/// method here mirrors what its device counterpart reads from live-only
+/// repositories (`ProfilesRepository.list`, `DayEntriesRepository.listForProfile`),
+/// so a tombstoned profile or entry reaches no output — export included
+/// (issue #1274: `buildAccountExport`'s contract is that its inputs are
+/// already tombstone-free; feeding it one would put deleted data back into
+/// the world as a live row).
 ///
 /// **Timezone data is loaded explicitly** (`package:timezone`'s
 /// `latest_10y` window — every zone *name* with ten years of transition
@@ -388,6 +395,15 @@ Map<String, Object?> validateDayEntryDateFromJson(
 /// a web export restores on a phone (issue #1251's acceptance for the
 /// export builder).
 ///
+/// Tombstoned rows never reach the document (issue #1274): a profile with
+/// `deletedAt` set is skipped here — its nested entries go with it, the
+/// way the export nests them — and entry tombstones are dropped by the
+/// shared entry decoder (`_entriesFromJson`). `buildAccountExport`'s
+/// contract (`account_export.dart`'s header) is that its inputs are
+/// already tombstone-free, so the filter has to happen before it runs; the
+/// phone's own repositories do exactly this exclusion for the device
+/// export.
+///
 /// Request keys: `exportedAt` (ISO datetime, required — the caller stamps
 /// the moment so the facade never reads a clock), `appVersion` (required —
 /// the web app's own version string), `appName` (optional), `profiles`
@@ -429,6 +445,10 @@ Map<String, Object?> buildExportFromJson(Map<String, Object?> request) {
       throw ArgumentError.value(i, 'profiles[$i]', 'not a JSON object');
     }
     final profile = profileFromJson(raw, 'profiles[$i]');
+    // Issue #1274: a tombstoned profile is excluded exactly like
+    // ProfilesRepository.list excludes it for the phone's export — its
+    // nested entries go with it, since the document nests them under it.
+    if (profile.deletedAt != null) continue;
     profiles.add(profile);
     entriesByProfile[profile.id] = _entriesFromJson(
       raw['dayEntries'],
@@ -558,21 +578,30 @@ List<DayEntry> _entriesFromJson(
         'not a JSON object',
       );
     }
-    entries.add(
-      dayEntryFromJson(
-        json,
-        profileId: _optionalString(json['profileId']) ?? defaultProfileId,
-        field: '$field[$i]',
-      ),
+    final entry = dayEntryFromJson(
+      json,
+      profileId: _optionalString(json['profileId']) ?? defaultProfileId,
+      field: '$field[$i]',
     );
+    // Issue #1274: the facade is the web client's stand-in for the device's
+    // live-only repositories, so a decoded tombstone is dropped at this
+    // boundary instead of flowing into prediction, history, insights, or
+    // the export document. (The prediction/history/insights engines filter
+    // `deletedAt` defensively too; the export builder deliberately does
+    // not — `buildAccountExport`'s contract is tombstone-free inputs.)
+    if (entry.deletedAt != null) continue;
+    entries.add(entry);
   }
   return entries;
 }
 
 /// Decodes one export-shaped day-entry row (`_exportDayEntry`'s keys), plus
 /// the two facade extensions documented in this file's header (`profileId`
-/// is injected by the caller, `deletedAt` is accepted because the web
-/// client holds tombstones the export format excludes).
+/// is injected by the caller; `deletedAt` is accepted because the web
+/// client holds tombstones the device repositories never return — the
+/// caller (`_entriesFromJson`) drops a decoded tombstone instead of using
+/// it, so acceptance is transport tolerance, never a live row; issue
+/// #1274).
 DayEntry dayEntryFromJson(
   Map<String, Object?> json, {
   required String profileId,
