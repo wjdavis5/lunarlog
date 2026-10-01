@@ -139,15 +139,15 @@ function observation(partial: Partial<ObservationRow>): ObservationRow {
     day_entry_id: partial.day_entry_id ?? ENTRY_ID,
     profile_id: PROFILE_ID,
     local_date: partial.local_date ?? '2026-09-29',
-    observed_at: null,
+    observed_at: partial.observed_at ?? null,
     tz: 'UTC',
     category: partial.category ?? 'bbt',
     code: partial.code ?? null,
     value_num: partial.value_num ?? null,
-    value_text: null,
+    value_text: partial.value_text ?? null,
     unit: partial.unit ?? null,
-    intensity: null,
-    excluded: false,
+    intensity: partial.intensity ?? null,
+    excluded: partial.excluded ?? false,
     source: partial.source ?? 'manual',
     source_id: null,
     created_at: '2026-09-29T08:00:00.000Z',
@@ -390,6 +390,48 @@ describe('buildSavePlan: measurements (#457)', () => {
     expect(row).not.toHaveProperty('deleted_at');
   });
 
+  it('a value-only update echoes the stored excluded flag (#1288)', () => {
+    // A fever-disturbed BBT excluded on the phone, then a value typo fixed
+    // on the web: the exclusion must survive the edit. sync_push resolves a
+    // missing `excluded` key to false and writes it unconditionally on
+    // update, so the update has to carry the stored flag itself.
+    const stored = observation({
+      category: 'bbt',
+      value_num: 36.4,
+      unit: 'celsius',
+      excluded: true,
+      observed_at: '2026-09-29T07:15:00.000Z',
+    });
+    const plan = planFor({ bbt: 36.7 }, viewWith({ observations: [stored] }));
+    expect(plan.observations).toHaveLength(1);
+    const row = plan.observations[0] as unknown as Record<string, unknown>;
+    expect(row['id']).toBe(stored.id);
+    expect(row['value_num']).toBe(36.7);
+    expect(row['excluded']).toBe(true);
+    expect(row['observed_at']).toBe('2026-09-29T07:15:00.000Z');
+  });
+
+  it('a value-only update echoes every other stored, unedited column (#1288)', () => {
+    // Same unconditional-write hazard as `excluded`: code/value_text/
+    // intensity have no server-side containment guard either, so whatever
+    // the web omits is what the row ends up carrying.
+    const stored = observation({
+      category: 'weight',
+      value_num: 63.5,
+      unit: 'kg',
+      code: 'weight-kilo',
+      value_text: '63.5 kg',
+      intensity: 2,
+    });
+    const plan = planFor({ weight: 64.1 }, viewWith({ observations: [stored] }));
+    expect(plan.observations).toHaveLength(1);
+    const row = plan.observations[0] as unknown as Record<string, unknown>;
+    expect(row['id']).toBe(stored.id);
+    expect(row['code']).toBe('weight-kilo');
+    expect(row['value_text']).toBe('63.5 kg');
+    expect(row['intensity']).toBe(2);
+  });
+
   it('no-op when the measurement is unchanged', () => {
     const stored = observation({ category: 'weight', value_num: 63.5, unit: 'kg' });
     const plan = planFor({ weight: 63.5 }, viewWith({ observations: [stored] }));
@@ -542,7 +584,16 @@ describe('payload keys stay inside the derived allowlists', () => {
 
   it('observations', () => {
     const allowlist = allowlistOf('observations', ['created_at']);
-    const plan = planFor({ spotting: true, bbt: 36.6, weight: 63.5 }, viewWith({}));
+    // Inserts (fresh rows) and the #1288 update echo (a stored row whose
+    // value changed) both walk the check — the update branch carries more
+    // keys than the insert shape.
+    const stored = observation({ category: 'bbt', value_num: 36.0, unit: 'celsius' });
+    const plan = planFor(
+      { spotting: true, bbt: 36.6, weight: 63.5 },
+      viewWith({
+        observations: [stored],
+      }),
+    );
     for (const row of plan.observations) {
       for (const key of Object.keys(row as unknown as Record<string, unknown>)) {
         expect(allowlist.has(key)).toBe(true);
