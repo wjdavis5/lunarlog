@@ -280,6 +280,13 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
 
   const grouped = tagsByCategory();
   const surfaced = view !== undefined ? resolveDayCategories(view.profile) : [];
+  // The `tests` category (ovulation/pregnancy results) has its own fieldset
+  // below rather than a slot in the symptom picker (issue #1291): skipping it
+  // here keeps its chips to exactly one copy, and gating that fieldset on
+  // `surfaced` makes it honour the profile's tracking_preferences like every
+  // other category.
+  const symptomCategories = surfaced.filter((category) => category.name !== 'tests');
+  const testsSurfaced = surfaced.some((category) => category.name === 'tests');
   const bbtUnit = (view?.profile.bbt_unit ?? 'celsius') as BbtUnit;
   const weightUnit = (view?.profile.weight_unit ?? 'kg') as WeightUnit;
   const bbtRange = bbtRangeIn(bbtUnit);
@@ -390,7 +397,7 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
 
           <fieldset className="card day-group" disabled={readOnly}>
             <legend className="card-title">{t('webDaySymptomsSection')}</legend>
-            {surfaced.map((category) => {
+            {symptomCategories.map((category) => {
               const codes = grouped.get(category.name) ?? [];
               return (
                 <div key={category.name} className="tag-category">
@@ -490,20 +497,22 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
             ) : null}
           </fieldset>
 
-          <fieldset className="card day-group" disabled={readOnly}>
-            <legend className="card-title">{t('webDayTestsSection')}</legend>
-            <div className="chip-row" role="group" aria-label={t('webDayTestsSection')}>
-              {(grouped.get('tests') ?? []).map((tag) => (
-                <Chip
-                  key={tag.code}
-                  label={tag.display}
-                  selected={edit.tags.includes(tag.code)}
-                  onPress={() => toggleTag(tag.code, null)}
-                  disabled={readOnly}
-                />
-              ))}
-            </div>
-          </fieldset>
+          {testsSurfaced ? (
+            <fieldset className="card day-group" disabled={readOnly}>
+              <legend className="card-title">{t('webDayTestsSection')}</legend>
+              <div className="chip-row" role="group" aria-label={t('webDayTestsSection')}>
+                {(grouped.get('tests') ?? []).map((tag) => (
+                  <Chip
+                    key={tag.code}
+                    label={tag.display}
+                    selected={edit.tags.includes(tag.code)}
+                    onPress={() => toggleTag(tag.code, null)}
+                    disabled={readOnly}
+                  />
+                ))}
+              </div>
+            </fieldset>
+          ) : null}
 
           <fieldset className="card day-group" disabled={readOnly}>
             <legend className="card-title">{t('webDayNotesSection')}</legend>
