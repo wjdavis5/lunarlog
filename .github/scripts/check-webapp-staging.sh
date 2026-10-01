@@ -27,6 +27,12 @@ set -euo pipefail
 #   * `/auth/callback?code=smoke` returns 200 `text/html` — the
 #     single-page-application fallback (`not_found_handling` in
 #     webapp/wrangler.jsonc), the entry #1250's flow lands in.
+#   * `/auth/session` returns 401 `application/json` (issue #1280) — the
+#     signed-out answer, which doubles as the cheapest probe that an /auth/*
+#     API route actually executes on the deployed Worker: the entry used to
+#     hand the runtime's ExecutionContext to the auth routes as their deps
+#     object, so every route threw an uncaught 500/1101 and this probe is
+#     what catches that class of regression post-deploy.
 #
 # Input (env):
 #   WEBAPP_STAGING_BASE_URL   Origin under test. REQUIRED — the workers.dev
@@ -57,6 +63,7 @@ SUPABASE_URL="${WEBAPP_STAGING_SUPABASE_URL:-https://dleexnnevuuddcgcpztq.supaba
 
 ROOT_URL="$BASE_URL/"
 CALLBACK_URL="$BASE_URL/auth/callback?code=smoke"
+SESSION_URL="$BASE_URL/auth/session"
 
 # Issue #1139's beacon posture, carried over from check-web-deploy.sh:
 # browser UA only (the injector skips curl's default UA), warn-only while
@@ -84,6 +91,7 @@ fail() {
 fixture_path() {
   case "$1" in
     */auth/callback*) printf '%s' "$FIXTURES_DIR/auth-callback.$2" ;;
+    */auth/session*) printf '%s' "$FIXTURES_DIR/auth-session.$2" ;;
     *) printf '%s' "$FIXTURES_DIR/root.$2" ;;
   esac
 }
@@ -253,10 +261,11 @@ expect_body_without_cf_beacon() {
 # check_once -- prints the accumulated problems (empty on success) and
 # returns non-zero when any assertion failed.
 check_once() {
-  local root callback root_body problems=""
+  local root callback session root_body problems=""
 
   root="$(fetch_headers "$ROOT_URL" 2>/dev/null || true)"
   callback="$(fetch_headers "$CALLBACK_URL" 2>/dev/null || true)"
+  session="$(fetch_headers "$SESSION_URL" 2>/dev/null || true)"
   root_body="$(fetch_body "$ROOT_URL" 2>/dev/null || true)"
 
   # `/` is the app shell: 200 HTML carrying the declared security posture.
@@ -287,6 +296,13 @@ check_once() {
   problems="${problems}$(expect_status "$callback" 200 "$CALLBACK_URL")"
   problems="${problems}$(expect_header_prefix "$callback" content-type text/html "$CALLBACK_URL")"
 
+  # `/auth/session` must be the signed-out 401 JSON answer, never a 5xx --
+  # issue #1280's probe that an /auth/* API route actually executes (with
+  # the ctx-as-deps bug, every auth route died on its first deps call and
+  # the runtime surfaced an uncaught 500/1101 instead).
+  problems="${problems}$(expect_status "$session" 401 "$SESSION_URL")"
+  problems="${problems}$(expect_header_prefix "$session" content-type application/json "$SESSION_URL")"
+
   if [ -n "$problems" ]; then
     printf '%s' "$problems"
     return 1
@@ -297,7 +313,7 @@ check_once() {
 attempt=1
 while :; do
   if reason="$(check_once)"; then
-    echo "Webapp staging smoke check passed for '$BASE_URL' (/, /auth/callback)."
+    echo "Webapp staging smoke check passed for '$BASE_URL' (/, /auth/callback, /auth/session)."
     exit 0
   fi
 
