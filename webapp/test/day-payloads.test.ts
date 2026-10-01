@@ -487,6 +487,28 @@ describe('buildSavePlan: measurements stored in the other unit (#1287)', () => {
     expect(plan.observations).toHaveLength(0);
   });
 
+  // The reverse direction (#1339): a metric-stored row on a
+  // fahrenheit/lb-denominated profile. DayPage seeds these unrounded doubles
+  // into the edit state (only the display is formatted), so the untouched
+  // field must compare bit-exact here too.
+  it('no-op for a celsius-stored bbt read back under a fahrenheit profile', () => {
+    const stored = observation({ category: 'bbt', value_num: 36.6, unit: 'celsius' });
+    const plan = planFor(
+      { bbt: 36.6 * (9 / 5) + 32 },
+      viewWith({ observations: [stored], profile: { bbt_unit: 'fahrenheit' } }),
+    );
+    expect(plan.observations).toHaveLength(0);
+  });
+
+  it('no-op for a kg-stored weight read back under a lb profile', () => {
+    const stored = observation({ category: 'weight', value_num: 68, unit: 'kg' });
+    const plan = planFor(
+      { weight: 68 / 0.45359237 },
+      viewWith({ observations: [stored], profile: { weight_unit: 'lb' } }),
+    );
+    expect(plan.observations).toHaveLength(0);
+  });
+
   it('writes a genuinely changed weight in the profile unit, not the stored one', () => {
     const stored = observation({ category: 'weight', value_num: 150, unit: 'lb' });
     const plan = planFor({ weight: 68 }, viewWith({ observations: [stored] }));
