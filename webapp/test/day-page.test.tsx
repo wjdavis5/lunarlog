@@ -124,12 +124,16 @@ function fakeClient(options?: {
    * the phone's newer, winning save that the post-decline refetch (#1289)
    * must hand back to the editor. */
   winningEntryAfterPush?: DayEntryRow;
+  bbtUnit?: 'celsius' | 'fahrenheit';
+  weightUnit?: 'kg' | 'lb';
 }) {
   const page = {
     profiles: [
       {
         ...profile,
         server_version: 3,
+        ...(options?.bbtUnit !== undefined ? { bbt_unit: options.bbtUnit } : {}),
+        ...(options?.weightUnit !== undefined ? { weight_unit: options.weightUnit } : {}),
         ...(options?.trackingPreferences !== undefined
           ? { tracking_preferences: options.trackingPreferences }
           : {}),
@@ -469,8 +473,9 @@ describe('DayPage (issue #1254)', () => {
         observations: [storedMeasurement('weight', 150, 'lb')],
       });
       renderDay(client);
-      // 150 lb ≈ 68.0388555 kg — the raw 150 would read as a valid-but-wrong 150 kg.
-      expect(await screen.findByLabelText('Weight (kg)')).toHaveValue(68.0388555);
+      // 150 lb ≈ 68.0388555 kg — the raw 150 would read as a valid-but-wrong
+      // 150 kg; the field shows the #457-rounded 68.04 (issue #1339).
+      expect(await screen.findByLabelText('Weight (kg)')).toHaveValue(68.04);
       expect(screen.queryByText(/Weight must be between/)).not.toBeInTheDocument();
     });
 
@@ -495,7 +500,66 @@ describe('DayPage (issue #1254)', () => {
       );
       // The fields still read the converted values after the round trip.
       expect(screen.getByLabelText('Basal body temperature (°C)')).toHaveValue(37);
-      expect(screen.getByLabelText('Weight (kg)')).toHaveValue(68.0388555);
+      expect(screen.getByLabelText('Weight (kg)')).toHaveValue(68.04);
+    });
+  });
+
+  // Issue #1339: the conversion direction the #1287 tests above don't cover —
+  // a metric-stored row on a fahrenheit/lb profile — is the one where the raw
+  // IEEE double shows garbage digits (36.6 °C -> 97.88000000000001 °F), so
+  // the seed displays through the app's #457 rounding rule while the edit
+  // state keeps the unrounded double.
+  describe('converted seeds display the app rounding rule (#1339)', () => {
+    it('seeds a celsius-stored bbt into a fahrenheit profile as 97.88, not the raw double', async () => {
+      const { client } = fakeClient({
+        bbtUnit: 'fahrenheit',
+        observations: [storedMeasurement('bbt', 36.6, 'celsius')],
+      });
+      renderDay(client);
+      // 36.6 °C is 97.88000000000001 °F in IEEE doubles — the field reads the
+      // rounded 97.88 (a step="0.1"-shaped value), not the raw math.
+      expect(await screen.findByLabelText('Basal body temperature (°F)')).toHaveValue(97.88);
+      expect(screen.queryByText(/Temperature must be between/)).not.toBeInTheDocument();
+    });
+
+    it('seeds a kg-stored weight into a lb profile as 149.91, not the raw double', async () => {
+      const { client } = fakeClient({
+        weightUnit: 'lb',
+        observations: [storedMeasurement('weight', 68, 'kg')],
+      });
+      renderDay(client);
+      // 68 kg is 149.91433828571675 lb in IEEE doubles.
+      expect(await screen.findByLabelText('Weight (lb)')).toHaveValue(149.91);
+      expect(screen.queryByText(/Weight must be between/)).not.toBeInTheDocument();
+    });
+
+    it('saving an untouched converted measurement still emits no observation row', async () => {
+      const { client, rpc } = fakeClient({
+        bbtUnit: 'fahrenheit',
+        weightUnit: 'lb',
+        observations: [
+          storedMeasurement('bbt', 36.6, 'celsius'),
+          storedMeasurement('weight', 68, 'kg'),
+        ],
+      });
+      renderDay(client);
+      const note = await screen.findByLabelText('Notes');
+      fireEvent.change(note, { target: { value: 'display-only round trip' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(screen.getByText('Saved')).toBeInTheDocument());
+      // The formatted display must not leak into the payload: the edit state
+      // keeps the unrounded double, storedMeasurementEquals stays bit-exact,
+      // and the untouched fields write nothing.
+      expect(rpc).toHaveBeenCalledWith(
+        'sync_push',
+        expect.objectContaining({
+          p_observations: [],
+          p_day_entries: [expect.objectContaining({ note: 'display-only round trip' })],
+        }),
+      );
+      // The fields still read the rounded converted values after the round trip.
+      expect(screen.getByLabelText('Basal body temperature (°F)')).toHaveValue(97.88);
+      expect(screen.getByLabelText('Weight (lb)')).toHaveValue(149.91);
     });
   });
 

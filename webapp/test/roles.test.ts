@@ -2,14 +2,18 @@ import { describe, expect, it } from 'vitest';
 
 import {
   allowedNewRoles,
+  canCancelInvitation,
+  canRevokeGuardian,
   canUpdateGuardianRole,
   guardianRoleFromDb,
   guardianRoleFromDbOrViewer,
   guardianStatusFromDb,
   guardianStatusFromDbOrRevoked,
   roleCanEditProfile,
+  roleCanInviteCoParent,
   roleCanLog,
   roleCanManageGuardians,
+  roleCanTransferOwnership,
   type GuardianRowLike,
 } from '../src/lib/roles';
 
@@ -183,5 +187,192 @@ describe('allowedNewRoles (the role control menu, ladder order)', () => {
         currentUserId: 'caller-user',
       }),
     ).toEqual([]);
+  });
+});
+
+describe('roleCanTransferOwnership / roleCanInviteCoParent (issue #1285)', () => {
+  it('both are primary-guardian-only', () => {
+    expect(roleCanTransferOwnership('primary_guardian')).toBe(true);
+    expect(roleCanTransferOwnership('co_parent')).toBe(false);
+    expect(roleCanTransferOwnership('caregiver')).toBe(false);
+    expect(roleCanTransferOwnership('viewer')).toBe(false);
+    expect(roleCanTransferOwnership(null)).toBe(false);
+    expect(roleCanInviteCoParent('primary_guardian')).toBe(true);
+    expect(roleCanInviteCoParent('co_parent')).toBe(false);
+    expect(roleCanInviteCoParent('caregiver')).toBe(false);
+    expect(roleCanInviteCoParent('viewer')).toBe(false);
+    expect(roleCanInviteCoParent(null)).toBe(false);
+  });
+});
+
+describe('canRevokeGuardian (the client mirror of revoke_guardian, issue #1285)', () => {
+  it('an unknown caller never qualifies', () => {
+    expect(
+      canRevokeGuardian({
+        callerRole: null,
+        target: target('caregiver'),
+        currentUserId: 'caller-user',
+        acceptedPrimaryGuardians: 2,
+      }),
+    ).toBe(false);
+  });
+
+  it('a non-primary guardian may always leave', () => {
+    for (const callerRole of ['co_parent', 'caregiver', 'viewer'] as const) {
+      expect(
+        canRevokeGuardian({
+          callerRole,
+          target: target(callerRole, 'accepted', 'caller-user'),
+          currentUserId: 'caller-user',
+          acceptedPrimaryGuardians: 1,
+        }),
+      ).toBe(true);
+    }
+  });
+
+  it('the sole accepted primary guardian may not leave', () => {
+    expect(
+      canRevokeGuardian({
+        callerRole: 'primary_guardian',
+        target: target('primary_guardian', 'accepted', 'caller-user'),
+        currentUserId: 'caller-user',
+        acceptedPrimaryGuardians: 1,
+      }),
+    ).toBe(false);
+  });
+
+  it('a primary guardian may leave when another accepted primary remains', () => {
+    expect(
+      canRevokeGuardian({
+        callerRole: 'primary_guardian',
+        target: target('primary_guardian', 'accepted', 'caller-user'),
+        currentUserId: 'caller-user',
+        acceptedPrimaryGuardians: 2,
+      }),
+    ).toBe(true);
+  });
+
+  it('a primary guardian may revoke anyone else', () => {
+    for (const role of ['primary_guardian', 'co_parent', 'caregiver', 'viewer'] as const) {
+      expect(
+        canRevokeGuardian({
+          callerRole: 'primary_guardian',
+          target: target(role),
+          currentUserId: 'caller-user',
+          acceptedPrimaryGuardians: 1,
+        }),
+      ).toBe(true);
+    }
+  });
+
+  it('a co-parent may revoke caregivers and viewers only', () => {
+    expect(
+      canRevokeGuardian({
+        callerRole: 'co_parent',
+        target: target('caregiver'),
+        currentUserId: 'caller-user',
+        acceptedPrimaryGuardians: 1,
+      }),
+    ).toBe(true);
+    expect(
+      canRevokeGuardian({
+        callerRole: 'co_parent',
+        target: target('viewer'),
+        currentUserId: 'caller-user',
+        acceptedPrimaryGuardians: 1,
+      }),
+    ).toBe(true);
+    expect(
+      canRevokeGuardian({
+        callerRole: 'co_parent',
+        target: target('co_parent'),
+        currentUserId: 'caller-user',
+        acceptedPrimaryGuardians: 1,
+      }),
+    ).toBe(false);
+    expect(
+      canRevokeGuardian({
+        callerRole: 'co_parent',
+        target: target('primary_guardian'),
+        currentUserId: 'caller-user',
+        acceptedPrimaryGuardians: 1,
+      }),
+    ).toBe(false);
+  });
+
+  it('caregivers and viewers revoke nobody else', () => {
+    for (const callerRole of ['caregiver', 'viewer'] as const) {
+      expect(
+        canRevokeGuardian({
+          callerRole,
+          target: target('viewer'),
+          currentUserId: 'caller-user',
+          acceptedPrimaryGuardians: 1,
+        }),
+      ).toBe(false);
+    }
+  });
+});
+
+describe('canCancelInvitation (the client mirror of revoke_guardian_invitation, issue #1285)', () => {
+  it('a primary guardian may cancel any invitation', () => {
+    for (const inviteRole of ['co_parent', 'caregiver', 'viewer'] as const) {
+      expect(
+        canCancelInvitation({
+          callerRole: 'primary_guardian',
+          inviteRole,
+          invitedBy: 'someone-else',
+          currentUserId: 'caller-user',
+        }),
+      ).toBe(true);
+    }
+  });
+
+  it('a co-parent may cancel caregiver and viewer invitations', () => {
+    for (const inviteRole of ['caregiver', 'viewer'] as const) {
+      expect(
+        canCancelInvitation({
+          callerRole: 'co_parent',
+          inviteRole,
+          invitedBy: 'someone-else',
+          currentUserId: 'caller-user',
+        }),
+      ).toBe(true);
+    }
+  });
+
+  it('a co-parent may not cancel a co_parent invitation someone else created', () => {
+    expect(
+      canCancelInvitation({
+        callerRole: 'co_parent',
+        inviteRole: 'co_parent',
+        invitedBy: 'someone-else',
+        currentUserId: 'caller-user',
+      }),
+    ).toBe(false);
+  });
+
+  it("a co-parent may cancel a co_parent invitation they created (the server's invited_by test)", () => {
+    expect(
+      canCancelInvitation({
+        callerRole: 'co_parent',
+        inviteRole: 'co_parent',
+        invitedBy: 'caller-user',
+        currentUserId: 'caller-user',
+      }),
+    ).toBe(true);
+  });
+
+  it('caregivers, viewers, and unknown callers cancel nothing', () => {
+    for (const callerRole of ['caregiver', 'viewer', null] as const) {
+      expect(
+        canCancelInvitation({
+          callerRole,
+          inviteRole: 'viewer',
+          invitedBy: 'someone-else',
+          currentUserId: 'caller-user',
+        }),
+      ).toBe(false);
+    }
   });
 });

@@ -107,6 +107,18 @@ jobs:
         if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-qa-build-gate.test.sh
 
+      - name: Run play-highest-version-code tests
+        # Issue #1302: proves the Play versionCode clamp's lookup script --
+        # env validation and bad-credential aborts, the RS256 JWT it signs
+        # verified against a throwaway key, and the full token -> edits ->
+        # bundles lookup end-to-end against a local stub server (the
+        # script's own test seams; no Google network access). Lives in this
+        # ubuntu arm only: play-store-release.yml runs on ubuntu-latest, and
+        # the macOS arm exists for the scripts the iOS pipeline actually
+        # executes on macOS.
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
+        run: bash .github/scripts/tests/play-highest-version-code.test.sh
+
       # Issue #141 / PR #1007: a signed build now signs both the app and its
       # LunarLogWidget extension, so the workflow must install two profiles
       # and the export plist must map both bundle ids. This pins that wiring.
