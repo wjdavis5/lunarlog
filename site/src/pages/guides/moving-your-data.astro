@@ -21,9 +21,10 @@ import HelpCard from "../../components/HelpCard.astro";
       Your history is yours: this guide covers bringing it in, and getting
       it all back out. Everything here happens on your device, at your
       initiative — lunarlog never reads your other accounts, and it never
-      touches your health store before you turn the connection on. Once you
-      have, the import keeps itself current in the background (issue #993):
-      still on your device, still never a write.
+      touches your health store before you turn the connection on. Once a
+      profile is bound and you have run the first import yourself, the
+      import keeps itself current in the background (issue #993): still on
+      your device, still never a write.
       <!-- cite: PRIVACY.md#7-data-export--retention--deletion-rights; PRIVACY.md#4-third-party-service-providers (the §4 background paragraph); lib/data/health/health_import_service.dart ("Bound. Two entry points."); ios/Runner/AppDelegate.swift (the HKObserverQuery trigger); android/app/src/main/kotlin/com/wjdavis5/lunarlog/HealthBackgroundImportWorker.kt (the periodic trigger) -->
     </p>
 
@@ -106,12 +107,13 @@ import HelpCard from "../../components/HelpCard.astro";
           <!-- cite: lib/data/health/health_import_service.dart (merge rules, provenance, echo loop prevention) -->
         </li>
         <li>
-          The first import is yours to start in Settings. After that, the
-          same import also keeps itself current in the background — Apple
-          Health tells lunarlog when new data lands, and Android checks
-          Health Connect on a schedule — under the same rules: it never
-          prompts, never shows a screen, never writes, and it stops if you
-          unbind the profile or revoke the health permission.
+          The first import is yours to start in Settings. Once a profile is
+          bound and you have run the first import yourself, the same import
+          also keeps itself current in the background — Apple Health tells
+          lunarlog when new data lands, and Android checks Health Connect
+          on a schedule — under the same rules: it never prompts, never
+          shows a screen, never writes, and it stops if you unbind the
+          profile or revoke the health permission.
           <!-- cite: lib/data/health/health_import_service.dart (importInBackground, #993: prompt-free, #153 guard + #959 permission probe); PRIVACY.md#4-third-party-service-providers (the §4 background paragraph) -->
         </li>
         <li>
