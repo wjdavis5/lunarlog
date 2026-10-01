@@ -465,30 +465,44 @@ async function handleSignOut(request: Request, deps: AuthDeps): Promise<Response
   let bearer = bearerOf(request);
   if (bearer === null) {
     // No live access token (expired while idle): refresh once so the
-    // sign-out can still reach GoTrue with a valid JWT.
+    // sign-out can still reach GoTrue with a valid JWT. Best-effort: a
+    // rejected fetch only means the revocation below goes out without a
+    // bearer — it must not stop the cookie from being cleared (issue
+    // #1292).
     const refreshToken = readCookie(request, REFRESH_COOKIE);
     if (refreshToken !== null) {
-      const refreshed = await deps.supabaseFetch('/auth/v1/token?grant_type=refresh_token', {
-        method: 'POST',
-        headers: upstreamHeaders(request, deps.publishableKey),
-        body: JSON.stringify({ refresh_token: refreshToken }),
-      });
-      if (refreshed.ok) {
-        const raw = (await refreshed.json()) as Record<string, unknown>;
-        if (typeof raw.access_token === 'string') bearer = raw.access_token;
+      try {
+        const refreshed = await deps.supabaseFetch('/auth/v1/token?grant_type=refresh_token', {
+          method: 'POST',
+          headers: upstreamHeaders(request, deps.publishableKey),
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+        if (refreshed.ok) {
+          const raw = (await refreshed.json()) as Record<string, unknown>;
+          if (typeof raw.access_token === 'string') bearer = raw.access_token;
+        }
+      } catch {
+        // GoTrue unreachable: sign out anyway, without the bearer.
       }
     }
   }
   if (bearer !== null) {
     // Best-effort upstream revocation (auth-js also ignores 401/403/404
-    // here): the browser's session ends below regardless.
-    await deps.supabaseFetch(`/auth/v1/logout?scope=${scope}`, {
-      method: 'POST',
-      headers: upstreamHeaders(request, deps.publishableKey, {
-        authorization: `Bearer ${bearer}`,
-      }),
-      body: '{}',
-    });
+    // here): a rejected fetch — GoTrue timing out or resetting the
+    // connection — must not turn the sign-out into a thrown 500 that
+    // leaves the refresh cookie alive on a shared computer (issue #1292).
+    // The browser's session ends below regardless.
+    try {
+      await deps.supabaseFetch(`/auth/v1/logout?scope=${scope}`, {
+        method: 'POST',
+        headers: upstreamHeaders(request, deps.publishableKey, {
+          authorization: `Bearer ${bearer}`,
+        }),
+        body: '{}',
+      });
+    } catch {
+      // The revocation did not land; the cookie still gets cleared below.
+    }
   }
   return jsonResponse(
     { ok: true },
