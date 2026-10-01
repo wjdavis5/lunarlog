@@ -9,7 +9,9 @@ set -euo pipefail
 # GOOGLE_OAUTH_TOKEN_URL / ANDROIDPUBLISHER_BASE_URL test seams point it at
 # tests/play-highest-version-code-stub.rb), the RS256 JWT the script sends
 # verified against a throwaway key, both in-range selection and the
-# empty-range no-output case, both API-failure aborts, and the workflow
+# empty-range no-output case, both API-failure aborts, the real per-bundle
+# versionCode scalar shape plus the legacy versionCodes array and a
+# neither-field schema-mismatch warning (issue #1355), and the workflow
 # wiring. Run with:
 #
 #   bash .github/scripts/tests/play-highest-version-code.test.sh
@@ -137,8 +139,12 @@ assert_contains "refusal names the bad application id" "$LAST_LOG" "not an appli
 
 # --- End-to-end happy paths against the stub (real JWT + real HTTP calls) ---
 
+# The real edits.bundles.list shape: one integer versionCode per bundle
+# (issue #1355 -- these fixtures previously used a versionCodes array the
+# API never sends, so the whole suite passed while the live clamp never
+# fired; keep this the shape Google actually returns).
 BUNDLES_ALL="$KEYDIR/bundles_all.json"
-printf '%s' '{"kind":"androidpublisher#bundlesListResponse","bundles":[{"versionCodes":[1101,1105]},{"versionCodes":[2100]},{"versionCodes":[501002]},{"versionCodes":[]}]}' >"$BUNDLES_ALL"
+printf '%s' '{"kind":"androidpublisher#bundlesListResponse","bundles":[{"versionCode":1101},{"versionCode":2100},{"versionCode":501002}]}' >"$BUNDLES_ALL"
 
 RECORD="$KEYDIR/record"
 mkdir -p "$RECORD"
@@ -257,7 +263,7 @@ fi
 # --- Empty range: uploads exist but none inside the scanned namespace ---
 
 BUNDLES_BELOW="$KEYDIR/bundles_below.json"
-printf '%s' '{"kind":"androidpublisher#bundlesListResponse","bundles":[{"versionCodes":[999]}]}' >"$BUNDLES_BELOW"
+printf '%s' '{"kind":"androidpublisher#bundlesListResponse","bundles":[{"versionCode":999}]}' >"$BUNDLES_BELOW"
 RECORD2="$KEYDIR/record-empty"
 mkdir -p "$RECORD2"
 PORT_FILE2="$RECORD2/port"
@@ -274,6 +280,53 @@ export PACKAGE_NAME RANGE_LOW RANGE_HIGH
 run_case
 assert_exit "out-of-range-only uploads still succeed" 0
 assert_eq "empty range prints nothing" "" "$LAST_OUT"
+stop_stub
+
+# --- Response-shape guards (issue #1355): the legacy array shape, and a
+# --- bundles list whose entries carry no version field at all ---
+
+# The fixtures above now pin the real per-bundle versionCode scalar; this
+# case proves the older versionCodes array shape is still honoured, so an
+# API shape revert cannot silently disarm the clamp again.
+BUNDLES_LEGACY="$KEYDIR/bundles_legacy.json"
+printf '%s' '{"kind":"androidpublisher#bundlesListResponse","bundles":[{"versionCode":1200},{"versionCodes":[1101,1500]}]}' >"$BUNDLES_LEGACY"
+RECORD3="$KEYDIR/record-legacy"
+mkdir -p "$RECORD3"
+PORT_FILE3="$RECORD3/port"
+: >"$PORT_FILE3"
+start_stub "$BUNDLES_LEGACY" "$RECORD3" "$PORT_FILE3"
+port3="$(cat "$PORT_FILE3")"
+base3="http://127.0.0.1:$port3"
+export GOOGLE_OAUTH_TOKEN_URL="$base3/token" ANDROIDPUBLISHER_BASE_URL="$base3"
+
+PACKAGE_NAME="com.wjdavis5.lunarlog"
+RANGE_LOW=1000
+RANGE_HIGH=499999
+export PACKAGE_NAME RANGE_LOW RANGE_HIGH
+run_case
+assert_exit "legacy versionCodes array shape still succeeds" 0
+assert_eq "legacy array's highest in-range entry wins" "1500" "$LAST_OUT"
+stop_stub
+
+# A bundles list whose entries carry neither field must warn on stderr while
+# still succeeding with no stdout -- the workflow keeps its counter number,
+# but the log now says why the clamp stayed silent instead of passing
+# silently (the failure mode that hid issue #1355).
+BUNDLES_NO_FIELD="$KEYDIR/bundles_no_field.json"
+printf '%s' '{"kind":"androidpublisher#bundlesListResponse","bundles":[{"sha1":"aa"},{"sha256":"bb"}]}' >"$BUNDLES_NO_FIELD"
+RECORD4="$KEYDIR/record-no-field"
+mkdir -p "$RECORD4"
+PORT_FILE4="$RECORD4/port"
+: >"$PORT_FILE4"
+start_stub "$BUNDLES_NO_FIELD" "$RECORD4" "$PORT_FILE4"
+port4="$(cat "$PORT_FILE4")"
+base4="http://127.0.0.1:$port4"
+export GOOGLE_OAUTH_TOKEN_URL="$base4/token" ANDROIDPUBLISHER_BASE_URL="$base4"
+
+run_case
+assert_exit "a bundles list with no version field still succeeds" 0
+assert_eq "no version field prints nothing" "" "$LAST_OUT"
+assert_contains "no version field warns about the schema mismatch" "$LAST_LOG" "neither versionCode nor versionCodes"
 stop_stub
 
 # --- Workflow wiring ---
