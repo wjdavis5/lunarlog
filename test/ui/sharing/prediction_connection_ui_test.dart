@@ -35,6 +35,7 @@ import 'package:lunarlog/domain/sharing/prediction_projection.dart';
 import 'package:lunarlog/domain/sharing/prediction_projection_publisher.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/ui/account/sign_in_screen.dart';
+import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/overview/estimate_copy.dart'
     show kEstimateDisclaimer, kFertileWindowDisclaimer;
 import 'package:lunarlog/ui/sharing/accept_prediction_connection_sheet.dart';
@@ -457,19 +458,35 @@ void main() {
           ),
         ),
       );
+
+      // The screen opens on the CURRENT month: initState anchors the grid
+      // on LocalDate.today(), not on the projection's asOf month. The
+      // expected labels are therefore computed from today — hardcoding
+      // "September 2026" made this test pass only during that one month
+      // (it first failed on 2026-10-01 UTC). The labels come from the same
+      // monthNames helper the screen's header renders with.
+      final names = dates.monthNames();
+      String label(LocalDate month) =>
+          '${names[month.month - 1]} ${month.year}';
+      LocalDate shifted(LocalDate month, int delta) {
+        final total = month.year * 12 + month.month - 1 + delta;
+        return LocalDate(total ~/ 12, total % 12 + 1, 1);
+      }
+
+      final start = LocalDate.today();
       await tester.pumpAndSettle();
-      expect(find.text('September 2026'), findsOneWidget);
+      expect(find.text(label(start)), findsOneWidget);
 
       await tester.tap(find.byIcon(Icons.chevron_right));
       await tester.pumpAndSettle();
-      expect(find.text('October 2026'), findsOneWidget);
+      expect(find.text(label(shifted(start, 1))), findsOneWidget);
 
       await tester.tap(find.byIcon(Icons.chevron_left));
       await tester.pumpAndSettle();
-      expect(find.text('September 2026'), findsOneWidget);
+      expect(find.text(label(start)), findsOneWidget);
       await tester.tap(find.byIcon(Icons.chevron_left));
       await tester.pumpAndSettle();
-      expect(find.text('August 2026'), findsOneWidget);
+      expect(find.text(label(shifted(start, -1))), findsOneWidget);
     });
   });
 
