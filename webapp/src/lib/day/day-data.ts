@@ -8,7 +8,7 @@ import {
   type ProfileModeRow,
   type ProfileTagRegistryRow,
 } from '../schemas';
-import { getSyncedDataCache, pushSyncBatch, type SyncedData } from '../domain';
+import { getSyncedDataCache, nowSyncStamp, pushSyncBatch, type SyncedData } from '../domain';
 import { sessionUserId } from '../sharing';
 import {
   buildSavePlan,
@@ -169,7 +169,10 @@ export async function saveDay(
     tz: args.tz,
     edit: args.edit,
     view: args.view,
-    nowIso: args.nowIso ?? new Date().toISOString(),
+    // Issue #1283: the default save instant is the device clock corrected
+    // by the learned server offset — every row in the plan stamps from it,
+    // so a skewed browser clock writes server time rather than its own.
+    nowIso: args.nowIso ?? nowSyncStamp(),
   });
 
   const fieldByRowId = new Map<string, SavePlanField>();

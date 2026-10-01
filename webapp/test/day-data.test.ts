@@ -7,7 +7,7 @@ import {
   saveDay,
 } from '../src/lib/day/day-data';
 import { DayPermissionError, type DayEdit, type LoadedDayView } from '../src/lib/day/payloads';
-import { getSyncedDataCache, type SyncedData } from '../src/lib/domain';
+import { getSyncedDataCache, resetClockOffset, type SyncedData } from '../src/lib/domain';
 import type { AppSupabaseClient } from '../src/lib/supabase';
 import type { DayEntryRow, ProfileGuardianRow, ProfileRow } from '../src/lib/schemas';
 
@@ -440,5 +440,72 @@ describe('saveDay (issue #1254)', () => {
       DayPermissionError,
     );
     expect(rpc).not.toHaveBeenCalledWith('sync_push', expect.anything());
+  });
+});
+
+describe('saveDay stamps the corrected clock (issue #1283)', () => {
+  beforeEach(() => {
+    getSyncedDataCache().reset();
+    resetClockOffset();
+  });
+
+  // saveArgs/view live inside the #1254 describe above; this describe
+  // builds its own from the same file-scope fixtures.
+  const correctedView: LoadedDayView = {
+    profile: baseProfile,
+    entry: storedEntry,
+    observations: [],
+    membership,
+    mode: null,
+    cycleOverride: null,
+  };
+  const correctedArgs = {
+    profileId: PROFILE_ID,
+    dateIso: '2026-09-29',
+    todayIso: '2026-09-30',
+    tz: 'UTC',
+    edit: baseEdit,
+    view: correctedView,
+    nowIso: NOW,
+  };
+
+  it('after a skew-teaching push, a save without an explicit nowIso stamps server time', async () => {
+    const deviceNow = Date.now();
+    // The phones write at true server time; this browser runs ten minutes
+    // slow, so a raw-clock stamp would read as older and lose LWW. The
+    // first save (explicit nowIso, raw stamp) is what teaches the offset
+    // from the response's server_now.
+    const serverNow = new Date(deviceNow + 10 * 60_000).toISOString();
+    const rpcResult = { data: { resolved: [], rejected: [], server_now: serverNow }, error: null };
+    const seeding = fakeClient({ rpcResult });
+    await saveDay(seeding.client, correctedArgs);
+
+    // The second save omits nowIso: the default instant now comes from the
+    // learned offset — every plan row stamps corrected.
+    const corrected = fakeClient({ rpcResult });
+    const { nowIso: _explicit, ...defaultedArgs } = correctedArgs;
+    await saveDay(corrected.client, defaultedArgs);
+    const pushCall = corrected.rpcCalls.find(([name]) => name === 'sync_push');
+    expect(pushCall).toBeDefined();
+    const payload = pushCall?.[1] as { p_day_entries: { updated_at: string }[] };
+    const stamp = Date.parse(payload.p_day_entries[0]?.updated_at ?? '');
+    // Wins LWW against a phone's true-now write, and reads as ≈ server
+    // time — without the fix this stamp would be the raw, ten-minutes-slow
+    // browser clock and land ~10 minutes in the server's past.
+    expect(stamp).toBeGreaterThan(deviceNow + 4 * 60_000);
+    expect(Math.abs(stamp - (deviceNow + 10 * 60_000))).toBeLessThan(30_000);
+  });
+
+  it('before any push has taught the offset, the default instant stays the raw clock', async () => {
+    const { client, rpcCalls } = fakeClient({
+      rpcResult: { data: { resolved: [], rejected: [], server_now: NOW }, error: null },
+    });
+    const { nowIso: _explicit, ...defaultedArgs } = correctedArgs;
+    await saveDay(client, defaultedArgs);
+    const pushCall = rpcCalls.find(([name]) => name === 'sync_push');
+    const payload = pushCall?.[1] as { p_day_entries: { updated_at: string }[] };
+    // Uncorrected (the phones' zero-offset start): ≈ the raw device clock.
+    const stamp = Date.parse(payload.p_day_entries[0]?.updated_at ?? '');
+    expect(Math.abs(stamp - Date.now())).toBeLessThan(30_000);
   });
 });

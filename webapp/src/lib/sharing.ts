@@ -27,6 +27,7 @@ import { z } from 'zod';
 
 import type { Json } from '../../../supabase/database.types';
 import { webAuth } from './auth';
+import { learnClockOffset } from './domain';
 import type { AppSupabaseClient } from './supabase';
 import { ulidSchema } from './schemas';
 import { isValidUlid, UlidGenerator } from './ulid';
@@ -949,6 +950,7 @@ export type SyncPushRejections = string[];
 interface SyncPushResultLike {
   resolved?: unknown;
   rejected?: unknown;
+  server_now?: unknown;
 }
 
 async function pushNotes(
@@ -959,6 +961,7 @@ async function pushNotes(
   // original two parameters), so an empty array is passed explicitly; every
   // other table rides its server-side `'[]'` default. Ten empty arrays is
   // what a notes-only push looks like.
+  const sentAtMs = Date.now();
   const { data, error } = await client.rpc('sync_push', {
     p_profiles: [],
     p_day_entries: [],
@@ -967,6 +970,14 @@ async function pushNotes(
   });
   if (error !== null) throw await failureFor(client, error, false);
   const result = data as SyncPushResultLike | null;
+  // Issue #1283: this is the notes pages' own sync_push call site (kept off
+  // pushSyncBatch to preserve the four-array wire shape the tests pin), so
+  // it teaches the clock offset too — same sent-at-before-the-call reading,
+  // same EMA — or a save typed on the notes pages would never correct the
+  // stamps of the writes it just made.
+  if (typeof result?.server_now === 'string') {
+    learnClockOffset(result.server_now, sentAtMs);
+  }
   const rejected = Array.isArray(result?.rejected) ? result.rejected : [];
   return rejected
     .map((entry) =>

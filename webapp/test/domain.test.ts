@@ -1,25 +1,36 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   emptySyncedData,
   fetchGuardianNotes,
   fetchSettings,
   getSyncedDataCache,
+  learnClockOffset,
+  learnedClockOffsetMs,
   mergeSyncedData,
   newCareNotePayload,
   newDayEntryPayload,
   newGuardianNotePayload,
   newProfileModePayload,
   newProfilePayload,
+  nowSyncStamp,
   pullSyncedData,
   pushSyncBatch,
+  resetClockOffset,
   resetWebDataForSignOut,
+  serverAdjustedNow,
   subscribeSyncSignals,
   SyncedDataCache,
   tombstonePayload,
 } from '../src/lib/domain';
 import type { ProfileRow } from '../src/lib/schemas';
 import type { AppSupabaseClient } from '../src/lib/supabase';
+
+// The learned clock offset is page-global module state (issue #1283): the
+// push tests below teach one from their fakes' server_now, so every test
+// starts uncorrected — the same isolation the shared cache's resets give
+// the row state.
+beforeEach(() => resetClockOffset());
 
 // ---------------------------------------------------------------------------
 // Fake client seams. supabase-js's real types are structural; the fakes
@@ -336,6 +347,119 @@ describe('payload builders (issue #1252)', () => {
     const payload = newCareNotePayload({ profile_id: ULID_A, body: 'Heat pad helps.' });
     expect(payload.body).toBe('Heat pad helps.');
     expect(payload.id).not.toBe(payload.profile_id);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The learned server-clock offset (issue #1283)
+// ---------------------------------------------------------------------------
+
+describe('the learned server-clock offset (issue #1283)', () => {
+  it('stamps raw before anything is learned — the phones\' zero-offset start', () => {
+    expect(learnedClockOffsetMs()).toBeNull();
+    const fixed = () => new Date('2026-09-30T00:00:00Z');
+    expect(nowSyncStamp(fixed)).toBe('2026-09-30T00:00:00.000Z');
+    expect(serverAdjustedNow(fixed).toISOString()).toBe('2026-09-30T00:00:00.000Z');
+  });
+
+  it('folds samples through the same EMA the phones smooth with (the first as-is)', () => {
+    const device = Date.parse('2026-10-01T00:00:00.000Z');
+    // First sample (+10 min): nothing to smooth against — taken as-is.
+    expect(learnClockOffset('2026-10-01T00:10:00.000Z', device)).toBe(600_000);
+    // Second (+4 min): 600000 + 0.2 * (240000 - 600000) = 528000.
+    expect(learnClockOffset('2026-10-01T00:04:00.000Z', device)).toBe(528_000);
+    // Third (back to +10 min): 528000 + 0.2 * (600000 - 528000) = 542400.
+    expect(learnClockOffset('2026-10-01T00:10:00.000Z', device)).toBe(542_400);
+  });
+
+  it('a browser clock ten minutes fast stops tripping sync_push\'s future check', async () => {
+    const deviceNow = Date.now();
+    // The server sits ten minutes behind this browser — the raw stamp
+    // (`now + 10 min`) is past `now() + interval '5 minutes'` and every
+    // row would land in `rejected` (20260921130000). The push's own
+    // response teaches the offset even so: the rejection is per-row, and
+    // `server_now` rides every result.
+    const { client } = fakeRpcClient(async () => ({
+      data: {
+        resolved: [],
+        rejected: [{ id: ULID_A, rejected: true }],
+        server_now: new Date(deviceNow - 10 * 60_000).toISOString(),
+      },
+      error: null,
+    }));
+    await pushSyncBatch(client, {});
+    expect(learnedClockOffsetMs()).not.toBeNull();
+    const stamp = Date.parse(nowSyncStamp());
+    // ≈ server time (device − 10 min), and never inside the server's
+    // future-rejection window again.
+    expect(stamp).toBeLessThan(deviceNow + 4 * 60_000);
+    expect(Math.abs(stamp - (deviceNow - 10 * 60_000))).toBeLessThan(30_000);
+  });
+
+  it('a browser clock ten minutes slow stops losing last-writer-wins', async () => {
+    const deviceNow = Date.now();
+    // The phones just wrote at true server time; this browser is ten
+    // minutes behind, so its raw stamp would read as older and the server
+    // would decline the write (LWW). The learned offset lifts the stamp
+    // back onto server time.
+    const { client } = fakeRpcClient(async () => ({
+      data: {
+        resolved: [],
+        rejected: [],
+        server_now: new Date(deviceNow + 10 * 60_000).toISOString(),
+      },
+      error: null,
+    }));
+    await pushSyncBatch(client, {});
+    const stamp = Date.parse(nowSyncStamp());
+    expect(stamp).toBeGreaterThan(deviceNow + 4 * 60_000);
+    expect(Math.abs(stamp - (deviceNow + 10 * 60_000))).toBeLessThan(30_000);
+  });
+
+  it('a whole-call failure teaches nothing', async () => {
+    const { client } = fakeRpcClient(async () => ({
+      data: null,
+      error: { message: 'sync_push requires an authenticated user' },
+    }));
+    await expect(pushSyncBatch(client, {})).rejects.toThrow('sync_push failed');
+    expect(learnedClockOffsetMs()).toBeNull();
+  });
+
+  it('an unparseable server_now teaches nothing rather than poisoning the EMA', () => {
+    expect(learnClockOffset('not-a-timestamp', Date.now())).toBe(0);
+    expect(learnedClockOffsetMs()).toBeNull();
+    // A good sample still seeds cleanly afterwards.
+    expect(
+      learnClockOffset('2026-10-01T00:10:00.000Z', Date.parse('2026-10-01T00:00:00.000Z')),
+    ).toBe(600_000);
+  });
+
+  it('the identity reset keeps the offset: device-vs-server is not account data', async () => {
+    const { client } = fakeRpcClient(async () => ({
+      data: {
+        resolved: [],
+        rejected: [],
+        server_now: new Date(Date.now() + 60_000).toISOString(),
+      },
+      error: null,
+    }));
+    await pushSyncBatch(client, {});
+    expect(learnedClockOffsetMs()).not.toBeNull();
+    const clear = vi.fn();
+    resetWebDataForSignOut({ clear });
+    expect(clear).toHaveBeenCalledTimes(1);
+    // Deliberately still learned: the next account's first write is
+    // stamped corrected without waiting on a fresh push to re-teach it.
+    expect(learnedClockOffsetMs()).not.toBeNull();
+  });
+
+  it('payload builders default to the corrected clock once an offset is learned', () => {
+    learnClockOffset('2026-10-01T00:10:00.000Z', Date.parse('2026-10-01T00:00:00.000Z'));
+    const payload = newDayEntryPayload({ profile_id: ULID_A, local_date: '2026-09-30' });
+    // ≈ the raw device clock + the learned +10 min — server time on a
+    // browser whose clock reads ten minutes slow.
+    const stamp = Date.parse(payload.updated_at);
+    expect(Math.abs(stamp - (Date.now() + 10 * 60_000))).toBeLessThan(30_000);
   });
 });
 
