@@ -507,9 +507,9 @@ describe('SyncedDataCache (issue #1252)', () => {
         error: null,
       };
     });
-    const first = await cache.refresh(client);
+    const first = await cache.refresh(client, () => null);
     expect(first.profiles).toHaveLength(1);
-    const second = await cache.refresh(client);
+    const second = await cache.refresh(client, () => null);
     expect(second.profiles).toHaveLength(1);
     expect(second.profiles[0]?.display_name).toBe('Newer');
     expect(second.profiles[0]?.server_version).toBe(8);
@@ -522,7 +522,7 @@ describe('SyncedDataCache (issue #1252)', () => {
       data: { profiles: [profileRow({ server_version: 7 })] },
       error: null,
     }));
-    await cache.refresh(client);
+    await cache.refresh(client, () => null);
     cache.reset();
     expect(cache.current()).toEqual(emptySyncedData());
   });
@@ -532,7 +532,7 @@ describe('SyncedDataCache (issue #1252)', () => {
       data: { profiles: [profileRow({ server_version: 7 })] },
       error: null,
     }));
-    await getSyncedDataCache().refresh(client);
+    await getSyncedDataCache().refresh(client, () => null);
     const clear = vi.fn();
     resetWebDataForSignOut({ clear });
     expect(clear).toHaveBeenCalledTimes(1);
@@ -567,7 +567,7 @@ describe('SyncedDataCache identity race (issue #1315)', () => {
       return { data: { profiles: [profileRow({ server_version: 9 })] }, error: null };
     });
 
-    const inFlight = cache.refresh(client); // A's pull, still awaiting the network
+    const inFlight = cache.refresh(client, () => null); // A's pull, still awaiting the network
     cache.reset(); // the identity boundary lands mid-pull (resetWebDataForSignOut)
     releaseStalePull({
       data: { profiles: [profileRow({ server_version: 7 })] },
@@ -582,8 +582,106 @@ describe('SyncedDataCache identity race (issue #1315)', () => {
 
     // B's own pull starts from zero cursors (asserted in the handler) and
     // B's rows merge onto the still-empty snapshot.
-    const fresh = await cache.refresh(client);
+    const fresh = await cache.refresh(client, () => null);
     expect(fresh.profiles.map((row) => row.server_version)).toEqual([9]);
+  });
+});
+
+describe('SyncedDataCache identity tag (issue #1338)', () => {
+  it('discards a pull that ran under an account the snapshot was not built for', async () => {
+    const cache = new SyncedDataCache();
+    let account: string | null = 'user-a';
+    const readIdentity = () => account;
+    const cursorsSeen: unknown[] = [];
+    const { client } = fakeRpcClient(async (_name, params) => {
+      // Captured before pullSyncedData advances the cursors object this
+      // params entry aliases (the #1315 test's note applies here too).
+      cursorsSeen.push(structuredClone(params.p_cursors));
+      if (cursorsSeen.length === 1) {
+        return { data: { profiles: [profileRow({ server_version: 7 })] }, error: null };
+      }
+      return {
+        data: {
+          profiles: [profileRow({ id: ULID_B, display_name: 'B-only', server_version: 9 })],
+        },
+        error: null,
+      };
+    });
+
+    // Built under A: the pull merges and the cache tags itself with A.
+    const underA = await cache.refresh(client, readIdentity);
+    expect(underA.profiles.map((row) => row.display_name)).toEqual(['Maya']);
+
+    // The refresh cookie flips to B; the next pull runs entirely under B
+    // with no reset in between — the generation never moves, so only the
+    // tag catches it. B's row never merges onto A's snapshot.
+    account = 'user-b';
+    const pulledUnderB = await cache.refresh(client, readIdentity);
+    expect(pulledUnderB.profiles.map((row) => row.display_name)).toEqual(['Maya']);
+    expect(cache.current().profiles.map((row) => row.id)).toEqual([ULID_A]);
+
+    // The watcher's reset re-bases the cache on B: zero cursors, B's rows
+    // merge, and the tag moves to B.
+    cache.reset();
+    const underB = await cache.refresh(client, readIdentity);
+    expect(underB.profiles.map((row) => row.display_name)).toEqual(['B-only']);
+    expect(cursorsSeen).toEqual([{}, { profiles: 7 }, {}]);
+  });
+
+  it('discards a pull that re-identifies itself mid-flight (a renewal adopted the replaced cookie)', async () => {
+    const cache = new SyncedDataCache();
+    let account: string | null = 'user-a';
+    const readIdentity = () => account;
+    let releasePull!: (value: { data: unknown; error: { message: string } | null }) => void;
+    const heldPull = new Promise<{ data: unknown; error: { message: string } | null }>(
+      (resolve) => {
+        releasePull = resolve;
+      },
+    );
+    const { client } = fakeRpcClient(async () => heldPull);
+
+    const inFlight = cache.refresh(client, readIdentity); // A's pull, awaiting the network
+    // The pull's bearer renewal runs mid-pull and adopts whatever account
+    // the shared refresh cookie now holds — the same request stream is now
+    // B's — before the pull resolves.
+    account = 'user-b';
+    releasePull({
+      data: {
+        profiles: [profileRow({ id: ULID_B, display_name: 'B-only', server_version: 7 })],
+      },
+      error: null,
+    });
+
+    // B's rows never merge and the cursors never advance: the id read at
+    // resolution no longer matches the one the pull started under.
+    const discarded = await inFlight;
+    expect(discarded).toEqual(emptySyncedData());
+    expect(cache.current()).toEqual(emptySyncedData());
+  });
+
+  it('keeps merging while the account stays the same', async () => {
+    const cache = new SyncedDataCache();
+    let round = 0;
+    const { client, calls } = fakeRpcClient(async (_name, params) => {
+      round += 1;
+      if (round === 1) {
+        expect(params.p_cursors).toEqual({});
+        return { data: { profiles: [profileRow({ server_version: 7 })] }, error: null };
+      }
+      expect(params.p_cursors).toEqual({ profiles: 7 });
+      return {
+        data: { profiles: [profileRow({ server_version: 8, display_name: 'Newer' })] },
+        error: null,
+      };
+    });
+    const readIdentity = () => 'user-a';
+    const first = await cache.refresh(client, readIdentity);
+    expect(first.profiles).toHaveLength(1);
+    // Same account at resolution: the incremental pull merges as usual —
+    // the tag never discards a pull that re-resolves to its own account.
+    const second = await cache.refresh(client, readIdentity);
+    expect(second.profiles[0]?.server_version).toBe(8);
+    expect(calls).toHaveLength(2);
   });
 });
 
