@@ -118,13 +118,26 @@ rescue StandardError
   nil
 end
 
+# Google's edits.bundles.list sends one integer versionCode per bundle (the
+# Android Publisher v3 Bundle schema carries sha1, sha256, and versionCode --
+# there is no versionCodes array, issue #1355; the versionCodes read here
+# before kept `highest` nil on every real response, so the clamp never
+# fired). The array shape is still honoured so an API shape revert cannot
+# silently disarm the clamp again.
 highest = nil
-(JSON.parse(bundles_res.body)['bundles'] || []).each do |bundle|
-  (bundle['versionCodes'] || []).each do |version|
+bundles = JSON.parse(bundles_res.body)['bundles'] || []
+bundles_with_versions = 0
+bundles.each do |bundle|
+  versions = bundle.key?('versionCode') ? Array(bundle['versionCode']) : Array(bundle['versionCodes'])
+  bundles_with_versions += 1 if bundle.key?('versionCode') || bundle.key?('versionCodes')
+  versions.each do |version|
     version = Integer(version.to_s, 10) rescue next
     next unless version.between?(range_low, range_high)
     highest = version if highest.nil? || version > highest
   end
+end
+if !bundles.empty? && bundles_with_versions.zero?
+  warn('play-highest-version-code.rb: bundles list carried neither versionCode nor versionCodes in any entry; treating as no uploads -- if Play holds uploads, the bundles response schema has changed')
 end
 
 puts highest unless highest.nil?
