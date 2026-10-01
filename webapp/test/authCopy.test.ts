@@ -15,6 +15,19 @@ function copyCode(code: string, status = 400): string | undefined {
   return messages[authCopyFor(new AuthError(code, status)).id];
 }
 
+// The rendered form (issue #1295): fills the catalogue's FormatJS-style
+// `{name}` placeholders from the values the mapping carries — react-intl
+// prints the raw placeholder when a value is missing, which is the bug
+// pinned here. Pure, so no DOM.
+function renderedCopy(code: string, status = 400): string | undefined {
+  const copy = authCopyFor(new AuthError(code, status));
+  const message = messages[copy.id];
+  if (message === undefined) return undefined;
+  return message.replace(/\{(\w+)\}/g, (placeholder, name: string) =>
+    copy.values !== undefined && name in copy.values ? String(copy.values[name]) : placeholder,
+  );
+}
+
 describe('authCopyFor (issue #1250)', () => {
   it('maps the GoTrue codes the app maps, to the same copy', () => {
     expect(copyCode('invalid_credentials')).toBe(messages['authFailureWrongPassword']);
@@ -32,6 +45,19 @@ describe('authCopyFor (issue #1250)', () => {
     expect(copyCode('otp_disabled')).toBe(messages['authFailureInvalidCode']);
     expect(copyCode('flow_state_not_found')).toBe(messages['authFailureExpiredLink']);
     expect(copyCode('bad_code_verifier')).toBe(messages['authFailureExpiredLink']);
+  });
+
+  it('renders the weak-password copy with its value, not the placeholder (issue #1295)', () => {
+    // The catalogue carries the raw placeholder; the mapping's values must
+    // turn it into the real minimum on screen.
+    expect(messages['authFailureWeakPassword']).toContain('{minLength}');
+    const rendered = renderedCopy('weak_password');
+    expect(rendered).toContain(String(kMinPasswordLength));
+    expect(rendered).not.toContain('{minLength}');
+  });
+
+  it('renders a value-less copy unchanged (issue #1295)', () => {
+    expect(renderedCopy('invalid_credentials')).toBe(messages['authFailureWrongPassword']);
   });
 
   it('maps the web-only codes the Worker emits', () => {

@@ -22,6 +22,7 @@ export function ResetPasswordPage() {
   const [saved, setSaved] = useState(false);
 
   const mutationError = update.error as AuthError | null;
+  const mutationCopy = mutationError === null ? null : authCopyFor(mutationError);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -83,8 +84,8 @@ export function ResetPasswordPage() {
             </button>
           </div>
           {formError !== null ? <p className="auth-error">{formError}</p> : null}
-          {mutationError !== null ? (
-            <p className="auth-error">{t(authCopyFor(mutationError).id)}</p>
+          {mutationCopy !== null ? (
+            <p className="auth-error">{t(mutationCopy.id, mutationCopy.values)}</p>
           ) : null}
         </form>
       )}

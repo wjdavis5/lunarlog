@@ -26,6 +26,7 @@ export function CodeEntryPage() {
   const [resetDone, setResetDone] = useState(false);
 
   const mutationError = verify.error as AuthError | null;
+  const mutationCopy = mutationError === null ? null : authCopyFor(mutationError);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -87,8 +88,8 @@ export function CodeEntryPage() {
             </button>
           </div>
           {codeError !== null ? <p className="auth-error">{codeError}</p> : null}
-          {mutationError !== null ? (
-            <p className="auth-error">{t(authCopyFor(mutationError).id)}</p>
+          {mutationCopy !== null ? (
+            <p className="auth-error">{t(mutationCopy.id, mutationCopy.values)}</p>
           ) : null}
         </form>
       )}

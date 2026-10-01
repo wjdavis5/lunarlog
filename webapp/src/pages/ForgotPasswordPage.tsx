@@ -24,6 +24,7 @@ export function ForgotPasswordPage() {
   const [sent, setSent] = useState(false);
 
   const mutationError = sendReset.error as AuthError | null;
+  const mutationCopy = mutationError === null ? null : authCopyFor(mutationError);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -73,8 +74,8 @@ export function ForgotPasswordPage() {
               {t('webAuthSendResetAction')}
             </button>
           </div>
-          {mutationError !== null ? (
-            <p className="auth-error">{t(authCopyFor(mutationError).id)}</p>
+          {mutationCopy !== null ? (
+            <p className="auth-error">{t(mutationCopy.id, mutationCopy.values)}</p>
           ) : null}
         </form>
       )}
