@@ -763,7 +763,9 @@ Deno.test(
     const { deps, calls } = fakeDeps(({ path }) => {
       if (path === '/auth/v1/logout?scope=global') {
         logouts += 1;
-        return logouts === 1 ? gotrueError(403, 'bad_jwt') : new Response(null, { status: 204 });
+        return logouts === 1
+          ? gotrueError(403, 'bad_jwt')
+          : new Response(null, { status: 204 });
       }
       return new Response(JSON.stringify(sessionBody('refresh-2')), {
         status: 200,
