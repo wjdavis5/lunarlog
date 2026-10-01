@@ -46,6 +46,13 @@ export function authCopyFor(error: AuthError): AuthCopy {
     // link where you asked for it, or use the 8-digit code.
     case 'verifier_missing':
       return { id: 'webAuthDifferentBrowserError' };
+    // The Worker's global sign-out whose GoTrue revocation never landed
+    // (issue #1333's revocation_failed 502, surfaced by issue #1342): this
+    // device is out — the cookie cleared either way — but the other
+    // devices' sessions were not revoked, and the copy is the only place
+    // that consequence still gets said.
+    case 'revocation_failed':
+      return { id: 'webAuthSignOutEverywhereRevocationFailed' };
     default:
       return rareAuthCopyFor(error);
   }

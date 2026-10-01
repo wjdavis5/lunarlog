@@ -479,6 +479,7 @@ export const MESSAGE_IDS = [
   "webAuthAppleButtonLabel",
   "webAuthSignOutAction",
   "webAuthSignOutEverywhereAction",
+  "webAuthSignOutEverywhereRevocationFailed",
   "webAuthSendResetAction",
   "webAuthContinueAction",
   "careNotesRemoveNoteTooltip",

@@ -476,6 +476,7 @@
   "webAuthAppleButtonLabel": "Sign in with Apple",
   "webAuthSignOutAction": "Sign out",
   "webAuthSignOutEverywhereAction": "Sign out everywhere",
+  "webAuthSignOutEverywhereRevocationFailed": "This device is signed out, but signing your other devices out didn't go through — they may still be signed in. Sign in and try again, or sign out on each device yourself.",
   "webAuthSendResetAction": "Send reset link",
   "webAuthContinueAction": "Continue",
   "careNotesRemoveNoteTooltip": "Remove note",

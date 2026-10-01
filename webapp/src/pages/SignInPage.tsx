@@ -2,7 +2,7 @@ import { Link, useNavigate } from 'react-router';
 import { useState, type FormEvent } from 'react';
 
 import { useT } from '../i18n/t';
-import { AuthError } from '../lib/auth';
+import { AuthError, type SignOutScope } from '../lib/auth';
 import { authCopyFor } from '../lib/authCopy';
 import {
   startOAuth,
@@ -31,6 +31,25 @@ export function SignInPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [emailError, setEmailError] = useState<string | null>(null);
+  // The failed sign-out, held in page state (issue #1342): the sign-out's
+  // `finally` reset clears the query cache and the session resolves
+  // signed-out, so the mutation's own `error` no longer renders anywhere —
+  // this copy of it does. `authCopyFor` turns the Worker's
+  // `revocation_failed` into the consequence-naming copy (#1333's "other
+  // devices may still be signed in"), and every other code into the
+  // generic retry line.
+  const [signOutError, setSignOutError] = useState<AuthError | null>(null);
+  const signOutCopy = signOutError === null ? null : authCopyFor(signOutError);
+
+  // Each attempt starts clean, and a landed one clears the last failure —
+  // the message belongs to the attempt that produced it, not to the page.
+  const attemptSignOut = (scope: SignOutScope) => {
+    setSignOutError(null);
+    signOut.mutate(scope, {
+      onSuccess: () => setSignOutError(null),
+      onError: (error) => setSignOutError(error as AuthError),
+    });
+  };
 
   const mutationError = (signIn.error ?? sendOtp.error) as AuthError | null;
   const mutationCopy = mutationError === null ? null : authCopyFor(mutationError);
@@ -46,7 +65,12 @@ export function SignInPage() {
       return;
     }
     setEmailError(null);
-    signIn.mutate({ email: email.trim(), password });
+    // A fresh session buries the last sign-out failure with it (issue
+    // #1342): the message never outlives the account it was about.
+    signIn.mutate(
+      { email: email.trim(), password },
+      { onSuccess: () => setSignOutError(null) },
+    );
   };
 
   const sendLink = () => {
@@ -79,7 +103,7 @@ export function SignInPage() {
             type="button"
             className="auth-button auth-button-secondary"
             disabled={signOut.isPending}
-            onClick={() => signOut.mutate('local')}
+            onClick={() => attemptSignOut('local')}
           >
             {t('webAuthSignOutAction')}
           </button>
@@ -87,13 +111,13 @@ export function SignInPage() {
             type="button"
             className="auth-button auth-button-secondary"
             disabled={signOut.isPending}
-            onClick={() => signOut.mutate('global')}
+            onClick={() => attemptSignOut('global')}
           >
             {t('webAuthSignOutEverywhereAction')}
           </button>
         </div>
-        {signOut.error !== null ? (
-          <p className="auth-error">{t('commonSomethingWentWrong')}</p>
+        {signOutCopy !== null ? (
+          <p className="auth-error">{t(signOutCopy.id, signOutCopy.values)}</p>
         ) : null}
         <div className="auth-links">
           <Link to="/">{t('webAuthContinueAction')}</Link>
@@ -148,6 +172,13 @@ export function SignInPage() {
           <p className="auth-error">{t(mutationCopy.id, mutationCopy.values)}</p>
         ) : null}
       </form>
+      {/* A sign-out that failed after the reset (issue #1342): the page
+          below is the signed-out form, so this is the only place the
+          failure — and the "other devices may still be signed in"
+          consequence — can still reach the user. */}
+      {signOutCopy !== null ? (
+        <p className="auth-error">{t(signOutCopy.id, signOutCopy.values)}</p>
+      ) : null}
       <div className="auth-actions" style={{ marginTop: 'var(--ll-space-3)' }}>
         <button
           type="button"

@@ -1863,6 +1863,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get webAuthSignOutEverywhereAction => 'Sign out everywhere';
 
   @override
+  String get webAuthSignOutEverywhereRevocationFailed =>
+      'This device is signed out, but signing your other devices out didn\'t go through — they may still be signed in. Sign in and try again, or sign out on each device yourself.';
+
+  @override
   String get webAuthSendResetAction => 'Send reset link';
 
   @override

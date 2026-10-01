@@ -228,6 +228,10 @@ describe('the sign-out → sign-in identity boundary (issue #1281)', () => {
       await screen.findByText((_, element) => element?.textContent === 'Signed in as a@b.co'),
     ).toBeInTheDocument();
 
+    // A POST that never lands: the Worker never cleared the cookie, so the
+    // session probe re-resolves signed-in — the token fake from above keeps
+    // resolving, which IS this failure's real shape — and the failure
+    // renders in the signed-in state.
     fakes.signOut.mockRejectedValue(new AuthError('network_error', 0));
     fireEvent.click(
       screen.getByRole('button', { name: messages['webAuthSignOutEverywhereAction'] }),
@@ -235,6 +239,53 @@ describe('the sign-out → sign-in identity boundary (issue #1281)', () => {
     expect(await screen.findByText(messages['commonSomethingWentWrong'])).toBeInTheDocument();
     expect(getSyncedDataCache().current()).toEqual(emptySyncedData());
     expect(queryClient.getQueryData(SYNCED_DATA_QUERY_KEY)).toBeUndefined();
+  });
+
+  it('a revocation_failed sign-out lands signed-out with the consequence copy (issue #1342)', async () => {
+    fakes.getToken.mockResolvedValue('token-a');
+    fakes.getUser.mockReturnValue(USER_A);
+    await seedSharedCache();
+    const { queryClient } = renderSignInPage();
+    queryClient.setQueryData(SYNCED_DATA_QUERY_KEY, getSyncedDataCache().current());
+    expect(
+      await screen.findByText((_, element) => element?.textContent === 'Signed in as a@b.co'),
+    ).toBeInTheDocument();
+
+    // The Worker's revocation_failed 502 (issue #1333): the cookie cleared
+    // and the in-memory token died in the client's `finally`, so the next
+    // session probe is out — the page flips to the signed-out form, where
+    // the mutation's own error no longer renders. The page-state copy must:
+    // it names the consequence instead of reading as a clean sign-out.
+    fakes.signOut.mockImplementation(async () => {
+      fakes.getToken.mockResolvedValue(null);
+      fakes.getUser.mockReturnValue(null);
+      throw new AuthError('revocation_failed', 502);
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: messages['webAuthSignOutEverywhereAction'] }),
+    );
+    expect(
+      await screen.findByRole('button', { name: messages['accountSignInAction'] }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(messages['webAuthSignOutEverywhereRevocationFailed']),
+    ).toBeInTheDocument();
+    // The reset still ran in the `finally` — nothing of A's survives it.
+    expect(getSyncedDataCache().current()).toEqual(emptySyncedData());
+    expect(queryClient.getQueryData(SYNCED_DATA_QUERY_KEY)).toBeUndefined();
+
+    // Signing back in buries the message with the account it was about.
+    fakes.signInWithPassword.mockImplementation(async () => {
+      fakes.getToken.mockResolvedValue('token-b');
+      fakes.getUser.mockReturnValue(USER_B);
+    });
+    submitAs('b@b.co');
+    expect(
+      await screen.findByText((_, element) => element?.textContent === 'Signed in as b@b.co'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(messages['webAuthSignOutEverywhereRevocationFailed']),
+    ).not.toBeInTheDocument();
   });
 
   it('signing in as B drops data A left cached without a sign-out', async () => {
