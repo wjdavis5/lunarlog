@@ -411,6 +411,15 @@ List<Map<String, Object?>> _cycleHistoryCases() {
       'entries': entries,
       'omittedCycleStarts': [_addDays(today, -82)],
     }),
+    // The same view requested with a legacy link name browsers still
+    // report (issue #1273): the facade's alias table must accept it before
+    // any date math happens, so the compiled module is pinned on a
+    // `Asia/Calcutta` request exactly as a real browser sends it.
+    _case('cycleHistory.legacy-tz-calcutta', 'cycleHistory', {
+      'today': today,
+      'tz': 'Asia/Calcutta',
+      'entries': entries,
+    }),
   ];
 }
 

@@ -77,6 +77,8 @@ import 'package:lunarlog/domain/sharing/invite_links.dart';
 import 'package:timezone/data/latest_10y.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
+import 'iana_aliases.dart';
+
 /// Facade surface version, reported by `main.dart` as `lunarlogDomain
 /// .version`. Bump on a breaking request/response shape change so the
 /// TypeScript wrapper can pin what it validates.
@@ -487,13 +489,15 @@ Object? parseInviteLinkFromJson(Map<String, Object?> request) {
 
 bool _timeZonesInitialized = false;
 
-/// The bare link names a browser's `Intl.DateTimeFormat().resolvedOptions()
-/// .timeZone` can report for a UTC-offset user. package:timezone's
-/// generated database (both the 10y window and `latest`) carries the
-/// canonical `Etc/*` names but drops these backward-compatibility links,
-/// so they are aliased rather than rejected — a UTC user is not an
-/// unknown-zone error.
-const Map<String, String> _ianaAliases = {'UTC': 'Etc/UTC', 'GMT': 'Etc/GMT'};
+// A browser's `Intl.DateTimeFormat().resolvedOptions().timeZone` can still
+// report legacy link names — the bare `UTC`/`GMT`, and pre-rename ids like
+// `Asia/Calcutta`, `Europe/Kiev`, `Asia/Saigon`, `Asia/Katmandu` (issue
+// #1273). package:timezone's generated database (both the 10y window and
+// `latest`) carries the canonical targets but drops these
+// backward-compatibility links, so they are aliased rather than rejected —
+// a UTC-offset or renamed-zone user is not an unknown-zone error. The table
+// is derived from tzdata's `backward` file, not hand-listed — see
+// `iana_aliases.dart` and its generator.
 
 /// Initializes the tz database once (explicitly, per the issue — dart2js
 /// tree-shakes nothing here that the domain itself imports) and installs
@@ -507,7 +511,7 @@ void _configureTimeZone(String name) {
   }
   final resolved = tz.timeZoneDatabase.locations.containsKey(name)
       ? name
-      : _ianaAliases[name];
+      : kIanaLegacyAliases[name];
   if (resolved == null ||
       !tz.timeZoneDatabase.locations.containsKey(resolved)) {
     throw ArgumentError.value(name, 'tz', 'unknown IANA time zone');
