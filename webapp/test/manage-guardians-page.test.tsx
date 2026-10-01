@@ -17,7 +17,11 @@ import { ManageGuardiansPage } from '../src/pages/ManageGuardiansPage';
  */
 
 const ULID = '01ARZ3NDEKTSV4RRFFQ69G5FAV';
-const ULID2 = '01ARZ3NDEKTSV4RRFFQ69G5FAW';
+// Sharing-table row ids are uuid (gen_random_uuid, 20260904010000 /
+// 20260906170000), unlike the profile's client-generated ULID — the
+// fixtures keep the two apart (issue #1284).
+const GUARDIAN_ROW_ID = '2f2f2f2f-2f2f-4f2f-8f2f-2f2f2f2f2f2f';
+const INVITE_ROW_ID = '3f3f3f3f-3f3f-4f3f-8f3f-3f3f3f3f3f3f';
 const ME = '0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f';
 const OTHER = '1f1f1f1f-1f1f-4f1f-8f1f-1f1f1f1f1f1f';
 
@@ -89,7 +93,7 @@ function exactText(expected: string) {
 
 function guardianRow(overrides: Record<string, unknown> = {}) {
   return {
-    id: ULID,
+    id: GUARDIAN_ROW_ID,
     profile_id: ULID,
     user_id: ME,
     role: 'primary_guardian',
@@ -105,7 +109,7 @@ function guardianRow(overrides: Record<string, unknown> = {}) {
 
 function pendingRow(overrides: Record<string, unknown> = {}) {
   return {
-    id: ULID2,
+    id: INVITE_ROW_ID,
     profile_id: ULID,
     role: 'viewer',
     recipient_label: 'Nurse',
@@ -144,7 +148,7 @@ function defaultMocks() {
   sharingMocks.fetchGuardians.mockResolvedValue([
     guardianRow(),
     guardianRow({
-      id: ULID2,
+      id: INVITE_ROW_ID,
       user_id: OTHER,
       role: 'caregiver',
       display_name: 'Grandma',
@@ -224,7 +228,7 @@ describe('ManageGuardiansPage (issue #1255)', () => {
   it('creates an invitation and shows the share link panel', async () => {
     sharingMocks.createGuardianInvitation.mockResolvedValue({
       invitation: {
-        id: ULID2,
+        id: INVITE_ROW_ID,
         profile_id: ULID,
         role: 'caregiver',
         expires_at: '2026-10-02T00:00:00Z',
@@ -263,7 +267,10 @@ describe('ManageGuardiansPage (issue #1255)', () => {
     fireEvent.click(screen.getByText(messages['sharingManageGuardiansCancel'] ?? ''));
     fireEvent.click(screen.getByText(messages['sharingManageGuardiansCancelInvitation'] ?? ''));
     await waitFor(() => {
-      expect(sharingMocks.revokeGuardianInvitation).toHaveBeenCalledWith(fakeClient, ULID2);
+      expect(sharingMocks.revokeGuardianInvitation).toHaveBeenCalledWith(
+        fakeClient,
+        INVITE_ROW_ID,
+      );
     });
     expect(
       await screen.findByText(messages['inviteCancellationRevoked'] ?? ''),
@@ -272,7 +279,7 @@ describe('ManageGuardiansPage (issue #1255)', () => {
 
   it('an armed transfer replaces the arm form with the pending card', async () => {
     sharingMocks.fetchActiveTransfer.mockResolvedValue({
-      id: ULID2,
+      id: INVITE_ROW_ID,
       profile_id: ULID,
       parent_post_transfer_role: 'co_parent',
       recipient_label: null,
@@ -292,7 +299,7 @@ describe('ManageGuardiansPage (issue #1255)', () => {
 
   it('cancelling the live transfer calls the RPC', async () => {
     sharingMocks.fetchActiveTransfer.mockResolvedValue({
-      id: ULID2,
+      id: INVITE_ROW_ID,
       profile_id: ULID,
       parent_post_transfer_role: 'viewer',
       recipient_label: null,
@@ -303,7 +310,7 @@ describe('ManageGuardiansPage (issue #1255)', () => {
     // refetch), so the form branch — and its cancelled copy — renders.
     sharingMocks.fetchActiveTransfer
       .mockResolvedValueOnce({
-        id: ULID2,
+        id: INVITE_ROW_ID,
         profile_id: ULID,
         parent_post_transfer_role: 'viewer',
         recipient_label: null,
@@ -315,7 +322,10 @@ describe('ManageGuardiansPage (issue #1255)', () => {
       await screen.findByText(messages['sharingTransferOwnershipCancelPending'] ?? ''),
     );
     await waitFor(() => {
-      expect(sharingMocks.cancelOwnershipTransfer).toHaveBeenCalledWith(fakeClient, ULID2);
+      expect(sharingMocks.cancelOwnershipTransfer).toHaveBeenCalledWith(
+        fakeClient,
+        INVITE_ROW_ID,
+      );
     });
     expect(
       await screen.findByText(messages['sharingTransferOwnershipCancelled'] ?? ''),

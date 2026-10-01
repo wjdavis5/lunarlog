@@ -17,6 +17,10 @@ import { ProfileNotesPage } from '../src/pages/ProfileNotesPage';
 
 const ULID = '01ARZ3NDEKTSV4RRFFQ69G5FAV';
 const ULID2 = '01ARZ3NDEKTSV4RRFFQ69G5FAW';
+// profile_guardians row ids are uuid (gen_random_uuid, 20260904010000),
+// unlike the profile's and the notes' client-generated ULIDs (issue #1284).
+const GUARDIAN_ROW_ID = '2f2f2f2f-2f2f-4f2f-8f2f-2f2f2f2f2f2f';
+const GUARDIAN_ROW_ID_2 = '3f3f3f3f-3f3f-4f3f-8f3f-3f3f3f3f3f3f';
 const ME = '0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f';
 const OTHER = '1f1f1f1f-1f1f-4f1f-8f1f-1f1f1f1f1f1f';
 
@@ -76,7 +80,7 @@ vi.mock('../src/lib/sharing', async (importOriginal) => ({
 
 function guardianRow(overrides: Record<string, unknown> = {}) {
   return {
-    id: ULID,
+    id: GUARDIAN_ROW_ID,
     profile_id: ULID,
     user_id: ME,
     role: 'primary_guardian',
@@ -127,7 +131,12 @@ function renderPage() {
 function defaultMocks() {
   sharingMocks.fetchGuardians.mockResolvedValue([
     guardianRow(),
-    guardianRow({ id: ULID2, user_id: OTHER, role: 'caregiver', display_name: 'Grandma' }),
+    guardianRow({
+      id: GUARDIAN_ROW_ID_2,
+      user_id: OTHER,
+      role: 'caregiver',
+      display_name: 'Grandma',
+    }),
   ]);
   sharingMocks.fetchGuardianNotesForDate.mockResolvedValue([]);
   sharingMocks.fetchCareNotes.mockResolvedValue([]);

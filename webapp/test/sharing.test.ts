@@ -10,6 +10,7 @@ import {
   fetchPendingInvites,
   generateInviteToken,
   createGuardianInvitation,
+  createOwnershipTransfer,
   acceptGuardianInvitation,
   previewGuardianInvitation,
   pushGuardianNotes,
@@ -134,7 +135,11 @@ function fakeRpc(
 
 const ULID = '01ARZ3NDEKTSV4RRFFQ69G5FAV';
 const ULID2 = '01ARZ3NDEKTSV4RRFFQ69G5FAW';
+// Sharing-table row ids are `uuid primary key default gen_random_uuid()`
+// (20260904010000, 20260906170000) — the fixtures carry real UUIDs, which is
+// exactly what the pre-#1284 z.ulid() schemas rejected.
 const UUID = '0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f';
+const UUID2 = '1f1f1f1f-1f1f-4f1f-8f1f-1f1f1f1f1f1f';
 
 describe('token generation (the SupabaseSharingService wire format)', () => {
   it('emits 32 bytes of base64url without padding', async () => {
@@ -158,7 +163,7 @@ describe('createGuardianInvitation', () => {
   it('sends the hash, never the raw token, with the app defaults', async () => {
     const { client, calls } = fakeRpc({
       data: {
-        id: ULID,
+        id: UUID,
         profile_id: ULID,
         role: 'caregiver',
         expires_at: '2026-10-02T00:00:00Z',
@@ -172,7 +177,7 @@ describe('createGuardianInvitation', () => {
       subject: false,
     });
     expect(rawToken).toHaveLength(43);
-    expect(invitation.id).toBe(ULID);
+    expect(invitation.id).toBe(UUID);
     const [name, params] = calls[0] ?? ['', {}];
     expect(name).toBe('create_guardian_invitation');
     expect(params['p_profile_id']).toBe(ULID);
@@ -183,6 +188,30 @@ describe('createGuardianInvitation', () => {
     // Both sides use the platform subtle here; the vector test below pins
     // the digest itself against node:crypto.
     expect(params['p_token_hash']).toBe(await sha256Hex(rawToken));
+  });
+
+  it('keeps the raw token when the committed result fails to parse (issue #1284)', async () => {
+    // The row is committed server-side by the time the response arrives;
+    // the raw token exists only here. A shape mismatch must degrade the
+    // parsed invitation, never throw the token away.
+    const { client } = fakeRpc({
+      data: { id: 'not-a-uuid', profile_id: ULID, role: 'caregiver' },
+      error: null,
+    });
+    const { invitation, rawToken } = await createGuardianInvitation(client, {
+      profileId: ULID,
+      role: 'caregiver',
+      recipientLabel: null,
+      subject: false,
+    });
+    expect(rawToken).toHaveLength(43);
+    // The degraded result echoes the raw payload's string fields (missing
+    // ones collapse to '') instead of throwing — the token is the piece
+    // that must survive.
+    expect(invitation.id).toBe('not-a-uuid');
+    expect(invitation.profile_id).toBe(ULID);
+    expect(invitation.role).toBe('caregiver');
+    expect(invitation.expires_at).toBe('');
   });
 
   it('maps server rejections to typed failures', async () => {
@@ -278,7 +307,7 @@ describe('reads', () => {
     const { client, calls } = fakeFrom({
       data: [
         {
-          id: ULID,
+          id: UUID,
           profile_id: ULID,
           user_id: UUID,
           role: 'primary_guardian',
@@ -297,6 +326,30 @@ describe('reads', () => {
     expect(calls[0]).toMatchObject({ table: 'profile_guardians' });
   });
 
+  it('a pre-#802 guardian row (null is_subject) parses as false instead of failing the list (issue #1284)', async () => {
+    const { client } = fakeFrom({
+      data: [
+        {
+          id: UUID,
+          profile_id: ULID,
+          user_id: UUID,
+          role: 'caregiver',
+          status: 'accepted',
+          display_name: null,
+          invited_by: UUID2,
+          // Nullable with no backfill (20260920120000): real rows carry null.
+          is_subject: null,
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      error: null,
+    });
+    const rows: GuardianRow[] = await fetchGuardians(client, ULID);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.is_subject).toBe(false);
+  });
+
   it('fetchPendingInvites selects the safe columns and the seven-day cutoff', async () => {
     const now = new Date('2026-09-30T12:00:00Z');
     const { client, calls } = fakeFrom({ data: [], error: null });
@@ -310,6 +363,43 @@ describe('reads', () => {
     expect(new Date(String(cutoff?.args[1])).getTime()).toBe(
       now.getTime() - 7 * 24 * 60 * 60 * 1000,
     );
+  });
+
+  it('fetchPendingInvites parses real invitation rows (uuid id, null is_subject)', async () => {
+    const { client } = fakeFrom({
+      data: [
+        {
+          id: UUID2,
+          profile_id: ULID,
+          role: 'viewer',
+          recipient_label: 'Nurse',
+          created_at: '2026-09-01T00:00:00Z',
+          expires_at: '2026-09-30T00:00:00Z',
+          is_subject: null,
+        },
+      ],
+      error: null,
+    });
+    const rows: PendingInviteRow[] = await fetchPendingInvites(client, ULID);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.id).toBe(UUID2);
+    expect(rows[0]?.is_subject).toBe(false);
+  });
+
+  it('fetchActiveTransfer parses the live transfer row (uuid id)', async () => {
+    const { client } = fakeFrom({
+      data: {
+        id: UUID,
+        profile_id: ULID,
+        parent_post_transfer_role: 'co_parent',
+        recipient_label: null,
+        expires_at: '2026-10-03T00:00:00Z',
+      },
+      error: null,
+    });
+    const row = await fetchActiveTransfer(client, ULID);
+    expect(row?.id).toBe(UUID);
+    expect(row?.parent_post_transfer_role).toBe('co_parent');
   });
 
   it('fetchActiveTransfer returns null without a live row', async () => {
@@ -360,6 +450,41 @@ describe('reads', () => {
   });
 });
 
+describe('createOwnershipTransfer', () => {
+  it('parses the committed transfer row (uuid id) and returns the raw token', async () => {
+    const { client, calls } = fakeRpc({
+      data: { id: UUID, expires_at: '2026-10-03T00:00:00Z' },
+      error: null,
+    });
+    const { transfer, rawToken } = await createOwnershipTransfer(client, {
+      profileId: ULID,
+      parentPostTransferRole: 'co_parent',
+      recipientLabel: null,
+    });
+    expect(rawToken).toHaveLength(43);
+    expect(transfer.id).toBe(UUID);
+    const [name, params] = calls[0] ?? ['', {}];
+    expect(name).toBe('create_ownership_transfer');
+    expect(params['p_profile_id']).toBe(ULID);
+    expect(params['p_parent_post_transfer_role']).toBe('co_parent');
+    expect(params['p_ttl_hours']).toBe(72);
+  });
+
+  it('keeps the raw token when the committed result fails to parse (issue #1284)', async () => {
+    const { client } = fakeRpc({ data: { id: ULID }, error: null });
+    const { transfer, rawToken } = await createOwnershipTransfer(client, {
+      profileId: ULID,
+      parentPostTransferRole: 'viewer',
+      recipientLabel: null,
+    });
+    // The transfer is armed server-side; the token must survive the parse,
+    // with whatever raw fields the payload carried.
+    expect(rawToken).toHaveLength(43);
+    expect(transfer.id).toBe(ULID);
+    expect(transfer.expires_at).toBe('');
+  });
+});
+
 describe('preview/accept/revoke/role wrappers', () => {
   it('preview passes the hash and passes null through', async () => {
     const { client, calls } = fakeRpc({ data: null, error: null });
@@ -371,6 +496,20 @@ describe('preview/accept/revoke/role wrappers', () => {
     expect(params['p_token_hash']).toBe(await sha256Hex(rawToken));
   });
 
+  it('preview reads a missing is_subject as false (a server predating #802)', async () => {
+    const { client } = fakeRpc({
+      data: {
+        profile_display_name: 'Maya',
+        role: 'caregiver',
+        expires_at: '2026-10-02T00:00:00Z',
+      },
+      error: null,
+    });
+    await expect(previewGuardianInvitation(client, 'token')).resolves.toMatchObject({
+      is_subject: false,
+    });
+  });
+
   it('accept returns the parsed result', async () => {
     const { client } = fakeRpc({
       data: { profile_id: ULID, profile_name: 'Maya', role: 'caregiver', is_subject: true },
@@ -378,6 +517,16 @@ describe('preview/accept/revoke/role wrappers', () => {
     });
     const result = await acceptGuardianInvitation(client, 'token', 'Dad');
     expect(result).toMatchObject({ profile_id: ULID, profile_name: 'Maya', is_subject: true });
+  });
+
+  it('accept reads a null is_subject as false (issue #1284)', async () => {
+    const { client } = fakeRpc({
+      data: { profile_id: ULID, profile_name: 'Maya', role: 'viewer', is_subject: null },
+      error: null,
+    });
+    await expect(acceptGuardianInvitation(client, 'token', null)).resolves.toMatchObject({
+      is_subject: false,
+    });
   });
 
   it('revoke returns the outcome enum', async () => {

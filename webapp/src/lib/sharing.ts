@@ -308,8 +308,34 @@ function base64UrlNoPad(bytes: Uint8Array): string {
 // Row schemas (Zod at the boundary, like schemas.ts).
 // ---------------------------------------------------------------------------
 
+/**
+ * The sharing tables' own primary keys are `uuid primary key default
+ * gen_random_uuid()` — `profile_guardians`/`guardian_invitations`
+ * (20260904010000) and `ownership_transfers` (20260906170000) — the same
+ * shape `schemas.ts`'s `profileGuardianSchema` already validates. Issue
+ * #1284: these were `z.ulid()`, which no real row passes — every guardian
+ * read threw a ZodError before rendering. The profile-scoped ids
+ * (`profile_id`, note ids) stay `ulidSchema`: those rows are
+ * client-generated ULIDs written through `sync_push`.
+ */
+const sharingRowId = z.uuid();
+
+/**
+ * `profile_guardians.is_subject` is nullable with no backfill
+ * (20260920120000), and a server predating that migration omits the key
+ * from the RPC results entirely — the migration's own contract is that the
+ * client "decodes a missing/null is_subject as false". Zod `.default`
+ * replaces only `undefined`, so one pre-#802 null failed the whole list
+ * (issue #1284); this accepts null and absent and reads both as false.
+ */
+const isSubjectSchema = z
+  .boolean()
+  .nullable()
+  .optional()
+  .transform((value) => value ?? false);
+
 export const guardianRowSchema = z.object({
-  id: z.ulid(),
+  id: sharingRowId,
   profile_id: ulidSchema,
   user_id: z.uuid(),
   // Fail closed to the least-privileged role, matching the app (#540).
@@ -327,7 +353,7 @@ export const guardianRowSchema = z.object({
   }),
   display_name: z.string().nullable(),
   invited_by: z.uuid().nullable(),
-  is_subject: z.boolean().default(false),
+  is_subject: isSubjectSchema,
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -348,20 +374,20 @@ export type GuardianRow = z.infer<typeof guardianRowSchema>;
 
 /** The pending-invite projection — deliberately never `token_hash` (R6). */
 export const pendingInviteRowSchema = z.object({
-  id: z.ulid(),
+  id: sharingRowId,
   profile_id: ulidSchema,
   // Fail closed to the least-privileged role, matching the app (#540).
   role: z.string().transform((value) => guardianRoleSchemaSafe(value) ?? 'viewer'),
   recipient_label: z.string().nullable(),
   created_at: z.string(),
   expires_at: z.string(),
-  is_subject: z.boolean().default(false),
+  is_subject: isSubjectSchema,
 });
 
 export type PendingInviteRow = z.infer<typeof pendingInviteRowSchema>;
 
 export const activeTransferRowSchema = z.object({
-  id: z.ulid(),
+  id: sharingRowId,
   profile_id: ulidSchema,
   parent_post_transfer_role: z
     .string()
@@ -379,7 +405,7 @@ export const invitePreviewSchema = z.object({
   profile_display_name: z.string(),
   role: z.string().transform((value) => guardianRoleSchemaSafe(value) ?? 'viewer'),
   expires_at: z.string(),
-  is_subject: z.boolean().default(false),
+  is_subject: isSubjectSchema,
 });
 
 export type InvitePreview = z.infer<typeof invitePreviewSchema>;
@@ -388,13 +414,13 @@ export const acceptedInviteSchema = z.object({
   profile_id: ulidSchema,
   profile_name: z.string(),
   role: z.string().transform((value) => guardianRoleSchemaSafe(value) ?? 'viewer'),
-  is_subject: z.boolean().default(false),
+  is_subject: isSubjectSchema,
 });
 
 export type AcceptedInvite = z.infer<typeof acceptedInviteSchema>;
 
 export const createdInvitationSchema = z.object({
-  id: z.ulid(),
+  id: sharingRowId,
   profile_id: ulidSchema,
   role: z.string().transform((value) => guardianRoleSchemaSafe(value) ?? 'viewer'),
   expires_at: z.string(),
@@ -403,7 +429,7 @@ export const createdInvitationSchema = z.object({
 export type CreatedInvitation = z.infer<typeof createdInvitationSchema>;
 
 export const createdTransferSchema = z.object({
-  id: z.ulid(),
+  id: sharingRowId,
   expires_at: z.string(),
 });
 
@@ -629,6 +655,31 @@ export const INVITE_TTL_HOURS = 48;
 export const TRANSFER_TTL_HOURS = 72;
 
 /**
+ * Parses a create-RPC result whose row the server has already committed.
+ * The one-time token exists only in the caller's scope — the server stores
+ * just its SHA-256 hash — so a parse failure after the RPC returned would
+ * strand an orphaned invitation or an armed transfer nobody can redeem
+ * (issue #1284). The strict schema is tried first; a mismatch degrades to
+ * the raw payload's usable fields instead of throwing the token away.
+ */
+function parseCommittedResult<T extends z.ZodType>(
+  schema: T,
+  data: unknown,
+  degraded: (raw: Record<string, unknown>) => z.output<T>,
+): z.output<T> {
+  const parsed = schema.safeParse(data);
+  if (parsed.success) return parsed.data;
+  return degraded(
+    data !== null && typeof data === 'object' ? (data as Record<string, unknown>) : {},
+  );
+}
+
+/** `value` when it is a string, `fallback` for anything else. */
+function stringOr(value: unknown, fallback: string): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+/**
  * Creates a guardian invitation. The token is generated here, only its hash
  * travels; the returned `invitePath` is the browser-side redemption URL
  * (`/invite?code=…&profile=…`, the same query the app's universal links
@@ -658,7 +709,15 @@ export async function createGuardianInvitation(
     p_subject: options.subject,
   });
   if (error !== null) throw await failureFor(client, error, false);
-  return { invitation: createdInvitationSchema.parse(data), rawToken };
+  return {
+    invitation: parseCommittedResult(createdInvitationSchema, data, (raw) => ({
+      id: stringOr(raw['id'], ''),
+      profile_id: stringOr(raw['profile_id'], ''),
+      role: guardianRoleSchemaSafe(stringOr(raw['role'], '')) ?? 'viewer',
+      expires_at: stringOr(raw['expires_at'], ''),
+    })),
+    rawToken,
+  };
 }
 
 /**
@@ -758,7 +817,13 @@ export async function createOwnershipTransfer(
     p_ttl_hours: options.ttlHours ?? TRANSFER_TTL_HOURS,
   });
   if (error !== null) throw await failureFor(client, error, true);
-  return { transfer: createdTransferSchema.parse(data), rawToken };
+  return {
+    transfer: parseCommittedResult(createdTransferSchema, data, (raw) => ({
+      id: stringOr(raw['id'], ''),
+      expires_at: stringOr(raw['expires_at'], ''),
+    })),
+    rawToken,
+  };
 }
 
 /** Cancels a live transfer (R9: only the arming parent). */
