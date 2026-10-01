@@ -744,9 +744,15 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
   /// the stored null (no anchor ever recorded) keeps the field's "—" —
   /// nothing is assumed; the recorder's stamp-today fallback still owns
   /// that case. A non-tracked choice hides the field and its value is not
-  /// submitted (nothing is in effect to anchor).
+  /// submitted (nothing is in effect to anchor). A re-tap of the
+  /// already-selected item returns before either branch runs (issue
+  /// #1347): [DropdownButton] fires [DropdownButton.onChanged] even when
+  /// the tapped item is the current one, and letting the unchanged branch
+  /// run would clobber a Started-on date the operator just picked with a
+  /// fresh stored-anchor restore (or a today stamp).
   void _onBirthControlChanged(BirthControlChoice? value) {
     final choice = value ?? BirthControlChoice.notAnswered;
+    if (choice == _birthControl) return;
     setState(() {
       _birthControl = choice;
       if (!_selectedBirthControlIsTracked) return;

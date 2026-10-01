@@ -13,6 +13,7 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
 import 'package:provider/provider.dart';
@@ -424,6 +425,59 @@ void main() {
     final today = LocalDate.today();
     expect(popped!.birthControlStartedOn,
         LocalDate(today.year, today.month, 1).iso);
+  });
+
+  testWidgets('re-tapping the stored method keeps the date the operator '
+      'just picked (issue #1347)', (tester) async {
+    ProfileEditResult? popped;
+    await _openDialog(
+      tester,
+      // The issue's exact scenario: a stored pill anchored to 2026-03-01,
+      // a fresh Started-on pick, then a re-tap of "Pill" — the dropdown
+      // fires onChanged even when the tapped item is the one already
+      // selected, and the #1305 restore branch used to write the stored
+      // anchor back over the pick.
+      modes: _FakeModesRepository(_row(
+        birthControlMethod: 'pill',
+        birthControlStartedOn: '2026-03-01',
+      )),
+      onPopped: (result) => popped = result,
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('March 1, 2026'), findsOneWidget);
+
+    // Because the field holds the stored anchor, the picker opens on the
+    // anchor's own month (March 2026), not the run month — and its day 15
+    // is a deterministic, discriminating pick: always selectable (the
+    // anchor's month sits inside the past-bounded five-year window for
+    // every run after it), never equal to the stored "March 1, 2026".
+    final field = find.byKey(const ValueKey('edit-birth-control-start-date-field'));
+    await tester.ensureVisible(field);
+    await tester.pumpAndSettle();
+    await tester.tap(field);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('15').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    final picked = LocalDate(2026, 3, 15);
+    expect(_fieldValue(tester), dates.formatLocalDateMonthDayYear(picked),
+        reason: 'the pick replaced the stored anchor in the field');
+
+    // The re-tap: the same method, already selected — not a change.
+    await _switchBirthControl(tester, 'Pill');
+
+    expect(_fieldValue(tester), dates.formatLocalDateMonthDayYear(picked),
+        reason: 're-selecting the current method is not a change — the '
+            'picked date must survive instead of being restored to the '
+            'stored anchor');
+
+    await _save(tester);
+    expect(popped!.birthControlChoice, BirthControlChoice.pill);
+    expect(popped!.birthControlStartedOn, picked.iso,
+        reason: 'Save persists the date the operator picked, not the '
+            'stored anchor the re-tap used to write back');
   });
 
   group('pickerInitialDateInWindow (the shared clamp seam behind all three '
