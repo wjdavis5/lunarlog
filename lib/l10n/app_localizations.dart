@@ -2970,6 +2970,12 @@ abstract class AppLocalizations {
   /// **'Sign out everywhere'**
   String get webAuthSignOutEverywhereAction;
 
+  /// Issue #1342: web sign-out-everywhere failure when the Worker reports the upstream revocation never landed (its revocation_failed 502). This device's session has already ended, so the page shows the signed-out form; the copy names the consequence — other devices may still be signed in — and the way through (a bare retry cannot reach GoTrue without a session, so it says sign in first).
+  ///
+  /// In en, this message translates to:
+  /// **'This device is signed out, but signing your other devices out didn\'t go through — they may still be signed in. Sign in and try again, or sign out on each device yourself.'**
+  String get webAuthSignOutEverywhereRevocationFailed;
+
   /// Issue #1250: the web forgot-password screen's submit button.
   ///
   /// In en, this message translates to:

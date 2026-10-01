@@ -67,6 +67,17 @@ describe('authCopyFor (issue #1250)', () => {
     expect(copyCode('verifier_missing')).toContain('8-digit code');
   });
 
+  it('maps the Worker revocation code to the consequence-naming copy (issue #1342)', () => {
+    // The revocation_failed 502 (issue #1333) is the "other devices may
+    // still be signed in" signal — the copy must say that consequence, and
+    // the way through (a bare retry has no session to revoke with).
+    expect(copyCode('revocation_failed', 502)).toBe(
+      messages['webAuthSignOutEverywhereRevocationFailed'],
+    );
+    expect(copyCode('revocation_failed', 502)).toContain('other devices');
+    expect(copyCode('revocation_failed', 502)).toContain('Sign in and try again');
+  });
+
   it('buckets a code-less 429 as rate limited and everything else as generic', () => {
     expect(copyCode('unknown', 429)).toBe(messages['authFailureRateLimited']);
     expect(copyCode('mystery')).toBe(messages['commonSomethingWentWrong']);
