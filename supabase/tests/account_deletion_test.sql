@@ -145,6 +145,12 @@ select set_config('role', 'authenticated', true);
 insert into public.settings (user_id, key, value)
 values (tests.get_supabase_uid('user_b'), 'k1', 'v1');
 
+-- Issue #1277: authenticated no longer holds SELECT on day_entries.note, so
+-- this snapshot's whole-row read (to_jsonb projects every column) runs as
+-- the test superuser instead -- a fixture read, not the thing under test
+-- (the same move #201's migration made for fixture writes). The next block
+-- re-authenticates as user_a anyway.
+select tests.clear_authentication();
 select pg_temp.snapshot('b_before', jsonb_build_object(
   'profiles', (select jsonb_agg(to_jsonb(p) order by p.id) from public.profiles p
                 where user_id = tests.get_supabase_uid('user_b')),

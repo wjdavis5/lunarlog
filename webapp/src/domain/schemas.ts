@@ -163,7 +163,14 @@ export const symptomPatternSchema = z.object({
   /** Cycle-day keys, stringified (JSON object keys are strings). */
   frequencyByCycleDay: z.record(z.string(), z.number().int()),
   peakCycleDays: z.array(z.number().int()),
-  trend: z.enum(['increasing', 'decreasing', 'stable']),
+  /**
+   * Dart `TrendDirection` names (lib/domain/insights/symptom_trends.dart).
+   * `insufficientData` is emitted for every threshold-meeting pattern when
+   * fewer than 4 cycles exist — a 3-cycle history meets the reporting
+   * threshold (kMinObservationCycles = 3) but is too thin for the trend
+   * half-split — so it is a routine value, not an error (issue #1272).
+   */
+  trend: z.enum(['increasing', 'decreasing', 'stable', 'insufficientData']),
   meetsThreshold: z.boolean(),
 });
 

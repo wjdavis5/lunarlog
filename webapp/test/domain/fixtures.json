@@ -5909,6 +5909,303 @@
     }
   },
   {
+    "name": "cycleHistory.legacy-tz-calcutta",
+    "method": "cycleHistory",
+    "request": {
+      "today": "2026-09-30",
+      "tz": "Asia/Calcutta",
+      "entries": [
+        {
+          "id": "entry-profile-1-0-0",
+          "profileId": "profile-1",
+          "localDate": "2026-06-12",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-06-12T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-0-1",
+          "profileId": "profile-1",
+          "localDate": "2026-06-13",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-06-13T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-0-2",
+          "profileId": "profile-1",
+          "localDate": "2026-06-14",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-06-14T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-0-3",
+          "profileId": "profile-1",
+          "localDate": "2026-06-15",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-06-15T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-1-0",
+          "profileId": "profile-1",
+          "localDate": "2026-07-10",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-07-10T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-1-1",
+          "profileId": "profile-1",
+          "localDate": "2026-07-11",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-07-11T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-1-2",
+          "profileId": "profile-1",
+          "localDate": "2026-07-12",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-07-12T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-1-3",
+          "profileId": "profile-1",
+          "localDate": "2026-07-13",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-07-13T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-2-0",
+          "profileId": "profile-1",
+          "localDate": "2026-07-22",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-07-22T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-2-1",
+          "profileId": "profile-1",
+          "localDate": "2026-07-23",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-07-23T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-2-2",
+          "profileId": "profile-1",
+          "localDate": "2026-07-24",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-07-24T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-2-3",
+          "profileId": "profile-1",
+          "localDate": "2026-07-25",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-07-25T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-3-0",
+          "profileId": "profile-1",
+          "localDate": "2026-08-20",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-08-20T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-3-1",
+          "profileId": "profile-1",
+          "localDate": "2026-08-21",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-08-21T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-3-2",
+          "profileId": "profile-1",
+          "localDate": "2026-08-22",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-08-22T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-3-3",
+          "profileId": "profile-1",
+          "localDate": "2026-08-23",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-08-23T12:00:00.000Z"
+        }
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "items": [
+          {
+            "start": "2026-08-20",
+            "lengthDays": null,
+            "omitted": false,
+            "open": true,
+            "outlier": false,
+            "countedInAverages": false
+          },
+          {
+            "start": "2026-07-22",
+            "lengthDays": 29,
+            "omitted": false,
+            "open": false,
+            "outlier": false,
+            "countedInAverages": true
+          },
+          {
+            "start": "2026-07-10",
+            "lengthDays": 12,
+            "omitted": false,
+            "open": false,
+            "outlier": true,
+            "countedInAverages": false
+          },
+          {
+            "start": "2026-06-12",
+            "lengthDays": 28,
+            "omitted": false,
+            "open": false,
+            "outlier": false,
+            "countedInAverages": true
+          }
+        ],
+        "episodeCount": 4,
+        "completedCycleCount": 3,
+        "validCycleCount": 2,
+        "averagedCycleCount": 2,
+        "meanCycleLengthDays": 28.5,
+        "meanPeriodLengthDays": 4.0,
+        "variationDays": 1,
+        "confidence": "learning"
+      }
+    }
+  },
+  {
     "name": "insights.patterns-and-cramps",
     "method": "insights",
     "request": {
@@ -6308,6 +6605,315 @@
           "disclaimer": "Cramp estimates are based on your past logged tags, not medical diagnosis. Individual cycle timing and physical sensations may naturally vary."
         },
         "analyzedCycleCount": 4,
+        "hasEnoughData": true
+      }
+    }
+  },
+  {
+    "name": "insights.three-cycles-insufficient-trend",
+    "method": "insights",
+    "request": {
+      "today": "2026-09-30",
+      "tz": "UTC",
+      "entries": [
+        {
+          "id": "entry-profile-1-0-0",
+          "profileId": "profile-1",
+          "localDate": "2026-06-10",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-06-10T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-0-1",
+          "profileId": "profile-1",
+          "localDate": "2026-06-11",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [
+            "cramps"
+          ],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-06-11T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-0-2",
+          "profileId": "profile-1",
+          "localDate": "2026-06-12",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-06-12T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-0-3",
+          "profileId": "profile-1",
+          "localDate": "2026-06-13",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-06-13T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-1-0",
+          "profileId": "profile-1",
+          "localDate": "2026-07-08",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-07-08T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-1-1",
+          "profileId": "profile-1",
+          "localDate": "2026-07-09",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [
+            "cramps"
+          ],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-07-09T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-1-2",
+          "profileId": "profile-1",
+          "localDate": "2026-07-10",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-07-10T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-1-3",
+          "profileId": "profile-1",
+          "localDate": "2026-07-11",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-07-11T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-2-0",
+          "profileId": "profile-1",
+          "localDate": "2026-08-05",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-08-05T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-2-1",
+          "profileId": "profile-1",
+          "localDate": "2026-08-06",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [
+            "cramps"
+          ],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-08-06T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-2-2",
+          "profileId": "profile-1",
+          "localDate": "2026-08-07",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-08-07T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-2-3",
+          "profileId": "profile-1",
+          "localDate": "2026-08-08",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-08-08T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-3-0",
+          "profileId": "profile-1",
+          "localDate": "2026-09-02",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-09-02T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-3-1",
+          "profileId": "profile-1",
+          "localDate": "2026-09-03",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [
+            "cramps"
+          ],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-09-03T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-3-2",
+          "profileId": "profile-1",
+          "localDate": "2026-09-04",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-09-04T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-3-3",
+          "profileId": "profile-1",
+          "localDate": "2026-09-05",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-09-05T12:00:00.000Z"
+        }
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "symptomPatterns": [
+          {
+            "tag": "cramps",
+            "totalOccurrences": 3,
+            "cycleCount": 3,
+            "frequencyByCycleDay": {
+              "2": 3
+            },
+            "peakCycleDays": [
+              2
+            ],
+            "trend": "insufficientData",
+            "meetsThreshold": true
+          }
+        ],
+        "flowPattern": {
+          "flowByCycleDay": {
+            "1": {
+              "medium": 3
+            },
+            "2": {
+              "medium": 3
+            },
+            "3": {
+              "medium": 3
+            },
+            "4": {
+              "medium": 3
+            }
+          },
+          "typicalPeakFlow": "medium",
+          "typicalPeakDay": 1
+        },
+        "crampPrediction": {
+          "predictedCycleDays": [
+            2
+          ],
+          "predictedDates": [
+            "2026-10-01"
+          ],
+          "observedCycleCount": 3,
+          "totalCyclesAnalyzed": 3,
+          "disclaimer": "Cramp estimates are based on your past logged tags, not medical diagnosis. Individual cycle timing and physical sensations may naturally vary."
+        },
+        "analyzedCycleCount": 3,
         "hasEnoughData": true
       }
     }

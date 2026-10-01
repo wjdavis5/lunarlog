@@ -31,6 +31,16 @@ grant select on table ts to authenticated;
 create function pg_temp.ts_txt(k text) returns text language sql as
   $$ select to_char(t at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') from ts where ts.k = $1 $$;
 
+-- Issue #1277: authenticated no longer holds SELECT on day_entries.note
+-- (the direct-read leak the issue closes), so the note fixture read below
+-- goes through this superuser-side helper instead -- a fixture read, not
+-- the thing under test (the same move #201's migration made for fixture
+-- writes, which went to service_role).
+create function pg_temp.day_note(e text) returns text language sql
+security definer set search_path = ''
+as $$ select d.note from public.day_entries d where d.id = e $$;
+
+
 -- Helper: inspect the outbox as service_role (no authenticated policy
 -- exists on this table at all, by design - same helper shape as
 -- notification_outbox_test.sql / tags_element_length_check_test.sql).
@@ -106,7 +116,7 @@ select is(
   'the direct soft-delete still clears tags, as before'
 );
 select is(
-  (select note from public.day_entries where id = tests.ulid(225)),
+  pg_temp.day_note(tests.ulid(225)),
   null,
   'the direct soft-delete still clears note, as before'
 );
