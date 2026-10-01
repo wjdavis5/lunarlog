@@ -104,7 +104,7 @@ async function seedSharedCache(): Promise<void> {
     data: { profiles: [profileRow({ server_version: 7 })] },
     error: null,
   }));
-  await getSyncedDataCache().refresh(client);
+  await getSyncedDataCache().refresh(client, () => fakes.getUser()?.id ?? null);
   expect(getSyncedDataCache().current().profiles).toHaveLength(1);
 }
 
@@ -210,7 +210,10 @@ describe('the sign-out → sign-in identity boundary (issue #1281)', () => {
         error: null,
       };
     });
-    const snapshot = await getSyncedDataCache().refresh(pullClient);
+    const snapshot = await getSyncedDataCache().refresh(
+      pullClient,
+      () => fakes.getUser()?.id ?? null,
+    );
     expect(firstPullCursors).toEqual({});
     expect(snapshot.profiles.map((row) => row.display_name)).toEqual(['B-only']);
   });
@@ -277,6 +280,32 @@ describe('the shell identity watcher (issue #1281)', () => {
     // and replaced the refresh cookie. No auth mutation ran on this tab.
     fakes.getToken.mockResolvedValue('token-b');
     fakes.getUser.mockReturnValue(USER_B);
+
+    // Issue #1338: before the session query re-resolves, a synced-data
+    // refetch (a sync-signal wake, a refocus) pulls under the replaced
+    // cookie's account. The pull re-identifies itself — the cache was built
+    // under A, the pull ran under B — so its rows are discarded: B's profile
+    // never merges onto A's snapshot while the watcher still believes A.
+    const { client: renewalPullClient } = fakeRpcClient(async () => ({
+      data: {
+        profiles: [profileRow({ id: ULID_B, display_name: 'B-only', server_version: 9 })],
+      },
+      error: null,
+    }));
+    const pulledUnderB = await getSyncedDataCache().refresh(
+      renewalPullClient,
+      () => fakes.getUser()?.id ?? null,
+    );
+    expect(pulledUnderB.profiles.map((row) => row.display_name)).toEqual(['Maya']);
+    expect(
+      getSyncedDataCache()
+        .current()
+        .profiles.map((row) => row.id),
+    ).toEqual([ULID_A]);
+    expect((queryClient.getQueryData(AUTH_SESSION_QUERY_KEY) as AuthStatus)?.userId).toBe(
+      USER_A.id,
+    );
+
     await act(async () => {
       await queryClient.refetchQueries({ queryKey: AUTH_SESSION_QUERY_KEY });
     });

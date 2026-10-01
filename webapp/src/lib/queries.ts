@@ -95,7 +95,13 @@ async function refreshSyncedData(): Promise<SyncedData> {
   if (client === null) {
     throw new Error('Supabase is not configured in this build');
   }
-  return getSyncedDataCache().refresh(client);
+  // The pull is tagged with the account it runs under (issue #1338): the
+  // id is re-read inside refresh before the pull and again at resolution,
+  // so a renewal that adopted a replaced refresh cookie's account discards
+  // the pull instead of merging it onto the previous account's snapshot —
+  // the session query re-resolving is no longer the only thing that can
+  // notice.
+  return getSyncedDataCache().refresh(client, () => webAuth.getUser()?.id ?? null);
 }
 
 /** The synced dataset (profiles, entries, guardians, notes), pulled live. */
