@@ -270,6 +270,46 @@ void main() {
         isNot(contains('no background read and no schedule')),
         reason: 'the pre-#993 denial, verbatim',
       );
+      // Issue #1340: the import.astro lede still carried the pre-#993
+      // "always started by you" absolute after the body had been flipped
+      // (the #1304 round fixed the body and the ledger, not the lede), and
+      // the home page's import sentence carried it too while its ledger
+      // row claimed the background pass on the page's behalf. Both pages
+      // now state the bounded truth; the retired absolute may not
+      // resurface on either, and the home page must keep carrying the
+      // claim its ledger row asserts for it.
+      final homePage = flat(File(pages['/']!).readAsStringSync());
+      expect(
+        importPage,
+        contains('The first import is started by you'),
+        reason: "the /import lede states the user-started first import, "
+            "not the pre-#993 absolute (issue #1340)",
+      );
+      expect(
+        homePage,
+        contains('you start the first import'),
+        reason: "the home page's import sentence states the user-started "
+            "first import (issue #1340)",
+      );
+      expect(
+        homePage,
+        contains('and that first import has completed'),
+        reason: 'the home page states the completed-first-import gate, '
+            'not binding alone (PRIVACY.md §4, issue #1340)',
+      );
+      expect(
+        homePage,
+        contains('keeps itself current in the background'),
+        reason: "the home page claims the shipped background pass its "
+            "ledger row asserts on its behalf (issue #1340)",
+      );
+      for (final page in [homePage, importPage]) {
+        expect(
+          page,
+          isNot(contains('always started by you')),
+          reason: 'the pre-#993 absolute, verbatim (issue #1340)',
+        );
+      }
       final guide = flat(
         File('site/src/pages/guides/moving-your-data.astro')
             .readAsStringSync(),
