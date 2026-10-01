@@ -236,6 +236,93 @@ void main() {
         reason: 'a newly picked tracked method defaults to today');
   });
 
+  testWidgets('switching to another tracked method and back to the stored '
+      'one restores the stored anchor, and Save re-submits it (issue #1305)',
+      (tester) async {
+    ProfileEditResult? popped;
+    await _openDialog(
+      tester,
+      modes: _FakeModesRepository(_row(
+        birthControlMethod: 'pill',
+        birthControlStartedOn: '2026-08-15',
+      )),
+      onPopped: (result) => popped = result,
+    );
+    await tester.pumpAndSettle();
+
+    // pill → patch: the patch switch stamps today (a new method is in
+    // effect from today).
+    await _switchBirthControl(tester, 'Patch');
+    expect(_fieldValue(tester), isNot('August 15, 2026'),
+        reason: 'the pill\'s anchor is not the patch\'s');
+
+    // patch → pill: back on the stored method, the stored prefill comes
+    // back — the today the patch switch stamped must not survive it.
+    await _switchBirthControl(tester, 'Pill');
+    expect(_fieldValue(tester), 'August 15, 2026',
+        reason: 'returning to the stored method restores its true anchor, '
+            'not the assumed today an intermediate switch stamped');
+
+    await _save(tester);
+    expect(popped!.birthControlChoice, BirthControlChoice.pill);
+    expect(popped!.birthControlStartedOn, '2026-08-15',
+        reason: 'Save re-submits the stored anchor, so the repository\'s '
+            'same-method branch keeps it instead of overwriting it with '
+            'an assumed today');
+  });
+
+  testWidgets('a legacy-labeled stored row ("Pill") round-trips through the '
+      'same canonical method too (issue #1305)', (tester) async {
+    ProfileEditResult? popped;
+    await _openDialog(
+      tester,
+      // #216-era rows store English labels; the picker writes canonical
+      // ids, so a raw-string compare would misread patch → Pill as a
+      // change and stamp today over the stored anchor.
+      modes: _FakeModesRepository(_row(
+        birthControlMethod: 'Pill',
+        birthControlStartedOn: '2026-08-15',
+      )),
+      onPopped: (result) => popped = result,
+    );
+    await tester.pumpAndSettle();
+
+    await _switchBirthControl(tester, 'Patch');
+    expect(_fieldValue(tester), isNot('August 15, 2026'));
+
+    await _switchBirthControl(tester, 'Pill');
+    expect(_fieldValue(tester), 'August 15, 2026',
+        reason: 'the canonical compare maps "Pill" and "pill" onto the '
+            'same method, so the stored anchor is restored');
+
+    await _save(tester);
+    expect(popped!.birthControlChoice, BirthControlChoice.pill);
+    expect(popped!.birthControlStartedOn, '2026-08-15');
+  });
+
+  testWidgets('returning to a stored method that never recorded an anchor '
+      'restores the blank field (nothing is assumed)', (tester) async {
+    ProfileEditResult? popped;
+    await _openDialog(
+      tester,
+      modes: _FakeModesRepository(_row(birthControlMethod: 'pill')),
+      onPopped: (result) => popped = result,
+    );
+    await tester.pumpAndSettle();
+
+    await _switchBirthControl(tester, 'Patch');
+    expect(_fieldValue(tester), isNot('—'),
+        reason: 'the patch switch stamps today');
+
+    await _switchBirthControl(tester, 'Pill');
+    expect(_fieldValue(tester), '—',
+        reason: 'the stored null is restored — the recorder\'s #183 '
+            'stamp-today fallback still owns the no-anchor case');
+
+    await _save(tester);
+    expect(popped!.birthControlStartedOn, isNull);
+  });
+
   testWidgets('the picker is past-bounded: nothing after today, and the '
       'far past is unreachable too', (tester) async {
     await _openDialog(
