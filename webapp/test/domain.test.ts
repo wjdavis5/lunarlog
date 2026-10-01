@@ -355,7 +355,7 @@ describe('payload builders (issue #1252)', () => {
 // ---------------------------------------------------------------------------
 
 describe('the learned server-clock offset (issue #1283)', () => {
-  it('stamps raw before anything is learned — the phones\' zero-offset start', () => {
+  it("stamps raw before anything is learned — the phones' zero-offset start", () => {
     expect(learnedClockOffsetMs()).toBeNull();
     const fixed = () => new Date('2026-09-30T00:00:00Z');
     expect(nowSyncStamp(fixed)).toBe('2026-09-30T00:00:00.000Z');
@@ -372,7 +372,7 @@ describe('the learned server-clock offset (issue #1283)', () => {
     expect(learnClockOffset('2026-10-01T00:10:00.000Z', device)).toBe(542_400);
   });
 
-  it('a browser clock ten minutes fast stops tripping sync_push\'s future check', async () => {
+  it("a browser clock ten minutes fast stops tripping sync_push's future check", async () => {
     const deviceNow = Date.now();
     // The server sits ten minutes behind this browser — the raw stamp
     // (`now + 10 min`) is past `now() + interval '5 minutes'` and every

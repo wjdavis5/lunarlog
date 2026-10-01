@@ -476,7 +476,10 @@ describe('saveDay stamps the corrected clock (issue #1283)', () => {
     // first save (explicit nowIso, raw stamp) is what teaches the offset
     // from the response's server_now.
     const serverNow = new Date(deviceNow + 10 * 60_000).toISOString();
-    const rpcResult = { data: { resolved: [], rejected: [], server_now: serverNow }, error: null };
+    const rpcResult = {
+      data: { resolved: [], rejected: [], server_now: serverNow },
+      error: null,
+    };
     const seeding = fakeClient({ rpcResult });
     await saveDay(seeding.client, correctedArgs);
 

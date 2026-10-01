@@ -653,7 +653,11 @@ describe('notes payloads (the sync_push wire shapes)', () => {
     // server_now is what teaches the offset, so the notes pages' writes —
     // stamped via serverAdjustedNow — land on server time.
     const { client } = fakeRpc({
-      data: { resolved: [], rejected: [], server_now: new Date(deviceNow + 10 * 60_000).toISOString() },
+      data: {
+        resolved: [],
+        rejected: [],
+        server_now: new Date(deviceNow + 10 * 60_000).toISOString(),
+      },
       error: null,
     });
     await pushGuardianNotes(client, [
