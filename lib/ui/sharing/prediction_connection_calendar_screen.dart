@@ -90,7 +90,22 @@ class _PredictionConnectionCalendarScreenState
   Future<_ProjectionLoad> _load() async {
     final projection =
         await widget.service.fetchProjection(profileId: widget.profileId);
-    if (projection != null) return _ProjectionLoad.projected(projection);
+    if (projection != null) {
+      // Open on the published snapshot's own month, not the device's
+      // current one: this screen is a view of the sharer's projection, and
+      // a month rollover between publish and open must not land the header
+      // on a month the snapshot says nothing about (the calendar grid drew
+      // its markers from the projection all along — only the header chased
+      // the wall clock, which is what made every October run of the
+      // month-navigation test fail).
+      if (mounted) {
+        setState(() {
+          _month = LocalDate(
+              projection.generatedAt.year, projection.generatedAt.month, 1);
+        });
+      }
+      return _ProjectionLoad.projected(projection);
+    }
     // Issue #373: a recipient who just redeemed a code lands here before
     // the sharer's device has published anything. Only when this account
     // no longer holds a live connection to the profile is it "ended".
