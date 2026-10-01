@@ -28,6 +28,16 @@ create function pg_temp.resp(n text) returns jsonb language sql as
 create function pg_temp.resolved_row(n text, p_id text) returns jsonb language sql as
   $$ select e from r, jsonb_array_elements(r.v -> 'resolved') e where r.name = n and e ->> 'id' = p_id limit 1 $$;
 
+-- Issue #1277: authenticated no longer holds SELECT on day_entries.note
+-- (the direct-read leak the issue closes), so the note fixture read below
+-- goes through this superuser-side helper instead -- a fixture read, not
+-- the thing under test (the same move #201's migration made for fixture
+-- writes, which went to service_role).
+create function pg_temp.day_note(e text) returns text language sql
+security definer set search_path = ''
+as $$ select d.note from public.day_entries d where d.id = e $$;
+
+
 select tests.create_supabase_user('mom');
 select tests.create_supabase_user('dad');
 select tests.create_supabase_user('doctor');
@@ -115,7 +125,7 @@ select is(
   'R7: the surviving (newer) row carries the union of both caregivers'' tags'
 );
 select is(
-  (select note from public.day_entries where id = tests.ulid(911)),
+  pg_temp.day_note(tests.ulid(911)),
   'dad''s note',
   'R8: the winner''s note is unaffected by the tag merge (last-writer-wins)'
 );
@@ -135,7 +145,7 @@ select is(
   'R12: the loser is still a payload-free tombstone - tags cleared'
 );
 select is(
-  (select note from public.day_entries where id = tests.ulid(910)),
+  pg_temp.day_note(tests.ulid(910)),
   null,
   'R12: the loser is still a payload-free tombstone - note cleared'
 );

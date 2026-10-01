@@ -10,7 +10,7 @@
 -- round-trips the flag, and export_account_data() carries it (with the text
 -- masked for a non-subject caller).
 begin;
-select plan(24);
+select plan(37);
 
 create function pg_temp.token(n int) returns text language sql as
   $$ select lpad(to_hex(n), 64, '0') $$;
@@ -270,6 +270,104 @@ select is(
     where de ->> 'id' = tests.ulid(770)),
   'true',
   'the owner''s export still carries note_private'
+);
+
+-- ---------------------------------------------------------------------------
+-- 8. Issue #1277: the RPC masking is no longer bypassable by a direct
+--    PostgREST select. authenticated's table-wide SELECT grant on
+--    day_entries is replaced by a per-column grant covering every column
+--    EXCEPT note, so a raw `select note` (and any whole-row read, which
+--    projects every column) fails 42501 at the privilege layer for every
+--    membership -- the subject included; the RPCs are the only way to the
+--    note text, the read-path mirror of #201 making sync_push the only way
+--    to write.
+-- ---------------------------------------------------------------------------
+select ok(
+  not has_column_privilege('authenticated', 'public.day_entries', 'note', 'SELECT'),
+  'authenticated holds no SELECT on day_entries.note (issue #1277)'
+);
+select ok(
+  not has_table_privilege('authenticated', 'public.day_entries', 'SELECT'),
+  'authenticated''s day_entries SELECT is the per-column grant, not a table-wide one (issue #1277)'
+);
+select ok(
+  has_column_privilege('authenticated', 'public.day_entries', 'flow', 'SELECT')
+  and has_column_privilege('authenticated', 'public.day_entries', 'note_private', 'SELECT'),
+  'non-note columns stay directly readable: the grant excludes exactly the private text (issue #1277)'
+);
+select ok(
+  not has_column_privilege('anon', 'public.day_entries', 'note', 'SELECT')
+  and not has_table_privilege('anon', 'public.day_entries', 'SELECT'),
+  'anon never gains the note (issue #1277)'
+);
+-- Independent re-derivation of the grant at test time (the migration
+-- derived it from information_schema at CREATE time; this is the drift
+-- catch): for every column of day_entries, held SELECT must be exactly
+-- (column <> 'note').
+select is(
+  (select count(*) from information_schema.columns
+    where table_schema = 'public' and table_name = 'day_entries'
+      and has_column_privilege('authenticated', 'public.day_entries', column_name, 'SELECT')
+          is distinct from (column_name <> 'note')),
+  0::bigint,
+  'authenticated''s direct SELECT on day_entries is exactly every column except note, re-derived from the catalog (issue #1277)'
+);
+
+-- A raw PostgREST-style select of the private note text is denied for every
+-- membership, in every role -- the subject included (her sanctioned read is
+-- sync_pull, re-proven below; there is no direct grant for anyone to lose).
+select tests.authenticate_as('daughter');
+select throws_ok(
+  $$select note from public.day_entries where id = tests.ulid(770)$$,
+  '42501', null,
+  'the subject''s own direct select of the private note is denied -- the RPCs are the only note path (issue #1277)'
+);
+select tests.authenticate_as('mom');
+select throws_ok(
+  $$select note from public.day_entries where id = tests.ulid(770)$$,
+  '42501', null,
+  'a non-subject primary_guardian''s direct select of the private note is denied (issue #1277)'
+);
+select tests.authenticate_as('dad');
+select throws_ok(
+  $$select note from public.day_entries where id = tests.ulid(770)$$,
+  '42501', null,
+  'a co_parent''s direct select of the private note is denied (issue #1277)'
+);
+select tests.authenticate_as('sitter');
+select throws_ok(
+  $$select note from public.day_entries where id = tests.ulid(770)$$,
+  '42501', null,
+  'a caregiver''s direct select of the private note is denied (issue #1277)'
+);
+select tests.authenticate_as('aunt');
+select throws_ok(
+  $$select note from public.day_entries where id = tests.ulid(770)$$,
+  '42501', null,
+  'a viewer''s direct select of the private note is denied (issue #1277)'
+);
+select throws_ok(
+  $$select * from public.day_entries where id = tests.ulid(770)$$,
+  '42501', null,
+  'a whole-row direct select cannot route around the column revoke (issue #1277)'
+);
+-- The precise shape: a guardian's direct read of a NON-note column still
+-- works (that is the product's own re-scoped posture -- #849 hides only the
+-- private note text).
+select is(
+  (select flow from public.day_entries where id = tests.ulid(770)),
+  'light',
+  'a viewer''s direct select of a non-note column still works (issue #1277 hides exactly the note)'
+);
+
+-- And the sanctioned path still carries the text to the subject in full,
+-- straight after those denials, under the same post-revoke grants.
+select tests.authenticate_as('daughter');
+select is(
+  (select e ->> 'note' from jsonb_array_elements(public.sync_pull() -> 'day_entries') e
+    where e ->> 'id' = tests.ulid(770)),
+  'secret',
+  'the subject still reads her private note in full via sync_pull (issue #1277)'
 );
 
 rollback;

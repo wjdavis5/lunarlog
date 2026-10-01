@@ -35,6 +35,16 @@ create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
 create function pg_temp.resp(n text) returns jsonb language sql as
   $$ select v from r where name = n $$;
+
+-- Issue #1277: authenticated no longer holds SELECT on day_entries.note
+-- (the direct-read leak the issue closes), so the note fixture read below
+-- goes through this superuser-side helper instead -- a fixture read, not
+-- the thing under test (the same move #201's migration made for fixture
+-- writes, which went to service_role).
+create function pg_temp.day_note(e text) returns text language sql
+security definer set search_path = ''
+as $$ select d.note from public.day_entries d where d.id = e $$;
+
 create temp table ts (k text primary key, t timestamptz);
 insert into ts values
   ('t0', '2026-09-01T09:00:00Z'), ('t1', '2026-09-01T10:00:00Z'), ('t2', '2026-09-01T11:00:00Z');
@@ -115,7 +125,7 @@ update public.day_entries
    set updated_at = pg_temp.ts_at('t2')::timestamptz, note = 'still works'
  where id = tests.ulid(101);
 select set_config('role', 'authenticated', true);
-select is((select note from public.day_entries where id = tests.ulid(101)), 'still works',
+select is(pg_temp.day_note(tests.ulid(101)), 'still works',
   'day_entries: a healthy raw write is not blocked');
 
 -- ---------------------------------------------------------------------------
