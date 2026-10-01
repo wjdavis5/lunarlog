@@ -490,6 +490,56 @@ Deno.test(
 );
 
 Deno.test(
+  'sign-out clears the cookie even when the logout fetch rejects (issue #1292)',
+  async () => {
+    // GoTrue times out or resets the connection: the fetch rejects instead
+    // of resolving to an error status. The sign-out must still end the
+    // browser's session, not throw into a 500 that keeps the cookie alive.
+    const { deps, calls } = fakeDeps(() => {
+      throw new TypeError('fetch failed');
+    });
+    const response = await handleAuthRequest(
+      post('/auth/sign-out', { scope: 'global' }, { bearer: 'access-1' }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 200);
+    assertEquals(((await response?.json()) as { ok: boolean } | undefined)?.ok, true);
+    assertEquals(calls[0].path, '/auth/v1/logout?scope=global');
+    assertEquals(
+      response?.headers.get('set-cookie'),
+      `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
+    );
+  },
+);
+
+Deno.test(
+  'sign-out without a bearer still clears the cookie when the refresh leg rejects (issue #1292)',
+  async () => {
+    // No live access token and the cookie-refresh fetch rejects: no bearer
+    // ever exists, the logout leg is skipped, and the response is still
+    // the cleared-cookie 200 — never a thrown 500.
+    const { deps, calls } = fakeDeps(() => {
+      throw new TypeError('fetch failed');
+    });
+    const response = await handleAuthRequest(
+      post('/auth/sign-out', { scope: 'local' }, { cookie: `${REFRESH_COOKIE}=refresh-1` }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 200);
+    assertEquals(calls.length, 1);
+    assertEquals(calls[0].path, '/auth/v1/token?grant_type=refresh_token');
+    assertEquals(
+      response?.headers.get('set-cookie'),
+      `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
+    );
+  },
+);
+
+Deno.test(
   'sign-up with email confirmation on returns no session but starts the PKCE flow',
   async () => {
     const { deps, calls } = fakeDeps(
