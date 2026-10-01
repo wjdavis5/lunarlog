@@ -42,6 +42,7 @@ import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
 import 'package:lunarlog/ui/sharing/prediction_connection_calendar_screen.dart';
 import 'package:lunarlog/ui/sharing/prediction_connections_screen.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/sharing/share_predictions_dialog.dart';
 import 'package:provider/provider.dart';
 
@@ -441,6 +442,11 @@ void main() {
     });
 
     testWidgets('month navigation re-renders the grid', (tester) async {
+      // The calendar opens on the *current* month
+      // (initState's `LocalDate.today()`), not on the projection's asOf — so
+      // every expected label is derived from today, never hardcoded. (The
+      // original hardcoded 'September 2026' passed only while the calendar
+      // was September and broke the suite on every UTC day of October 2026.)
       final asOf = LocalDate(2026, 9, 7);
       final service = _FakePredictionConnectionService(
         projection: _projection(asOf),
@@ -458,18 +464,33 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('September 2026'), findsOneWidget);
+
+      // The same label the screen builds in _monthLabel (English under the
+      // test's default locale), and month shifts that stay valid across
+      // year boundaries and the 31sts (day normalised to 1 — the label only
+      // reads year and month).
+      String label(LocalDate month) =>
+          '${dates.monthNames()[month.month - 1]} ${month.year}';
+      LocalDate nextMonth(LocalDate month) => month.month == 12
+          ? LocalDate(month.year + 1, 1, 1)
+          : LocalDate(month.year, month.month + 1, 1);
+      LocalDate previousMonth(LocalDate month) => month.month == 1
+          ? LocalDate(month.year - 1, 12, 1)
+          : LocalDate(month.year, month.month - 1, 1);
+
+      final initial = LocalDate.today();
+      expect(find.text(label(initial)), findsOneWidget);
 
       await tester.tap(find.byIcon(Icons.chevron_right));
       await tester.pumpAndSettle();
-      expect(find.text('October 2026'), findsOneWidget);
+      expect(find.text(label(nextMonth(initial))), findsOneWidget);
 
       await tester.tap(find.byIcon(Icons.chevron_left));
       await tester.pumpAndSettle();
-      expect(find.text('September 2026'), findsOneWidget);
+      expect(find.text(label(initial)), findsOneWidget);
       await tester.tap(find.byIcon(Icons.chevron_left));
       await tester.pumpAndSettle();
-      expect(find.text('August 2026'), findsOneWidget);
+      expect(find.text(label(previousMonth(initial))), findsOneWidget);
     });
   });
 
