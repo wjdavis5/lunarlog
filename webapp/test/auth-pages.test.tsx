@@ -192,9 +192,7 @@ describe('SignInPage (issue #1250)', () => {
     expect(
       await screen.findByText(messages['authFailureRateLimited'] ?? ''),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByText(messages['authFailureWrongPassword']),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(messages['authFailureWrongPassword'])).not.toBeInTheDocument();
   });
 });
 
