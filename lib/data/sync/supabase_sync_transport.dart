@@ -40,6 +40,10 @@ class SupabaseSyncTransport implements SyncTransport {
   static const String _rpc = 'sync_push';
   static const String _versionColumn = 'server_version';
 
+  /// Issue #1277: the masked single-table page RPC the day_entries fallback
+  /// rides (see [_pullDayEntriesPageViaMaskedRpc]).
+  static const String _dayEntriesPullRpc = 'sync_pull_day_entries';
+
   /// Issue #598: `sync_pull`'s per-table page cap
   /// (`c_page_size` in 20260913014000_sync_server_version_indexes_and_pull.sql).
   /// A cached page at exactly this length may not be the whole story — the
@@ -107,11 +111,88 @@ class SupabaseSyncTransport implements SyncTransport {
     SyncTable.dayEntryHistory,
   };
 
-  /// The original per-table select, unchanged (issue #598's fallback path):
+  /// The original per-table select (issue #598's fallback path), dispatched
+  /// by table. [SyncTable.dayEntries] can no longer ride it (issue #1277:
+  /// authenticated no longer holds SELECT on day_entries.note, so a
+  /// whole-row select would fail 42501 — and on a pre-migration server it
+  /// was itself the leak, reading the private note unmasked); its fallback
+  /// is [_pullDayEntriesPageViaMaskedRpc]. Every other table is unchanged:
   /// used directly for [SyncTable.deletedProfiles] (never covered by
-  /// `sync_pull`), and for every other table whenever [_cachedSlice] has
-  /// nothing to answer from.
+  /// `sync_pull`), and whenever [_cachedSlice] has nothing to answer from.
   Future<List<RemoteRow>> _pullPageViaSelect({
+    required SyncTable table,
+    required int afterVersion,
+    required int limit,
+  }) async {
+    if (table == SyncTable.dayEntries) {
+      return _pullDayEntriesPageViaMaskedRpc(
+        afterVersion: afterVersion,
+        limit: limit,
+      );
+    }
+    return _pullPageViaLegacySelect(
+      table: table,
+      afterVersion: afterVersion,
+      limit: limit,
+    );
+  }
+
+  /// Issue #1277: the day_entries fallback page, served by the masked
+  /// single-table page RPC (`sync_pull_day_entries`) instead of the raw
+  /// per-table select — sync_pull's day_entries branch as a callable page,
+  /// so the fallback applies the exact #849 masking the cycle prime does
+  /// instead of reading around it.
+  Future<List<RemoteRow>> _pullDayEntriesPageViaMaskedRpc({
+    required int afterVersion,
+    required int limit,
+  }) async {
+    final Object? data;
+    try {
+      data = await _client.rpc<dynamic>(_dayEntriesPullRpc, params: {
+        'p_after_version': afterVersion,
+        'p_limit': limit,
+      });
+    } on PostgrestException catch (error) {
+      if (error.code == _functionNotFoundCode) {
+        // Issue #1277: a server predating this RPC (the RPC and the column
+        // revoke land in the same release) still holds the old table-wide
+        // grant, so the legacy raw select is both available and unmasked
+        // there — the same graceful upgrade-skew shape fetchWatermark uses
+        // for sync_watermark. On such a server nothing has regressed: the
+        // note was never masked server-side to begin with.
+        return _pullPageViaLegacySelect(
+          table: SyncTable.dayEntries,
+          afterVersion: afterVersion,
+          limit: limit,
+        );
+      }
+      throw mapSyncTransportError(error);
+    } catch (error) {
+      throw mapSyncTransportError(error);
+    }
+    if (data is! List) {
+      throw const SyncTransportError.other();
+    }
+    try {
+      return [
+        for (final row in data)
+          decodeRemoteRow(
+              SyncTable.dayEntries, (row as Map).cast<String, Object?>()),
+      ];
+    } on RowCodecError {
+      // Do not advance a cursor past data this client could not preserve.
+      // The engine surfaces a durable error and retries after repair.
+      throw const SyncTransportError.other();
+    }
+  }
+
+  /// The legacy whole-row per-table select, unchanged (issue #598's
+  /// fallback path): used directly for [SyncTable.deletedProfiles] (never
+  /// covered by `sync_pull`) and every non-day_entries table whenever
+  /// [_cachedSlice] has nothing to answer from — plus day_entries only on
+  /// a server predating the masked page RPC (see
+  /// [_pullDayEntriesPageViaMaskedRpc]).
+  Future<List<RemoteRow>> _pullPageViaLegacySelect({
     required SyncTable table,
     required int afterVersion,
     required int limit,

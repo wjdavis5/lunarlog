@@ -10,7 +10,7 @@
 -- round-trips the flag, and export_account_data() carries it (with the text
 -- masked for a non-subject caller).
 begin;
-select plan(37);
+select plan(46);
 
 create function pg_temp.token(n int) returns text language sql as
   $$ select lpad(to_hex(n), 64, '0') $$;
@@ -368,6 +368,78 @@ select is(
     where e ->> 'id' = tests.ulid(770)),
   'secret',
   'the subject still reads her private note in full via sync_pull (issue #1277)'
+);
+
+-- ---------------------------------------------------------------------------
+-- 9. Issue #1277 part 2: public.sync_pull_day_entries(after_version,
+--    limit) -- sync_pull's masked day_entries branch as a callable
+--    single-table page. It exists so the sync transport's per-table pull
+--    FALLBACK (the raw whole-row select the cache-miss path used) has a
+--    masked page to ride instead: 20260921140000 removed authenticated's
+--    SELECT on note, so the legacy fallback would fail 42501 -- and on a
+--    pre-migration server it was itself the leak this issue closes.
+-- ---------------------------------------------------------------------------
+select ok(
+  has_function_privilege('authenticated', 'public.sync_pull_day_entries(bigint,integer)', 'execute'),
+  'authenticated can execute sync_pull_day_entries (issue #1277)'
+);
+select ok(
+  not has_function_privilege('anon', 'public.sync_pull_day_entries(bigint,integer)', 'execute'),
+  'anon cannot execute sync_pull_day_entries (issue #1277)'
+);
+
+select tests.authenticate_as('daughter');
+select is(
+  (select e ->> 'note' from jsonb_array_elements(public.sync_pull_day_entries(0, 500)) e
+    where e ->> 'id' = tests.ulid(770)),
+  'secret',
+  'the masked page RPC hands the subject her private note in full (issue #1277)'
+);
+select tests.authenticate_as('mom');
+select is(
+  (select (e ->> 'note') is null and (e ->> 'note_private') = 'true'
+     from jsonb_array_elements(public.sync_pull_day_entries(0, 500)) e
+    where e ->> 'id' = tests.ulid(770)),
+  true,
+  'the masked page RPC hides the note from a non-subject guardian exactly like sync_pull (issue #1277)'
+);
+
+-- Cursor and page shape: rows at or below the cursor are excluded, and
+-- p_limit caps the page (the transport asks for exactly the page its
+-- sync_pull cache could not answer). Still as daughter (any guardian works;
+-- the RPC requires an authenticated user).
+select tests.authenticate_as('daughter');
+select is(
+  (select exists (
+     select 1 from jsonb_array_elements(public.sync_pull_day_entries(
+       (select server_version from public.day_entries where id = tests.ulid(770)), 500)) e
+      where e ->> 'id' = tests.ulid(770))),
+  false,
+  'sync_pull_day_entries honors the after_version cursor (issue #1277)'
+);
+select is(
+  jsonb_array_length(public.sync_pull_day_entries(0, 2)),
+  2,
+  'sync_pull_day_entries caps the page at p_limit (issue #1277)'
+);
+select throws_ok(
+  $$select public.sync_pull_day_entries(0, 0)$$,
+  '22023', null,
+  'sync_pull_day_entries rejects a non-positive p_limit (issue #1277)'
+);
+select throws_ok(
+  $$select public.sync_pull_day_entries(0, 501)$$,
+  '22023', null,
+  'sync_pull_day_entries rejects a p_limit past sync_pull''s own page cap (issue #1277)'
+);
+
+-- A guardian of no profile gets an empty tenant set, not an error.
+select tests.create_supabase_user('outsider');
+select tests.authenticate_as('outsider');
+select is(
+  public.sync_pull_day_entries(0, 500),
+  '[]'::jsonb,
+  'a user with no guardianship gets an empty page, not an error (issue #1277)'
 );
 
 rollback;
