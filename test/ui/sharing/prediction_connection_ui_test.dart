@@ -465,12 +465,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // The screen opens on the device's real current month (initState:
-      // `_month = LocalDate.today()`) — derive every expected header label
-      // from the same clock and the same formatter the screen uses. The
-      // hardcoded labels this test once carried ('September 2026', ...)
-      // failed deterministically the first minute their month ended (the
-      // 2026-10-01T00:30Z CI run opened the grid on October).
+      // The screen opens on the month of the `today` the caller pins
+      // (initState: `_month = widget.today ?? LocalDate.today()`); this test
+      // pins it to `asOf`, so every expected header label derives from
+      // `asOf` too. Deriving them from the real wall clock instead (as the
+      // first post-#1298 cut did) detaches the expectation from what the
+      // screen actually renders and fails 11 months of the year — the
+      // 01:28Z/01:56Z shard-0 failures of 2026-10-01 were exactly that:
+      // screen pinned to September, labels expecting October.
       final context = tester.element(
         find.byType(PredictionConnectionCalendarScreen),
       );
@@ -482,7 +484,7 @@ void main() {
         return LocalDate(total ~/ 12, total % 12 + 1, 1);
       }
 
-      final start = LocalDate.today();
+      final start = asOf;
       expect(find.text(labelOf(start)), findsOneWidget);
 
       await tester.tap(find.byIcon(Icons.chevron_right));
