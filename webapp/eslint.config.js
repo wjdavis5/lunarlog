@@ -7,9 +7,16 @@
 //   1. The nothing-stored ban. The browser client keeps nothing at rest —
 //      not data, not even the auth session. `no-restricted-globals` +
 //      `no-restricted-properties` make localStorage, sessionStorage,
-//      indexedDB, caches, navigator.serviceWorker, and document.cookie
-//      compile errors for app code. test/lint-bans.test.ts proves the ban
-//      actually fires (CI fails if someone scopes it away).
+//      indexedDB, caches, cookieStore, navigator.serviceWorker, and
+//      document.cookie compile errors for app code. `no-restricted-globals`
+//      only fires on the bare global and `no-restricted-properties` only on
+//      an `Identifier` object, so the same surfaces through a qualified
+//      reference — window.localStorage, globalThis.sessionStorage,
+//      self.indexedDB, window.navigator.serviceWorker,
+//      window.document.cookie — used to slip past (issue #1275); a
+//      `no-restricted-syntax` selector over MemberExpression property
+//      names closes that. test/lint-bans.test.ts proves the ban actually
+//      fires (CI fails if someone scopes it away).
 //
 //   2. The no-typed-copy ban. No user-facing string is typed in TSX: every
 //      visible string comes from the message catalogue generated from
@@ -55,6 +62,11 @@ export const STORAGE_BANS = [
       'the CacheStorage API persists responses past the page. The web client caches in memory only (issue #1249).',
   },
   {
+    name: 'cookieStore',
+    message:
+      'the CookieStore API reads and writes cookies, which persist state in the browser. The web client keeps nothing at rest (issue #1249).',
+  },
+  {
     object: 'navigator',
     property: 'serviceWorker',
     message:
@@ -65,6 +77,28 @@ export const STORAGE_BANS = [
     property: 'cookie',
     message:
       'cookies persist state in the browser. The web client keeps nothing at rest (issue #1249).',
+  },
+];
+
+/**
+ * The banned surfaces reached through a *qualified* reference. The bare-name
+ * rules above only report the global itself and an `Identifier`-named
+ * object, so `window.localStorage`, `globalThis.sessionStorage`,
+ * `self.indexedDB`, `window.caches`, `window.cookieStore`,
+ * `window.navigator.serviceWorker`, and `window.document.cookie` used to
+ * pass untouched (issue #1275). A member access carrying one of these
+ * property names — from any receiver — is the same persistence surface, and
+ * in this codebase nothing else legitimately owns properties with these
+ * names.
+ *
+ * @type {{ selector: string, message: string }[]}
+ */
+export const STORAGE_SYNTAX_BANS = [
+  {
+    selector:
+      'MemberExpression[property.name=/^(localStorage|sessionStorage|indexedDB|caches|cookieStore|cookie|serviceWorker)$/]',
+    message:
+      'Browser storage reached through a qualified reference — e.g. window.localStorage, globalThis.sessionStorage, self.caches, window.cookieStore, window.navigator.serviceWorker, window.document.cookie — keeps data at rest exactly like the bare name does. The web client keeps nothing at rest (issue #1249) — keep state in memory (TanStack Query) or on the server via supabase-js.',
   },
 ];
 
@@ -121,9 +155,16 @@ const storageBanRules = {
   ],
 };
 
-const copyBanRules = {
+// Both selector families share `no-restricted-syntax` — a second spread of
+// a rules object carrying the same rule key would silently drop the first,
+// so the storage and copy selectors are merged into one array here.
+const syntaxBanRules = {
   'no-restricted-syntax': [
     'error',
+    ...STORAGE_SYNTAX_BANS.map((ban) => ({
+      selector: ban.selector,
+      message: ban.message,
+    })),
     ...COPY_BANS.map((ban) => ({
       selector: ban.selector,
       message: ban.message,
@@ -167,7 +208,7 @@ export default tseslint.config(
     files: ['src/**/*.{ts,tsx}'],
     rules: {
       ...storageBanRules,
-      ...copyBanRules,
+      ...syntaxBanRules,
     },
   },
 );
