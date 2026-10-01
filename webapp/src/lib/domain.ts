@@ -39,7 +39,15 @@ import { newUlid } from './ulid';
  *   guardian-tenant-scoped, `server_version`-cursor RPC the phones parse
  *   (its per-table page cap is 500, well under PostgREST's 1,000-row
  *   response cap, and this module pages to exhaustion, so a profile's full
- *   cycle history loads no matter its size).
+ *   cycle history loads no matter its size). The cursors a pull hands back
+ *   are clamped to the server's commit-safe `sync_watermark()` — or, when
+ *   that RPC is unavailable, to `CURSOR_LOOKBACK` below each table's
+ *   pulled maximum — so an out-of-commit-order row can never be skipped
+ *   past (issue #1282, the web mirror of issue #521's engine fix).
+ *   Membership changes (invite accept, transfer claim, leave, revoke)
+ *   reshapes what the RPC returns without bumping `server_version`s, so
+ *   `SyncedDataCache.repullAll` re-pulls from zero into a fresh,
+ *   membership-filtered snapshot after them.
  * - Private-note masking lives *only* on the RPC paths: a non-subject
  *   guardian receives a masked `day_entries.note = null` from `sync_pull`
  *   (mask_day_entry_note, 20260921130000). A raw `select` on
@@ -94,6 +102,21 @@ export const POSTGREST_PAGE_SIZE = 1_000;
 /** Safety cap on pull rounds; unreachable in practice, a guard against a
  * paging bug spinning forever. */
 const MAX_PULL_ROUNDS = 1_000;
+
+/**
+ * Issue #1282: how far below a table's highest pulled `server_version` the
+ * cursor may advance when the server's commit-safe watermark is unavailable
+ * — the web mirror of the engine's `kCursorLookback` (issue #521,
+ * `lib/data/sync/supabase_sync_engine.dart`). `server_version` comes from a
+ * sequence assigned *before* commit, so a lower-versioned row can become
+ * visible after a higher one has already been pulled; a strict
+ * `server_version > cursor` pull that pinned the cursor to the page maximum
+ * would never re-fetch it. Keeping the cursor this many versions short of
+ * the maximum re-pulls a small band of already-seen rows on the next pull —
+ * mergeSyncedData is idempotent (last-writer-wins by updated_at), so the
+ * duplicate work costs nothing but correctness.
+ */
+export const CURSOR_LOOKBACK = 50;
 
 // ---------------------------------------------------------------------------
 // The learned server-clock offset (issue #1283)
@@ -270,10 +293,79 @@ async function pullOnce(
 }
 
 /**
+ * The server's commit-safe pull-cursor ceiling (`public.sync_watermark()`,
+ * 20260913015000): `min(min_version) - 1` over every transaction still
+ * holding an uncommitted `server_version`, so advancing a cursor to it can
+ * never strand a later-committing, lower-versioned row. `null` — the RPC is
+ * missing (a server predating the migration) or the call failed for any
+ * reason — degrades the caller to the [CURSOR_LOOKBACK] fallback, exactly
+ * like the engine's `SupabaseSyncTransport.fetchWatermark`: the watermark is
+ * an optimization the pull cursor can always do without, never a
+ * correctness requirement, so a hiccup fetching it must never fail the
+ * pull. PostgREST renders a `bigint` as a JSON number in practice but is
+ * not guaranteed to (precision past 2^53), so a quoted numeric string is
+ * accepted too.
+ */
+async function fetchWatermark(client: AppSupabaseClient): Promise<number | null> {
+  try {
+    const { data, error } = await client.rpc('sync_watermark');
+    if (error !== null) {
+      return null;
+    }
+    if (typeof data === 'number' && Number.isFinite(data)) {
+      return data;
+    }
+    if (typeof data === 'string') {
+      const parsed = Number(data);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The cursors one pull may safely persist: each table's raw pull maximum
+ * clamped to at most the commit-safe `watermark` when one was available, or
+ * to [CURSOR_LOOKBACK] below the raw maximum when it was not — and never
+ * below the cursors the pull started from (a stale or lagging watermark
+ * must never move a cursor backward, only fail to advance it as far as the
+ * page allows; the engine's `_clampedCursor` carries the same floor).
+ *
+ * Issue #1282's race, restated: `nextval()` order is not commit order, so a
+ * row can become visible *after* a higher version has been pulled; paging
+ * runs on the raw maxima (so one pull never re-reads its own band and the
+ * exhaustion check stays exact), and the clamp lands on the cursors this
+ * pull hands back — the only ones a caller persists.
+ */
+function clampedPullCursors(
+  raw: SyncPullCursors,
+  start: SyncPullCursors,
+  watermark: number | null,
+): SyncPullCursors {
+  const clamped: SyncPullCursors = {};
+  for (const table of Object.keys(raw) as SyncCursorTable[]) {
+    const rawValue = raw[table];
+    if (rawValue === undefined) {
+      continue;
+    }
+    const target = watermark ?? rawValue - CURSOR_LOOKBACK;
+    clamped[table] = Math.max(start[table] ?? 0, Math.min(target, rawValue));
+  }
+  return clamped;
+}
+
+/**
  * Pulls every synced table forward from `cursors` (all the way from zero
  * for a first load — a profile's full cycle history arrives, not just the
  * recent window), paging until no table returns a full page, and returns
  * the merged rows plus the advanced cursors.
+ *
+ * The returned cursors are clamped (issue #1282): at most the server's
+ * commit-safe `sync_watermark()` when that RPC answers, otherwise
+ * [CURSOR_LOOKBACK] below each table's raw maximum — either way never below
+ * the cursors the pull started from. See [clampedPullCursors].
  *
  * `maxRounds` overrides the safety cap for the never-exhausts guard's own
  * test: driving the production 1,000-round budget through a real 500-row
@@ -287,8 +379,10 @@ export async function pullSyncedData(
   opts: { cursors?: SyncPullCursors; maxRounds?: number } = {},
 ): Promise<{ data: SyncedData; cursors: SyncPullCursors }> {
   const maxRounds = opts.maxRounds ?? MAX_PULL_ROUNDS;
-  const cursors: SyncPullCursors = { ...emptyCursors(), ...opts.cursors };
+  const start: SyncPullCursors = { ...emptyCursors(), ...opts.cursors };
+  const cursors: SyncPullCursors = { ...start };
   const merged = emptySyncedData();
+  const watermark = await fetchWatermark(client);
 
   for (let round = 0; round < maxRounds; round += 1) {
     const page = await pullOnce(client, cursors);
@@ -317,7 +411,7 @@ export async function pullSyncedData(
     append('profile_guardians', page.profile_guardians);
 
     if (!anyFull) {
-      return { data: merged, cursors };
+      return { data: merged, cursors: clampedPullCursors(cursors, start, watermark) };
     }
   }
   throw new Error(`sync_pull did not exhaust within ${maxRounds} rounds`);
@@ -782,6 +876,57 @@ export class SyncedDataCache {
     const generation = this.generation;
     const identityBefore = readIdentity();
     const result = await pullSyncedData(client, { cursors: this.cursors });
+    return this.adoptPull(readIdentity, generation, identityBefore, () => {
+      this.cursors = result.cursors;
+      this.snapshot = mergeSyncedData(this.snapshot, result.data);
+      return this.snapshot;
+    });
+  }
+
+  /**
+   * The full from-zero re-pull (issue #1282): a membership change — invite
+   * accept, ownership-transfer claim, leave, revoke — reshapes which rows
+   * `sync_pull` returns without bumping the affected rows'
+   * `server_version`s, so an incremental pull can never converge. The new
+   * profile's history sits below the session's cursors (the global sequence
+   * predates the accept), and a left/revoked profile simply stops being
+   * returned with no tombstone at all. This pull starts from zero cursors
+   * and lands in a **fresh** snapshot — the stale rows are discarded with
+   * the snapshot that held them, not merged over — filtered down to the
+   * profiles the pulled `profile_guardians` rows still accept for this
+   * account (see [filterToAcceptedMemberships]).
+   *
+   * The same generation + identity guard as [refresh]: a pull that resolves
+   * across a sign-out/reset, or under an account the snapshot was not built
+   * for, touches nothing.
+   */
+  async repullAll(
+    client: AppSupabaseClient,
+    readIdentity: () => string | null,
+  ): Promise<SyncedData> {
+    const generation = this.generation;
+    const identityBefore = readIdentity();
+    const result = await pullSyncedData(client, { cursors: emptyCursors() });
+    return this.adoptPull(readIdentity, generation, identityBefore, (identity) => {
+      this.cursors = result.cursors;
+      this.snapshot = filterToAcceptedMemberships(result.data, identity);
+      return this.snapshot;
+    });
+  }
+
+  /**
+   * [refresh]/[repullAll]'s shared landing: re-reads the identity and
+   * discards the pull when the generation moved (a reset landed mid-pull,
+   * issue #1315) or the pull ran under — or re-identified itself into — an
+   * account the current snapshot was not built for (issue #1338). Only on a
+   * clean landing does `commit` write the cursors and snapshot.
+   */
+  private async adoptPull(
+    readIdentity: () => string | null,
+    generation: number,
+    identityBefore: string | null,
+    commit: (identity: string | null) => SyncedData,
+  ): Promise<SyncedData> {
     const identityAfter = readIdentity();
     if (
       generation !== this.generation ||
@@ -798,9 +943,7 @@ export class SyncedDataCache {
       return this.snapshot;
     }
     this.identity = identityAfter;
-    this.cursors = result.cursors;
-    this.snapshot = mergeSyncedData(this.snapshot, result.data);
-    return this.snapshot;
+    return commit(identityAfter);
   }
 
   /** The current merged snapshot, or the empty one before the first pull. */
@@ -870,6 +1013,51 @@ function mergeByNaturalKey<T extends { profile_id: string; updated_at: string }>
     }
   }
   return [...byKey.values()];
+}
+
+/**
+ * Drops every profile this account no longer holds an **accepted**
+ * guardianship on, with all of its dependent rows (issue #1282). Runs on a
+ * from-zero pull's fresh snapshot only: `sync_pull` scopes every table to
+ * the caller's accepted memberships server-side, but an *incremental* pull
+ * returns `profile_guardians` rows past the cursor only — deriving the set
+ * from one of those would mistake an unchanged (not re-returned) membership
+ * for a missing one. A from-zero pull carries every guardian row on every
+ * pulled profile, so the derived set is complete.
+ *
+ * `sync_pull`'s `profile_guardians` branch returns **all** guardian rows on
+ * the accepted profiles (every guardian, not just the caller's), so the
+ * caller's own rows are picked out by `user_id`. A null identity (no live
+ * read — not a state a successful pull reaches, since the RPC requires an
+ * authenticated caller) skips the filter: the server-side tenant predicate
+ * already scoped the rows.
+ */
+export function filterToAcceptedMemberships(
+  data: SyncedData,
+  userId: string | null,
+): SyncedData {
+  if (userId === null) {
+    return data;
+  }
+  const accepted = new Set(
+    data.profile_guardians
+      .filter((row) => row.user_id === userId && row.status === 'accepted')
+      .map((row) => row.profile_id),
+  );
+  const onAcceptedProfiles = <T extends { profile_id: string }>(rows: T[]): T[] =>
+    rows.filter((row) => accepted.has(row.profile_id));
+  return {
+    profiles: data.profiles.filter((row) => accepted.has(row.id)),
+    day_entries: onAcceptedProfiles(data.day_entries),
+    observations: onAcceptedProfiles(data.observations),
+    profile_modes: onAcceptedProfiles(data.profile_modes),
+    cycle_overrides: onAcceptedProfiles(data.cycle_overrides),
+    care_notes: onAcceptedProfiles(data.care_notes),
+    visit_prep_items: onAcceptedProfiles(data.visit_prep_items),
+    profile_tag_registry: onAcceptedProfiles(data.profile_tag_registry),
+    profile_guardians: onAcceptedProfiles(data.profile_guardians),
+    guardian_notes: onAcceptedProfiles(data.guardian_notes),
+  };
 }
 
 /** The page's one synced-data cache. */

@@ -37,13 +37,13 @@ export function createAppQueryClient(): QueryClient {
   });
 }
 
-export const PROFILES_QUERY_KEY = ['profiles'] as const;
-
 /**
  * The whole synced dataset, one query: `sync_pull` (cursor-paginated) plus
  * the two direct selects, validated at the boundary and merged into the
  * page's in-memory snapshot. The realtime hook below invalidates this key
- * on every `sync_signals` wake.
+ * on every `sync_signals` wake, and the sharing mutations invalidate it
+ * after every membership change (issue #1282) — it is the only key any
+ * screen reads.
  */
 export const SYNCED_DATA_QUERY_KEY = ['synced-data'] as const;
 
@@ -112,6 +112,33 @@ export function useSyncedData() {
     queryFn: refreshSyncedData,
     enabled,
   });
+}
+
+/**
+ * The membership-change re-pull (issue #1282): after an invite accept, an
+ * ownership-transfer claim, a leave, or a revoke, the sharing pages call
+ * this — a full from-zero pull into a fresh snapshot (an incremental pull
+ * cannot converge: the joined profile's history sits below the session's
+ * cursors, and a left/revoked profile stops being returned with no
+ * tombstone), then the synced-data invalidation so every mounted screen
+ * refetches against it. Best-effort: a failed re-pull still invalidates
+ * (the ordinary incremental refresh runs), and the promise never rejects,
+ * so a caller's follow-on navigation always lands. No-op on an
+ * unconfigured build.
+ */
+export async function repullMembershipData(queryClient: QueryClient): Promise<void> {
+  const client = getSupabaseClient();
+  if (client === null) {
+    return;
+  }
+  try {
+    await getSyncedDataCache().repullAll(client, () => webAuth.getUser()?.id ?? null);
+  } catch {
+    // The re-pull is convergence, not a gate — the sharing RPC itself
+    // already succeeded, so its failure must not fail the mutation.
+  } finally {
+    await queryClient.invalidateQueries({ queryKey: SYNCED_DATA_QUERY_KEY });
+  }
 }
 
 /**

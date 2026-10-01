@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppIntlProvider } from '../src/i18n/i18n';
 import messages from '../src/i18n/messages.en.json';
 import { QueryClient } from '@tanstack/react-query';
+import { SYNCED_DATA_QUERY_KEY } from '../src/lib/queries';
 import { SharingError } from '../src/lib/sharing';
 import { ManageGuardiansPage } from '../src/pages/ManageGuardiansPage';
 
@@ -65,6 +66,19 @@ const domainMocks = vi.hoisted(() => ({ refresh: vi.fn() }));
 vi.mock('../src/lib/domain', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   getSyncedDataCache: () => ({ refresh: domainMocks.refresh }),
+}));
+
+// Issue #1282: the leave flow's from-zero re-pull runs through this one
+// queries-module helper — mocked here so the page tests pin *that* the
+// mutation triggers it (the helper's own behavior is unit-tested in
+// domain.test.ts through SyncedDataCache.repullAll).
+const queriesMocks = vi.hoisted(() => ({
+  repullMembershipData: vi.fn(() => Promise.resolve()),
+}));
+
+vi.mock('../src/lib/queries', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  repullMembershipData: queriesMocks.repullMembershipData,
 }));
 
 const sharingMocks = vi.hoisted(() => ({
@@ -408,6 +422,78 @@ describe('ManageGuardiansPage (issue #1255)', () => {
       ),
     });
     expect(screen.queryByText('Mom')).not.toBeInTheDocument();
+  });
+
+  it('leaving re-pulls membership data and lands home (issue #1282)', async () => {
+    sharingMocks.fetchGuardians.mockResolvedValue([
+      guardianRow({ role: 'co_parent', display_name: 'Dad' }),
+      guardianRow({
+        id: '4f4f4f4f-4f4f-4f4f-8f4f-4f4f4f4f4f4f',
+        user_id: OTHER,
+        role: 'primary_guardian',
+        display_name: 'Mom',
+      }),
+    ]);
+    sharingMocks.revokeGuardian.mockResolvedValue(undefined);
+    renderPage();
+    fireEvent.click(
+      await screen.findByText(messages['manageGuardiansLeaveProfileTooltip'] ?? ''),
+    );
+    fireEvent.click(screen.getByText(messages['manageGuardiansLeaveProfileConfirm'] ?? ''));
+    await waitFor(() => {
+      expect(sharingMocks.revokeGuardian).toHaveBeenCalledWith(fakeClient, ULID, ME);
+    });
+    // sync_pull stops returning the left profile with no tombstone (issue
+    // #1282) — the from-zero re-pull is what drops it, and the navigation
+    // waits for it.
+    await waitFor(() => {
+      expect(queriesMocks.repullMembershipData).toHaveBeenCalledTimes(1);
+    });
+    await screen.findByText('home');
+  });
+
+  it('removing another guardian refreshes the guardians list only — no membership re-pull', async () => {
+    sharingMocks.fetchGuardians.mockResolvedValue([
+      guardianRow(),
+      guardianRow({
+        id: '4f4f4f4f-4f4f-4f4f-8f4f-4f4f4f4f4f4f',
+        user_id: OTHER,
+        role: 'co_parent',
+        display_name: 'Uncle',
+      }),
+    ]);
+    sharingMocks.revokeGuardian.mockResolvedValue(undefined);
+    renderPage();
+    fireEvent.click(
+      await screen.findByText(messages['manageGuardiansRemoveCaregiverTooltip'] ?? ''),
+    );
+    fireEvent.click(screen.getByText(messages['sharingManageGuardiansRemove'] ?? ''));
+    await waitFor(() => {
+      expect(sharingMocks.revokeGuardian).toHaveBeenCalledWith(fakeClient, ULID, OTHER);
+    });
+    // The revoked account is the one whose view must converge; this
+    // operator's own membership set is unchanged (issue #1282).
+    expect(queriesMocks.repullMembershipData).not.toHaveBeenCalled();
+  });
+
+  it('arming a transfer invalidates the synced-data query (the dead profiles key is gone, issue #1282)', async () => {
+    sharingMocks.createOwnershipTransfer.mockResolvedValue({
+      transfer: { id: INVITE_ROW_ID, expires_at: '2026-10-03T00:00:00Z' },
+      rawToken: 'T0KEN123',
+    });
+    const { queryClient } = renderPage();
+    await screen.findByText(messages['sharingTransferOwnershipAction'] ?? '');
+    expect(queryClient.getQueryState(SYNCED_DATA_QUERY_KEY)?.isInvalidated ?? false).toBe(
+      false,
+    );
+    fireEvent.click(screen.getByText(messages['sharingTransferOwnershipAction'] ?? ''));
+    // The invalidation lands on the one key any screen reads — the
+    // mounted-but-idle synced-data query is marked stale and refetches the
+    // moment a session holds (the profiles key this used to touch is read
+    // by no query at all).
+    await waitFor(() => {
+      expect(queryClient.getQueryState(SYNCED_DATA_QUERY_KEY)?.isInvalidated).toBe(true);
+    });
   });
 });
 

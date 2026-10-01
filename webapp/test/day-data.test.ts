@@ -240,8 +240,12 @@ describe('fetchDayView (issue #1254, on the shared synced-data cache)', () => {
     expect(view.entry?.id).toBe(ENTRY_ID);
     expect(view.membership?.role).toBe('primary_guardian');
     // The first pull starts from empty cursors (cloned at call time — the
-    // pull loop mutates its cursors object after the call returns).
-    expect(rpcCalls[0]).toEqual(['sync_pull', { p_cursors: {} }]);
+    // pull loop mutates its cursors object after the call returns). The
+    // commit-safe watermark probe (issue #1282) precedes it; filtered out
+    // here so the assertion keeps pinning the sync_pull call itself.
+    expect(rpcCalls.filter(([name]) => name === 'sync_pull')).toEqual([
+      ['sync_pull', { p_cursors: {} }],
+    ]);
   });
 
   it('propagates a sync_pull failure as a typed error', async () => {
@@ -298,8 +302,13 @@ describe('saveDay (issue #1254)', () => {
     expect(result.serverNow).toBe(NOW);
     // A clean save is the only kind that refreshes the cache: the pull
     // after the push is exactly what the rejected/declined saves below
-    // must skip (issue #1290).
-    expect(rpc.mock.calls.map(([name]) => name)).toEqual(['sync_push', 'sync_pull']);
+    // must skip (issue #1290) — with its watermark probe (issue #1282)
+    // ahead of it, since the probe lives inside the pull.
+    expect(rpc.mock.calls.map(([name]) => name)).toEqual([
+      'sync_push',
+      'sync_watermark',
+      'sync_pull',
+    ]);
   });
 
   it('maps an opaque row rejection back to the field that owns the id', async () => {

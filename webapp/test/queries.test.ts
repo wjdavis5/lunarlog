@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   createAppQueryClient,
-  PROFILES_QUERY_KEY,
+  repullMembershipData,
   resetWebData,
   SYNCED_DATA_QUERY_KEY,
   useHasSyncSession,
@@ -19,11 +19,7 @@ describe('createAppQueryClient (issue #1249)', () => {
     expect(client.getDefaultOptions().queries?.persister).toBeUndefined();
   });
 
-  it('exposes the stable profiles query key', () => {
-    expect(PROFILES_QUERY_KEY).toEqual(['profiles']);
-  });
-
-  it('exposes the stable synced-data query key the realtime hook invalidates', () => {
+  it('exposes the stable synced-data query key the realtime hook and the sharing mutations invalidate', () => {
     expect(SYNCED_DATA_QUERY_KEY).toEqual(['synced-data']);
   });
 });
@@ -52,6 +48,18 @@ describe('the session-gated hooks (issue #1252)', () => {
     resetWebData(client);
     expect(clearSpy).toHaveBeenCalledTimes(1);
     expect(client.getQueryData(['synced-data'])).toBeUndefined();
+  });
+
+  it('repullMembershipData is a no-op on an unconfigured build — no pull, no invalidation', async () => {
+    // hasSupabase is false in the vitest env: there is no client to pull
+    // with, so the helper resolves without touching the query at all (the
+    // configured path is exercised by the invite/manage-guardians page
+    // tests through their mocked seams).
+    const queryClient = createAppQueryClient();
+    const seeded = { profiles: [] };
+    queryClient.setQueryData(SYNCED_DATA_QUERY_KEY, seeded);
+    await expect(repullMembershipData(queryClient)).resolves.toBeUndefined();
+    expect(queryClient.getQueryData(SYNCED_DATA_QUERY_KEY)).toBe(seeded);
   });
 });
 

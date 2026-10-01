@@ -37,6 +37,19 @@ vi.mock('../src/lib/sharing', async (importOriginal) => ({
   ...sharingMocks,
 }));
 
+// Issue #1282: the membership re-pull runs through this one queries-module
+// helper — mocked here so the page tests pin *that* the mutations trigger
+// it (the helper's own behavior is unit-tested in domain.test.ts through
+// SyncedDataCache.repullAll).
+const queriesMocks = vi.hoisted(() => ({
+  repullMembershipData: vi.fn(() => Promise.resolve()),
+}));
+
+vi.mock('../src/lib/queries', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  repullMembershipData: queriesMocks.repullMembershipData,
+}));
+
 function renderAt(path: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -154,7 +167,10 @@ describe('AcceptInviteForm (issue #1255)', () => {
         expect.objectContaining({ consentVia: 'parent_invite' }),
       );
     });
-    // Navigated home after the accept.
+    // The membership re-pull ran before the navigation (issue #1282): the
+    // joined profile's history can only arrive on a from-zero pull.
+    expect(queriesMocks.repullMembershipData).toHaveBeenCalledTimes(1);
+    // Navigated home after the accept and its re-pull.
     await screen.findByText('home');
   });
 
@@ -168,6 +184,9 @@ describe('AcceptInviteForm (issue #1255)', () => {
     expect(
       await screen.findByText(messages['sharingFailureAlreadyAccepted'] ?? ''),
     ).toBeInTheDocument();
+    // The re-pull is a success-path consequence — a failed accept made no
+    // membership change to converge.
+    expect(queriesMocks.repullMembershipData).not.toHaveBeenCalled();
   });
 });
 
@@ -191,9 +210,10 @@ describe('ClaimTransferForm (kind=claim, issue #1255)', () => {
     expect(
       await screen.findByText(messages['transferFailureAlreadyArmed'] ?? ''),
     ).toBeInTheDocument();
+    expect(queriesMocks.repullMembershipData).not.toHaveBeenCalled();
   });
 
-  it('claiming navigates home through the done state', async () => {
+  it('claiming re-pulls membership data and navigates home through the done state', async () => {
     sharingMocks.acceptOwnershipTransfer.mockResolvedValue({
       profile_id: ULID,
       profile_name: 'Maya',
@@ -202,6 +222,12 @@ describe('ClaimTransferForm (kind=claim, issue #1255)', () => {
     });
     renderAt('/invite?code=T0KEN&kind=claim');
     fireEvent.click(screen.getByText(messages['claimProfileBecomeGuardianAction'] ?? ''));
+    // The claim inserts this account's guardianship without bumping the
+    // profile's server_version (issue #1282) — the from-zero re-pull is
+    // what converges the snapshot.
+    await waitFor(() => {
+      expect(queriesMocks.repullMembershipData).toHaveBeenCalledTimes(1);
+    });
     fireEvent.click(await screen.findByText(messages['sharingInviteGuardianDone'] ?? ''));
     await screen.findByText('home');
   });

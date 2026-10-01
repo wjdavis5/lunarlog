@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router';
 
 import pkg from '../../package.json';
 import { useT } from '../i18n/t';
-import { PROFILES_QUERY_KEY } from '../lib/queries';
+import { repullMembershipData } from '../lib/queries';
 import {
   acceptGuardianInvitation,
   acceptOwnershipTransfer,
@@ -87,9 +87,12 @@ function AcceptInviteForm(props: { rawToken: string }) {
     },
     onSuccess: () => {
       // The joined profile appears in the shell's list — the same
-      // close-the-sheet outcome the app lands on.
-      void queryClient.invalidateQueries({ queryKey: PROFILES_QUERY_KEY });
-      navigate('/');
+      // close-the-sheet outcome the app lands on. The membership change
+      // reshapes sync_pull's response without bumping server_versions
+      // (issue #1282), so the full from-zero re-pull is what actually
+      // brings the new profile's history in; the helper's invalidation
+      // refreshes the shell once it has landed, and only then navigate.
+      void repullMembershipData(queryClient).then(() => navigate('/'));
     },
     onError: (error) => setFailure(failureKind(error)),
   });
@@ -206,7 +209,10 @@ function ClaimTransferForm(props: { rawToken: string }) {
     onSuccess: (result) => {
       setClaimed(result);
       setFailure(null);
-      void queryClient.invalidateQueries({ queryKey: PROFILES_QUERY_KEY });
+      // The claim inserts this account's guardianship without bumping the
+      // profile's server_version (issue #1282) — converge with the full
+      // from-zero re-pull, not a dead key.
+      void repullMembershipData(queryClient);
     },
     onError: (error) => setFailure(failureKind(error)),
   });
