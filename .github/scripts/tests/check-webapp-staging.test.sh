@@ -49,6 +49,15 @@ EOF
   cat >"$dir/auth-callback.body" <<'EOF'
 <!doctype html><html lang="en"><head><title>lunarlog</title></head><body><div id="root"></div></body></html>
 EOF
+  cat >"$dir/auth-session.headers" <<'EOF'
+HTTP/2 401
+date: Wed, 30 Sep 2026 12:00:00 GMT
+content-type: application/json
+cache-control: no-store
+EOF
+  cat >"$dir/auth-session.body" <<'EOF'
+{"error":"no_session"}
+EOF
 }
 
 # run_case DIR [SCRIPT] -- populates $LAST_EXIT and $LAST_LOG. SCRIPT
@@ -179,6 +188,20 @@ run_case "$WORK/callback-404"
 assert_exit "a 404 on /auth/callback refuses" 1
 assert_contains "the callback failure is named" "$LAST_LOG" "/auth/callback?code=smoke"
 
+# --- The /auth/session probe (issue #1280) ----------------------------------
+
+make_fixtures "$WORK/session-500"
+edit_fixture "$WORK/session-500/auth-session.headers" "s|^HTTP/2 401$|HTTP/2 500|"
+run_case "$WORK/session-500"
+assert_exit "a 500 on /auth/session refuses (the ctx-as-deps symptom)" 1
+assert_contains "the session failure is named" "$LAST_LOG" "/auth/session"
+
+make_fixtures "$WORK/session-200"
+edit_fixture "$WORK/session-200/auth-session.headers" "s|^HTTP/2 401$|HTTP/2 200|"
+run_case "$WORK/session-200"
+assert_exit "a 200 on /auth/session refuses (signed-out must be exactly 401)" 1
+assert_contains "the session failure is named" "$LAST_LOG" "/auth/session"
+
 # --- The beacon: warn by default, armed = hard fail -------------------------
 
 make_fixtures "$WORK/beacon"
@@ -219,6 +242,11 @@ assert_contains "ci.yml has a webapp job" "$CI" "name: Web app (lint, typecheck,
 assert_contains "the webapp job is path-gated on the detect-changes output" "$CI" "outputs.webapp"
 assert_contains "the webapp job runs the Playwright suite" "$CI" "npm run e2e"
 assert_contains "the webapp job pins Node like site/" "$CI" "node-version: '22'"
+
+# The /auth/session probe must stay in the check under test itself: if the
+# path ever stops matching fixture_path's session branch above, the two
+# truth-table cases would silently test the root fixtures instead.
+assert_contains "the check probes /auth/session (issue #1280)" "$(cat "$SCRIPT")" 'SESSION_URL="$BASE_URL/auth/session"'
 
 # Issue #1249's acceptance criterion: the web CI job must NOT be a required
 # check of the store release gate, and must not gate the ruleset rollup
