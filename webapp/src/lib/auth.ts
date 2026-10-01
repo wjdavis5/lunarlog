@@ -255,13 +255,17 @@ export class WebAuthClient {
 
   /**
    * Signs out this device's session, or every device's on 'global'. The
-   * in-memory token dies in a `finally` (issue #1292): the Worker clears
-   * the refresh cookie on its side even when its upstream calls fail, and
-   * a POST that never lands or fails must not leave the page holding a
-   * live access token. The error still propagates so the UI can show it.
+   * pre-POST renewal is best-effort (issue #1325): on an idle tab a failed
+   * /auth/session renewal must not stop the sign-out POST, because the
+   * Worker's bearer-less sign-out refreshes from the cookie itself and
+   * clears it regardless. The in-memory token dies in a `finally` (issue
+   * #1292): the Worker clears the refresh cookie on its side even when its
+   * upstream calls fail, and a POST that never lands or fails must not
+   * leave the page holding a live access token. The error still propagates
+   * so the UI can show it.
    */
   async signOut(scope: SignOutScope): Promise<void> {
-    const token = await this.getToken();
+    const token = await this.getToken().catch(() => null);
     const headers: Record<string, string> = {
       'content-type': 'application/json',
       [CSRF_HEADER]: '1',

@@ -192,6 +192,39 @@ describe('WebAuthClient (issue #1250)', () => {
     expect(await client.getToken()).toBeNull();
   });
 
+  it('still sends the sign-out POST when the token renewal fails (issue #1325)', async () => {
+    let sessionCalls = 0;
+    const { calls } = stubFetch((call) => {
+      if (call.url === '/auth/session') {
+        sessionCalls += 1;
+        if (sessionCalls === 1) return Promise.resolve(jsonResponse(SESSION_BODY));
+        // The idle-tab failure: the renewal signOut needs has expired and
+        // dies with a non-401 error the way an unreachable GoTrue surfaces
+        // through the Worker.
+        return Promise.resolve(jsonResponse({ error: 'unknown' }, 500));
+      }
+      return Promise.resolve(jsonResponse({ ok: true }));
+    });
+
+    // A live session first; then the tab idles past the token's expiry.
+    await client.getToken();
+    expect(client.getUser()?.id).toBe('u1');
+    client.expireTokenForTests();
+
+    // The failed renewal must not stop the POST: the Worker's bearer-less
+    // sign-out refreshes from the cookie itself and clears it regardless.
+    await client.signOut('local');
+
+    const signOutCall = calls[2]; // calls[1] is the failed renewal itself.
+    expect(signOutCall.url).toBe('/auth/sign-out');
+    expect(JSON.parse(String(signOutCall.init?.body))).toEqual({ scope: 'local' });
+    const headers = new Headers(signOutCall.init?.headers);
+    expect(headers.get('authorization')).toBeNull();
+    // The in-memory session died in the finally even though the renewal
+    // threw before the try.
+    expect(client.getUser()).toBeNull();
+  });
+
   it('surfaces verifier_missing from the callback exchange', async () => {
     stubFetch(() => Promise.resolve(jsonResponse({ error: 'verifier_missing' }, 401)));
     await expect(client.exchangeCallback('code')).rejects.toMatchObject({
