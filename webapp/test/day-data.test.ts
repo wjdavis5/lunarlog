@@ -296,6 +296,10 @@ describe('saveDay (issue #1254)', () => {
     expect(result.ourEntryDeclined).toBe(false);
     expect(result.mergedLoserCount).toBe(0);
     expect(result.serverNow).toBe(NOW);
+    // A clean save is the only kind that refreshes the cache: the pull
+    // after the push is exactly what the rejected/declined saves below
+    // must skip (issue #1290).
+    expect(rpc.mock.calls.map(([name]) => name)).toEqual(['sync_push', 'sync_pull']);
   });
 
   it('maps an opaque row rejection back to the field that owns the id', async () => {
@@ -311,6 +315,27 @@ describe('saveDay (issue #1254)', () => {
     });
     const result = await saveDay(client, saveArgs);
     expect(result.rejectedFields).toContain('entry');
+  });
+
+  it('resolves a partly-rejected push and skips the post-save cache refresh', async () => {
+    const { client, rpc } = fakeClient({
+      rpcResult: {
+        data: {
+          resolved: [],
+          rejected: [{ id: ENTRY_ID, rejected: true }],
+          server_now: NOW,
+        },
+        error: null,
+      },
+    });
+    const result = await saveDay(client, saveArgs);
+    // The push itself succeeded, so the outcome resolves — the page's
+    // onSuccess runs and must read it as not-accepted rather than saved.
+    // Nothing was accepted, so nothing pulls: the server kept its stored
+    // state (issue #1290).
+    expect(result.rejectedFields).toEqual(['entry']);
+    expect(result.ourEntryDeclined).toBe(false);
+    expect(rpc.mock.calls.map(([name]) => name)).toEqual(['sync_push']);
   });
 
   it('maps an observation rejection to its category (bbt)', async () => {
@@ -355,7 +380,7 @@ describe('saveDay (issue #1254)', () => {
   });
 
   it('recognises the decline handback (our id, server copy) as lost LWW', async () => {
-    const { client } = fakeClient({
+    const { client, rpc } = fakeClient({
       rpcResult: {
         data: {
           resolved: [
@@ -375,6 +400,9 @@ describe('saveDay (issue #1254)', () => {
     const result = await saveDay(client, saveArgs);
     expect(result.ourEntryDeclined).toBe(true);
     expect(result.mergedLoserCount).toBe(0);
+    // The decline resolves too (issue #1290) and nothing was accepted, so
+    // the cache is not refreshed.
+    expect(rpc.mock.calls.map(([name]) => name)).toEqual(['sync_push']);
   });
 
   it('counts tombstoned same-date losers as merges, not declines', async () => {

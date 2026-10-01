@@ -252,10 +252,17 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
     saveMutation.mutate(
       { edit, view, dateIso, todayIso, tz },
       {
-        onSuccess: () => {
+        onSuccess: (result) => {
           // Keystrokes made while the push was in flight stay in the
           // editor; the baseline only absorbs what the server accepted.
-          setSavedBaseline(serializeEdit(snapshot));
+          // A partly-rejected or LWW-declined push still resolves, so the
+          // baseline must not move for it: the edit stays dirty — Save
+          // (retry) enabled, the beforeunload warning armed — and the
+          // banner's values survive the invalidation refetch instead of
+          // being re-seeded away.
+          if (result.rejectedFields.length === 0 && !result.ourEntryDeclined) {
+            setSavedBaseline(serializeEdit(snapshot));
+          }
         },
       },
     );
