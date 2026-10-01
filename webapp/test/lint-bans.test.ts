@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { ESLint } from 'eslint';
 import { expect, describe, it } from 'vitest';
 
-import { COPY_BANS, STORAGE_BANS } from '../eslint.config.js';
+import { COPY_BANS, STORAGE_BANS, STORAGE_SYNTAX_BANS } from '../eslint.config.js';
 
 const webappRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -32,6 +32,11 @@ describe('the nothing-stored storage ban (issue #1249)', () => {
       'no-restricted-globals',
     ],
     ['caches', 'export async function f() { return caches.keys(); }', 'no-restricted-globals'],
+    [
+      'cookieStore',
+      "export async function f() { return cookieStore.get('k'); }",
+      'no-restricted-globals',
+    ],
     [
       'navigator.serviceWorker',
       'export async function f() { return navigator.serviceWorker.getRegistrations(); }',
@@ -75,6 +80,65 @@ describe('the nothing-stored storage ban (issue #1249)', () => {
     expect(result?.messages.filter((m) => m.ruleId === 'no-restricted-globals')).toHaveLength(
       0,
     );
+  });
+});
+
+describe('the qualified-reference storage ban (issue #1275)', () => {
+  // no-restricted-globals only reports the bare global and
+  // no-restricted-properties only an Identifier-named object, so these
+  // qualified forms used to pass both. The no-restricted-syntax selector
+  // over MemberExpression property names is what must fire here.
+  const qualifiedSnippets: [string, string][] = [
+    [
+      'window.localStorage',
+      'export function f(): number { return window.localStorage.length; }',
+    ],
+    [
+      'globalThis.sessionStorage',
+      'export function f(): number { return globalThis.sessionStorage.length; }',
+    ],
+    [
+      'self.indexedDB',
+      'export function f(): IDBFactory | undefined { return self.indexedDB; }',
+    ],
+    ['window.caches', 'export async function f() { return window.caches.keys(); }'],
+    ['window.cookieStore', "export async function f() { return window.cookieStore.get('k'); }"],
+    [
+      'window.navigator.serviceWorker',
+      'export async function f() { return window.navigator.serviceWorker.getRegistrations(); }',
+    ],
+    [
+      'window.document.cookie',
+      'export function f(): string { return window.document.cookie; }',
+    ],
+  ];
+
+  it.each(qualifiedSnippets)('bans %s', async (surface, snippet) => {
+    const messages = await lintSrc(snippet);
+    const hits = messages.filter((m) => m.ruleId === 'no-restricted-syntax');
+    expect(
+      hits,
+      `expected the qualified-reference selector to fire for ${surface}`,
+    ).not.toHaveLength(0);
+    expect(hits.some((m) => m.message.includes('nothing at rest'))).toBe(true);
+  });
+
+  it('does not fire on member access with unrelated property names', async () => {
+    const messages = await lintSrc(
+      'export function f(w: Window): void { w.scrollTo(0, 0); }\n',
+    );
+    expect(messages.filter((m) => m.ruleId === 'no-restricted-syntax')).toHaveLength(0);
+  });
+
+  it('stays scoped to src/ (e2e reads qualified storage to assert emptiness)', async () => {
+    const [result] = await linter.lintText('export const n = window.localStorage.length;\n', {
+      filePath: join(webappRoot, 'e2e', 'probe.spec.ts'),
+    });
+    expect(result?.messages.filter((m) => m.ruleId === 'no-restricted-syntax')).toHaveLength(0);
+  });
+
+  it('exports exactly the selector the config consumes', () => {
+    expect(STORAGE_SYNTAX_BANS).toHaveLength(1);
   });
 });
 

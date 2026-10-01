@@ -30,9 +30,12 @@ The browser keeps nothing at rest — the rule is enforced from three
 directions, and CI fails if any of them regresses:
 
 1. **ESLint bans the storage surfaces in app code** (`eslint.config.js`):
-   `localStorage`, `sessionStorage`, `indexedDB`, `caches`,
+   `localStorage`, `sessionStorage`, `indexedDB`, `caches`, `cookieStore`,
    `navigator.serviceWorker`, and `document.cookie` are restricted in
-   `src/**`. `test/lint-bans.test.ts` lints offending snippets through the
+   `src/**` — as bare globals and through a qualified reference alike
+   (`window.localStorage`, `globalThis.sessionStorage`,
+   `window.navigator.serviceWorker`, `window.document.cookie`, …; issue
+   #1275). `test/lint-bans.test.ts` lints offending snippets through the
    real config and fails if the ban stops firing (the acceptance criterion:
    "a lint test proves the storage ban fires").
 2. **supabase-js cannot write a session either**: the client is created with

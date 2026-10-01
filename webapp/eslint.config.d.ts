@@ -7,3 +7,4 @@ export const STORAGE_BANS: {
   message: string;
 }[];
 export const COPY_BANS: { selector: string; message: string }[];
+export const STORAGE_SYNTAX_BANS: { selector: string; message: string }[];
