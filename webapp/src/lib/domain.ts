@@ -56,13 +56,18 @@ import { newUlid } from './ulid';
  * `day_entries`' direct INSERT/UPDATE grants (a column-scoped
  * `note_private` grant exists but nothing in the app uses it directly).
  * The client generates each row's ULID id and `updated_at`, so the
- * server's last-writer-wins and same-date merge rules behave as they do
- * for phones; per-row rejections (date bounds, key allowlist, viewer
- * role) come back in `rejected` and are surfaced mapped to the offending
- * payload row. Guardian-membership changes ride the sharing RPCs
+ * server's last-writer-wins and same-date rules behave as they do for
+ * phones; per-row rejections (date bounds, key allowlist, viewer role)
+ * come back in `rejected` and are surfaced mapped to the offending payload
+ * row. Guardian-membership changes ride the sharing RPCs
  * (`create_guardian_invitation`, `accept_guardian_invitation`,
  * `update_guardian_role`, `revoke_guardian`, …) — this module adds no
- * server path, and no migration ships with it.
+ * server path, and no migration ships with it. `updated_at` is stamped
+ * from the device clock corrected by the offset learned from each push's
+ * `server_now` (issue #1283) — the web mirror of the phones' issue-#566
+ * clock discipline, so a browser clock more than five minutes fast stops
+ * tripping `sync_push`'s future check and a slow one stops losing
+ * last-writer-wins.
  *
  * **Live updates:** `public.sync_signals` is the only table the Realtime
  * publication carries (20260905100000) — a content-free
@@ -89,6 +94,87 @@ export const POSTGREST_PAGE_SIZE = 1_000;
 /** Safety cap on pull rounds; unreachable in practice, a guard against a
  * paging bug spinning forever. */
 const MAX_PULL_ROUNDS = 1_000;
+
+// ---------------------------------------------------------------------------
+// The learned server-clock offset (issue #1283)
+// ---------------------------------------------------------------------------
+
+/**
+ * The weight a fresh clock-offset sample carries against the previously
+ * smoothed value — the web mirror of the phones' `kClockOffsetSmoothingAlpha`
+ * (`lib/data/sync/supabase_sync_engine.dart`, issue #566): a simple
+ * exponential moving average, `next = previous + alpha * (sample - previous)`.
+ * `server_now - device_now` is measured once per push batch, and a single
+ * sample can be noisy — a slow or congested request inflates the apparent
+ * one-way trip, and `server_now` is the transaction-start instant of a batch
+ * that may still be writing rows when it stamps that instant. `0.2` reacts
+ * within a handful of pushes (a real clock skew shows up quickly) while
+ * damping any one sample's noise rather than snapping every stamp to it.
+ * `1.0` would disable smoothing entirely (every sample replaces the previous
+ * one outright).
+ */
+export const CLOCK_OFFSET_SMOOTHING_ALPHA = 0.2;
+
+/**
+ * The smoothed `server_now - device_now` offset learned from push responses,
+ * in milliseconds, or `null` before the first one lands. Purely in-memory
+ * page state — like everything else in this module, nothing is persisted
+ * (issue #1249) — so a fresh page starts uncorrected and learns from its
+ * first push, exactly as a phone restart does (the engine re-seeds from its
+ * first sample too; its persisted value is a Flutter-side affordance the
+ * no-storage web client does not have).
+ */
+let smoothedClockOffsetMs: number | null = null;
+
+/** The offset learned so far (`null` before the first push response). */
+export function learnedClockOffsetMs(): number | null {
+  return smoothedClockOffsetMs;
+}
+
+/**
+ * Folds one push response's clock sample — `server_now` (the RPC's
+ * transaction-start instant) minus the device clock reading taken
+ * immediately before the call — into the smoothed offset and returns the
+ * new value in milliseconds. The very first sample is taken as-is (there is
+ * nothing to smooth against yet), the same rule as the engine's
+ * `_smoothOffset`. An unparseable `server_now` leaves the state untouched:
+ * a boundary that cannot be read must never poison the offset with `NaN`.
+ */
+export function learnClockOffset(serverNow: string, sentAtMs: number): number {
+  const sampleMs = Date.parse(serverNow) - sentAtMs;
+  if (Number.isNaN(sampleMs)) {
+    return smoothedClockOffsetMs ?? 0;
+  }
+  const previous = smoothedClockOffsetMs;
+  smoothedClockOffsetMs =
+    previous === null
+      ? sampleMs
+      : Math.round(previous + CLOCK_OFFSET_SMOOTHING_ALPHA * (sampleMs - previous));
+  return smoothedClockOffsetMs;
+}
+
+/** Forgets the learned offset (tests; the offset deliberately survives the
+ * identity resets — see `resetWebDataForSignOut`). */
+export function resetClockOffset(): void {
+  smoothedClockOffsetMs = null;
+}
+
+/**
+ * The device clock corrected by the learned offset — the instant a local
+ * write should carry. Before the first push response this is simply the raw
+ * device clock (the phones' posture too: `StorageClock` starts at a zero
+ * offset and the first batch is stamped uncorrected). This is the default
+ * clock of `nowSyncStamp` and every payload builder below, so every web
+ * write lands on server time once the offset has been learned: a browser
+ * clock more than five minutes fast stops tripping `sync_push`'s
+ * `updated_at > now() + interval '5 minutes'` per-row rejection
+ * (20260921130000), and a slow browser stops losing last-writer-wins
+ * against the phones. An explicitly injected clock bypasses the correction
+ * — that is the tests' determinism seam.
+ */
+export function serverAdjustedNow(clock: () => Date = () => new Date()): Date {
+  return new Date(clock().getTime() + (smoothedClockOffsetMs ?? 0));
+}
 
 // ---------------------------------------------------------------------------
 // Pull (sync_pull, cursor-paginated)
@@ -376,6 +462,8 @@ export interface SyncPushOutcome {
   resolved: Record<string, unknown>[];
   /** Rows the server refused — surface at the field/row that caused it. */
   rejected: SyncRejection[];
+  /** The server's transaction-start instant for this push; consumed to
+   * learn the clock offset (issue #1283). */
   serverNow: string;
 }
 
@@ -383,6 +471,15 @@ export interface SyncPushOutcome {
  * Pushes one batch through the same RPC the phones use. The server's
  * constraints are unchanged: last-writer-wins on `updated_at`, same-date
  * merge with disclosure rows, the 500-rows-per-array / 5000-total caps.
+ *
+ * Issue #1283: every response also teaches the clock offset — `server_now`
+ * minus a device reading taken immediately before the call (read here, not
+ * after the await, so a slow link cannot bias the sample the way issue #566
+ * found on the phones), folded through the same EMA the engine smooths
+ * with. The response arrives with `server_now` even when rows are rejected
+ * (`sync_push`'s per-row handlers answer per row), so the very first save
+ * of a badly-skewed browser is what teaches the offset — it may itself be
+ * rejected, and every later write is stamped corrected.
  */
 export async function pushSyncBatch(
   client: AppSupabaseClient,
@@ -404,11 +501,13 @@ export async function pushSyncBatch(
     p_tag_registry: batch.tag_registry ?? [],
     p_guardian_notes: batch.guardian_notes ?? [],
   };
+  const sentAtMs = Date.now();
   const { data, error } = await client.rpc('sync_push', params as never);
   if (error !== null) {
     throw new Error(`sync_push failed: ${error.message}`);
   }
   const parsed = syncPushResultSchema.parse(data);
+  learnClockOffset(parsed.server_now, sentAtMs);
   const outcome: SyncPushOutcome = {
     resolved: parsed.resolved,
     rejected: parsed.rejected.map((entry) => ({ id: entry.id })),
@@ -420,14 +519,19 @@ export async function pushSyncBatch(
 // ---------------------------------------------------------------------------
 // Payload builders — client-generated ULID ids and updated_at stamps.
 // ---------------------------------------------------------------------------
+//
+// Every stamp comes from `serverAdjustedNow` by default (issue #1283): the
+// device clock plus the offset learned from push responses, so a skewed
+// browser clock writes server time rather than its own. A test passing an
+// explicit clock gets that clock verbatim — the determinism seam.
 
 /** The current time as the ISO-8601 UTC instant the server expects. */
-export function nowSyncStamp(clock: () => Date = () => new Date()): string {
+export function nowSyncStamp(clock: () => Date = serverAdjustedNow): string {
   return clock().toISOString();
 }
 
 /** A new client-generated row id + updated_at stamp pair. */
-export function newSyncStamps(clock: () => Date = () => new Date()): {
+export function newSyncStamps(clock: () => Date = serverAdjustedNow): {
   id: string;
   updated_at: string;
 } {
@@ -437,7 +541,7 @@ export function newSyncStamps(clock: () => Date = () => new Date()): {
 /** Builds a create-or-edit `profiles` payload (ULID id, live unless told otherwise). */
 export function newProfilePayload(
   fields: Omit<ProfilePayload, 'id' | 'updated_at'> & { id?: string },
-  clock: () => Date = () => new Date(),
+  clock: () => Date = serverAdjustedNow,
 ): ProfilePayload {
   return { ...fields, id: fields.id ?? newUlid(), updated_at: nowSyncStamp(clock) };
 }
@@ -445,7 +549,7 @@ export function newProfilePayload(
 /** Builds a `day_entries` payload; tombstones carry only id + deleted_at. */
 export function newDayEntryPayload(
   fields: Omit<DayEntryPayload, 'id' | 'updated_at'> & { id?: string },
-  clock: () => Date = () => new Date(),
+  clock: () => Date = serverAdjustedNow,
 ): DayEntryPayload {
   return { ...fields, id: fields.id ?? newUlid(), updated_at: nowSyncStamp(clock) };
 }
@@ -453,7 +557,7 @@ export function newDayEntryPayload(
 /** Builds an `observations` payload. */
 export function newObservationPayload(
   fields: Omit<ObservationPayload, 'id' | 'updated_at'> & { id?: string },
-  clock: () => Date = () => new Date(),
+  clock: () => Date = serverAdjustedNow,
 ): ObservationPayload {
   return { ...fields, id: fields.id ?? newUlid(), updated_at: nowSyncStamp(clock) };
 }
@@ -461,7 +565,7 @@ export function newObservationPayload(
 /** Builds a `profile_modes` payload (keyed by profile, no id). */
 export function newProfileModePayload(
   fields: Omit<ProfileModePayload, 'updated_at'>,
-  clock: () => Date = () => new Date(),
+  clock: () => Date = serverAdjustedNow,
 ): ProfileModePayload {
   return { ...fields, updated_at: nowSyncStamp(clock) };
 }
@@ -469,7 +573,7 @@ export function newProfileModePayload(
 /** Builds a `cycle_overrides` payload. */
 export function newCycleOverridePayload(
   fields: Omit<CycleOverridePayload, 'id' | 'updated_at'> & { id?: string },
-  clock: () => Date = () => new Date(),
+  clock: () => Date = serverAdjustedNow,
 ): CycleOverridePayload {
   return { ...fields, id: fields.id ?? newUlid(), updated_at: nowSyncStamp(clock) };
 }
@@ -477,7 +581,7 @@ export function newCycleOverridePayload(
 /** Builds a `care_notes` payload. */
 export function newCareNotePayload(
   fields: Omit<CareNotePayload, 'id' | 'updated_at'> & { id?: string },
-  clock: () => Date = () => new Date(),
+  clock: () => Date = serverAdjustedNow,
 ): CareNotePayload {
   return { ...fields, id: fields.id ?? newUlid(), updated_at: nowSyncStamp(clock) };
 }
@@ -485,7 +589,7 @@ export function newCareNotePayload(
 /** Builds a `visit_prep_items` payload. */
 export function newVisitPrepItemPayload(
   fields: Omit<VisitPrepItemPayload, 'id' | 'updated_at'> & { id?: string },
-  clock: () => Date = () => new Date(),
+  clock: () => Date = serverAdjustedNow,
 ): VisitPrepItemPayload {
   return { ...fields, id: fields.id ?? newUlid(), updated_at: nowSyncStamp(clock) };
 }
@@ -493,7 +597,7 @@ export function newVisitPrepItemPayload(
 /** Builds a `guardian_notes` payload. */
 export function newGuardianNotePayload(
   fields: Omit<GuardianNotePayload, 'id' | 'updated_at'> & { id?: string },
-  clock: () => Date = () => new Date(),
+  clock: () => Date = serverAdjustedNow,
 ): GuardianNotePayload {
   return { ...fields, id: fields.id ?? newUlid(), updated_at: nowSyncStamp(clock) };
 }
@@ -505,7 +609,7 @@ export function newGuardianNotePayload(
  */
 export function tombstonePayload(
   id: string,
-  clock: () => Date = () => new Date(),
+  clock: () => Date = serverAdjustedNow,
 ): { id: string; updated_at: string; deleted_at: string } {
   return { id, updated_at: nowSyncStamp(clock), deleted_at: nowSyncStamp(clock) };
 }
@@ -772,7 +876,11 @@ export function getSyncedDataCache(): SyncedDataCache {
  * Sign-out: resets the synced-data snapshot/cursors and clears the TanStack
  * Query cache. The auth layer's mutations call this at every identity
  * boundary (issue #1281) — after it, nothing of the session remains in
- * memory.
+ * memory. The learned clock offset deliberately survives (issue #1283): it
+ * is a device-versus-server property, not account data — the same server
+ * clock on either side of the boundary — so keeping it means the next
+ * account's first write is already stamped corrected instead of waiting on
+ * a fresh push to re-teach it.
  */
 export function resetWebDataForSignOut(queryClient: { clear: () => void }): void {
   sharedCache.reset();

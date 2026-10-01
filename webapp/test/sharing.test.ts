@@ -1,6 +1,7 @@
 import { webcrypto } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
+import { learnedClockOffsetMs, resetClockOffset } from '../src/lib/domain';
 import {
   encodeCareNote,
   encodeGuardianNote,
@@ -135,6 +136,11 @@ function fakeRpc(
 
 const ULID = '01ARZ3NDEKTSV4RRFFQ69G5FAV';
 const ULID2 = '01ARZ3NDEKTSV4RRFFQ69G5FAW';
+
+// The learned clock offset is page-global module state (issue #1283) and
+// the notes pushes below teach it from their fakes' server_now — every
+// test starts uncorrected.
+beforeEach(() => resetClockOffset());
 // Sharing-table row ids are `uuid primary key default gen_random_uuid()`
 // (20260904010000, 20260906170000) — the fixtures carry real UUIDs, which is
 // exactly what the pre-#1284 z.ulid() schemas rejected.
@@ -644,6 +650,35 @@ describe('notes payloads (the sync_push wire shapes)', () => {
     expect(params['p_day_entries']).toEqual([]);
     expect(params['p_guardian_notes']).toHaveLength(2);
     expect(params).not.toHaveProperty('p_observations');
+  });
+
+  it('a notes push teaches the clock offset too (issue #1283)', async () => {
+    const deviceNow = Date.now();
+    // The server sits ten minutes ahead of this browser: the response's
+    // server_now is what teaches the offset, so the notes pages' writes —
+    // stamped via serverAdjustedNow — land on server time.
+    const { client } = fakeRpc({
+      data: {
+        resolved: [],
+        rejected: [],
+        server_now: new Date(deviceNow + 10 * 60_000).toISOString(),
+      },
+      error: null,
+    });
+    await pushGuardianNotes(client, [
+      {
+        id: ULID,
+        profileId: ULID,
+        localDate: '2026-09-30',
+        tz: 'UTC',
+        body: 'ok',
+        updatedAt: new Date(),
+        deleted: false,
+      },
+    ]);
+    const offset = learnedClockOffsetMs();
+    expect(offset).not.toBeNull();
+    expect(Math.abs((offset ?? 0) - 10 * 60_000)).toBeLessThan(30_000);
   });
 });
 

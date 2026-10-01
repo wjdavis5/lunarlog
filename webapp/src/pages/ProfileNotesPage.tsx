@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router';
 
 import { useT } from '../i18n/t';
+import { serverAdjustedNow } from '../lib/domain';
 import {
   careNotesQueryKey,
   guardianNotesQueryKey,
@@ -194,7 +195,7 @@ function MyNoteEditor(props: {
           localDate: props.localDate,
           tz: props.tz,
           body,
-          updatedAt: new Date(),
+          updatedAt: serverAdjustedNow(),
           deleted,
         },
       ]);
@@ -271,7 +272,7 @@ function CareNoteRowItem(props: {
           id: props.row.id,
           profileId: props.profileId,
           body: '',
-          updatedAt: new Date(),
+          updatedAt: serverAdjustedNow(),
           deleted: true,
         },
       ]);
@@ -346,7 +347,7 @@ function CareNoteComposer(props: { profileId: string }) {
           id,
           profileId: props.profileId,
           body,
-          updatedAt: new Date(),
+          updatedAt: serverAdjustedNow(),
           deleted: false,
         },
       ]);
