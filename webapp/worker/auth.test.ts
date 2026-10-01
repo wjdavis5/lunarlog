@@ -507,32 +507,32 @@ Deno.test('password update forwards the in-memory access token as the bearer', a
   assertEquals(JSON.parse(String(init.body)).password, 'new password');
 });
 
-Deno.test(
-  'sign-out global revokes upstream and clears the cookie even if upstream fails',
-  async () => {
-    const { deps, calls } = fakeDeps(() => new Response(null, { status: 401 }));
-    const response = await handleAuthRequest(
-      post('/auth/sign-out', { scope: 'global' }, { bearer: 'access-1' }),
-      ENV,
-      deps,
-    );
+Deno.test('sign-out global treats a 401 logout as already revoked (issue #1324)', async () => {
+  // GoTrue answers 401 when the bearer is already invalid: there is no
+  // live session left to revoke, so the revocation counts as landed and
+  // the sign-out is a success — not a `revocation_failed` 502.
+  const { deps, calls } = fakeDeps(() => new Response(null, { status: 401 }));
+  const response = await handleAuthRequest(
+    post('/auth/sign-out', { scope: 'global' }, { bearer: 'access-1' }),
+    ENV,
+    deps,
+  );
 
-    assertEquals(response?.status, 200);
-    assertEquals(((await response?.json()) as { ok: boolean } | undefined)?.ok, true);
-    assertEquals(calls[0].path, '/auth/v1/logout?scope=global');
-    assertEquals(
-      response?.headers.get('set-cookie'),
-      `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
-    );
+  assertEquals(response?.status, 200);
+  assertEquals(((await response?.json()) as { ok: boolean } | undefined)?.ok, true);
+  assertEquals(calls[0].path, '/auth/v1/logout?scope=global');
+  assertEquals(
+    response?.headers.get('set-cookie'),
+    `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
+  );
 
-    const badScope = await handleAuthRequest(
-      post('/auth/sign-out', { scope: 'others' }, { bearer: 'access-1' }),
-      ENV,
-      deps,
-    );
-    assertEquals(badScope?.status, 400);
-  },
-);
+  const badScope = await handleAuthRequest(
+    post('/auth/sign-out', { scope: 'others' }, { bearer: 'access-1' }),
+    ENV,
+    deps,
+  );
+  assertEquals(badScope?.status, 400);
+});
 
 Deno.test(
   'sign-out without a live access token refreshes once from the cookie first',
@@ -555,11 +555,12 @@ Deno.test(
 );
 
 Deno.test(
-  'sign-out clears the cookie even when the logout fetch rejects (issue #1292)',
+  'sign-out global reports the failure when the logout fetch rejects (issue #1324)',
   async () => {
     // GoTrue times out or resets the connection: the fetch rejects instead
-    // of resolving to an error status. The sign-out must still end the
-    // browser's session, not throw into a 500 that keeps the cookie alive.
+    // of resolving to an error status. The revocation never landed, so the
+    // response must say so — but the browser's session still ends, because
+    // the cleared cookie rides on the failure response too (issue #1292).
     const { deps, calls } = fakeDeps(() => {
       throw new TypeError('fetch failed');
     });
@@ -569,9 +570,34 @@ Deno.test(
       deps,
     );
 
+    assertEquals(response?.status, 502);
+    assertEquals(await errorOf(response), 'revocation_failed');
+    assertEquals(calls[0].path, '/auth/v1/logout?scope=global');
+    assertEquals(
+      response?.headers.get('set-cookie'),
+      `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
+    );
+  },
+);
+
+Deno.test(
+  'sign-out local stays a success when the logout fetch rejects (issue #1292)',
+  async () => {
+    // `local`'s goal is this browser's cookie, which clears below
+    // regardless: the upstream revocation stays best-effort here even as
+    // `global` now reports its own failures (issue #1324).
+    const { deps, calls } = fakeDeps(() => {
+      throw new TypeError('fetch failed');
+    });
+    const response = await handleAuthRequest(
+      post('/auth/sign-out', { scope: 'local' }, { bearer: 'access-1' }),
+      ENV,
+      deps,
+    );
+
     assertEquals(response?.status, 200);
     assertEquals(((await response?.json()) as { ok: boolean } | undefined)?.ok, true);
-    assertEquals(calls[0].path, '/auth/v1/logout?scope=global');
+    assertEquals(calls[0].path, '/auth/v1/logout?scope=local');
     assertEquals(
       response?.headers.get('set-cookie'),
       `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
@@ -601,6 +627,78 @@ Deno.test(
       response?.headers.get('set-cookie'),
       `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
     );
+  },
+);
+
+Deno.test(
+  'sign-out global without a bearer reports the failure when the refresh leg rejects (issue #1324)',
+  async () => {
+    // No live access token and the cookie-refresh fetch rejects: no bearer
+    // ever exists, the logout leg never runs, and nothing was revoked —
+    // "Sign out everywhere" must not read as success. The cookie still
+    // clears (issue #1292).
+    const { deps, calls } = fakeDeps(() => {
+      throw new TypeError('fetch failed');
+    });
+    const response = await handleAuthRequest(
+      post('/auth/sign-out', { scope: 'global' }, { cookie: `${REFRESH_COOKIE}=refresh-1` }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 502);
+    assertEquals(await errorOf(response), 'revocation_failed');
+    assertEquals(calls.length, 1);
+    assertEquals(calls[0].path, '/auth/v1/token?grant_type=refresh_token');
+    assertEquals(
+      response?.headers.get('set-cookie'),
+      `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
+    );
+  },
+);
+
+Deno.test(
+  'sign-out global reports the failure when the logout returns a server error (issue #1324)',
+  async () => {
+    // GoTrue answered, but not with a revocation: a non-2xx that is not
+    // the already-revoked 401/404 means the other devices' refresh-token
+    // families were not touched.
+    const { deps, calls } = fakeDeps(() => new Response(null, { status: 500 }));
+    const response = await handleAuthRequest(
+      post('/auth/sign-out', { scope: 'global' }, { bearer: 'access-1' }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 502);
+    assertEquals(await errorOf(response), 'revocation_failed');
+    assertEquals(calls[0].path, '/auth/v1/logout?scope=global');
+    assertEquals(
+      response?.headers.get('set-cookie'),
+      `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
+    );
+  },
+);
+
+Deno.test(
+  'sign-out global succeeds when GoTrue revokes (204) or already has (404) (issue #1324)',
+  async () => {
+    for (const status of [204, 404]) {
+      const { deps, calls } = fakeDeps(() => new Response(null, { status }));
+      const response = await handleAuthRequest(
+        post('/auth/sign-out', { scope: 'global' }, { bearer: 'access-1' }),
+        ENV,
+        deps,
+      );
+
+      assertEquals(response?.status, 200);
+      assertEquals(((await response?.json()) as { ok: boolean } | undefined)?.ok, true);
+      assertEquals(calls[0].path, '/auth/v1/logout?scope=global');
+      assertEquals(
+        response?.headers.get('set-cookie'),
+        `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
+      );
+    }
   },
 );
 

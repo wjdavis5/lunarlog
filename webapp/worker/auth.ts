@@ -136,8 +136,16 @@ function jsonResponse(
   });
 }
 
-function errorResponse(status: number, code: string): Response {
-  return jsonResponse({ error: code }, { 'cache-control': 'no-store' }, status);
+function errorResponse(
+  status: number,
+  code: string,
+  extraHeaders: Record<string, string> = {},
+): Response {
+  return jsonResponse(
+    { error: code },
+    { 'cache-control': 'no-store', ...extraHeaders },
+    status,
+  );
 }
 
 /**
@@ -480,13 +488,17 @@ async function handleSignOut(request: Request, deps: AuthDeps): Promise<Response
   if (typeof scope !== 'string' || !SIGN_OUT_SCOPES.includes(scope as SignOutScope)) {
     return errorResponse(400, 'invalid_scope');
   }
+  // Every path below ends the browser's session with this cookie (issue
+  // #1292) — success and failure responses alike.
+  const clearedCookie = buildClearedCookie(REFRESH_COOKIE);
   let bearer = bearerOf(request);
   if (bearer === null) {
     // No live access token (expired while idle): refresh once so the
     // sign-out can still reach GoTrue with a valid JWT. Best-effort: a
     // rejected fetch only means the revocation below goes out without a
     // bearer — it must not stop the cookie from being cleared (issue
-    // #1292).
+    // #1292). For `global` the missing bearer is reported as a failure
+    // below: with no way to reach GoTrue, "everywhere" was not signed out.
     const refreshToken = readCookie(request, REFRESH_COOKIE);
     if (refreshToken !== null) {
       try {
@@ -504,27 +516,43 @@ async function handleSignOut(request: Request, deps: AuthDeps): Promise<Response
       }
     }
   }
+  // The upstream revocation landed: a 2xx from GoTrue, or a 401/404 — the
+  // token is already invalid or unknown, so there is nothing left to
+  // revoke. A rejected fetch or any other non-2xx leaves `revoked` false.
+  // `local` signs this browser out by clearing the cookie below, so it is
+  // always done; `global`'s whole point is the revocation itself.
+  let revoked = scope === 'local';
   if (bearer !== null) {
-    // Best-effort upstream revocation (auth-js also ignores 401/403/404
-    // here): a rejected fetch — GoTrue timing out or resetting the
-    // connection — must not turn the sign-out into a thrown 500 that
-    // leaves the refresh cookie alive on a shared computer (issue #1292).
-    // The browser's session ends below regardless.
+    // A rejected fetch — GoTrue timing out or resetting the connection —
+    // must not turn the sign-out into a thrown 500 that leaves the refresh
+    // cookie alive on a shared computer (issue #1292). The browser's
+    // session still ends below; for `global` the failure is reported
+    // instead of swallowed (issue #1324).
     try {
-      await deps.supabaseFetch(`/auth/v1/logout?scope=${scope}`, {
+      const logout = await deps.supabaseFetch(`/auth/v1/logout?scope=${scope}`, {
         method: 'POST',
         headers: upstreamHeaders(request, deps.publishableKey, {
           authorization: `Bearer ${bearer}`,
         }),
         body: '{}',
       });
+      if (logout.ok || logout.status === 401 || logout.status === 404) revoked = true;
     } catch {
       // The revocation did not land; the cookie still gets cleared below.
     }
   }
+  // The cookie clears on every path (issue #1292): this browser's session
+  // ends regardless of what happened upstream. But a `global` revocation
+  // that never reached GoTrue must not read as success (issue #1324) —
+  // the client's raiseForError throws on this status (its `finally` still
+  // forgets the in-memory token), so "Sign out everywhere" surfaces the
+  // failure and the user knows the other devices may still be signed in.
+  if (scope === 'global' && !revoked) {
+    return errorResponse(502, 'revocation_failed', { 'set-cookie': clearedCookie });
+  }
   return jsonResponse(
     { ok: true },
-    { 'cache-control': 'no-store', 'set-cookie': buildClearedCookie(REFRESH_COOKIE) },
+    { 'cache-control': 'no-store', 'set-cookie': clearedCookie },
   );
 }
 
