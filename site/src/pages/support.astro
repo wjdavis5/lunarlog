@@ -141,9 +141,10 @@ const deleteAccountUrl = "/delete-account";
         history from Apple Health on iPhone — or your flow and spotting
         history from Health Connect on Android — whenever you choose, as far
         back as your health app has it. Imports never overwrite a value you
-        logged by hand. You start the first import yourself; once a profile
-        is bound, the same import also keeps itself current in the
-        background — Apple Health tells lunarlog when new data lands, and
+        logged by hand. You start the first import yourself; only once a
+        profile is bound and that first import has completed does the same
+        import also keep itself current in the background — Apple Health
+        tells lunarlog when new data lands, and
         Android checks Health Connect on a schedule — never prompting,
         never writing, and stopping if you unbind the profile or revoke the
         health permission.

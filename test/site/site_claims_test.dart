@@ -250,6 +250,21 @@ void main() {
           flat(File('site/src/pages/import.astro').readAsStringSync());
       expect(importPage, contains('in the background'));
       expect(importPage, contains('You start the first import yourself'));
+      // Issue #1304: binding alone opens nothing — the shipped gate (issue
+      // #1215) is the COMPLETED first import, so the page must state the
+      // condition its own cite comment names (PRIVACY.md §4), and the
+      // retired after-binding shorthand may not resurface.
+      expect(
+        importPage,
+        contains('and that first import has completed'),
+        reason: 'the background pass waits for the completed first import, '
+            'not merely a bound profile (PRIVACY.md §4, issue #1304)',
+      );
+      expect(
+        importPage,
+        isNot(contains('Settings; after that, the same import')),
+        reason: 'the retired after-binding shorthand, verbatim (issue #1304)',
+      );
       expect(
         importPage,
         isNot(contains('no background read and no schedule')),
@@ -260,6 +275,19 @@ void main() {
             .readAsStringSync(),
       );
       expect(guide, contains('in the background'));
+      // Issue #1304: the guide carries the gate in §4's own words — in the
+      // lede and in the background list item alike — not the retired
+      // after-start shorthand.
+      expect(
+        guide,
+        contains('and you have run the first import yourself'),
+        reason: 'the §4 gate framing, in both guide spans (issue #1304)',
+      );
+      expect(
+        guide,
+        isNot(contains('Settings. After that, the same import')),
+        reason: 'the retired after-start shorthand, verbatim (issue #1304)',
+      );
       expect(
         guide,
         isNot(contains('no background reading')),
@@ -276,6 +304,25 @@ void main() {
       expect(
         flat(ledger),
         contains('keeps itself current in the background'),
+      );
+      // Issue #1304: both claim rows carrying the background pass must
+      // state the completed-first-import condition the inventory paragraph
+      // already had — binding-alone shorthand may not come back.
+      expect(
+        flat(ledger),
+        contains('bound and its first import has completed'),
+        reason: 'the claim rows state the completed-first-import gate '
+            '(PRIVACY.md §4, issue #1304)',
+      );
+      expect(
+        flat(ledger),
+        isNot(contains('once a profile is bound it keeps itself current')),
+        reason: 'the retired binding-alone shorthand, verbatim (issue #1304)',
+      );
+      expect(
+        flat(ledger),
+        isNot(contains('once a profile is bound, the same import keeps')),
+        reason: 'the retired binding-alone shorthand, verbatim (issue #1304)',
       );
       // The flip missed the ledger's own inventory paragraph (issue #1306):
       // it kept listing the shipped background pass as unshipped —

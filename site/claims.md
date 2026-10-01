@@ -87,7 +87,7 @@ email capture (the site collects nothing).
 - claim: Logging, history, and estimates work offline; sync resumes when a connection returns.
   page: /
   ships: PRIVACY.md (§1 "Resilient Offline")
-- claim: Import from Clue, Apple Health, or Health Connect — you start the first import, and once a profile is bound it keeps itself current in the background; never over a hand-logged value.
+- claim: Import from Clue, Apple Health, or Health Connect — you start the first import, and once a profile is bound and its first import has completed, it keeps itself current in the background; never over a hand-logged value.
   page: /
   ships: lib/data/import/clue_importer.dart; lib/data/health/health_import_service.dart (importInBackground, issue #993); PRIVACY.md (§2.A import provenance; §4 health paragraph)
 - claim: Export as JSON, CSV, FHIR, or a one-page PDF — built on the device, no account required.
@@ -242,7 +242,7 @@ email capture (the site collects nothing).
 
 ## Import — site/src/pages/import.astro
 
-- claim: The first import is started by you; once a profile is bound, the same import keeps itself current in the background — no prompt, no screen, never a write — and stops when you unbind or revoke the permission.
+- claim: The first import is started by you; once a profile is bound and its first import has completed, the same import keeps itself current in the background — no prompt, no screen, never a write — and stops when you unbind or revoke the permission.
   page: /import
   ships: lib/data/health/health_import_service.dart ("Bound. Two entry points."); PRIVACY.md (§4 background paragraph); ios/Runner/AppDelegate.swift (HKObserverQuery + enableBackgroundDelivery); android/app/src/main/kotlin/com/wjdavis5/lunarlog/HealthBackgroundImportWorker.kt (periodic WorkManager trigger)
   issue: #993

@@ -263,6 +263,21 @@ void main() {
       // never prompting, never writing, stopping on unbind or revocation.
       expect(supportPage, contains('in the background'));
       expect(supportPage, contains('You start the first import yourself'));
+      // Issue #1304: binding alone opens nothing — the shipped gate (issue
+      // #1215) is the COMPLETED first import, so the answer must state
+      // that condition, in PRIVACY.md §4's framing, and may not revert to
+      // the retired binding-alone shorthand.
+      expect(
+        supportPage,
+        contains('and that first import has completed'),
+        reason: 'the background pass waits for the completed first import, '
+            'not merely a bound profile (PRIVACY.md §4, issue #1304)',
+      );
+      expect(
+        supportPage,
+        isNot(contains('once a profile is bound, the same import')),
+        reason: 'the retired binding-alone shorthand, verbatim (issue #1304)',
+      );
       expect(supportPage, isNot(contains("It's user-initiated only")),
           reason: 'the pre-#993 denial, verbatim');
       expect(supportPage, isNot(contains('never reads your')));
