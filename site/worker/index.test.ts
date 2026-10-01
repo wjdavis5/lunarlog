@@ -1,4 +1,4 @@
-import { assertEquals, assertStringIncludes } from "jsr:@std/assert";
+import { assertEquals, assertNotMatch, assertStringIncludes } from "jsr:@std/assert";
 import worker, { AASA_CONTENT, Fetcher } from "./index.ts";
 
 Deno.test("AASA: serves /.well-known/apple-app-site-association with 200 and application/json", async () => {
@@ -72,8 +72,14 @@ Deno.test("/invite: serves invite.html without redirect and preserves query stri
   const body = await res.text();
   assertStringIncludes(body, "You have a Lunarlog invitation");
   assertStringIncludes(body, "Open in Lunarlog");
-  // Issue #1255: the web-app redemption link ships on the neutral page.
-  assertStringIncludes(body, "Open in the web app");
+  // Issue #1279: the web-app redemption link (issue #1255) is withheld until
+  // #1258 serves the React client at app.lunarlog.app — that origin is still
+  // the Flutter web build, which rejects https invite links, so the button
+  // silently dropped the code. Re-adding it means updating this pin,
+  // site/scripts/invite-page.test.mjs, and
+  // test/domain/sharing/link_artifacts_test.dart in the same change.
+  assertNotMatch(body, /Open in the web app/);
+  assertNotMatch(body, /app\.lunarlog\.app/);
 });
 
 Deno.test("/invite/*: serves invite.html for subpaths", async () => {
