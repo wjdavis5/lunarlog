@@ -507,32 +507,46 @@ Deno.test('password update forwards the in-memory access token as the bearer', a
   assertEquals(JSON.parse(String(init.body)).password, 'new password');
 });
 
-Deno.test('sign-out global treats a 401 logout as already revoked (issue #1324)', async () => {
-  // GoTrue answers 401 when the bearer is already invalid: there is no
-  // live session left to revoke, so the revocation counts as landed and
-  // the sign-out is a success — not a `revocation_failed` 502.
-  const { deps, calls } = fakeDeps(() => new Response(null, { status: 401 }));
-  const response = await handleAuthRequest(
-    post('/auth/sign-out', { scope: 'global' }, { bearer: 'access-1' }),
-    ENV,
-    deps,
+/** A GoTrue-shaped error response: the status in the body as well as the line. */
+function gotrueError(status: number, errorCode: string): Response {
+  return new Response(
+    JSON.stringify({ code: status, error_code: errorCode, msg: 'for testing' }),
+    { status, headers: { 'content-type': 'application/json' } },
   );
+}
 
-  assertEquals(response?.status, 200);
-  assertEquals(((await response?.json()) as { ok: boolean } | undefined)?.ok, true);
-  assertEquals(calls[0].path, '/auth/v1/logout?scope=global');
-  assertEquals(
-    response?.headers.get('set-cookie'),
-    `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
-  );
+Deno.test(
+  'sign-out global reports the failure on a bare gateway 401 (issue #1343)',
+  async () => {
+    // A 401 that is not GoTrue's already-gone answer — the API gateway
+    // rejecting a rotated publishable key, say — means GoTrue never
+    // evaluated the request, so nothing was revoked and the response must
+    // say so. Only GoTrue's own 403 `error_code` counts as already-revoked
+    // (issue #1343); supabase-js's blind 401/403/404 tolerance is why the
+    // old bare-401 shortcut looked plausible.
+    const { deps, calls } = fakeDeps(() => new Response(null, { status: 401 }));
+    const response = await handleAuthRequest(
+      post('/auth/sign-out', { scope: 'global' }, { bearer: 'access-1' }),
+      ENV,
+      deps,
+    );
 
-  const badScope = await handleAuthRequest(
-    post('/auth/sign-out', { scope: 'others' }, { bearer: 'access-1' }),
-    ENV,
-    deps,
-  );
-  assertEquals(badScope?.status, 400);
-});
+    assertEquals(response?.status, 502);
+    assertEquals(await errorOf(response), 'revocation_failed');
+    assertEquals(calls[0].path, '/auth/v1/logout?scope=global');
+    assertEquals(
+      response?.headers.get('set-cookie'),
+      `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
+    );
+
+    const badScope = await handleAuthRequest(
+      post('/auth/sign-out', { scope: 'others' }, { bearer: 'access-1' }),
+      ENV,
+      deps,
+    );
+    assertEquals(badScope?.status, 400);
+  },
+);
 
 Deno.test(
   'sign-out without a live access token refreshes once from the cookie first',
@@ -661,8 +675,8 @@ Deno.test(
   'sign-out global reports the failure when the logout returns a server error (issue #1324)',
   async () => {
     // GoTrue answered, but not with a revocation: a non-2xx that is not
-    // the already-revoked 401/404 means the other devices' refresh-token
-    // families were not touched.
+    // the already-gone 403 `session_not_found` means the other devices'
+    // refresh-token families were not touched.
     const { deps, calls } = fakeDeps(() => new Response(null, { status: 500 }));
     const response = await handleAuthRequest(
       post('/auth/sign-out', { scope: 'global' }, { bearer: 'access-1' }),
@@ -681,24 +695,147 @@ Deno.test(
 );
 
 Deno.test(
-  'sign-out global succeeds when GoTrue revokes (204) or already has (404) (issue #1324)',
+  'sign-out global succeeds on GoTrue revoking (204), not on a bare 404 (issue #1343)',
   async () => {
-    for (const status of [204, 404]) {
-      const { deps, calls } = fakeDeps(() => new Response(null, { status }));
-      const response = await handleAuthRequest(
-        post('/auth/sign-out', { scope: 'global' }, { bearer: 'access-1' }),
-        ENV,
-        deps,
-      );
+    // 204 is GoTrue's real revocation answer. A bare 404 used to count as
+    // "already revoked" too, but it is just as likely a misrouted base
+    // URL — GoTrue's own already-gone answer is 403 `session_not_found`
+    // (issue #1343), so a bare 404 is now a reported failure like any
+    // other answer GoTrue did not evaluate.
+    const revoked = fakeDeps(() => new Response(null, { status: 204 }));
+    const ok = await handleAuthRequest(
+      post('/auth/sign-out', { scope: 'global' }, { bearer: 'access-1' }),
+      ENV,
+      revoked.deps,
+    );
+    assertEquals(ok?.status, 200);
+    assertEquals(((await ok?.json()) as { ok: boolean } | undefined)?.ok, true);
+    assertEquals(revoked.calls[0].path, '/auth/v1/logout?scope=global');
+    assertEquals(
+      ok?.headers.get('set-cookie'),
+      `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
+    );
 
-      assertEquals(response?.status, 200);
-      assertEquals(((await response?.json()) as { ok: boolean } | undefined)?.ok, true);
-      assertEquals(calls[0].path, '/auth/v1/logout?scope=global');
-      assertEquals(
-        response?.headers.get('set-cookie'),
-        `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
-      );
-    }
+    const misrouted = fakeDeps(() => new Response(null, { status: 404 }));
+    const failed = await handleAuthRequest(
+      post('/auth/sign-out', { scope: 'global' }, { bearer: 'access-1' }),
+      ENV,
+      misrouted.deps,
+    );
+    assertEquals(failed?.status, 502);
+    assertEquals(await errorOf(failed), 'revocation_failed');
+  },
+);
+
+Deno.test(
+  'sign-out global treats GoTrue 403 session_not_found as already revoked (issue #1343)',
+  async () => {
+    // Another tab signed out everywhere first: the bearer still verifies
+    // but its session is gone, and GoTrue answers 403 `session_not_found`.
+    // Every session is already dead, so the sign-out is a success — not
+    // the false `revocation_failed` the bare 401/404 shortcut produced.
+    const { deps, calls } = fakeDeps(() => gotrueError(403, 'session_not_found'));
+    const response = await handleAuthRequest(
+      post('/auth/sign-out', { scope: 'global' }, { bearer: 'access-1' }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 200);
+    assertEquals(((await response?.json()) as { ok: boolean } | undefined)?.ok, true);
+    assertEquals(calls[0].path, '/auth/v1/logout?scope=global');
+    assertEquals(
+      response?.headers.get('set-cookie'),
+      `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
+    );
+  },
+);
+
+Deno.test(
+  'sign-out global refreshes from the cookie and retries once on 403 bad_jwt (issue #1343)',
+  async () => {
+    // The in-memory access token no longer verifies (expiry under clock
+    // skew): GoTrue answers 403 `bad_jwt`. The Worker refreshes once from
+    // the HttpOnly cookie and retries with the fresh bearer — the
+    // recoverable path a bearer-present sign-out never took before (the
+    // cookie-refresh leg used to run only when the bearer was missing).
+    let logouts = 0;
+    const { deps, calls } = fakeDeps(({ path }) => {
+      if (path === '/auth/v1/logout?scope=global') {
+        logouts += 1;
+        return logouts === 1 ? gotrueError(403, 'bad_jwt') : new Response(null, { status: 204 });
+      }
+      return new Response(JSON.stringify(sessionBody('refresh-2')), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    const response = await handleAuthRequest(
+      post(
+        '/auth/sign-out',
+        { scope: 'global' },
+        { bearer: 'access-stale', cookie: `${REFRESH_COOKIE}=refresh-1` },
+      ),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 200);
+    assertEquals(((await response?.json()) as { ok: boolean } | undefined)?.ok, true);
+    assertEquals(calls.length, 3);
+    assertEquals(calls[0].path, '/auth/v1/logout?scope=global');
+    assertEquals(calls[1].path, '/auth/v1/token?grant_type=refresh_token');
+    assertEquals(JSON.parse(String(calls[1].init.body)).refresh_token, 'refresh-1');
+    assertEquals(calls[2].path, '/auth/v1/logout?scope=global');
+    assertEquals(
+      new Headers(calls[2].init.headers).get('authorization'),
+      'Bearer access-for-refresh-2',
+    );
+    // The browser's session ends on the retried sign-out too.
+    assertEquals(
+      response?.headers.get('set-cookie'),
+      `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
+    );
+  },
+);
+
+Deno.test(
+  'sign-out global without a cookie stays a failure on 403 bad_jwt (issue #1343)',
+  async () => {
+    // No refresh cookie to refresh from: the retry leg cannot run, and the
+    // stale bearer's rejection is reported instead of read as success.
+    const { deps, calls } = fakeDeps(() => gotrueError(403, 'bad_jwt'));
+    const response = await handleAuthRequest(
+      post('/auth/sign-out', { scope: 'global' }, { bearer: 'access-stale' }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 502);
+    assertEquals(await errorOf(response), 'revocation_failed');
+    assertEquals(calls.length, 1);
+    assertEquals(
+      response?.headers.get('set-cookie'),
+      `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
+    );
+  },
+);
+
+Deno.test(
+  'sign-out global fails closed on an unrecognised 403 error code (issue #1343)',
+  async () => {
+    // Only `session_not_found` and `bad_jwt` are the known 403s; any other
+    // code — a future GoTrue addition, a different 403 — must not read as
+    // a landed revocation.
+    const { deps } = fakeDeps(() => gotrueError(403, 'insufficient_scope'));
+    const response = await handleAuthRequest(
+      post('/auth/sign-out', { scope: 'global' }, { bearer: 'access-1' }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 502);
+    assertEquals(await errorOf(response), 'revocation_failed');
   },
 );
 
