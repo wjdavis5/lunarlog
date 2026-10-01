@@ -65,6 +65,10 @@ export function SignInPage() {
       return;
     }
     setEmailError(null);
+    // A failed send belongs to the send, not to the password attempt that
+    // preceded it (issue #1345): the stale send error must not mask this
+    // attempt's own result.
+    sendOtp.reset();
     // A fresh session buries the last sign-out failure with it (issue
     // #1342): the message never outlives the account it was about.
     signIn.mutate(
@@ -79,6 +83,11 @@ export function SignInPage() {
       return;
     }
     setEmailError(null);
+    // A failed password attempt belongs to the password attempt, not to the
+    // send that follows it (issue #1345): `signIn.error` sits ahead of
+    // `sendOtp.error` in the `??`, so the stale password failure would
+    // permanently mask this send's own error without the reset.
+    signIn.reset();
     // The navigation waits for the send to resolve (issue #1294): a
     // rejected send — rate limit, otp_disabled — must render the mapped
     // copy on this page, not strand the user on the code screen waiting
