@@ -51,9 +51,45 @@ export function buildRefreshCookie(value: string): string {
   return buildCookie(REFRESH_COOKIE, value, REFRESH_MAX_AGE_SECONDS, 'Strict');
 }
 
-/** The PKCE verifier cookie: short-lived, SameSite=Lax. */
-export function buildPkceCookie(value: string): string {
-  return buildCookie(PKCE_COOKIE, value, PKCE_MAX_AGE_SECONDS, 'Lax');
+/**
+ * The recovery marker prefixed onto the PKCE cookie's value by the
+ * password-recovery flow (issue #1293): GoTrue's PKCE redirect back to
+ * /auth/callback carries only `?code=`, never `?type=recovery`, so the
+ * Worker records which kind of flow the cookie belongs to — beside the
+ * verifier, the way supabase-js stores its PASSWORD_RECOVERY marker next
+ * to its own verifier — and POST /auth/callback echoes it to the page.
+ */
+export const PKCE_RECOVERY_PREFIX = 'recovery:';
+
+/** What the PKCE cookie's value decodes back into. */
+export interface PkceValue {
+  /** The PKCE code verifier — exactly what the challenge was issued with. */
+  verifier: string;
+  /** True when the outstanding link was the password-recovery email. */
+  recovery: boolean;
+}
+
+/** The PKCE verifier cookie: short-lived, SameSite=Lax, optionally marked. */
+export function buildPkceCookie(value: string, recovery = false): string {
+  return buildCookie(
+    PKCE_COOKIE,
+    recovery ? `${PKCE_RECOVERY_PREFIX}${value}` : value,
+    PKCE_MAX_AGE_SECONDS,
+    'Lax',
+  );
+}
+
+/**
+ * Decodes the PKCE cookie's value; null when it carries no verifier (an
+ * empty value, or a bare marker with nothing after it). The marker cannot
+ * collide with a real verifier: the base64url alphabet has no colon.
+ */
+export function parsePkceValue(value: string): PkceValue | null {
+  if (value.startsWith(PKCE_RECOVERY_PREFIX)) {
+    const verifier = value.slice(PKCE_RECOVERY_PREFIX.length);
+    return verifier === '' ? null : { verifier, recovery: true };
+  }
+  return value === '' ? null : { verifier: value, recovery: false };
 }
 
 /** Expires one of this module's cookies (sign-out, consumed verifier). */

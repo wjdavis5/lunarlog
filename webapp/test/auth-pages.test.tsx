@@ -24,7 +24,7 @@ const fakes = vi.hoisted(() => ({
   sendPasswordReset: vi.fn<() => Promise<void>>(),
   updatePassword: vi.fn<() => Promise<void>>(),
   signOut: vi.fn<() => Promise<void>>(),
-  exchangeCallback: vi.fn<() => Promise<void>>(),
+  exchangeCallback: vi.fn<() => Promise<{ recovery: boolean }>>(),
   startOAuth: vi.fn(),
 }));
 
@@ -68,7 +68,7 @@ beforeEach(() => {
   fakes.sendPasswordReset.mockResolvedValue(undefined);
   fakes.updatePassword.mockResolvedValue(undefined);
   fakes.signOut.mockResolvedValue(undefined);
-  fakes.exchangeCallback.mockResolvedValue(undefined);
+  fakes.exchangeCallback.mockResolvedValue({ recovery: false });
 });
 
 afterEach(() => {
@@ -232,6 +232,26 @@ describe('AuthCallbackPage (issue #1250)', () => {
     expect(
       await screen.findByText((_, element) => element?.textContent === 'Signed in as a@b.co'),
     ).toBeInTheDocument();
+    // An unmarked exchange is not a password reset: no new-password step.
+    expect(
+      screen.queryByText(messages['accountPasswordRecoveryIntro']),
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders the new-password step when the exchange marks recovery (issue #1293)', async () => {
+    // The Worker's PKCE-cookie marker is what makes a recovery link show
+    // this step — GoTrue's redirect carries only ?code=, never ?type=recovery,
+    // so no query parameter is involved.
+    fakes.exchangeCallback.mockResolvedValue({ recovery: true });
+    fakes.getUser.mockReturnValue({ id: 'u1', email: 'a@b.co' });
+    renderWithProviders(<AuthCallbackPage />, '/auth/callback?code=abc');
+    await waitFor(() => expect(fakes.exchangeCallback).toHaveBeenCalledWith('abc'));
+    expect(
+      await screen.findByText(messages['accountPasswordRecoveryIntro']),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: messages['accountPasswordRecoverySave'] }),
+    ).toHaveAttribute('href', '/reset-password');
   });
 
   it('renders the different-browser copy when no verifier cookie exists', async () => {

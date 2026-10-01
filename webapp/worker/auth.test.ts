@@ -274,6 +274,11 @@ Deno.test('the PKCE callback exchanges with the cookie verifier and consumes it'
     auth_code: 'auth-code',
     code_verifier: 'verifier-abc',
   });
+  // An unmarked (sign-up / magic-link / OAuth) cookie is not recovery.
+  assertEquals(
+    ((await response?.json()) as { recovery: boolean } | undefined)?.recovery,
+    false,
+  );
   const setCookies = response?.headers.getSetCookie() ?? [];
   assertEquals(setCookies.length, 2);
   assertEquals(
@@ -415,7 +420,67 @@ Deno.test(
       JSON.parse(String(calls[0].init.body)).code_challenge,
       'challenge-verifier-abc',
     );
-    assertEquals(response?.headers.getSetCookie()[0].startsWith(`${PKCE_COOKIE}=`), true);
+    // The recover flow's cookie is the one carrying the recovery marker
+    // (issue #1293); the otp send's cookie above stays unmarked.
+    assertEquals(
+      response?.headers.getSetCookie()[0],
+      `${PKCE_COOKIE}=recovery:verifier-abc; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600`,
+    );
+  },
+);
+
+Deno.test(
+  'the recovery flow: the exchange echoes recovery from the marked cookie (issue #1293)',
+  async () => {
+    const { deps, calls } = fakeDeps();
+    const send = await handleAuthRequest(
+      post('/auth/password/reset', { email: 'a@example.com' }),
+      ENV,
+      deps,
+    );
+    assertEquals(send?.status, 200);
+
+    // The marked cookie exchanges exactly like a plain one: the verifier
+    // travels to GoTrue bare, and the marker only surfaces in the body.
+    const exchange = await handleAuthRequest(
+      post(
+        '/auth/callback',
+        { code: 'auth-code' },
+        { cookie: `${PKCE_COOKIE}=recovery:verifier-abc` },
+      ),
+      ENV,
+      deps,
+    );
+
+    assertEquals(exchange?.status, 200);
+    assertEquals(calls[1].path, '/auth/v1/token?grant_type=pkce');
+    assertEquals(JSON.parse(String(calls[1].init.body)), {
+      auth_code: 'auth-code',
+      code_verifier: 'verifier-abc',
+    });
+    const payload = await exchange?.json();
+    assertEquals(payload.recovery, true);
+    // The verifier is consumed on success, marker and all.
+    assertEquals(
+      exchange?.headers.getSetCookie()[1],
+      `${PKCE_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
+    );
+  },
+);
+
+Deno.test(
+  'a marked cookie with no verifier after the marker is the different-browser case (issue #1293)',
+  async () => {
+    const { deps, calls } = fakeDeps();
+    const response = await handleAuthRequest(
+      post('/auth/callback', { code: 'auth-code' }, { cookie: `${PKCE_COOKIE}=recovery:` }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 401);
+    assertEquals(await errorOf(response), 'verifier_missing');
+    assertEquals(calls.length, 0);
   },
 );
 

@@ -20,8 +20,10 @@ type CallbackState =
  * verifier in its HttpOnly cookie, so the page exchanges the landed `code`
  * through POST /auth/callback and renders the outcome:
  *
- *   - signed in (a recovery link additionally points at the new-password
- *     screen);
+ *   - signed in (a recovery exchange additionally points at the new-password
+ *     screen — the Worker marks its PKCE cookie for the recover flow and
+ *     echoes the marker in the exchange response, because GoTrue's redirect
+ *     back here carries only `?code=`, never `?type=recovery`, issue #1293);
  *   - `verifier_missing` — the issue's dedicated different-browser copy:
  *     open the link in the browser where you asked for it, or use the
  *     8-digit code;
@@ -41,7 +43,6 @@ export function AuthCallbackPage() {
 
   const code = searchParameters.get('code');
   const providerError = searchParameters.get('error');
-  const recovery = searchParameters.get('type') === 'recovery';
 
   useEffect(() => {
     if (startedRef.current) return; // StrictMode/loop guard: one exchange per landing.
@@ -58,7 +59,7 @@ export function AuthCallbackPage() {
     }
     webAuth
       .exchangeCallback(code)
-      .then(() => {
+      .then(({ recovery }) => {
         void queryClient.invalidateQueries({ queryKey: AUTH_SESSION_QUERY_KEY });
         setState({ kind: 'signedIn', recovery });
       })
@@ -69,7 +70,7 @@ export function AuthCallbackPage() {
             : { id: 'commonSomethingWentWrong' as const };
         setState({ kind: 'failed', copyId: copy.id });
       });
-  }, [code, providerError, recovery, queryClient]);
+  }, [code, providerError, queryClient]);
 
   return (
     <main className="page">
