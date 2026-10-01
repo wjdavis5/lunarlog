@@ -507,35 +507,32 @@ Deno.test('password update forwards the in-memory access token as the bearer', a
   assertEquals(JSON.parse(String(init.body)).password, 'new password');
 });
 
-Deno.test(
-  'sign-out global treats a 401 logout as already revoked (issue #1324)',
-  async () => {
-    // GoTrue answers 401 when the bearer is already invalid: there is no
-    // live session left to revoke, so the revocation counts as landed and
-    // the sign-out is a success — not a `revocation_failed` 502.
-    const { deps, calls } = fakeDeps(() => new Response(null, { status: 401 }));
-    const response = await handleAuthRequest(
-      post('/auth/sign-out', { scope: 'global' }, { bearer: 'access-1' }),
-      ENV,
-      deps,
-    );
+Deno.test('sign-out global treats a 401 logout as already revoked (issue #1324)', async () => {
+  // GoTrue answers 401 when the bearer is already invalid: there is no
+  // live session left to revoke, so the revocation counts as landed and
+  // the sign-out is a success — not a `revocation_failed` 502.
+  const { deps, calls } = fakeDeps(() => new Response(null, { status: 401 }));
+  const response = await handleAuthRequest(
+    post('/auth/sign-out', { scope: 'global' }, { bearer: 'access-1' }),
+    ENV,
+    deps,
+  );
 
-    assertEquals(response?.status, 200);
-    assertEquals(((await response?.json()) as { ok: boolean } | undefined)?.ok, true);
-    assertEquals(calls[0].path, '/auth/v1/logout?scope=global');
-    assertEquals(
-      response?.headers.get('set-cookie'),
-      `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
-    );
+  assertEquals(response?.status, 200);
+  assertEquals(((await response?.json()) as { ok: boolean } | undefined)?.ok, true);
+  assertEquals(calls[0].path, '/auth/v1/logout?scope=global');
+  assertEquals(
+    response?.headers.get('set-cookie'),
+    `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
+  );
 
-    const badScope = await handleAuthRequest(
-      post('/auth/sign-out', { scope: 'others' }, { bearer: 'access-1' }),
-      ENV,
-      deps,
-    );
-    assertEquals(badScope?.status, 400);
-  },
-);
+  const badScope = await handleAuthRequest(
+    post('/auth/sign-out', { scope: 'others' }, { bearer: 'access-1' }),
+    ENV,
+    deps,
+  );
+  assertEquals(badScope?.status, 400);
+});
 
 Deno.test(
   'sign-out without a live access token refreshes once from the cookie first',

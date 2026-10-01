@@ -141,7 +141,11 @@ function errorResponse(
   code: string,
   extraHeaders: Record<string, string> = {},
 ): Response {
-  return jsonResponse({ error: code }, { 'cache-control': 'no-store', ...extraHeaders }, status);
+  return jsonResponse(
+    { error: code },
+    { 'cache-control': 'no-store', ...extraHeaders },
+    status,
+  );
 }
 
 /**
@@ -546,7 +550,10 @@ async function handleSignOut(request: Request, deps: AuthDeps): Promise<Response
   if (scope === 'global' && !revoked) {
     return errorResponse(502, 'revocation_failed', { 'set-cookie': clearedCookie });
   }
-  return jsonResponse({ ok: true }, { 'cache-control': 'no-store', 'set-cookie': clearedCookie });
+  return jsonResponse(
+    { ok: true },
+    { 'cache-control': 'no-store', 'set-cookie': clearedCookie },
+  );
 }
 
 /**
