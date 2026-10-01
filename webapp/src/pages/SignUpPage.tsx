@@ -59,8 +59,17 @@ export function SignUpPage() {
       return;
     }
     setEmailError(null);
-    sendOtp.mutate({ email: email.trim(), createUser: true });
-    navigate(`/sign-in/code?email=${encodeURIComponent(email.trim())}&mode=signup`);
+    // The navigation waits for the send to resolve (issue #1294): a
+    // rejected send — rate limit, otp_disabled — must render the mapped
+    // copy on this page, not strand the user on the code screen waiting
+    // for an email that never comes.
+    sendOtp.mutate(
+      { email: email.trim(), createUser: true },
+      {
+        onSuccess: () =>
+          navigate(`/sign-in/code?email=${encodeURIComponent(email.trim())}&mode=signup`),
+      },
+    );
   };
 
   return (

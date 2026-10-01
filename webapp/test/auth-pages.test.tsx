@@ -1,6 +1,6 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createAppQueryClient } from '../src/lib/queries';
@@ -53,6 +53,29 @@ function renderWithProviders(ui: React.ReactElement, initialPath = '/') {
     <AppIntlProvider>
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={[initialPath]}>{ui}</MemoryRouter>
+      </QueryClientProvider>
+    </AppIntlProvider>,
+  );
+}
+
+/**
+ * Routes-based render for the navigation assertions (issue #1294): the
+ * code screen mounts for real, so a navigate — or the absence of one —
+ * is visible as rendered content, not inferred from mocks.
+ */
+function renderWithRoutes(initialPath: string) {
+  const queryClient = createAppQueryClient();
+  return render(
+    <AppIntlProvider>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={[initialPath]}>
+          <Routes>
+            <Route path="/" element={<div>home</div>} />
+            <Route path="/sign-in" element={<SignInPage />} />
+            <Route path="/sign-up" element={<SignUpPage />} />
+            <Route path="/sign-in/code" element={<CodeEntryPage />} />
+          </Routes>
+        </MemoryRouter>
       </QueryClientProvider>
     </AppIntlProvider>,
   );
@@ -122,6 +145,34 @@ describe('SignInPage (issue #1250)', () => {
     fireEvent.click(screen.getByRole('button', { name: messages['webAuthAppleButtonLabel'] }));
     expect(fakes.startOAuth).toHaveBeenCalledWith('apple');
   });
+
+  it('navigates to the code screen only after the send resolves (issue #1294)', async () => {
+    renderWithRoutes('/sign-in');
+    await fill(messages['accountSignInEmailLabel'] ?? '', 'a@b.co');
+    fireEvent.click(
+      screen.getByRole('button', { name: messages['accountSignInMagicLinkSignIn'] }),
+    );
+    await waitFor(() => expect(fakes.sendOtp).toHaveBeenCalledWith('a@b.co', false));
+    expect(
+      await screen.findByLabelText(messages['accountSignInCodeLabel'] ?? ''),
+    ).toBeInTheDocument();
+  });
+
+  it('stays on the sign-in page with the mapped copy when the send is rejected (issue #1294)', async () => {
+    fakes.sendOtp.mockRejectedValue(new AuthError('over_email_send_rate_limit', 429));
+    renderWithRoutes('/sign-in');
+    await fill(messages['accountSignInEmailLabel'] ?? '', 'a@b.co');
+    fireEvent.click(
+      screen.getByRole('button', { name: messages['accountSignInMagicLinkSignIn'] }),
+    );
+    expect(
+      await screen.findByText(messages['authFailureRateLimited'] ?? ''),
+    ).toBeInTheDocument();
+    // No navigation: the code screen's input never renders.
+    expect(
+      screen.queryByLabelText(messages['accountSignInCodeLabel'] ?? ''),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe('SignUpPage (issue #1250)', () => {
@@ -165,6 +216,34 @@ describe('SignUpPage (issue #1250)', () => {
     expect(
       await screen.findByText(messages['accountSignInConfirmEmailInfo']),
     ).toBeInTheDocument();
+  });
+
+  it('navigates to the code screen only after the send resolves (issue #1294)', async () => {
+    renderWithRoutes('/sign-up');
+    await fill(messages['accountSignInEmailLabel'] ?? '', 'a@b.co');
+    fireEvent.click(
+      screen.getByRole('button', { name: messages['accountSignInMagicLinkCreate'] }),
+    );
+    await waitFor(() => expect(fakes.sendOtp).toHaveBeenCalledWith('a@b.co', true));
+    expect(
+      await screen.findByLabelText(messages['accountSignInCodeLabel'] ?? ''),
+    ).toBeInTheDocument();
+  });
+
+  it('stays on the sign-up page with the mapped copy when the send is rejected (issue #1294)', async () => {
+    fakes.sendOtp.mockRejectedValue(new AuthError('otp_disabled', 400));
+    renderWithRoutes('/sign-up');
+    await fill(messages['accountSignInEmailLabel'] ?? '', 'a@b.co');
+    fireEvent.click(
+      screen.getByRole('button', { name: messages['accountSignInMagicLinkCreate'] }),
+    );
+    expect(
+      await screen.findByText(messages['authFailureInvalidCode'] ?? ''),
+    ).toBeInTheDocument();
+    // No navigation: the code screen's input never renders.
+    expect(
+      screen.queryByLabelText(messages['accountSignInCodeLabel'] ?? ''),
+    ).not.toBeInTheDocument();
   });
 });
 
