@@ -149,26 +149,35 @@ function errorResponse(
 }
 
 /**
+ * The upstream error body's machine-readable code — GoTrue's `error_code`
+ * (`invalid_credentials`, `bad_jwt`, `session_not_found`, …), falling back
+ * to `code`, then `error`, then `unknown`. Besides the catalogue-copy
+ * mapping below, the sign-out route branches on it (issue #1343).
+ */
+async function upstreamErrorCode(response: Response): Promise<string> {
+  try {
+    const raw = (await response.json()) as Record<string, unknown>;
+    if (typeof raw.error_code === 'string' && raw.error_code !== '') {
+      return raw.error_code;
+    } else if (typeof raw.code === 'string' && raw.code !== '') {
+      return raw.code;
+    } else if (typeof raw.error === 'string' && raw.error !== '') {
+      return raw.error;
+    }
+  } catch {
+    // A non-JSON upstream error body: the generic code stands.
+  }
+  return 'unknown';
+}
+
+/**
  * Forwards Supabase Auth's own error code so the client can map it to
  * catalogue copy the way the app maps `AuthException.code` (the same
  * strings: `invalid_credentials`, `weak_password`, `over_request_rate_limit`,
  * `otp_expired`, …). A body without a code collapses to `unknown`.
  */
 async function upstreamError(response: Response): Promise<Response> {
-  let code = 'unknown';
-  try {
-    const raw = (await response.json()) as Record<string, unknown>;
-    if (typeof raw.error_code === 'string' && raw.error_code !== '') {
-      code = raw.error_code;
-    } else if (typeof raw.code === 'string' && raw.code !== '') {
-      code = raw.code;
-    } else if (typeof raw.error === 'string' && raw.error !== '') {
-      code = raw.error;
-    }
-  } catch {
-    // A non-JSON upstream error body: the generic code stands.
-  }
-  return errorResponse(response.status, code);
+  return errorResponse(response.status, await upstreamErrorCode(response));
 }
 
 /**
@@ -482,6 +491,51 @@ async function handleOAuthStart(request: Request, deps: AuthDeps): Promise<Respo
   });
 }
 
+/**
+ * The upstream revocation call for one scope and bearer.
+ */
+function logoutUpstream(
+  request: Request,
+  deps: AuthDeps,
+  scope: string,
+  bearer: string,
+): Promise<Response> {
+  return deps.supabaseFetch(`/auth/v1/logout?scope=${scope}`, {
+    method: 'POST',
+    headers: upstreamHeaders(request, deps.publishableKey, {
+      authorization: `Bearer ${bearer}`,
+    }),
+    body: '{}',
+  });
+}
+
+/**
+ * One best-effort cookie refresh: the fresh access token, or null when
+ * there is no cookie or GoTrue rejected or dropped the leg. Shared by the
+ * sign-out's no-bearer path and its stale-bearer retry (issue #1343).
+ */
+async function refreshBearerFromCookie(
+  request: Request,
+  deps: AuthDeps,
+): Promise<string | null> {
+  const refreshToken = readCookie(request, REFRESH_COOKIE);
+  if (refreshToken === null) return null;
+  try {
+    const refreshed = await deps.supabaseFetch('/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST',
+      headers: upstreamHeaders(request, deps.publishableKey),
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (refreshed.ok) {
+      const raw = (await refreshed.json()) as Record<string, unknown>;
+      if (typeof raw.access_token === 'string') return raw.access_token;
+    }
+  } catch {
+    // GoTrue unreachable: the caller proceeds without a bearer.
+  }
+  return null;
+}
+
 async function handleSignOut(request: Request, deps: AuthDeps): Promise<Response> {
   const body = await readJsonBody(request);
   const scope = body.scope === undefined ? 'local' : body.scope;
@@ -499,28 +553,19 @@ async function handleSignOut(request: Request, deps: AuthDeps): Promise<Response
     // bearer — it must not stop the cookie from being cleared (issue
     // #1292). For `global` the missing bearer is reported as a failure
     // below: with no way to reach GoTrue, "everywhere" was not signed out.
-    const refreshToken = readCookie(request, REFRESH_COOKIE);
-    if (refreshToken !== null) {
-      try {
-        const refreshed = await deps.supabaseFetch('/auth/v1/token?grant_type=refresh_token', {
-          method: 'POST',
-          headers: upstreamHeaders(request, deps.publishableKey),
-          body: JSON.stringify({ refresh_token: refreshToken }),
-        });
-        if (refreshed.ok) {
-          const raw = (await refreshed.json()) as Record<string, unknown>;
-          if (typeof raw.access_token === 'string') bearer = raw.access_token;
-        }
-      } catch {
-        // GoTrue unreachable: sign out anyway, without the bearer.
-      }
-    }
+    bearer = await refreshBearerFromCookie(request, deps);
   }
-  // The upstream revocation landed: a 2xx from GoTrue, or a 401/404 — the
-  // token is already invalid or unknown, so there is nothing left to
-  // revoke. A rejected fetch or any other non-2xx leaves `revoked` false.
-  // `local` signs this browser out by clearing the cookie below, so it is
-  // always done; `global`'s whole point is the revocation itself.
+  // The upstream revocation landed: a 2xx from GoTrue, or GoTrue's own
+  // already-gone answer — 403 `session_not_found`, raised when the JWT
+  // verifies but the session its session_id claim names no longer exists
+  // (another tab signed out everywhere first). supabase-js's signOut
+  // ignores that response for the same reason (issue #1343). A bare 401
+  // or 404 is NOT a landed revocation — the API gateway rejecting the
+  // publishable key or a misrouted base URL answers those without GoTrue
+  // ever evaluating the request (issue #1343) — and neither is anything
+  // else, so only a verifiable upstream answer sets `revoked`. `local`
+  // signs this browser out by clearing the cookie below, so it is always
+  // done; `global`'s whole point is the revocation itself.
   let revoked = scope === 'local';
   if (bearer !== null) {
     // A rejected fetch — GoTrue timing out or resetting the connection —
@@ -529,14 +574,32 @@ async function handleSignOut(request: Request, deps: AuthDeps): Promise<Response
     // session still ends below; for `global` the failure is reported
     // instead of swallowed (issue #1324).
     try {
-      const logout = await deps.supabaseFetch(`/auth/v1/logout?scope=${scope}`, {
-        method: 'POST',
-        headers: upstreamHeaders(request, deps.publishableKey, {
-          authorization: `Bearer ${bearer}`,
-        }),
-        body: '{}',
-      });
-      if (logout.ok || logout.status === 401 || logout.status === 404) revoked = true;
+      let logout = await logoutUpstream(request, deps, scope, bearer);
+      if (logout.status === 403) {
+        const code = await upstreamErrorCode(logout);
+        if (code === 'session_not_found') {
+          // The bearer's session is already gone: the revocation landed
+          // when whichever earlier call deleted it landed (issue #1343).
+          revoked = true;
+        } else if (code === 'bad_jwt') {
+          // The in-memory access token no longer verifies (client clock
+          // skew, or expiry between page load and this call): refresh once
+          // from the HttpOnly cookie — the leg the no-bearer path above
+          // takes — and retry a single time (issue #1343). The retried
+          // answer must itself be a landed revocation; a second 403 (or
+          // anything else) stays a failure.
+          const fresh = await refreshBearerFromCookie(request, deps);
+          if (fresh !== null) {
+            logout = await logoutUpstream(request, deps, scope, fresh);
+            revoked =
+              logout.ok ||
+              (logout.status === 403 &&
+                (await upstreamErrorCode(logout)) === 'session_not_found');
+          }
+        }
+      } else if (logout.ok) {
+        revoked = true;
+      }
     } catch {
       // The revocation did not land; the cookie still gets cleared below.
     }
