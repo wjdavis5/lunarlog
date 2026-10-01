@@ -196,6 +196,14 @@ jobs:
         if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/detect-ci-changes.test.sh
 
+      - name: Run ios-simulator-budgets tests
+        # Issue #1278: pins the `iOS Simulator tests` job's budget arithmetic
+        # (per-attempt bound vs step cap vs job cap), the --no-pub flag, and
+        # gate_test.dart's #827 per-test bounds, so the retry harness can
+        # never silently outgrow the caps meant to contain it.
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
+        run: bash .github/scripts/tests/ios-simulator-budgets.test.sh
+
       # Issue #266: unlike the scripts above (proven only via their own
       # unit tests here, then invoked for real elsewhere -- e.g.
       # check-destructive-sql.sh against real migration files in
@@ -399,6 +407,14 @@ jobs:
       - name: Run detect-ci-changes tests
         if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/detect-ci-changes.test.sh
+
+      - name: Run ios-simulator-budgets tests
+        # Issue #1278: pins the `iOS Simulator tests` job's budget arithmetic
+        # (per-attempt bound vs step cap vs job cap), the --no-pub flag, and
+        # gate_test.dart's #827 per-test bounds, so the retry harness can
+        # never silently outgrow the caps meant to contain it.
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
+        run: bash .github/scripts/tests/ios-simulator-budgets.test.sh
 
   check:
     # The former "Analyze, test, build web" job, minus the test suite: that
@@ -1190,7 +1206,11 @@ jobs:
     # setup / cache restore / simulator boot overhead: 20 + 15 + 5 = 40, under
     # this cap with room to spare. The sub-step budgets are the real bounds; a
     # hung build or test fails there with a named step, never here.
-    timeout-minutes: 45
+    # Issue #1278: the test step below grew to 30 minutes (two 750s-bounded
+    # attempts plus a reboot between them -- see its own comment), so the same
+    # arithmetic is 20 + 30 + ~6 of checkout / Flutter setup / cache restore /
+    # boot = ~56, under this raised cap.
+    timeout-minutes: 60
     steps:
       - name: Check if iOS Simulator tests should run
         id: check_run
@@ -1344,11 +1364,33 @@ jobs:
         #
         # Issue #1130: on GitHub-hosted macOS runners, CoreSimulator or the
         # Dart VM service handshake can occasionally hang before tests start
-        # (after "Xcode build done"). Each attempt is bounded at 500s (~8.3m);
-        # on a timeout or failure, the step reboots the simulator and retries
-        # once, preventing transient runner stalls from failing CI on main.
+        # (after "Xcode build done"). Each attempt is bounded (750s, ~12.5m --
+        # see #1278 below for the sizing); on a timeout or failure, the step
+        # reboots the simulator and retries once, preventing transient runner
+        # stalls from failing CI on main.
+        #
+        # Issue #1278: the 500s bound was sized for a warm incremental build,
+        # but a cold hosted-runner attempt spends nearly all of it before the
+        # first test starts. Run 36792571635 -- a PASS, on a cold
+        # Xcode-products cache -- consumed 495s of the 500s: pub resolve, the
+        # in-step kernel compile, a 208s Xcode build (the pre-build step's
+        # products above do not make `flutter test`'s own xcodebuild
+        # invocation incremental), then ~100s to install, launch, and pass
+        # all 6 tests. Five seconds of margin. The run this issue closed
+        # (36784132156) exceeded 500s on both attempts without a single test
+        # line: attempt 1's build finished 29s before the bound fired;
+        # attempt 2 stalled in the post-build install/launch phase (the
+        # #1130 class -- the per-test timeouts never saw it) and the same
+        # tight bound killed it. Raised the bound to 750s (healthy-cold 495s
+        # + the observed 180-300s build spread + launch slack) and added
+        # --no-pub: the job runs `flutter pub get` earlier in the same
+        # checkout, and the implicit re-resolve burned 60-102s per attempt in
+        # the failing logs. The step cap grows with the bound (2 x 750s + a
+        # reboot ~= 27m, under 30m) and the job cap to 60m, so this harness
+        # still fits inside its own caps with the arithmetic the job comment
+        # documents; ios-simulator-budgets.test.sh pins all of it.
         if: steps.check_run.outputs.run == 'true'
-        timeout-minutes: 18
+        timeout-minutes: 30
         env:
           SIM_UDID: ${{ steps.sim.outputs.udid }}
         run: |
@@ -1366,7 +1408,7 @@ jobs:
           except subprocess.TimeoutExpired:
               print(f"::error::Command timed out after {timeout}s: {cmd_str}")
               sys.exit(124)
-          ' 500 flutter test integration_test/gate_test.dart -d "$SIM_UDID"
+          ' 750 flutter test integration_test/gate_test.dart -d "$SIM_UDID" --no-pub
           }
 
           echo "Running integration tests on simulator $SIM_UDID (attempt 1)..."
