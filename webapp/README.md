@@ -202,7 +202,11 @@ renewal per tab.
   the `POST /auth/callback` exchange (the provider's `GET` lands on the SPA
   page), password reset + update, session refresh, and sign-out on this
   device or everywhere. Failures carry GoTrue's own error codes so the UI
-  can reuse the app's failure copy (`src/lib/authCopy.ts`).
+  can reuse the app's failure copy (`src/lib/authCopy.ts`). The recover
+  email's PKCE cookie carries a `recovery:` marker beside the verifier that
+  the callback echoes in its response (issue #1293) — GoTrue's redirect back
+  carries only `?code=`, never `?type=recovery`, so the marker is what sends
+  the callback page to the new-password step.
 - **Upstream shapes** mirror the installed @supabase/auth-js wire format
   (grants at `/auth/v1/token?grant_type=…`, `redirect_to` as a query
   parameter, `code_challenge` in the body), verified against

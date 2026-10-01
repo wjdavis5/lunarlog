@@ -33,6 +33,7 @@ import {
   buildClearedCookie,
   buildPkceCookie,
   buildRefreshCookie,
+  parsePkceValue,
   readCookie,
 } from './cookies.ts';
 import { SUPABASE_URL } from './headers.ts';
@@ -210,9 +211,10 @@ function upstreamHeaders(
 function sessionResponse(
   raw: Record<string, unknown>,
   extraHeaders: Record<string, string>,
+  extraBody: Record<string, unknown> = {},
 ): Response {
   const session = toClientSession(raw);
-  return new Response(JSON.stringify(session), {
+  return new Response(JSON.stringify({ ...session, ...extraBody }), {
     status: 200,
     headers: {
       'content-type': 'application/json',
@@ -244,12 +246,16 @@ function bearerOf(request: Request): string | null {
  * email, recovery email): sets the verifier cookie and points the emailed
  * link back at this origin's /auth/callback, exactly the way supabase-js
  * wires it — challenge in the body, redirect target in the query string.
+ * The recovery email's cookie is marked as such (issue #1293): the marker
+ * is what tells the callback page to show the new-password step, because
+ * GoTrue's redirect back carries only `?code=`, never `?type=recovery`.
  */
 async function startPkceEmailFlow(
   request: Request,
   deps: AuthDeps,
   upstreamPath: string,
   body: Record<string, unknown>,
+  recovery = false,
 ): Promise<Response> {
   const verifier = deps.randomVerifier();
   body.code_challenge = await deps.codeChallenge(verifier);
@@ -264,7 +270,7 @@ async function startPkceEmailFlow(
   if (!response.ok) return upstreamError(response);
   return jsonResponse(
     { ok: true },
-    { 'cache-control': 'no-store', 'set-cookie': buildPkceCookie(verifier) },
+    { 'cache-control': 'no-store', 'set-cookie': buildPkceCookie(verifier, recovery) },
   );
 }
 
@@ -274,6 +280,7 @@ async function grantSession(
   deps: AuthDeps,
   grant: 'password' | 'refresh_token' | 'pkce',
   body: Record<string, unknown>,
+  extraBody: Record<string, unknown> = {},
 ): Promise<Response> {
   const response = await deps.supabaseFetch(`/auth/v1/token?grant_type=${grant}`, {
     method: 'POST',
@@ -285,7 +292,7 @@ async function grantSession(
   if (typeof raw.refresh_token !== 'string' || typeof raw.access_token !== 'string') {
     return errorResponse(502, 'upstream_session_shape');
   }
-  return sessionResponse(raw, { 'cache-control': 'no-store' });
+  return sessionResponse(raw, { 'cache-control': 'no-store' }, extraBody);
 }
 
 async function handlePasswordSignIn(request: Request, deps: AuthDeps): Promise<Response> {
@@ -376,9 +383,9 @@ async function handleOtpVerify(request: Request, deps: AuthDeps): Promise<Respon
 async function handlePasswordReset(request: Request, deps: AuthDeps): Promise<Response> {
   const body = await readJsonBody(request);
   if (typeof body.email !== 'string') return errorResponse(400, 'email_required');
-  return startPkceEmailFlow(request, deps, '/auth/v1/recover', {
-    email: body.email,
-  });
+  // The recovery marker rides in the PKCE cookie (issue #1293) so the
+  // callback can report it — see startPkceEmailFlow.
+  return startPkceEmailFlow(request, deps, '/auth/v1/recover', { email: body.email }, true);
 }
 
 async function handlePasswordUpdate(request: Request, deps: AuthDeps): Promise<Response> {
@@ -403,17 +410,28 @@ async function handleCallback(request: Request, deps: AuthDeps): Promise<Respons
   if (typeof body.code !== 'string' || body.code === '') {
     return errorResponse(400, 'code_required');
   }
-  const verifier = readCookie(request, PKCE_COOKIE);
+  // The cookie's value decodes to verifier + recovery marker (issue #1293);
+  // the marker is how a recovery link is recognised, since GoTrue's
+  // redirect back here carries only `?code=`, never `?type=recovery`.
+  const pkce = readCookie(request, PKCE_COOKIE);
+  const value = pkce === null ? null : parsePkceValue(pkce);
   // The PKCE link opened in a different browser (or the verifier expired):
-  // no verifier cookie. The UI renders the issue's dedicated copy for this
-  // exact code — open the link where you asked for it, or use the code.
-  if (verifier === null) return errorResponse(401, 'verifier_missing');
-  const response = await grantSession(request, deps, 'pkce', {
-    auth_code: body.code,
-    code_verifier: verifier,
-  });
+  // no usable verifier cookie. The UI renders the issue's dedicated copy for
+  // this exact code — open the link where you asked for it, or use the code.
+  if (value === null) return errorResponse(401, 'verifier_missing');
+  const response = await grantSession(
+    request,
+    deps,
+    'pkce',
+    {
+      auth_code: body.code,
+      code_verifier: value.verifier,
+    },
+    { recovery: value.recovery },
+  );
   if (response.status === 200) {
-    // The verifier is single-use: consumed on success.
+    // The verifier is single-use: consumed on success, marker and all —
+    // the page has already received the flag in the response body.
     response.headers.append('set-cookie', buildClearedCookie(PKCE_COOKIE));
   }
   return response;

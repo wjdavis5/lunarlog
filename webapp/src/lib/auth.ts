@@ -55,14 +55,17 @@ function csrfHeaders(): HeadersInit {
   return { 'content-type': 'application/json', [CSRF_HEADER]: '1' };
 }
 
-async function parseSession(response: Response): Promise<ClientSession> {
-  const raw = (await response.json()) as Record<string, unknown>;
+function parseSessionBody(raw: Record<string, unknown>): ClientSession {
   return {
     access_token: String(raw.access_token ?? ''),
     expires_in: typeof raw.expires_in === 'number' ? raw.expires_in : 3600,
     expires_at: typeof raw.expires_at === 'number' ? raw.expires_at : 0,
     user: typeof raw.user === 'object' && raw.user !== null ? (raw.user as WebAuthUser) : null,
   };
+}
+
+async function parseSession(response: Response): Promise<ClientSession> {
+  return parseSessionBody((await response.json()) as Record<string, unknown>);
 }
 
 async function raiseForError(response: Response): Promise<void> {
@@ -231,8 +234,13 @@ export class WebAuthClient {
    * Exchanges the PKCE `code` the emailed/OAuth link landed with for the
    * session. The verifier travels in its HttpOnly cookie — a link opened in
    * another browser arrives with none and surfaces `verifier_missing`.
+   *
+   * Returns whether the exchanged link was the password-recovery email
+   * (issue #1293): the Worker marks its PKCE cookie for the recover flow
+   * and echoes the marker here, because GoTrue's redirect back to the
+   * callback carries only `?code=`, never `?type=recovery`.
    */
-  async exchangeCallback(code: string): Promise<void> {
+  async exchangeCallback(code: string): Promise<{ recovery: boolean }> {
     const response = await fetch('/auth/callback', {
       method: 'POST',
       headers: csrfHeaders(),
@@ -240,7 +248,9 @@ export class WebAuthClient {
       body: JSON.stringify({ code }),
     });
     await raiseForError(response);
-    this.adoptSession(await parseSession(response));
+    const raw = (await response.json()) as Record<string, unknown>;
+    this.adoptSession(parseSessionBody(raw));
+    return { recovery: raw.recovery === true };
   }
 
   /**

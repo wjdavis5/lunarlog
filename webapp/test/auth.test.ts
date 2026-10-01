@@ -138,7 +138,8 @@ describe('WebAuthClient (issue #1250)', () => {
       return Promise.resolve(jsonResponse(SESSION_BODY));
     });
 
-    await client.exchangeCallback('pkce-code');
+    // An unmarked callback (sign-up, magic link, OAuth) is not recovery.
+    expect(await client.exchangeCallback('pkce-code')).toEqual({ recovery: false });
     expect(JSON.parse(String(calls[0].init?.body))).toEqual({ code: 'pkce-code' });
     expect(client.getUser()?.id).toBe('u1');
 
@@ -150,6 +151,19 @@ describe('WebAuthClient (issue #1250)', () => {
     expect(headers.get('authorization')).toBe('Bearer access-1');
     expect(client.getUser()).toBeNull();
     expect(await client.getToken()).toBeNull();
+  });
+
+  it('surfaces the recovery marker from the callback exchange (issue #1293)', async () => {
+    stubFetch((call) => {
+      if (call.url === '/auth/session') {
+        return Promise.resolve(jsonResponse({ error: 'no_session' }, 401));
+      }
+      // The Worker echoes its PKCE cookie's recovery marker in the body.
+      return Promise.resolve(jsonResponse({ ...SESSION_BODY, recovery: true }));
+    });
+
+    expect(await client.exchangeCallback('pkce-code')).toEqual({ recovery: true });
+    expect(client.getUser()?.id).toBe('u1');
   });
 
   it('forgets the in-memory session even when the sign-out POST fails (issue #1292)', async () => {
