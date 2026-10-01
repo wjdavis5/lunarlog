@@ -229,6 +229,10 @@ jobs:
         id: version
         env:
           QA_BUILD: ${{ inputs.qa_build }}
+          # Issue #1302: read-only credential for the versionCode clamp below
+          # -- the same secret the publish step already presents to
+          # upload-google-play, so no new credential exists to manage.
+          PLAY_STORE_JSON_KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}
         run: |
           set -euo pipefail
 
@@ -243,6 +247,33 @@ jobs:
           # glance and a manual promotion is catchable before it ships.
           if [ "$QA_BUILD" = "true" ]; then
             build_number=$(( build_number + 500000 ))
+            range_low=500000
+            range_high=999999
+          else
+            range_low=1000
+            range_high=499999
+          fi
+
+          # Issue #1302: the run counter is monotonic across dispatches but
+          # NOT against Google Play -- re-running an old workflow run keeps
+          # its frozen run_number, and Play rejects an already-used
+          # versionCode for good (the same duplicate-build failure PR #1260
+          # clamped on the iOS side, issue #1259). Clamp the number up to
+          # one past the highest versionCode already uploaded in the SAME
+          # range, keeping the production/QA namespaces separate. A failed
+          # lookup only warns: a fresh dispatch never needs the clamp, so a
+          # Play hiccup must not block a release.
+          set +e
+          highest="$( \
+            PACKAGE_NAME="$PACKAGE_NAME" RANGE_LOW="$range_low" RANGE_HIGH="$range_high" \
+            ruby .github/scripts/play-highest-version-code.rb)"
+          play_status=$?
+          set -e
+          if [ "$play_status" -ne 0 ]; then
+            echo "::warning::Could not read the highest uploaded versionCode from Google Play; trusting the run-counter number ($build_number)."
+          elif [ -n "$highest" ] && [ "$build_number" -le "$highest" ]; then
+            echo "Run-counter build $build_number is not above the highest uploaded versionCode $highest; bumping to $((highest + 1))."
+            build_number=$((highest + 1))
           fi
 
           echo "marketing=$marketing" >> "$GITHUB_OUTPUT"
