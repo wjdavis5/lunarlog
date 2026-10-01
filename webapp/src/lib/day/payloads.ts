@@ -500,6 +500,15 @@ function upsertMeasurement(
     // as 37 °C). That is not a change — rewriting the row would only
     // churn its unit (150 lb -> 68.0388555 kg) on every save of the day.
     if (storedMeasurementEquals(row, category, value, unit)) return [];
+    // Unlike source/source_id/import_id/exported_to_platform_at, the
+    // server's observations UPDATE branch writes every other value column
+    // it parses unconditionally — an omitted key resolves to its default,
+    // not to "leave the stored value alone" (`excluded` coalesces a
+    // missing key to false). So this update echoes every stored column the
+    // web does not edit: without the echo, a value-only fix here would
+    // silently clear a phone-set exclusion (#1288) and the reading would
+    // re-enter charts and averages. `raw` is import provenance — never set
+    // on a `source: 'manual'` row, and not part of the pulled row shape.
     return [
       {
         id: row.id,
@@ -508,8 +517,13 @@ function upsertMeasurement(
         local_date: dateIso,
         tz,
         category,
+        observed_at: row.observed_at,
+        code: row.code,
         value_num: value,
+        value_text: row.value_text,
         unit,
+        intensity: row.intensity,
+        excluded: row.excluded,
         source: row.source,
         updated_at: nowIso,
       },

@@ -152,6 +152,32 @@ describe('WebAuthClient (issue #1250)', () => {
     expect(await client.getToken()).toBeNull();
   });
 
+  it('forgets the in-memory session even when the sign-out POST fails (issue #1292)', async () => {
+    let signedOut = false;
+    stubFetch((call) => {
+      if (call.url === '/auth/session') {
+        // A live session first; after the failed sign-out, a renewal is a
+        // signed-out — the Worker cleared the cookie even on this path.
+        return Promise.resolve(
+          signedOut ? jsonResponse({ error: 'no_session' }, 401) : jsonResponse(SESSION_BODY),
+        );
+      }
+      // The POST /auth/sign-out fails the way an unreachable Worker
+      // surfaces: a 500 instead of the cleared-cookie 200.
+      signedOut = true;
+      return Promise.resolve(jsonResponse({ error: 'unknown' }, 500));
+    });
+
+    await client.getToken();
+    expect(client.getUser()?.id).toBe('u1');
+
+    await expect(client.signOut('local')).rejects.toMatchObject({ status: 500 });
+    // The POST failed, but the in-memory token died with it: getUser is
+    // null and the next renewal comes back signed-out.
+    expect(client.getUser()).toBeNull();
+    expect(await client.getToken()).toBeNull();
+  });
+
   it('surfaces verifier_missing from the callback exchange', async () => {
     stubFetch(() => Promise.resolve(jsonResponse({ error: 'verifier_missing' }, 401)));
     await expect(client.exchangeCallback('code')).rejects.toMatchObject({

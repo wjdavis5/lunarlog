@@ -662,6 +662,12 @@ function TransferSection(props: {
     created !== null
       ? `${window.location.origin}${invitePath(created.rawToken, props.profileId)}&kind=claim`
       : '';
+  // The pending card is for a live transfer this session never held the token
+  // for (armed earlier or on another device — the server keeps only the hash).
+  // When the readback lands on the transfer this session just armed, the link
+  // panel stays up instead, with the Cancel action alongside: hiding it there
+  // would strand the one-time token, which is unrecoverable (issue #1286).
+  const foreignLive = props.live !== null && created?.id !== props.live.id ? props.live : null;
 
   return (
     <section className="card">
@@ -669,21 +675,21 @@ function TransferSection(props: {
         {t('sharingTransferOwnershipScreenTitle', { profileName: props.profileName })}
       </p>
 
-      {props.live !== null ? (
+      {foreignLive !== null ? (
         <>
           <p className="card-title">{t('sharingTransferOwnershipPendingTitle')}</p>
           <p className="card-body">
             {t('sharingTransferOwnershipPendingBody', { profileName: props.profileName })}
           </p>
           <p className="card-body">
-            {t('sharingTransferOwnershipExpires', { date: formatDate(props.live.expires_at) })}
+            {t('sharingTransferOwnershipExpires', { date: formatDate(foreignLive.expires_at) })}
           </p>
           <div className="actions">
             <button
               type="button"
               className="button danger"
               disabled={cancelTransfer.isPending}
-              onClick={() => cancelTransfer.mutate(props.live?.id ?? '')}
+              onClick={() => cancelTransfer.mutate(foreignLive.id)}
             >
               {t('sharingTransferOwnershipCancelPending')}
             </button>

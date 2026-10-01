@@ -243,7 +243,13 @@ export class WebAuthClient {
     this.adoptSession(await parseSession(response));
   }
 
-  /** Signs out this device's session, or every device's on 'global'. */
+  /**
+   * Signs out this device's session, or every device's on 'global'. The
+   * in-memory token dies in a `finally` (issue #1292): the Worker clears
+   * the refresh cookie on its side even when its upstream calls fail, and
+   * a POST that never lands or fails must not leave the page holding a
+   * live access token. The error still propagates so the UI can show it.
+   */
   async signOut(scope: SignOutScope): Promise<void> {
     const token = await this.getToken();
     const headers: Record<string, string> = {
@@ -251,14 +257,17 @@ export class WebAuthClient {
       [CSRF_HEADER]: '1',
     };
     if (token !== null) headers.authorization = `Bearer ${token}`;
-    const response = await fetch('/auth/sign-out', {
-      method: 'POST',
-      headers,
-      credentials: 'same-origin',
-      body: JSON.stringify({ scope }),
-    });
-    await raiseForError(response);
-    this.forgetSession();
+    try {
+      const response = await fetch('/auth/sign-out', {
+        method: 'POST',
+        headers,
+        credentials: 'same-origin',
+        body: JSON.stringify({ scope }),
+      });
+      await raiseForError(response);
+    } finally {
+      this.forgetSession();
+    }
   }
 
   /** Navigates the browser to the OAuth provider through the Worker. */
