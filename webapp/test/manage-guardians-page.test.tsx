@@ -1,5 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -130,7 +130,7 @@ function renderPage() {
   // `['synced-data']`, never a table) instead of the retired profiles read.
   domainMocks.refresh.mockResolvedValue({ profiles: [profileRow] });
   queryClient.setQueryData(['synced-data'], { profiles: [profileRow] } as never);
-  return render(
+  const view = render(
     <AppIntlProvider>
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={[`/profile/${ULID}/guardians`]}>
@@ -142,6 +142,7 @@ function renderPage() {
       </QueryClientProvider>
     </AppIntlProvider>,
   );
+  return { queryClient, view };
 }
 
 function defaultMocks() {
@@ -330,6 +331,60 @@ describe('ManageGuardiansPage (issue #1255)', () => {
     expect(
       await screen.findByText(messages['sharingTransferOwnershipCancelled'] ?? ''),
     ).toBeInTheDocument();
+  });
+
+  it('the transfer link survives the post-arm active-transfer readback (issue #1286)', async () => {
+    const transferId = '4f4f4f4f-4f4f-4f4f-8f4f-4f4f4f4f4f4f';
+    const liveRow = {
+      id: transferId,
+      profile_id: ULID,
+      parent_post_transfer_role: 'co_parent',
+      recipient_label: null,
+      expires_at: '2026-10-03T00:00:00Z',
+    };
+    // Pre-arm readback: nothing live yet. The invalidate inside
+    // `arm.onSuccess` then refetches, and that readback resolves with the
+    // just-created transfer as the live row.
+    sharingMocks.fetchActiveTransfer.mockResolvedValueOnce(null).mockResolvedValue(liveRow);
+    sharingMocks.createOwnershipTransfer.mockResolvedValue({
+      transfer: { id: transferId, expires_at: '2026-10-03T00:00:00Z' },
+      rawToken: 'T0KEN123',
+    });
+    const { queryClient } = renderPage();
+    fireEvent.click(await screen.findByText(messages['sharingTransferOwnershipAction'] ?? ''));
+    expect(
+      await screen.findByText(messages['sharingTransferOwnershipReadyTitle'] ?? ''),
+    ).toBeInTheDocument();
+
+    // Wait out the post-arm readback: the query cache must already hold the
+    // live row, or the assertions below would not prove anything.
+    await waitFor(() => {
+      expect(queryClient.getQueryData(['activeTransfer', ULID])).toEqual(liveRow);
+    });
+    await act(async () => {}); // flush the cache-to-DOM propagation
+
+    // The link panel is still up once the readback has landed — the server
+    // stores only the token hash, so the pending card swallowing the panel
+    // here would strand the one-time token (issue #1286).
+    expect(
+      screen.getByText(messages['sharingTransferOwnershipReadyTitle'] ?? ''),
+    ).toBeInTheDocument();
+    const link = screen.getByText(
+      (content, element) =>
+        element?.className === 'link-display' && content.includes('/invite?code=T0KEN123'),
+    );
+    expect(link.textContent).toContain('kind=claim');
+    // The invite panel shares the "Copy Link" string, but it never entered
+    // its created state in this test — exactly one copy button is up.
+    expect(
+      screen.getAllByText(messages['sharingTransferOwnershipCopyLink'] ?? ''),
+    ).toHaveLength(1);
+    expect(
+      screen.getByText(messages['sharingTransferOwnershipCancelTransfer'] ?? ''),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(messages['sharingTransferOwnershipPendingTitle'] ?? ''),
+    ).not.toBeInTheDocument();
   });
 
   it('a not-signed-in failure renders the sign-in copy (issue #885 posture)', async () => {
