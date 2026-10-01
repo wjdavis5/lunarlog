@@ -429,11 +429,29 @@ List<Map<String, Object?>> _insightCases() {
       if (cycleDay == 1) 'backache',
     ],
   );
+  // Exactly kMinObservationCycles (3) completed cycles: a tag logged in
+  // all three meets the reporting threshold, but _calculateTrend needs 4+
+  // cycles to split halves, so every reported pattern's trend is
+  // `insufficientData` (issue #1272 — the web Zod schema rejected that
+  // value before this case existed, failing `insights()` outright for
+  // 3-cycle profiles).
+  final threeCycles = _cycleEntries(
+    cycleLengths: const [28, 28, 28, 28],
+    firstStart: _addDays(today, -112),
+    tagsForDay: (cycleIndex, cycleDay) => [
+      if (cycleDay == 2) 'cramps',
+    ],
+  );
   return [
     _case('insights.patterns-and-cramps', 'insights', {
       'today': today,
       'tz': 'UTC',
       'entries': entries,
+    }),
+    _case('insights.three-cycles-insufficient-trend', 'insights', {
+      'today': today,
+      'tz': 'UTC',
+      'entries': threeCycles,
     }),
   ];
 }
