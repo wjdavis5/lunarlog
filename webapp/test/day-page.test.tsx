@@ -8,7 +8,12 @@ import { createAppQueryClient } from '../src/lib/queries';
 import { getSyncedDataCache } from '../src/lib/domain';
 import { DayPage } from '../src/pages/DayPage';
 import type { AppSupabaseClient } from '../src/lib/supabase';
-import type { ObservationRow, ProfileGuardianRow, ProfileRow } from '../src/lib/schemas';
+import type {
+  DayEntryRow,
+  ObservationRow,
+  ProfileGuardianRow,
+  ProfileRow,
+} from '../src/lib/schemas';
 
 /**
  * The day editor page (issue #1254): the states a signed-in operator moves
@@ -115,6 +120,10 @@ function fakeClient(options?: {
   observations?: ObservationRow[];
   rpcResult?: { data: unknown; error: { message: string } | null };
   trackingPreferences?: unknown;
+  /** Replaces the day's entry in the pulled page as soon as a push runs —
+   * the phone's newer, winning save that the post-decline refetch (#1289)
+   * must hand back to the editor. */
+  winningEntryAfterPush?: DayEntryRow;
   bbtUnit?: 'celsius' | 'fahrenheit';
   weightUnit?: 'kg' | 'lb';
 }) {
@@ -130,7 +139,7 @@ function fakeClient(options?: {
           : {}),
       },
     ],
-    day_entries: [{ ...entry, server_version: 7 }],
+    day_entries: [{ ...entry, server_version: 7 }] as DayEntryRow[],
     observations: options?.observations ?? [],
     profile_modes: [],
     cycle_overrides: [],
@@ -148,6 +157,9 @@ function fakeClient(options?: {
   const rpc = vi.fn().mockImplementation((name: string) => {
     if (name === 'sync_pull') {
       return Promise.resolve({ data: page, error: null });
+    }
+    if (options?.winningEntryAfterPush) {
+      page.day_entries = [options.winningEntryAfterPush];
     }
     return Promise.resolve(
       options?.rpcResult ?? {
@@ -243,6 +255,27 @@ describe('DayPage (issue #1254)', () => {
     );
   });
 
+  it('a measurement-only save pushes no day_entries row (#1289)', async () => {
+    // The issue's overwrite hazard: with the entry row off the wire, a
+    // stale editor can no longer revert a phone's newer flow/tags under
+    // last-writer-wins — only the weight observation itself is pushed.
+    const { client, rpc } = fakeClient({
+      observations: [storedMeasurement('weight', 63.5, 'kg')],
+    });
+    renderDay(client);
+    const weight = await screen.findByLabelText('Weight (kg)');
+    fireEvent.change(weight, { target: { value: '64' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByText('Saved')).toBeInTheDocument());
+    expect(rpc).toHaveBeenCalledWith(
+      'sync_push',
+      expect.objectContaining({
+        p_day_entries: [],
+        p_observations: [expect.objectContaining({ category: 'weight', value_num: 64 })],
+      }),
+    );
+  });
+
   it('keeps a failed save on screen with the retry banner', async () => {
     const { client } = fakeClient({
       rpcResult: { data: null, error: { message: 'network unreachable' } },
@@ -317,8 +350,13 @@ describe('DayPage (issue #1254)', () => {
     }
   });
 
-  it('keeps a declined (lost LWW) save dirty with the declined notice', async () => {
-    const { client } = fakeClient({
+  it('re-seeds a declined (lost LWW) save from the refetched day before Save re-enables (#1289)', async () => {
+    // The server kept a phone's newer save for this day; the web's push
+    // came back declined. Before #1289 the editor stayed dirty on the
+    // losing values with Save enabled, and one retry click re-pushed the
+    // stale full row with a fresh updated_at — silently overwriting the
+    // phone's newer flow, tags and note right after the decline notice.
+    const { client, rpc } = fakeClient({
       rpcResult: {
         data: {
           resolved: [
@@ -334,6 +372,14 @@ describe('DayPage (issue #1254)', () => {
         },
         error: null,
       },
+      winningEntryAfterPush: {
+        ...entry,
+        updated_at: '2026-09-29T23:00:00.000Z',
+        flow: 'heavy',
+        tags: ['headache'],
+        note: 'typed on the phone',
+        server_version: 8,
+      },
     });
     renderDay(client);
     const note = await screen.findByLabelText('Notes');
@@ -344,12 +390,33 @@ describe('DayPage (issue #1254)', () => {
         'A newer save from another device won this day — your changes were not applied.',
       ),
     ).toBeInTheDocument();
-    // A decline resolves the mutation too (issue #1290): the edit stays
-    // dirty exactly like a partly-rejected save, so the declined banner's
-    // values survive the refetch and Save stays available for retry.
-    expect(screen.getByLabelText('Notes')).toHaveValue('declined day');
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled());
+    // The push itself carried the (then-current) edit once; the decline
+    // resolves the mutation like any other push (issue #1290).
+    expect(rpc).toHaveBeenCalledWith(
+      'sync_push',
+      expect.objectContaining({
+        p_day_entries: [expect.objectContaining({ note: 'declined day', id: ENTRY_ID })],
+      }),
+    );
+    // But the editor then converges onto the server's winning state: the
+    // losing values do not survive the refetch, Save re-disables (nothing
+    // left to save — a retry cannot re-push the stale row), and no "Saved"
+    // status claims the declined write landed.
+    await waitFor(() =>
+      expect(screen.getByLabelText('Notes')).toHaveValue('typed on the phone'),
+    );
+    expect(screen.getByRole('button', { name: 'Heavy' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: 'Headache' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled());
     expect(screen.queryByText('Saved')).not.toBeInTheDocument();
+    const pushes = rpc.mock.calls.filter(([name]) => name === 'sync_push');
+    expect(pushes).toHaveLength(1);
   });
 
   it('warns beforeunload only while dirty', async () => {

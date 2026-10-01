@@ -91,6 +91,10 @@ export function useDayView(
       (query.error as Error | null) ??
       (notFound ? new DaySaveError('profile not found (or not visible to you)') : null),
     view,
+    // True while a fetch for the shared key is in flight — the #1289
+    // declined-save re-seed waits for the post-save refetch to settle
+    // before converging the editor onto the server's winning state.
+    isFetching: query.isFetching,
   };
 }
 

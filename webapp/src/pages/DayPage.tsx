@@ -178,6 +178,10 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
   const [edit, setEdit] = useState<DayEdit>(() => editFromView(view));
   const [loadedKey, setLoadedKey] = useState('');
   const [savedBaseline, setSavedBaseline] = useState('');
+  // Set when a save comes back LWW-declined (#1289): the next settled
+  // refetch must re-seed the editor from the server's winning state —
+  // the losing values are exactly what a retry must not re-push.
+  const [declinedReseed, setDeclinedReseed] = useState(false);
 
   // Re-seed the editor whenever the server's state for this day changes
   // identity or content (first load, a same-date merge handback) — but
@@ -196,6 +200,23 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
       setSavedBaseline(serializeEdit(fresh));
     }
   }, [view, viewKey, loadedKey, dirty]);
+
+  // The declined-save half of that convergence (#1289): an LWW decline
+  // leaves the edit dirty on purpose only until the invalidation refetch
+  // brings back the day's newer stored state — then the editor re-seeds
+  // from it even mid-edit, Save re-disables (nothing left to save), and a
+  // retry can no longer push the stale full row over the other device's
+  // newer flow/tags/note. Waiting for the refetch to settle (not just for
+  // a viewKey change) also covers the equal-instant decline where the
+  // winning row differs only in content.
+  useEffect(() => {
+    if (!declinedReseed || view === undefined || day.isFetching) return;
+    const fresh = editFromView(view);
+    setEdit(fresh);
+    setLoadedKey(viewKey);
+    setSavedBaseline(serializeEdit(fresh));
+    setDeclinedReseed(false);
+  }, [declinedReseed, view, viewKey, day.isFetching]);
 
   const role: CallerRole = useMemo(() => resolveCallerRole(view?.membership ?? null), [view]);
   const readOnly = !canWriteDayContent(role);
@@ -274,13 +295,19 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
         onSuccess: (result) => {
           // Keystrokes made while the push was in flight stay in the
           // editor; the baseline only absorbs what the server accepted.
-          // A partly-rejected or LWW-declined push still resolves, so the
-          // baseline must not move for it: the edit stays dirty — Save
-          // (retry) enabled, the beforeunload warning armed — and the
-          // banner's values survive the invalidation refetch instead of
-          // being re-seeded away.
+          // A partly-rejected push still resolves, so the baseline must
+          // not move for it: the edit stays dirty — Save (retry) enabled,
+          // the beforeunload warning armed — and the banner's values
+          // survive the invalidation refetch instead of being re-seeded
+          // away. An LWW-declined push is the one exception (#1289): the
+          // server kept newer content, so the re-seed effect above waits
+          // for the refetch and converges the editor onto it before Save
+          // re-enables — a retry must never re-push the losing row.
           if (result.rejectedFields.length === 0 && !result.ourEntryDeclined) {
             setSavedBaseline(serializeEdit(snapshot));
+          }
+          if (result.ourEntryDeclined) {
+            setDeclinedReseed(true);
           }
         },
       },
@@ -656,7 +683,7 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
             >
               {saveMutation.isPending ? t('webDaySaving') : t('webDaySave')}
             </button>
-            {saveMutation.isSuccess && !dirty ? (
+            {saveMutation.isSuccess && !dirty && !saveResult?.ourEntryDeclined ? (
               <span className="save-status" role="status">
                 {t('webDaySaved')}
               </span>
