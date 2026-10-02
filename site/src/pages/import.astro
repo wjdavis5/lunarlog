@@ -4,9 +4,10 @@ import Screenshot from "../components/Screenshot.astro";
 
 // Issue #1105: "Import" — Clue, Apple Health, Health Connect, plus the
 // round-trip restore of lunarlog's own export. You start the first import;
-// once a profile is bound and its first import has completed, the same pass
-// keeps itself current in the background (issue #993 — claimed below and in
-// site/claims.md, checked by test/site/site_claims_test.dart).
+// the Clue import is a one-off file pick, while the Apple Health and Health
+// Connect imports keep themselves current in the background once a profile
+// is bound and the first import has completed (issue #993 — claimed below
+// and in site/claims.md, checked by test/site/site_claims_test.dart).
 
 const description =
   "Bring your history into lunarlog: import a Clue export file, read " +
@@ -20,10 +21,11 @@ const description =
     <p class="doc__lede">
       History is worth keeping when you move. lunarlog imports from Clue,
       from Apple Health on iPhone, and from Health Connect on Android. The
-      first import is started by you; once a profile is bound and that
-      first import has completed, the same import keeps itself current in
-      the background — always labelled, and never written over something
-      you logged by hand.
+      first import is started by you, and the Clue import stays a one-off
+      file pick; Apple Health and Health Connect imports then keep
+      themselves current in the background once a profile is bound and
+      that first import has completed — always labelled, and never
+      written over something you logged by hand.
     </p>
 
     <figure class="screenshot-figure">
