@@ -141,7 +141,7 @@ function observation(partial: Partial<ObservationRow>): ObservationRow {
     profile_id: PROFILE_ID,
     local_date: partial.local_date ?? '2026-09-29',
     observed_at: partial.observed_at ?? null,
-    tz: 'UTC',
+    tz: partial.tz ?? 'UTC',
     category: partial.category ?? 'bbt',
     code: partial.code ?? null,
     value_num: partial.value_num ?? null,
@@ -158,17 +158,32 @@ function observation(partial: Partial<ObservationRow>): ObservationRow {
   };
 }
 
-const planFor = (edit: Partial<DayEdit>, view: LoadedDayView) =>
+const planFor = (edit: Partial<DayEdit>, view: LoadedDayView, browserTz = 'UTC') =>
   buildSavePlan({
     profileId: PROFILE_ID,
     dateIso: '2026-09-29',
     todayIso: TODAY,
-    tz: 'UTC',
+    tz: browserTz,
     edit: { ...emptyEdit, ...edit },
     view,
     nowIso: NOW,
     newId: nextFixedId,
   });
+
+/**
+ * The calendar day `iso` falls on in `timeZone` — the same derivation
+ * sync_push's observations UPDATE branch runs server-side
+ * (`v_local_date := (v_observed_at at time zone v_tz)::date`), so a test
+ * can prove its fixture really does re-locate under the wrong zone.
+ */
+function localDateUnder(iso: string, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(iso));
+}
 
 describe('buildSavePlan: the day_entries payload', () => {
   it('updates the stored row in place (same id, LWW timestamp, provenance carried)', () => {
@@ -438,6 +453,46 @@ describe('buildSavePlan: measurements (#457)', () => {
     expect(row['code']).toBe('weight-kilo');
     expect(row['value_text']).toBe('63.5 kg');
     expect(row['intensity']).toBe(2);
+  });
+
+  it('a value-only update echoes the stored tz with the stored observed_at (#1373)', () => {
+    // sync_push re-derives local_date from the payload's (observed_at, tz)
+    // pair and writes it unconditionally on update, so echoing the stored
+    // row's instant under the editing browser's zone silently relocates
+    // the reading to a different calendar day whenever the two zones
+    // disagree on that instant — persisted server-side, corrupting both
+    // days' charts/averages. The phone codec is the fixed point
+    // (lib/data/sync/row_codec.dart re-sends both from the stored row), so
+    // the update carries `tz: row.tz` the same way it already carries
+    // `observed_at: row.observed_at`.
+    const stored = observation({
+      category: 'bbt',
+      value_num: 36.4,
+      unit: 'celsius',
+      tz: 'America/New_York',
+      observed_at: '2026-09-30T03:30:00.000Z', // 2026-09-29 23:30 in New York
+    });
+    // Fixture sanity: the stored instant really is the edited day
+    // (2026-09-29) in the row's own zone but the NEXT day in the editing
+    // browser's — a mis-echoed tz would move the row off the day.
+    expect(localDateUnder(stored.observed_at as string, 'America/New_York')).toBe('2026-09-29');
+    expect(localDateUnder(stored.observed_at as string, 'Asia/Tokyo')).toBe('2026-09-30');
+    const plan = planFor(
+      { bbt: 36.7 },
+      viewWith({ observations: [stored] }),
+      'Asia/Tokyo', // the editing browser's zone — must not reach the payload
+    );
+    expect(plan.observations).toHaveLength(1);
+    const row = plan.observations[0] as unknown as Record<string, unknown>;
+    expect(row['id']).toBe(stored.id);
+    expect(row['value_num']).toBe(36.7);
+    expect(row['observed_at']).toBe('2026-09-30T03:30:00.000Z');
+    expect(row['tz']).toBe('America/New_York');
+    // The server's re-derivation lands back on the stored day: the pair
+    // the payload carries implies 2026-09-29, never the browser's 09-30.
+    expect(localDateUnder(row['observed_at'] as string, row['tz'] as string)).toBe(
+      '2026-09-29',
+    );
   });
 
   it('no-op when the measurement is unchanged', () => {

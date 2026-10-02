@@ -571,13 +571,23 @@ function upsertMeasurement(
     // silently clear a phone-set exclusion (#1288) and the reading would
     // re-enter charts and averages. `raw` is import provenance — never set
     // on a `source: 'manual'` row, and not part of the pulled row shape.
+    //
+    // `tz` is the same class of echo (#1373): sync_push re-derives
+    // local_date from the payload's (observed_at, tz) pair and writes it
+    // unconditionally, so pairing the stored row's observed_at with this
+    // threaded browser zone would silently relocate the reading to a
+    // different calendar day whenever the two zones disagree on that
+    // instant — persisted server-side, corrupting both days. The phone
+    // codec is the fixed point (lib/data/sync/row_codec.dart re-sends
+    // both from the stored row), and tombstoneObservation below already
+    // echoes `tz: row.tz` the same way.
     return [
       {
         id: row.id,
         day_entry_id: entryId,
         profile_id: profileId,
         local_date: dateIso,
-        tz,
+        tz: row.tz,
         category,
         observed_at: row.observed_at,
         code: row.code,
