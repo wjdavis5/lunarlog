@@ -563,6 +563,33 @@ describe('DayPage (issue #1254)', () => {
     });
   });
 
+  // Issue #1371: the range-error copy interpolates the unit-converted bounds
+  // (bbtRangeIn/weightRangeIn stay raw doubles for the comparison), so it must
+  // format them through the same #457 rule as the inputs — mirroring the app's
+  // _bbtRangeErrorText/_weightRangeErrorText in day_sheet.dart — or a
+  // fahrenheit/lb profile reads IEEE garbage like 107.60000000000001.
+  describe('range-error copy formats its bounds (#1371)', () => {
+    it('the °F bbt range error reads 93.2 and 107.6, not the raw doubles', async () => {
+      const { client } = fakeClient({ bbtUnit: 'fahrenheit' });
+      renderDay(client);
+      const bbt = await screen.findByLabelText('Basal body temperature (°F)');
+      // 50 °F is 10 °C — below the 34 °C floor, so the alert surfaces.
+      fireEvent.change(bbt, { target: { value: '50' } });
+      expect(
+        screen.getByText('Temperature must be between 93.2 and 107.6.'),
+      ).toBeInTheDocument();
+    });
+
+    it('the lb weight range error reads 22.05 and 661.39, not the raw doubles', async () => {
+      const { client } = fakeClient({ weightUnit: 'lb' });
+      renderDay(client);
+      const weight = await screen.findByLabelText('Weight (lb)');
+      // 700 lb is ~317.51 kg — above the 300 kg ceiling, so the alert surfaces.
+      fireEvent.change(weight, { target: { value: '700' } });
+      expect(screen.getByText('Weight must be between 22.05 and 661.39.')).toBeInTheDocument();
+    });
+  });
+
   // Issue #1291: the ovulation/pregnancy test chips used to render twice —
   // once from the symptom picker's surfaced-category loop and again from a
   // dedicated Tests fieldset that ignored tracking_preferences.
