@@ -460,8 +460,14 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
 
   /// Issue #804: relationship picked on a cared-for card. A child
   /// relationship suggests the minor flag and Teen mode (both stay
-  /// changeable); partner/other defaults the flag back off.
+  /// changeable); partner/other defaults the flag back off. A re-tap of
+  /// the already-selected relationship returns before the defaults run
+  /// (issue #1366): [DropdownButton] fires [DropdownButton.onChanged]
+  /// even when the tapped item is the current one, and re-running the
+  /// defaults would reset a minor flag or care mode the operator had
+  /// just changed by hand (#804: a suggestion, never forced).
   void _onRelationshipChanged(ProfileRelationship relationship) {
+    if (relationship == _relationship) return;
     setState(() {
       _relationship = relationship;
       _applyRelationshipDefaults();
