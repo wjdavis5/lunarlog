@@ -518,12 +518,13 @@ function gotrueError(status: number, errorCode: string): Response {
 Deno.test(
   'sign-out global reports the failure on a bare gateway 401 (issue #1343)',
   async () => {
-    // A 401 that is not GoTrue's already-gone answer — the API gateway
+    // A 401 that is not GoTrue's own answer — the API gateway
     // rejecting a rotated publishable key, say — means GoTrue never
     // evaluated the request, so nothing was revoked and the response must
-    // say so. Only GoTrue's own 403 `error_code` counts as already-revoked
-    // (issue #1343); supabase-js's blind 401/403/404 tolerance is why the
-    // old bare-401 shortcut looked plausible.
+    // say so. GoTrue's own 403 `error_code`s no longer count as
+    // already-revoked either: since #1364 they retry once from the cookie
+    // instead (supabase-js's blind 401/403/404 tolerance is why the old
+    // bare-401 shortcut looked plausible).
     const { deps, calls } = fakeDeps(() => new Response(null, { status: 401 }));
     const response = await handleAuthRequest(
       post('/auth/sign-out', { scope: 'global' }, { bearer: 'access-1' }),
@@ -674,9 +675,10 @@ Deno.test(
 Deno.test(
   'sign-out global reports the failure when the logout returns a server error (issue #1324)',
   async () => {
-    // GoTrue answered, but not with a revocation: a non-2xx that is not
-    // the already-gone 403 `session_not_found` means the other devices'
-    // refresh-token families were not touched.
+    // GoTrue answered, but not with a revocation: a 500 means the other
+    // devices' refresh-token families were not touched. The 403 retry leg
+    // never applies to a non-403 answer (issue #1364), so the failure
+    // stands.
     const { deps, calls } = fakeDeps(() => new Response(null, { status: 500 }));
     const response = await handleAuthRequest(
       post('/auth/sign-out', { scope: 'global' }, { bearer: 'access-1' }),
@@ -728,12 +730,14 @@ Deno.test(
 );
 
 Deno.test(
-  'sign-out global treats GoTrue 403 session_not_found as already revoked (issue #1343)',
+  'sign-out global reports revocation_failed on 403 session_not_found with no cookie (issue #1364)',
   async () => {
-    // Another tab signed out everywhere first: the bearer still verifies
-    // but its session is gone, and GoTrue answers 403 `session_not_found`.
-    // Every session is already dead, so the sign-out is a success — not
-    // the false `revocation_failed` the bare 401/404 shortcut produced.
+    // session_not_found only proves the *caller's* session is gone: the
+    // Logout handler never ran, so the account's other sessions were not
+    // revoked (issue #1364). The session may have died to a local sign-out
+    // in another tab, an inactivity limit, or a refresh-token reuse, with
+    // the phone's session still live. No refresh cookie to retry from:
+    // the failure is reported, not the old blanket success (issue #1343).
     const { deps, calls } = fakeDeps(() => gotrueError(403, 'session_not_found'));
     const response = await handleAuthRequest(
       post('/auth/sign-out', { scope: 'global' }, { bearer: 'access-1' }),
@@ -741,9 +745,117 @@ Deno.test(
       deps,
     );
 
+    assertEquals(response?.status, 502);
+    assertEquals(await errorOf(response), 'revocation_failed');
+    assertEquals(calls.length, 1);
+    assertEquals(calls[0].path, '/auth/v1/logout?scope=global');
+    assertEquals(
+      response?.headers.get('set-cookie'),
+      `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
+    );
+  },
+);
+
+Deno.test(
+  'sign-out global retries once from the cookie on 403 session_not_found (issue #1364)',
+  async () => {
+    // The bearer's session is gone, but the HttpOnly cookie still holds a
+    // live refresh token: refresh once and retry, the bad_jwt leg's
+    // mechanics. The retry's own 204 is the landed revocation the first
+    // answer could not prove.
+    let logouts = 0;
+    const { deps, calls } = fakeDeps(({ path }) => {
+      if (path === '/auth/v1/logout?scope=global') {
+        logouts += 1;
+        return logouts === 1
+          ? gotrueError(403, 'session_not_found')
+          : new Response(null, { status: 204 });
+      }
+      return new Response(JSON.stringify(sessionBody('refresh-2')), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    const response = await handleAuthRequest(
+      post(
+        '/auth/sign-out',
+        { scope: 'global' },
+        { bearer: 'access-gone', cookie: `${REFRESH_COOKIE}=refresh-1` },
+      ),
+      ENV,
+      deps,
+    );
+
     assertEquals(response?.status, 200);
     assertEquals(((await response?.json()) as { ok: boolean } | undefined)?.ok, true);
+    assertEquals(calls.length, 3);
     assertEquals(calls[0].path, '/auth/v1/logout?scope=global');
+    assertEquals(calls[1].path, '/auth/v1/token?grant_type=refresh_token');
+    assertEquals(JSON.parse(String(calls[1].init.body)).refresh_token, 'refresh-1');
+    assertEquals(calls[2].path, '/auth/v1/logout?scope=global');
+    assertEquals(
+      new Headers(calls[2].init.headers).get('authorization'),
+      'Bearer access-for-refresh-2',
+    );
+    // The browser's session ends on the retried sign-out too.
+    assertEquals(
+      response?.headers.get('set-cookie'),
+      `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
+    );
+  },
+);
+
+Deno.test(
+  'sign-out global fails closed when the retried logout also answers session_not_found (issue #1364)',
+  async () => {
+    // Even on the retry, session_not_found means the Logout handler never
+    // ran (requireAuthentication rejected the fresh bearer first): it is
+    // not a landed revocation, so the failure stands.
+    const { deps, calls } = fakeDeps(({ path }) =>
+      path === '/auth/v1/logout?scope=global'
+        ? gotrueError(403, 'session_not_found')
+        : new Response(JSON.stringify(sessionBody('refresh-2')), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+    );
+    const response = await handleAuthRequest(
+      post(
+        '/auth/sign-out',
+        { scope: 'global' },
+        { bearer: 'access-gone', cookie: `${REFRESH_COOKIE}=refresh-1` },
+      ),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 502);
+    assertEquals(await errorOf(response), 'revocation_failed');
+    assertEquals(calls.length, 3);
+    assertEquals(
+      response?.headers.get('set-cookie'),
+      `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
+    );
+  },
+);
+
+Deno.test(
+  'sign-out local still succeeds on 403 session_not_found without a retry (issue #1364)',
+  async () => {
+    // `local`'s goal is this browser's cookie, which clears below either
+    // way, and the bearer's own session is already gone: success without
+    // the cookie-refresh retry `global` needs (issue #1364).
+    const { deps, calls } = fakeDeps(() => gotrueError(403, 'session_not_found'));
+    const response = await handleAuthRequest(
+      post('/auth/sign-out', { scope: 'local' }, { bearer: 'access-1' }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 200);
+    assertEquals(((await response?.json()) as { ok: boolean } | undefined)?.ok, true);
+    assertEquals(calls.length, 1);
+    assertEquals(calls[0].path, '/auth/v1/logout?scope=local');
     assertEquals(
       response?.headers.get('set-cookie'),
       `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
@@ -816,6 +928,46 @@ Deno.test(
     assertEquals(response?.status, 502);
     assertEquals(await errorOf(response), 'revocation_failed');
     assertEquals(calls.length, 1);
+    assertEquals(
+      response?.headers.get('set-cookie'),
+      `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
+    );
+  },
+);
+
+Deno.test(
+  'sign-out global fails closed when the bad_jwt retry answers session_not_found (issue #1364)',
+  async () => {
+    // The retried answer must itself be a landed revocation: a retried
+    // session_not_found still means the Logout handler never ran, so the
+    // old `ok || retried session_not_found` shortcut was the same false
+    // success the first-attempt branch carried (issue #1364).
+    let logouts = 0;
+    const { deps, calls } = fakeDeps(({ path }) => {
+      if (path === '/auth/v1/logout?scope=global') {
+        logouts += 1;
+        return logouts === 1
+          ? gotrueError(403, 'bad_jwt')
+          : gotrueError(403, 'session_not_found');
+      }
+      return new Response(JSON.stringify(sessionBody('refresh-2')), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    const response = await handleAuthRequest(
+      post(
+        '/auth/sign-out',
+        { scope: 'global' },
+        { bearer: 'access-stale', cookie: `${REFRESH_COOKIE}=refresh-1` },
+      ),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 502);
+    assertEquals(await errorOf(response), 'revocation_failed');
+    assertEquals(calls.length, 3);
     assertEquals(
       response?.headers.get('set-cookie'),
       `${REFRESH_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`,
