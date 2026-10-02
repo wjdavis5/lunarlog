@@ -536,6 +536,26 @@ async function refreshBearerFromCookie(
   return null;
 }
 
+/**
+ * One cookie-refresh leg plus a single logout retry (issue #1364): the
+ * retry's own 2xx is the only answer that counts as a landed revocation —
+ * a retried 403 `session_not_found` still means the Logout handler never
+ * ran, so "everywhere" was not revoked. `false` also covers "no cookie to
+ * refresh from". Shared by the stale-bearer (`bad_jwt`) retry and the
+ * global `session_not_found` retry; runs inside handleSignOut's try, so a
+ * rejecting retry fetch lands in its catch.
+ */
+async function retryLogoutFromCookie(
+  request: Request,
+  deps: AuthDeps,
+  scope: string,
+): Promise<boolean> {
+  const fresh = await refreshBearerFromCookie(request, deps);
+  if (fresh === null) return false;
+  const retried = await logoutUpstream(request, deps, scope, fresh);
+  return retried.ok;
+}
+
 async function handleSignOut(request: Request, deps: AuthDeps): Promise<Response> {
   const body = await readJsonBody(request);
   const scope = body.scope === undefined ? 'local' : body.scope;
@@ -555,17 +575,21 @@ async function handleSignOut(request: Request, deps: AuthDeps): Promise<Response
     // below: with no way to reach GoTrue, "everywhere" was not signed out.
     bearer = await refreshBearerFromCookie(request, deps);
   }
-  // The upstream revocation landed: a 2xx from GoTrue, or GoTrue's own
-  // already-gone answer — 403 `session_not_found`, raised when the JWT
-  // verifies but the session its session_id claim names no longer exists
-  // (another tab signed out everywhere first). supabase-js's signOut
-  // ignores that response for the same reason (issue #1343). A bare 401
-  // or 404 is NOT a landed revocation — the API gateway rejecting the
-  // publishable key or a misrouted base URL answers those without GoTrue
-  // ever evaluating the request (issue #1343) — and neither is anything
-  // else, so only a verifiable upstream answer sets `revoked`. `local`
-  // signs this browser out by clearing the cookie below, so it is always
-  // done; `global`'s whole point is the revocation itself.
+  // The upstream revocation landed only when GoTrue's Logout handler
+  // actually ran and answered 2xx. A 403 is GoTrue's requireAuthentication
+  // rejecting the call *before* that: `bad_jwt` (the bearer no longer
+  // verifies) and `session_not_found` (the bearer verifies but the session
+  // its session_id claim names no longer exists) are both recoverable by
+  // refreshing once from the HttpOnly cookie and retrying a single time.
+  // A bare 401 or 404 is NOT recoverable or evaluated — the API gateway
+  // rejecting the publishable key or a misrouted base URL answers those
+  // without GoTrue ever seeing the request (issue #1343) — and neither is
+  // anything else, so only a verifiable upstream answer sets `revoked`.
+  // `local` signs this browser out by clearing the cookie below, so it is
+  // always done (its own session_not_found needs no retry — issue #1343);
+  // `global`'s whole point is the revocation itself, and session_not_found
+  // alone never proves the account's other sessions were revoked (issue
+  // #1364).
   let revoked = scope === 'local';
   if (bearer !== null) {
     // A rejected fetch — GoTrue timing out or resetting the connection —
@@ -574,13 +598,28 @@ async function handleSignOut(request: Request, deps: AuthDeps): Promise<Response
     // session still ends below; for `global` the failure is reported
     // instead of swallowed (issue #1324).
     try {
-      let logout = await logoutUpstream(request, deps, scope, bearer);
+      const logout = await logoutUpstream(request, deps, scope, bearer);
       if (logout.status === 403) {
         const code = await upstreamErrorCode(logout);
         if (code === 'session_not_found') {
-          // The bearer's session is already gone: the revocation landed
-          // when whichever earlier call deleted it landed (issue #1343).
-          revoked = true;
+          if (scope === 'local') {
+            // The bearer's own session is gone, and `local` ends this
+            // browser's session by clearing the cookie below: done
+            // (issue #1343).
+            revoked = true;
+          } else {
+            // For `global`, session_not_found only proves the *caller's*
+            // own session is gone — the Logout handler never ran, so no
+            // revocation of the account's other sessions was attempted
+            // (issue #1364). The session may have died to a local
+            // sign-out in another tab, an inactivity or time-box limit,
+            // or a refresh-token-reuse revoke, none of which touched the
+            // phone's still-live session. Refresh once from the cookie
+            // and retry; only the retry's own 2xx proves the global
+            // revocation landed, and no cookie (or a rejected refresh)
+            // leaves `revoked` false — revocation_failed below.
+            revoked = await retryLogoutFromCookie(request, deps, scope);
+          }
         } else if (code === 'bad_jwt') {
           // The in-memory access token no longer verifies (client clock
           // skew, or expiry between page load and this call): refresh once
@@ -588,14 +627,7 @@ async function handleSignOut(request: Request, deps: AuthDeps): Promise<Response
           // takes — and retry a single time (issue #1343). The retried
           // answer must itself be a landed revocation; a second 403 (or
           // anything else) stays a failure.
-          const fresh = await refreshBearerFromCookie(request, deps);
-          if (fresh !== null) {
-            logout = await logoutUpstream(request, deps, scope, fresh);
-            revoked =
-              logout.ok ||
-              (logout.status === 403 &&
-                (await upstreamErrorCode(logout)) === 'session_not_found');
-          }
+          revoked = await retryLogoutFromCookie(request, deps, scope);
         }
       } else if (logout.ok) {
         revoked = true;
