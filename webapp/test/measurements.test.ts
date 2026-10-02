@@ -54,6 +54,52 @@ describe('measurements (issue #457, web port)', () => {
     expect(convertTemperature(36.6, 'celsius', 'celsius')).toBe(36.6);
   });
 
+  // Issue #1372: the conversion must be grouped exactly as the app's
+  // `convertTemperature` groups it (lib/domain/models/measurement_unit.dart:74-75,
+  // `value * 9 / 5 + 32` / `(value - 32) * 5 / 9`, left to right). Grouping
+  // the division first — `value * (9 / 5)` — rounds 9/5 to a double that is
+  // not the rational 9/5, sent the 42.0 °C ceiling to 107.60000000000001 °F,
+  // and its back-conversion landed at 42.00000000000001 °C: over
+  // MAX_BBT_CELSIUS, so a stored ceiling row read under a fahrenheit
+  // profile failed isValidBbt and blocked every save of that day. The app
+  // saves the same row fine; left-to-right grouping is bit-exact at the
+  // bound, as the app's is.
+  describe('the 42.0 °C boundary round trip (#1372)', () => {
+    it('converts the ceiling bit-identically to the app grouping and back', () => {
+      // `42 * 9 / 5 + 32` below is the app's own expression
+      // (measurement_unit.dart:74) — toBe compares the exact doubles.
+      expect(convertTemperature(42.0, 'celsius', 'fahrenheit')).toBe((42 * 9) / 5 + 32);
+      expect(convertTemperature(42.0, 'celsius', 'fahrenheit')).not.toBe(42.0 * (9 / 5) + 32);
+      expect(
+        convertTemperature(
+          convertTemperature(42.0, 'celsius', 'fahrenheit'),
+          'fahrenheit',
+          'celsius',
+        ),
+      ).toBe(42.0);
+    });
+
+    it('keeps a seeded ceiling row valid in fahrenheit', () => {
+      // The exact value DayPage's editFromView seeds for a stored 42.0 °C
+      // row on a fahrenheit profile — the value that used to fail.
+      expect(isValidBbt(convertTemperature(42.0, 'celsius', 'fahrenheit'), 'fahrenheit')).toBe(
+        true,
+      );
+      // And a ceiling typed in fahrenheit by hand.
+      expect(isValidBbt(107.6, 'fahrenheit')).toBe(true);
+    });
+
+    it('keeps the 34.0 °C floor bit-exact through the round trip too', () => {
+      expect(
+        convertTemperature(
+          convertTemperature(34.0, 'celsius', 'fahrenheit'),
+          'fahrenheit',
+          'celsius',
+        ),
+      ).toBe(34.0);
+    });
+  });
+
   it('converts weight with the 1959 pound agreement constant', () => {
     expect(convertWeight(1, 'kg', 'lb')).toBeCloseTo(2.2046226218487757, 12);
     expect(convertWeight(2.2046226218487757, 'lb', 'kg')).toBeCloseTo(1, 12);
@@ -75,8 +121,8 @@ describe('measurements (issue #457, web port)', () => {
     it('rounds the raw conversion doubles to two decimals, trimming zeros', () => {
       // The exact doubles the issue names: 36.6 °C and 68 kg converted with
       // the real constants produce IEEE garbage digits; the display must not.
-      expect(formatMeasurementValue(36.6 * (9 / 5) + 32)).toBe('97.88'); // 97.88000000000001
-      expect(formatMeasurementValue(37 * (9 / 5) + 32)).toBe('98.6'); // 98.60000000000001
+      expect(formatMeasurementValue((36.6 * 9) / 5 + 32)).toBe('97.88'); // 97.88000000000001
+      expect(formatMeasurementValue((37 * 9) / 5 + 32)).toBe('98.6'); // 98.59999999999999
       expect(formatMeasurementValue(68 / 0.45359237)).toBe('149.91'); // 149.91433828571675
       expect(formatMeasurementValue(150 * 0.45359237)).toBe('68.04'); // 68.0388555
     });
