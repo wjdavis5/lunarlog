@@ -265,6 +265,18 @@ void main() {
         isNot(contains('Settings; after that, the same import')),
         reason: 'the retired after-binding shorthand, verbatim (issue #1304)',
       );
+      // Issue #1365: the lede used to hand the background pass to every
+      // source, Clue included — it belongs to the health stores alone;
+      // the Clue import is a one-off file pick.
+      expect(
+        importPage,
+        contains(
+          'Apple Health and Health Connect imports then keep themselves '
+          'current in the background',
+        ),
+        reason: 'the lede scopes the background pass to the health '
+            'stores; Clue is a one-off file import (issue #1365)',
+      );
       expect(
         importPage,
         isNot(contains('no background read and no schedule')),
@@ -297,11 +309,25 @@ void main() {
         reason: 'the home page states the completed-first-import gate, '
             'not binding alone (PRIVACY.md §4, issue #1340)',
       );
+      // Issue #1365: the background pass belongs to the health stores
+      // alone — the Clue import is a one-off file pick with no observer,
+      // worker, or schedule — so the home page must name the two health
+      // stores when it claims the pass, not let it read as a Clue
+      // promise.
       expect(
         homePage,
-        contains('keeps itself current in the background'),
-        reason: "the home page claims the shipped background pass its "
-            "ledger row asserts on its behalf (issue #1340)",
+        contains(
+          'Apple Health and Health Connect imports then keep themselves '
+          'current in the background',
+        ),
+        reason: "the home page's background pass is scoped to the health "
+            'stores; Clue is a one-off file import (issue #1365)',
+      );
+      expect(
+        homePage,
+        isNot(contains('the same import keeps itself current')),
+        reason: 'the unscoped phrasing that promised the background pass '
+            'for Clue too, verbatim (issue #1365)',
       );
       for (final page in [homePage, importPage]) {
         expect(
@@ -344,6 +370,20 @@ void main() {
       expect(
         flat(ledger),
         contains('keeps itself current in the background'),
+      );
+      // Issue #1365: the home-page row carries the health-store scoping —
+      // it names the two health stores for the background pass and pins
+      // the Clue import as a one-off file pick, so the ledger cannot
+      // promise Clue a background current-keeping it does not have.
+      expect(
+        flat(ledger),
+        contains(
+          'Apple Health and Health Connect imports then keep themselves '
+          'current in the background',
+        ),
+        reason: 'the home-page ledger row scopes the background pass to '
+            'the health stores; Clue is a one-off file import '
+            '(issue #1365)',
       );
       // Issue #1304: both claim rows carrying the background pass must
       // state the completed-first-import condition the inventory paragraph

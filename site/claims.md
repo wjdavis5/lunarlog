@@ -87,9 +87,9 @@ email capture (the site collects nothing).
 - claim: Logging, history, and estimates work offline; sync resumes when a connection returns.
   page: /
   ships: PRIVACY.md (§1 "Resilient Offline")
-- claim: Import from Clue, Apple Health, or Health Connect — you start the first import, and once a profile is bound and that first import has completed, the same import keeps itself current in the background; never over a hand-logged value.
+- claim: Import from Clue, Apple Health, or Health Connect — you start the first import; the Clue import is a one-off file pick, and Apple Health and Health Connect imports then keep themselves current in the background once a profile is bound and that first import has completed, never over a hand-logged value.
   page: /
-  ships: lib/data/import/clue_importer.dart; lib/data/health/health_import_service.dart (importInBackground, issue #993); PRIVACY.md (§2.A import provenance; §4 health paragraph)
+  ships: lib/data/import/clue_importer.dart (one-off file import, no background pass); lib/data/health/health_import_service.dart (importInBackground, issue #993 — the background pass); ios/Runner/AppDelegate.swift (HKObserverQuery + enableBackgroundDelivery); android/app/src/main/kotlin/com/wjdavis5/lunarlog/HealthBackgroundImportWorker.kt (periodic WorkManager trigger); PRIVACY.md (§2.A import provenance; §4 health paragraph)
 - claim: Export as JSON, CSV, FHIR, or a one-page PDF — built on the device, no account required.
   page: /
   ships: PRIVACY.md (§7); lib/domain/export/account_export.dart; lib/domain/export/csv_export.dart; lib/domain/export/fhir_bundle.dart; lib/domain/export/clinical_pdf.dart
