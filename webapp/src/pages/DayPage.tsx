@@ -519,7 +519,16 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
             />
             {edit.bbt !== null && (edit.bbt < bbtRange.min || edit.bbt > bbtRange.max) ? (
               <p className="field-error" role="alert">
-                {t('webDayErrorBbtRange', { min: bbtRange.min, max: bbtRange.max })}
+                {/* Issue #1371: the bounds are unit-converted doubles, so they
+                    go out through the same #457 rounding rule as the input
+                    (mirroring the app's _bbtRangeErrorText in
+                    day_sheet.dart) — a fahrenheit profile must read
+                    "93.2 and 107.6", never "107.60000000000001". The range
+                    check above stays on the raw doubles. */}
+                {t('webDayErrorBbtRange', {
+                  min: formatMeasurementValue(bbtRange.min),
+                  max: formatMeasurementValue(bbtRange.max),
+                })}
               </p>
             ) : null}
             {rejectedFields.has('bbt') ? (
@@ -547,7 +556,13 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
             {edit.weight !== null &&
             (edit.weight < weightRange.min || edit.weight > weightRange.max) ? (
               <p className="field-error" role="alert">
-                {t('webDayErrorWeightRange', { min: weightRange.min, max: weightRange.max })}
+                {/* Issue #1371: same rule as the bbt copy above — a pound
+                    profile must read "22.05 and 661.39", not the raw
+                    converted doubles. */}
+                {t('webDayErrorWeightRange', {
+                  min: formatMeasurementValue(weightRange.min),
+                  max: formatMeasurementValue(weightRange.max),
+                })}
               </p>
             ) : null}
             {rejectedFields.has('weight') ? (
