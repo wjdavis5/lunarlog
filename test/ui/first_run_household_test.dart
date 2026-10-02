@@ -352,6 +352,76 @@ void main() {
       await h.dispose();
     });
 
+    testWidgets('re-tapping the already-selected relationship keeps the '
+        'minor flag and care mode the operator just changed (issue #1366)',
+        (tester) async {
+      final h = Harness(tester);
+      await h.pumpToNameForm();
+
+      await h.tapKey('first-run-who-someone');
+      expect(
+          tester
+              .widget<CheckboxListTile>(
+                  find.byType(CheckboxListTile).first)
+              .value,
+          isTrue,
+          reason: 'a child relationship suggests the minor flag');
+      expect(find.text('Teen'), findsOneWidget);
+
+      // The operator's own overrides: care mode back to Standard, minor
+      // flag off — both stay changeable on the card (#804).
+      await tester.ensureVisible(key('care-mode-dropdown'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('care-mode-dropdown'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Standard').last);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byType(CheckboxListTile).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(CheckboxListTile).first);
+      await tester.pumpAndSettle();
+      expect(
+          tester
+              .widget<CheckboxListTile>(
+                  find.byType(CheckboxListTile).first)
+              .value,
+          isFalse);
+      expect(find.text('Standard'), findsOneWidget);
+      expect(find.byKey(const ValueKey('first-run-teen-hint')), findsNothing,
+          reason: 'the suggestion note belongs to the Teen suggestion only');
+
+      // The re-tap: the same relationship, already selected — not a
+      // change. [DropdownButton] still fires onChanged for it (#1347),
+      // and the defaults used to re-run right over both overrides.
+      await h.tapKey('first-run-relationship-dropdown');
+      await tester.tap(find.text('Daughter').last);
+      await tester.pumpAndSettle();
+
+      expect(
+          tester
+              .widget<CheckboxListTile>(
+                  find.byType(CheckboxListTile).first)
+              .value,
+          isFalse,
+          reason: 're-selecting the current relationship is not a change — '
+              'the operator\'s minor-off choice survives');
+      expect(find.text('Standard'), findsOneWidget,
+          reason: 'and the picked Standard mode survives too');
+      expect(find.byKey(const ValueKey('first-run-teen-hint')), findsNothing);
+
+      // Creation persists the operator's values, not the defaults.
+      await h.enterName('Riley');
+      await h.tapKey('first-run-continue');
+      await h.tapKey('cycle-create');
+      final profiles = await DriftProfilesRepository(h.db.storage).list();
+      expect(profiles.single.relationship, ProfileRelationship.daughter);
+      expect(profiles.single.isMinor, isFalse,
+          reason: 'issue #1366: the profile carries what the operator '
+              'chose, not what the re-tap reset');
+      expect(profiles.single.mode, ProfileMode.standard);
+      await h.dispose();
+    });
+
     testWidgets('"Both" opens on the operator\'s own card — no relationship '
         'dropdown, full cycle questions — then loops for the family',
         (tester) async {
