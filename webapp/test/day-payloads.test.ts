@@ -21,6 +21,7 @@ import type {
   ProfileRow,
   ProfileModeRow,
 } from '../src/lib/schemas';
+import { convertTemperature } from '../src/lib/day/measurements';
 
 /**
  * The save-plan contract (issue #1254): what the web editor actually puts
@@ -501,7 +502,7 @@ describe('buildSavePlan: measurements stored in the other unit (#1287)', () => {
   it('no-op for a celsius-stored bbt read back under a fahrenheit profile', () => {
     const stored = observation({ category: 'bbt', value_num: 36.6, unit: 'celsius' });
     const plan = planFor(
-      { bbt: 36.6 * (9 / 5) + 32 },
+      { bbt: (36.6 * 9) / 5 + 32 },
       viewWith({ observations: [stored], profile: { bbt_unit: 'fahrenheit' } }),
     );
     expect(plan.observations).toHaveLength(0);
@@ -530,6 +531,41 @@ describe('buildSavePlan: measurements stored in the other unit (#1287)', () => {
     const stored = observation({ category: 'bbt', value_num: 36.6, unit: null });
     const plan = planFor({ bbt: 36.6 }, viewWith({ observations: [stored] }));
     expect(plan.observations).toHaveLength(0);
+  });
+});
+
+describe('buildSavePlan: the 42.0 °C ceiling under a fahrenheit profile (#1372)', () => {
+  // A row logged at the sanity ceiling in Celsius, read back after the
+  // profile flipped to Fahrenheit. DayPage seeds the edit by converting the
+  // stored row (DayPage.tsx's editFromView), and before #1372 the web's own
+  // grouping — `value * (9 / 5) + 32` — produced 107.60000000000001 there,
+  // whose back-conversion is 42.00000000000001: over MAX_BBT_CELSIUS, so
+  // isValidBbt rejected the untouched field inside buildSavePlan and every
+  // save of that day threw with only the generic save-failed banner — a
+  // tag-only change included. The Flutter app saves the same row fine
+  // because its conversion (lib/domain/models/measurement_unit.dart:74-75)
+  // groups the arithmetic left to right and is bit-exact at this bound;
+  // the port now groups the same way, and these cases ride through
+  // buildSavePlan exactly as the save path does.
+  it('saves a tag-only change to that day without throwing and without rewriting the row', () => {
+    const stored = observation({ category: 'bbt', value_num: 42.0, unit: 'celsius' });
+    const view = viewWith({ observations: [stored], profile: { bbt_unit: 'fahrenheit' } });
+    const seededBbt = convertTemperature(42.0, 'celsius', 'fahrenheit');
+    const plan = planFor({ tags: ['cramps'], bbt: seededBbt }, view);
+    // The untouched measurement emits no write — the seed compares bit-exact
+    // against the converted stored row — while the tag change rides alone.
+    expect(plan.observations).toHaveLength(0);
+    expect(plan.dayEntries).toHaveLength(1);
+    expect((plan.dayEntries[0] as unknown as Record<string, unknown>)['tags']).toEqual([
+      'cramps',
+    ]);
+  });
+
+  it('accepts the ceiling itself re-entered in fahrenheit', () => {
+    const view = viewWith({ profile: { bbt_unit: 'fahrenheit' } });
+    expect(() =>
+      planFor({ bbt: convertTemperature(42.0, 'celsius', 'fahrenheit') }, view),
+    ).not.toThrow();
   });
 });
 

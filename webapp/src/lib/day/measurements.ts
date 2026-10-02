@@ -42,11 +42,24 @@ export const MAX_BBT_CELSIUS = 42.0;
 export const MIN_WEIGHT_KG = 10.0;
 export const MAX_WEIGHT_KG = 300.0;
 
-/** Converts a temperature between the two BBT units. */
+/**
+ * Converts a temperature between the two BBT units. The arithmetic is
+ * grouped exactly as the app's `convertTemperature` groups it
+ * (lib/domain/models/measurement_unit.dart:74-75 — `value * 9 / 5 + 32`
+ * and `(value - 32) * 5 / 9`, left to right), never as
+ * `value * (9 / 5) + 32`: `9 / 5` rounds to a double that is not the
+ * rational 9/5, so dividing first sent 42.0 °C to 107.60000000000001 °F
+ * where the app produces 107.6, and the round trip back landed at
+ * 42.00000000000001 °C — a hair over MAX_BBT_CELSIUS, so isValidBbt
+ * rejected a stored boundary row and every save of that day, even a
+ * tag-only change, threw the generic save-failed banner (issue #1372).
+ * Same-shape grouping keeps each direction bit-identical to the app, so
+ * the web and the phone always agree on what a stored row means.
+ */
 export function convertTemperature(value: number, from: BbtUnit, to: BbtUnit): number {
   if (from === to) return value;
-  if (from === 'celsius' && to === 'fahrenheit') return value * (9 / 5) + 32;
-  return (value - 32) * (5 / 9);
+  if (from === 'celsius' && to === 'fahrenheit') return (value * 9) / 5 + 32;
+  return ((value - 32) * 5) / 9;
 }
 
 /** Converts a weight between the two weight units (1 lb = 0.45359237 kg). */
