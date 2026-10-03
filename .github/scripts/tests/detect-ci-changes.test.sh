@@ -44,11 +44,20 @@ assert_contains "Marketing set database=false" "$mkt_output" "database=false"
 assert_contains "Marketing set edge_functions=false" "$mkt_output" "edge_functions=false"
 
 # ---------------------------------------------------------------------------
-# Case 4a: Database config / generated snapshot changes (database only)
+# Case 4a: supabase/config.toml (issue #1367) -- the auth posture guard
+# (issue #266) reads it in ci.yml's release-guards job
+# (check-auth-config.sh defaults to supabase/config.toml), so a
+# config-only PR must run the release-guard suites too: otherwise it
+# merges green (release_guards=false skips the job) and the next
+# unrelated .github/** PR goes red on an assertion it never touched
+# (issue #1317's failure class). database and webapp stay on: the config
+# shapes the local stack, and the arm it was split from (#1249) fed the
+# webapp suite for both files.
 # ---------------------------------------------------------------------------
-db_config_output="$(run_detect "supabase/config.toml
-supabase/database.types.ts")"
+db_config_output="$(run_detect "supabase/config.toml")"
 assert_contains "Database config sets database=true" "$db_config_output" "database=true"
+assert_contains "Database config sets webapp=true" "$db_config_output" "webapp=true"
+assert_contains "Database config sets release_guards=true" "$db_config_output" "release_guards=true"
 assert_contains "Database config sets app_flutter=false" "$db_config_output" "app_flutter=false"
 assert_contains "Database config sets edge_functions=false" "$db_config_output" "edge_functions=false"
 
@@ -242,9 +251,13 @@ assert_contains "Web data layer sets app_flutter=false" "$web_domain_output" "ap
 # ---------------------------------------------------------------------------
 # Case 13: The schema snapshot also feeds the webapp's typed client (#1249)
 # ---------------------------------------------------------------------------
+# release_guards stays false on purpose (issue #1367's split): no release
+# guard reads the generated snapshot -- only supabase/config.toml, its own
+# arm above, is read by check-auth-config.sh.
 types_output="$(run_detect "supabase/database.types.ts")"
 assert_contains "Types snapshot sets webapp=true" "$types_output" "webapp=true"
 assert_contains "Types snapshot sets database=true" "$types_output" "database=true"
+assert_contains "Types snapshot keeps release_guards=false" "$types_output" "release_guards=false"
 
 # ---------------------------------------------------------------------------
 # Case 14: The arb feeds the webapp catalogue AND the Flutter localizations
