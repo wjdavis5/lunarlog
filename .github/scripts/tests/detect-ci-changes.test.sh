@@ -187,14 +187,23 @@ assert_contains "pure site/public change sets app_flutter=true" "$site_public_on
 assert_contains "pure site/public change keeps edge_functions=true" "$site_public_only_output" "edge_functions=true"
 
 # ---------------------------------------------------------------------------
-# Case 19: Dynamic scan: all static paths read by readRepoFile('...') in test/
+# Case 19: Dynamic scan: all static paths read by readRepoFile('...') or
+# File('...') in test/
 # ---------------------------------------------------------------------------
 # Ensures every external repository path read by a Dart release guard test
-# will trigger app_flutter=true when modified in a PR.
+# will trigger app_flutter=true when modified in a PR. Issue #1122 asked for
+# the scan and #1368 extended it: the original regex matched only
+# readRepoFile('...'), while test/site/ reads its guard inputs
+# (site/claims.md, site/src/pages/*.astro, site/scripts/check-axe.mjs,
+# site/lighthouserc.cjs, PRIVACY.md, ...) directly through dart:io's
+# File('...'), so those paths were never flagged. \bFile\( keeps the match
+# off suffixed identifiers (FakePickedFile, XFile, ...) the same way the
+# unanchored readRepoFile alternative stays off readRepoFile's tail; the
+# [^$] capture class still skips string interpolations, exactly as before.
 python3 -c "
 import os, re, subprocess, sys
 
-regex = re.compile(r'''readRepoFile\(['\"]([^'\"\$]+)['\"]\)''')
+regex = re.compile(r'''(?:readRepoFile|\bFile)\(['\"]([^'\"\$]+)['\"]\)''')
 found = set()
 for root, _, files in os.walk('test'):
     for f in files:
@@ -209,13 +218,13 @@ for path in sorted(found):
     env = dict(os.environ, CHANGED_FILES_OVERRIDE=path)
     res = subprocess.run(['bash', script], capture_output=True, text=True, env=env)
     if 'app_flutter=true' not in res.stdout:
-        print(f'FAIL: readRepoFile path {path} did not result in app_flutter=true', file=sys.stderr)
+        print(f'FAIL: readRepoFile/File path {path} did not result in app_flutter=true', file=sys.stderr)
         failed = True
 
 if failed:
     sys.exit(1)
 "
-assert_eq "Dynamic scan of all readRepoFile paths classify to app_flutter=true" "0" "$?"
+assert_eq "Dynamic scan of all readRepoFile/File paths classify to app_flutter=true" "0" "$?"
 
 # ---------------------------------------------------------------------------
 # Case 12: React web client changes (webapp/**, issue #1249)
@@ -334,6 +343,88 @@ assert_contains "other ios files keep release_guards=false" "$other_ios_output" 
 other_site_output="$(run_detect "site/worker/index.ts")"
 assert_contains "other site files keep edge_functions=true" "$other_site_output" "edge_functions=true"
 assert_contains "other site files keep release_guards=false" "$other_site_output" "release_guards=false"
+
+# ---------------------------------------------------------------------------
+# Case 21b: Site copy and claims-ledger guard inputs (issue #1368) -- the
+# Flutter suites under test/site/ read these with File('...'):
+#   - site_claims_test.dart reads site/claims.md (its setUpAll) and the
+#     site/src/pages/*.astro sources of its `pages` map;
+#   - store_pages_test.dart reads site/src/pages/delete-account.astro and
+#     support.astro, site/src/pages/sitemap.xml.ts, site/scripts/check-axe.mjs
+#     and site/lighthouserc.cjs.
+# A PR touching only these used to classify app_flutter=false (the generic
+# site/* arm set edge_functions only) and site.yml runs no flutter test, so
+# the site-copy edit merged green and the next unrelated Flutter PR went red
+# on an assertion it never touched (issue #1317's failure class). Each must
+# match before the generic site/* arm, which sets only edge_functions.
+# ---------------------------------------------------------------------------
+claims_ledger_output="$(run_detect "site/claims.md")"
+assert_contains "site/claims.md sets app_flutter=true" "$claims_ledger_output" "app_flutter=true"
+assert_contains "site/claims.md keeps edge_functions=true" "$claims_ledger_output" "edge_functions=true"
+assert_contains "site/claims.md keeps release_guards=false" "$claims_ledger_output" "release_guards=false"
+
+site_pages_output="$(run_detect "site/src/pages/index.astro")"
+assert_contains "site/src/pages set app_flutter=true" "$site_pages_output" "app_flutter=true"
+assert_contains "site/src/pages keep edge_functions=true" "$site_pages_output" "edge_functions=true"
+
+site_components_output="$(run_detect "site/src/components/Screenshot.astro")"
+assert_contains "site/src/components set app_flutter=true" "$site_components_output" "app_flutter=true"
+assert_contains "site/src/components keep edge_functions=true" "$site_components_output" "edge_functions=true"
+
+site_scripts_output="$(run_detect "site/scripts/check-axe.mjs")"
+assert_contains "site/scripts set app_flutter=true" "$site_scripts_output" "app_flutter=true"
+assert_contains "site/scripts keep edge_functions=true" "$site_scripts_output" "edge_functions=true"
+
+lighthouserc_output="$(run_detect "site/lighthouserc.cjs")"
+assert_contains "site/lighthouserc.cjs sets app_flutter=true" "$lighthouserc_output" "app_flutter=true"
+assert_contains "site/lighthouserc.cjs keeps edge_functions=true" "$lighthouserc_output" "edge_functions=true"
+
+# Other site/* files keep the old edge_functions-only mapping -- the arm
+# above is pinned to the paths the test/site suites actually read.
+astro_config_output="$(run_detect "site/astro.config.mjs")"
+assert_contains "other site files keep edge_functions=true (astro.config)" "$astro_config_output" "edge_functions=true"
+assert_contains "other site files keep app_flutter=false (astro.config)" "$astro_config_output" "app_flutter=false"
+
+# ---------------------------------------------------------------------------
+# Case 21c: Doc and webapp guard inputs the Case 19 File('...') scan swept
+# in (issue #1368) -- each is read by a Flutter test via File('...') and was
+# swallowed by the docs/*, *.md or webapp/* arms:
+#   - PRIVACY.md (test/site/privacy_header_test.dart,
+#     privacy_background_gate_test.dart,
+#     privacy_browser_error_reporting_test.dart, site_claims_test.dart and
+#     store_pages_test.dart)
+#   - docs/ops/store-declarations.md (store_pages_test.dart)
+#   - docs/web/security-posture.md
+#     (privacy_browser_error_reporting_test.dart)
+#   - webapp/src/domain/schemas.ts and webapp/test/domain/fixtures.json
+#     (test/domain/web_domain_fixtures_test.dart -- the webapp suites stay
+#     on too; the arm shadows the generic webapp arms and restates
+#     webapp=true on purpose)
+# ---------------------------------------------------------------------------
+privacy_output="$(run_detect "PRIVACY.md")"
+assert_contains "PRIVACY.md sets app_flutter=true" "$privacy_output" "app_flutter=true"
+
+store_decl_output="$(run_detect "docs/ops/store-declarations.md")"
+assert_contains "store-declarations.md sets app_flutter=true" "$store_decl_output" "app_flutter=true"
+
+security_posture_output="$(run_detect "docs/web/security-posture.md")"
+assert_contains "security-posture.md sets app_flutter=true" "$security_posture_output" "app_flutter=true"
+
+webapp_schemas_output="$(run_detect "webapp/src/domain/schemas.ts")"
+assert_contains "webapp schemas.ts sets app_flutter=true" "$webapp_schemas_output" "app_flutter=true"
+assert_contains "webapp schemas.ts keeps webapp=true" "$webapp_schemas_output" "webapp=true"
+
+webapp_fixtures_output="$(run_detect "webapp/test/domain/fixtures.json")"
+assert_contains "webapp fixtures.json sets app_flutter=true" "$webapp_fixtures_output" "app_flutter=true"
+assert_contains "webapp fixtures.json keeps webapp=true" "$webapp_fixtures_output" "webapp=true"
+
+# Other docs and webapp files keep their old mapping -- the arms above are
+# pinned to the files the suites actually read.
+go_live_output="$(run_detect "docs/ops/supabase-go-live.md")"
+assert_contains "other docs keep app_flutter=false" "$go_live_output" "app_flutter=false"
+other_webapp_output="$(run_detect "webapp/src/App.tsx")"
+assert_contains "other webapp files keep app_flutter=false" "$other_webapp_output" "app_flutter=false"
+assert_contains "other webapp files keep webapp=true" "$other_webapp_output" "webapp=true"
 
 # ---------------------------------------------------------------------------
 # Case 22: Dynamic scan: all repo files read via ../../../ in the bash
