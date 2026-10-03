@@ -210,9 +210,23 @@ while IFS= read -r file; do
       app_flutter=true
       ;;
 
-    # Local supabase config & generated schema snapshot (the latter is also
-    # the webapp client's types source, issue #1249)
-    supabase/config.toml|supabase/database.types.ts)
+    # Local supabase config (issue #1367): ci.yml's release-guards job reads
+    # it directly -- check-auth-config.sh (issue #266) defaults to
+    # supabase/config.toml and pins the committed [auth] block -- so a
+    # config-only PR must run the release-guard suites too. Without this,
+    # such a PR merges green (release_guards=false skips the job) and the
+    # next unrelated .github/** PR goes red on an assertion it never touched
+    # (issue #1317's failure class). Split from the generated schema
+    # snapshot's arm below, which no release guard reads.
+    supabase/config.toml)
+      database=true
+      webapp=true
+      release_guards=true
+      ;;
+
+    # Generated schema snapshot (also the webapp client's types source,
+    # issue #1249)
+    supabase/database.types.ts)
       database=true
       webapp=true
       ;;
