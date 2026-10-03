@@ -141,7 +141,26 @@ jobs:
             echo "::warning::Could not resolve the account's workers.dev subdomain; skipping the staging smoke check."
           fi
 
-      - name: Deploy to Cloudflare Workers (staging)
+      - name: Retire the Flutter Pages project that holds app.lunarlog.app
+        # Issue #1248/#1258: the custom-domain attach in the deploy below
+        # fails while the retired Flutter build's Cloudflare Pages project
+        # still owns the hostname, so delete it first — idempotent (a
+        # not-found project means a previous run already retired it). If the
+        # token lacks Pages permissions the deploy's domain attach fails
+        # loudly, which is #1093 step 4's one-dashboard-click fallback.
+        if: steps.cloudflare.outputs.configured == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -uo pipefail
+          npx wrangler@4.20.0 pages project delete lunarlog-app --yes \
+            || echo "::warning::Could not delete the lunarlog-app Pages project (already retired, or the token lacks Pages permissions). If it still holds app.lunarlog.app, the deploy's custom-domain attach below will fail — the manual fallback is the Cloudflare dashboard's Pages custom-domains pane (#1093 step 4)."
+          # Give the hostname release a moment so the attach does not race
+          # the deletion.
+          sleep 20
+
+      - name: Deploy to Cloudflare Workers (staging + app.lunarlog.app)
         if: steps.cloudflare.outputs.configured == 'true'
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
         with:
@@ -183,4 +202,17 @@ jobs:
         if: steps.cloudflare.outputs.configured == 'true' && steps.subdomain.outputs.base_url != ''
         env:
           WEBAPP_STAGING_BASE_URL: ${{ steps.subdomain.outputs.base_url }}
+        run: bash .github/scripts/check-webapp-staging.sh
+
+      - name: Smoke-check the production origin (app.lunarlog.app)
+        # Issue #1258: the same assertions against the cutover domain, plus
+        # the #1248 retirement duties — /privacy.html's 301 to the apex
+        # policy and the self-unregistering flutter_service_worker.js.
+        # Skipped on runs without credentials (forks) by the outer
+        # condition; a failed attach in the deploy step fails the run before
+        # this can assert against a domain the Worker does not hold.
+        if: steps.cloudflare.outputs.configured == 'true'
+        env:
+          WEBAPP_STAGING_BASE_URL: https://app.lunarlog.app
+          WEBAPP_CHECK_RETIREMENT: '1'
         run: bash .github/scripts/check-webapp-staging.sh

@@ -64,6 +64,8 @@ SUPABASE_URL="${WEBAPP_STAGING_SUPABASE_URL:-https://dleexnnevuuddcgcpztq.supaba
 ROOT_URL="$BASE_URL/"
 CALLBACK_URL="$BASE_URL/auth/callback?code=smoke"
 SESSION_URL="$BASE_URL/auth/session"
+PRIVACY_URL="$BASE_URL/privacy.html"
+FLUTTER_SW_URL="$BASE_URL/flutter_service_worker.js"
 
 # Issue #1139's beacon posture, carried over from check-web-deploy.sh:
 # browser UA only (the injector skips curl's default UA), warn-only while
@@ -92,6 +94,8 @@ fixture_path() {
   case "$1" in
     */auth/callback*) printf '%s' "$FIXTURES_DIR/auth-callback.$2" ;;
     */auth/session*) printf '%s' "$FIXTURES_DIR/auth-session.$2" ;;
+    */privacy.html*) printf '%s' "$FIXTURES_DIR/privacy-redirect.$2" ;;
+    */flutter_service_worker.js*) printf '%s' "$FIXTURES_DIR/flutter-sw.$2" ;;
     *) printf '%s' "$FIXTURES_DIR/root.$2" ;;
   esac
 }
@@ -266,6 +270,8 @@ check_once() {
   root="$(fetch_headers "$ROOT_URL" 2>/dev/null || true)"
   callback="$(fetch_headers "$CALLBACK_URL" 2>/dev/null || true)"
   session="$(fetch_headers "$SESSION_URL" 2>/dev/null || true)"
+  privacy_redirect="$(fetch_headers "$PRIVACY_URL" 2>/dev/null || true)"
+  flutter_sw="$(fetch_headers "$FLUTTER_SW_URL" 2>/dev/null || true)"
   root_body="$(fetch_body "$ROOT_URL" 2>/dev/null || true)"
 
   # `/` is the app shell: 200 HTML carrying the declared security posture.
@@ -302,6 +308,24 @@ check_once() {
   # the runtime surfaced an uncaught 500/1101 instead).
   problems="${problems}$(expect_status "$session" 401 "$SESSION_URL")"
   problems="${problems}$(expect_header_prefix "$session" content-type application/json "$SESSION_URL")"
+
+  # Issue #1258's cutover duties, asserted only when WEBAPP_CHECK_RETIREMENT
+  # is set (the app.lunarlog.app run): /privacy.html's permanent 301 to the
+  # apex policy, the self-unregistering service worker at the old Flutter
+  # registration path, and the Clear-Site-Data wipe on the shell (#1248:
+  # "storage" and "cache" -- never "cookies", which would clear the refresh
+  # cookie every page load).
+  if [ "${WEBAPP_CHECK_RETIREMENT:-0}" = '1' ]; then
+    problems="${problems}$(expect_status "$privacy_redirect" 301 "$PRIVACY_URL")"
+    problems="${problems}$(expect_header_prefix "$privacy_redirect" location 'https://lunarlog.app/privacy' "$PRIVACY_URL")"
+    problems="${problems}$(expect_status "$flutter_sw" 200 "$FLUTTER_SW_URL")"
+    problems="${problems}$(expect_header_prefix "$flutter_sw" content-type application/javascript "$FLUTTER_SW_URL")"
+    problems="${problems}$(expect_header_contains "$root" clear-site-data '"storage"' "$ROOT_URL")"
+    problems="${problems}$(expect_header_contains "$root" clear-site-data '"cache"' "$ROOT_URL")"
+    if printf '%s' "$(header_value "$root" clear-site-data)" | grep -q 'cookies'; then
+      problems="${problems}$ROOT_URL: clear-site-data includes \"cookies\" -- it would clear the refresh cookie every page load (#1248). "
+    fi
+  fi
 
   if [ -n "$problems" ]; then
     printf '%s' "$problems"

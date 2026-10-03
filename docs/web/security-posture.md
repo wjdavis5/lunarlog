@@ -7,6 +7,9 @@
 > specifics (IndexedDB-backed Drift, the `LUNARLOG_WEB_SYNC` gate, the
 > Flutter CSP exceptions) describe the retiring client (issue #1248). The
 > React client's posture lives in `webapp/README.md`.
+> On Sentry specifically: the React web client sends nothing to Sentry — no
+> third-party script loads on it at all; error reporting runs on the phone apps
+> only (issue #1258).
 
 **Status:** decision record, slice 1 of epic #831. The owner chose **Option A —
 the web build is a first-class client**. This document resolves the KTD9
@@ -237,26 +240,28 @@ issue #1091). `connect-src` is limited to the app origin, the
 `dleexnnevuuddcgcpztq.supabase.co` project (HTTPS + WSS), the Google Fonts
 fallback host (`https://fonts.gstatic.com`, on-demand glyph fallback only),
 and Sentry's ingest host. `font-src` is `'self' data:` plus that same
-fallback host. Note on Sentry (issue #1110, resolved with option 2): the
-Flutter SDK's own web path is unusable under this CSP — `sentry_flutter`
-injects its JS SDK from a hardcoded `browser.sentry-cdn.com` URL (no
-self-host option) and delivers every envelope through that same JS binding,
-so `script-src 'self'` blocked both the load and the sends. The web build
-therefore sets `autoInitializeNativeSdk = false` (the SDK's own switch to
-skip that script and its init) and sends envelopes from Dart instead:
-`WebDartSentryTransport` (`lib/observability/sentry_bootstrap.dart`) POSTs
-the scrubbed envelope straight to the DSN's `*.ingest.sentry.io` endpoint,
-which `connect-src` has always allowed. The accepted trade-off: errors that
-exist only in the JS layer (engine console errors the browser SDK's global
-handlers would catch outside Dart) are not observable, while Dart errors —
-the ones a Flutter web build produces — are, scrubbed by the same
-`beforeSend` hooks as on native. Allowing `browser.sentry-cdn.com` in
-`script-src` was the rejected alternative (a third-party script on an origin
-holding synced health data and a session token). Live delivery from a real
-browser still needs a one-time check in a `LUNARLOG_WEB_SYNC=true` build
-with a project DSN; the boot check proves the CDN script is gone and the
-policy stays violation-free. `tool/web_smoke/` (Section 6) runs the served
-policy in a real browser on every relevant PR.
+fallback host. Note on Sentry (#1258): the React web client **sends nothing to
+Sentry** — no third-party script loads on it at all (`script-src 'self'`,
+`connect-src` limited to the app origin and the Supabase project; see
+`webapp/worker/headers.ts`), so error reporting runs on the phone apps only.
+This retires the Flutter build's transport (issue #1110's option 2, which
+POSTed scrubbed envelopes from Dart to `*.ingest.sentry.io` over an explicit
+`connect-src` allowance) along with the Flutter build itself: the retired
+client's stored copies are cleared on next visit, and nothing replaces them.
+The retired section's history — why allowing `browser.sentry-cdn.com` was
+rejected, and the Dart-side transport that shipped instead — is preserved
+below. `tool/web_smoke/` (Section 6) runs the served policy in a real
+browser on every relevant PR.
+
+> Historical (pre-#1258, the Flutter web build's transport): the Flutter
+> SDK's own web path was unusable under the CSP — `sentry_flutter` injects
+> its JS SDK from a hardcoded `browser.sentry-cdn.com` URL and delivers
+> every envelope through that binding, so `script-src 'self'` blocked both
+> the load and the sends. The build set `autoInitializeNativeSdk = false`
+> and sent envelopes from Dart instead (`WebDartSentryTransport`), scrubbed
+> by the same `beforeSend` hooks as on native; allowing the CDN script was
+> rejected (a third-party script on an origin holding synced health data
+> and a session token).
 
 **D4 — Local data and token are cleared only by the app's own reset or a
 browser site-data clear; the copy tells the user that.** `WebGuardrails` keeps

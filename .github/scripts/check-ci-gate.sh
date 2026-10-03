@@ -18,7 +18,7 @@
 #   REQUIRED_CHECKS        Comma-separated list of required check run names.
 #                          Defaults to (current ci.yml job names, post-#644
 #                          sharded layout):
-#                            "Database tests (pgTAP)|Edge Functions (deno test)|Verify (codegen, analyze, web build)|Test (shard 0)|Test (shard 1)|Test (shard 2)|Quality gate (coverage floor + CRAP)"
+#                            "Database tests (pgTAP)|Edge Functions (deno test)|Verify (codegen, analyze, web build)|Web app (lint, typecheck, unit, build, e2e)|Test (shard 0)|Test (shard 1)|Test (shard 2)|Quality gate (coverage floor + CRAP)"
 #   MAX_WAIT_SECONDS       Maximum seconds to wait for in-progress checks. Default: 1800 (30m).
 #   POLL_INTERVAL_SECONDS  Seconds between polling iterations. Default: 15.
 #   CHECK_RUNS_JSON_FILE   Optional path to a JSON file containing the check-runs API payload.
@@ -45,7 +45,7 @@ fi
 REPO="${GITHUB_REPOSITORY:-wjdavis5/lunarlog}"
 # Delimited by '|' to safely support check names containing commas (such as
 # "Verify (codegen, analyze, web build)")
-REQUIRED_CHECKS="${REQUIRED_CHECKS:-Database tests (pgTAP)|Edge Functions (deno test)|Verify (codegen, analyze, web build)|Test (shard 0)|Test (shard 1)|Test (shard 2)|Quality gate (coverage floor + CRAP)}"
+REQUIRED_CHECKS="${REQUIRED_CHECKS:-Database tests (pgTAP)|Edge Functions (deno test)|Verify (codegen, analyze, web build)|Web app (lint, typecheck, unit, build, e2e)|Test (shard 0)|Test (shard 1)|Test (shard 2)|Quality gate (coverage floor + CRAP)}"
 MAX_WAIT_SECONDS="${MAX_WAIT_SECONDS:-1800}"
 POLL_INTERVAL_SECONDS="${POLL_INTERVAL_SECONDS:-15}"
 

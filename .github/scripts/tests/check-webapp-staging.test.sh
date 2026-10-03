@@ -58,6 +58,32 @@ EOF
   cat >"$dir/auth-session.body" <<'EOF'
 {"error":"no_session"}
 EOF
+  cat >"$dir/privacy-redirect.headers" <<'EOF_X'
+HTTP/2 301
+date: Wed, 30 Sep 2026 12:00:00 GMT
+location: https://lunarlog.app/privacy
+content-type: text/plain; charset=utf-8
+EOF_X
+  cat >"$dir/privacy-redirect.body" <<'EOF_X'
+Moved Permanently
+EOF_X
+  cat >"$dir/flutter-sw.headers" <<'EOF_X'
+HTTP/2 200
+date: Wed, 30 Sep 2026 12:00:00 GMT
+content-type: application/javascript
+cache-control: no-store
+EOF_X
+  cat >"$dir/flutter-sw.body" <<'EOF_X'
+self.addEventListener('install', () => self.skipWaiting());
+EOF_X
+}
+
+# make_retirement_fixtures DIR -- make_fixtures plus the cutover header on
+# the shell: Clear-Site-Data carrying "cache" and "storage" but never
+# "cookies" (issue #1248).
+make_retirement_fixtures() {
+  make_fixtures "$1"
+  sed -i 's|^x-robots-tag: noindex$|x-robots-tag: noindex\nclear-site-data: "cache", "storage"|' "$1/root.headers"
 }
 
 # run_case DIR [SCRIPT] -- populates $LAST_EXIT and $LAST_LOG. SCRIPT
@@ -257,3 +283,42 @@ assert_not_contains "check-ci-gate.sh's REQUIRED_CHECKS omits the webapp job" "$
 assert_not_contains "the ruleset rollup's needs omits webapp" "$CI" "      - webapp"
 
 print_summary "check-webapp-staging.test.sh"
+
+# --- The #1258 cutover retirement duties ------------------------------------
+
+make_retirement_fixtures "$WORK/retire-valid"
+WEBAPP_CHECK_RETIREMENT=1 run_case "$WORK/retire-valid"
+assert_exit "a correct cutover origin passes with retirement checks" 0
+
+# The same origin WITHOUT the env: the retirement assertions are skipped
+# (staging runs must keep passing without the cutover fixtures).
+run_case "$WORK/valid"
+assert_exit "staging runs skip the retirement assertions" 0
+
+# Missing clear-site-data on the shell refuses.
+make_retirement_fixtures "$WORK/retire-no-csd"
+sed -i '/^clear-site-data:/d' "$WORK/retire-no-csd/root.headers"
+WEBAPP_CHECK_RETIREMENT=1 run_case "$WORK/retire-no-csd"
+assert_exit "a shell without clear-site-data refuses under retirement checks" 1
+assert_contains "the missing clear-site-data is named" "$LAST_LOG" "clear-site-data"
+
+# clear-site-data including cookies refuses (it would sign every page load out).
+make_retirement_fixtures "$WORK/retire-cookies"
+sed -i 's|^clear-site-data:.*|clear-site-data: "cache", "cookies", "storage"|' "$WORK/retire-cookies/root.headers"
+WEBAPP_CHECK_RETIREMENT=1 run_case "$WORK/retire-cookies"
+assert_exit "clear-site-data including cookies refuses" 1
+assert_contains "the cookies danger is named" "$LAST_LOG" "cookies"
+
+# A privacy.html that 200s instead of 301ing refuses.
+make_retirement_fixtures "$WORK/retire-privacy-200"
+sed -i 's|^HTTP/2 301|HTTP/2 200|' "$WORK/retire-privacy-200/privacy-redirect.headers"
+WEBAPP_CHECK_RETIREMENT=1 run_case "$WORK/retire-privacy-200"
+assert_exit "a non-301 privacy.html refuses" 1
+assert_contains "the privacy redirect is named" "$LAST_LOG" "privacy.html"
+
+# A missing flutter_service_worker.js refuses.
+make_retirement_fixtures "$WORK/retire-no-sw"
+rm "$WORK/retire-no-sw/flutter-sw.headers"
+WEBAPP_CHECK_RETIREMENT=1 run_case "$WORK/retire-no-sw"
+assert_exit "a missing retirement service worker refuses" 1
+

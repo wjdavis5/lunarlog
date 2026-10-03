@@ -340,9 +340,9 @@ email capture (the site collects nothing).
 - claim: Row-level security returns only the rows a guardian's memberships entitle them to.
   page: /privacy-security
   ships: PRIVACY.md (§6 "Database Row-Level Security")
-- claim: A signed-in browser keeps synced data and the session in browser storage, outside operating-system protection.
+- claim: The browser client keeps nothing at rest — no synced data copy, and only an HttpOnly refresh cookie for the session.
   page: /privacy-security
-  ships: PRIVACY.md (§6 "Signed-In Browser Build — Web")
+  ships: PRIVACY.md (§6 "Browser Client — Web"); webapp/e2e/storage-empty.spec.ts; webapp/worker/cookies.ts
 - claim: Guardian alerts carry only a push token and profile identifier; visible text is fixed and generic.
   page: /privacy-security
   ships: PRIVACY.md (§4 FCM row); lib/domain/notifications/scheduling.dart (kReminderTitle, kReminderBody)
