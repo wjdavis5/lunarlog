@@ -28,15 +28,17 @@
 // sign-in additionally needs the console steps in #1093.
 
 import {
+  APPLE_DELETE_COOKIE,
   PKCE_COOKIE,
   REFRESH_COOKIE,
+  buildAppleDeleteCookie,
   buildClearedCookie,
   buildPkceCookie,
   buildRefreshCookie,
   parsePkceValue,
   readCookie,
 } from './cookies.ts';
-import { SUPABASE_URL } from './headers.ts';
+import { APPLE_WEB_SERVICES_ID, SUPABASE_URL } from './headers.ts';
 
 /** The subset of `Env` the auth routes need (see index.ts). */
 export interface AuthEnv {
@@ -491,6 +493,211 @@ async function handleOAuthStart(request: Request, deps: AuthDeps): Promise<Respo
   });
 }
 
+// ---------------------------------------------------------------------------
+// Identity linking and the Apple delete ceremony (issue #1256): the account
+// page's sign-in-method surface and its Apple re-authentication step.
+// ---------------------------------------------------------------------------
+
+/** The signed-in caller's bearer, or null (every route below requires one:
+ * linking, unlinking, and listing identities all act on the caller's own
+ * GoTrue user, never a body-supplied one). */
+function requireBearer(request: Request): string | null {
+  return bearerOf(request);
+}
+
+/**
+ * The caller's linked sign-in methods, resolved from their own GoTrue user
+ * (GET /auth/v1/user with the caller's bearer). The email identity is part
+ * of the answer: the account page renders it as the one method that can
+ * never be removed.
+ */
+async function handleIdentities(request: Request, deps: AuthDeps): Promise<Response> {
+  const bearer = requireBearer(request);
+  if (bearer === null) return errorResponse(401, 'access_token_required');
+  const response = await deps.supabaseFetch('/auth/v1/user', {
+    method: 'GET',
+    headers: upstreamHeaders(request, deps.publishableKey, {
+      authorization: `Bearer ${bearer}`,
+    }),
+  });
+  if (!response.ok) return upstreamError(response);
+  const raw = (await response.json()) as Record<string, unknown>;
+  const identities = Array.isArray(raw.identities) ? raw.identities : [];
+  const providers = identities
+    .map((identity) =>
+      typeof identity === 'object' &&
+      identity !== null &&
+      typeof (identity as Record<string, unknown>).provider === 'string'
+        ? ((identity as Record<string, unknown>).provider as string)
+        : null,
+    )
+    .filter((provider): provider is string => provider !== null);
+  return jsonResponse(
+    { email: typeof raw.email === 'string' ? raw.email : null, providers },
+    { 'cache-control': 'no-store' },
+  );
+}
+
+/**
+ * Starts linking one of the two OAuth providers to the caller's account.
+ * Same PKCE shape as /auth/oauth/start (verifier in the short-lived cookie,
+ * challenge upstream), but against GoTrue's *link* authorize endpoint with
+ * the caller's own bearer — the header a browser navigation cannot carry,
+ * which is why this is a fetch-then-redirect (the client assigns the
+ * returned provider URL) instead of a 302 out. `skip_http_redirect=true`
+ * makes GoTrue answer {"url": …} instead of 302ing the Worker's fetch
+ * straight to the provider. The landed code completes through the existing
+ * POST /auth/callback exchange: the flow state GoTrue created in link mode
+ * links the identity instead of starting a session.
+ */
+async function handleIdentityLink(request: Request, deps: AuthDeps): Promise<Response> {
+  const bearer = requireBearer(request);
+  if (bearer === null) return errorResponse(401, 'access_token_required');
+  const body = await readJsonBody(request);
+  const provider = body.provider;
+  if (typeof provider !== 'string' || !OAUTH_PROVIDERS.includes(provider as OAuthProvider)) {
+    return errorResponse(400, 'unknown_provider');
+  }
+  const verifier = deps.randomVerifier();
+  const challenge = await deps.codeChallenge(verifier);
+  const target = new URL(`${deps.supabaseUrl}/auth/v1/user/identities/authorize`);
+  target.searchParams.set('provider', provider);
+  target.searchParams.set('redirect_to', `${new URL(request.url).origin}/auth/callback`);
+  target.searchParams.set('code_challenge', challenge);
+  target.searchParams.set('code_challenge_method', 's256');
+  target.searchParams.set('skip_http_redirect', 'true');
+  const response = await deps.supabaseFetch(`${target.pathname}${target.search}`, {
+    method: 'GET',
+    headers: upstreamHeaders(request, deps.publishableKey, {
+      authorization: `Bearer ${bearer}`,
+    }),
+  });
+  if (!response.ok) return upstreamError(response);
+  const raw = (await response.json()) as Record<string, unknown>;
+  if (typeof raw.url !== 'string' || raw.url === '') {
+    return errorResponse(502, 'upstream_authorize_shape');
+  }
+  return jsonResponse(
+    { url: raw.url },
+    { 'cache-control': 'no-store', 'set-cookie': buildPkceCookie(verifier) },
+  );
+}
+
+/**
+ * Unlinks one of the two OAuth providers from the caller's account: resolve
+ * the provider's identity id from the caller's own GoTrue user (never a
+ * body-supplied id — that would let a caller unlink someone else's), then
+ * DELETE it upstream with the caller's bearer. Only the two OAuth providers
+ * are ever unlinkable here — the email identity is the account's recovery
+ * path and is not offered, matching the app (`AuthService.unlinkProvider`).
+ */
+async function handleIdentityUnlink(request: Request, deps: AuthDeps): Promise<Response> {
+  const bearer = requireBearer(request);
+  if (bearer === null) return errorResponse(401, 'access_token_required');
+  const body = await readJsonBody(request);
+  const provider = body.provider;
+  if (typeof provider !== 'string' || !OAUTH_PROVIDERS.includes(provider as OAuthProvider)) {
+    return errorResponse(400, 'unknown_provider');
+  }
+  const userResponse = await deps.supabaseFetch('/auth/v1/user', {
+    method: 'GET',
+    headers: upstreamHeaders(request, deps.publishableKey, {
+      authorization: `Bearer ${bearer}`,
+    }),
+  });
+  if (!userResponse.ok) return upstreamError(userResponse);
+  const raw = (await userResponse.json()) as Record<string, unknown>;
+  const identities = Array.isArray(raw.identities) ? raw.identities : [];
+  const identityId = identities
+    .map((identity) => (typeof identity === 'object' && identity !== null ? identity : null))
+    .map((identity) => identity as Record<string, unknown> | null)
+    .find(
+      (identity) =>
+        identity !== null &&
+        identity.provider === provider &&
+        typeof identity.id === 'string' &&
+        identity.id !== '',
+    )?.id;
+  if (typeof identityId !== 'string') return errorResponse(404, 'identity_not_found');
+  const response = await deps.supabaseFetch(
+    `/auth/v1/user/identities/${encodeURIComponent(identityId)}`,
+    {
+      method: 'DELETE',
+      headers: upstreamHeaders(request, deps.publishableKey, {
+        authorization: `Bearer ${bearer}`,
+      }),
+    },
+  );
+  if (!response.ok) return upstreamError(response);
+  return jsonResponse({ ok: true }, { 'cache-control': 'no-store' });
+}
+
+/**
+ * The Apple half of web account deletion (issue #1256): the delete-account
+ * Edge Function refuses an Apple-linked account without a fresh
+ * authorization code (`apple_code_required`), and on the web that code can
+ * only come from a direct Sign in with Apple web ceremony under the
+ * Services ID — GoTrue's own authorize consumes the code into a session
+ * instead of exposing it.
+ *
+ * `GET /auth/apple/delete/start` is the top-level navigation out: a 302 to
+ * Apple's authorize endpoint (no scope, so `response_mode=query` is Apple's
+ * contract) with a random `state`, mirrored into the short-lived HttpOnly
+ * cookie — the web app holds nothing at rest, so the Worker holds the
+ * check. Apple redirects back to `/account?code=…&state=…` on top of this
+ * same origin.
+ */
+async function handleAppleDeleteStart(request: Request, deps: AuthDeps): Promise<Response> {
+  const state = deps.randomVerifier();
+  const target = new URL('https://appleid.apple.com/auth/authorize');
+  target.searchParams.set('response_type', 'code');
+  target.searchParams.set('response_mode', 'query');
+  target.searchParams.set('client_id', APPLE_WEB_SERVICES_ID);
+  target.searchParams.set('redirect_uri', `${new URL(request.url).origin}/account`);
+  target.searchParams.set('state', state);
+  return new Response(null, {
+    status: 302,
+    headers: {
+      location: target.toString(),
+      'cache-control': 'no-store',
+      'set-cookie': buildAppleDeleteCookie(state),
+    },
+  });
+}
+
+/**
+ * Consumes the ceremony: the page POSTs the landed `code` and the `state`
+ * Apple echoed; the Worker checks the state against its HttpOnly cookie
+ * (constant-shape compare on a 64-char random value) and clears the cookie
+ * on every settled outcome — the state is single-use. Success here only
+ * means "this browser really asked for a delete ceremony"; the deletion
+ * itself stays the page's call to the Edge Function, carrying the code and
+ * `appleCodeClient: "web"`.
+ */
+async function handleAppleDeleteComplete(request: Request, _deps: AuthDeps): Promise<Response> {
+  const body = await readJsonBody(request);
+  if (
+    typeof body.code !== 'string' ||
+    body.code === '' ||
+    typeof body.state !== 'string' ||
+    body.state === ''
+  ) {
+    return errorResponse(400, 'code_and_state_required');
+  }
+  const expected = readCookie(request, APPLE_DELETE_COOKIE);
+  if (expected === null) {
+    return errorResponse(401, 'state_missing');
+  }
+  const clearedCookie = buildClearedCookie(APPLE_DELETE_COOKIE);
+  if (expected !== body.state) {
+    return errorResponse(403, 'state_mismatch', { 'set-cookie': clearedCookie });
+  }
+  return jsonResponse(
+    { ok: true },
+    { 'cache-control': 'no-store', 'set-cookie': clearedCookie },
+  );
+}
+
 /**
  * The upstream revocation call for one scope and bearer.
  */
@@ -697,6 +904,21 @@ export async function handleAuthRequest(
       return handleSession(request, authDeps);
     case 'GET /auth/oauth/start':
       return handleOAuthStart(request, authDeps);
+    case 'GET /auth/identities':
+      if (!csrfCheck(request, false)) return errorResponse(403, 'csrf_rejected');
+      return handleIdentities(request, authDeps);
+    case 'POST /auth/identities/link':
+      if (!csrfCheck(request, true)) return errorResponse(403, 'csrf_rejected');
+      return handleIdentityLink(request, authDeps);
+    case 'POST /auth/identities/unlink':
+      if (!csrfCheck(request, true)) return errorResponse(403, 'csrf_rejected');
+      return handleIdentityUnlink(request, authDeps);
+    case 'GET /auth/apple/delete/start':
+      if (!csrfCheck(request, false)) return errorResponse(403, 'csrf_rejected');
+      return handleAppleDeleteStart(request, authDeps);
+    case 'POST /auth/apple/delete/complete':
+      if (!csrfCheck(request, true)) return errorResponse(403, 'csrf_rejected');
+      return handleAppleDeleteComplete(request, authDeps);
     default:
       // Every other /auth/* path is the SPA's (the screens live outside
       // /auth/ in the router; /auth/callback itself is the SPA's page for
