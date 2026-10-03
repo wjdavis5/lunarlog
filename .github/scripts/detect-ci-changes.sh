@@ -155,10 +155,40 @@ while IFS= read -r file; do
       edge_functions=true
       ;;
 
-    # Cloudflare Workers (site/package.json and site/public/* above match
-    # earlier, with their extra suites)
+    # Site copy, claims ledger, and site tooling read by the Flutter suites
+    # under test/site/ (issue #1368), matched before the generic site/* arm
+    # below (which would otherwise swallow them for edge_functions only):
+    #   - site_claims_test.dart reads site/claims.md (its setUpAll) and the
+    #     site/src/pages/*.astro sources of its `pages` map with File();
+    #   - store_pages_test.dart reads site/src/pages/delete-account.astro and
+    #     support.astro, site/src/pages/sitemap.xml.ts,
+    #     site/scripts/check-axe.mjs and site/lighthouserc.cjs the same way.
+    # site.yml installs Flutter only to render screenshots and runs no
+    # flutter test, so without app_flutter here a breaking site-copy edit
+    # skips both suites, merges green, and the next unrelated Flutter PR
+    # goes red on an assertion it never touched (issue #1317's failure
+    # class). edge_functions stays on -- these files ship with the
+    # Cloudflare site the generic arm covers.
+    site/claims.md|site/src/*|site/scripts/*|site/lighthouserc.cjs)
+      app_flutter=true
+      edge_functions=true
+      ;;
+
+    # Cloudflare Workers (site/package.json, site/public/* and the
+    # test/site/ reads above match earlier, with their extra suites)
     site/*|workers/*|web/email/*|web/links/*)
       edge_functions=true
+      ;;
+
+    # The web domain's TS schema snapshot and shared fixture file are also
+    # read by the app's own test/domain/web_domain_fixtures_test.dart with
+    # File('...') (issue #1368): a breaking edit used to classify
+    # webapp-only, skip that Dart parity pin, merge green, and turn the
+    # next unrelated Flutter PR red. Matched before the generic webapp arms
+    # below, so webapp=true is restated here on purpose.
+    webapp/src/domain/schemas.ts|webapp/test/domain/fixtures.json)
+      webapp=true
+      app_flutter=true
       ;;
 
     # The web data layer (issue #1252): typed against the schema snapshot
@@ -235,9 +265,20 @@ while IFS= read -r file; do
     #   - AGENTS.md (read by test/release/pgtap_counts_test.dart)
     #   - docs/product/voice-and-copy.md (read by test/release/branding_identity_test.dart)
     #   - docs/links/* (read by test/domain/sharing/link_artifacts_test.dart)
+    #   - PRIVACY.md (read by test/site/privacy_header_test.dart,
+    #     privacy_background_gate_test.dart,
+    #     privacy_browser_error_reporting_test.dart, site_claims_test.dart
+    #     and store_pages_test.dart)
+    #   - docs/ops/store-declarations.md (read by test/site/store_pages_test.dart)
+    #   - docs/web/security-posture.md (read by
+    #     test/site/privacy_browser_error_reporting_test.dart)
     # (site/public/* moved above the generic site/* arm -- issue #1344:
-    #  the site/* alternative shadowed it here, so it never fired.)
-    AGENTS.md|docs/product/voice-and-copy.md|docs/links/*)
+    #  the site/* alternative shadowed it here, so it never fired. The
+    #  PRIVACY.md / store-declarations / security-posture entries are issue
+    #  #1368: the docs/* and *.md arms below swallowed them the same way,
+    #  so the test/site assertions pinning their content never ran on a
+    #  docs-only PR.)
+    AGENTS.md|PRIVACY.md|docs/product/voice-and-copy.md|docs/ops/store-declarations.md|docs/web/security-posture.md|docs/links/*)
       app_flutter=true
       ;;
 
