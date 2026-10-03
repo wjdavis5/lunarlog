@@ -9,6 +9,7 @@ import {
   learnClockOffset,
   learnedClockOffsetMs,
   mergeSyncedData,
+  MEMBERSHIP_RECONCILE_INTERVAL_MS,
   newCareNotePayload,
   newDayEntryPayload,
   newGuardianNotePayload,
@@ -1206,6 +1207,383 @@ describe('SyncedDataCache.repullAll (issue #1282)', () => {
     const discarded = await cache.repullAll(client, () => account);
     expect(discarded.profiles.map((row) => row.id)).toEqual([ULID_A]);
     expect(cache.current().profiles.map((row) => row.id)).toEqual([ULID_A]);
+  });
+});
+
+describe('SyncedDataCache membership drift (issue #1370)', () => {
+  const ME = 'user-a';
+
+  function myGuardianRow(
+    profileId: string,
+    overrides: Record<string, unknown> = {},
+  ): Record<string, unknown> {
+    return {
+      id: '2f2f2f2f-2f2f-4f2f-8f2f-2f2f2f2f2f2f',
+      profile_id: profileId,
+      user_id: ME,
+      role: 'primary_guardian',
+      status: 'accepted',
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+      server_version: 5,
+      ...overrides,
+    };
+  }
+
+  function dayEntryRow(profileId: string, serverVersion: number): Record<string, unknown> {
+    return {
+      id: '01ARZ3NDEKTSV4RRFFQ69G5FBV',
+      user_id: 'u',
+      profile_id: profileId,
+      local_date: '2026-09-14',
+      tz: 'UTC',
+      flow: 'light',
+      tags: [],
+      note: null,
+      note_private: false,
+      pms: false,
+      source: 'manual',
+      created_at: '2026-09-14T00:00:00Z',
+      updated_at: '2026-09-14T00:00:00Z',
+      deleted_at: null,
+      server_version: serverVersion,
+    };
+  }
+
+  // The long-held profile: its rows put the session cursors at ~900, far
+  // above anything a profile joined later will ever carry (the accept
+  // bumps no server_version).
+  const heldState = () => ({
+    profiles: [profileRow({ id: ULID_A, server_version: 900 })],
+    profile_guardians: [myGuardianRow(ULID_A, { server_version: 901 })],
+  });
+
+  it('escalates to a from-zero re-pull when a pulled guardian row names a profile the snapshot lacks (joined on another device)', async () => {
+    const cache = new SyncedDataCache();
+    let pull = 0;
+    const cursorsSeen: unknown[] = [];
+    const { client } = fakeRpcClient(async (name, params) => {
+      if (name === 'sync_watermark') {
+        return { data: 1_000_000, error: null };
+      }
+      cursorsSeen.push(structuredClone(params.p_cursors));
+      pull += 1;
+      if (pull === 1) {
+        return { data: heldState(), error: null };
+      }
+      if (pull === 2) {
+        // The accept landed on the phone: my guardian row on B is new
+        // (above the cursors) but B's own rows predate them and never
+        // arrive — the incremental pull cannot converge.
+        return {
+          data: {
+            profile_guardians: [
+              myGuardianRow(ULID_B, {
+                id: '2f2f2f2f-2f2f-4f2f-8f2f-2f2f2f2f2f2e',
+                server_version: 950,
+              }),
+            ],
+          },
+          error: null,
+        };
+      }
+      // The escalation's from-zero pull: B's full history finally arrives.
+      return {
+        data: {
+          profiles: [
+            profileRow({ id: ULID_A, server_version: 900 }),
+            profileRow({ id: ULID_B, display_name: 'Joined', server_version: 3 }),
+          ],
+          day_entries: [dayEntryRow(ULID_B, 4)],
+          profile_guardians: [
+            myGuardianRow(ULID_A, { server_version: 901 }),
+            myGuardianRow(ULID_B, {
+              id: '2f2f2f2f-2f2f-4f2f-8f2f-2f2f2f2f2f2e',
+              server_version: 5,
+            }),
+          ],
+        },
+        error: null,
+      };
+    });
+    const readIdentity = () => ME;
+    await cache.refresh(client, readIdentity);
+    const converged = await cache.refresh(client, readIdentity);
+    expect(converged.profiles.map((row) => row.id)).toEqual([ULID_A, ULID_B]);
+    expect(converged.day_entries.map((row) => row.profile_id)).toEqual([ULID_B]);
+    // The incremental pull's cursors never landed: the escalation re-pulled
+    // from zero and its cursors took over.
+    expect(cursorsSeen).toEqual([{}, { profiles: 900, profile_guardians: 901 }, {}]);
+  });
+
+  it('does not escalate when the pulled guardian row names a profile the same pull delivers', async () => {
+    const cache = new SyncedDataCache();
+    let pull = 0;
+    const cursorsSeen: unknown[] = [];
+    const { client } = fakeRpcClient(async (name, params) => {
+      if (name === 'sync_watermark') {
+        return { data: 1_000_000, error: null };
+      }
+      cursorsSeen.push(structuredClone(params.p_cursors));
+      pull += 1;
+      if (pull === 1) {
+        return { data: heldState(), error: null };
+      }
+      // B's profile row happens to sit above the cursors too: the merged
+      // view holds it, so there is no drift to repair.
+      return {
+        data: {
+          profiles: [profileRow({ id: ULID_B, display_name: 'Joined', server_version: 905 })],
+          profile_guardians: [
+            myGuardianRow(ULID_B, {
+              id: '2f2f2f2f-2f2f-4f2f-8f2f-2f2f2f2f2f2e',
+              server_version: 950,
+            }),
+          ],
+        },
+        error: null,
+      };
+    });
+    const readIdentity = () => ME;
+    await cache.refresh(client, readIdentity);
+    const second = await cache.refresh(client, readIdentity);
+    expect(second.profiles.map((row) => row.id)).toEqual([ULID_A, ULID_B]);
+    expect(cursorsSeen).toEqual([{}, { profiles: 900, profile_guardians: 901 }]);
+  });
+
+  it('does not escalate on another guardian’s row naming an unpulled profile (the check is keyed on my rows)', async () => {
+    const cache = new SyncedDataCache();
+    let pull = 0;
+    const cursorsSeen: unknown[] = [];
+    const { client } = fakeRpcClient(async (name, params) => {
+      if (name === 'sync_watermark') {
+        return { data: 1_000_000, error: null };
+      }
+      cursorsSeen.push(structuredClone(params.p_cursors));
+      pull += 1;
+      if (pull === 1) {
+        return { data: heldState(), error: null };
+      }
+      // A co-guardian's accepted row on a profile my snapshot lacks: not my
+      // membership, so no drift on my behalf.
+      return {
+        data: {
+          profile_guardians: [
+            myGuardianRow(ULID_B, {
+              id: '2f2f2f2f-2f2f-4f2f-8f2f-2f2f2f2f2f2e',
+              user_id: 'user-other',
+              server_version: 950,
+            }),
+          ],
+        },
+        error: null,
+      };
+    });
+    const readIdentity = () => ME;
+    await cache.refresh(client, readIdentity);
+    const second = await cache.refresh(client, readIdentity);
+    // The snapshot keeps its own row and merely merges the co-guardian's
+    // in — no re-pull happened.
+    expect(second.profile_guardians.map((row) => row.user_id)).toEqual([
+      'user-a',
+      'user-other',
+    ]);
+    expect(cursorsSeen).toEqual([{}, { profiles: 900, profile_guardians: 901 }]);
+  });
+
+  it('does not escalate on my revoked row naming an unpulled profile (only accepted memberships signal a join)', async () => {
+    const cache = new SyncedDataCache();
+    let pull = 0;
+    const cursorsSeen: unknown[] = [];
+    const { client } = fakeRpcClient(async (name, params) => {
+      if (name === 'sync_watermark') {
+        return { data: 1_000_000, error: null };
+      }
+      cursorsSeen.push(structuredClone(params.p_cursors));
+      pull += 1;
+      if (pull === 1) {
+        return { data: heldState(), error: null };
+      }
+      return {
+        data: {
+          profile_guardians: [
+            myGuardianRow(ULID_B, {
+              id: '2f2f2f2f-2f2f-4f2f-8f2f-2f2f2f2f2f2e',
+              status: 'revoked',
+              server_version: 950,
+            }),
+          ],
+        },
+        error: null,
+      };
+    });
+    const readIdentity = () => ME;
+    await cache.refresh(client, readIdentity);
+    await cache.refresh(client, readIdentity);
+    expect(cursorsSeen).toEqual([{}, { profiles: 900, profile_guardians: 901 }]);
+  });
+
+  it('keeps merging incrementally when there is no drift and the from-zero baseline is fresh', async () => {
+    const cache = new SyncedDataCache();
+    let pull = 0;
+    const cursorsSeen: unknown[] = [];
+    const { client, calls } = fakeRpcClient(async (name, params) => {
+      if (name === 'sync_watermark') {
+        return { data: 1_000_000, error: null };
+      }
+      cursorsSeen.push(structuredClone(params.p_cursors));
+      pull += 1;
+      if (pull === 1) {
+        return { data: heldState(), error: null };
+      }
+      return {
+        data: {
+          profiles: [profileRow({ id: ULID_A, server_version: 902, display_name: 'Newer' })],
+        },
+        error: null,
+      };
+    });
+    const readIdentity = () => ME;
+    const first = await cache.refresh(client, readIdentity);
+    const second = await cache.refresh(client, readIdentity);
+    expect(first.profiles[0]?.display_name).toBe('Maya');
+    expect(second.profiles[0]?.display_name).toBe('Newer');
+    // Exactly the two pulls, the second incremental: the steady state is
+    // untouched by the drift machinery.
+    expect(cursorsSeen).toEqual([{}, { profiles: 900, profile_guardians: 901 }]);
+    expect(calls.filter((call) => call.name === 'sync_pull')).toHaveLength(2);
+  });
+
+  it('escalates to a from-zero reconcile once the baseline is stale, dropping a profile revoked elsewhere with no tombstone', async () => {
+    let now = 1_000_000;
+    const cache = new SyncedDataCache(() => now);
+    let pull = 0;
+    const cursorsSeen: unknown[] = [];
+    const { client } = fakeRpcClient(async (name, params) => {
+      if (name === 'sync_watermark') {
+        return { data: 1_000_000, error: null };
+      }
+      cursorsSeen.push(structuredClone(params.p_cursors));
+      pull += 1;
+      if (pull === 1) {
+        return { data: heldState(), error: null };
+      }
+      // The revoke: A left sync_pull's tenant set, so the incremental pull
+      // returns nothing at all — and neither does the from-zero reconcile.
+      // No tombstone ever arrives; only the reconcile can drop the row.
+      return { data: {}, error: null };
+    });
+    const readIdentity = () => ME;
+    await cache.refresh(client, readIdentity);
+    now += MEMBERSHIP_RECONCILE_INTERVAL_MS + 1;
+    const reconciled = await cache.refresh(client, readIdentity);
+    expect(reconciled.profiles).toEqual([]);
+    expect(cache.current().profiles).toEqual([]);
+    expect(cursorsSeen).toEqual([{}, { profiles: 900, profile_guardians: 901 }, {}]);
+  });
+
+  it('keeps merging incrementally just under the reconcile interval', async () => {
+    let now = 1_000_000;
+    const cache = new SyncedDataCache(() => now);
+    let pull = 0;
+    const cursorsSeen: unknown[] = [];
+    const { client, calls } = fakeRpcClient(async (name, params) => {
+      if (name === 'sync_watermark') {
+        return { data: 1_000_000, error: null };
+      }
+      cursorsSeen.push(structuredClone(params.p_cursors));
+      pull += 1;
+      if (pull === 1) {
+        return { data: heldState(), error: null };
+      }
+      return {
+        data: {
+          profiles: [profileRow({ id: ULID_A, server_version: 902, display_name: 'Newer' })],
+        },
+        error: null,
+      };
+    });
+    const readIdentity = () => ME;
+    await cache.refresh(client, readIdentity);
+    now += MEMBERSHIP_RECONCILE_INTERVAL_MS - 1;
+    const second = await cache.refresh(client, readIdentity);
+    expect(second.profiles[0]?.display_name).toBe('Newer');
+    expect(cursorsSeen).toEqual([{}, { profiles: 900, profile_guardians: 901 }]);
+    expect(calls.filter((call) => call.name === 'sync_pull')).toHaveLength(2);
+  });
+
+  it('never escalates a pull the identity guard discarded (a reset landed mid-pull)', async () => {
+    const cache = new SyncedDataCache();
+    let releasePull!: (value: { data: unknown; error: { message: string } | null }) => void;
+    const heldPull = new Promise<{ data: unknown; error: { message: string } | null }>(
+      (resolve) => {
+        releasePull = resolve;
+      },
+    );
+    let pull = 0;
+    const { client, calls } = fakeRpcClient(async (name) => {
+      if (name === 'sync_watermark') {
+        return { data: 1_000_000, error: null };
+      }
+      pull += 1;
+      if (pull === 1) {
+        return { data: heldState(), error: null };
+      }
+      return heldPull;
+    });
+    const readIdentity = () => ME;
+    await cache.refresh(client, readIdentity);
+    const inFlight = cache.refresh(client, readIdentity);
+    cache.reset(); // the identity boundary lands mid-pull
+    releasePull({
+      // Drift rows, but the pull they rode in on is about to be discarded.
+      data: {
+        profile_guardians: [
+          myGuardianRow(ULID_B, {
+            id: '2f2f2f2f-2f2f-4f2f-8f2f-2f2f2f2f2f2e',
+            server_version: 950,
+          }),
+        ],
+      },
+      error: null,
+    });
+    const discarded = await inFlight;
+    expect(discarded).toEqual(emptySyncedData());
+    expect(cache.current()).toEqual(emptySyncedData());
+    // No escalation followed the discard: the next account's first pull is
+    // its own from-zero baseline.
+    expect(calls.filter((call) => call.name === 'sync_pull')).toHaveLength(2);
+  });
+
+  it('an explicit repullAll re-bases the reconcile baseline (the sharing pages’ own re-pulls count)', async () => {
+    let now = 1_000_000;
+    const cache = new SyncedDataCache(() => now);
+    let pull = 0;
+    const cursorsSeen: unknown[] = [];
+    const { client, calls } = fakeRpcClient(async (name, params) => {
+      if (name === 'sync_watermark') {
+        return { data: 1_000_000, error: null };
+      }
+      cursorsSeen.push(structuredClone(params.p_cursors));
+      pull += 1;
+      if (pull === 1) {
+        return { data: heldState(), error: null };
+      }
+      if (pull === 2) {
+        // The leave's own re-pull (repullMembershipData): A is gone.
+        return { data: {}, error: null };
+      }
+      return { data: {}, error: null };
+    });
+    const readIdentity = () => ME;
+    await cache.refresh(client, readIdentity);
+    await cache.repullAll(client, readIdentity);
+    now += MEMBERSHIP_RECONCILE_INTERVAL_MS - 1;
+    await cache.refresh(client, readIdentity);
+    // The refresh after the explicit re-pull stays incremental: the
+    // re-pull itself was the reconcile.
+    expect(cursorsSeen).toEqual([{}, {}, {}]);
+    expect(calls.filter((call) => call.name === 'sync_pull')).toHaveLength(3);
   });
 });
 
