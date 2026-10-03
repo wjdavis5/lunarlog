@@ -44,10 +44,17 @@ import { newUlid } from './ulid';
  *   that RPC is unavailable, to `CURSOR_LOOKBACK` below each table's
  *   pulled maximum — so an out-of-commit-order row can never be skipped
  *   past (issue #1282, the web mirror of issue #521's engine fix).
- *   Membership changes (invite accept, transfer claim, leave, revoke)
- *   reshapes what the RPC returns without bumping `server_version`s, so
- *   `SyncedDataCache.repullAll` re-pulls from zero into a fresh,
- *   membership-filtered snapshot after them.
+ *   Membership changes reshape what the RPC returns without bumping
+ *   `server_version`s, so an incremental pull alone cannot converge on
+ *   them (issue #1370): this tab's own membership mutations re-pull
+ *   explicitly (`SyncedDataCache.repullAll`, issue #1282); a pulled
+ *   guardian row naming a profile the snapshot lacks — a join that
+ *   happened on another device — escalates to that same re-pull (the
+ *   engine's profileGuardians cursor rewind, mirrored); and a membership
+ *   changed entirely elsewhere — a revoke above all, whose profile
+ *   simply stops being returned, with no tombstone any incremental pull
+ *   could observe — is closed by the session's periodic from-zero
+ *   reconcile (`MEMBERSHIP_RECONCILE_INTERVAL_MS`).
  * - Private-note masking lives *only* on the RPC paths: a non-subject
  *   guardian receives a masked `day_entries.note = null` from `sync_pull`
  *   (mask_day_entry_note, 20260921130000). A raw `select` on
@@ -117,6 +124,25 @@ const MAX_PULL_ROUNDS = 1_000;
  * duplicate work costs nothing but correctness.
  */
 export const CURSOR_LOOKBACK = 50;
+
+/**
+ * Issue #1370: how stale the session's from-zero baseline may get before
+ * the next incremental refresh escalates to a full re-pull. A membership
+ * change made entirely outside this tab — a revoke above all — is
+ * invisible to an incremental pull by construction: `sync_pull`'s tenant
+ * set is the caller's *accepted* memberships, so a revoked profile stops
+ * being returned with no tombstone, and only a from-zero pull re-derives
+ * the accepted set and drops it. Fifteen minutes mirrors the engine's
+ * periodic sync cadence (`kSyncPeriodicInterval`,
+ * `lib/data/sync/supabase_sync_engine.dart`) — the bound on how long a
+ * revoked profile can stay on screen without a reload (the engine's own
+ * full reconcile runs daily, but a web session is page memory: if it
+ * reconciled only daily it would effectively never). In practice it
+ * lands sooner: a tab refocus re-runs the synced-data query (TanStack's
+ * default refetchOnWindowFocus), so the first wake- or focus-driven pull
+ * after the interval elapses is the reconcile.
+ */
+export const MEMBERSHIP_RECONCILE_INTERVAL_MS = 15 * 60_000;
 
 // ---------------------------------------------------------------------------
 // The learned server-clock offset (issue #1283)
@@ -829,6 +855,38 @@ export function subscribeSyncSignals(
 // The in-memory session cache: cursors + merged snapshot, reset on sign-out.
 // ---------------------------------------------------------------------------
 
+/** Whether a pull started from zero cursors — its snapshot is complete by
+ * construction, so it re-bases the membership-reconcile baseline. */
+function startedFromZero(cursors: SyncPullCursors): boolean {
+  return Object.keys(cursors).length === 0;
+}
+
+/**
+ * Issue #1370's join-drift signal — the web mirror of the engine's
+ * profileGuardians rewind (`_onTablePullFailure`,
+ * `lib/data/sync/supabase_sync_engine.dart`: a guardian row whose profile
+ * is not held rewinds the profiles cursor to 0 so the joined share
+ * converges). A *pulled* accepted `profile_guardians` row for this
+ * account naming a profile the merged view does not hold means the
+ * profile's own rows sit below the session's cursors (the accept bumped
+ * nothing), so only a from-zero pull can converge. Checked against the
+ * rows this pull actually carried — never the accumulated snapshot — so
+ * a row cannot re-trigger the escalation once the cursors have passed it,
+ * and keyed on this account's own rows, the same rule
+ * [filterToAcceptedMemberships] derives its set by. A profile the pull
+ * itself delivered counts as held (it is in `merged`).
+ */
+function joinedElsewhereDrift(
+  pulled: SyncedData,
+  merged: SyncedData,
+  identity: string,
+): boolean {
+  const held = new Set(merged.profiles.map((row) => row.id));
+  return pulled.profile_guardians.some(
+    (row) => row.user_id === identity && row.status === 'accepted' && !held.has(row.profile_id),
+  );
+}
+
 /**
  * The web session's synced-data state: a merged row snapshot plus the pull
  * cursors, both purely in-memory. One instance per page; `reset()` (sign-
@@ -862,12 +920,38 @@ export class SyncedDataCache {
   private snapshot: SyncedData = emptySyncedData();
   private generation = 0;
   private identity: string | null = null;
+  /**
+   * When this session's snapshot was last built by a pull that started
+   * from zero cursors (a [repullAll], or a refresh from empty cursors) —
+   * the baseline [MEMBERSHIP_RECONCILE_INTERVAL_MS]'s staleness check
+   * measures. `null` only before a session's first pull has landed.
+   */
+  private lastFromZeroPullAt: number | null = null;
+  /** Injected clock — the tests' determinism seam (the same pattern as
+   * [serverAdjustedNow]'s). */
+  private readonly clock: () => number;
+
+  constructor(clock: () => number = Date.now) {
+    this.clock = clock;
+  }
 
   /**
    * Pulls forward from the session's cursors and merges into the snapshot.
    * `readIdentity` is the caller's live read of the signed-in account's id
    * (the auth client stays out of this module's imports — the caller, whose
    * queryFn already holds it, supplies the seam).
+   *
+   * Issue #1370: two membership-drift conditions escalate to a full
+   * [repullAll] instead of merging. A *pulled* `profile_guardians` row for
+   * this account naming a profile the snapshot does not hold is a join
+   * that happened on another device — the joined profile's rows sit below
+   * this session's cursors (the accept bumped nothing), the engine's
+   * profileGuardians rewind mirrored (see [joinedElsewhereDrift]); and an
+   * incremental pull whose from-zero baseline is older than
+   * [MEMBERSHIP_RECONCILE_INTERVAL_MS] reconciles from zero so the changes
+   * no incremental pull can observe — a revoke made elsewhere above all —
+   * converge. Both checks run only on a pull that is about to land: one
+   * discarded by a reset or an identity change (below) escalates nothing.
    */
   async refresh(
     client: AppSupabaseClient,
@@ -875,12 +959,51 @@ export class SyncedDataCache {
   ): Promise<SyncedData> {
     const generation = this.generation;
     const identityBefore = readIdentity();
-    const result = await pullSyncedData(client, { cursors: this.cursors });
-    return this.adoptPull(readIdentity, generation, identityBefore, () => {
+    const startCursors = this.cursors;
+    const result = await pullSyncedData(client, { cursors: startCursors });
+    let escalateToRepull = false;
+    const landed = this.adoptPull(readIdentity, generation, identityBefore, (identity) => {
+      const merged = mergeSyncedData(this.snapshot, result.data);
+      escalateToRepull =
+        identity !== null &&
+        (this.reconcileDue(startCursors) ||
+          joinedElsewhereDrift(result.data, merged, identity));
+      if (escalateToRepull) {
+        // Land nothing: the escalation's from-zero pull below replaces the
+        // cursors and the snapshot wholesale. (Returning the untouched
+        // snapshot keeps the discarded path's contract; its value is
+        // superseded by repullAll's return.)
+        return this.snapshot;
+      }
       this.cursors = result.cursors;
-      this.snapshot = mergeSyncedData(this.snapshot, result.data);
+      this.snapshot = merged;
+      if (startedFromZero(startCursors)) {
+        this.lastFromZeroPullAt = this.clock();
+      }
       return this.snapshot;
     });
+    if (escalateToRepull) {
+      return this.repullAll(client, readIdentity);
+    }
+    return landed;
+  }
+
+  /**
+   * Issue #1370: whether this pull's start cursors and the session's
+   * from-zero baseline together call for a full reconcile instead of an
+   * incremental merge. A pull that already started from zero is its own
+   * reconcile; a null baseline with cursors already advanced cannot
+   * normally arise (the first pull of a session starts empty and re-bases
+   * below) but reconciles anyway — fail-safe toward converging.
+   */
+  private reconcileDue(startCursors: SyncPullCursors): boolean {
+    if (startedFromZero(startCursors)) {
+      return false;
+    }
+    return (
+      this.lastFromZeroPullAt === null ||
+      this.clock() - this.lastFromZeroPullAt >= MEMBERSHIP_RECONCILE_INTERVAL_MS
+    );
   }
 
   /**
@@ -898,7 +1021,10 @@ export class SyncedDataCache {
    *
    * The same generation + identity guard as [refresh]: a pull that resolves
    * across a sign-out/reset, or under an account the snapshot was not built
-   * for, touches nothing.
+   * for, touches nothing. A clean landing re-bases the membership-reconcile
+   * baseline ([MEMBERSHIP_RECONCILE_INTERVAL_MS]) — the sharing pages'
+   * explicit re-pulls (issue #1282) count as reconciles, and so does the
+   * drift escalation [refresh] routes here (issue #1370).
    */
   async repullAll(
     client: AppSupabaseClient,
@@ -910,6 +1036,7 @@ export class SyncedDataCache {
     return this.adoptPull(readIdentity, generation, identityBefore, (identity) => {
       this.cursors = result.cursors;
       this.snapshot = filterToAcceptedMemberships(result.data, identity);
+      this.lastFromZeroPullAt = this.clock();
       return this.snapshot;
     });
   }
@@ -957,6 +1084,7 @@ export class SyncedDataCache {
     this.identity = null;
     this.cursors = emptyCursors();
     this.snapshot = emptySyncedData();
+    this.lastFromZeroPullAt = null;
   }
 }
 
