@@ -154,11 +154,21 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -uo pipefail
+          # Pages refuses project deletion while a custom domain is
+          # attached (code 8000028, learned on the first cutover run):
+          # remove the domain via the REST API first — wrangler 4.20.0
+          # has no command for it — then delete the project. Both are
+          # idempotent; failures warn and let the deploy attach fail
+          # loudly (the #1093 step 4 dashboard fallback names this).
+          domain_status=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/lunarlog-app/domains/app.lunarlog.app")
+          echo "pages domain delete -> HTTP ${domain_status} (200/404 both fine)"
           npx wrangler@4.20.0 pages project delete lunarlog-app --yes \
             || echo "::warning::Could not delete the lunarlog-app Pages project (already retired, or the token lacks Pages permissions). If it still holds app.lunarlog.app, the deploy's custom-domain attach below will fail — the manual fallback is the Cloudflare dashboard's Pages custom-domains pane (#1093 step 4)."
           # Give the hostname release a moment so the attach does not race
           # the deletion.
-          sleep 20
+          sleep 30
 
       - name: Deploy to Cloudflare Workers (staging + app.lunarlog.app)
         if: steps.cloudflare.outputs.configured == 'true'
