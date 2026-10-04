@@ -24,7 +24,7 @@
   // zone permissions, which is #1093 step 4's one dashboard fallback). The
   // workers.dev hostname stays on as the staging alias (#1249).
   "workers_dev": true,
-  "routes": ["app.lunarlog.app/*"],
+  "routes": [{ "pattern": "app.lunarlog.app", "custom_domain": true }],
 
   "assets": {
     // `npm run build` output (Vite). Served through the Worker (see
