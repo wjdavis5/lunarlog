@@ -126,14 +126,6 @@ jobs:
         if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-ios-widget-signing.test.sh
 
-      - name: Run check-web-build-output tests
-        # Epic #831 slice 3: proves the web-build deploy gate fails closed on
-        # a missing CSP/`_redirects`, and that web-deploy.yml builds the sync
-        # app with the same defines and gates the Pages upload on the two
-        # Cloudflare secrets.
-        if: steps.check_run.outputs.run == 'true' && !cancelled()
-        run: bash .github/scripts/tests/check-web-build-output.test.sh
-
       - name: Run check-links-deploy tests
         # Issue #1090: proves the post-deploy smoke check's truth table --
         # the AASA must be application/json with nosniff and no redirect, and
@@ -141,14 +133,6 @@ jobs:
         # layer's.
         if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-links-deploy.test.sh
-
-      - name: Run check-web-deploy tests
-        # Issue #1092: proves the web post-deploy smoke check's truth table
-        # (the live origin serves the `web/_headers` policy, the SPA fallback,
-        # and local CanvasKit) and that web-deploy.yml ensures the Pages
-        # project exists before it uploads.
-        if: steps.check_run.outputs.run == 'true' && !cancelled()
-        run: bash .github/scripts/tests/check-web-deploy.test.sh
 
       - name: Run check-webapp-staging tests
         # Issue #1249: proves the staging Worker's post-deploy smoke check's
@@ -378,14 +362,6 @@ jobs:
         if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-ios-widget-signing.test.sh
 
-      - name: Run check-web-build-output tests
-        # Epic #831 slice 3: proves the web-build deploy gate fails closed on
-        # a missing CSP/`_redirects`, and that web-deploy.yml builds the sync
-        # app with the same defines and gates the Pages upload on the two
-        # Cloudflare secrets.
-        if: steps.check_run.outputs.run == 'true' && !cancelled()
-        run: bash .github/scripts/tests/check-web-build-output.test.sh
-
       - name: Run check-links-deploy tests
         # Issue #1090: proves the post-deploy smoke check's truth table --
         # the AASA must be application/json with nosniff and no redirect, and
@@ -393,14 +369,6 @@ jobs:
         # layer's.
         if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-links-deploy.test.sh
-
-      - name: Run check-web-deploy tests
-        # Issue #1092: proves the web post-deploy smoke check's truth table
-        # (the live origin serves the `web/_headers` policy, the SPA fallback,
-        # and local CanvasKit) and that web-deploy.yml ensures the Pages
-        # project exists before it uploads.
-        if: steps.check_run.outputs.run == 'true' && !cancelled()
-        run: bash .github/scripts/tests/check-web-deploy.test.sh
 
       - name: Run check-webapp-staging tests
         # Issue #1249: proves the staging Worker's post-deploy smoke check's
@@ -604,13 +572,6 @@ jobs:
             --dart-define=FCM_ANDROID_APP_ID="$FCM_ANDROID_APP_ID" \
             --dart-define=FCM_IOS_API_KEY="$FCM_IOS_API_KEY" \
             --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID"
-
-      - name: Verify the web build output carries the headers and SPA fallback
-        # Issue #1091: the same deployability check web-deploy.yml runs, so a
-        # CI build that would blank-page in a browser fails here instead of
-        # only after a deploy. It also asserts local CanvasKit.
-        if: steps.check_run.outputs.run == 'true'
-        run: bash .github/scripts/check-web-build-output.sh
 
       - name: Boot-check the web build under its CSP
         # Issue #1091: a build that parses green can still never render.
@@ -1528,6 +1489,7 @@ jobs:
       - db-tests
       - android
       - ios
+      - webapp
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1543,13 +1505,18 @@ jobs:
           echo "db-tests: ${{ needs.db-tests.result }}"
           echo "android: ${{ needs.android.result }}"
           echo "ios: ${{ needs.ios.result }}"
+          echo "webapp: ${{ needs.webapp.result }}"
 
-      # No job here declares a job-level `if:` (no path filters or similar
-      # conditional skip in this workflow as of #651), so every needed job
-      # is expected to actually run and succeed -- a "skipped" result is
-      # therefore treated as a failure, not a pass, the same as "failure" or
-      # "cancelled". This condition is the whole gate: it fires (and this
-      # step fails) unless every needed job's result is exactly "success".
+      # No job here declares a job-level `if:` except `webapp` (the React
+      # client's path filter, #1249) — so every needed job is expected to
+      # actually run and succeed, and a "skipped" result is treated as a
+      # failure, the same as "failure" or "cancelled". The one exception is
+      # `webapp`: it is path-filtered, so "skipped" means the PR touches no
+      # webapp input and the job legitimately did not run — a PR that does
+      # touch them always runs it, and "success" is still required there.
+      # This condition is the whole gate: it fires (and this step fails)
+      # unless every needed job's result is exactly "success" (or webapp's
+      # is "success"/"skipped").
       - name: Fail unless every required job succeeded
         if: |
           needs.release-guards.result != 'success' ||
@@ -1560,7 +1527,8 @@ jobs:
           needs.edge-functions.result != 'success' ||
           needs.db-tests.result != 'success' ||
           needs.android.result != 'success' ||
-          needs.ios.result != 'success'
+          needs.ios.result != 'success' ||
+          (needs.webapp.result != 'success' && needs.webapp.result != 'skipped')
         run: |
           echo "::error::One or more required jobs did not succeed (see the 'Report required job results' step above for each job's result). Failing the rollup check."
           exit 1

@@ -260,34 +260,40 @@ Deno.test('/privacy.html 301s to the apex policy (#1248)', async () => {
   assertEquals(res.headers.get('content-security-policy'), CSP);
 });
 
-Deno.test('/flutter_service_worker.js serves the self-unregistering worker (#1248)', async () => {
-  const env: Env = { ASSETS: fakeAssets() };
-  const res = await createWorker().fetch(
-    new Request('https://app.lunarlog.app/flutter_service_worker.js'),
-    env,
-  );
-  assertEquals(res.status, 200);
-  assertEquals(
-    res.headers.get('content-type')?.split(';')[0],
-    'application/javascript',
-  );
-  const body = await res.text();
-  assertStringIncludes(body, 'self.registration.unregister()');
-  assertStringIncludes(body, 'caches.delete');
-});
+Deno.test(
+  '/flutter_service_worker.js serves the self-unregistering worker (#1248)',
+  async () => {
+    const env: Env = { ASSETS: fakeAssets() };
+    const res = await createWorker().fetch(
+      new Request('https://app.lunarlog.app/flutter_service_worker.js'),
+      env,
+    );
+    assertEquals(res.status, 200);
+    assertEquals(res.headers.get('content-type')?.split(';')[0], 'application/javascript');
+    const body = await res.text();
+    assertStringIncludes(body, 'self.registration.unregister()');
+    assertStringIncludes(body, 'caches.delete');
+  },
+);
 
-Deno.test('HTML shells carry Clear-Site-Data cache+storage, never cookies (#1248)', async () => {
-  const env: Env = { ASSETS: fakeAssets() };
-  const res = await createWorker().fetch(new Request('https://app.lunarlog.app/'), env);
-  const csd = res.headers.get('clear-site-data') ?? '';
-  assertStringIncludes(csd, '"storage"');
-  assertStringIncludes(csd, '"cache"');
-  assertFalse(csd.includes('cookies'), 'cookies would clear the refresh cookie every page load');
+Deno.test(
+  'HTML shells carry Clear-Site-Data cache+storage, never cookies (#1248)',
+  async () => {
+    const env: Env = { ASSETS: fakeAssets() };
+    const res = await createWorker().fetch(new Request('https://app.lunarlog.app/'), env);
+    const csd = res.headers.get('clear-site-data') ?? '';
+    assertStringIncludes(csd, '"storage"');
+    assertStringIncludes(csd, '"cache"');
+    assertFalse(
+      csd.includes('cookies'),
+      'cookies would clear the refresh cookie every page load',
+    );
 
-  // Non-HTML asset responses stay clean (only the app shell wipes).
-  const asset = await createWorker().fetch(
-    new Request('https://app.lunarlog.app/assets/index-abc.js'),
-    { ASSETS: fakeAssets({ headers: { 'content-type': 'application/javascript' } }) },
-  );
-  assertEquals(asset.headers.get('clear-site-data'), null);
-});
+    // Non-HTML asset responses stay clean (only the app shell wipes).
+    const asset = await createWorker().fetch(
+      new Request('https://app.lunarlog.app/assets/index-abc.js'),
+      { ASSETS: fakeAssets({ headers: { 'content-type': 'application/javascript' } }) },
+    );
+    assertEquals(asset.headers.get('clear-site-data'), null);
+  },
+);

@@ -279,8 +279,8 @@ assert_contains "the check probes /auth/session (issue #1280)" "$(cat "$SCRIPT")
 # either (a path-filtered job in the rollup would fail every docs-only PR
 # with a "skipped" dependency).
 CI_GATE="$(cat "$CI_GATE_SCRIPT")"
-assert_not_contains "check-ci-gate.sh's REQUIRED_CHECKS omits the webapp job" "$CI_GATE" "Web app (lint, typecheck, unit, build, e2e)"
-assert_not_contains "the ruleset rollup's needs omits webapp" "$CI" "      - webapp"
+assert_contains "check-ci-gate.sh's REQUIRED_CHECKS carries the webapp job (promoted at the #1258 launch)" "$CI_GATE" "Web app (lint, typecheck, unit, build, e2e)"
+assert_contains "the ruleset rollup's needs carries webapp (#1258 launch promotion)" "$CI" "      - webapp"
 
 print_summary "check-webapp-staging.test.sh"
 
