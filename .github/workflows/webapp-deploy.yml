@@ -174,7 +174,11 @@ jobs:
           if [ -n "${zone_id}" ]; then
             dns_json="$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
               "https://api.cloudflare.com/client/v4/zones/${zone_id}/dns_records?name=app.lunarlog.app")"
-            echo "dns_records response: $(printf '%s' "${dns_json}" | head -c 400)"
+            if printf '%s' "${dns_json}" | grep -q '"success":false'; then
+              echo "::error::The CLOUDFLARE_API_TOKEN can read the zone but not its DNS records (Authentication error on dns_records). Owner fix (either one, then re-run this workflow): add the Zone/DNS/ Edit permission to this token in the Cloudflare dashboard, or delete the four app.lunarlog.app records (A + AAAA) by hand in dash.cloudflare.com -> lunarlog.app zone -> DNS. Until then the custom-domain attach below fails (100117)."
+            else
+              echo "dns_records response: $(printf '%s' "${dns_json}" | head -c 400)"
+            fi
             for record_id in $(printf '%s' "${dns_json}" | jq -r '.result[].id // empty'); do
               curl -sS -o /dev/null -X DELETE -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
                 "https://api.cloudflare.com/client/v4/zones/${zone_id}/dns_records/${record_id}"
