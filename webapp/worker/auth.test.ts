@@ -82,12 +82,16 @@ async function errorOf(response: Response | null | undefined): Promise<string> {
   return ((await response?.json()) as { error: string } | undefined)?.error ?? 'missing';
 }
 
-function get(path: string, options: { cookie?: string; origin?: string | null } = {}): Request {
+function get(
+  path: string,
+  options: { cookie?: string; origin?: string | null; bearer?: string } = {},
+): Request {
   const headers: Record<string, string> = {};
   if (options.cookie !== undefined) headers['cookie'] = options.cookie;
   if (options.origin !== null && options.origin !== undefined) {
     headers['origin'] = options.origin;
   }
+  if (options.bearer !== undefined) headers['authorization'] = `Bearer ${options.bearer}`;
   return new Request(`${ORIGIN}${path}`, { method: 'GET', headers });
 }
 
@@ -1061,3 +1065,324 @@ Deno.test(
     assertEquals(await handleAuthRequest(get('/sign-in'), ENV, deps), null);
   },
 );
+
+// ---------------------------------------------------------------------------
+// Identity linking, unlinking, and the Apple delete ceremony (issue #1256)
+// ---------------------------------------------------------------------------
+
+const APPLE_SERVICES_ID = 'com.wjdavis5.lunarlog.web';
+
+function upstreamUser(identities: Array<{ provider: string; id: string }>): Response {
+  return new Response(JSON.stringify({ id: 'u1', email: 'a@example.com', identities }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+Deno.test(
+  "GET /auth/identities resolves the caller's linked providers from their own GoTrue user",
+  async () => {
+    const { deps, calls } = fakeDeps(({ path }) => {
+      assertEquals(path, '/auth/v1/user');
+      return upstreamUser([
+        { provider: 'email', id: 'email-1' },
+        { provider: 'apple', id: 'apple-1' },
+      ]);
+    });
+
+    const response = await handleAuthRequest(
+      get('/auth/identities', { bearer: 'access-1' }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 200);
+    assertEquals(new Headers(calls[0].init.headers).get('authorization'), 'Bearer access-1');
+    const payload = (await response?.json()) as { email: string; providers: string[] };
+    assertEquals(payload.email, 'a@example.com');
+    assertEquals(payload.providers, ['email', 'apple']);
+  },
+);
+
+Deno.test(
+  'GET /auth/identities without a bearer is 401 (the caller is always their own subject)',
+  async () => {
+    const { deps, calls } = fakeDeps();
+
+    const response = await handleAuthRequest(get('/auth/identities'), ENV, deps);
+
+    assertEquals(response?.status, 401);
+    assertEquals(calls.length, 0);
+  },
+);
+
+Deno.test(
+  "POST /auth/identities/link starts a PKCE link flow against GoTrue's link authorize endpoint",
+  async () => {
+    const { deps, calls } = fakeDeps(
+      () =>
+        new Response(JSON.stringify({ url: 'https://appleid.apple.com/auth/authorize?x=1' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+
+    const response = await handleAuthRequest(
+      post('/auth/identities/link', { provider: 'apple' }, { bearer: 'access-1' }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 200);
+    assertEquals(calls.length, 1);
+    assertEquals(
+      calls[0].path,
+      '/auth/v1/user/identities/authorize?provider=apple&redirect_to=https%3A%2F%2Fapp.test%2Fauth%2Fcallback&code_challenge=challenge-verifier-abc&code_challenge_method=s256&skip_http_redirect=true',
+    );
+    const headers = new Headers(calls[0].init.headers);
+    assertEquals(headers.get('authorization'), 'Bearer access-1');
+    const payload = (await response?.json()) as { url: string };
+    assertEquals(payload.url, 'https://appleid.apple.com/auth/authorize?x=1');
+    assertEquals(
+      response?.headers.get('set-cookie'),
+      `${PKCE_COOKIE}=verifier-abc; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600`,
+    );
+  },
+);
+
+Deno.test(
+  'POST /auth/identities/link refuses unknown providers and missing bearers',
+  async () => {
+    const { deps, calls } = fakeDeps();
+
+    const noBearer = await handleAuthRequest(
+      post('/auth/identities/link', { provider: 'apple' }),
+      ENV,
+      deps,
+    );
+    const badProvider = await handleAuthRequest(
+      post('/auth/identities/link', { provider: 'email' }, { bearer: 'access-1' }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(noBearer?.status, 401);
+    assertEquals(badProvider?.status, 400);
+    assertEquals(await errorOf(badProvider), 'unknown_provider');
+    assertEquals(calls.length, 0);
+  },
+);
+
+Deno.test(
+  'POST /auth/identities/link forwards upstream failures with their codes',
+  async () => {
+    const { deps } = fakeDeps(
+      () =>
+        new Response(JSON.stringify({ error_code: 'identity_already_exists' }), {
+          status: 422,
+        }),
+    );
+
+    const response = await handleAuthRequest(
+      post('/auth/identities/link', { provider: 'google' }, { bearer: 'access-1' }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 422);
+    assertEquals(await errorOf(response), 'identity_already_exists');
+  },
+);
+
+Deno.test(
+  'POST /auth/identities/link answers 502 when upstream omits the provider URL',
+  async () => {
+    const { deps } = fakeDeps(() => new Response(JSON.stringify({}), { status: 200 }));
+
+    const response = await handleAuthRequest(
+      post('/auth/identities/link', { provider: 'google' }, { bearer: 'access-1' }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 502);
+    assertEquals(await errorOf(response), 'upstream_authorize_shape');
+  },
+);
+
+Deno.test(
+  "POST /auth/identities/unlink resolves the identity id from the caller's own user and DELETEs it",
+  async () => {
+    const { deps, calls } = fakeDeps(({ path, init }) => {
+      if (path === '/auth/v1/user') {
+        return upstreamUser([
+          { provider: 'email', id: 'email-1' },
+          { provider: 'google', id: 'google-42' },
+        ]);
+      }
+      assertEquals(path, '/auth/v1/user/identities/google-42');
+      assertEquals(init.method, 'DELETE');
+      assertEquals(new Headers(init.headers).get('authorization'), 'Bearer access-1');
+      return new Response(JSON.stringify({ id: 'u1' }), { status: 200 });
+    });
+
+    const response = await handleAuthRequest(
+      post('/auth/identities/unlink', { provider: 'google' }, { bearer: 'access-1' }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 200);
+    assertEquals(await response?.json(), { ok: true });
+    assertEquals(calls.length, 2);
+  },
+);
+
+Deno.test(
+  'POST /auth/identities/unlink 404s a provider that is not linked, and never DELETEs',
+  async () => {
+    const { deps, calls } = fakeDeps(() =>
+      upstreamUser([{ provider: 'email', id: 'email-1' }]),
+    );
+
+    const response = await handleAuthRequest(
+      post('/auth/identities/unlink', { provider: 'google' }, { bearer: 'access-1' }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 404);
+    assertEquals(await errorOf(response), 'identity_not_found');
+    assertEquals(calls.length, 1, 'only the user read runs; no identity DELETE');
+  },
+);
+
+Deno.test(
+  'POST /auth/identities/unlink only ever removes the two OAuth providers, never the email identity',
+  async () => {
+    const { deps, calls } = fakeDeps();
+
+    const response = await handleAuthRequest(
+      post('/auth/identities/unlink', { provider: 'email' }, { bearer: 'access-1' }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 400);
+    assertEquals(await errorOf(response), 'unknown_provider');
+    assertEquals(calls.length, 0);
+  },
+);
+
+Deno.test(
+  'GET /auth/apple/delete/start 302s to Apple under the Services ID with a state cookie',
+  async () => {
+    const { deps } = fakeDeps();
+
+    const response = await handleAuthRequest(
+      get('/auth/apple/delete/start', { origin: ORIGIN }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 302);
+    const location = new URL(response?.headers.get('location') ?? '');
+    assertEquals(location.origin, 'https://appleid.apple.com');
+    assertEquals(location.pathname, '/auth/authorize');
+    assertEquals(location.searchParams.get('response_type'), 'code');
+    assertEquals(location.searchParams.get('response_mode'), 'query');
+    assertEquals(location.searchParams.get('client_id'), APPLE_SERVICES_ID);
+    assertEquals(location.searchParams.get('redirect_uri'), 'https://app.test/account');
+    assertEquals(location.searchParams.get('state'), 'verifier-abc');
+    assertEquals(
+      response?.headers.get('set-cookie'),
+      '__Host-ll_apple_delete=verifier-abc; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600',
+    );
+  },
+);
+
+Deno.test('GET /auth/apple/delete/start rejects a cross-site navigation', async () => {
+  const { deps } = fakeDeps();
+
+  const response = await handleAuthRequest(
+    get('/auth/apple/delete/start', { origin: 'https://attacker.test' }),
+    ENV,
+    deps,
+  );
+
+  assertEquals(response?.status, 403);
+});
+
+Deno.test(
+  'POST /auth/apple/delete/complete accepts a matching state once and clears the cookie',
+  async () => {
+    const { deps } = fakeDeps();
+
+    const response = await handleAuthRequest(
+      post(
+        '/auth/apple/delete/complete',
+        { code: 'one-time-code', state: 'verifier-abc' },
+        { cookie: '__Host-ll_apple_delete=verifier-abc' },
+      ),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 200);
+    assertEquals(await response?.json(), { ok: true });
+    assertEquals(
+      response?.headers.get('set-cookie')?.includes('Max-Age=0'),
+      true,
+      'the state is single-use: the cookie clears on success',
+    );
+  },
+);
+
+Deno.test(
+  'POST /auth/apple/delete/complete 401s with no state cookie and 403s a mismatch',
+  async () => {
+    const { deps } = fakeDeps();
+
+    const noCookie = await handleAuthRequest(
+      post('/auth/apple/delete/complete', { code: 'c', state: 'verifier-abc' }),
+      ENV,
+      deps,
+    );
+    const mismatch = await handleAuthRequest(
+      post(
+        '/auth/apple/delete/complete',
+        { code: 'c', state: 'other-value' },
+        { cookie: '__Host-ll_apple_delete=verifier-abc' },
+      ),
+      ENV,
+      deps,
+    );
+
+    assertEquals(noCookie?.status, 401);
+    assertEquals(await errorOf(noCookie), 'state_missing');
+    assertEquals(mismatch?.status, 403);
+    assertEquals(await errorOf(mismatch), 'state_mismatch');
+    assertEquals(
+      mismatch?.headers.get('set-cookie')?.includes('Max-Age=0'),
+      true,
+      'a failed guess still burns the outstanding state',
+    );
+  },
+);
+
+Deno.test('POST /auth/apple/delete/complete demands both a code and a state', async () => {
+  const { deps } = fakeDeps();
+
+  const missing = await handleAuthRequest(
+    post(
+      '/auth/apple/delete/complete',
+      { state: 'verifier-abc' },
+      { cookie: '__Host-ll_apple_delete=verifier-abc' },
+    ),
+    ENV,
+    deps,
+  );
+
+  assertEquals(missing?.status, 400);
+  assertEquals(await errorOf(missing), 'code_and_state_required');
+});

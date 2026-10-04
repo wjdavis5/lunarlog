@@ -2,6 +2,7 @@ import { Link, Navigate, Outlet, RouterProvider, createBrowserRouter } from 'rea
 
 import { useT } from './i18n/t';
 import { useAuthSession, useResetWebDataOnIdentityChange } from './lib/authQueries';
+import { AccountPage } from './pages/AccountPage';
 import { AuthCallbackPage } from './pages/AuthCallbackPage';
 import { CodeEntryPage } from './pages/CodeEntryPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
@@ -35,6 +36,12 @@ function Shell() {
           <Link className="nav-link" to="/">
             {t('calendarTodayTooltip')}
           </Link>
+          {/* Issue #1256: the account and "Your data" settings. */}
+          {session.data?.signedIn === true ? (
+            <Link className="nav-link" to="/account">
+              {t('accountSectionTitle')}
+            </Link>
+          ) : null}
           <Link className="nav-link" to="/sign-in">
             {session.data?.signedIn === true
               ? t('accountSectionSignedIn')
@@ -64,6 +71,10 @@ const router = createBrowserRouter([
       { path: 'sign-in/code', element: <CodeEntryPage /> },
       { path: 'forgot-password', element: <ForgotPasswordPage /> },
       { path: 'reset-password', element: <ResetPasswordPage /> },
+      // Issue #1256: the account and "Your data" settings — and the path
+      // Apple's delete ceremony redirects back to (the Worker's
+      // /auth/apple/delete/start names this page as its return URL).
+      { path: 'account', element: <AccountPage /> },
       { path: 'auth/callback', element: <AuthCallbackPage /> },
       // Issue #1254: the day editor, one profile at a time; the day itself
       // is the `date` query parameter (defaults to the browser's today).

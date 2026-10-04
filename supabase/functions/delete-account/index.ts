@@ -240,6 +240,21 @@
 // recorded, mirroring the `debugPrint('... (${error.runtimeType})')`
 // discipline in `lib/`.
 //
+// Issue #1256 fix (2026-10-03): the request body gains an optional
+// `appleCodeClient` (`"app"` | `"web"`, default `"app"` - the shape every
+// pre-#1256 client sent). Apple binds an authorization code to the client
+// it was issued for, and the web client's Apple ceremony (and #665's
+// Android web ceremony) mints codes for the Services ID
+// `com.wjdavis5.lunarlog.web`, not the bundle id - exchanging a web code
+// under the bundle id would fail `invalid_client` and strand an
+// Apple-linked web account one step from deletion. Step 6 now forwards the
+// declared client to `revokeAppleToken` (see `_shared/apple_revoke.ts`),
+// which mints the client secret with the matching id as its `sub`. The
+// declaration only *selects between this app's own two client ids*: a
+// mis-declared value fails Apple's client binding at the exchange and
+// resolves to `apple_revoke_failed` - fail closed, and the #560 identity
+// binding still gates the revoke regardless of which id the code carries.
+//
 // Issue #268 fix (2026-09-15): a new Step 2.5, run immediately after the
 // identities check and before anything else is touched, requires an aal2
 // session whenever the caller's account has a verified TOTP factor
@@ -258,7 +273,11 @@
 // changes as release evidence regardless.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { revokeAppleToken, type AppleRevokeResult } from "../_shared/apple_revoke.ts";
+import {
+  revokeAppleToken,
+  type AppleCodeClient,
+  type AppleRevokeResult,
+} from "../_shared/apple_revoke.ts";
 
 /** The private Storage bucket feedback attachments live in (Issue #6, U2;
  * see `20260906140000_feedback_attachments_bucket.sql`). Object paths are
@@ -317,6 +336,13 @@ interface DeleteAccountRequestBody {
    * field (in particular a user id) is never read: the subject is always
    * the verified caller from the Authorization header (AE6). */
   appleAuthorizationCode?: string;
+  /** Which Sign in with Apple client minted that code (Issue #1256): the
+   * bundle id (`"app"`, the default - the shape every client sent before
+   * #1256) or the browser/Android-web Services ID (`"web"`). Apple binds a
+   * code to the client it was issued for, so the exchange names the
+   * matching id; a mis-declared value fails Apple's client binding and
+   * resolves to a revocation failure - fail closed either way. */
+  appleCodeClient?: AppleCodeClient;
 }
 
 type ErrorCode =
@@ -378,7 +404,17 @@ async function readBody(req: Request): Promise<DeleteAccountRequestBody> {
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     const code = parsed.appleAuthorizationCode;
-    return typeof code === "string" ? { appleAuthorizationCode: code } : {};
+    const body: DeleteAccountRequestBody =
+      typeof code === "string" ? { appleAuthorizationCode: code } : {};
+    // Issue #1256: only the two known values are honoured; anything else
+    // (a stale client's typo, a hostile body) falls back to `"app"`, the
+    // shape every pre-#1256 client sent. A body that declares `"web"` for a
+    // bundle-id code (or vice versa) simply fails Apple's client binding at
+    // the exchange - a revocation failure, never a wrong-client redemption.
+    if (parsed.appleCodeClient === "web" || parsed.appleCodeClient === "app") {
+      body.appleCodeClient = parsed.appleCodeClient;
+    }
+    return body;
   } catch {
     // A malformed body must not block deletion - it only ever supplies an
     // optional Apple code, never anything the delete depends on (AE6).
@@ -485,8 +521,15 @@ export interface DeleteAccountDeps {
    * deletion (U1). */
   deleteAccountData(authHeader: string): Promise<{ data: unknown; error: unknown }>;
   /** Exchanges and revokes a Sign in with Apple authorization code, binding
-   * it to [expectedAppleUserId] before revoking (U3; Issue #560). */
-  revokeApple(authorizationCode: string, expectedAppleUserId: string): Promise<AppleRevokeResult>;
+   * it to [expectedAppleUserId] before revoking (U3; Issue #560).
+   * [codeClient] (Issue #1256) names the Sign in with Apple client that
+   * minted the code - the bundle id (`"app"`) or the web Services ID
+   * (`"web"`) - so the client secret is minted for the matching id. */
+  revokeApple(
+    authorizationCode: string,
+    expectedAppleUserId: string,
+    codeClient: AppleCodeClient,
+  ): Promise<AppleRevokeResult>;
   /** Best-effort re-home pass on the service-role client with an explicit
    * caller id (#17 P1 round 2 fix - see the header comment). */
   rehomeStrayDayEntries(uid: string): Promise<{ error: unknown }>;
@@ -679,7 +722,14 @@ export async function handleDeleteAccount(req: Request, deps: DeleteAccountDeps)
   // with a code distinct from `apple_revoke_failed` (Apple DID confirm the
   // revocation here - only this durability write failed).
   if (hasAppleIdentity && !appleAlreadyRevoked) {
-    const revoked = await deps.revokeApple(appleCode!, user.appleIdentityId!);
+    // Issue #1256: the client's own declaration of which Apple client
+    // minted the code decides which id (and client secret) the exchange
+    // names - `"app"` unless the body said `"web"`.
+    const revoked = await deps.revokeApple(
+      appleCode!,
+      user.appleIdentityId!,
+      body.appleCodeClient ?? "app",
+    );
     if (revoked.kind !== "ok") {
       console.error(
         `delete-account: apple revoke failed (${revoked.kind}); rows already removed`,
@@ -1027,8 +1077,8 @@ export function buildDeps(env: DeleteAccountEnv, clientFactory: SupabaseClientFa
         return { data: null, error };
       }
     },
-    revokeApple: (authorizationCode, expectedAppleUserId) =>
-      revokeAppleToken(authorizationCode, expectedAppleUserId),
+    revokeApple: (authorizationCode, expectedAppleUserId, codeClient) =>
+      revokeAppleToken(authorizationCode, expectedAppleUserId, codeClient),
     rehomeStrayDayEntries: async (uid) => {
       const { error } = await withTimeout(adminClient.rpc("rehome_stray_day_entries", { p_user_id: uid }));
       return { error };

@@ -34,6 +34,13 @@ test('a session leaves every browser store empty', async ({ page }) => {
   await page.goto('/invite?code=e2e-no-storage-check&profile=&kind=');
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
+  // Exercise the account surface (issue #1256): unconfigured, it renders
+  // its signed-out prompt; signed in, its state lives in page memory and
+  // the only cookie it touches is the Worker's HttpOnly one — neither
+  // readable here, both asserted by the emptiness table below.
+  await page.goto('/account?code=smoke&state=smoke');
+  await expect(page.getByRole('main').getByRole('link', { name: 'Sign in' })).toBeVisible();
+
   const emptiness = await page.evaluate(async () => {
     const databases = await indexedDB.databases();
     const cacheNames = await caches.keys();

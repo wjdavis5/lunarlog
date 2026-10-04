@@ -7,9 +7,34 @@
 // U6) and forwarded through the `delete-account` Edge Function (U2) for this
 // module to consume once and discard.
 //
+// Issue #1256: a code can be minted by either of the app's two Sign in with
+// Apple clients - the iOS bundle id (`APPLE_CLIENT_ID`, the native app flows)
+// or the Services ID (`com.wjdavis5.lunarlog.web`, which is what a browser -
+// or Android's web-based ceremony, issue #665 - receives). Apple binds an
+// authorization code to the client it was issued for, so the exchange names
+// the matching client id and mints the client secret with that id as its
+// `sub`. [AppleCodeClient] says which one the code came from; the caller
+// (the Edge Function's request body) declares it. A mis-declared code fails
+// Apple's client binding and resolves to `apple_rejected` - fail closed,
+// never a skipped revocation.
+//
 // Never returns or logs Apple's response body, the authorization code, or
 // either token - only a discriminated result kind. The caller (U2) logs that
 // kind, never this module's internals.
+
+/** Which Sign in with Apple client an authorization code was minted for
+ * (Issue #1256): `"app"` is the native bundle id (`APPLE_CLIENT_ID`, the
+ * default - every client before #1256 sent app codes only), `"web"` is the
+ * Services ID a browser-based Apple ceremony receives. */
+export type AppleCodeClient = "app" | "web";
+
+/**
+ * The Sign in with Apple Services ID the web/Android-web Apple ceremony is
+ * served under (Issue #1256). Public by design - it rides in the browser's
+ * own authorize redirect, exactly like the bundle id rides in the app's -
+ * so it is a named constant here rather than a fourth `APPLE_*` secret.
+ */
+export const APPLE_WEB_SERVICES_ID = "com.wjdavis5.lunarlog.web";
 
 /** Discriminated outcome. Never carries Apple's response body or a token.
  * `identity_mismatch` (Issue #560) is returned when the exchanged
@@ -29,10 +54,15 @@ export type AppleRevokeResult =
 interface AppleRevokeConfig {
   teamId: string;
   keyId: string;
-  clientId: string;
   /** PEM contents of the Apple-issued `.p8` signing key. */
   privateKey: string;
+  /** The bundle id (`APPLE_CLIENT_ID`) - the `"app"` client's id. Null when
+   * that env var is unset, which only misconfigures the `"app"` flow
+   * (Issue #1256): a web code needs none of it. */
+  appClientId: string | null;
 }
+
+export type { AppleRevokeConfig };
 
 const APPLE_TOKEN_URL = "https://appleid.apple.com/auth/token";
 const APPLE_REVOKE_URL = "https://appleid.apple.com/auth/revoke";
@@ -50,13 +80,33 @@ const CLIENT_SECRET_TTL_SECONDS = 300;
  */
 const APPLE_FETCH_TIMEOUT_MS = 10_000;
 
+/**
+ * Reads the Apple credentials from the environment. `APPLE_CLIENT_ID` (the
+ * bundle id) is now optional (Issue #1256): it misconfigures only the
+ * `"app"` flow - the constant Services ID needs no env var, so a deployment
+ * that has not (yet) set the bundle id can still revoke web-minted codes.
+ */
 function readConfig(): AppleRevokeConfig | null {
   const teamId = Deno.env.get("APPLE_TEAM_ID");
   const keyId = Deno.env.get("APPLE_KEY_ID");
-  const clientId = Deno.env.get("APPLE_CLIENT_ID");
   const privateKey = Deno.env.get("APPLE_PRIVATE_KEY");
-  if (!teamId || !keyId || !clientId || !privateKey) return null;
-  return { teamId, keyId, clientId, privateKey };
+  const appClientId = Deno.env.get("APPLE_CLIENT_ID");
+  if (!teamId || !keyId || !privateKey) return null;
+  return { teamId, keyId, privateKey, appClientId: appClientId || null };
+}
+
+/**
+ * The client id the given code belongs to (Issue #1256), or null when that
+ * flow is not configured: `"web"` always resolves to the constant Services
+ * ID, `"app"` resolves only when `APPLE_CLIENT_ID` is set. Split out so the
+ * selection rule is unit-testable without `Deno.env` (this suite's plain
+ * `deno test` has none - see apple_revoke.test.ts's header).
+ */
+export function resolveAppleClientId(
+  config: AppleRevokeConfig,
+  codeClient: AppleCodeClient,
+): string | null {
+  return codeClient === "web" ? APPLE_WEB_SERVICES_ID : config.appClientId;
 }
 
 function base64UrlEncodeBytes(bytes: Uint8Array): string {
@@ -88,15 +138,20 @@ async function importApplePrivateKey(pem: string): Promise<CryptoKey> {
 /**
  * Builds the ES256 client-secret JWT Apple's token/revoke endpoints require
  * in place of a static client secret (U3 step 1): `iss` is the Apple Team
- * ID, `sub`/`aud` identify this app's Sign in with Apple client (the bundle
- * id, per AGENTS.md), `kid` names the signing key, and the whole thing
- * expires in minutes - it is minted fresh for this one call, never cached.
+ * ID, `sub`/`aud` identify this app's Sign in with Apple client - whichever
+ * of the two the code belongs to (Issue #1256: the bundle id for an `"app"`
+ * code, the Services ID for a `"web"` one) - `kid` names the signing key,
+ * and the whole thing expires in minutes - it is minted fresh for this one
+ * call, never cached.
  *
  * A Web Crypto ECDSA P-256 signature is the raw `r || s` concatenation
  * (64 bytes), which is exactly the JWS ES256 encoding - no DER-to-raw
  * conversion is needed, unlike RSA/RS256 JWTs.
  */
-async function buildClientSecret(config: AppleRevokeConfig): Promise<string> {
+async function buildClientSecret(
+  config: Pick<AppleRevokeConfig, "teamId" | "keyId" | "privateKey">,
+  clientId: string,
+): Promise<string> {
   const nowSeconds = Math.floor(Date.now() / 1000);
   const header = { alg: "ES256", kid: config.keyId, typ: "JWT" };
   const payload = {
@@ -104,7 +159,7 @@ async function buildClientSecret(config: AppleRevokeConfig): Promise<string> {
     iat: nowSeconds,
     exp: nowSeconds + CLIENT_SECRET_TTL_SECONDS,
     aud: "https://appleid.apple.com",
-    sub: config.clientId,
+    sub: clientId,
   };
   const signingInput =
     `${base64UrlEncodeJson(header)}.${base64UrlEncodeJson(payload)}`;
@@ -118,19 +173,20 @@ async function buildClientSecret(config: AppleRevokeConfig): Promise<string> {
 }
 
 async function exchangeCodeForRefreshToken(
-  config: AppleRevokeConfig,
+  clientId: string,
   clientSecret: string,
   authorizationCode: string,
+  appleFetch: typeof fetch,
 ): Promise<
   { ok: true; refreshToken: string; idToken: string } | { ok: false; result: AppleRevokeResult }
 > {
   let response: Response;
   try {
-    response = await fetch(APPLE_TOKEN_URL, {
+    response = await appleFetch(APPLE_TOKEN_URL, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
-        client_id: config.clientId,
+        client_id: clientId,
         client_secret: clientSecret,
         code: authorizationCode,
         grant_type: "authorization_code",
@@ -211,17 +267,18 @@ export function verifyIdentityBinding(
 }
 
 async function revokeRefreshToken(
-  config: AppleRevokeConfig,
+  clientId: string,
   clientSecret: string,
   refreshToken: string,
+  appleFetch: typeof fetch,
 ): Promise<AppleRevokeResult> {
   let response: Response;
   try {
-    response = await fetch(APPLE_REVOKE_URL, {
+    response = await appleFetch(APPLE_REVOKE_URL, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
-        client_id: config.clientId,
+        client_id: clientId,
         client_secret: clientSecret,
         token: refreshToken,
         token_type_hint: "refresh_token",
@@ -235,10 +292,56 @@ async function revokeRefreshToken(
 }
 
 /**
+ * `revokeAppleToken`'s whole logic with the two environment seams injected:
+ * [config] in place of `readConfig()` (null means "the required Apple
+ * secrets are unset") and [appleFetch] in place of the global `fetch`, so
+ * `deno test` can observe both Apple calls - in particular *which* client
+ * id and secret each carried (Issue #1256's dual-client contract) - without
+ * `--allow-net` or `--allow-env`.
+ */
+export async function revokeAppleTokenWith(
+  authorizationCode: string,
+  expectedAppleUserId: string,
+  codeClient: AppleCodeClient,
+  config: AppleRevokeConfig | null,
+  appleFetch: typeof fetch,
+): Promise<AppleRevokeResult> {
+  if (!config) return { kind: "misconfigured" };
+  const clientId = resolveAppleClientId(config, codeClient);
+  if (!clientId) return { kind: "misconfigured" };
+
+  let clientSecret: string;
+  try {
+    clientSecret = await buildClientSecret(config, clientId);
+  } catch {
+    return { kind: "misconfigured" };
+  }
+
+  const exchanged = await exchangeCodeForRefreshToken(
+    clientId,
+    clientSecret,
+    authorizationCode,
+    appleFetch,
+  );
+  if (!exchanged.ok) return exchanged.result;
+
+  // A malformed/undecodable id_token from Apple's own token endpoint is
+  // treated the same as an outright rejection - fail closed rather than
+  // ever revoking without having been able to confirm whose grant it is.
+  const binding = verifyIdentityBinding(exchanged.idToken, expectedAppleUserId);
+  if (binding !== "ok") return { kind: binding };
+
+  return revokeRefreshToken(clientId, clientSecret, exchanged.refreshToken, appleFetch);
+}
+
+/**
  * Exchanges [authorizationCode] for a refresh token and immediately revokes
- * it. Missing Apple secrets resolve to `misconfigured` rather than silently
- * skipping revocation (U3 step 5) - the Edge Function (U2) surfaces that as
- * a typed failure and stops before deleting the `auth.users` row (KTD4).
+ * it. [codeClient] (Issue #1256) says which Sign in with Apple client minted
+ * the code - `"app"`, the bundle id, by default (the shape every client sent
+ * before #1256), or `"web"`, the browser/Android-web Services ID. Missing
+ * Apple secrets resolve to `misconfigured` rather than silently skipping
+ * revocation (U3 step 5) - the Edge Function (U2) surfaces that as a typed
+ * failure and stops before deleting the `auth.users` row (KTD4).
  *
  * Issue #560: [expectedAppleUserId] is the caller's own Apple identity id
  * (GoTrue's `identities[provider=="apple"].id`, equal to Apple's `sub`
@@ -257,29 +360,13 @@ async function revokeRefreshToken(
 export async function revokeAppleToken(
   authorizationCode: string,
   expectedAppleUserId: string,
+  codeClient: AppleCodeClient = "app",
 ): Promise<AppleRevokeResult> {
-  const config = readConfig();
-  if (!config) return { kind: "misconfigured" };
-
-  let clientSecret: string;
-  try {
-    clientSecret = await buildClientSecret(config);
-  } catch {
-    return { kind: "misconfigured" };
-  }
-
-  const exchanged = await exchangeCodeForRefreshToken(
-    config,
-    clientSecret,
+  return revokeAppleTokenWith(
     authorizationCode,
+    expectedAppleUserId,
+    codeClient,
+    readConfig(),
+    fetch,
   );
-  if (!exchanged.ok) return exchanged.result;
-
-  // A malformed/undecodable id_token from Apple's own token endpoint is
-  // treated the same as an outright rejection - fail closed rather than
-  // ever revoking without having been able to confirm whose grant it is.
-  const binding = verifyIdentityBinding(exchanged.idToken, expectedAppleUserId);
-  if (binding !== "ok") return { kind: binding };
-
-  return revokeRefreshToken(config, clientSecret, exchanged.refreshToken);
 }

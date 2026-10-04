@@ -102,8 +102,8 @@ function fakeDeps(overrides: FakeDepsOverrides = {}): { deps: DeleteAccountDeps;
       calls.push("deleteAccountData");
       return overrides.deleteAccountDataResult ?? { data: { profiles: 1 }, error: null };
     },
-    revokeApple: async (_code, expectedAppleUserId) => {
-      calls.push(`revokeApple:${expectedAppleUserId}`);
+    revokeApple: async (_code, expectedAppleUserId, codeClient) => {
+      calls.push(`revokeApple:${expectedAppleUserId}:${codeClient}`);
       return overrides.revokeResult ?? { kind: "ok" };
     },
     rehomeStrayDayEntries: async () => {
@@ -237,9 +237,51 @@ Deno.test(
     const response = await handleDeleteAccount(postRequest({ appleAuthorizationCode: "code-1" }), deps);
 
     assertEquals(response.status, 200);
-    assertEquals(calls.includes("revokeApple:apple-sub-123"), true);
+    assertEquals(calls.includes("revokeApple:apple-sub-123:app"), true);
   },
 );
+
+Deno.test(
+  "#1256: a body declaring appleCodeClient 'web' reaches revokeApple as the web client (the Services ID)",
+  async () => {
+    const { deps, calls } = fakeDeps({
+      user: baseUser({ providers: ["apple"], appleIdentityId: "apple-sub-123" }),
+    });
+
+    const response = await handleDeleteAccount(
+      postRequest({ appleAuthorizationCode: "web-code-1", appleCodeClient: "web" }),
+      deps,
+    );
+
+    assertEquals(response.status, 200);
+    assertEquals(calls.includes("revokeApple:apple-sub-123:web"), true);
+  },
+);
+
+Deno.test("#1256: an omitted appleCodeClient defaults to 'app' (every pre-#1256 client's shape)", async () => {
+  const { deps, calls } = fakeDeps({
+    user: baseUser({ providers: ["apple"], appleIdentityId: "apple-sub-123" }),
+  });
+
+  const response = await handleDeleteAccount(postRequest({ appleAuthorizationCode: "code-1" }), deps);
+
+  assertEquals(response.status, 200);
+  assertEquals(calls.includes("revokeApple:apple-sub-123:app"), true);
+});
+
+Deno.test("#1256: an unknown appleCodeClient value falls back to 'app', never a third path", async () => {
+  const { deps, calls } = fakeDeps({
+    user: baseUser({ providers: ["apple"], appleIdentityId: "apple-sub-123" }),
+  });
+
+  const response = await handleDeleteAccount(
+    postRequest({ appleAuthorizationCode: "code-1", appleCodeClient: "banana" }),
+    deps,
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(calls.includes("revokeApple:apple-sub-123:app"), true);
+});
 
 Deno.test("#560: an identity_mismatch revoke result is treated the same as any other revoke failure (409)", async () => {
   const { deps, calls } = fakeDeps({
@@ -270,7 +312,7 @@ Deno.test(
     const response = await handleDeleteAccount(postRequest({ appleAuthorizationCode: "code-1" }), deps);
 
     assertEquals(response.status, 200);
-    const revokeIdx = calls.indexOf("revokeApple:apple-sub-123");
+    const revokeIdx = calls.indexOf("revokeApple:apple-sub-123:app");
     const markIdx = calls.indexOf("markAppleRevoked:user-1:apple-sub-123");
     const deleteUserIdx = calls.indexOf("deleteUser");
     assertEquals(revokeIdx >= 0 && markIdx > revokeIdx && deleteUserIdx > markIdx, true,
@@ -307,7 +349,7 @@ Deno.test(
       "listAttachmentPaths:user-1",
       "clearAttachmentPaths:user-1",
       "deleteAccountData",
-      "revokeApple:apple-sub-123",
+      "revokeApple:apple-sub-123:app",
       "markAppleRevoked:user-1:apple-sub-123",
     ]);
   },
@@ -327,7 +369,7 @@ Deno.test(
     const response = await handleDeleteAccount(postRequest({}), deps);
 
     assertEquals(response.status, 200);
-    assertEquals(calls.includes("revokeApple:apple-sub-123"), false, "an already-revoked grant must not be re-revoked");
+    assertEquals(calls.includes("revokeApple:apple-sub-123:app"), false, "an already-revoked grant must not be re-revoked");
     assertEquals(
       calls.includes("markAppleRevoked:user-1:apple-sub-123"),
       false,
@@ -389,8 +431,8 @@ Deno.test(
     const response = await handleDeleteAccount(postRequest({ appleAuthorizationCode: "fresh-code" }), deps);
 
     assertEquals(response.status, 200);
-    assertEquals(calls.includes("revokeApple:apple-sub-NEW"), true, "the current identity must be revoked");
-    assertEquals(calls.includes("revokeApple:apple-sub-OLD"), false, "the stale identity must never be revoked again");
+    assertEquals(calls.includes("revokeApple:apple-sub-NEW:app"), true, "the current identity must be revoked");
+    assertEquals(calls.includes("revokeApple:apple-sub-OLD:app"), false, "the stale identity must never be revoked again");
     assertEquals(
       calls.includes("markAppleRevoked:user-1:apple-sub-NEW"),
       true,
@@ -633,7 +675,7 @@ Deno.test(
       "listAttachmentPaths:user-1",
       "clearAttachmentPaths:user-1",
       "deleteAccountData",
-      "revokeApple:apple-sub-1",
+      "revokeApple:apple-sub-1:app",
     ]);
     assertEquals(calls.includes("deleteUser"), false, "the user must not be deleted after a failed apple revoke");
   },

@@ -20,6 +20,16 @@
 export const SUPABASE_URL = 'https://dleexnnevuuddcgcpztq.supabase.co';
 
 /**
+ * The Sign in with Apple Services ID the web client's Apple ceremonies run
+ * under (issue #1256). Public by design — it rides in the browser-visible
+ * authorize redirect, exactly like the bundle id rides in the app's — so it
+ * is a named constant here, not a secret; the delete-account Edge Function
+ * carries the same constant (supabase/functions/_shared/apple_revoke.ts)
+ * for the matching token exchange.
+ */
+export const APPLE_WEB_SERVICES_ID = 'com.wjdavis5.lunarlog.web';
+
+/**
  * The content security policy. Strict by construction:
  *
  *   * `script-src 'self'` — no `unsafe-inline`, `unsafe-eval`, or

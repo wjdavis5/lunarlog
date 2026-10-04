@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 
-import { webAuth, type OAuthProvider, type SignOutScope } from './auth';
+import { webAuth, type OAuthProvider, type SignOutScope, type WebIdentities } from './auth';
 import { resetWebData } from './queries';
 
 /**
@@ -179,4 +179,74 @@ export function useResetWebDataOnIdentityChange(): void {
  */
 export function startOAuth(provider: OAuthProvider): void {
   webAuth.startOAuth(provider);
+}
+
+// ---------------------------------------------------------------------------
+// The account surface (issue #1256): linked sign-in methods, deletion, and
+// the Apple web ceremony that satisfies the Edge Function's
+// `apple_code_required` precondition.
+// ---------------------------------------------------------------------------
+
+export const IDENTITIES_QUERY_KEY = ['auth', 'identities'] as const;
+
+/**
+ * The account's linked sign-in methods, as the Worker resolves them from
+ * the caller's own GoTrue user. [enabled] gates on the signed-in state —
+ * the query is meaningless signed out.
+ */
+export function useIdentities(enabled: boolean) {
+  return useQuery<WebIdentities>({
+    queryKey: IDENTITIES_QUERY_KEY,
+    queryFn: () => webAuth.getIdentities(),
+    enabled,
+  });
+}
+
+/** Starts linking one of the OAuth providers; the caller assigns the
+ * returned provider URL (a navigation, like OAuth start). */
+export function useLinkIdentity() {
+  return useMutation<string, Error, OAuthProvider>({
+    mutationFn: (provider) => webAuth.startIdentityLink(provider),
+  });
+}
+
+/** Unlinks one of the OAuth providers and refreshes the methods list (the
+ * unlink's own session renewal already refreshed the cached user). */
+export function useUnlinkIdentity() {
+  const invalidateIdentities = useQueryClient();
+  return useMutation<void, Error, OAuthProvider>({
+    mutationFn: (provider) => webAuth.unlinkIdentity(provider),
+    onSuccess: () => {
+      void invalidateIdentities.invalidateQueries({ queryKey: IDENTITIES_QUERY_KEY });
+    },
+  });
+}
+
+/**
+ * The delete-account call. Success is the one outcome where the session is
+ * dead by definition — the `auth.users` row is gone — so the handler drops
+ * the page's identity the way sign-out does (issue #1281's reset, in a
+ * `finally`-shaped mutation chain): the cached synced-data snapshot and
+ * every query go before the session query re-resolves to signed-out.
+ */
+export function useDeleteAccount() {
+  const invalidate = useInvalidateSession();
+  const resetWebData = useResetWebData();
+  return useMutation<void, Error, { appleCode: string | null; appleCodeClient: 'app' | 'web' }>(
+    {
+      mutationFn: (variables) =>
+        webAuth.deleteAccount(variables.appleCode, variables.appleCodeClient),
+      onSuccess: () => {
+        resetWebData();
+        webAuth.forgetSession();
+        invalidate();
+      },
+    },
+  );
+}
+
+/** The Apple delete ceremony is a navigation out to Apple; exposed for the
+ * tests' seam symmetry, like `startOAuth`. */
+export function startAppleDelete(): void {
+  webAuth.startAppleDelete();
 }

@@ -12,6 +12,15 @@
 //
 // Every POST carries the `x-lunarlog-csrf` custom header the Worker's CSRF
 // gate demands, alongside the same-origin Origin header the browser adds.
+//
+// Issue #1256 adds the account-settings half: the linked sign-in methods
+// (list, link, unlink — never the email identity), the Apple web ceremony
+// that satisfies the delete-account Edge Function's `apple_code_required`
+// precondition, and the deletion call itself (the one request that goes
+// straight to the Supabase project instead of the Worker — the CSP's
+// connect-src already names it).
+
+import { supabasePublishableKey, supabaseUrl } from './config';
 
 export type OAuthProvider = 'google' | 'apple';
 
@@ -45,6 +54,35 @@ export class AuthError extends Error {
     this.status = status;
   }
 }
+
+/**
+ * A failed delete-account call: the Edge Function's own stable `code`
+ * (`apple_code_required`, `apple_revoke_failed`, …), for the deletion copy
+ * table. Distinct from AuthError so a copy mapping can never conflate the
+ * Worker's codes with the Edge Function's.
+ */
+export class DeletionError extends Error {
+  readonly code: string;
+  readonly status: number;
+
+  constructor(code: string, status: number) {
+    super(`account deletion failed: ${status} ${code}`);
+    this.name = 'DeletionError';
+    this.code = code;
+    this.status = status;
+  }
+}
+
+/** The caller's linked sign-in methods (GET /auth/identities). The email
+ * identity is part of every account and is never unlinkable. */
+export interface WebIdentities {
+  email: string | null;
+  providers: string[];
+}
+
+/** Which Sign in with Apple client minted a deletion code — on the web,
+ * always the Services ID (`'web'`). */
+export type AppleCodeClient = 'app' | 'web';
 
 /** How long before expiry getToken stops trusting the cached token. */
 const EXPIRY_SKEW_SECONDS = 30;
@@ -284,6 +322,127 @@ export class WebAuthClient {
     }
   }
 
+  /**
+   * The signed-in caller's linked sign-in methods, resolved by the Worker
+   * from the caller's own GoTrue user — never anything request-supplied.
+   */
+  async getIdentities(): Promise<WebIdentities> {
+    const response = await this.authedFetch('/auth/identities', 'GET');
+    await raiseForError(response);
+    const raw = (await response.json()) as Record<string, unknown>;
+    return {
+      email: typeof raw.email === 'string' ? raw.email : null,
+      providers: Array.isArray(raw.providers)
+        ? raw.providers.filter((p): p is string => typeof p === 'string')
+        : [],
+    };
+  }
+
+  /**
+   * Starts linking one of the OAuth providers to this account: the Worker's
+   * fetch-then-redirect shape (the link authorize needs the caller's bearer,
+   * which a browser navigation cannot carry). Returns the provider URL the
+   * caller assigns the browser to; the landed code completes through the
+   * ordinary callback exchange, because GoTrue's link-mode flow state links
+   * the identity instead of starting a session.
+   */
+  async startIdentityLink(provider: OAuthProvider): Promise<string> {
+    const response = await this.authedFetch('/auth/identities/link', 'POST', { provider });
+    await raiseForError(response);
+    const raw = (await response.json()) as Record<string, unknown>;
+    if (typeof raw.url !== 'string' || raw.url === '') {
+      throw new AuthError('upstream_authorize_shape', 502);
+    }
+    return raw.url;
+  }
+
+  /**
+   * Unlinks one of the OAuth providers. The email identity is never a valid
+   * argument here (the Worker refuses it too): it is the account's only
+   * recovery path. A successful unlink renews the session once, so the
+   * page's cached user no longer lists the removed identity — the same
+   * refreshSession the app's `AuthService.unlinkProvider` follows.
+   */
+  async unlinkIdentity(provider: OAuthProvider): Promise<void> {
+    const response = await this.authedFetch('/auth/identities/unlink', 'POST', { provider });
+    await raiseForError(response);
+    await this.restoreSession();
+  }
+
+  /**
+   * The Apple half of web account deletion (issue #1256): a top-level
+   * navigation out to Apple's authorize endpoint under the Services ID,
+   * with the Worker holding the ceremony's state in its HttpOnly cookie.
+   * Apple redirects back to /account?code=…&state=…, where
+   * `completeAppleDelete` consumes the check and the page calls
+   * `deleteAccount` with the fresh code.
+   */
+  startAppleDelete(): void {
+    window.location.assign('/auth/apple/delete/start');
+  }
+
+  /** Consumes the Apple ceremony: proves to the Worker that this browser
+   * asked for it (the state cookie), before any deletion call carries the
+   * code. */
+  async completeAppleDelete(code: string, state: string): Promise<void> {
+    const response = await fetch('/auth/apple/delete/complete', {
+      method: 'POST',
+      headers: csrfHeaders(),
+      credentials: 'same-origin',
+      body: JSON.stringify({ code, state }),
+    });
+    await raiseForError(response);
+  }
+
+  /**
+   * The account-deletion call (issue #1256) — the one browser request that
+   * bypasses the Worker and goes straight to the Supabase project's
+   * delete-account Edge Function (same-origin API routes end at the Worker;
+   * the CSP's connect-src already names the project). [appleCode] is the
+   * fresh Apple web code after the ceremony, omitted (null) for the first
+   * attempt — an Apple-linked account then fails closed with
+   * `apple_code_required` having touched nothing, which is the page's cue
+   * to run the ceremony. Bounded like the app's call (20 s) so a hung Edge
+   * Function resolves to a typed failure instead of hanging the page.
+   */
+  async deleteAccount(
+    appleCode: string | null,
+    appleCodeClient: AppleCodeClient,
+  ): Promise<void> {
+    const token = await this.requiredToken();
+    let response: Response;
+    try {
+      response = await fetch(`${supabaseUrl}/functions/v1/delete-account`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${token}`,
+          apikey: supabasePublishableKey,
+        },
+        body: JSON.stringify({
+          ...(appleCode === null ? {} : { appleAuthorizationCode: appleCode }),
+          appleCodeClient,
+        }),
+        signal: AbortSignal.timeout(20_000),
+      });
+    } catch (error: unknown) {
+      throw new DeletionError(
+        error instanceof Error && error.name === 'TimeoutError' ? 'timeout' : 'network',
+        0,
+      );
+    }
+    if (!response.ok) {
+      let code = 'unknown';
+      try {
+        const raw = (await response.json()) as Record<string, unknown>;
+        if (typeof raw.code === 'string' && raw.code !== '') code = raw.code;
+      } catch {
+        // A non-JSON failure (network edge, gateway): the generic code stands.
+      }
+      throw new DeletionError(code, response.status);
+    }
+  }
+
   /** Navigates the browser to the OAuth provider through the Worker. */
   startOAuth(provider: OAuthProvider): void {
     window.location.assign(`/auth/oauth/start?provider=${encodeURIComponent(provider)}`);
@@ -300,6 +459,41 @@ export class WebAuthClient {
     this.accessToken = session.access_token;
     this.expiresAtSeconds = session.expires_at;
     this.user = session.user;
+  }
+
+  /**
+   * The signed-in-only counterpart of `getToken`: the account routes act on
+   * the caller's own identity, so a call with no live session fails here
+   * rather than going out bearer-less to be refused by the Worker.
+   */
+  private async requiredToken(): Promise<string> {
+    const token = await this.getToken();
+    if (token === null) throw new AuthError('unauthorized', 401);
+    return token;
+  }
+
+  /**
+   * One same-origin Worker call with the bearer the Worker forwards
+   * upstream (the routes that act on the caller's own GoTrue user) plus the
+   * CSRF header the Worker's gate demands on every state-changing POST.
+   */
+  private async authedFetch(
+    path: string,
+    method: 'GET' | 'POST',
+    body?: unknown,
+  ): Promise<Response> {
+    const token = await this.requiredToken();
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+      [CSRF_HEADER]: '1',
+      authorization: `Bearer ${token}`,
+    };
+    return fetch(path, {
+      method,
+      headers,
+      credentials: 'same-origin',
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
   }
 }
 
