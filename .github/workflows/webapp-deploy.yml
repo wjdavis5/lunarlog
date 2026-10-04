@@ -170,10 +170,12 @@ jobs:
           zone_id="$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
             "https://api.cloudflare.com/client/v4/zones?name=lunarlog.app" \
             | jq -r '.result[0].id // empty')"
+          echo "zone_id=${zone_id:-<empty>}"
           if [ -n "${zone_id}" ]; then
-            for record_id in $(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-              "https://api.cloudflare.com/client/v4/zones/${zone_id}/dns_records?name=app.lunarlog.app" \
-              | jq -r '.result[].id'); do
+            dns_json="$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              "https://api.cloudflare.com/client/v4/zones/${zone_id}/dns_records?name=app.lunarlog.app")"
+            echo "dns_records response: $(printf '%s' "${dns_json}" | head -c 400)"
+            for record_id in $(printf '%s' "${dns_json}" | jq -r '.result[].id // empty'); do
               curl -sS -o /dev/null -X DELETE -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
                 "https://api.cloudflare.com/client/v4/zones/${zone_id}/dns_records/${record_id}"
               echo "dns record ${record_id} deleted"
