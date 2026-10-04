@@ -10,12 +10,14 @@
   // never committed here, so a fork's build still works (the auth routes
   // answer 503 auth_not_configured until the secret exists).
 
-  // Staging only (issue #1249): the workers.dev hostname is this Worker's
-  // only public origin, backed by the production Supabase project and used
-  // only with the fabricated accounts from #710. Moving app.lunarlog.app
-  // over is #1258 — this Worker deliberately declares no custom domain or
-  // route.
+  // Issue #1258 (owner go 2026-10-03): app.lunarlog.app is this Worker's
+  // production origin — the custom-domain attach happens in the deploy
+  // (webapp-deploy.yml deletes the retired Flutter Pages project that held
+  // the hostname first; the attach fails loudly if the deploy token lacks
+  // zone permissions, which is #1093 step 4's one dashboard fallback). The
+  // workers.dev hostname stays on as the staging alias (#1249).
   "workers_dev": true,
+  "routes": [{ "pattern": "app.lunarlog.app", "custom_domain": true }],
 
   "assets": {
     // `npm run build` output (Vite). Served through the Worker (see

@@ -186,7 +186,7 @@ while IFS= read -r file; do
     # webapp-only, skip that Dart parity pin, merge green, and turn the
     # next unrelated Flutter PR red. Matched before the generic webapp arms
     # below, so webapp=true is restated here on purpose.
-    webapp/src/domain/schemas.ts|webapp/test/domain/fixtures.json)
+    webapp/src/domain/schemas.ts|webapp/test/domain/fixtures.json|webapp/worker/headers.ts)
       webapp=true
       app_flutter=true
       ;;

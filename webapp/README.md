@@ -148,7 +148,15 @@ touches `webapp/**`, `supabase/database.types.ts`, or
 `workers.dev` hostname (the per-account subdomain is resolved from the
 Cloudflare API at deploy time), backed by the production Supabase project,
 and used **only with the fabricated accounts from #710**. Moving
-`app.lunarlog.app` over is #1258. Until the `CLOUDFLARE_*` secrets are
+`app.lunarlog.app` since 2026-10-03 (#1258): `webapp-deploy.yml` retires the
+Flutter build's `lunarlog-app` Pages project (freeing the hostname) and
+attaches `app.lunarlog.app` to this Worker as a custom domain
+(`wrangler.jsonc`'s `routes`), with the `workers.dev` hostname kept as the
+staging alias (#1249). The Worker also performs the #1248 retirement
+duties on the production origin: `Clear-Site-Data: "cache", "storage"` on
+the app shell (never `"cookies"` — the refresh cookie must survive), a
+301 from `/privacy.html` to the apex policy, and a self-unregistering
+service worker at the old `/flutter_service_worker.js` path. Until the `CLOUDFLARE_*` secrets are
 present the deploy steps warn and skip, like `site-deploy.yml`.
 
 Every response carries the security headers declared in
@@ -336,7 +344,7 @@ primary/co-parent; delete: primary only).
   relationship defaults / cycle questions feeding #218's provisional
   facts) is not on the web yet; the stored facts are editable only
   through the day editor today.
-- **Custom domain** (#1258): staging is workers.dev only; that move also
+- ~~**Custom domain** (#1258)~~ — shipped 2026-10-04: the custom-domain attach runs in the deploy; that move also
   re-checks the live-provider flows and how Supabase counts the Worker's
   rate-limited requests (the Worker already forwards
   `CF-Connecting-IP` as `X-Forwarded-For`).

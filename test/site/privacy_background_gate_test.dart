@@ -76,11 +76,15 @@ void main() {
     );
   });
 
-  test("the Last Updated header's clause names the gate", () {
-    final header = privacy
+  test("the gate's Change History entry still names the gate", () {
+    // The "Last Updated" header names the newest change (PRIVACY.md's own
+    // rule, pinned by privacy_header_test.dart); the gate clause rides the
+    // September 29 gate bullet wherever the header moves.
+    final gateEntry = privacy
         .split('\n')
-        .firstWhere((line) => line.startsWith('**Last Updated:**'));
-    expect(header, contains('run the first import yourself'));
+        .firstWhere((line) =>
+            line.startsWith('- **September 29, 2026 (background health imports'));
+    expect(gateEntry, contains('run the first import yourself'));
   });
 
   test('the code still gates importInBackground on the marker the policy '

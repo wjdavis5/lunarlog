@@ -53,6 +53,36 @@ async function serve(request: Request, env: Env, authDeps?: AuthDeps): Promise<R
   if (authResponse !== null) {
     return applySecurityHeaders(authResponse);
   }
+
+  // Issue #1248/#1258: the Flutter web build this Worker replaces kept an
+  // unencrypted IndexedDB copy of synced data, a localStorage refresh token,
+  // and (on some browsers) a registered flutter_service_worker.js on
+  // app.lunarlog.app. This Worker answers the same origin now, so it performs
+  // the retirement duties itself.
+  const url = new URL(request.url);
+  if (url.pathname === '/privacy.html') {
+    // The Flutter build published a privacy.html at this path; keep the
+    // permanent move to the apex policy (issue #1248's acceptance list).
+    // Built by hand — Response.redirect()'s headers are immutable, and the
+    // security posture must land on this response like every other.
+    return applySecurityHeaders(
+      new Response(null, {
+        status: 301,
+        headers: { location: 'https://lunarlog.app/privacy' },
+      }),
+    );
+  }
+  if (url.pathname === '/flutter_service_worker.js') {
+    // A browser still holding the Flutter registration fetches scope updates
+    // at exactly this path: hand it a worker that empties every cache,
+    // unregisters itself, and reloads its clients (#1248).
+    return applySecurityHeaders(
+      new Response(FLUTTER_SW_RETIREMENT, {
+        headers: { 'content-type': 'application/javascript', 'cache-control': 'no-store' },
+      }),
+    );
+  }
+
   const assetResponse = await env.ASSETS.fetch(request);
   // Re-wrap so the headers below are *set* on a fresh response rather than
   // appended to whatever the asset layer chose. (The asset path never
@@ -61,8 +91,37 @@ async function serve(request: Request, env: Env, authDeps?: AuthDeps): Promise<R
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
     response.headers.set(name, value);
   }
+  // On the app shell, wipe whatever the previous web client left at rest:
+  // "storage" clears localStorage, IndexedDB, Cache Storage and service
+  // worker registrations; "cache" the HTTP cache. Deliberately NOT
+  // "cookies" — this client's only credential, the rotating __Host- refresh
+  // cookie, must survive its own page loads (#1248/#1258).
+  if ((response.headers.get('content-type') ?? '').includes('text/html')) {
+    response.headers.set('clear-site-data', '"cache", "storage"');
+  }
   return response;
 }
+
+/**
+ * The self-retiring service worker served at the Flutter build's old
+ * registration path (issue #1248): installs immediately, empties every
+ * cache it can see, unregisters itself, and reloads any open windows so
+ * the next navigation is served by this Worker, not the stale shell.
+ */
+const FLUTTER_SW_RETIREMENT = `// lunarlog: the Flutter web app this served is retired (#1248).
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((key) => caches.delete(key)));
+    await self.registration.unregister();
+    const clients = await self.clients.matchAll({ type: 'window' });
+    for (const client of clients) {
+      client.navigate(client.url);
+    }
+  })());
+});
+`;
 
 /**
  * The test factory: pins the auth deps so the Deno suite substitutes a
