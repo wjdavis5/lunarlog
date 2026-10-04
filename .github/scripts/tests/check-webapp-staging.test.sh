@@ -83,7 +83,10 @@ EOF_X
 # "cookies" (issue #1248).
 make_retirement_fixtures() {
   make_fixtures "$1"
-  sed -i 's|^x-robots-tag: noindex$|x-robots-tag: noindex\nclear-site-data: "cache", "storage"|' "$1/root.headers"
+  # Append the cutover header (portable: no sed -i, whose BSD form
+  # differs, and no backslash-n-in-RHS GNU/BSD difference).
+  printf 'clear-site-data: "cache", "storage"
+' >>"$1/root.headers"
 }
 
 # run_case DIR [SCRIPT] -- populates $LAST_EXIT and $LAST_LOG. SCRIPT
@@ -297,21 +300,21 @@ assert_exit "staging runs skip the retirement assertions" 0
 
 # Missing clear-site-data on the shell refuses.
 make_retirement_fixtures "$WORK/retire-no-csd"
-sed -i '/^clear-site-data:/d' "$WORK/retire-no-csd/root.headers"
+edit_fixture "$WORK/retire-no-csd/root.headers" '/^clear-site-data:/d'
 WEBAPP_CHECK_RETIREMENT=1 run_case "$WORK/retire-no-csd"
 assert_exit "a shell without clear-site-data refuses under retirement checks" 1
 assert_contains "the missing clear-site-data is named" "$LAST_LOG" "clear-site-data"
 
 # clear-site-data including cookies refuses (it would sign every page load out).
 make_retirement_fixtures "$WORK/retire-cookies"
-sed -i 's|^clear-site-data:.*|clear-site-data: "cache", "cookies", "storage"|' "$WORK/retire-cookies/root.headers"
+edit_fixture "$WORK/retire-cookies/root.headers" 's|^clear-site-data:.*|clear-site-data: "cache", "cookies", "storage"|'
 WEBAPP_CHECK_RETIREMENT=1 run_case "$WORK/retire-cookies"
 assert_exit "clear-site-data including cookies refuses" 1
 assert_contains "the cookies danger is named" "$LAST_LOG" "cookies"
 
 # A privacy.html that 200s instead of 301ing refuses.
 make_retirement_fixtures "$WORK/retire-privacy-200"
-sed -i 's|^HTTP/2 301|HTTP/2 200|' "$WORK/retire-privacy-200/privacy-redirect.headers"
+edit_fixture "$WORK/retire-privacy-200/privacy-redirect.headers" 's|^HTTP/2 301|HTTP/2 200|'
 WEBAPP_CHECK_RETIREMENT=1 run_case "$WORK/retire-privacy-200"
 assert_exit "a non-301 privacy.html refuses" 1
 assert_contains "the privacy redirect is named" "$LAST_LOG" "privacy.html"
