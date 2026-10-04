@@ -76,6 +76,7 @@ import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/domain/episodes/episodes.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
+import 'package:lunarlog/domain/prediction/forecast.dart';
 import 'package:lunarlog/domain/prediction/pms.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
@@ -109,6 +110,7 @@ String handleFacadeCall(String method, String requestJson) {
       'predict' => predictFromJson(decoded),
       'cycleHistory' => cycleHistoryFromJson(decoded),
       'insights' => insightsFromJson(decoded),
+      'calendarForecast' => calendarForecastFromJson(decoded),
       'validateDayEntryDate' => validateDayEntryDateFromJson(decoded),
       'buildExport' => buildExportFromJson(decoded),
       'parseInviteLink' => parseInviteLinkFromJson(decoded),
@@ -237,6 +239,15 @@ Map<String, Object?> cycleHistoryFromJson(Map<String, Object?> request) {
   final today = _requireToday(request);
   _configureTimeZone(_requireTimeZone(request));
   final entries = _requireEntries(request);
+  // The per-cycle bleed-day counts the web cycle comparison renders
+  // (issue #1253) come from the same episodes the view itself derives
+  // from — computed here, beside the call, so lib/domain stays untouched
+  // and the count is the engine's own episode length, never a
+  // re-derivation.
+  final bleedDaysByStart = <String, int>{
+    for (final episode in deriveEpisodes(bleedDatesOf(entries)))
+      episode.start.iso: episode.lengthDays,
+  };
   return historyViewToJson(
     deriveCycleHistoryFromEntries(
       entries: entries,
@@ -246,12 +257,18 @@ Map<String, Object?> cycleHistoryFromJson(Map<String, Object?> request) {
         'omittedCycleStarts',
       ),
     ),
+    bleedDaysByStart: bleedDaysByStart,
   );
 }
 
 /// Serializes [view] with the derived flags the UI branches on (`open`,
-/// `outlier`, `countedInAverages`) alongside the stored ones.
-Map<String, Object?> historyViewToJson(CycleHistoryView view) => {
+/// `outlier`, `countedInAverages`) alongside the stored ones, plus each
+/// item's own bleed-day count (`bleedDaysByStart[start]`, null when the
+/// episode list no longer carries that start — defensive, never expected).
+Map<String, Object?> historyViewToJson(
+  CycleHistoryView view, {
+  Map<String, int> bleedDaysByStart = const {},
+}) => {
   'items': [
     for (final item in view.items)
       {
@@ -261,6 +278,7 @@ Map<String, Object?> historyViewToJson(CycleHistoryView view) => {
         'open': item.isOpen,
         'outlier': item.outlier,
         'countedInAverages': item.countedInAverages,
+        'bleedDays': bleedDaysByStart[item.start.iso],
       },
   ],
   'episodeCount': view.episodeCount,
@@ -538,6 +556,94 @@ void _configureTimeZone(String name) {
   }
   tz.setLocalLocation(tz.getLocation(resolved));
 }
+
+// ---------------------------------------------------------------------------
+// calendarForecast
+// ---------------------------------------------------------------------------
+
+/// The month calendar's per-date forecast lookup (`forecastDayCells`) — the
+/// exact cell map the app's month grid paints, so the web calendar renders
+/// the app's own forecast math rather than a TypeScript re-derivation
+/// (issue #1253; the parity fixtures pin it like every other method).
+///
+/// Request keys: the same set `predict` takes. The prediction is resolved
+/// through the service-equivalent order first; a non-active prediction or
+/// a stale history (issue #982 — the app suppresses the whole forecast
+/// there, so a stale estimate can never draw bands 31 cycles out) answers
+/// an empty cell map under the resolved `kind`, and only a live, fresh
+/// `ActivePrediction` produces cells.
+///
+/// Response: a `kind` (`active` / `notEnoughHistory` / `suppressed` /
+/// `disabled`), a `staleHistory` flag, and `cells` — a map keyed
+/// `yyyy-MM-dd` whose values carry `predictedBleed`, `cycleDayNumber`
+/// (int or null), `pmsBadge`, `crampsBadge`, `fertileWindow`, `tier`,
+/// `cycleIndex`, `fertileTier` (tier name or null), and
+/// `fertileCycleIndex` (int or null). Only dates strictly after `today`
+/// appear (KTD3 — the past stays factual), exactly like the app.
+Map<String, Object?> calendarForecastFromJson(Map<String, Object?> request) {
+  final today = _requireToday(request);
+  _configureTimeZone(_requireTimeZone(request));
+  final entries = _requireEntries(request);
+  final prediction = _resolvePrediction(
+    entries: entries,
+    today: today,
+    omittedCycleStarts: _optionalDates(
+      request['omittedCycleStarts'],
+      'omittedCycleStarts',
+    ),
+    facts: _optionalFacts(request['facts']),
+    birthControlState: _optionalBirthControl(request['birthControl']),
+    lifecycleMode: LifecycleMode.fromDb(
+      _optionalString(request['lifecycleMode']),
+    ),
+    predictionsEnabled: _optionalBool(
+      request['predictionsEnabled'],
+      defaultValue: true,
+    ),
+  );
+  final staleHistory = prediction is ActivePrediction && prediction.staleHistory;
+  final cells = <String, Object?>{};
+  if (prediction is ActivePrediction && !staleHistory) {
+    final cycles = deriveForecast(prediction: prediction, today: today);
+    // Issue #220: the PMS badge only ever draws inside a non-null
+    // estimate's band; the app passes the live estimate's own `pms` here
+    // (the same gating `month_calendar.dart` applies).
+    final dayCells = forecastDayCells(
+      cycles: cycles,
+      today: today,
+      pms: prediction.pms,
+    );
+    for (final entry in dayCells.entries) {
+      cells[entry.key] = _forecastDayCellToJson(entry.value);
+    }
+  }
+  return {
+    'kind': _predictionKindName(prediction),
+    'staleHistory': staleHistory,
+    'cells': cells,
+  };
+}
+
+/// The discriminator name `predictionToJson` uses for each kind, so the
+/// calendar response's `kind` matches the `predict` response's.
+String _predictionKindName(CyclePrediction prediction) => switch (prediction) {
+  ActivePrediction() => 'active',
+  NotEnoughHistory() => 'notEnoughHistory',
+  PredictionsSuppressed() => 'suppressed',
+  PredictionsDisabled() => 'disabled',
+};
+
+Map<String, Object?> _forecastDayCellToJson(ForecastDayCell cell) => {
+  'predictedBleed': cell.predictedBleed,
+  'cycleDayNumber': cell.cycleDayNumber,
+  'pmsBadge': cell.pmsBadge,
+  'crampsBadge': cell.crampsBadge,
+  'fertileWindow': cell.fertileWindow,
+  'tier': cell.tier.name,
+  'cycleIndex': cell.cycleIndex,
+  'fertileTier': cell.fertileTier?.name,
+  'fertileCycleIndex': cell.fertileCycleIndex,
+};
 
 // ---------------------------------------------------------------------------
 // Input codecs

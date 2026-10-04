@@ -25,6 +25,7 @@ import type { z } from 'zod';
 
 import { DomainCallError, callDomain, type DomainModule } from '../../src/domain/client';
 import {
+  calendarForecastSchema,
   cycleHistoryViewSchema,
   dateValidationSchema,
   exportDocumentSchema,
@@ -68,6 +69,7 @@ const schemas: Record<string, z.ZodType<unknown>> = {
   predict: predictionSchema,
   cycleHistory: cycleHistoryViewSchema,
   insights: insightsReportSchema,
+  calendarForecast: calendarForecastSchema,
   validateDayEntryDate: dateValidationSchema,
   buildExport: exportDocumentSchema,
   parseInviteLink: inviteLinkSchema.nullable(),

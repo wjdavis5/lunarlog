@@ -128,6 +128,15 @@ function schemeVars(scheme, indent) {
   return Object.entries(scheme).map(([role, hex]) => `${indent}--ll-${kebab(role)}: ${hex};`);
 }
 
+// The calendar palette slots (issue #1253) sit in their own `--ll-cal-`
+// namespace so a hand-written rule can tell `--ll-cal-flow-heavy` from the
+// M3 roles.
+function calendarVars(scheme, indent) {
+  return Object.entries(scheme).map(
+    ([slot, hex]) => `${indent}--ll-cal-${kebab(slot)}: ${hex};`,
+  );
+}
+
 /** Builds the full generated tokens.css content. */
 export function buildTokensCss(tokens) {
   const spaceLines = Object.entries(tokens.space).map(
@@ -167,17 +176,31 @@ export function buildTokensCss(tokens) {
     ' * never a literal colour (test/tokens.test.ts scans for that).',
     ' */',
     '',
-    ...block('Colour schemes — the resolved M3 roles from AppTheme.', [
-      ':root {',
-      ...schemeVars(tokens.schemes.light, '  '),
-      '}',
-      '',
-      '@media (prefers-color-scheme: dark) {',
-      '  :root {',
-      ...schemeVars(tokens.schemes.dark, '    '),
-      '  }',
-      '}',
-    ]),
+    // One dark media query total (test/tokens.test.ts pins the generated
+    // sheet's structure): the M3 scheme roles and the #1253 calendar
+    // palette each carry their own `:root` inside it.
+    ...block(
+      'Colour schemes — the resolved M3 roles and the calendar palette (LunarLogColors).',
+      [
+        ':root {',
+        ...schemeVars(tokens.schemes.light, '  '),
+        '}',
+        '',
+        ':root {',
+        ...calendarVars(tokens.calendar.light, '  '),
+        '}',
+        '',
+        '@media (prefers-color-scheme: dark) {',
+        '  :root {',
+        ...schemeVars(tokens.schemes.dark, '    '),
+        '  }',
+        '',
+        '  :root {',
+        ...calendarVars(tokens.calendar.dark, '    '),
+        '  }',
+        '}',
+      ],
+    ),
     ':root {',
     ...section('Fonts (bundled via @fontsource; the app theme’s two families).', fontLines),
     ...section('Spacing scale (LLSpace).', spaceLines),

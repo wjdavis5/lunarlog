@@ -265,14 +265,77 @@ is compiled to JavaScript once and both platforms run the same engine.
   apart silently. A fixture change shows up in the PR diff; regenerate it
   only when a domain output change is intentional.
 
+## The profile home and the profiles page (issue #1253)
+
+The web client's read side. `/` is the **profile home**: a `?profile=`
+switcher over the live profiles, a status card (cycle day / period-day
+line, the next-period estimate with its confidence tier or its suppression
+reason, the overdue line in the profile's own voice), the month calendar,
+the cycle history with its statistics, and a compact comparison of the two
+most recent completed cycles. `/profiles` is the picker's management half:
+create, edit, archive/unarchive, and the two-step permanent delete, gated
+by the caller's guardian role exactly as the server gates them (edit:
+primary/co-parent; delete: primary only).
+
+- **Every domain computation is the compiled module's** (`src/domain/`,
+  issue #1251): `predict`, `cycleHistory`, and - new in this issue -
+  `calendarForecast`, which returns the app's own `forecastDayCells` map,
+  so the web grid paints the same predicted-period bands, fertile
+  windows, PMS/cramps badges, and first-cycle numerals the app's
+  `month_calendar.dart` does, plus a `bleedDays` enrichment on
+  `cycleHistory`'s items for the comparison. The request inputs are pure
+  derivations of the #1252 snapshot (`src/lib/profiles/profile-views.ts`):
+  live entries in export-row shape, `cycle_overrides` omissions, the
+  stored facts, the profile_modes row's life-stage mode and birth control.
+- **Framing is the app's composition** (#853): `homeEstimateView` ports
+  `irregularFramingInEffect` and the care-mode copy branches - a teen is
+  never "late" (the quiet overdue line at every tier), the composed
+  framing shows ranges, hides the tier caption and the fertile layer, and
+  the estimate always carries the R17 disclaimer. Life-stage suppression
+  and predictions-off render the suppression card in the mode's or the
+  method's own words.
+- **Calendar layers and legend match the app**: Sunday-first grid,
+  flow marks by level (1-5, the spotting ring at the bottom),
+  symptom-layer dots ranked by `rankTagUsage`'s port with the
+  `kMaxSymptomLayers` cap and the app's chooser, today's ring, and the
+  legend rows of `CalendarLegendSheet` (the PMS swatch only while the
+  live estimate carries a band, issue #220). The calendar palette rides
+  the generated tokens (`--ll-cal-*`, exported from `LunarLogColors` by
+  `tool/export_webapp_tokens.dart`; the translucent band fills are
+  `color-mix` derivatives of their own border tokens because the token
+  export contract is fully opaque colours).
+- **Profile management writes the app's paths**: `sync_push` payloads for
+  create/edit/archive (an untouched irregular-framing control omits the
+  key, so the server's containment guard preserves the stored tri-state),
+  `delete_profile_data` for the delete (then the membership re-pull),
+  and `record_minimum_age_acknowledgement` best-effort after the first
+  creation when the account's `account_consents` row is missing or older
+  than the current policy version - the #845 flow, mirrored from
+  `lib/ui/profiles/first_run_screen.dart`.
+- **Tests**: `test/profile-views.test.ts` and `test/calendar-cells.test.ts`
+  pin the pure ports; `test/today-page.test.tsx` and
+  `test/profiles-page.test.tsx` render the pages against a fake domain
+  module (serving the committed parity fixtures) and a fake Supabase
+  client; `e2e/profile-home.spec.ts` drives the real built app with the
+  real compiled module over an intercepted `sync_pull` - profile
+  switching, month navigation, and a pregnancy-mode profile showing its
+  suppression copy, all axe-clean. The suite self-skips on an
+  unconfigured build (a fork's `VITE_SUPABASE_*` are empty); this repo's
+  CI always builds configured.
+
 ## Deliberately not here yet
 
-- **Domain screens** (#1251's successors): the compiled module and its
-  typed client exist (`src/domain/`); no screen consumes them yet — the
-  prediction/history/insights UIs are later slices of the epic. The
-  raw-data half of that story is the data layer (issue #1252):
-  `useLiveProfiles` proves the supabase-js → `sync_pull` → Zod →
-  TanStack Query path.
+- **The full insights screens**: the home renders the history and a
+  compact two-cycle comparison from the domain view, but the app's
+  analysis tab (BBT chart, symptom-trend cards, the full cycle-comparison
+  screen, the phase-insights card) is still a later slice of the epic —
+  the `insights` facade method is wired and fixture-pinned, only the
+  screens wait.
+- **The first-run onboarding flow**: the profiles page creates profiles
+  with the acknowledgement, but the app's full household walk (who /
+  relationship defaults / cycle questions feeding #218's provisional
+  facts) is not on the web yet; the stored facts are editable only
+  through the day editor today.
 - **Custom domain** (#1258): staging is workers.dev only; that move also
   re-checks the live-provider flows and how Supabase counts the Worker's
   rate-limited requests (the Worker already forwards

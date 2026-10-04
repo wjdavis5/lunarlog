@@ -140,6 +140,12 @@ export const cycleHistoryItemSchema = z.object({
   open: z.boolean(),
   outlier: z.boolean(),
   countedInAverages: z.boolean(),
+  /**
+   * This cycle's own bleed-day count (the episode's length, facade-enriched
+   * beside `deriveCycleHistory` — issue #1253's cycle comparison), or null
+   * when the episode list no longer carries the start.
+   */
+  bleedDays: z.number().int().nullable(),
 });
 
 export const cycleHistoryViewSchema = z.object({
@@ -155,6 +161,50 @@ export const cycleHistoryViewSchema = z.object({
 });
 
 export type CycleHistoryView = z.infer<typeof cycleHistoryViewSchema>;
+
+/**
+ * One forecast cell of the month calendar (`ForecastDayCell` on the Dart
+ * side, `forecast.dart`): the flags the app's grid paints for dates after
+ * today — the predicted bleed band, the first estimated cycle's day
+ * numeral, the PMS/cramps badges, and the fertile-window band at that
+ * cycle's own tier. Issue #1253 consumes it verbatim, so the web calendar
+ * renders the app's own forecast math rather than a TS re-derivation.
+ */
+export const forecastDayCellSchema = z.object({
+  predictedBleed: z.boolean(),
+  cycleDayNumber: z.number().int().nullable(),
+  pmsBadge: z.boolean(),
+  crampsBadge: z.boolean(),
+  fertileWindow: z.boolean(),
+  tier: cycleConfidenceSchema,
+  cycleIndex: z.number().int(),
+  fertileTier: cycleConfidenceSchema.nullable(),
+  fertileCycleIndex: z.number().int().nullable(),
+});
+
+export type ForecastDayCell = z.infer<typeof forecastDayCellSchema>;
+
+/** Which prediction kind the calendar request resolved to (`predict`'s own discriminators). */
+export const calendarForecastKindSchema = z.enum([
+  'active',
+  'notEnoughHistory',
+  'suppressed',
+  'disabled',
+]);
+
+/**
+ * The `calendarForecast` response: the resolved kind (matching `predict`'s
+ * envelope), whether the active estimate is stale (#859 — the app
+ * suppresses the whole forecast there, so `cells` comes back empty), and
+ * the per-date cells keyed `yyyy-MM-dd` for dates strictly after `today`.
+ */
+export const calendarForecastSchema = z.object({
+  kind: calendarForecastKindSchema,
+  staleHistory: z.boolean(),
+  cells: z.record(isoDate, forecastDayCellSchema),
+});
+
+export type CalendarForecast = z.infer<typeof calendarForecastSchema>;
 
 export const symptomPatternSchema = z.object({
   tag: z.string(),
