@@ -6,7 +6,7 @@
  */
 
 /*
- * Colour schemes — the resolved M3 roles from AppTheme.
+ * Colour schemes — the resolved M3 roles and the calendar palette (LunarLogColors).
  */
 :root {
   --ll-primary: #00696f;
@@ -45,6 +45,25 @@
   --ll-shadow: #000000;
 }
 
+:root {
+  --ll-cal-flow-spotting: #53979a;
+  --ll-cal-flow-light: #2e7e83;
+  --ll-cal-flow-medium: #186b6f;
+  --ll-cal-flow-heavy: #07575c;
+  --ll-cal-symptom-dot: #6b8fd4;
+  --ll-cal-symptom-layer-1: #ba6dd4;
+  --ll-cal-symptom-layer-2: #279c90;
+  --ll-cal-symptom-layer-3: #d36899;
+  --ll-cal-predicted-border: #459ca0;
+  --ll-cal-fertile-border: #a880be;
+  --ll-cal-pms-badge: #9b7bd9;
+  --ll-cal-cramps-badge: #b3841d;
+  --ll-cal-confidence-high: #3da162;
+  --ll-cal-confidence-learning: #bb8528;
+  --ll-cal-confidence-irregular: #d97166;
+  --ll-cal-confidence-provisional: #6b91c7;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --ll-primary: #80d4db;
@@ -81,6 +100,25 @@
     --ll-inverse-primary: #00696f;
     --ll-scrim: #000000;
     --ll-shadow: #000000;
+  }
+
+  :root {
+    --ll-cal-flow-spotting: #3e7074;
+    --ll-cal-flow-light: #348b93;
+    --ll-cal-flow-medium: #25a4af;
+    --ll-cal-flow-heavy: #11becc;
+    --ll-cal-symptom-dot: #355eb8;
+    --ll-cal-symptom-layer-1: #9e38bf;
+    --ll-cal-symptom-layer-2: #1d746b;
+    --ll-cal-symptom-layer-3: #b7356f;
+    --ll-cal-predicted-border: #306b6f;
+    --ll-cal-fertile-border: #804e97;
+    --ll-cal-pms-badge: #784ecb;
+    --ll-cal-cramps-badge: #856216;
+    --ll-cal-confidence-high: #2a7044;
+    --ll-cal-confidence-learning: #815b1b;
+    --ll-cal-confidence-irregular: #af392c;
+    --ll-cal-confidence-provisional: #3b639c;
   }
 }
 

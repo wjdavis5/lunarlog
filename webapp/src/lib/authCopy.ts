@@ -4,8 +4,13 @@
 // auth_failure_copy.dart and lib/data/auth/supabase_auth_providers.dart's
 // GoTrue-code table), plus the two web-only codes the Worker itself emits.
 // Pure, so the tests exercise the table without a DOM.
+//
+// Issue #1256 adds the account-deletion table, mirroring
+// `accountDeletionFailureCopy` in lib/ui/account/account_section.dart: the
+// delete-account Edge Function's stable codes grouped by what the copy must
+// say — nothing was touched, the server data is already gone, or other.
 
-import type { AuthError } from './auth';
+import type { AuthError, DeletionError } from './auth';
 import type { MessageId } from '../i18n/message-ids';
 
 /** The project's client-side minimum, matching the app's kMinPasswordLength. */
@@ -77,5 +82,46 @@ function rareAuthCopyFor(error: AuthError): AuthCopy {
       return error.status === 429
         ? { id: 'authFailureRateLimited' }
         : { id: 'commonSomethingWentWrong' };
+  }
+}
+
+/**
+ * The delete-account Edge Function's codes, mapped the way the app maps its
+ * deletion failure kinds (lib/ui/account/account_section.dart's
+ * `accountDeletionFailureCopy`): the "nothing was touched" kinds, the
+ * "your server data is already gone" kinds, and everything else. The
+ * `apple_ceremony_unavailable` Android kind has no web arm — on the web the
+ * ceremony is always reachable, so its failure surfaces as a plain
+ * `network` code here instead.
+ */
+export function deletionCopyFor(error: DeletionError): AuthCopy {
+  switch (error.code) {
+    // Fail-closed before anything was touched: a bare retry (with a fresh
+    // Apple code where asked) is always safe.
+    case 'apple_code_required':
+      return { id: 'accountDeletionAppleCodeRequired' };
+    case 'attachment_cleanup_failed':
+      return { id: 'accountDeletionAttachmentCleanupFailed' };
+    case 'attachment_cleanup_unbounded':
+      return { id: 'accountDeletionAttachmentCleanupUnbounded' };
+    case 'mfa_required':
+      return { id: 'accountDeletionMfaRequired' };
+    // The row deletion already ran; only the named last step failed.
+    case 'apple_revoke_failed':
+      return { id: 'accountDeletionAppleRevokeFailed' };
+    case 'apple_revocation_marker_failed':
+      return { id: 'accountDeletionRevocationMarkerFailed' };
+    case 'delete_user_failed':
+      return { id: 'accountDeletionDeleteUserFailed' };
+    // An expired session, a call whose outcome is unknown, or an
+    // unclassified failure.
+    case 'unauthorized':
+      return { id: 'accountDeletionSessionExpired' };
+    case 'timeout':
+      return { id: 'accountDeletionTimeout' };
+    case 'network':
+      return { id: 'accountDeletionNetworkFailure' };
+    default:
+      return { id: 'accountDeletionUnknown' };
   }
 }

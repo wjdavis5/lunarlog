@@ -20,6 +20,7 @@
  */
 
 import {
+  calendarForecastSchema,
   cycleHistoryViewSchema,
   dateValidationSchema,
   domainErrorSchema,
@@ -28,6 +29,7 @@ import {
   insightsReportSchema,
   inviteLinkSchema,
   predictionSchema,
+  type CalendarForecast,
   type CycleHistoryView,
   type ExportDocument,
   type InsightsReport,
@@ -165,6 +167,20 @@ export function cycleHistory(
   >,
 ): CycleHistoryView {
   return callDomain(module, 'cycleHistory', request, cycleHistoryViewSchema);
+}
+
+/**
+ * The month calendar's per-date forecast cells (issue #1253) — the same
+ * `forecastDayCells` lookup the app's grid paints, resolved through the
+ * service-equivalent prediction order. Callers gate on `predict` first
+ * (kind `active`) and treat `staleHistory` as no-forecast, exactly like
+ * the app's calendar.
+ */
+export function calendarForecast(
+  module: DomainModule,
+  request: PredictRequest,
+): CalendarForecast {
+  return callDomain(module, 'calendarForecast', request, calendarForecastSchema);
 }
 
 export function insights(module: DomainModule, request: PredictRequest): InsightsReport {

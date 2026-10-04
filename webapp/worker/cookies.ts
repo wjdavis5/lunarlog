@@ -21,6 +21,18 @@ export const REFRESH_COOKIE = '__Host-ll_refresh';
 export const PKCE_COOKIE = '__Host-ll_pkce';
 
 /**
+ * The Apple delete-ceremony state cookie (issue #1256): set by
+ * /auth/apple/delete/start next to the 302 out to Apple's authorize
+ * endpoint, and consumed once by /auth/apple/delete/complete when the
+ * redirect back lands with `?code=&state=`. The nonce is the only thing
+ * binding "this code came from a delete ceremony this browser asked for" —
+ * the web app holds nothing at rest, so the Worker holds the check.
+ * SameSite=Lax so Apple's top-level redirect back still carries it, exactly
+ * like the PKCE cookie.
+ */
+export const APPLE_DELETE_COOKIE = '__Host-ll_apple_delete';
+
+/**
  * How long the refresh cookie lives (180 days). Supabase refresh tokens
  * do not expire by default, so this — not the token — is the web session's
  * lifetime; the token itself rotates on every refresh.
@@ -30,6 +42,11 @@ export const REFRESH_MAX_AGE_SECONDS = 15552000;
 /** The PKCE verifier cookie's life: ten minutes, then the link is dead. */
 export const PKCE_MAX_AGE_SECONDS = 600;
 
+/** The Apple delete state cookie's life: also ten minutes — Apple
+ * authorization codes themselves expire after five, so the ceremony is
+ * dead shortly after the code is either way. */
+export const APPLE_DELETE_MAX_AGE_SECONDS = 600;
+
 export type SameSite = 'Strict' | 'Lax';
 
 /**
@@ -38,7 +55,7 @@ export type SameSite = 'Strict' | 'Lax';
  * Domain attribute — the full `__Host-` contract, asserted by the tests.
  */
 export function buildCookie(
-  name: typeof REFRESH_COOKIE | typeof PKCE_COOKIE,
+  name: typeof REFRESH_COOKIE | typeof PKCE_COOKIE | typeof APPLE_DELETE_COOKIE,
   value: string,
   maxAgeSeconds: number,
   sameSite: SameSite,
@@ -79,6 +96,12 @@ export function buildPkceCookie(value: string, recovery = false): string {
   );
 }
 
+/** The Apple delete-ceremony state cookie: short-lived, SameSite=Lax (see
+ * its own doc comment above). */
+export function buildAppleDeleteCookie(value: string): string {
+  return buildCookie(APPLE_DELETE_COOKIE, value, APPLE_DELETE_MAX_AGE_SECONDS, 'Lax');
+}
+
 /**
  * Decodes the PKCE cookie's value; null when it carries no verifier (an
  * empty value, or a bare marker with nothing after it). The marker cannot
@@ -92,8 +115,11 @@ export function parsePkceValue(value: string): PkceValue | null {
   return value === '' ? null : { verifier: value, recovery: false };
 }
 
-/** Expires one of this module's cookies (sign-out, consumed verifier). */
-export function buildClearedCookie(name: typeof REFRESH_COOKIE | typeof PKCE_COOKIE): string {
+/** Expires one of this module's cookies (sign-out, consumed verifier, spent
+ * Apple delete state). */
+export function buildClearedCookie(
+  name: typeof REFRESH_COOKIE | typeof PKCE_COOKIE | typeof APPLE_DELETE_COOKIE,
+): string {
   return `${name}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`;
 }
 

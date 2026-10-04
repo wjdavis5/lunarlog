@@ -250,3 +250,185 @@ describe('WebAuthClient (issue #1250)', () => {
     }
   });
 });
+
+describe('WebAuthClient account surfaces (issue #1256)', () => {
+  let client: WebAuthClient;
+
+  beforeEach(() => {
+    client = new WebAuthClient();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  /** Signs the client in through the ordinary session restore so the
+   * account routes have a bearer to carry. */
+  async function signIn() {
+    stubFetch((call) =>
+      call.url === '/auth/session'
+        ? Promise.resolve(jsonResponse(SESSION_BODY))
+        : Promise.resolve(jsonResponse({})),
+    );
+    await client.getToken();
+  }
+
+  it('getIdentities reads the linked providers off the Worker with the bearer and CSRF header', async () => {
+    await signIn();
+    const { calls } = stubFetch((call) =>
+      call.url === '/auth/session'
+        ? Promise.resolve(jsonResponse(SESSION_BODY))
+        : Promise.resolve(
+            jsonResponse({ email: 'a@example.com', providers: ['email', 'apple'] }),
+          ),
+    );
+
+    const identities = await client.getIdentities();
+
+    expect(identities).toEqual({ email: 'a@example.com', providers: ['email', 'apple'] });
+    const identityCall = calls.find((call) => call.url === '/auth/identities');
+    expect(identityCall).toBeDefined();
+    expect(identityCall?.init?.method).toBe('GET');
+    const headers = new Headers(identityCall?.init?.headers);
+    expect(headers.get('authorization')).toBe('Bearer access-1');
+    expect(headers.get('x-lunarlog-csrf')).toBe('1');
+  });
+
+  it('getIdentities signed out fails locally as unauthorized, without a request', async () => {
+    const { calls } = stubFetch(() => Promise.resolve(jsonResponse({}, 401)));
+    await expect(client.getIdentities()).rejects.toMatchObject({ code: 'unauthorized' });
+    expect(calls.filter((call) => call.url === '/auth/identities')).toHaveLength(0);
+  });
+
+  it('startIdentityLink returns the provider URL the link authorize returned', async () => {
+    await signIn();
+    const { calls } = stubFetch((call) =>
+      call.url === '/auth/session'
+        ? Promise.resolve(jsonResponse(SESSION_BODY))
+        : Promise.resolve(
+            jsonResponse({ url: 'https://appleid.apple.com/auth/authorize?x=1' }),
+          ),
+    );
+
+    const url = await client.startIdentityLink('apple');
+
+    expect(url).toBe('https://appleid.apple.com/auth/authorize?x=1');
+    const linkCall = calls.find((call) => call.url === '/auth/identities/link');
+    expect(linkCall?.init?.method).toBe('POST');
+    expect(JSON.parse(String(linkCall?.init?.body))).toEqual({ provider: 'apple' });
+    const headers = new Headers(linkCall?.init?.headers);
+    expect(headers.get('authorization')).toBe('Bearer access-1');
+    expect(headers.get('x-lunarlog-csrf')).toBe('1');
+  });
+
+  it('unlinkIdentity renews the session after the unlink so the cached user drops the identity', async () => {
+    await signIn();
+    const { calls } = stubFetch((call) =>
+      call.url === '/auth/session'
+        ? Promise.resolve(jsonResponse(SESSION_BODY))
+        : Promise.resolve(jsonResponse({ ok: true })),
+    );
+
+    await client.unlinkIdentity('google');
+
+    const order = calls.map((call) => call.url);
+    expect(order.indexOf('/auth/identities/unlink')).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf('/auth/session')).toBeGreaterThan(
+      order.indexOf('/auth/identities/unlink'),
+    );
+    expect(
+      JSON.parse(
+        String(calls.find((call) => call.url === '/auth/identities/unlink')?.init?.body),
+      ),
+    ).toEqual({
+      provider: 'google',
+    });
+  });
+
+  it('completeAppleDelete posts the landed code and state through the CSRF gate', async () => {
+    const { calls } = stubFetch(() => Promise.resolve(jsonResponse({ ok: true })));
+
+    await client.completeAppleDelete('one-time-code', 'state-nonce');
+
+    const call = calls[0];
+    expect(call.url).toBe('/auth/apple/delete/complete');
+    expect(call.init?.method).toBe('POST');
+    expect(JSON.parse(String(call.init?.body))).toEqual({
+      code: 'one-time-code',
+      state: 'state-nonce',
+    });
+    expect(new Headers(call.init?.headers).get('x-lunarlog-csrf')).toBe('1');
+  });
+
+  it('completeAppleDelete surfaces the Worker state codes as AuthError', async () => {
+    stubFetch(() => Promise.resolve(jsonResponse({ error: 'state_mismatch' }, 403)));
+
+    await expect(client.completeAppleDelete('c', 'wrong')).rejects.toMatchObject({
+      code: 'state_mismatch',
+      status: 403,
+    });
+  });
+
+  it('deleteAccount posts to the Edge Function with the web client declaration and the fresh code', async () => {
+    await signIn();
+    const { calls } = stubFetch((call) =>
+      call.url === '/auth/session'
+        ? Promise.resolve(jsonResponse(SESSION_BODY))
+        : Promise.resolve(jsonResponse({ ok: true })),
+    );
+
+    await client.deleteAccount('fresh-web-code', 'web');
+
+    const deleteCall = calls.find((call) => call.url.endsWith('/functions/v1/delete-account'));
+    expect(deleteCall).toBeDefined();
+    const headers = new Headers(deleteCall?.init?.headers);
+    expect(headers.get('authorization')).toBe('Bearer access-1');
+    expect(headers.get('apikey')).toBeDefined();
+    expect(JSON.parse(String(deleteCall?.init?.body))).toEqual({
+      appleAuthorizationCode: 'fresh-web-code',
+      appleCodeClient: 'web',
+    });
+  });
+
+  it('deleteAccount omits the code entirely on the first (server-asks) attempt', async () => {
+    await signIn();
+    const { calls } = stubFetch((call) =>
+      call.url === '/auth/session'
+        ? Promise.resolve(jsonResponse(SESSION_BODY))
+        : Promise.resolve(jsonResponse({ ok: false, code: 'apple_code_required' }, 400)),
+    );
+
+    await expect(client.deleteAccount(null, 'web')).rejects.toMatchObject({
+      code: 'apple_code_required',
+      status: 400,
+      name: 'DeletionError',
+    });
+
+    const deleteCall = calls.find((call) => call.url.endsWith('/functions/v1/delete-account'));
+    expect(JSON.parse(String(deleteCall?.init?.body))).toEqual({ appleCodeClient: 'web' });
+  });
+
+  it('deleteAccount signed out fails locally without touching the Edge Function', async () => {
+    const { calls } = stubFetch(() => Promise.resolve(jsonResponse({}, 401)));
+
+    await expect(client.deleteAccount(null, 'web')).rejects.toMatchObject({
+      code: 'unauthorized',
+    });
+    expect(calls.filter((call) => call.url.includes('/functions/'))).toHaveLength(0);
+  });
+
+  it('deleteAccount maps a non-JSON failure and a rejection onto typed deletion errors', async () => {
+    await signIn();
+    stubFetch((call) =>
+      call.url === '/auth/session'
+        ? Promise.resolve(jsonResponse(SESSION_BODY))
+        : Promise.reject(new TypeError('network down')),
+    );
+
+    await expect(client.deleteAccount(null, 'web')).rejects.toMatchObject({
+      code: 'network',
+      name: 'DeletionError',
+    });
+  });
+});

@@ -447,6 +447,15 @@ describe('DayPage (issue #1254)', () => {
     const futureIso = `${future.getFullYear()}-${String(future.getMonth() + 1).padStart(2, '0')}-${String(future.getDate()).padStart(2, '0')}`;
     const { client } = fakeClient();
     const queryClient = createAppQueryClient();
+    // Two days ahead of this browser's civil today, computed from the
+    // same clock the editor reads — the bounds rule (#848) tolerates
+    // exactly one day ahead, so a hardcoded date rots when the real
+    // calendar reaches it (this one was 2026-10-05).
+    const future = new Date();
+    future.setDate(future.getDate() + 2);
+    const futureIso = `${future.getFullYear()}-${String(future.getMonth() + 1).padStart(2, '0')}-${String(
+      future.getDate(),
+    ).padStart(2, '0')}`;
     render(
       <AppIntlProvider>
         <QueryClientProvider client={queryClient}>

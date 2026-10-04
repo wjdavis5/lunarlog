@@ -208,5 +208,43 @@
       "scrim": "#000000",
       "shadow": "#000000"
     }
+  },
+  "calendar": {
+    "light": {
+      "flowSpotting": "#53979a",
+      "flowLight": "#2e7e83",
+      "flowMedium": "#186b6f",
+      "flowHeavy": "#07575c",
+      "symptomDot": "#6b8fd4",
+      "symptomLayer1": "#ba6dd4",
+      "symptomLayer2": "#279c90",
+      "symptomLayer3": "#d36899",
+      "predictedBorder": "#459ca0",
+      "fertileBorder": "#a880be",
+      "pmsBadge": "#9b7bd9",
+      "crampsBadge": "#b3841d",
+      "confidenceHigh": "#3da162",
+      "confidenceLearning": "#bb8528",
+      "confidenceIrregular": "#d97166",
+      "confidenceProvisional": "#6b91c7"
+    },
+    "dark": {
+      "flowSpotting": "#3e7074",
+      "flowLight": "#348b93",
+      "flowMedium": "#25a4af",
+      "flowHeavy": "#11becc",
+      "symptomDot": "#355eb8",
+      "symptomLayer1": "#9e38bf",
+      "symptomLayer2": "#1d746b",
+      "symptomLayer3": "#b7356f",
+      "predictedBorder": "#306b6f",
+      "fertileBorder": "#804e97",
+      "pmsBadge": "#784ecb",
+      "crampsBadge": "#856216",
+      "confidenceHigh": "#2a7044",
+      "confidenceLearning": "#815b1b",
+      "confidenceIrregular": "#af392c",
+      "confidenceProvisional": "#3b639c"
+    }
   }
 }

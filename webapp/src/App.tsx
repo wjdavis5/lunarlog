@@ -2,6 +2,7 @@ import { Link, Navigate, Outlet, RouterProvider, createBrowserRouter } from 'rea
 
 import { useT } from './i18n/t';
 import { useAuthSession, useResetWebDataOnIdentityChange } from './lib/authQueries';
+import { AccountPage } from './pages/AccountPage';
 import { AuthCallbackPage } from './pages/AuthCallbackPage';
 import { CodeEntryPage } from './pages/CodeEntryPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
@@ -12,6 +13,7 @@ import { DayPage } from './pages/DayPage';
 import { InvitePage } from './pages/InvitePage';
 import { ManageGuardiansPage } from './pages/ManageGuardiansPage';
 import { ProfileNotesPage } from './pages/ProfileNotesPage';
+import { ProfilesPage } from './pages/ProfilesPage';
 import { TodayPage } from './pages/TodayPage';
 
 /**
@@ -35,6 +37,12 @@ function Shell() {
           <Link className="nav-link" to="/">
             {t('calendarTodayTooltip')}
           </Link>
+          {/* Issue #1256: the account and "Your data" settings. */}
+          {session.data?.signedIn === true ? (
+            <Link className="nav-link" to="/account">
+              {t('accountSectionTitle')}
+            </Link>
+          ) : null}
           <Link className="nav-link" to="/sign-in">
             {session.data?.signedIn === true
               ? t('accountSectionSignedIn')
@@ -64,10 +72,17 @@ const router = createBrowserRouter([
       { path: 'sign-in/code', element: <CodeEntryPage /> },
       { path: 'forgot-password', element: <ForgotPasswordPage /> },
       { path: 'reset-password', element: <ResetPasswordPage /> },
+      // Issue #1256: the account and "Your data" settings — and the path
+      // Apple's delete ceremony redirects back to (the Worker's
+      // /auth/apple/delete/start names this page as its return URL).
+      { path: 'account', element: <AccountPage /> },
       { path: 'auth/callback', element: <AuthCallbackPage /> },
       // Issue #1254: the day editor, one profile at a time; the day itself
       // is the `date` query parameter (defaults to the browser's today).
       { path: 'day/:profileId', element: <DayPage /> },
+      // Issue #1253: the profiles management page (list / create / edit /
+      // archive / delete) and the home's `?profile=` switcher.
+      { path: 'profiles', element: <ProfilesPage /> },
       { path: 'invite', element: <InvitePage /> },
       { path: 'profile/:profileId/guardians', element: <ManageGuardiansPage /> },
       { path: 'profile/:profileId/notes', element: <ProfileNotesPage /> },

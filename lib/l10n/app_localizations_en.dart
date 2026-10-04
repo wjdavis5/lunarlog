@@ -5681,4 +5681,119 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get webDayUnsavedWarning => 'Leave with unsaved changes?';
+
+  @override
+  String get webHomeNeedsSignIn => 'Sign in to see your profiles.';
+
+  @override
+  String get webHomeProfileSwitcherLabel => 'Profile';
+
+  @override
+  String get webHomeNextEstimateLabel => 'Next period estimate:';
+
+  @override
+  String get webHomeNextEstimateRangeLabel => 'Next period may start around:';
+
+  @override
+  String get webHomeNextEstimateLabelTeen => 'Next period is estimated around:';
+
+  @override
+  String get webHomeEstimateDisclaimer =>
+      'Estimates only — not medical advice.';
+
+  @override
+  String get webHomeTeenOverdueLine =>
+      'No new period logged yet — a few days either way is normal.';
+
+  @override
+  String get webHomeIrregularOverdueLine =>
+      'No new period logged yet — with irregular cycles, variation like this is common and expected.';
+
+  @override
+  String get webHomeNotEnoughTitle => 'Not enough history yet';
+
+  @override
+  String get webHomeNotEnoughTitleTeen => 'Your record is just getting started';
+
+  @override
+  String webHomeNotEnoughProgress(
+    Object completed,
+    Object needed,
+    Object nextStep,
+  ) {
+    return '$completed of $needed completed cycles — $nextStep';
+  }
+
+  @override
+  String get webHomeNotEnoughNextPeriodStep =>
+      'estimates start after the next period';
+
+  @override
+  String webHomeNotEnoughFirstCyclesStep(Object needed) {
+    return 'estimates start once $needed completed cycles are recorded';
+  }
+
+  @override
+  String webHomeNotEnoughRemainingStep(Object remaining) {
+    return '$remaining more periods until estimates';
+  }
+
+  @override
+  String webHomeCycleStartedLength(num length, Object startedDate) {
+    String _temp0 = intl.Intl.pluralLogic(
+      length,
+      locale: localeName,
+      other: '$length days',
+      one: '1 day',
+    );
+    return 'Started $startedDate · $_temp0';
+  }
+
+  @override
+  String get webProfilesEditAction => 'Edit';
+
+  @override
+  String get webProfilesSaving => 'Saving…';
+
+  @override
+  String get webProfilesLoadFailed => 'Could not load profiles.';
+
+  @override
+  String get webProfilesActionFailed => 'That change didn\'t save. Try again.';
+
+  @override
+  String get webProfilesDeleted => 'Profile deleted.';
+
+  @override
+  String get webProfilesRelationshipSelf => 'Self';
+
+  @override
+  String get webProfilesRelationshipDaughter => 'Daughter';
+
+  @override
+  String get webProfilesRelationshipSon => 'Son';
+
+  @override
+  String get webProfilesRelationshipChild => 'Child';
+
+  @override
+  String get webProfilesRelationshipPartner => 'Partner';
+
+  @override
+  String get webProfilesRelationshipOther => 'Other';
+
+  @override
+  String get webProfilesOpenAction => 'Open';
+
+  @override
+  String get webProfilesDeleteAction => 'Delete';
+
+  @override
+  String get webProfilesEditTitle => 'Edit profile';
+
+  @override
+  String get webProfilesModeStandard => 'Standard';
+
+  @override
+  String get webProfilesModeTeen => 'Teen';
 }

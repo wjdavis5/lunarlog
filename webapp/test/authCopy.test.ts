@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { AuthError } from '../src/lib/auth';
-import { authCopyFor, kMinPasswordLength } from '../src/lib/authCopy';
+import { AuthError, DeletionError } from '../src/lib/auth';
+import { authCopyFor, deletionCopyFor, kMinPasswordLength } from '../src/lib/authCopy';
 import messages from '../src/i18n/messages.en.json';
 
 /**
@@ -87,5 +87,49 @@ describe('authCopyFor (issue #1250)', () => {
     expect(messages['webAuthDifferentBrowserError']).toBeDefined();
     expect(messages['webAuthAppleButtonLabel']).toBe('Sign in with Apple');
     expect(messages['webAuthSignOutEverywhereAction']).toBe('Sign out everywhere');
+  });
+});
+
+describe('deletionCopyFor (issue #1256)', () => {
+  function deletionCopy(code: string, status = 400): string | undefined {
+    return messages[deletionCopyFor(new DeletionError(code, status)).id];
+  }
+
+  it('lands the nothing-was-touched codes on their nothing-was-deleted copy', () => {
+    expect(deletionCopy('apple_code_required')).toBe(
+      messages['accountDeletionAppleCodeRequired'],
+    );
+    expect(deletionCopy('attachment_cleanup_failed')).toBe(
+      messages['accountDeletionAttachmentCleanupFailed'],
+    );
+    expect(deletionCopy('attachment_cleanup_unbounded')).toBe(
+      messages['accountDeletionAttachmentCleanupUnbounded'],
+    );
+    expect(deletionCopy('mfa_required')).toBe(messages['accountDeletionMfaRequired']);
+    // The nothing-was-deleted copy really says nothing was deleted.
+    expect(deletionCopy('apple_code_required')).toContain('Nothing was deleted');
+  });
+
+  it('lands the after-the-RPC codes on their data-already-deleted copy', () => {
+    expect(deletionCopy('apple_revoke_failed')).toBe(
+      messages['accountDeletionAppleRevokeFailed'],
+    );
+    expect(deletionCopy('apple_revocation_marker_failed')).toBe(
+      messages['accountDeletionRevocationMarkerFailed'],
+    );
+    expect(deletionCopy('delete_user_failed')).toBe(
+      messages['accountDeletionDeleteUserFailed'],
+    );
+  });
+
+  it('maps the outcome-unknown trio the way the app does', () => {
+    expect(deletionCopy('unauthorized')).toBe(messages['accountDeletionSessionExpired']);
+    expect(deletionCopy('timeout')).toBe(messages['accountDeletionTimeout']);
+    expect(deletionCopy('network')).toBe(messages['accountDeletionNetworkFailure']);
+  });
+
+  it('collapses every unrecognised code (identity_check_failed included) onto the unknown copy', () => {
+    expect(deletionCopy('identity_check_failed', 500)).toBe(messages['accountDeletionUnknown']);
+    expect(deletionCopy('mystery')).toBe(messages['accountDeletionUnknown']);
   });
 });
