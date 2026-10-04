@@ -438,15 +438,6 @@ describe('DayPage (issue #1254)', () => {
   });
 
   it('renders the bounds banner and disables saving for a future day', async () => {
-    // The policy allows logging today + 1, so "future" (the banner case)
-    // needs a date at least two days out. The hardcoded 2026-10-05 this
-    // test shipped with aged into the allowed window on 2026-10-04 and
-    // broke the suite — the same date-hardcoding class the #1297 month
-    // rollover fix pinned. Derive the date from the clock instead.
-    const future = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-    const futureIso = `${future.getFullYear()}-${String(future.getMonth() + 1).padStart(2, '0')}-${String(future.getDate()).padStart(2, '0')}`;
-    const { client } = fakeClient();
-    const queryClient = createAppQueryClient();
     // Two days ahead of this browser's civil today, computed from the
     // same clock the editor reads — the bounds rule (#848) tolerates
     // exactly one day ahead, so a hardcoded date rots when the real
@@ -456,6 +447,8 @@ describe('DayPage (issue #1254)', () => {
     const futureIso = `${future.getFullYear()}-${String(future.getMonth() + 1).padStart(2, '0')}-${String(
       future.getDate(),
     ).padStart(2, '0')}`;
+    const { client } = fakeClient();
+    const queryClient = createAppQueryClient();
     render(
       <AppIntlProvider>
         <QueryClientProvider client={queryClient}>
