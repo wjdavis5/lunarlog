@@ -7305,5 +7305,129 @@
   "webDayUnsavedWarning": "Leave with unsaved changes?",
   "@webDayUnsavedWarning": {
     "description": "Issue #1254: the browser's beforeunload prompt text when the editor holds unsaved edits."
+  },
+  "webHomeNeedsSignIn": "Sign in to see your profiles.",
+  "@webHomeNeedsSignIn": {
+    "description": "Issue #1253: the web home's signed-out state (the sign-in itself is #1250)."
+  },
+  "webHomeProfileSwitcherLabel": "Profile",
+  "@webHomeProfileSwitcherLabel": {
+    "description": "Issue #1253: the visually-hidden label of the web home's profile switcher select."
+  },
+  "webHomeNextEstimateLabel": "Next period estimate:",
+  "@webHomeNextEstimateLabel": {
+    "description": "Issue #1253: heading above the next-period estimate on the web home, in the app's standard framing (care_modes.dart's _nextEstimateLabel standard branch)."
+  },
+  "webHomeNextEstimateRangeLabel": "Next period may start around:",
+  "@webHomeNextEstimateRangeLabel": {
+    "description": "Issue #1253: heading above a range-style estimate — the irregular-cycles framing's wording (care_modes.dart's _composedNextEstimateLabel and legacy irregular branch)."
+  },
+  "webHomeNextEstimateLabelTeen": "Next period is estimated around:",
+  "@webHomeNextEstimateLabelTeen": {
+    "description": "Issue #1253: heading above the next-period estimate on a teen profile — plainer, less clinical phrasing (care_modes.dart's _nextEstimateLabel teen branch)."
+  },
+  "webHomeEstimateDisclaimer": "Estimates only — not medical advice.",
+  "@webHomeEstimateDisclaimer": {
+    "description": "Issue #1253: the shared estimate disclaimer (R17), rendered under every estimate on the web home exactly like kEstimateDisclaimer in lib/ui/overview/estimate_copy.dart."
+  },
+  "webHomeTeenOverdueLine": "No new period logged yet — a few days either way is normal.",
+  "@webHomeTeenOverdueLine": {
+    "description": "Issue #1253: the teen framing's quiet overdue line (care_modes.dart's _teenOverdueStatusLabel, issue #998) — a teen is never late."
+  },
+  "webHomeIrregularOverdueLine": "No new period logged yet — with irregular cycles, variation like this is common and expected.",
+  "@webHomeIrregularOverdueLine": {
+    "description": "Issue #1253: the irregular framing's quiet overdue line (care_modes.dart's _irregular overdueStatusLabel) — variation is expected, not late."
+  },
+  "webHomeNotEnoughTitle": "Not enough history yet",
+  "@webHomeNotEnoughTitle": {
+    "description": "Issue #1253: the insufficient-history heading in the standard framing (care_modes.dart's _notEnoughTitle)."
+  },
+  "webHomeNotEnoughTitleTeen": "Your record is just getting started",
+  "@webHomeNotEnoughTitleTeen": {
+    "description": "Issue #1253: the insufficient-history heading on a teen profile (care_modes.dart's _notEnoughTitle teen branch)."
+  },
+  "webHomeNotEnoughProgress": "{completed} of {needed} completed cycles — {nextStep}",
+  "@webHomeNotEnoughProgress": {
+    "description": "Issue #1253: the insufficient-history progress sentence (care_modes.dart's completedCycleProgress); nextStep carries one of the webHomeNotEnough*Step fragments."
+  },
+  "webHomeNotEnoughNextPeriodStep": "estimates start after the next period",
+  "@webHomeNotEnoughNextPeriodStep": {
+    "description": "Issue #1253: completedCycleProgress's next step when one more period completes the count."
+  },
+  "webHomeNotEnoughFirstCyclesStep": "estimates start once {needed} completed cycles are recorded",
+  "@webHomeNotEnoughFirstCyclesStep": {
+    "description": "Issue #1253: completedCycleProgress's next step from zero completed cycles."
+  },
+  "webHomeNotEnoughRemainingStep": "{remaining} more periods until estimates",
+  "@webHomeNotEnoughRemainingStep": {
+    "description": "Issue #1253: completedCycleProgress's next step with two or more periods still to log."
+  },
+  "webHomeCycleStartedLength": "Started {startedDate} · {length, plural, =1{1 day} other{{length} days}}",
+  "@webHomeCycleStartedLength": {
+    "description": "Issue #1253: one completed cycle's row in the web cycle history — its start date and closed length."
+  },
+  "webProfilesEditAction": "Edit",
+  "@webProfilesEditAction": {
+    "description": "Issue #1253: the web profiles page's edit action."
+  },
+  "webProfilesSaving": "Saving…",
+  "@webProfilesSaving": {
+    "description": "Issue #1253: the web profiles page's in-flight marker on a profile write."
+  },
+  "webProfilesLoadFailed": "Could not load profiles.",
+  "@webProfilesLoadFailed": {
+    "description": "Issue #1253: the web profiles page's failure state when the synced-data pull itself errors."
+  },
+  "webProfilesActionFailed": "That change didn't save. Try again.",
+  "@webProfilesActionFailed": {
+    "description": "Issue #1253: the web profiles page's generic write-failure line (the mutation keeps its error; the retry is the same control)."
+  },
+  "webProfilesDeleted": "Profile deleted.",
+  "@webProfilesDeleted": {
+    "description": "Issue #1253: quiet confirmation after delete_profile_data succeeds."
+  },
+  "webProfilesRelationshipSelf": "Self",
+  "@webProfilesRelationshipSelf": {
+    "description": "Issue #1253: the self relationship option (ProfileRelationship.label, lib/domain/models/profile_relationship.dart)."
+  },
+  "webProfilesRelationshipDaughter": "Daughter",
+  "@webProfilesRelationshipDaughter": {
+    "description": "Issue #1253: the daughter relationship option (ProfileRelationship.label)."
+  },
+  "webProfilesRelationshipSon": "Son",
+  "@webProfilesRelationshipSon": {
+    "description": "Issue #1253: the son relationship option (ProfileRelationship.label)."
+  },
+  "webProfilesRelationshipChild": "Child",
+  "@webProfilesRelationshipChild": {
+    "description": "Issue #1253: the child relationship option (ProfileRelationship.label)."
+  },
+  "webProfilesRelationshipPartner": "Partner",
+  "@webProfilesRelationshipPartner": {
+    "description": "Issue #1253: the partner relationship option (ProfileRelationship.label)."
+  },
+  "webProfilesRelationshipOther": "Other",
+  "@webProfilesRelationshipOther": {
+    "description": "Issue #1253: the other relationship option (ProfileRelationship.label)."
+  },
+  "webProfilesOpenAction": "Open",
+  "@webProfilesOpenAction": {
+    "description": "Issue #1253: opens a profile's home from the profiles list."
+  },
+  "webProfilesDeleteAction": "Delete",
+  "@webProfilesDeleteAction": {
+    "description": "Issue #1253: the profiles list's delete action (the confirm steps carry the sharingManageGuardiansDeleteProfile* copy)."
+  },
+  "webProfilesEditTitle": "Edit profile",
+  "@webProfilesEditTitle": {
+    "description": "Issue #1253: the web profiles page's edit form heading."
+  },
+  "webProfilesModeStandard": "Standard",
+  "@webProfilesModeStandard": {
+    "description": "Issue #1253: the standard care mode option (ProfileMode.label)."
+  },
+  "webProfilesModeTeen": "Teen",
+  "@webProfilesModeTeen": {
+    "description": "Issue #1253: the teen care mode option (ProfileMode.label)."
   }
 }

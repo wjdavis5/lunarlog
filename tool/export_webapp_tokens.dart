@@ -25,6 +25,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'package:lunarlog/ui/theme/app_theme.dart';
+import 'package:lunarlog/ui/theme/lunarlog_colors.dart';
 import 'package:lunarlog/ui/theme/tokens.dart';
 
 /// Repository-relative path of the generated export.
@@ -156,6 +157,64 @@ Map<String, Object?> _colorScheme(ColorScheme s) => <String, Object?>{
       for (final role in _kColorRoles) role: _hex(_role(s, role)),
     };
 
+/// Every [LunarLogColors] slot the web calendar consumes (issue #1253) —
+/// the flow swatches, symptom dot/palette, predicted/fertile borders, the
+/// PMS/cramps badges, and the confidence tints. The two translucent band
+/// fills are deliberately absent: `predictedBand`/`fertileBand` are their
+/// border colour at 16% alpha, and this export's contract is fully opaque
+/// colours (test/tool/export_webapp_tokens_test.dart) — the web derives
+/// the fills with `color-mix(in srgb, var(--ll-cal-…-border) 16%,
+/// transparent)`. Enumerated explicitly so a new palette slot lands here
+/// as a reviewed change.
+const List<String> _kCalendarColorSlots = <String>[
+  'flowSpotting',
+  'flowLight',
+  'flowMedium',
+  'flowHeavy',
+  'symptomDot',
+  'symptomLayer1',
+  'symptomLayer2',
+  'symptomLayer3',
+  'predictedBorder',
+  'fertileBorder',
+  'pmsBadge',
+  'crampsBadge',
+  'confidenceHigh',
+  'confidenceLearning',
+  'confidenceIrregular',
+  'confidenceProvisional',
+];
+
+/// Resolves one [LunarLogColors] slot name against a concrete palette. A
+/// switch (not a map of getters) so the compiler enforces exhaustiveness
+/// against [_kCalendarColorSlots] at review time.
+Color _calendarSlot(LunarLogColors c, String slot) => switch (slot) {
+      'flowSpotting' => c.flowSpotting,
+      'flowLight' => c.flowLight,
+      'flowMedium' => c.flowMedium,
+      'flowHeavy' => c.flowHeavy,
+      'symptomDot' => c.symptomDot,
+      'symptomLayer1' => c.symptomLayer1,
+      'symptomLayer2' => c.symptomLayer2,
+      'symptomLayer3' => c.symptomLayer3,
+      'predictedBorder' => c.predictedBorder,
+      'fertileBorder' => c.fertileBorder,
+      'pmsBadge' => c.pmsBadge,
+      'crampsBadge' => c.crampsBadge,
+      'confidenceHigh' => c.confidenceHigh,
+      'confidenceLearning' => c.confidenceLearning,
+      'confidenceIrregular' => c.confidenceIrregular,
+      'confidenceProvisional' => c.confidenceProvisional,
+      _ => throw ArgumentError('Unknown calendar color slot: $slot'),
+    };
+
+Map<String, Object?> _calendarColors(ColorScheme s) {
+  final palette = LunarLogColors.forColorScheme(s);
+  return <String, Object?>{
+    for (final slot in _kCalendarColorSlots) slot: _hex(_calendarSlot(palette, slot)),
+  };
+}
+
 String buildWebappTokensJson() {
   final schemes = <String, Object?>{
     'light': _colorScheme(AppTheme.lightTheme.colorScheme),
@@ -208,6 +267,10 @@ String buildWebappTokensJson() {
     },
     'type': type,
     'schemes': schemes,
+    'calendar': <String, Object?>{
+      'light': _calendarColors(AppTheme.lightTheme.colorScheme),
+      'dark': _calendarColors(AppTheme.darkTheme.colorScheme),
+    },
   };
   return '${const JsonEncoder.withIndent('  ').convert(tokens)}\n';
 }

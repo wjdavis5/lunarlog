@@ -459,3 +459,495 @@ body {
 .auth-links a {
   color: var(--ll-primary);
 }
+
+/* --- Profile home (issue 1253). Every colour below is a generated token
+       from the generated tokens (the M3 roles and the calendar palette); the
+       color-mix derivatives of their own border tokens because the token
+       export contract is fully opaque colours. */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.btn {
+  font: inherit;
+  padding: var(--ll-space-2) var(--ll-space-4);
+  border: 1px solid var(--ll-outline);
+  border-radius: var(--ll-r-md);
+  background: var(--ll-surface-container-high);
+  color: var(--ll-on-surface);
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ll-on-surface);
+}
+
+.btn-primary {
+  background: var(--ll-primary);
+  color: var(--ll-on-primary);
+  border-color: var(--ll-primary);
+}
+
+.btn-danger {
+  background: var(--ll-error);
+  color: var(--ll-on-error);
+  border-color: var(--ll-error);
+}
+
+.home-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ll-space-2);
+  align-items: center;
+  margin-bottom: var(--ll-space-4);
+}
+
+.home-switcher-select {
+  font: inherit;
+  padding: var(--ll-space-2) var(--ll-space-3);
+  border: 1px solid var(--ll-outline);
+  border-radius: var(--ll-r-md);
+  background: var(--ll-surface-container-lowest);
+  color: var(--ll-on-surface);
+}
+
+.home-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ll-space-4);
+}
+
+.home-phase {
+  font-size: var(--ll-type-title-medium-font-size);
+  line-height: var(--ll-type-title-medium-line-height);
+  font-weight: var(--ll-type-title-medium-font-weight);
+  margin: 0 0 var(--ll-space-2);
+}
+
+.home-estimate {
+  margin: 0;
+}
+
+.home-estimate-label {
+  color: var(--ll-on-surface-variant);
+}
+
+.home-estimate-value {
+  font-weight: var(--ll-type-title-small-font-weight, 500);
+}
+
+.home-tier,
+.home-overdue,
+.home-stale,
+.home-disclaimer {
+  margin: var(--ll-space-2) 0 0;
+  color: var(--ll-on-surface-variant);
+}
+
+.home-disclaimer {
+  font-size: var(--ll-type-body-small-font-size);
+  line-height: var(--ll-type-body-small-line-height);
+}
+
+.home-stats,
+.home-compare {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ll-space-4);
+  margin: 0 0 var(--ll-space-3);
+}
+
+.home-stats dt,
+.home-compare dt {
+  color: var(--ll-on-surface-variant);
+  font-size: var(--ll-type-body-small-font-size);
+}
+
+.home-stats dd,
+.home-compare dd {
+  margin: 0;
+  font-weight: var(--ll-type-title-small-font-weight, 500);
+}
+
+.home-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ll-space-2);
+}
+
+/* Month calendar grid. Sunday-first, seven equal columns, and it stays a
+   calendar down to 360 px: the cells shrink, the layout never reflows. */
+
+.cal-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ll-space-2);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cal-nav-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ll-space-2);
+}
+
+.cal-grid {
+  margin-top: var(--ll-space-3);
+}
+
+.cal-row {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.cal-head {
+  margin-bottom: 2px;
+}
+
+.cal-weekday {
+  text-align: center;
+  color: var(--ll-on-surface-variant);
+  font-size: var(--ll-type-body-small-font-size);
+}
+
+.cal-cell {
+  min-height: 44px;
+  border-radius: var(--ll-r-md);
+  padding: 2px;
+}
+
+.cal-blank {
+  min-height: 0;
+}
+
+.cal-day {
+  background: var(--ll-surface-container-low);
+}
+
+.cal-day-link {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-height: 40px;
+  padding: 2px 4px;
+  border-radius: var(--ll-r-md);
+  color: var(--ll-on-surface);
+  text-decoration: none;
+}
+
+.cal-day-link:focus-visible {
+  outline: 2px solid var(--ll-primary);
+}
+
+.cal-today {
+  box-shadow: inset 0 0 0 2px var(--ll-primary);
+}
+
+.cal-spotting .cal-day-link {
+  box-shadow: inset 0 0 0 2px var(--ll-cal-flow-spotting);
+}
+
+.cal-predicted {
+  background: color-mix(in srgb, var(--ll-cal-predicted-border) 16%, transparent);
+  box-shadow: inset 0 0 0 2px var(--ll-cal-predicted-border);
+}
+
+.cal-fertile .cal-day-link {
+  border: 1px dashed var(--ll-cal-fertile-border);
+}
+
+.cal-day-number {
+  font-size: var(--ll-type-body-small-font-size);
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-cycle-day {
+  font-size: var(--ll-type-body-small-font-size);
+  color: var(--ll-on-surface-variant);
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-marks {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  min-height: 8px;
+}
+
+.cal-mark {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--ll-r-full);
+  background: var(--ll-cal-flow-medium);
+}
+
+/* Flow ramps: the marks inside a cell pick the level's token by count, so
+   each level keeps the app's own colour identity. */
+.cal-mark:nth-child(-n + 2) {
+  background: var(--ll-cal-flow-light);
+}
+
+.cal-mark:nth-child(-n + 3) {
+  background: var(--ll-cal-flow-medium);
+}
+
+.cal-mark:nth-child(-n + 4) {
+  background: var(--ll-cal-flow-heavy);
+}
+
+.cal-mark:nth-child(-n + 5) {
+  background: var(--ll-cal-flow-heavy);
+}
+
+.cal-layers {
+  display: flex;
+  gap: 2px;
+}
+
+.cal-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--ll-r-full);
+  display: inline-block;
+}
+
+.cal-dot-1 {
+  background: var(--ll-cal-symptom-layer-1);
+}
+
+.cal-dot-2 {
+  background: var(--ll-cal-symptom-layer-2);
+}
+
+.cal-dot-3 {
+  background: var(--ll-cal-symptom-layer-3);
+}
+
+.cal-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--ll-r-full);
+}
+
+.cal-badge-pms {
+  background: var(--ll-cal-pms-badge);
+}
+
+.cal-badge-cramps {
+  background: var(--ll-cal-cramps-badge);
+}
+
+.cal-details {
+  margin-top: var(--ll-space-3);
+}
+
+.cal-legend {
+  list-style: none;
+  margin: var(--ll-space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ll-space-2) var(--ll-space-4);
+}
+
+.cal-legend li {
+  display: flex;
+  align-items: center;
+  gap: var(--ll-space-2);
+}
+
+.cal-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--ll-r-full);
+  display: inline-block;
+}
+
+.cal-swatch-spotting {
+  box-shadow: inset 0 0 0 3px var(--ll-cal-flow-spotting);
+}
+
+.cal-swatch-flow {
+  background: var(--ll-cal-flow-light);
+}
+
+.cal-swatch-light {
+  background: var(--ll-cal-flow-light);
+}
+
+.cal-swatch-medium {
+  background: var(--ll-cal-flow-medium);
+}
+
+.cal-swatch-heavy {
+  background: var(--ll-cal-flow-heavy);
+}
+
+.cal-swatch-superheavy {
+  background: var(--ll-cal-flow-heavy);
+  box-shadow: inset 0 0 0 2px var(--ll-on-surface);
+}
+
+.cal-swatch-symptom {
+  background: var(--ll-cal-symptom-dot);
+}
+
+.cal-swatch-today {
+  box-shadow: inset 0 0 0 3px var(--ll-primary);
+}
+
+.cal-swatch-predicted {
+  background: color-mix(in srgb, var(--ll-cal-predicted-border) 16%, transparent);
+  box-shadow: inset 0 0 0 2px var(--ll-cal-predicted-border);
+}
+
+.cal-swatch-fertile {
+  background: color-mix(in srgb, var(--ll-cal-fertile-border) 16%, transparent);
+  box-shadow: inset 0 0 0 2px var(--ll-cal-fertile-border);
+}
+
+.cal-swatch-pms {
+  background: var(--ll-cal-pms-badge);
+}
+
+.cal-swatch-cramps {
+  background: var(--ll-cal-cramps-badge);
+}
+
+.cal-dot-palette {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.cal-layer-picker {
+  list-style: none;
+  margin: var(--ll-space-2) 0 0;
+  padding: 0;
+  columns: 2;
+  column-gap: var(--ll-space-4);
+}
+
+.cal-layer-option {
+  display: flex;
+  align-items: center;
+  gap: var(--ll-space-1);
+  padding: var(--ll-space-1) 0;
+}
+
+/* Profiles page forms and rows. */
+
+.form-row {
+  margin-top: var(--ll-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ll-space-1);
+}
+
+.form-row label {
+  color: var(--ll-on-surface-variant);
+  font-size: var(--ll-type-body-small-font-size);
+}
+
+.form-row input:not([type='checkbox']),
+.form-row select {
+  font: inherit;
+  padding: var(--ll-space-2) var(--ll-space-3);
+  border: 1px solid var(--ll-outline);
+  border-radius: var(--ll-r-md);
+  background: var(--ll-surface-container-lowest);
+  color: var(--ll-on-surface);
+}
+
+.form-row input[type='checkbox'] {
+  width: 1rem;
+  height: 1rem;
+}
+
+.form-hint {
+  margin: 0;
+  color: var(--ll-on-surface-variant);
+  font-size: var(--ll-type-body-small-font-size);
+}
+
+.form-error {
+  margin: 0;
+  color: var(--ll-error);
+  font-size: var(--ll-type-body-small-font-size);
+}
+
+.confirm-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ll-space-2);
+  align-items: center;
+}
+
+.confirm-text {
+  flex-basis: 100%;
+  color: var(--ll-on-surface-variant);
+  font-size: var(--ll-type-body-small-font-size);
+}
+
+.profile-list {
+  list-style: none;
+  margin: var(--ll-space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.profile-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ll-space-2);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--ll-space-2) 0;
+  border-top: 1px solid var(--ll-outline-variant);
+}
+
+.profile-row-main {
+  display: flex;
+  flex-direction: column;
+}
+
+.profile-row-created {
+  color: var(--ll-on-surface-variant);
+  font-size: var(--ll-type-body-small-font-size);
+}
+
+@media (max-width: 480px) {
+  .cal-layer-picker {
+    columns: 1;
+  }
+}
+
+.home-state-title {
+  margin: 0 0 var(--ll-space-1);
+  font-weight: var(--ll-type-title-small-font-weight, 500);
+}

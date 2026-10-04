@@ -8912,6 +8912,196 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Leave with unsaved changes?'**
   String get webDayUnsavedWarning;
+
+  /// Issue #1253: the web home's signed-out state (the sign-in itself is #1250).
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to see your profiles.'**
+  String get webHomeNeedsSignIn;
+
+  /// Issue #1253: the visually-hidden label of the web home's profile switcher select.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile'**
+  String get webHomeProfileSwitcherLabel;
+
+  /// Issue #1253: heading above the next-period estimate on the web home, in the app's standard framing (care_modes.dart's _nextEstimateLabel standard branch).
+  ///
+  /// In en, this message translates to:
+  /// **'Next period estimate:'**
+  String get webHomeNextEstimateLabel;
+
+  /// Issue #1253: heading above a range-style estimate — the irregular-cycles framing's wording (care_modes.dart's _composedNextEstimateLabel and legacy irregular branch).
+  ///
+  /// In en, this message translates to:
+  /// **'Next period may start around:'**
+  String get webHomeNextEstimateRangeLabel;
+
+  /// Issue #1253: heading above the next-period estimate on a teen profile — plainer, less clinical phrasing (care_modes.dart's _nextEstimateLabel teen branch).
+  ///
+  /// In en, this message translates to:
+  /// **'Next period is estimated around:'**
+  String get webHomeNextEstimateLabelTeen;
+
+  /// Issue #1253: the shared estimate disclaimer (R17), rendered under every estimate on the web home exactly like kEstimateDisclaimer in lib/ui/overview/estimate_copy.dart.
+  ///
+  /// In en, this message translates to:
+  /// **'Estimates only — not medical advice.'**
+  String get webHomeEstimateDisclaimer;
+
+  /// Issue #1253: the teen framing's quiet overdue line (care_modes.dart's _teenOverdueStatusLabel, issue #998) — a teen is never late.
+  ///
+  /// In en, this message translates to:
+  /// **'No new period logged yet — a few days either way is normal.'**
+  String get webHomeTeenOverdueLine;
+
+  /// Issue #1253: the irregular framing's quiet overdue line (care_modes.dart's _irregular overdueStatusLabel) — variation is expected, not late.
+  ///
+  /// In en, this message translates to:
+  /// **'No new period logged yet — with irregular cycles, variation like this is common and expected.'**
+  String get webHomeIrregularOverdueLine;
+
+  /// Issue #1253: the insufficient-history heading in the standard framing (care_modes.dart's _notEnoughTitle).
+  ///
+  /// In en, this message translates to:
+  /// **'Not enough history yet'**
+  String get webHomeNotEnoughTitle;
+
+  /// Issue #1253: the insufficient-history heading on a teen profile (care_modes.dart's _notEnoughTitle teen branch).
+  ///
+  /// In en, this message translates to:
+  /// **'Your record is just getting started'**
+  String get webHomeNotEnoughTitleTeen;
+
+  /// Issue #1253: the insufficient-history progress sentence (care_modes.dart's completedCycleProgress); nextStep carries one of the webHomeNotEnough*Step fragments.
+  ///
+  /// In en, this message translates to:
+  /// **'{completed} of {needed} completed cycles — {nextStep}'**
+  String webHomeNotEnoughProgress(
+    Object completed,
+    Object needed,
+    Object nextStep,
+  );
+
+  /// Issue #1253: completedCycleProgress's next step when one more period completes the count.
+  ///
+  /// In en, this message translates to:
+  /// **'estimates start after the next period'**
+  String get webHomeNotEnoughNextPeriodStep;
+
+  /// Issue #1253: completedCycleProgress's next step from zero completed cycles.
+  ///
+  /// In en, this message translates to:
+  /// **'estimates start once {needed} completed cycles are recorded'**
+  String webHomeNotEnoughFirstCyclesStep(Object needed);
+
+  /// Issue #1253: completedCycleProgress's next step with two or more periods still to log.
+  ///
+  /// In en, this message translates to:
+  /// **'{remaining} more periods until estimates'**
+  String webHomeNotEnoughRemainingStep(Object remaining);
+
+  /// Issue #1253: one completed cycle's row in the web cycle history — its start date and closed length.
+  ///
+  /// In en, this message translates to:
+  /// **'Started {startedDate} · {length, plural, =1{1 day} other{{length} days}}'**
+  String webHomeCycleStartedLength(num length, Object startedDate);
+
+  /// Issue #1253: the web profiles page's edit action.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get webProfilesEditAction;
+
+  /// Issue #1253: the web profiles page's in-flight marker on a profile write.
+  ///
+  /// In en, this message translates to:
+  /// **'Saving…'**
+  String get webProfilesSaving;
+
+  /// Issue #1253: the web profiles page's failure state when the synced-data pull itself errors.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load profiles.'**
+  String get webProfilesLoadFailed;
+
+  /// Issue #1253: the web profiles page's generic write-failure line (the mutation keeps its error; the retry is the same control).
+  ///
+  /// In en, this message translates to:
+  /// **'That change didn\'t save. Try again.'**
+  String get webProfilesActionFailed;
+
+  /// Issue #1253: quiet confirmation after delete_profile_data succeeds.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile deleted.'**
+  String get webProfilesDeleted;
+
+  /// Issue #1253: the self relationship option (ProfileRelationship.label, lib/domain/models/profile_relationship.dart).
+  ///
+  /// In en, this message translates to:
+  /// **'Self'**
+  String get webProfilesRelationshipSelf;
+
+  /// Issue #1253: the daughter relationship option (ProfileRelationship.label).
+  ///
+  /// In en, this message translates to:
+  /// **'Daughter'**
+  String get webProfilesRelationshipDaughter;
+
+  /// Issue #1253: the son relationship option (ProfileRelationship.label).
+  ///
+  /// In en, this message translates to:
+  /// **'Son'**
+  String get webProfilesRelationshipSon;
+
+  /// Issue #1253: the child relationship option (ProfileRelationship.label).
+  ///
+  /// In en, this message translates to:
+  /// **'Child'**
+  String get webProfilesRelationshipChild;
+
+  /// Issue #1253: the partner relationship option (ProfileRelationship.label).
+  ///
+  /// In en, this message translates to:
+  /// **'Partner'**
+  String get webProfilesRelationshipPartner;
+
+  /// Issue #1253: the other relationship option (ProfileRelationship.label).
+  ///
+  /// In en, this message translates to:
+  /// **'Other'**
+  String get webProfilesRelationshipOther;
+
+  /// Issue #1253: opens a profile's home from the profiles list.
+  ///
+  /// In en, this message translates to:
+  /// **'Open'**
+  String get webProfilesOpenAction;
+
+  /// Issue #1253: the profiles list's delete action (the confirm steps carry the sharingManageGuardiansDeleteProfile* copy).
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get webProfilesDeleteAction;
+
+  /// Issue #1253: the web profiles page's edit form heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit profile'**
+  String get webProfilesEditTitle;
+
+  /// Issue #1253: the standard care mode option (ProfileMode.label).
+  ///
+  /// In en, this message translates to:
+  /// **'Standard'**
+  String get webProfilesModeStandard;
+
+  /// Issue #1253: the teen care mode option (ProfileMode.label).
+  ///
+  /// In en, this message translates to:
+  /// **'Teen'**
+  String get webProfilesModeTeen;
 }
 
 class _AppLocalizationsDelegate

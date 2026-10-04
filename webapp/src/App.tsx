@@ -13,6 +13,7 @@ import { DayPage } from './pages/DayPage';
 import { InvitePage } from './pages/InvitePage';
 import { ManageGuardiansPage } from './pages/ManageGuardiansPage';
 import { ProfileNotesPage } from './pages/ProfileNotesPage';
+import { ProfilesPage } from './pages/ProfilesPage';
 import { TodayPage } from './pages/TodayPage';
 
 /**
@@ -79,6 +80,9 @@ const router = createBrowserRouter([
       // Issue #1254: the day editor, one profile at a time; the day itself
       // is the `date` query parameter (defaults to the browser's today).
       { path: 'day/:profileId', element: <DayPage /> },
+      // Issue #1253: the profiles management page (list / create / edit /
+      // archive / delete) and the home's `?profile=` switcher.
+      { path: 'profiles', element: <ProfilesPage /> },
       { path: 'invite', element: <InvitePage /> },
       { path: 'profile/:profileId/guardians', element: <ManageGuardiansPage /> },
       { path: 'profile/:profileId/notes', element: <ProfileNotesPage /> },

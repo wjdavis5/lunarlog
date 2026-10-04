@@ -44,6 +44,7 @@ void main() {
     ..._predictCases(),
     ..._cycleHistoryCases(),
     ..._insightCases(),
+    ..._calendarForecastCases(),
     ..._validateDateCases(),
     ..._exportCases(),
     ..._inviteLinkCases(),
@@ -461,6 +462,50 @@ List<Map<String, Object?>> _insightCases() {
       'today': today,
       'tz': 'UTC',
       'entries': threeCycles,
+    }),
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// calendarForecast
+// ---------------------------------------------------------------------------
+
+/// The calendar's per-date forecast cells (issue #1253): an active fresh
+/// history (bands, numerals, fertile windows, the PMS band), and the two
+/// empty-map kinds the web calendar must not draw anything for — a
+/// life-stage-suppressed prediction and a stale history.
+List<Map<String, Object?>> _calendarForecastCases() {
+  const today = '2026-09-30';
+  final regular = _cycleEntries(
+    cycleLengths: [28, 28, 28, 28, 28, 28, 28],
+    firstStart: _addDays(today, -196),
+    pmsCycleDayOffset: 26,
+  );
+  return [
+    _case('calendarForecast.active-regular', 'calendarForecast', {
+      'today': today,
+      'tz': 'UTC',
+      'entries': regular,
+    }),
+    // A life-stage suppression answers no cells, kind `suppressed` — the
+    // web calendar shows logged days only, exactly like the app's.
+    _case('calendarForecast.suppressed-lifecycle', 'calendarForecast', {
+      'today': today,
+      'tz': 'UTC',
+      'entries': regular,
+      'lifecycleMode': 'pregnancy',
+    }),
+    // A stale history (issue #982) suppresses the whole forecast off the
+    // same flag the app's calendar reads: five completed 28-day cycles,
+    // then an open cycle 141 days old — well past the 4×mean stale
+    // threshold, so the estimate is active but stale.
+    _case('calendarForecast.stale-history', 'calendarForecast', {
+      'today': today,
+      'tz': 'UTC',
+      'entries': _cycleEntries(
+        cycleLengths: const [28, 28, 28, 28, 28],
+        firstStart: _addDays(today, -253),
+      ),
     }),
   ];
 }
