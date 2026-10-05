@@ -206,10 +206,21 @@ class ProfileEditResult {
   final String? postpartumBirthDate;
 }
 
+/// Opens the profile create/edit sheet.
+///
+/// [canChangeRelationship] (issue #1503) is false when the caller is known
+/// not to be [existing]'s primary guardian: the relationship then shows as
+/// read-only text with a line saying who can change it, and the result
+/// carries the profile's stored relationship. The caller decides it from
+/// the operator's role (`canChangeRelationship` in
+/// `lib/domain/models/profile_guardian.dart`); it defaults to true, which
+/// is right for a new profile (its creator is its primary guardian) and
+/// for a role that is not known yet.
 Future<ProfileEditResult?> showProfileEditDialog(
   BuildContext context, {
   Profile? existing,
   int? earliestEntryYear,
+  bool canChangeRelationship = true,
 }) {
   return showModalBottomSheet<ProfileEditResult>(
     context: context,
@@ -219,6 +230,7 @@ Future<ProfileEditResult?> showProfileEditDialog(
     builder: (dialogContext) => _ProfileEditDialog(
       existing: existing,
       earliestEntryYear: earliestEntryYear,
+      canChangeRelationship: canChangeRelationship,
     ),
   );
 }
@@ -228,17 +240,29 @@ Future<ProfileEditResult?> showProfileEditSheet(
   BuildContext context, {
   Profile? existing,
   int? earliestEntryYear,
+  bool canChangeRelationship = true,
 }) =>
     showProfileEditDialog(
       context,
       existing: existing,
       earliestEntryYear: earliestEntryYear,
+      canChangeRelationship: canChangeRelationship,
     );
 
 class _ProfileEditDialog extends StatefulWidget {
-  const _ProfileEditDialog({this.existing, this.earliestEntryYear});
+  const _ProfileEditDialog({
+    this.existing,
+    this.earliestEntryYear,
+    this.canChangeRelationship = true,
+  });
 
   final Profile? existing;
+
+  /// Issue #1503: whether the relationship control is offered. False only
+  /// for an existing profile whose caller is known not to be its primary
+  /// guardian - the server keeps the stored value for anyone else, so the
+  /// sheet shows it as text instead of a control that would revert.
+  final bool canChangeRelationship;
 
   /// Issue #923: the calendar year of the profile's earliest live day
   /// entry, when it has any — the upper bound [validateBirthYearForProfile]
@@ -491,7 +515,11 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
           mode: _mode,
           irregularFraming: _irregularChoice ?? widget.existing?.irregularFraming,
           birthYear: birthYear,
-          relationship: _relationship,
+          // Issue #1503: a caller who cannot change the relationship saves
+          // the one the profile already has - never a different value.
+          relationship: widget.canChangeRelationship
+              ? _relationship
+              : widget.existing?.relationship,
           lifecycleMode: _lifecycleMode,
           birthControlChoice: _birthControl,
           // Issue #1203: submitted only for a tracked method — a date
@@ -575,6 +603,73 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
       title: Text(isMinor
           ? l10n.profileDialogCountsAsMinor
           : l10n.profileDialogCountsAsAdult),
+    );
+  }
+
+  /// Issue #1503: who the profile is for. The profile's primary guardian
+  /// gets the dropdown, and so does anyone creating a profile and a caller
+  /// whose role is not known yet. Anyone else sees the stored value as
+  /// text with a line saying who can change it: the server puts back a
+  /// change from anyone but the primary guardian (issue #1499), so a
+  /// dropdown here let a co-parent pick a value that then reverted.
+  Widget _relationshipControl(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final label = Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        l10n.firstRunRelationshipLabel,
+        style: theme.textTheme.bodySmall,
+      ),
+    );
+    if (!widget.canChangeRelationship) {
+      return MergeSemantics(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            label,
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: LLSpace.space2),
+              child: Text(
+                _relationship?.label ?? l10n.profileDialogRelationshipNone,
+                key: const ValueKey('edit-relationship-read-only'),
+                style: theme.textTheme.titleMedium,
+              ),
+            ),
+            Text(
+              l10n.profileDialogRelationshipPrimaryGuardianOnly,
+              key: const ValueKey('edit-relationship-locked-hint'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return MergeSemantics(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          label,
+          DropdownButton<ProfileRelationship?>(
+            key: const ValueKey('edit-relationship-dropdown'),
+            value: _relationship,
+            isExpanded: true,
+            onChanged: (value) => setState(() => _relationship = value),
+            items: [
+              DropdownMenuItem<ProfileRelationship?>(
+                child: Text(l10n.profileDialogRelationshipNone),
+              ),
+              for (final relationship in ProfileRelationship.values)
+                DropdownMenuItem<ProfileRelationship?>(
+                  value: relationship,
+                  child: Text(relationship.label),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -986,37 +1081,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                         ),
                       ),
                       const SizedBox(height: LLSpace.space3),
-                      MergeSemantics(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                l10n.firstRunRelationshipLabel,
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ),
-                            DropdownButton<ProfileRelationship?>(
-                              value: _relationship,
-                              isExpanded: true,
-                              onChanged: (value) =>
-                                  setState(() => _relationship = value),
-                              items: [
-                                DropdownMenuItem<ProfileRelationship?>(
-                                  child:
-                                      Text(l10n.profileDialogRelationshipNone),
-                                ),
-                                for (final relationship in ProfileRelationship.values)
-                                  DropdownMenuItem<ProfileRelationship?>(
-                                    value: relationship,
-                                    child: Text(relationship.label),
-                                  ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
+                      _relationshipControl(context),
                       const SizedBox(height: LLSpace.space3),
                       MergeSemantics(
                         child: Column(

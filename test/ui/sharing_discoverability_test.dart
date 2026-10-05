@@ -3,7 +3,8 @@
 /// opening a menu, the outstanding-invitation badge outside Manage
 /// Guardians (and cleared on cancel), offline badge-free rendering, and
 /// viewer read-only surfaces. Also the role gates on the picker's row menu
-/// (issue #531) and on both unarchive controls (issue #1411).
+/// (issue #531), on both unarchive controls (issue #1411), and on the
+/// relationship inside the Edit profile sheet (issue #1503).
 library;
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -18,6 +19,7 @@ import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
@@ -1575,6 +1577,141 @@ void main() {
         expect(find.byKey(ValueKey('profile-row-${solo.id}')), findsOneWidget,
             reason: 'back among the active profiles');
         expect(await isArchived(db, solo.id), isFalse);
+      } finally {
+        await _disposeApp(tester, db);
+      }
+    });
+  });
+
+  group('the relationship in Edit profile follows guardian role (issue #1503)',
+      () {
+    const dropdown = ValueKey('edit-relationship-dropdown');
+    const readOnlyValue = ValueKey('edit-relationship-read-only');
+    const lockedLine = 'Only the primary guardian can change this.';
+
+    /// Seeds one profile, Kid, whose relationship is Daughter. With a
+    /// [memberRole], Mom is its primary guardian and `user-member` holds
+    /// that role; without one the profile has no guardian rows at all.
+    Future<String> seedKid(LunarLogDatabase db, {String? memberRole}) async {
+      final kid = await DriftProfilesRepository(db.storage).create(
+        displayName: 'Kid',
+        isMinor: true,
+        relationship: ProfileRelationship.daughter,
+      );
+      if (memberRole != null) {
+        await db.storage.applyRemoteRows([
+          _row(kid.id, 0, 'user-mom', 'primary_guardian', 'Mom'),
+          _row(kid.id, 1, 'user-member', memberRole, 'Member'),
+        ]);
+      }
+      return kid.id;
+    }
+
+    /// Opens [profileId]'s row menu and its Edit profile sheet.
+    Future<void> openEditor(WidgetTester tester, String profileId) async {
+      await tester.tap(find.descendant(
+        of: find.byKey(ValueKey('profile-row-$profileId')),
+        matching: find.byType(PopupMenuButton<String>),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Edit profile'));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> save(WidgetTester tester) async {
+      await tester.ensureVisible(find.text('Save'));
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+    }
+
+    Future<Profile> stored(LunarLogDatabase db, String profileId) async =>
+        (await DriftProfilesRepository(db.storage).findById(profileId))!;
+
+    testWidgets(
+        'co_parent sees the relationship as text with the line saying who '
+        'can change it, and her save leaves it untouched', (tester) async {
+      final auth = _signedInAs('user-member');
+      addTearDown(auth.dispose);
+      final db = await _pumpApp(tester, auth: auth, sharing: FakeSharing126());
+      try {
+        final kidId = await seedKid(db, memberRole: 'co_parent');
+        await tester.pumpAndSettle();
+        await openEditor(tester, kidId);
+
+        // No control that changes the relationship: the stored value as
+        // text, and the one line.
+        expect(find.byKey(dropdown), findsNothing);
+        expect(tester.widget<Text>(find.byKey(readOnlyValue)).data, 'Daughter');
+        expect(find.text(lockedLine), findsOneWidget);
+
+        // Everything else a co-parent can edit still saves.
+        await tester.enterText(find.byType(TextFormField).first, 'Kiddo');
+        await save(tester);
+
+        final saved = await stored(db, kidId);
+        expect(saved.displayName, 'Kiddo');
+        expect(saved.relationship, ProfileRelationship.daughter);
+      } finally {
+        await _disposeApp(tester, db);
+      }
+    });
+
+    testWidgets(
+        'primary_guardian keeps the dropdown, with no line, and her change '
+        'is saved', (tester) async {
+      final auth = _signedInAs('user-mom');
+      addTearDown(auth.dispose);
+      final db = await _pumpApp(tester, auth: auth, sharing: FakeSharing126());
+      try {
+        final kidId = await seedKid(db, memberRole: 'co_parent');
+        await tester.pumpAndSettle();
+        await openEditor(tester, kidId);
+
+        expect(find.byKey(dropdown), findsOneWidget);
+        expect(find.byKey(readOnlyValue), findsNothing);
+        expect(find.text(lockedLine), findsNothing);
+
+        await tester.ensureVisible(find.byKey(dropdown));
+        await tester.tap(find.byKey(dropdown));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Child').last);
+        await tester.pumpAndSettle();
+        await save(tester);
+
+        expect((await stored(db, kidId)).relationship,
+            ProfileRelationship.child);
+      } finally {
+        await _disposeApp(tester, db);
+      }
+    });
+
+    testWidgets(
+        'unresolved/unknown role keeps the dropdown '
+        '(fails open per the null-vs-empty discipline)', (tester) async {
+      final auth = _signedInAs('user-solo');
+      addTearDown(auth.dispose);
+      final db = await _pumpApp(tester, auth: auth, sharing: FakeSharing126());
+      try {
+        // A local-only profile with no guardian rows at all: `myRole`
+        // never resolves, which is never read as "known not to be the
+        // primary guardian".
+        final kidId = await seedKid(db);
+        await tester.pumpAndSettle();
+        await openEditor(tester, kidId);
+
+        expect(find.byKey(dropdown), findsOneWidget);
+        expect(find.byKey(readOnlyValue), findsNothing);
+        expect(find.text(lockedLine), findsNothing);
+
+        await tester.ensureVisible(find.byKey(dropdown));
+        await tester.tap(find.byKey(dropdown));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Partner').last);
+        await tester.pumpAndSettle();
+        await save(tester);
+
+        expect((await stored(db, kidId)).relationship,
+            ProfileRelationship.partner);
       } finally {
         await _disposeApp(tester, db);
       }

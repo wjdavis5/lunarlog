@@ -5986,6 +5986,12 @@ abstract class AppLocalizations {
   /// **'None'**
   String get profileDialogRelationshipNone;
 
+  /// Issue #1503: the line under the relationship in both profile editors (the app's Edit profile sheet and the browser's profiles page) for anyone but the profile's primary guardian, who sees the relationship as read-only. The server lets only the primary guardian change who a profile is for (issue #1499) and keeps the stored value for anyone else, so no control is offered. Says 'primary guardian', the role's name everywhere else in the app (issue #1003), not 'owner'.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the primary guardian can change this.'**
+  String get profileDialogRelationshipPrimaryGuardianOnly;
+
   /// Issue #1004 (tranche 3): cancel action of the profile edit dialog.
   ///
   /// In en, this message translates to:

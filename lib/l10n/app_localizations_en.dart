@@ -3791,6 +3791,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileDialogRelationshipNone => 'None';
 
   @override
+  String get profileDialogRelationshipPrimaryGuardianOnly =>
+      'Only the primary guardian can change this.';
+
+  @override
   String get profileDialogCancel => 'Cancel';
 
   @override

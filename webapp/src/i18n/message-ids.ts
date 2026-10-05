@@ -981,6 +981,7 @@ export const MESSAGE_IDS = [
   "profileDialogAddTitle",
   "profileDialogBirthYearLabel",
   "profileDialogRelationshipNone",
+  "profileDialogRelationshipPrimaryGuardianOnly",
   "profileDialogCancel",
   "profileDialogCreate",
   "profileDialogSave",

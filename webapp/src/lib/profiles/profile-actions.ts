@@ -32,7 +32,14 @@ export interface ProfileFields {
   /** Create-only: the edit path never flips the flag by itself. */
   isMinor?: boolean;
   birthYear: number | null;
-  relationship: string | null;
+  /**
+   * Who the profile is for. `undefined` on an edit leaves the stored value
+   * alone: the payload omits the key and the server's containment guard
+   * keeps the column. That is what a caller who is not the profile's
+   * primary guardian sends (issue #1503) — the server would put her value
+   * back anyway (issue #1499). On a create, `undefined` is no relationship.
+   */
+  relationship?: string | null;
   /** The care mode (`ProfileMode`): standard or teen (choosableModes). */
   mode: string;
   /**
@@ -120,7 +127,7 @@ export async function createProfile(
     is_minor: args.fields.isMinor ?? false,
     sort_order: nextSortOrder(args.existingSortOrders.map((sort_order) => ({ sort_order }))),
     birth_year: args.fields.birthYear,
-    relationship: args.fields.relationship,
+    relationship: args.fields.relationship ?? null,
     mode: args.fields.mode,
     ...(args.fields.irregularFraming === undefined
       ? {}
@@ -149,8 +156,9 @@ export async function createProfile(
  * Updates a profile's editable fields. The stored row's full-row columns
  * (sort order, archive stamp, creation date) ride along unchanged — the
  * server would otherwise reset them (issue #1388) — and an omitted
- * `irregularFraming` stays omitted, so the server's containment guard
- * preserves the stored tri-state.
+ * `irregularFraming` or `relationship` stays omitted, so the server's
+ * containment guard preserves the stored value (the relationship is
+ * omitted for everyone but the primary guardian, issue #1503).
  */
 export async function updateProfile(
   client: AppSupabaseClient,
@@ -160,7 +168,7 @@ export async function updateProfile(
   const payload = editedProfilePayload(profile, {
     display_name: fields.displayName.trim(),
     birth_year: fields.birthYear,
-    relationship: fields.relationship,
+    ...(fields.relationship === undefined ? {} : { relationship: fields.relationship }),
     mode: fields.mode,
     ...(fields.irregularFraming === undefined
       ? {}

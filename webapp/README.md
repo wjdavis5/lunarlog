@@ -284,7 +284,11 @@ the cycle history with its statistics, and a compact comparison of the two
 most recent completed cycles. `/profiles` is the picker's management half:
 create, edit, archive/unarchive, and the two-step permanent delete, gated
 by the caller's guardian role exactly as the server gates them (edit:
-primary/co-parent; delete: primary only).
+primary/co-parent; delete: primary only). Inside the edit form, who the
+profile is for (the relationship) is the primary guardian's alone to
+change: a co-parent sees the stored value, disabled, with a line saying
+so, and her save does not send it (issue #1503; the server would put her
+value back, issue #1499).
 
 - **Every domain computation is the compiled module's** (`src/domain/`,
   issue #1251): `predict`, `cycleHistory`, and - new in this issue -

@@ -502,6 +502,12 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
       context,
       existing: profile,
       earliestEntryYear: earliestEntryYear,
+      // Issue #1503: only the primary guardian can change who the profile
+      // is for. The role is the one the row menu already keys on, read as
+      // the sheet opens; an unknown role (no synced guardian rows, or no
+      // sharing state at all) fails open, like the menu itself (#531).
+      canChangeRelationship:
+          canChangeRelationship(_overview?.infoFor(profile.id).myRole),
     );
     if (result == null) return;
     final priorMode = priorModeRow?.mode ?? LifecycleMode.tracking;

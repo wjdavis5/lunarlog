@@ -978,6 +978,7 @@
   "profileDialogAddTitle": "Add profile",
   "profileDialogBirthYearLabel": "Birth year (optional)",
   "profileDialogRelationshipNone": "None",
+  "profileDialogRelationshipPrimaryGuardianOnly": "Only the primary guardian can change this.",
   "profileDialogCancel": "Cancel",
   "profileDialogCreate": "Create",
   "profileDialogSave": "Save",
