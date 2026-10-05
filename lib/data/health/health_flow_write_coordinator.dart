@@ -145,11 +145,20 @@ class LocalHealthFlowWriteCoordinator implements HealthFlowWriteCoordinator {
   @override
   Future<void> dispose() async {
     _disposed = true;
-    await _boundSub?.cancel();
-    _boundSub = null;
-    await _entriesSub?.cancel();
-    _entriesSub = null;
     _debounceTimer?.cancel();
     _debounceTimer = null;
+    // Cancelled, not awaited. A cancel takes effect at once — no further
+    // event reaches this coordinator, and `_disposed` stops anything
+    // already in flight — while the future it returns only reports the
+    // source's own clean-up, which needs a turn of the real event loop.
+    // The app's teardown (and so a device reset) waits for this method,
+    // and under a widget test's fake clock that turn never comes: every
+    // test that tears the whole app down hung here once Android wrote too
+    // and the test platform started building this coordinator (Issue
+    // #1478).
+    unawaited(_boundSub?.cancel());
+    unawaited(_entriesSub?.cancel());
+    _boundSub = null;
+    _entriesSub = null;
   }
 }
