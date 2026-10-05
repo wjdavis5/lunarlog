@@ -17,6 +17,10 @@ import {
  * banner, life-stage modes and birth control suppress the estimate
  * outright, and every estimate carries the R17 disclaimer. All copy rides
  * the ARB catalogue.
+ *
+ * The profile's name is the page's one top-level heading: this card is
+ * always the first thing on a profile's home, in every state, and the
+ * page had no h1 without it.
  */
 
 const kDateLocale = 'en';
@@ -149,9 +153,9 @@ export function ProfileHomeStatus(props: {
   if (view.kind === 'disabled') {
     return (
       <section className="card" aria-labelledby="home-estimate-title">
-        <h2 className="card-title" id="home-estimate-title">
+        <h1 className="card-title" id="home-estimate-title">
           {props.displayName}
-        </h2>
+        </h1>
         <p className="home-state-title">{t('predictionsDisabledTitle')}</p>
         <p className="card-body">{t('predictionsDisabledBody')}</p>
       </section>
@@ -161,9 +165,9 @@ export function ProfileHomeStatus(props: {
   if (view.kind === 'suppressed') {
     return (
       <section className="card" aria-labelledby="home-estimate-title">
-        <h2 className="card-title" id="home-estimate-title">
+        <h1 className="card-title" id="home-estimate-title">
           {props.displayName}
-        </h2>
+        </h1>
         <p className="home-state-title">{t('predictionsSuppressedTitle')}</p>
         <p className="card-body">
           {view.lifecycleModeDb !== null
@@ -186,9 +190,9 @@ export function ProfileHomeStatus(props: {
     const step = notEnoughProgress(view.completedCycles, view.neededCycles);
     return (
       <section className="card" aria-labelledby="home-estimate-title">
-        <h2 className="card-title" id="home-estimate-title">
+        <h1 className="card-title" id="home-estimate-title">
           {props.displayName}
-        </h2>
+        </h1>
         <p className="home-state-title">
           {view.teen ? t('webHomeNotEnoughTitleTeen') : t('webHomeNotEnoughTitle')}
         </p>
@@ -224,9 +228,9 @@ export function ProfileHomeStatus(props: {
 
   return (
     <section className="card" aria-labelledby="home-estimate-title">
-      <h2 className="card-title" id="home-estimate-title">
+      <h1 className="card-title" id="home-estimate-title">
         {props.displayName}
-      </h2>
+      </h1>
       <p className="home-phase">{phaseLine}</p>
       <p className="home-estimate">
         <span className="home-estimate-label">{t(estimateHeadingId(view))}</span>{' '}

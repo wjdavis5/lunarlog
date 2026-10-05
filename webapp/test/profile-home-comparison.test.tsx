@@ -1,10 +1,16 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, renderHook, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { CycleHistoryView } from '../src/domain/schemas';
 import { AppIntlProvider } from '../src/i18n/i18n';
 import messages from '../src/i18n/messages.en.json';
-import { ProfileHomeComparison } from '../src/pages/ProfileHomeHistory';
+import { useT } from '../src/i18n/t';
+import {
+  compareRow,
+  formatDays,
+  ProfileHomeComparison,
+  ProfileHomeHistory,
+} from '../src/pages/ProfileHomeHistory';
 
 /**
  * The home's cycle comparison compares the two newest completed cycles on
@@ -75,6 +81,81 @@ describe('ProfileHomeComparison', () => {
     expect(
       screen.getByRole('heading', { name: messages['cycleComparisonScreenTitle'] }),
     ).toBeInTheDocument();
-    expect(screen.getByTestId('compare-length-diff')).toHaveTextContent('2');
+    expect(screen.getByTestId('compare-length-diff')).toHaveTextContent(/^2 days$/);
+    // Both cycles in this fixture have four bleed days.
+    expect(screen.getByTestId('compare-bleed-diff')).toHaveTextContent(/^0 days$/);
+    expect(screen.getByText('Length: 28 days · Bleed days: 4 days')).toBeInTheDocument();
+    expect(screen.getByText('Length: 30 days · Bleed days: 4 days')).toBeInTheDocument();
+  });
+
+  it('says a difference of one is one day', () => {
+    renderComparison(
+      view([cycle('2026-09-28', null, true), cycle('2026-08-31', 28), cycle('2026-08-02', 29)]),
+    );
+    expect(screen.getByTestId('compare-length-diff')).toHaveTextContent(/^1 day$/);
+  });
+});
+
+/**
+ * A number of days says "days". The page printed the bare number, so
+ * "Variation 0" did not say what it counted, and it rounded an average
+ * that the app shows to one decimal.
+ */
+describe('day counts on the home carry their unit', () => {
+  afterEach(cleanup);
+
+  function t() {
+    return renderHook(() => useT(), { wrapper: AppIntlProvider }).result.current;
+  }
+
+  it('formatDays writes a whole number bare and anything else to one decimal', () => {
+    expect(formatDays(t(), 28)).toBe('28 days');
+    expect(formatDays(t(), 1)).toBe('1 day');
+    expect(formatDays(t(), 0)).toBe('0 days');
+    expect(formatDays(t(), 28.5)).toBe('28.5 days');
+    expect(formatDays(t(), 4.75)).toBe('4.8 days');
+  });
+
+  it('compareRow names an ongoing cycle and an unknown bleed count without a unit', () => {
+    expect(compareRow(t(), null, null)).toBe(
+      `Length: ${messages['cycleComparisonOngoingLabel']} · Bleed days: —`,
+    );
+    expect(compareRow(t(), 31, 1)).toBe('Length: 31 days · Bleed days: 1 day');
+  });
+
+  it('the history statistics show days, as the app does', () => {
+    render(
+      <AppIntlProvider>
+        <ProfileHomeHistory
+          history={{
+            ...view([cycle('2026-09-28', null, true), cycle('2026-08-31', 28)]),
+            meanCycleLengthDays: 28.5,
+            meanPeriodLengthDays: 5,
+            variationDays: 1,
+          }}
+        />
+      </AppIntlProvider>,
+    );
+    expect(screen.getByTestId('stat-avg-cycle')).toHaveTextContent(/^28\.5 days$/);
+    expect(screen.getByTestId('stat-avg-period')).toHaveTextContent(/^5 days$/);
+    expect(screen.getByTestId('stat-variation')).toHaveTextContent(/^1 day$/);
+  });
+
+  it('a statistic that is not known yet stays a dash, with no unit', () => {
+    render(
+      <AppIntlProvider>
+        <ProfileHomeHistory
+          history={{
+            ...view([cycle('2026-09-28', null, true), cycle('2026-08-31', 28)]),
+            meanCycleLengthDays: 28,
+            meanPeriodLengthDays: null,
+            variationDays: null,
+          }}
+        />
+      </AppIntlProvider>,
+    );
+    expect(screen.getByTestId('stat-avg-cycle')).toHaveTextContent(/^28 days$/);
+    expect(screen.getByTestId('stat-avg-period')).toHaveTextContent(/^—$/);
+    expect(screen.getByTestId('stat-variation')).toHaveTextContent(/^—$/);
   });
 });
