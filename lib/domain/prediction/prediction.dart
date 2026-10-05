@@ -58,6 +58,11 @@
 /// it) is the *service* (`prediction_service.dart`); this file's
 /// `computePrediction` path is unchanged by #218 — a profile with no
 /// supplied facts gets exactly the same [NotEnoughHistory] it always did.
+/// Issue #1392: while the estimate is still provisional, a period logged on
+/// or after the supplied start re-anchors it at once
+/// ([_provisionalAnchor]) — the supplied cycle length is kept, the
+/// supplied start is not — so Today, cycle history, the calendar and the
+/// fertile window all name the same current cycle.
 ///
 /// Issue #233 adds the birth-control branch: an in-effect
 /// ([ActiveBirthControl]) continuous method returns the named
@@ -1567,13 +1572,28 @@ class CycleFacts {
 /// [NotEnoughHistory] with zero counts; the *service* keeps the computed
 /// result's counts instead when it falls back here, so an all-skipped
 /// onboarding reads exactly as today.
+///
+/// Issue #1392: the supplied start is only the anchor until a real period
+/// is logged. [episodes] are the profile's logged episodes (empty by
+/// default, which keeps the pure onboarding seed); the current cycle is
+/// anchored by [_provisionalAnchor] on the latest logged period that
+/// reaches or post-dates the supplied start, so `lastEpisodeStart`,
+/// `cycleDay`, the estimate, its forecast, the long-cycle and stale
+/// thresholds, and everything derived from them (fertile window, calendar
+/// bands, reminders) follow the logged start while the supplied *cycle
+/// length* keeps standing in for the mean. The tier rule is unchanged —
+/// one logged period completes no cycle, so the estimate stays
+/// [CycleConfidence.provisional] until the computed path displaces it —
+/// and no blending happens: the anchor is one date or the other, never an
+/// average of the two.
 CyclePrediction seedProvisionalPrediction({
   required CycleFacts facts,
   required LocalDate today,
+  List<Episode> episodes = const [],
 }) {
-  final lastStart = facts.lastPeriodStart;
+  final seedStart = facts.lastPeriodStart;
   final cycleDays = facts.typicalCycleLengthDays;
-  if (lastStart == null || cycleDays == null || !_withinValidWindow(cycleDays)) {
+  if (seedStart == null || cycleDays == null || !_withinValidWindow(cycleDays)) {
     return const NotEnoughHistory(
       episodeCount: 0,
       completedCycleCount: 0,
@@ -1582,6 +1602,12 @@ CyclePrediction seedProvisionalPrediction({
     );
   }
 
+  final anchor = _provisionalAnchor(
+    seedStart: seedStart,
+    episodes: episodes,
+    today: today,
+  );
+  final lastStart = anchor.start;
   final openDays = today.difference(lastStart);
   final unusuallyLongCycle = openDays > kMaxOpenCycleDays;
   // Issue #859: a seeded answer can go stale exactly like a logged history —
@@ -1626,7 +1652,12 @@ CyclePrediction seedProvisionalPrediction({
     // negative day) — the form bounds the picker, this keeps the value
     // honest even if it ever slips past one.
     cycleDay: openDays < 0 ? 1 : openDays + 1,
-    duringEpisode: openDays >= 0 && openDays < periodLengthDays,
+    duringEpisode: _provisionalDuringEpisode(
+      anchor: anchor,
+      episodes: episodes,
+      today: today,
+      periodLengthDays: periodLengthDays,
+    ),
     completedCycleCount: 0,
     validCycleCount: 0,
     meanPeriodLengthDays: periodLengthDays.toDouble(),
@@ -1637,6 +1668,90 @@ CyclePrediction seedProvisionalPrediction({
     staleHistory: staleHistory,
   );
 }
+
+/// Where a provisional estimate's current cycle starts (issue #1392):
+/// either the onboarding answer or a logged episode start. [logged] tells
+/// [_provisionalDuringEpisode] which of the two it is, because only the
+/// onboarding answer needs an *estimated* bleed window.
+class _ProvisionalAnchor {
+  const _ProvisionalAnchor({required this.start, required this.logged});
+
+  final LocalDate start;
+
+  /// True when [start] is a logged episode start rather than
+  /// [CycleFacts.lastPeriodStart].
+  final bool logged;
+}
+
+/// Picks the current cycle's start for a provisional estimate (issue
+/// #1392): the most recent period the app knows about. Logged periods are
+/// known exactly; the onboarding answer [seedStart] stands in only for a
+/// period that is not logged.
+///
+/// * The latest logged episode that starts on or after [seedStart] wins —
+///   a period logged after onboarding is a new cycle, however early or
+///   late it arrives. Before this, the seed stayed the anchor until three
+///   whole cycles were logged, so Today kept counting from the onboarding
+///   date while cycle history and the calendar showed the new cycle.
+/// * A logged episode that starts before [seedStart] but runs up to or
+///   past it is the *same* period, recorded day by day, so its start wins
+///   too (the logged days are the more precise record of when it began).
+/// * A logged episode that ended before [seedStart] is an earlier period.
+///   It never moves the anchor backwards: the onboarding answer is still
+///   the most recent start known, and counting from the older one would
+///   overstate the cycle day and report the estimate as overdue.
+///
+/// Issue LLA-071 applies here exactly as it does in [computePrediction]: a
+/// future-dated stored episode never anchors today's cycle.
+_ProvisionalAnchor _provisionalAnchor({
+  required LocalDate seedStart,
+  required List<Episode> episodes,
+  required LocalDate today,
+}) {
+  Episode? latest;
+  for (final episode in episodes) {
+    if (episode.start.isAfter(today)) continue;
+    if (latest == null || episode.start.isAfter(latest.start)) {
+      latest = episode;
+    }
+  }
+  if (latest == null || latest.end.isBefore(seedStart)) {
+    return _ProvisionalAnchor(start: seedStart, logged: false);
+  }
+  return _ProvisionalAnchor(start: latest.start, logged: true);
+}
+
+/// Whether today is inside a period for a provisional estimate (issue
+/// #1392). A logged episode covering today always counts, as on the
+/// computed path. Otherwise only the onboarding answer falls back to an
+/// estimated window ([periodLengthDays] from the supplied start): once the
+/// anchor is a logged period, the log itself says which days bled.
+bool _provisionalDuringEpisode({
+  required _ProvisionalAnchor anchor,
+  required List<Episode> episodes,
+  required LocalDate today,
+  required int periodLengthDays,
+}) {
+  if (episodes.any((episode) => episode.contains(today))) return true;
+  if (anchor.logged) return false;
+  final openDays = today.difference(anchor.start);
+  return openDays >= 0 && openDays < periodLengthDays;
+}
+
+/// Convenience: derives the logged episodes from raw entries first, then
+/// seeds (mirrors [computePredictionFromEntries]). This is the call the
+/// service and the web facade make, so both anchor the provisional
+/// estimate on the same episodes the computed path and cycle history read.
+CyclePrediction seedProvisionalPredictionFromEntries({
+  required CycleFacts facts,
+  required Iterable<DayEntry> entries,
+  required LocalDate today,
+}) =>
+    seedProvisionalPrediction(
+      facts: facts,
+      today: today,
+      episodes: deriveEpisodes(bleedDatesOf(entries)),
+    );
 
 /// Convenience: derives episodes from raw entries first, then predicts.
 /// The entries' PMS markers (Issue #220) join the derivation in the same

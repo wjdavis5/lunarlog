@@ -3059,12 +3059,12 @@
       "data": {
         "kind": "active",
         "today": "2026-09-30",
-        "lastEpisodeStart": "2026-09-18",
-        "estimatedNextStart": "2026-10-18",
-        "originalEstimatedNextStart": "2026-10-18",
+        "lastEpisodeStart": "2026-09-20",
+        "estimatedNextStart": "2026-10-20",
+        "originalEstimatedNextStart": "2026-10-20",
         "averagedCycleLengths": [],
         "meanCycleLengthDays": 30.0,
-        "cycleDay": 13,
+        "cycleDay": 11,
         "duringEpisode": false,
         "completedCycleCount": 0,
         "validCycleCount": 0,
@@ -3076,88 +3076,275 @@
         "unusuallyLongCycle": false,
         "staleHistory": false,
         "daysLate": null,
-        "daysUntilNextPeriod": 18,
+        "daysUntilNextPeriod": 20,
         "forecast": [
           {
             "cycleIndex": 1,
-            "start": "2026-10-18",
+            "start": "2026-10-20",
             "estimatedPeriodLengthDays": 5,
             "tier": "provisional",
             "spreadDays": 4.0
           },
           {
             "cycleIndex": 2,
-            "start": "2026-11-17",
+            "start": "2026-11-19",
             "estimatedPeriodLengthDays": 5,
             "tier": "provisional",
             "spreadDays": 5.656854249492381
           },
           {
             "cycleIndex": 3,
-            "start": "2026-12-17",
+            "start": "2026-12-19",
             "estimatedPeriodLengthDays": 5,
             "tier": "provisional",
             "spreadDays": 6.928203230275509
           },
           {
             "cycleIndex": 4,
-            "start": "2027-01-16",
+            "start": "2027-01-18",
             "estimatedPeriodLengthDays": 5,
             "tier": "provisional",
             "spreadDays": 8.0
           },
           {
             "cycleIndex": 5,
-            "start": "2027-02-15",
+            "start": "2027-02-17",
             "estimatedPeriodLengthDays": 5,
             "tier": "provisional",
             "spreadDays": 8.94427190999916
           },
           {
             "cycleIndex": 6,
-            "start": "2027-03-17",
+            "start": "2027-03-19",
             "estimatedPeriodLengthDays": 5,
             "tier": "provisional",
             "spreadDays": 9.797958971132712
           },
           {
             "cycleIndex": 7,
-            "start": "2027-04-16",
+            "start": "2027-04-18",
             "estimatedPeriodLengthDays": 5,
             "tier": "provisional",
             "spreadDays": 10.583005244258363
           },
           {
             "cycleIndex": 8,
-            "start": "2027-05-16",
+            "start": "2027-05-18",
             "estimatedPeriodLengthDays": 5,
             "tier": "provisional",
             "spreadDays": 11.313708498984761
           },
           {
             "cycleIndex": 9,
-            "start": "2027-06-15",
+            "start": "2027-06-17",
             "estimatedPeriodLengthDays": 5,
             "tier": "provisional",
             "spreadDays": 12.0
           },
           {
             "cycleIndex": 10,
-            "start": "2027-07-15",
+            "start": "2027-07-17",
             "estimatedPeriodLengthDays": 5,
             "tier": "provisional",
             "spreadDays": 12.649110640673518
           },
           {
             "cycleIndex": 11,
-            "start": "2027-08-14",
+            "start": "2027-08-16",
             "estimatedPeriodLengthDays": 5,
             "tier": "provisional",
             "spreadDays": 13.2664991614216
           },
           {
             "cycleIndex": 12,
-            "start": "2027-09-13",
+            "start": "2027-09-15",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 13.856406460551018
+          }
+        ],
+        "pms": null
+      }
+    }
+  },
+  {
+    "name": "predict.provisional-seed-after-logged-period",
+    "method": "predict",
+    "request": {
+      "today": "2026-09-30",
+      "tz": "UTC",
+      "entries": [
+        {
+          "id": "entry-profile-1-0-0",
+          "profileId": "profile-1",
+          "localDate": "2026-09-20",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-09-20T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-0-1",
+          "profileId": "profile-1",
+          "localDate": "2026-09-21",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-09-21T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-0-2",
+          "profileId": "profile-1",
+          "localDate": "2026-09-22",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-09-22T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-0-3",
+          "profileId": "profile-1",
+          "localDate": "2026-09-23",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-09-23T12:00:00.000Z"
+        }
+      ],
+      "facts": {
+        "lastPeriodStart": "2026-09-27",
+        "typicalCycleLengthDays": 30,
+        "typicalPeriodLengthDays": 5
+      }
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "kind": "active",
+        "today": "2026-09-30",
+        "lastEpisodeStart": "2026-09-27",
+        "estimatedNextStart": "2026-10-27",
+        "originalEstimatedNextStart": "2026-10-27",
+        "averagedCycleLengths": [],
+        "meanCycleLengthDays": 30.0,
+        "cycleDay": 4,
+        "duringEpisode": true,
+        "completedCycleCount": 0,
+        "validCycleCount": 0,
+        "meanPeriodLengthDays": 5.0,
+        "spreadDays": 4.0,
+        "validRatio": 1.0,
+        "tier": "provisional",
+        "basis": "statistical",
+        "unusuallyLongCycle": false,
+        "staleHistory": false,
+        "daysLate": null,
+        "daysUntilNextPeriod": 27,
+        "forecast": [
+          {
+            "cycleIndex": 1,
+            "start": "2026-10-27",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 4.0
+          },
+          {
+            "cycleIndex": 2,
+            "start": "2026-11-26",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 5.656854249492381
+          },
+          {
+            "cycleIndex": 3,
+            "start": "2026-12-26",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 6.928203230275509
+          },
+          {
+            "cycleIndex": 4,
+            "start": "2027-01-25",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 8.0
+          },
+          {
+            "cycleIndex": 5,
+            "start": "2027-02-24",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 8.94427190999916
+          },
+          {
+            "cycleIndex": 6,
+            "start": "2027-03-26",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 9.797958971132712
+          },
+          {
+            "cycleIndex": 7,
+            "start": "2027-04-25",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 10.583005244258363
+          },
+          {
+            "cycleIndex": 8,
+            "start": "2027-05-25",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 11.313708498984761
+          },
+          {
+            "cycleIndex": 9,
+            "start": "2027-06-24",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 12.0
+          },
+          {
+            "cycleIndex": 10,
+            "start": "2027-07-24",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 12.649110640673518
+          },
+          {
+            "cycleIndex": 11,
+            "start": "2027-08-23",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 13.2664991614216
+          },
+          {
+            "cycleIndex": 12,
+            "start": "2027-09-22",
             "estimatedPeriodLengthDays": 5,
             "tier": "provisional",
             "spreadDays": 13.856406460551018

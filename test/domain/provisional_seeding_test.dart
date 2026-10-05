@@ -8,6 +8,7 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/domain/episodes/episodes.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -290,6 +291,207 @@ void main() {
       ) as ActivePrediction;
       expect(active.unusuallyLongCycle, isFalse);
       expect(active.tier, CycleConfidence.provisional);
+    });
+  });
+
+  group('a logged period re-anchors the seed (issue #1392)', () {
+    // The issue's first repro, on this file's `today`: a seed 30 days old
+    // with a 28-day typical cycle reads "2 days past the estimate, cycle
+    // day 31" until a period is logged.
+    final lateSeed = CycleFacts(
+      lastPeriodStart: LocalDate(2026, 4, 20),
+      typicalCycleLengthDays: 28,
+      typicalPeriodLengthDays: 5,
+    );
+    // The second repro: a seed 13 days old (cycle day 14).
+    final earlySeed = CycleFacts(
+      lastPeriodStart: LocalDate(2026, 5, 7),
+      typicalCycleLengthDays: 28,
+      typicalPeriodLengthDays: 5,
+    );
+
+    ActivePrediction seeded(CycleFacts facts, List<Episode> episodes) =>
+        seedProvisionalPrediction(
+          facts: facts,
+          today: today,
+          episodes: episodes,
+        ) as ActivePrediction;
+
+    test('late period: a period logged today starts the cycle today', () {
+      final before = seeded(lateSeed, const []);
+      expect(before.cycleDay, 31);
+      expect(before.daysUntilNextPeriod, -2);
+
+      final after = seeded(lateSeed, [Episode(today, today)]);
+      expect(after.lastEpisodeStart, today);
+      expect(after.cycleDay, 1);
+      expect(after.duringEpisode, isTrue);
+      expect(after.daysLate, isNull);
+      expect(after.daysUntilNextPeriod, 28);
+      expect(after.originalEstimatedNextStart, LocalDate(2026, 6, 17));
+      expect(after.estimatedNextStart, LocalDate(2026, 6, 17));
+      expect(after.forecast.first.start, LocalDate(2026, 6, 17));
+      expect(after.forecast[1].start, LocalDate(2026, 7, 15));
+    });
+
+    test('early period: a period logged on cycle day 14 starts a new '
+        'cycle instead of leaving the seed-based estimate in place', () {
+      final before = seeded(earlySeed, const []);
+      expect(before.cycleDay, 14);
+      expect(before.estimatedNextStart, LocalDate(2026, 6, 4));
+
+      final after = seeded(earlySeed, [Episode(today, today)]);
+      expect(after.lastEpisodeStart, today);
+      expect(after.cycleDay, 1);
+      expect(after.estimatedNextStart, LocalDate(2026, 6, 17));
+    });
+
+    test('re-anchoring keeps the supplied answers and the provisional '
+        'tier: one logged period completes no cycle', () {
+      final after = seeded(lateSeed, [Episode(today, today)]);
+      expect(after.tier, CycleConfidence.provisional);
+      expect(after.meanCycleLengthDays, 28.0);
+      expect(after.meanPeriodLengthDays, 5.0);
+      expect(after.spreadDays, kProvisionalSpreadDays);
+      expect(after.averagedCycleLengths, isEmpty);
+      expect(after.completedCycleCount, 0);
+      expect(after.validCycleCount, 0);
+      expect(
+        after.forecast.every((c) => c.tier == CycleConfidence.provisional),
+        isTrue,
+      );
+    });
+
+    test('the latest of several logged periods is the anchor, whatever '
+        'order they arrive in', () {
+      final after = seeded(lateSeed, [
+        Episode(LocalDate(2026, 5, 14), LocalDate(2026, 5, 17)),
+        Episode(LocalDate(2026, 4, 22), LocalDate(2026, 4, 25)),
+      ]);
+      expect(after.lastEpisodeStart, LocalDate(2026, 5, 14));
+      expect(after.cycleDay, 7);
+      expect(after.estimatedNextStart, LocalDate(2026, 6, 11));
+    });
+
+    test('a logged period that ended before the supplied start is an '
+        'earlier period: the anchor never moves backwards', () {
+      final after = seeded(earlySeed, [
+        Episode(LocalDate(2026, 4, 9), LocalDate(2026, 4, 12)),
+      ]);
+      expect(after.lastEpisodeStart, LocalDate(2026, 5, 7));
+      expect(after.cycleDay, 14);
+      expect(after.estimatedNextStart, LocalDate(2026, 6, 4));
+      expect(after.duringEpisode, isFalse);
+    });
+
+    test('a logged period that began just before the supplied start and '
+        'runs past it is the same period: its logged start wins', () {
+      // Onboarding said 5/7; the days actually logged are 5/5-5/8.
+      final after = seeded(earlySeed, [
+        Episode(LocalDate(2026, 5, 5), LocalDate(2026, 5, 8)),
+      ]);
+      expect(after.lastEpisodeStart, LocalDate(2026, 5, 5));
+      expect(after.cycleDay, 16);
+      expect(after.estimatedNextStart, LocalDate(2026, 6, 2));
+    });
+
+    test('a future-dated logged period never anchors today\'s cycle '
+        '(issue LLA-071)', () {
+      final after = seeded(earlySeed, [
+        Episode(LocalDate(2026, 5, 25), LocalDate(2026, 5, 27)),
+      ]);
+      expect(after.lastEpisodeStart, LocalDate(2026, 5, 7));
+      expect(after.cycleDay, 14);
+    });
+
+    test('once the anchor is a logged period, the log decides which days '
+        'are period days: the estimated bleed window no longer applies',
+        () {
+      // A one-day logged period yesterday: today is cycle day 2 and not
+      // inside a logged episode, exactly as the computed path reads it.
+      final yesterday = today.addDays(-1);
+      final after = seeded(lateSeed, [Episode(yesterday, yesterday)]);
+      expect(after.lastEpisodeStart, yesterday);
+      expect(after.cycleDay, 2);
+      expect(after.duringEpisode, isFalse);
+    });
+
+    test('the estimated bleed window still applies while the anchor is '
+        'the onboarding answer', () {
+      final facts = CycleFacts(
+        lastPeriodStart: today.addDays(-2),
+        typicalCycleLengthDays: 28,
+        typicalPeriodLengthDays: 5,
+      );
+      // An older logged period changes nothing about the current one.
+      final after = seeded(facts, [
+        Episode(LocalDate(2026, 4, 20), LocalDate(2026, 4, 23)),
+      ]);
+      expect(after.lastEpisodeStart, today.addDays(-2));
+      expect(after.cycleDay, 3);
+      expect(after.duringEpisode, isTrue);
+    });
+
+    test('a logged period replaces a stale seed: the long-cycle flag is '
+        'measured from the logged start, so provisional is kept', () {
+      final staleSeed = CycleFacts(
+        lastPeriodStart: LocalDate(2026, 1, 1),
+        typicalCycleLengthDays: 28,
+        typicalPeriodLengthDays: 5,
+      );
+      expect(seeded(staleSeed, const []).unusuallyLongCycle, isTrue);
+
+      final after = seeded(staleSeed, [
+        Episode(LocalDate(2026, 5, 1), LocalDate(2026, 5, 4)),
+      ]);
+      expect(after.unusuallyLongCycle, isFalse);
+      expect(after.staleHistory, isFalse);
+      expect(after.tier, CycleConfidence.provisional);
+      expect(after.daysLate, isNull);
+      expect(after.estimatedNextStart, LocalDate(2026, 5, 29));
+    });
+
+    test('seedProvisionalPredictionFromEntries derives the episodes from '
+        'raw entries (the call the service and the web facade make)', () {
+      DayEntry entry(LocalDate date, FlowLevel flow) => DayEntry(
+            id: date.iso,
+            profileId: 'p',
+            localDate: date,
+            tz: 'UTC',
+            flow: flow,
+            updatedAt: DateTime.utc(2026, 5, 20),
+          );
+      final after = seedProvisionalPredictionFromEntries(
+        facts: lateSeed,
+        entries: [
+          entry(today.addDays(-1), FlowLevel.heavy),
+          entry(today, FlowLevel.medium),
+        ],
+        today: today,
+      ) as ActivePrediction;
+      expect(after.lastEpisodeStart, today.addDays(-1));
+      expect(after.cycleDay, 2);
+      expect(after.duringEpisode, isTrue);
+
+      // Only a bleed day starts a cycle: an explicit "not bleeding today"
+      // entry (issue #247) leaves the onboarding anchor where it was.
+      final notBleeding = seedProvisionalPredictionFromEntries(
+        facts: lateSeed,
+        entries: [entry(today, FlowLevel.notBleeding)],
+        today: today,
+      ) as ActivePrediction;
+      expect(notBleeding.lastEpisodeStart, LocalDate(2026, 4, 20));
+      expect(notBleeding.cycleDay, 31);
+    });
+
+    test('facts that cannot seed still return NotEnoughHistory, logged '
+        'periods or not', () {
+      final p = seedProvisionalPrediction(
+        facts: CycleFacts(lastPeriodStart: LocalDate(2026, 4, 20)),
+        today: today,
+        episodes: [Episode(today, today)],
+      );
+      expect(p, isA<NotEnoughHistory>());
     });
   });
 

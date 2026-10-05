@@ -13,6 +13,8 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
+import 'package:lunarlog/domain/prediction/fertile_window.dart';
+import 'package:lunarlog/domain/prediction/forecast.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
@@ -572,6 +574,125 @@ void main() {
       expect(active.estimatedNextStart, LocalDate(2026, 5, 18));
       expect(active.meanCycleLengthDays, 28.0);
       expect(active.meanPeriodLengthDays, 5.0);
+    });
+  });
+
+  group('a logged period start re-anchors the provisional estimate '
+      '(issue #1392)', () {
+    late CyclePredictionService seeded;
+
+    setUp(() {
+      seeded = CyclePredictionService(dayEntries, profiles: profiles);
+    });
+
+    Future<LocalDate> historyCurrentCycleStart(String profileId) async =>
+        deriveCycleHistoryFromEntries(
+          entries: await dayEntries.listForProfile(profileId),
+          today: today,
+        ).items.first.start;
+
+    test('late period: logging today moves the estimate off the onboarding '
+        'seed onto the logged start, agreeing with cycle history', () async {
+      // The issue's first repro, shifted onto this file's `today`: the seed
+      // is 30 days old with a 28-day typical cycle, so the estimate is 2
+      // days past and Today reads cycle day 31.
+      final profile = await profiles.create(
+        displayName: 'A',
+        isMinor: false,
+        lastPeriodStart: LocalDate(2026, 4, 20),
+        typicalCycleLengthDays: 28,
+      );
+
+      final seen = <CyclePrediction>[];
+      final sub =
+          seeded.watch(profile.id, today: () => today).listen(seen.add);
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+      final before = seen.last as ActivePrediction;
+      expect(before.cycleDay, 31);
+      expect(before.daysUntilNextPeriod, -2,
+          reason: '2 days past the seeded estimate');
+
+      // "Log today" with a flow level: a new cycle starts today.
+      await recordBleed(profile.id, today, 1);
+      await pumpEventQueue();
+
+      final after = seen.last as ActivePrediction;
+      expect(after.lastEpisodeStart, today,
+          reason: 'the logged start, not the onboarding answer');
+      expect(after.cycleDay, 1);
+      expect(after.duringEpisode, isTrue);
+      expect(after.daysUntilNextPeriod, 28);
+      expect(after.originalEstimatedNextStart, LocalDate(2026, 6, 17));
+      expect(after.estimatedNextStart, LocalDate(2026, 6, 17),
+          reason: 'logged start + the supplied 28-day typical cycle');
+      expect(after.meanCycleLengthDays, 28.0);
+      expect(after.tier, CycleConfidence.provisional,
+          reason: 'one logged period completes no cycle: still provisional');
+      expect(after.lastEpisodeStart,
+          await historyCurrentCycleStart(profile.id),
+          reason: 'Today and cycle history name the same current cycle');
+    });
+
+    test('early period: a period logged on cycle day 14 restarts the cycle '
+        'and moves the fertile window with it', () async {
+      // The issue's second repro: the seed is 13 days old (cycle day 14).
+      final profile = await profiles.create(
+        displayName: 'A',
+        isMinor: false,
+        lastPeriodStart: LocalDate(2026, 5, 7),
+        typicalCycleLengthDays: 28,
+      );
+
+      final before =
+          await seeded.current(profile.id, today: () => today)
+              as ActivePrediction;
+      expect(before.cycleDay, 14);
+      expect(before.estimatedNextStart, LocalDate(2026, 6, 4));
+      final seedWindow = currentFertileWindow(before)!;
+      expect(seedWindow.windowStart, LocalDate(2026, 5, 16));
+      expect(seedWindow.windowEnd, LocalDate(2026, 5, 22));
+
+      await recordBleed(profile.id, today, 1, flow: FlowLevel.heavy);
+
+      final after =
+          await seeded.current(profile.id, today: () => today)
+              as ActivePrediction;
+      expect(after.lastEpisodeStart, today);
+      expect(after.cycleDay, 1);
+      expect(after.estimatedNextStart, LocalDate(2026, 6, 17));
+      expect(after.tier, CycleConfidence.provisional);
+      final window = currentFertileWindow(after)!;
+      expect(window.windowStart, LocalDate(2026, 5, 29),
+          reason: 'back-calculated from the re-anchored estimate, not the '
+              'seed-based 5/16-5/22 window');
+      expect(window.windowEnd, LocalDate(2026, 6, 4));
+      expect(
+          deriveForecast(prediction: after, today: today).first.start,
+          LocalDate(2026, 6, 17),
+          reason: 'the calendar draws its forecast from the same estimate');
+      expect(after.lastEpisodeStart,
+          await historyCurrentCycleStart(profile.id));
+    });
+
+    test('a logged period that ended before the onboarding date never '
+        'drags the anchor backwards', () async {
+      final profile = await profiles.create(
+        displayName: 'A',
+        isMinor: false,
+        lastPeriodStart: LocalDate(2026, 5, 7),
+        typicalCycleLengthDays: 28,
+      );
+      // Backfilling an earlier period (4/9-4/12): the onboarding answer is
+      // still the most recent period the app knows about.
+      await recordBleed(profile.id, LocalDate(2026, 4, 9), 4);
+
+      final p = await seeded.current(profile.id, today: () => today)
+          as ActivePrediction;
+      expect(p.lastEpisodeStart, LocalDate(2026, 5, 7));
+      expect(p.cycleDay, 14);
+      expect(p.estimatedNextStart, LocalDate(2026, 6, 4));
+      expect(p.tier, CycleConfidence.provisional);
     });
   });
 
