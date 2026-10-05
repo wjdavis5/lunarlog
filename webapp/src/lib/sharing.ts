@@ -93,6 +93,31 @@ export function sharingFailureMessageId(kind: SharingFailureKind) {
 }
 
 /**
+ * The line for a removal (or a leave) that failed, the app's
+ * `_revokeErrorMessage` (lib/ui/sharing/manage_guardians_screen.dart).
+ *
+ * `selfPrimaryLeave` is a primary guardian leaving. The one thing the
+ * server refuses her for, apart from permission, is being the only primary
+ * guardian left, which another device can make true between the tap and
+ * the call. That is inferred from who was leaving, so it is read only
+ * after the two answers that say nothing about it: a refusal for lack of
+ * permission, and a request that never arrived.
+ */
+export function revokeFailureMessageId(kind: SharingFailureKind, selfPrimaryLeave: boolean) {
+  if (kind === 'unauthorized') return 'commonUnauthorized' as const;
+  if (kind === 'network') return 'sharingManageGuardiansRemoveFailed' as const;
+  if (selfPrimaryLeave) return 'sharingManageGuardiansSolePrimaryLeave' as const;
+  return 'sharingManageGuardiansRemoveFailed' as const;
+}
+
+/** The line for a role change that failed, the app's `_roleChangeErrorMessage`. */
+export function roleChangeFailureMessageId(kind: SharingFailureKind) {
+  return kind === 'unauthorized'
+    ? ('commonUnauthorized' as const)
+    : ('sharingManageGuardiansRoleUpdateFailed' as const);
+}
+
+/**
  * The transfer-surface variant: the transfer failures carry their own
  * reviewed copy (`transfer_failure_copy.dart`), so the claim form reads from
  * this map, not the invitation one.

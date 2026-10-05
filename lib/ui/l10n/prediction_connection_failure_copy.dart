@@ -34,12 +34,13 @@ String predictionConnectionFailureCopy(
     l10n.predictionConnectionFailureAlreadyAccepted,
   PredictionAlreadyGuardianFailure() =>
     l10n.predictionConnectionFailureAlreadyGuardian,
-  PredictionUnauthorizedFailure() ||
+  PredictionUnauthorizedFailure() => l10n.commonUnauthorized,
   PredictionInvalidTokenFailure() ||
   PredictionPregnancyModeFailure() ||
   PredictionAlreadyConnectedFailure() ||
   PredictionOneDirectionalFailure() ||
   PredictionMinorProfileFailure() ||
+  PredictionOwnCodeFailure() ||
   PredictionOtherFailure() => _predictionConnectionFailureCopyRest(
     l10n,
     failure,
@@ -55,7 +56,6 @@ String _predictionConnectionFailureCopyRest(
   AppLocalizations l10n,
   PredictionConnectionFailure failure,
 ) => switch (failure) {
-  PredictionUnauthorizedFailure() => l10n.commonUnauthorized,
   PredictionInvalidTokenFailure() =>
     l10n.predictionConnectionFailureInvalidToken,
   PredictionPregnancyModeFailure() =>
@@ -66,6 +66,7 @@ String _predictionConnectionFailureCopyRest(
     l10n.predictionConnectionFailureOneDirectional,
   PredictionMinorProfileFailure() =>
     l10n.predictionConnectionFailureMinorProfile,
+  PredictionOwnCodeFailure() => l10n.predictionConnectionFailureOwnCode,
   PredictionOtherFailure() => l10n.commonSomethingWentWrong,
   _ => throw StateError(
     'unreachable: ${failure.runtimeType} is handled by '

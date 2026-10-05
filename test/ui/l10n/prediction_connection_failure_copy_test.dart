@@ -26,6 +26,7 @@ void main() {
     PredictionConnectionFailure.alreadyConnected(),
     PredictionConnectionFailure.oneDirectional(),
     PredictionConnectionFailure.minorProfile(),
+    PredictionConnectionFailure.ownCode(),
     PredictionConnectionFailure.other(),
   ];
 

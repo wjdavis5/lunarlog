@@ -196,6 +196,200 @@ void main() {
     });
   });
 
+  // The server raises almost every refusal here with SQLSTATE 55000, and
+  // the mapper read any all-digit code of 500 or more as a network failure
+  // whenever no message matched. A SQLSTATE is five characters and is
+  // never an HTTP status; postgrest puts the status in `code` only when
+  // the body carried no code of its own, and then it is three. Same rule
+  // as SupabaseSharingService (issue #1504).
+  group('every refusal a code can meet', () {
+    /// A client whose server answers the way PostgREST answers a
+    /// `raise exception`: the SQLSTATE in the body's `code`, the HTTP
+    /// status beside it.
+    SupabaseClient refusing(String sqlstate, int status, String message) =>
+        makeClient((req) async => http.Response(
+              jsonEncode({
+                'code': sqlstate,
+                'details': null,
+                'hint': null,
+                'message': message,
+              }),
+              status,
+            ));
+
+    // Whether the refusal comes from accepting a code (true) or making one
+    // (false), its SQLSTATE, the HTTP status PostgREST gives that
+    // SQLSTATE, the message, and what it reads as. Taken from the newest
+    // definition of accept_prediction_connection and
+    // create_prediction_connection (20260920100000).
+    const refusals = <(bool, String, int, String, PredictionConnectionFailure)>[
+      (
+        true,
+        'P0002',
+        500,
+        'prediction connection not found',
+        PredictionConnectionFailure.notFound(),
+      ),
+      (
+        true,
+        '55000',
+        500,
+        'prediction connection was already accepted',
+        PredictionConnectionFailure.alreadyAccepted(),
+      ),
+      // Was the network failure.
+      (
+        true,
+        '55000',
+        500,
+        'prediction connection was revoked',
+        PredictionConnectionFailure.notFound(),
+      ),
+      (
+        true,
+        '55000',
+        500,
+        'prediction connection has expired',
+        PredictionConnectionFailure.expired(),
+      ),
+      // Was the network failure.
+      (
+        true,
+        '55000',
+        500,
+        'the sharer cannot accept their own prediction connection',
+        PredictionConnectionFailure.ownCode(),
+      ),
+      (
+        true,
+        '55000',
+        500,
+        "prediction-only sharing is unavailable for a minor's profile",
+        PredictionConnectionFailure.minorProfile(),
+      ),
+      // Was the network failure.
+      (
+        true,
+        '55000',
+        500,
+        'the sharer is no longer the primary guardian of this profile; the '
+            'code is stale',
+        PredictionConnectionFailure.notFound(),
+      ),
+      (
+        true,
+        '55000',
+        500,
+        'prediction-only sharing is unavailable while this profile is in '
+            'Pregnancy mode',
+        PredictionConnectionFailure.pregnancyMode(),
+      ),
+      (
+        true,
+        '55000',
+        500,
+        'you are already a guardian of this profile',
+        PredictionConnectionFailure.alreadyGuardian(),
+      ),
+      (
+        true,
+        '55000',
+        500,
+        'cannot share and view predictions with the same person at the same '
+            'time',
+        PredictionConnectionFailure.oneDirectional(),
+      ),
+      (
+        false,
+        '42501',
+        403,
+        'only the accepted primary guardian can share predictions for this '
+            'profile',
+        PredictionConnectionFailure.unauthorized(),
+      ),
+      (
+        false,
+        '55000',
+        500,
+        "prediction-only sharing is unavailable for a minor's profile",
+        PredictionConnectionFailure.minorProfile(),
+      ),
+      (
+        false,
+        '55000',
+        500,
+        'prediction-only sharing is unavailable while this profile is in '
+            'Pregnancy mode',
+        PredictionConnectionFailure.pregnancyMode(),
+      ),
+      (
+        false,
+        '23505',
+        409,
+        'this profile already has a prediction-only connection or pending '
+            'invite',
+        PredictionConnectionFailure.alreadyConnected(),
+      ),
+    ];
+
+    for (final (accepting, sqlstate, status, message, expected) in refusals) {
+      final what = accepting ? 'accepting' : 'making';
+      test('$what a code, "$message" ($sqlstate) reads as $expected',
+          () async {
+        final service = SupabasePredictionConnectionService(
+          client: refusing(sqlstate, status, message),
+        );
+        await expectLater(
+          accepting
+              ? service.acceptConnection(rawToken: 'any-token')
+              : service.createConnection(
+                  profileId: '01JABCDEF01234567890123456',
+                ),
+          throwsA(expected),
+        );
+      });
+    }
+
+    test('a refusal with a class-55 code and wording this client has never '
+        'seen is not a network failure', () async {
+      final service = SupabasePredictionConnectionService(
+        client: refusing('55000', 500, 'a refusal added after this build'),
+      );
+      await expectLater(
+        service.acceptConnection(rawToken: 'any-token'),
+        throwsA(const PredictionConnectionFailure.other()),
+      );
+    });
+
+    test('a gateway answering 503 with a page of its own is a network '
+        'failure, whatever the page says', () async {
+      final service = SupabasePredictionConnectionService(
+        client: makeClient((req) async => http.Response(
+              '<html><body>503: the service was revoked, not found, and '
+              'has expired</body></html>',
+              503,
+              headers: {'content-type': 'text/html'},
+            )),
+      );
+      await expectLater(
+        service.acceptConnection(rawToken: 'any-token'),
+        throwsA(const PredictionConnectionFailure.network()),
+      );
+    });
+
+    test('a request that never completes is a network failure', () async {
+      final service = SupabasePredictionConnectionService(
+        client: makeClient(
+          (req) async => throw http.ClientException('connection closed'),
+        ),
+      );
+      await expectLater(
+        service.acceptConnection(rawToken: 'any-token'),
+        throwsA(const PredictionConnectionFailure.network()),
+      );
+    });
+  });
+
   group('revokeConnection', () {
     test('calls revoke_prediction_connection', () async {
       final client = makeClient((req) async {

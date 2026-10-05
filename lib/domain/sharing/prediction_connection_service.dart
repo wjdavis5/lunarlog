@@ -200,6 +200,12 @@ sealed class PredictionConnectionFailure implements Exception {
       PredictionOneDirectionalFailure;
   const factory PredictionConnectionFailure.minorProfile() =
       PredictionMinorProfileFailure;
+
+  /// The person who made the code entered it herself. The server refuses
+  /// it (a profile is never shared with its own sharer), and nothing is
+  /// wrong with the code: it is meant for someone else.
+  const factory PredictionConnectionFailure.ownCode() =
+      PredictionOwnCodeFailure;
   const factory PredictionConnectionFailure.other() = PredictionOtherFailure;
 
   @override
@@ -283,6 +289,12 @@ final class PredictionMinorProfileFailure
   const PredictionMinorProfileFailure();
   @override
   String toString() => 'PredictionConnectionFailure.minorProfile';
+}
+
+final class PredictionOwnCodeFailure extends PredictionConnectionFailure {
+  const PredictionOwnCodeFailure();
+  @override
+  String toString() => 'PredictionConnectionFailure.ownCode';
 }
 
 final class PredictionOtherFailure extends PredictionConnectionFailure {

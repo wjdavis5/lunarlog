@@ -547,16 +547,26 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   /// doesn't own — so this infers the scenario from context instead of
   /// the raw error code: only a self-leave attempt by a primary guardian
   /// can hit that specific rejection.
+  ///
+  /// The inference only holds for a call the server answered. A request
+  /// that never arrived says nothing about who the primary guardians are,
+  /// and a refusal for lack of permission is its own answer, so both are
+  /// read first (the mapper has told a network failure from a refusal
+  /// since issue #1504; before that the sole-primary refusal itself read
+  /// as a network failure, which is why this used to ignore the error).
   String _revokeErrorMessage(Object error, ProfileGuardian guardian) {
     final l10n = AppLocalizations.of(context);
+    if (error is SharingUnauthorizedFailure) {
+      return l10n.commonUnauthorized;
+    }
+    if (error is SharingNetworkFailure) {
+      return l10n.sharingManageGuardiansRemoveFailed;
+    }
     final isSelfPrimaryLeave =
         guardian.userId == widget.currentUserId &&
         guardian.role == GuardianRole.primaryGuardian;
     if (isSelfPrimaryLeave) {
       return l10n.sharingManageGuardiansSolePrimaryLeave;
-    }
-    if (error is SharingUnauthorizedFailure) {
-      return l10n.commonUnauthorized;
     }
     return l10n.sharingManageGuardiansRemoveFailed;
   }
