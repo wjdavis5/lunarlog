@@ -216,6 +216,12 @@ class SupabaseOwnershipTransferService implements OwnershipTransferService {
     final msg = error.message.toLowerCase();
     final code = error.code ?? '';
 
+    // Decided first (issue #1504): what answered was not PostgREST, so the
+    // message is a gateway's or proxy's page. It is not a refusal, and its
+    // text is not read for one.
+    if (_isServerFailure(code)) {
+      return const TransferFailure.network();
+    }
     if (_isUnauthorized(code, msg)) {
       return const TransferFailure.unauthorized();
     }
@@ -223,13 +229,22 @@ class SupabaseOwnershipTransferService implements OwnershipTransferService {
     if (businessFailure != null) {
       return businessFailure;
     }
-    final status = int.tryParse(code);
-    if (status != null && status >= 500) {
-      return const TransferFailure.network();
-    }
     defaultBreadcrumbLog
         .record('ownershipTransfer', 'unmapped postgrest error: ${error.code}');
     return const TransferFailure.other();
+  }
+
+  /// Whether [code] is an HTTP 5xx status - something in front of PostgREST
+  /// answered, not the database - rather than a refusal the server chose
+  /// (issue #1504). The same rule, for the same reason, as
+  /// `SupabaseSharingService._isServerFailure`: postgrest puts the status in
+  /// [PostgrestException.code] only when the body carried no code of its
+  /// own, and then it is three characters (`503`); a SQLSTATE is five
+  /// (`55000`) and is never a status, though the old test (any all-digit
+  /// code of 500 or more) read it as one.
+  bool _isServerFailure(String code) {
+    final status = code.length == 3 ? int.tryParse(code) : null;
+    return status != null && status >= 500;
   }
 
   // Ordered substring -> failure lookup, checked before the falls-through
@@ -270,8 +285,13 @@ class SupabaseOwnershipTransferService implements OwnershipTransferService {
     for (final entry in _messageFailures.entries) {
       if (msg.contains(entry.key)) return entry.value;
     }
+    // The third (issue #1504) is the claimant's own side of the same thing:
+    // "guardian access to this profile was revoked; a new transfer link is
+    // required". Her role on the profile changed after the link was made,
+    // which is what the stale-link copy says.
     if (msg.contains('no longer owns this profile') ||
-        msg.contains('no longer the primary guardian')) {
+        msg.contains('no longer the primary guardian') ||
+        msg.contains('a new transfer link is required')) {
       return const TransferFailure.staleOwner();
     }
     return null;

@@ -295,6 +295,12 @@ class SupabaseSharingService implements SharingService {
     final msg = error.message.toLowerCase();
     final code = error.code ?? '';
 
+    // Decided first (issue #1504): what answered was not PostgREST, so the
+    // message is a gateway's or proxy's page. It is not a refusal, and its
+    // text is not read for one.
+    if (_isServerFailure(code)) {
+      return const SharingFailure.network();
+    }
     if (_isUnauthorized(code, msg)) {
       // Issue #885: the server refuses an unauthenticated caller the same
       // way it refuses an under-privileged one (42501/permission/JWT), but
@@ -305,32 +311,59 @@ class SupabaseSharingService implements SharingService {
       }
       return const SharingFailure.unauthorized();
     }
-    final businessFailure = _mapBusinessError(code, msg);
-    if (businessFailure != null) {
-      return businessFailure;
-    }
-    final status = int.tryParse(code);
-    if (status != null && status >= 500) {
-      return const SharingFailure.network();
-    }
-    return const SharingFailure.other();
+    return _mapBusinessError(code, msg) ?? const SharingFailure.other();
+  }
+
+  /// Whether [code] is an HTTP 5xx status - something in front of PostgREST
+  /// answered, not the database - rather than a refusal the server chose
+  /// (issue #1504).
+  ///
+  /// postgrest puts the HTTP status in [PostgrestException.code] only when
+  /// the response body carried no code of its own, and then it is three
+  /// characters (`503`). The server's own codes are a five-character
+  /// SQLSTATE (`55000`, `P0001`, `42501`) or one of PostgREST's
+  /// (`PGRST301`), and they are never a status: "invitation was revoked" is
+  /// `55000`, which the old test (any all-digit code of 500 or more) read
+  /// as a server failure. Same rule as `supabase_sync_transport.dart` and
+  /// `publish_retry.dart`.
+  bool _isServerFailure(String code) {
+    final status = code.length == 3 ? int.tryParse(code) : null;
+    return status != null && status >= 500;
   }
 
   SharingFailure? _mapBusinessError(String code, String msg) {
     if (code == 'P0002' || msg.contains('not found')) {
       return const SharingFailure.notFound();
     }
-    if (msg.contains('already accepted')) {
-      return const SharingFailure.alreadyAccepted();
-    }
-    if (msg.contains('expired')) {
-      return const SharingFailure.expired();
+    final state = _mapInvitationState(msg);
+    if (state != null) {
+      return state;
     }
     if (code == '23505' || msg.contains('already an active guardian')) {
       return const SharingFailure.alreadyGuardian();
     }
     if (code == '22023' || msg.contains('invalid') || msg.contains('token_hash')) {
       return const SharingFailure.invalidToken();
+    }
+    return null;
+  }
+
+  /// The states that stop an invitation being accepted, told apart by the
+  /// server's wording (all three are SQLSTATE 55000). Split out of
+  /// [_mapBusinessError] to keep each under the CRAP gate.
+  SharingFailure? _mapInvitationState(String msg) {
+    if (msg.contains('already accepted')) {
+      return const SharingFailure.alreadyAccepted();
+    }
+    if (msg.contains('expired')) {
+      return const SharingFailure.expired();
+    }
+    // Issue #1504: "invitation was revoked" (whoever sent it cancelled it)
+    // and "guardian access to this profile was revoked; a new invitation is
+    // required" (the invitee was removed after it was sent). For both the
+    // way forward is a new invitation.
+    if (msg.contains('revoked')) {
+      return const SharingFailure.revoked();
     }
     return null;
   }

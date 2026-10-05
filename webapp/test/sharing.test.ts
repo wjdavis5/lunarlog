@@ -20,9 +20,12 @@ import {
   mapSharingFailure,
   mapTransferFailure,
   sha256Hex,
+  sharingFailureMessageId,
+  transferFailureMessageId,
   SharingError,
   type GuardianRow,
   type PendingInviteRow,
+  type SharingFailureKind,
 } from '../src/lib/sharing';
 import type { AppSupabaseClient } from '../src/lib/supabase';
 
@@ -30,7 +33,22 @@ import type { AppSupabaseClient } from '../src/lib/supabase';
 // same primitive from node:crypto so the vectors hold either way.
 const digest = webcrypto.subtle.digest.bind(webcrypto.subtle);
 
-type PageResult = { data: unknown; error: { message: string; code?: string } | null };
+/**
+ * What a supabase-js call resolves to. `status` is the HTTP status it
+ * reports beside the error (0 when the request never completed); the fakes
+ * that leave it out stand for a response whose status the test does not
+ * care about.
+ */
+type PageResult = {
+  data: unknown;
+  error: {
+    message: string;
+    code?: string;
+    details?: string | null;
+    hint?: string | null;
+  } | null;
+  status?: number;
+};
 
 interface FakeChain {
   client: AppSupabaseClient;
@@ -321,6 +339,449 @@ describe('the error ladders (mirroring the two Dart mappers)', () => {
   it('wraps unknown errors as other', () => {
     expect(mapSharingFailure(new Error('boom'))).toMatchObject({ kind: 'other' });
     expect(mapSharingFailure(new SharingError('network'))).toMatchObject({ kind: 'network' });
+  });
+});
+
+// Issue #1504. The server raised several ordinary refusals with SQLSTATE
+// 55000, and the mapper read any all-digit code of 500 or more as a network
+// failure before it looked at the message. A SQLSTATE is five characters and
+// lives in the error's `code`; the HTTP status is the response's `status`,
+// beside the error, and PostgREST answers a class-55 refusal with HTTP 500.
+describe('every refusal the sharing RPCs raise (issue #1504)', () => {
+  type Refusal = [
+    fn: string,
+    sqlstate: string,
+    status: number,
+    message: string,
+    kind: SharingFailureKind,
+  ];
+
+  /** The error and status a PostgREST `raise exception` arrives as. */
+  const raised = (sqlstate: string, message: string) => ({
+    code: sqlstate,
+    details: null,
+    hint: null,
+    message,
+  });
+
+  // Function, SQLSTATE, the HTTP status PostgREST gives that SQLSTATE, the
+  // message, and what it reads as. Taken from the newest definition of each
+  // function in supabase/migrations: 20260920120000 (create, accept and
+  // preview_guardian_invitation), 20260906190000 (revoke_guardian_invitation),
+  // 20260918160000 (revoke_guardian), 20260915010000 (update_guardian_role),
+  // and the 20261005143105 trigger on a second subject invitation. The app's
+  // test/data/sharing/supabase_sharing_service_test.dart holds the same rows
+  // with the same kinds. Each is read as a signed-in caller.
+  const invitationRefusals: Refusal[] = [
+    [
+      'create_guardian_invitation',
+      '42501',
+      403,
+      'caller lacks permission to invite guardians for this profile',
+      'unauthorized',
+    ],
+    ['create_guardian_invitation', '22023', 400, 'invalid role: owner', 'invalidToken'],
+    [
+      'create_guardian_invitation',
+      '42501',
+      403,
+      'only the primary guardian can invite a co-parent',
+      'unauthorized',
+    ],
+    [
+      'create_guardian_invitation',
+      '22023',
+      400,
+      'a subject invitation must grant the caregiver role',
+      'invalidToken',
+    ],
+    [
+      'create_guardian_invitation',
+      '22023',
+      400,
+      'p_ttl_hours must be between 1 and 168',
+      'invalidToken',
+    ],
+    [
+      'create_guardian_invitation',
+      '22023',
+      400,
+      'token_hash must be a 64-character hex string',
+      'invalidToken',
+    ],
+    [
+      'create_guardian_invitation',
+      'P0001',
+      400,
+      'this profile already has a subject; a subject invitation cannot be created for it',
+      'other',
+    ],
+    [
+      'accept_guardian_invitation',
+      '22023',
+      400,
+      'token_hash must be a 64-character hex string',
+      'invalidToken',
+    ],
+    ['accept_guardian_invitation', 'P0002', 500, 'invitation not found', 'notFound'],
+    [
+      'accept_guardian_invitation',
+      '55000',
+      500,
+      'invitation already accepted',
+      'alreadyAccepted',
+    ],
+    // Was the network failure.
+    ['accept_guardian_invitation', '55000', 500, 'invitation was revoked', 'revoked'],
+    ['accept_guardian_invitation', '55000', 500, 'invitation has expired', 'expired'],
+    [
+      'accept_guardian_invitation',
+      '23505',
+      409,
+      'user is already an active guardian of this profile',
+      'alreadyGuardian',
+    ],
+    // Was the network failure.
+    [
+      'accept_guardian_invitation',
+      '55000',
+      500,
+      'guardian access to this profile was revoked; a new invitation is required',
+      'revoked',
+    ],
+    [
+      'preview_guardian_invitation',
+      '22023',
+      400,
+      'token_hash must be a 64-character hex string',
+      'invalidToken',
+    ],
+    // Was the network failure. Neither client shows a preview's kind (both
+    // say the preview could not be loaded), so it needs no copy of its own.
+    [
+      'preview_guardian_invitation',
+      '55000',
+      500,
+      'too many preview attempts; wait a moment and try again',
+      'other',
+    ],
+    [
+      'revoke_guardian_invitation',
+      '42501',
+      403,
+      'caller lacks permission to cancel this invitation',
+      'unauthorized',
+    ],
+    [
+      'revoke_guardian',
+      '42501',
+      403,
+      'caller is not a guardian of this profile',
+      'unauthorized',
+    ],
+    // Was the network failure. Manage guardians shows its own line for a
+    // failed removal, whatever the kind.
+    [
+      'revoke_guardian',
+      '55000',
+      500,
+      'the sole primary guardian cannot leave the profile',
+      'other',
+    ],
+    [
+      'revoke_guardian',
+      '42501',
+      403,
+      'insufficient permission to revoke this guardian',
+      'unauthorized',
+    ],
+    [
+      'update_guardian_role',
+      '42501',
+      403,
+      'primary_guardian cannot be granted through update_guardian_role',
+      'unauthorized',
+    ],
+    ['update_guardian_role', '22023', 400, 'invalid role: owner', 'invalidToken'],
+    ['update_guardian_role', '42501', 403, 'cannot change your own role', 'unauthorized'],
+    [
+      'update_guardian_role',
+      '42501',
+      403,
+      'caller is not a guardian of this profile',
+      'unauthorized',
+    ],
+    [
+      'update_guardian_role',
+      'P0002',
+      500,
+      'target is not an active guardian of this profile',
+      'notFound',
+    ],
+    [
+      'update_guardian_role',
+      '42501',
+      403,
+      "insufficient permission to change this guardian's role",
+      'unauthorized',
+    ],
+  ];
+
+  it.each(invitationRefusals)(
+    '%s: %s (HTTP %i) "%s" is %s',
+    (_fn, sqlstate, status, message, kind) => {
+      expect(mapSharingFailure(raised(sqlstate, message), true, status)).toMatchObject({
+        kind,
+      });
+    },
+  );
+
+  // Every one of the six opens with the same check. It can only be raised
+  // when there is no session, which reads as "sign in" (issue #885).
+  it('"authentication required" (42501, HTTP 401) is the sign-in failure, with no session', () => {
+    expect(
+      mapSharingFailure(raised('42501', 'authentication required'), false, 401),
+    ).toMatchObject({ kind: 'notSignedIn' });
+  });
+
+  // The transfer RPCs, from 20260915010000 (create_ownership_transfer, plus
+  // the one-live-transfer unique index of 20260906170000), 20260906180000
+  // (cancel_ownership_transfer) and 20260920120000
+  // (accept_ownership_transfer). The app's
+  // test/data/sharing/supabase_ownership_transfer_service_test.dart holds
+  // the same rows with the same kinds.
+  const transferRefusals: Refusal[] = [
+    ['create_ownership_transfer', '42501', 401, 'authentication required', 'unauthorized'],
+    [
+      'create_ownership_transfer',
+      '42501',
+      403,
+      'only the accepted primary guardian can transfer ownership of this profile',
+      'unauthorized',
+    ],
+    [
+      'create_ownership_transfer',
+      '22023',
+      400,
+      'invalid parent_post_transfer_role: owner',
+      'other',
+    ],
+    [
+      'create_ownership_transfer',
+      '22023',
+      400,
+      'p_ttl_hours must be between 1 and 168',
+      'other',
+    ],
+    [
+      'create_ownership_transfer',
+      '22023',
+      400,
+      'token_hash must be a 64-character hex string',
+      'invalidToken',
+    ],
+    [
+      'create_ownership_transfer',
+      '22023',
+      400,
+      'recipient_label must be at most 80 characters',
+      'other',
+    ],
+    [
+      'create_ownership_transfer',
+      '23505',
+      409,
+      'duplicate key value violates unique constraint "ownership_transfers_one_live_uq"',
+      'alreadyArmed',
+    ],
+    ['cancel_ownership_transfer', '42501', 401, 'authentication required', 'unauthorized'],
+    ['cancel_ownership_transfer', 'P0002', 500, 'transfer not found', 'notFound'],
+    [
+      'cancel_ownership_transfer',
+      '42501',
+      403,
+      'only the arming parent can cancel this transfer',
+      'unauthorized',
+    ],
+    ['accept_ownership_transfer', '42501', 401, 'authentication required', 'unauthorized'],
+    [
+      'accept_ownership_transfer',
+      '22023',
+      400,
+      'token_hash must be a 64-character hex string',
+      'invalidToken',
+    ],
+    ['accept_ownership_transfer', 'P0002', 500, 'transfer not found', 'notFound'],
+    [
+      'accept_ownership_transfer',
+      '55000',
+      500,
+      'transfer was already accepted',
+      'alreadyAccepted',
+    ],
+    ['accept_ownership_transfer', '55000', 500, 'transfer was cancelled', 'cancelled'],
+    ['accept_ownership_transfer', '55000', 500, 'transfer has expired', 'expired'],
+    [
+      'accept_ownership_transfer',
+      '55000',
+      500,
+      'the arming parent cannot accept their own transfer',
+      'selfTransfer',
+    ],
+    ['accept_ownership_transfer', 'P0002', 500, 'profile not found', 'notFound'],
+    [
+      'accept_ownership_transfer',
+      '55000',
+      500,
+      'the arming parent no longer owns this profile; the link is stale',
+      'staleOwner',
+    ],
+    [
+      'accept_ownership_transfer',
+      '55000',
+      500,
+      'the arming parent is no longer the primary guardian of this profile; the link is stale',
+      'staleOwner',
+    ],
+    // Was the network failure. The claimant's own role on the profile
+    // changed after the link was made, which is what this copy says.
+    [
+      'accept_ownership_transfer',
+      '55000',
+      500,
+      'guardian access to this profile was revoked; a new transfer link is required',
+      'staleOwner',
+    ],
+  ];
+
+  it.each(transferRefusals)(
+    '%s: %s (HTTP %i) "%s" is %s',
+    (_fn, sqlstate, status, message, kind) => {
+      expect(mapTransferFailure(raised(sqlstate, message), true, status)).toMatchObject({
+        kind,
+      });
+    },
+  );
+
+  it('a SQLSTATE no refusal matches is the generic failure, never the network one, whatever its digits', () => {
+    const unknown: [string, number, string][] = [
+      ['55000', 500, 'a refusal this build has not heard of'],
+      ['57014', 500, 'canceling statement due to statement timeout'],
+      ['23514', 400, 'new row violates check constraint'],
+    ];
+    for (const [sqlstate, status, message] of unknown) {
+      expect(mapSharingFailure(raised(sqlstate, message), true, status)).toMatchObject({
+        kind: 'other',
+      });
+      expect(mapTransferFailure(raised(sqlstate, message), true, status)).toMatchObject({
+        kind: 'other',
+      });
+    }
+  });
+
+  it('the copy for a revoked invitation is its own, not the network line', () => {
+    expect(sharingFailureMessageId('revoked')).toBe('sharingFailureRevoked');
+    expect(sharingFailureMessageId('revoked')).not.toBe(sharingFailureMessageId('network'));
+    // The transfer ladder never returns it; its page has a line all the same.
+    expect(transferFailureMessageId('revoked')).toBe('commonSomethingWentWrong');
+  });
+
+  it('a refused accept reaches the page as its own kind through the wrapper', async () => {
+    const { client } = fakeRpc({
+      data: null,
+      error: raised('55000', 'invitation was revoked'),
+      status: 500,
+    });
+    await expect(acceptGuardianInvitation(client, 'raw-token', null)).rejects.toMatchObject({
+      kind: 'revoked',
+    });
+  });
+});
+
+describe('a transport or server failure is still the network kind (issue #1504)', () => {
+  // What supabase-js resolves to when the request never completed: status
+  // 0, an empty code, and the browser's own fetch error as the message.
+  const neverCompleted = {
+    message: 'TypeError: Failed to fetch',
+    details: 'TypeError: Failed to fetch\n    at fetch',
+    hint: '',
+    code: '',
+  };
+
+  it('a request that never completes', () => {
+    expect(mapSharingFailure(neverCompleted, true, 0)).toMatchObject({ kind: 'network' });
+    expect(mapTransferFailure(neverCompleted, true, 0)).toMatchObject({ kind: 'network' });
+    // Signed out as well: nothing was refused, so it is not "sign in".
+    expect(mapSharingFailure(neverCompleted, false, 0)).toMatchObject({ kind: 'network' });
+  });
+
+  it('an HTTP 503 whose body carries no code of its own', () => {
+    const bodies = [
+      // A page that is not JSON: supabase-js hands it over as the message.
+      { message: '<html><body><h1>503 Service Temporarily Unavailable</h1></body></html>' },
+      // A gateway's own JSON, parsed as the error, with no code in it.
+      { message: 'name resolution failed' },
+    ];
+    for (const body of bodies) {
+      expect(mapSharingFailure(body, true, 503)).toMatchObject({ kind: 'network' });
+      expect(mapTransferFailure(body, true, 503)).toMatchObject({ kind: 'network' });
+    }
+  });
+
+  it('a three-digit code is a status too: where the app client carries it', () => {
+    expect(mapSharingFailure({ message: 'Service Unavailable', code: '503' })).toMatchObject({
+      kind: 'network',
+    });
+    expect(mapTransferFailure({ message: 'Service Unavailable', code: '503' })).toMatchObject({
+      kind: 'network',
+    });
+    // A 4xx status is not a server failure.
+    expect(mapSharingFailure({ message: 'Too Many Requests', code: '429' })).toMatchObject({
+      kind: 'other',
+    });
+  });
+
+  it('a gateway page is not read for a refusal, whatever it says', () => {
+    // Each of these used to be matched on its wording: an invalid-link, a
+    // not-found and an expired failure.
+    const pages: [number, string][] = [
+      [526, '<html><head><title>Invalid SSL certificate</title></head></html>'],
+      [502, '<html><body>The origin server was not found</body></html>'],
+      [504, '<html><body>The gateway timed out; the request expired</body></html>'],
+    ];
+    for (const [status, message] of pages) {
+      expect(mapSharingFailure({ message }, true, status)).toMatchObject({ kind: 'network' });
+      expect(mapTransferFailure({ message }, true, status)).toMatchObject({ kind: 'network' });
+    }
+  });
+
+  it('an HTTP 500 that carries a SQLSTATE is the refusal it names, not a server failure', () => {
+    expect(
+      mapSharingFailure(
+        { code: '55000', message: 'invitation has expired', details: null, hint: null },
+        true,
+        500,
+      ),
+    ).toMatchObject({ kind: 'expired' });
+  });
+
+  it('the wrappers pass the status on: a failed fetch and a 503 reach the page as network', async () => {
+    const offline = fakeRpc({ data: null, error: neverCompleted, status: 0 });
+    await expect(
+      acceptGuardianInvitation(offline.client, 'raw-token', null),
+    ).rejects.toMatchObject({ kind: 'network' });
+
+    const down = fakeRpc({
+      data: null,
+      error: { message: '<html><body>503 Service Temporarily Unavailable</body></html>' },
+      status: 503,
+    });
+    await expect(previewGuardianInvitation(down.client, 'raw-token')).rejects.toMatchObject({
+      kind: 'network',
+    });
+
+    const read = fakeFrom({ data: null, error: neverCompleted, status: 0 });
+    await expect(fetchGuardians(read.client, ULID)).rejects.toMatchObject({ kind: 'network' });
   });
 });
 

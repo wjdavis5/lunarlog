@@ -1617,6 +1617,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sharingFailureExpired => 'This invitation has expired.';
 
   @override
+  String get sharingFailureRevoked =>
+      'This invitation is no longer valid. Ask for a new one.';
+
+  @override
   String get sharingFailureAlreadyAccepted =>
       'This invitation was already accepted.';
 

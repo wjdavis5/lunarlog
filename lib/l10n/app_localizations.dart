@@ -2616,6 +2616,12 @@ abstract class AppLocalizations {
   /// **'This invitation has expired.'**
   String get sharingFailureExpired;
 
+  /// SharingFailure.revoked copy (issue #1504), shown to someone accepting an invitation that the person who sent it has cancelled, or that was sent before her own access to the profile was removed. The server refuses both and a new invitation is the only way forward, so the copy says so. Before #1504 both refusals were shown as commonNetworkError.
+  ///
+  /// In en, this message translates to:
+  /// **'This invitation is no longer valid. Ask for a new one.'**
+  String get sharingFailureRevoked;
+
   /// SharingFailure.alreadyAccepted copy.
   ///
   /// In en, this message translates to:

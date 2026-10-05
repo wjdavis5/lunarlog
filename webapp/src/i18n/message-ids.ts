@@ -420,6 +420,7 @@ export const MESSAGE_IDS = [
   "commonSomethingWentWrong",
   "sharingFailureNotFound",
   "sharingFailureExpired",
+  "sharingFailureRevoked",
   "sharingFailureAlreadyAccepted",
   "sharingFailureAlreadyGuardian",
   "sharingFailureInvalidToken",

@@ -42,6 +42,7 @@ export type SharingFailureKind =
   | 'network'
   | 'notFound'
   | 'expired'
+  | 'revoked'
   | 'alreadyAccepted'
   | 'alreadyGuardian'
   | 'unauthorized'
@@ -66,6 +67,8 @@ export function sharingFailureMessageId(kind: SharingFailureKind) {
       return 'sharingFailureNotFound' as const;
     case 'expired':
       return 'sharingFailureExpired' as const;
+    case 'revoked':
+      return 'sharingFailureRevoked' as const;
     case 'alreadyAccepted':
       return 'sharingFailureAlreadyAccepted' as const;
     case 'alreadyGuardian':
@@ -118,7 +121,10 @@ export function transferFailureMessageId(kind: SharingFailureKind) {
       return 'transferFailureStaleOwner' as const;
     case 'alreadyArmed':
       return 'transferFailureAlreadyArmed' as const;
+    // The invitation ladder's own kinds: the transfer ladder never returns
+    // them (a claimant whose access was removed reads as `staleOwner`).
     case 'alreadyGuardian':
+    case 'revoked':
     case 'other':
       return 'commonSomethingWentWrong' as const;
   }
@@ -142,10 +148,15 @@ export interface PostgrestErrorLike {
 
 /**
  * Maps one supabase-js error to a typed invitation/role failure, mirroring
- * `SupabaseSharingService._mapError`'s ladder in order.
+ * `SupabaseSharingService._mapError`'s ladder in order. `status` is the
+ * HTTP status supabase-js reports beside the error (see `isServerFailure`).
  */
-export function mapSharingFailure(error: unknown, signedIn: boolean = false): SharingError {
-  return mapFailure(error, signedIn, mapInvitationBusiness);
+export function mapSharingFailure(
+  error: unknown,
+  signedIn: boolean = false,
+  status?: number,
+): SharingError {
+  return mapFailure(error, signedIn, mapInvitationBusiness, status);
 }
 
 /**
@@ -154,14 +165,19 @@ export function mapSharingFailure(error: unknown, signedIn: boolean = false): Sh
  * in particular 23505 reads as "a transfer is already armed" here, never as
  * the invitation mapper's "already guardian".
  */
-export function mapTransferFailure(error: unknown, signedIn: boolean = false): SharingError {
-  return mapFailure(error, signedIn, mapTransferBusiness);
+export function mapTransferFailure(
+  error: unknown,
+  signedIn: boolean = false,
+  status?: number,
+): SharingError {
+  return mapFailure(error, signedIn, mapTransferBusiness, status);
 }
 
 function mapFailure(
   error: unknown,
   signedIn: boolean,
   business: (code: string, msg: string) => SharingFailureKind | null,
+  status: number | undefined,
 ): SharingError {
   if (error instanceof SharingError) return error;
   const postgrest = error as Partial<PostgrestErrorLike> | null;
@@ -171,7 +187,7 @@ function mapFailure(
     typeof postgrest.message === 'string'
   ) {
     return new SharingError(
-      mapPostgrest(postgrest.code ?? '', postgrest.message, signedIn, business),
+      mapPostgrest(postgrest.code ?? '', postgrest.message, signedIn, business, status),
     );
   }
   return new SharingError('other');
@@ -182,7 +198,12 @@ function mapPostgrest(
   message: string,
   signedIn: boolean,
   business: (code: string, msg: string) => SharingFailureKind | null,
+  status: number | undefined,
 ): SharingFailureKind {
+  // Decided first (issue #1504): what answered was not PostgREST, so the
+  // message is a gateway's page or the browser's own fetch error. It is not
+  // a refusal, and its text is not read for one.
+  if (isServerFailure(code, status)) return 'network';
   const msg = message.toLowerCase();
   if (isUnauthorized(code, msg)) {
     // The server refuses an unauthenticated caller the same way it refuses
@@ -190,11 +211,36 @@ function mapPostgrest(
     // is "sign in" (issue #885's posture).
     return signedIn ? 'unauthorized' : 'notSignedIn';
   }
-  const kind = business(code, msg);
-  if (kind !== null) return kind;
-  const status = Number.parseInt(code, 10);
-  if (!Number.isNaN(status) && status >= 500) return 'network';
-  return 'other';
+  return business(code, msg) ?? 'other';
+}
+
+/**
+ * Whether the call got no answer from PostgREST at all — the request never
+ * completed, or something in front of PostgREST answered 5xx — rather than
+ * a refusal the server chose (issue #1504).
+ *
+ * The two arrive in different places. `error.code` is the server's own
+ * code: a five-character SQLSTATE (`55000`, `P0001`, `42501`) or one of
+ * PostgREST's (`PGRST301`). It is never an HTTP status, and its digits say
+ * nothing about one: "invitation was revoked" is `55000`, which the old
+ * test (any all-digit code of 500 or more) read as a server failure.
+ * PostgREST also answers every class-55 refusal with HTTP 500, so the
+ * status of a response that carries a code says nothing either.
+ *
+ * The HTTP status is the response's `status`, beside the error. supabase-js
+ * sets it to 0 and the code to `''` when the request never completed, and
+ * leaves the code out when the body was not PostgREST's (a gateway's 5xx
+ * page). A three-digit `code` is read as a status as well: that is where
+ * the app's client puts it (`SupabaseSharingService._isServerFailure`), and
+ * the two mappers stay the same.
+ */
+function isServerFailure(code: string, status: number | undefined): boolean {
+  const reported = /^\d{3}$/.test(code)
+    ? Number.parseInt(code, 10)
+    : code === ''
+      ? status
+      : undefined;
+  return reported !== undefined && (reported === 0 || reported >= 500);
 }
 
 function isUnauthorized(code: string, msg: string): boolean {
@@ -210,6 +256,11 @@ function mapInvitationBusiness(code: string, msg: string): SharingFailureKind | 
   if (code === 'P0002' || msg.includes('not found')) return 'notFound';
   if (msg.includes('already accepted')) return 'alreadyAccepted';
   if (msg.includes('expired')) return 'expired';
+  // Issue #1504: "invitation was revoked" (whoever sent it cancelled it) and
+  // "guardian access to this profile was revoked; a new invitation is
+  // required" (the invitee was removed after it was sent). Both are 55000,
+  // and for both the way forward is a new invitation.
+  if (msg.includes('revoked')) return 'revoked';
   if (code === '23505' || msg.includes('already an active guardian')) return 'alreadyGuardian';
   if (code === '22023' || msg.includes('invalid') || msg.includes('token_hash'))
     return 'invalidToken';
@@ -228,23 +279,36 @@ function mapTransferBusiness(code: string, msg: string): SharingFailureKind | nu
   if (msg.includes('cancelled')) return 'cancelled';
   if (msg.includes('expired')) return 'expired';
   if (msg.includes('cannot accept their own transfer')) return 'selfTransfer';
+  // The third (issue #1504) is the claimant's own side of the same thing:
+  // "guardian access to this profile was revoked; a new transfer link is
+  // required". Her role on the profile changed after the link was made,
+  // which is what the stale-link copy says.
   if (
     msg.includes('no longer owns this profile') ||
-    msg.includes('no longer the primary guardian')
+    msg.includes('no longer the primary guardian') ||
+    msg.includes('a new transfer link is required')
   ) {
     return 'staleOwner';
   }
   return null;
 }
 
-/** Maps with the caller's own auth state deciding notSignedIn vs unauthorized. */
+/**
+ * Maps with the caller's own auth state deciding notSignedIn vs
+ * unauthorized. `status` is the response's HTTP status, which every wrapper
+ * passes along with the error: it is what tells a request that never
+ * completed, or a gateway's 5xx, from a refusal (`isServerFailure`).
+ */
 async function failureFor(
   client: AppSupabaseClient,
   error: unknown,
   transfer: boolean,
+  status: number | undefined,
 ): Promise<SharingError> {
   const signedIn = await isSignedIn(client);
-  return transfer ? mapTransferFailure(error, signedIn) : mapSharingFailure(error, signedIn);
+  return transfer
+    ? mapTransferFailure(error, signedIn, status)
+    : mapSharingFailure(error, signedIn, status);
 }
 
 /**
@@ -486,12 +550,12 @@ export async function fetchGuardians(
   client: AppSupabaseClient,
   profileId: string,
 ): Promise<GuardianRow[]> {
-  const { data, error } = await client
+  const { data, error, status } = await client
     .from('profile_guardians')
     .select('*')
     .eq('profile_id', profileId)
     .order('created_at');
-  if (error !== null) throw await failureFor(client, error, false);
+  if (error !== null) throw await failureFor(client, error, false, status);
   return z.array(guardianRowSchema).parse(data);
 }
 
@@ -515,7 +579,7 @@ export async function fetchPendingInvites(
   now: Date = new Date(),
 ): Promise<PendingInviteRow[]> {
   const cutoff = new Date(now.getTime() - RECENTLY_EXPIRED_WINDOW_MS).toISOString();
-  const { data, error } = await client
+  const { data, error, status } = await client
     .from('guardian_invitations')
     .select(
       'id, profile_id, role, invited_by, recipient_label, created_at, expires_at, is_subject',
@@ -525,7 +589,7 @@ export async function fetchPendingInvites(
     .is('revoked_at', null)
     .gt('expires_at', cutoff)
     .order('created_at', { ascending: true });
-  if (error !== null) throw await failureFor(client, error, false);
+  if (error !== null) throw await failureFor(client, error, false, status);
   return z.array(pendingInviteRowSchema).parse(data);
 }
 
@@ -539,7 +603,7 @@ export async function fetchActiveTransfer(
   profileId: string,
   now: Date = new Date(),
 ): Promise<ActiveTransferRow | null> {
-  const { data, error } = await client
+  const { data, error, status } = await client
     .from('ownership_transfers')
     .select('id, profile_id, parent_post_transfer_role, recipient_label, expires_at')
     .eq('profile_id', profileId)
@@ -548,7 +612,7 @@ export async function fetchActiveTransfer(
     .gt('expires_at', now.toISOString())
     .limit(1)
     .maybeSingle();
-  if (error !== null) throw await failureFor(client, error, false);
+  if (error !== null) throw await failureFor(client, error, false, status);
   return data === null ? null : activeTransferRowSchema.parse(data);
 }
 
@@ -567,14 +631,14 @@ export async function fetchGuardianNotes(
 ): Promise<GuardianNoteRow[]> {
   const rows: GuardianNoteRow[] = [];
   for (let offset = 0; ; offset += PAGE_SIZE) {
-    const { data, error } = await client
+    const { data, error, status } = await client
       .from('guardian_notes')
       .select('id, profile_id, local_date, tz, body, logged_by_user_id, updated_at')
       .eq('profile_id', profileId)
       .is('deleted_at', null)
       .order('updated_at', { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1);
-    if (error !== null) throw await failureFor(client, error, false);
+    if (error !== null) throw await failureFor(client, error, false, status);
     const page = z.array(guardianNoteRowSchema).parse(data);
     rows.push(...page);
     if (page.length < PAGE_SIZE) return rows;
@@ -589,7 +653,7 @@ export async function fetchGuardianNotesForDate(
 ): Promise<GuardianNoteRow[]> {
   const rows: GuardianNoteRow[] = [];
   for (let offset = 0; ; offset += PAGE_SIZE) {
-    const { data, error } = await client
+    const { data, error, status } = await client
       .from('guardian_notes')
       .select('id, profile_id, local_date, tz, body, logged_by_user_id, updated_at')
       .eq('profile_id', profileId)
@@ -597,7 +661,7 @@ export async function fetchGuardianNotesForDate(
       .is('deleted_at', null)
       .order('updated_at', { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1);
-    if (error !== null) throw await failureFor(client, error, false);
+    if (error !== null) throw await failureFor(client, error, false, status);
     const page = z.array(guardianNoteRowSchema).parse(data);
     rows.push(...page);
     if (page.length < PAGE_SIZE) return rows;
@@ -611,14 +675,14 @@ export async function fetchCareNotes(
 ): Promise<CareNoteRow[]> {
   const rows: CareNoteRow[] = [];
   for (let offset = 0; ; offset += PAGE_SIZE) {
-    const { data, error } = await client
+    const { data, error, status } = await client
       .from('care_notes')
       .select('id, profile_id, body, logged_by_user_id, last_modified_by_user_id, updated_at')
       .eq('profile_id', profileId)
       .is('deleted_at', null)
       .order('updated_at', { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1);
-    if (error !== null) throw await failureFor(client, error, false);
+    if (error !== null) throw await failureFor(client, error, false, status);
     const page = z.array(careNoteRowSchema).parse(data);
     rows.push(...page);
     if (page.length < PAGE_SIZE) return rows;
@@ -703,7 +767,7 @@ export async function createGuardianInvitation(
   },
 ): Promise<{ invitation: CreatedInvitation; rawToken: string }> {
   const { rawToken, tokenHash } = generateInviteToken();
-  const { data, error } = await client.rpc('create_guardian_invitation', {
+  const { data, error, status } = await client.rpc('create_guardian_invitation', {
     p_profile_id: options.profileId,
     p_role: options.role,
     // `p_recipient_label` has no SQL default, so omitting the key would be
@@ -715,7 +779,7 @@ export async function createGuardianInvitation(
     p_ttl_hours: options.ttlHours ?? INVITE_TTL_HOURS,
     p_subject: options.subject,
   });
-  if (error !== null) throw await failureFor(client, error, false);
+  if (error !== null) throw await failureFor(client, error, false, status);
   return {
     invitation: parseCommittedResult(createdInvitationSchema, data, (raw) => ({
       id: stringOr(raw['id'], ''),
@@ -736,10 +800,10 @@ export async function previewGuardianInvitation(
   client: AppSupabaseClient,
   rawToken: string,
 ): Promise<InvitePreview | null> {
-  const { data, error } = await client.rpc('preview_guardian_invitation', {
+  const { data, error, status } = await client.rpc('preview_guardian_invitation', {
     p_token_hash: await sha256Hex(rawToken),
   });
-  if (error !== null) throw await failureFor(client, error, false);
+  if (error !== null) throw await failureFor(client, error, false, status);
   return data === null ? null : invitePreviewSchema.parse(data);
 }
 
@@ -749,11 +813,11 @@ export async function acceptGuardianInvitation(
   rawToken: string,
   displayName: string | null,
 ): Promise<AcceptedInvite> {
-  const { data, error } = await client.rpc('accept_guardian_invitation', {
+  const { data, error, status } = await client.rpc('accept_guardian_invitation', {
     p_token_hash: await sha256Hex(rawToken),
     p_guardian_display_name: displayName ?? undefined,
   });
-  if (error !== null) throw await failureFor(client, error, false);
+  if (error !== null) throw await failureFor(client, error, false, status);
   return acceptedInviteSchema.parse(data);
 }
 
@@ -763,11 +827,11 @@ export async function revokeGuardian(
   profileId: string,
   targetUserId: string,
 ): Promise<void> {
-  const { error } = await client.rpc('revoke_guardian', {
+  const { error, status } = await client.rpc('revoke_guardian', {
     p_profile_id: profileId,
     p_target_user_id: targetUserId,
   });
-  if (error !== null) throw await failureFor(client, error, false);
+  if (error !== null) throw await failureFor(client, error, false, status);
 }
 
 /** Cancels one outstanding invitation; idempotent server-side (R5). */
@@ -775,10 +839,10 @@ export async function revokeGuardianInvitation(
   client: AppSupabaseClient,
   invitationId: string,
 ): Promise<InvitationOutcome> {
-  const { data, error } = await client.rpc('revoke_guardian_invitation', {
+  const { data, error, status } = await client.rpc('revoke_guardian_invitation', {
     p_invitation_id: invitationId,
   });
-  if (error !== null) throw await failureFor(client, error, false);
+  if (error !== null) throw await failureFor(client, error, false, status);
   return invitationOutcomeSchema.parse(data).outcome;
 }
 
@@ -793,12 +857,12 @@ export async function updateGuardianRole(
   targetUserId: string,
   newRole: GuardianRole,
 ): Promise<void> {
-  const { error } = await client.rpc('update_guardian_role', {
+  const { error, status } = await client.rpc('update_guardian_role', {
     p_profile_id: profileId,
     p_target_user_id: targetUserId,
     p_new_role: newRole,
   });
-  if (error !== null) throw await failureFor(client, error, false);
+  if (error !== null) throw await failureFor(client, error, false, status);
 }
 
 // ---------------------------------------------------------------------------
@@ -816,14 +880,14 @@ export async function createOwnershipTransfer(
   },
 ): Promise<{ transfer: CreatedTransfer; rawToken: string }> {
   const { rawToken, tokenHash } = generateInviteToken();
-  const { data, error } = await client.rpc('create_ownership_transfer', {
+  const { data, error, status } = await client.rpc('create_ownership_transfer', {
     p_profile_id: options.profileId,
     p_parent_post_transfer_role: options.parentPostTransferRole,
     p_token_hash: await tokenHash,
     p_recipient_label: options.recipientLabel ?? undefined,
     p_ttl_hours: options.ttlHours ?? TRANSFER_TTL_HOURS,
   });
-  if (error !== null) throw await failureFor(client, error, true);
+  if (error !== null) throw await failureFor(client, error, true, status);
   return {
     transfer: parseCommittedResult(createdTransferSchema, data, (raw) => ({
       id: stringOr(raw['id'], ''),
@@ -838,10 +902,10 @@ export async function cancelOwnershipTransfer(
   client: AppSupabaseClient,
   transferId: string,
 ): Promise<void> {
-  const { error } = await client.rpc('cancel_ownership_transfer', {
+  const { error, status } = await client.rpc('cancel_ownership_transfer', {
     p_transfer_id: transferId,
   });
-  if (error !== null) throw await failureFor(client, error, true);
+  if (error !== null) throw await failureFor(client, error, true, status);
 }
 
 /** Claims a transfer; the caller becomes the profile's owner (R11). */
@@ -850,12 +914,12 @@ export async function acceptOwnershipTransfer(
   rawToken: string,
   options: { childDisplayName: string | null; parentDisplayName: string | null },
 ): Promise<ClaimedTransfer> {
-  const { data, error } = await client.rpc('accept_ownership_transfer', {
+  const { data, error, status } = await client.rpc('accept_ownership_transfer', {
     p_token_hash: await sha256Hex(rawToken),
     p_child_display_name: options.childDisplayName ?? undefined,
     p_parent_display_name: options.parentDisplayName ?? undefined,
   });
-  if (error !== null) throw await failureFor(client, error, true);
+  if (error !== null) throw await failureFor(client, error, true, status);
   return claimedTransferSchema.parse(data);
 }
 
@@ -877,12 +941,12 @@ export async function recordMinimumAgeAcknowledgement(
   client: AppSupabaseClient,
   options: { consentVia: string; appVersion: string; policyVersion: string },
 ): Promise<void> {
-  const { error } = await client.rpc('record_minimum_age_acknowledgement', {
+  const { error, status } = await client.rpc('record_minimum_age_acknowledgement', {
     p_consent_via: options.consentVia,
     p_app_version: options.appVersion,
     p_policy_version: options.policyVersion,
   });
-  if (error !== null) throw await failureFor(client, error, false);
+  if (error !== null) throw await failureFor(client, error, false, status);
 }
 
 // ---------------------------------------------------------------------------
@@ -968,13 +1032,13 @@ async function pushNotes(
   // other table rides its server-side `'[]'` default. Ten empty arrays is
   // what a notes-only push looks like.
   const sentAtMs = Date.now();
-  const { data, error } = await client.rpc('sync_push', {
+  const { data, error, status } = await client.rpc('sync_push', {
     p_profiles: [],
     p_day_entries: [],
     p_care_notes: payload.careNotes,
     p_guardian_notes: payload.guardianNotes,
   });
-  if (error !== null) throw await failureFor(client, error, false);
+  if (error !== null) throw await failureFor(client, error, false, status);
   const result = data as SyncPushResultLike | null;
   // Issue #1283: this is the notes pages' own sync_push call site (kept off
   // pushSyncBatch to preserve the four-array wire shape the tests pin), so
