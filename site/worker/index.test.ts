@@ -190,8 +190,10 @@ for (
     // nothing else: no host, no scheme, no 'unsafe-inline'. An injected
     // <script src="https://static.cloudflareinsights.com/..."> has no hash
     // here, so the browser refuses it.
-    const script = /<script>([\s\S]*?)<\/script>/.exec(body)![1];
-    const style = /<style>([\s\S]*?)<\/style>/.exec(body)![1];
+    // Cut on the tags' positions, not with the Worker's own pattern, so
+    // this is a second opinion on which text the hashes cover.
+    const script = between(body, "<script>", "</script>");
+    const style = between(body, "<style>", "</style>");
     assertEquals(directive(csp, "script-src"), await hashSource(script));
     assertEquals(directive(csp, "style-src"), await hashSource(style));
     assertNotMatch(csp, /unsafe-inline|unsafe-eval|https?:|\*/);
@@ -272,7 +274,7 @@ Deno.test("/invite: a script tag with attributes is not one the policy admits", 
     ASSETS: assets,
   });
   const csp = res.headers.get("content-security-policy") ?? "";
-  const own = /<script>([\s\S]*?)<\/script>/.exec(assetInvite)![1];
+  const own = between(assetInvite, "<script>", "</script>");
   assertEquals(directive(csp, "script-src"), await hashSource(own));
   assertNotMatch(csp, /cloudflareinsights/);
 });
@@ -307,9 +309,13 @@ Deno.test("/invite: the fallback page has exactly one script and one style, coun
   // The Worker finds the blocks with a pattern. A second mention of either
   // tag anywhere, a comment included, could make it hash the wrong span and
   // have the page's own block refused.
+  // Counted without regard to case: `<SCRIPT>` is a script to a browser
+  // and nothing to the Worker's pattern.
   for (const tag of ["<script", "</script", "<style", "</style"]) {
-    assertEquals(count(INVITE_FALLBACK_HTML, tag), 1, tag);
+    assertEquals(count(INVITE_FALLBACK_HTML.toLowerCase(), tag), 1, tag);
   }
+  assertStringIncludes(INVITE_FALLBACK_HTML, "<script>");
+  assertStringIncludes(INVITE_FALLBACK_HTML, "<style>");
 });
 
 for (

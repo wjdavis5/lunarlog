@@ -53,6 +53,20 @@ test("no web-app button until #1258 serves /invite on app.lunarlog.app", () => {
   assert.doesNotMatch(landing, /web app/);
 });
 
+/** [html] with its comments taken out, cut on their delimiters. */
+function withoutHtmlComments(html) {
+  let kept = "";
+  let at = 0;
+  for (;;) {
+    const open = html.indexOf("<!--", at);
+    if (open === -1) return kept + html.slice(at);
+    kept += html.slice(at, open);
+    const close = html.indexOf("-->", open + 4);
+    if (close === -1) return kept;
+    at = close + 3;
+  }
+}
+
 test("the page's script and style are ones the Worker's policy covers", () => {
   // site/worker/index.ts sends this page a Content-Security-Policy that
   // allows nothing and then admits the page's own inline script and style
@@ -60,7 +74,7 @@ test("the page's script and style are ones the Worker's policy covers", () => {
   // with an attribute, a second block of either kind, or any resource the
   // page would have to fetch is one the policy would refuse on the live
   // page, so each has to be a deliberate change there too.
-  const withoutComments = landing.replace(/<!--[\s\S]*?-->/g, "");
+  const withoutComments = withoutHtmlComments(landing);
   const tags = (name) => [
     ...withoutComments.matchAll(new RegExp(`<${name}\\b[^>]*>`, "gi")),
   ].map((match) => match[0]);
@@ -76,8 +90,10 @@ test("the page's script and style are ones the Worker's policy covers", () => {
   // comments and all. A second mention of either tag anywhere, the page's
   // long opening comment included, could make it hash the wrong span and
   // have the page's own block refused. So: one of each, on the raw text.
+  // Counted without regard to case: `<SCRIPT>` is a script to a browser
+  // and nothing to the Worker's pattern.
   for (const tag of ["<script", "</script", "<style", "</style"]) {
-    assert.equal(landing.split(tag).length - 1, 1, `exactly one ${tag}`);
+    assert.equal(landing.toLowerCase().split(tag).length - 1, 1, `exactly one ${tag}`);
   }
 });
 
