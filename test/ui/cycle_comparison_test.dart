@@ -489,6 +489,16 @@ void main() {
             flow: FlowLevel.light,
             updatedAt: DateTime.utc(2026, 1, 1),
           ),
+          // A day logged for its symptoms, with no flow recorded.
+          DayEntry(
+            id: 'b2',
+            profileId: 'p1',
+            localDate: LocalDate(2026, 2, 2),
+            tz: 'UTC',
+            flow: FlowLevel.none,
+            tags: const ['headache'],
+            updatedAt: DateTime.utc(2026, 1, 1),
+          ),
         ],
         today: LocalDate(2026, 3, 15),
         cycleAStart: LocalDate(2026, 1, 1),
@@ -512,6 +522,10 @@ void main() {
       expect(find.text('Excluded from averages'), findsOneWidget);
       expect(find.text('Heavy'), findsOneWidget);
       expect(find.text('Light'), findsOneWidget);
+      // A day logged without a flow reads as the days with no entry do,
+      // "Not logged", not as the domain's "None".
+      expect(find.text('Not logged'), findsWidgets);
+      expect(find.text('None'), findsNothing);
       expect(find.textContaining('Cramps'), findsOneWidget);
       expect(find.byKey(const ValueKey('cycle-comparison-day-1')), findsOneWidget);
 
