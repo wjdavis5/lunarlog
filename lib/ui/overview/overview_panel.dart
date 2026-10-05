@@ -800,6 +800,8 @@ class _OverviewPanelState extends State<OverviewPanel>
             PredictionsSuppressed() => PredictionsSuppressedCard(
               method: prediction.method,
               lifecycleMode: prediction.lifecycleMode,
+              // The panel's own disclaimer follows below.
+              showDisclaimer: false,
             ),
             // Issue #225: per-profile predictions disabled toggle.
             PredictionsDisabled() => PredictionsDisabledCard(
@@ -1432,9 +1434,9 @@ class _OverviewPanelState extends State<OverviewPanel>
   /// [EmptyState] instead of a bespoke card. Care-mode copy routing (#131)
   /// is unchanged — [_copy.notEnoughTitle]/[_copy.notEnoughBody] still
   /// choose the words; the explainer content itself is #139's, so this
-  /// issue only changes the presentation, never the copy. The disclaimer
-  /// stays a plain [Text] alongside it (R17: next to every estimate,
-  /// without exception) rather than folded into the component itself.
+  /// issue only changes the presentation, never the copy. The card carries
+  /// no disclaimer of its own: the panel ends with one (issue #807, once per
+  /// screen), and a second copy a few rows above it read as a stutter.
   /// Issue #308: `titleStyle`/`crossAxisAlignment` regain this card's old
   /// `headlineSmall`, left-aligned heading now that [EmptyState] otherwise
   /// defaults to a centred `titleMedium`.
@@ -1466,12 +1468,6 @@ class _OverviewPanelState extends State<OverviewPanel>
               ),
               titleStyle: theme.textTheme.headlineSmall,
               crossAxisAlignment: CrossAxisAlignment.start,
-            ),
-            const SizedBox(height: LLSpace.space2),
-            Text(
-              kEstimateDisclaimer,
-              key: const ValueKey('overview-not-enough-disclaimer'),
-              style: theme.textTheme.bodySmall,
             ),
             // Issue #139: the "not enough history yet" state links to the
             // bundled card explaining the three-cycle requirement. Issue
