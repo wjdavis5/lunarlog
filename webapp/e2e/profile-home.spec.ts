@@ -306,3 +306,81 @@ test.describe('the day editor on a cold load', () => {
     await expect(page.getByText(messages['webDayNoAccess'] ?? 'missing')).toHaveCount(0);
   });
 });
+
+// The header sits above every page and is never unmounted, so it has to
+// follow the session on its own. Signing in on the page used to leave it
+// offering "Sign in", with no "Today" or "Account", until a reload; and
+// signing out left the signed-in links up. Both are checked here without a
+// reload, against the Worker's routes as the page really calls them.
+test.describe('the header follows the session without a reload', () => {
+  test('signing in, then out, on the page', async ({ page }) => {
+    let signedIn = false;
+    const session = {
+      access_token: 'e2e-access-token',
+      expires_in: 3600,
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      user: { id: UID, email: 'e2e@example.com' },
+    };
+    await page.route('**/rest/v1/**', (route) => json(route, snapshot));
+    await page.route('**/auth/session', (route) =>
+      signedIn
+        ? json(route, session)
+        : route.fulfill({
+            status: 401,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'unauthorized' }),
+          }),
+    );
+    await page.route('**/auth/password/sign-in', (route) => {
+      signedIn = true;
+      return json(route, session);
+    });
+    await page.route('**/auth/sign-out', (route) => {
+      signedIn = false;
+      return json(route, { ok: true });
+    });
+
+    const header = page.getByRole('banner');
+    const signInLink = header.getByRole('link', {
+      name: messages['accountSectionSignIn'] ?? 'missing',
+    });
+    const signOutLink = header.getByRole('link', {
+      name: messages['webAuthSignOutAction'] ?? 'missing',
+    });
+    const accountLink = header.getByRole('link', {
+      name: messages['accountSectionTitle'] ?? 'missing',
+    });
+    const todayLink = header.getByRole('link', {
+      name: messages['calendarTodayTooltip'] ?? 'missing',
+    });
+
+    await page.goto('/sign-in');
+    await expect(signInLink).toBeVisible();
+    await expect(accountLink).toHaveCount(0);
+
+    await page
+      .getByLabel(messages['accountSignInEmailLabel'] ?? 'missing')
+      .fill('e2e@example.com');
+    await page
+      .getByLabel(messages['accountSignInPasswordLabel'] ?? 'missing')
+      .fill('a long enough password');
+    await page
+      .getByRole('button', { name: messages['accountSignInAction'] ?? 'missing', exact: true })
+      .click();
+
+    await expect(accountLink).toBeVisible();
+    await expect(todayLink).toBeVisible();
+    await expect(signOutLink).toBeVisible();
+    await expect(signInLink).toHaveCount(0);
+
+    // The sign-in page, signed in, is where the sign-out choices live.
+    await page
+      .getByRole('main')
+      .getByRole('button', { name: messages['webAuthSignOutAction'] ?? 'missing', exact: true })
+      .click();
+
+    await expect(signInLink).toBeVisible();
+    await expect(accountLink).toHaveCount(0);
+    await expect(todayLink).toHaveCount(0);
+  });
+});

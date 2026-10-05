@@ -129,6 +129,20 @@ describe('WebAuthClient (issue #1250)', () => {
     expect(await client.getToken()).toBeNull();
   });
 
+  // Where email confirmation is off the sign-up answers with a session.
+  // The client read the response body once to look for `session: false`
+  // and then a second time to parse the session, and a body can only be
+  // read once: the sign-up succeeded on the server and threw in the page.
+  it('signUp adopts the session when the sign-up needs no confirmation', async () => {
+    const { calls } = stubFetch(() => Promise.resolve(jsonResponse(SESSION_BODY)));
+
+    expect(await client.signUp('new@example.com', 'long enough password')).toBe('signed_in');
+    expect(client.getUser()).toEqual({ id: 'u1', email: 'a@example.com' });
+    // The adopted token is used as it stands: no renewal round trip.
+    expect(await client.getToken()).toBe('access-1');
+    expect(calls.map((call) => call.url)).toEqual(['/auth/password/sign-up']);
+  });
+
   it('exchanges the callback code and forgets on sign-out', async () => {
     const { calls } = stubFetch((call) => {
       if (call.url === '/auth/session') {
