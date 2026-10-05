@@ -401,6 +401,71 @@ Future<void> seedEpisodes(
   }
 }
 
+/// Pumps a bare [OverviewPanel] for a profile whose onboarding answers seed
+/// a provisional estimate (issue #218). Unlike [pumpOverview], the
+/// prediction service is wired with the profiles repository — the one
+/// collaborator that lets it seed — and it shares one settings store with
+/// the [CycleExclusionList] the late resolver writes to, as the app does.
+/// Tear down with [disposeOverview].
+Future<Harness> pumpProvisionalOverview(
+  WidgetTester tester, {
+  required LocalDate lastPeriodStart,
+  required int typicalCycleLengthDays,
+}) async {
+  tester.view.physicalSize = const Size(800, 1400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+
+  final db = LunarLogDatabase(NativeDatabase.memory());
+  final profiles = DriftProfilesRepository(db.storage);
+  final settings = DriftSettingsStore(db.storage);
+  final entries = DriftDayEntriesRepository(db.storage);
+  final profile = await profiles.create(
+    displayName: 'Alice',
+    isMinor: false,
+    lastPeriodStart: lastPeriodStart,
+    typicalCycleLengthDays: typicalCycleLengthDays,
+    typicalPeriodLengthDays: 5,
+  );
+
+  await tester.pumpWidget(
+    MultiProvider(
+      providers: [
+        Provider<DayEntriesRepository>.value(value: entries),
+        Provider<SettingsStore>.value(value: settings),
+        Provider<CyclePredictionService>.value(
+          value: CyclePredictionService(
+            entries,
+            settings: settings,
+            profiles: profiles,
+          ),
+        ),
+        Provider<CycleExclusionList>.value(
+          value: CycleExclusionList(settings),
+        ),
+        ChangeNotifierProvider<NotificationPermissionState>.value(
+          value: NotificationPermissionState(
+            NotificationAvailability.available,
+          ),
+        ),
+      ],
+      child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: OverviewPanel(
+            profileId: profile.id,
+            todayProvider: () => kToday,
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return Harness(db, profile, profiles, entries, settings);
+}
+
 /// R13 sweep over every rendered Text in the tree for the given state.
 void expectNoFertilityVocabulary(WidgetTester tester, String state) {
   final texts = tester
@@ -1371,6 +1436,137 @@ void main() {
         expect(find.text('Log it'), findsNothing);
         expect(find.text('Skip this cycle'), findsNothing);
         expect(find.text('Remind me in 3 days'), findsNothing);
+        await disposeOverview(tester, h);
+      });
+    });
+
+    group('issue #1412: the late resolver and the long-cycle prompt act on '
+        'a provisional (onboarding-seeded) estimate too', () {
+      testWidgets('skip this cycle on a provisional estimate clears the '
+          'late card and moves the estimate one supplied cycle later; '
+          'including the cycle again restores it', (tester) async {
+        // The onboarding answer is 35 days before kToday with a 28-day
+        // typical cycle: the seeded estimate (2026-08-23) is 7 days past.
+        final h = await pumpProvisionalOverview(
+          tester,
+          lastPeriodStart: LocalDate(2026, 7, 26),
+          typicalCycleLengthDays: 28,
+        );
+
+        String heroCount() => tester
+            .widget<Text>(find.byKey(const ValueKey('overview-days-until')))
+            .data!;
+
+        expect(find.text('Provisional'), findsOneWidget);
+        expect(find.text('Cycle day 36'), findsOneWidget);
+        expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget);
+        expect(find.text('7 days late'), findsOneWidget);
+        expect(heroCount(), '7');
+        expect(find.text('days past estimate'), findsOneWidget);
+        expect(
+          find.text(
+            'Next period estimate: September 16, 2026 – September 24, 2026',
+          ),
+          findsOneWidget,
+          reason: 'the late roll: Aug 23 + one 28-day step, ±4 days',
+        );
+
+        await tester.tap(find.byKey(const ValueKey('resolver-skip')));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const ValueKey('late-resolver')),
+          findsNothing,
+          reason:
+              'the skip advances the un-rolled estimate one supplied '
+              'cycle (Jul 26 + 28 + 28 = Sep 20), so it is no longer late',
+        );
+        expect(find.text('7 days late'), findsNothing);
+        expect(find.text('days past estimate'), findsNothing);
+        expect(heroCount(), '21', reason: 'Aug 30 to Sep 20');
+        expect(
+          find.text(
+            'Next period estimate: September 16, 2026 – September 24, 2026',
+          ),
+          findsOneWidget,
+          reason: 'the same date the late roll had already reached',
+        );
+        expect(
+          find.text('Provisional'),
+          findsOneWidget,
+          reason: 'a skip completes no cycle: still provisional',
+        );
+        expect(
+          find.text('Cycle day 36'),
+          findsOneWidget,
+          reason: 'the open cycle itself does not move',
+        );
+        expect(
+          parseOmittedCycles(
+            await h._settings.get(omittedCyclesSettingKey(h.profile.id)),
+          ),
+          contains(LocalDate(2026, 7, 26)),
+          reason:
+              'the skip is keyed on the provisional anchor -- the '
+              'prediction\'s own lastEpisodeStart',
+        );
+
+        await CycleExclusionList(h._settings)
+            .include(h.profile.id, LocalDate(2026, 7, 26));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('late-resolver')),
+          findsOneWidget,
+          reason: 'reversible: including it restores the late window',
+        );
+        expect(find.text('7 days late'), findsOneWidget);
+        await disposeOverview(tester, h);
+      });
+
+      testWidgets('"Exclude this cycle" on a provisional estimate past the '
+          'long-cycle threshold takes one supplied cycle off the late '
+          'count; the long-cycle prompt stays, as on a computed estimate', (
+        tester,
+      ) async {
+        // 64 open days (> kMaxOpenCycleDays) on a 30-day typical cycle:
+        // the seeded estimate (2026-07-27) is 34 days past.
+        final h = await pumpProvisionalOverview(
+          tester,
+          lastPeriodStart: LocalDate(2026, 6, 27),
+          typicalCycleLengthDays: 30,
+        );
+
+        expect(
+          find.byKey(const ValueKey('overview-long-cycle-prompt')),
+          findsOneWidget,
+        );
+        expect(find.text('34 days late'), findsOneWidget);
+
+        await tester.tap(find.byKey(const ValueKey('long-cycle-exclude')));
+        await tester.pump();
+        expect(
+          find.text('This cycle is excluded from future averages.'),
+          findsOneWidget,
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text('4 days late'),
+          findsOneWidget,
+          reason: 'Jun 27 + 30 + one skipped 30-day cycle = Aug 26',
+        );
+        expect(find.text('34 days late'), findsNothing);
+        expect(
+          find.byKey(const ValueKey('overview-long-cycle-prompt')),
+          findsOneWidget,
+          reason: 'the cycle is still open: excluding it never closes it',
+        );
+        expect(
+          parseOmittedCycles(
+            await h._settings.get(omittedCyclesSettingKey(h.profile.id)),
+          ),
+          contains(LocalDate(2026, 6, 27)),
+        );
         await disposeOverview(tester, h);
       });
     });
@@ -2709,6 +2905,58 @@ void main() {
       );
       expect(restored.tags, ['cramps']);
       expect(restored.note, 'before the quick log');
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('issue #1412: when today is already logged heavier the '
+        'snackbar says the flow stays as it was -- never that a '
+        'medium-flow start was recorded -- and offers no Undo', (
+      tester,
+    ) async {
+      final h = await pumpOverview(
+        tester,
+        seed: (entries, profileId) async {
+          await seedEpisodes(entries, profileId, kActiveStarts);
+          await entries.save(
+            DayEntry(
+              id: '',
+              profileId: profileId,
+              localDate: kToday,
+              tz: 'America/Chicago',
+              flow: FlowLevel.heavy,
+              tags: const ['cramps'],
+              note: 'already logged',
+              updatedAt: DateTime.utc(2026, 1, 1),
+              deletedAt: null,
+            ),
+          );
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('today-card-log-action')));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(const ValueKey('today-card-logged-snackbar')),
+            )
+            .data,
+        "Today's flow was already logged, so it stays as it was.",
+      );
+      expect(
+        find.text('Recorded a medium-flow period start for today.'),
+        findsNothing,
+      );
+      expect(
+        find.text('Undo'),
+        findsNothing,
+        reason: 'nothing changed, so there is nothing to undo',
+      );
+      final kept = await h.entries.find(h.profile.id, kToday);
+      expect(kept!.flow, FlowLevel.heavy);
+      expect(kept.tags, ['cramps']);
+      expect(kept.note, 'already logged');
       await disposeOverview(tester, h);
     });
   });

@@ -370,6 +370,27 @@ List<Map<String, Object?>> _predictCases() {
     }),
   );
 
+  // A skipped provisional cycle (issue #1412): nothing is logged, the
+  // supplied start (today-35) is the anchor, and its 28-day estimate is 7
+  // days past. The omission list names that anchor, so the estimate
+  // advances one supplied cycle (to today+21) and is no longer late — the
+  // computed path's skip rule, with the supplied length standing in for
+  // the mean. Without the facade forwarding `omittedCycleStarts` to the
+  // seeded branch this case reads `daysLate: 7`.
+  cases.add(
+    _case('predict.provisional-seed-skipped', 'predict', {
+      'today': today,
+      'tz': 'UTC',
+      'entries': const <Map<String, Object?>>[],
+      'facts': {
+        'lastPeriodStart': _addDays(today, -35),
+        'typicalCycleLengthDays': 28,
+        'typicalPeriodLengthDays': 5,
+      },
+      'omittedCycleStarts': [_addDays(today, -35)],
+    }),
+  );
+
   // PMS markers late in each cycle (issue #220): enough usable intervals
   // for a predicted band.
   final pmsUser = _cycleEntries(

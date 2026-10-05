@@ -89,6 +89,7 @@ import 'package:lunarlog/ui/settings/settings_screen.dart'
 import 'package:lunarlog/ui/startup/qa_build_banner.dart';
 import 'package:lunarlog/observability/sentry_bootstrap.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
+import 'package:lunarlog/ui/overview/quick_log_snackbar.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_home_gate.dart';
 import 'package:lunarlog/ui/sharing/accept_invite_sheet.dart';
@@ -685,9 +686,10 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// unlock for a latched intent, immediately for a tap on an unlocked app.
   /// Do what the in-app Today card does ([OverviewPanel]'s logged
   /// snackbar): land the operator on the logged profile's Today tab and
-  /// show the same `overviewLoggedSnackbar` with Undo, so the home-screen
-  /// pill is no longer the one write in the app that acknowledges itself
-  /// with nothing.
+  /// show the same confirmation ([quickLogSnackBar]: `overviewLoggedSnackbar`
+  /// with Undo, or the "already logged" line when the tap changed nothing),
+  /// so the home-screen pill is no longer the one write in the app that
+  /// acknowledges itself with nothing.
   ///
   /// The jump rides the launch-payload seam
   /// ([GateController.setPendingLaunchProfileId]) instead of reaching into
@@ -708,22 +710,20 @@ class _LunarLogAppState extends State<LunarLogApp>
     gate?.setPendingLaunchProfileId(outcome.profileId);
     final ctx = _navigatorKey.currentContext;
     if (ctx == null) return;
-    final l10n = AppLocalizations.of(ctx);
+    // Issue #1412: the same builder the Today card uses, so a widget tap on
+    // a day already logged at medium flow or heavier is reported as
+    // unchanged here too.
     ScaffoldMessenger.of(ctx).showSnackBar(
-      SnackBar(
-        content: Text(
-          l10n.overviewLoggedSnackbar,
-          key: const ValueKey('widget-quick-log-snackbar'),
-        ),
-        action: SnackBarAction(
-          label: l10n.overviewUndo,
-          onPressed: () => unawaited(undoQuickLog(
-            _dayEntries,
-            profileId: outcome.profileId,
-            previous: outcome.previousEntry,
-            date: outcome.date,
-          )),
-        ),
+      quickLogSnackBar(
+        l10n: AppLocalizations.of(ctx),
+        previousFlow: outcome.previousEntry?.flow,
+        contentKey: const ValueKey('widget-quick-log-snackbar'),
+        onUndo: () => unawaited(undoQuickLog(
+          _dayEntries,
+          profileId: outcome.profileId,
+          previous: outcome.previousEntry,
+          date: outcome.date,
+        )),
       ),
     );
   }

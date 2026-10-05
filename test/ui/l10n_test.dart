@@ -229,6 +229,11 @@ void main() {
         l10n.overviewLoggedSnackbar,
         'Recorded a medium-flow period start for today.',
       );
+      // Issue #1412: the quick-log tap that changes nothing says so.
+      expect(
+        l10n.overviewAlreadyLoggedSnackbar,
+        "Today's flow was already logged, so it stays as it was.",
+      );
       expect(l10n.overviewUndo, 'Undo');
       expect(
         l10n.overviewExcludedSnackbar,

@@ -54,6 +54,18 @@ FlowLevel quickLogFlowLevel(FlowLevel? existing) {
       : kQuickLogFlowLevel;
 }
 
+/// Whether a quick-log tap changes the day's flow, given today's [existing]
+/// flow (null when there is no entry yet): true when the tap creates the
+/// entry or raises it to [kQuickLogFlowLevel], false when the day is already
+/// logged at or above that level and [quickLogFlowLevel] hands the same
+/// level back.
+///
+/// Issue #1412: the confirmation a caller shows reads this, so it never
+/// reports a [kQuickLogFlowLevel] start on a day that was already logged
+/// and stays as it was.
+bool quickLogChangesFlow(FlowLevel? existing) =>
+    quickLogFlowLevel(existing) != existing;
+
 /// Restores exactly what a quick-log write overwrote (issue #316 review
 /// item 5): the prior [DayEntry] (flow/tags/note preserved) if the day
 /// already had one, or a tombstone — through the repository's own delete

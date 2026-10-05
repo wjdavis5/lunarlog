@@ -104,6 +104,7 @@ import 'package:lunarlog/ui/overview/guardian_overview_card.dart';
 import 'package:lunarlog/ui/overview/health_deviation_card.dart';
 import 'package:lunarlog/ui/overview/late_resolver.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
+import 'package:lunarlog/ui/overview/quick_log_snackbar.dart';
 import 'package:lunarlog/ui/profiles/mode_exit_exclusion.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/ui/sharing/guardian_watch_mixin.dart';
@@ -602,7 +603,9 @@ class _OverviewPanelState extends State<OverviewPanel>
   /// a confirmation snackbar with an Undo action that restores exactly
   /// what was there before -- the previous [DayEntry] if today already had
   /// one, or a tombstone (through the repository's own delete path, so sync
-  /// dirty-marking still applies) if this tap created it.
+  /// dirty-marking still applies) if this tap created it. Issue #1412: when
+  /// today was already logged at the quick-log level or heavier the flow
+  /// stays as it was, and the snackbar says so instead ([quickLogSnackBar]).
   Future<void> _logPeriodStartedToday() async {
     final repository = context.read<DayEntriesRepository>();
     final today = widget.todayProvider();
@@ -623,17 +626,15 @@ class _OverviewPanelState extends State<OverviewPanel>
     final messenger = ScaffoldMessenger.of(context);
     await repository.save(entry);
     if (!mounted) return;
-    final l10n = AppLocalizations.of(context);
+    // Issue #1412: the shared builder names what the tap did — a day
+    // already logged at this flow or heavier is reported as unchanged
+    // rather than as a freshly recorded medium-flow start.
     messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-          l10n.overviewLoggedSnackbar,
-          key: const ValueKey('today-card-logged-snackbar'),
-        ),
-        action: SnackBarAction(
-          label: l10n.overviewUndo,
-          onPressed: () => _undoLogToday(previous, today),
-        ),
+      quickLogSnackBar(
+        l10n: AppLocalizations.of(context),
+        previousFlow: previous?.flow,
+        contentKey: const ValueKey('today-card-logged-snackbar'),
+        onUndo: () => _undoLogToday(previous, today),
       ),
     );
   }

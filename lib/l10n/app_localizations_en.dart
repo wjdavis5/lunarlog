@@ -581,6 +581,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Recorded a medium-flow period start for today.';
 
   @override
+  String get overviewAlreadyLoggedSnackbar =>
+      'Today\'s flow was already logged, so it stays as it was.';
+
+  @override
   String get overviewUndo => 'Undo';
 
   @override

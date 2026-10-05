@@ -193,10 +193,13 @@ CyclePrediction _resolvePrediction({
       (facts?.canSeed ?? false)) {
     // Issue #1392: the same entries-aware seed the service uses, so a
     // period logged since onboarding re-anchors the web estimate too.
+    // Issue #1412: and the same omission list, so a cycle skipped on a
+    // phone advances the web's provisional estimate as well.
     return seedProvisionalPredictionFromEntries(
       facts: facts!,
       entries: entries,
       today: today,
+      omittedCycleStarts: omittedCycleStarts,
     );
   }
   return computed;
