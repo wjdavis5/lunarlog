@@ -468,9 +468,10 @@ registers no device, and shows no Notifications entry (R17).
       (issue #47) runs first and skips the build entirely whenever production
       is missing a migration the repo expects — check the latest
       `ios-release.yml` run's `Verify Supabase migrations are applied` job
-      for current status. Even on a run where that gate passes, the upload
-      step currently fails at App Store Connect error 90592 ("Invalid Export
-      Compliance Code") — see
+      for current status. The upload step failed for a time at App Store
+      Connect with error 90592 ("Invalid Export Compliance Code"); the run
+      of 2026-09-30 uploaded to TestFlight successfully. If the error
+      returns, see
       [`docs/ops/ios-export-compliance.md`](ios-export-compliance.md) for
       what to do if App Store Connect asks for compliance documentation or a
       code. **Issue #5 note:** the same regeneration now also needs to add
@@ -775,7 +776,12 @@ the account-deletion deploy itself is skipped.
       the client runs the existing `resetDevice()` afterward (KTD16). JSON
       data export ("Export my data" in the Your data section) shipped
       alongside it.
-- [ ] **Release gate: still mechanically closed.** No App Store submission
+- [ ] **Release gate.** The variable read `shipped` on 2026-10-05 (set
+      2026-09-12; `gh variable list` shows its current value), so the
+      script below no longer blocks a submission. This box is left for the
+      owner to tick: it records that the device-checklist items below had
+      passed when the variable was set, which the repository cannot show.
+      The mechanism: no App Store submission
       and no Play `production` dispatch until an operator sets the
       `RELEASE_GATE_ACCOUNT_DELETION` repository variable to `shipped`
       (`.github/scripts/check-release-gate.sh` fails closed until then; a
@@ -1436,9 +1442,10 @@ is a gate before go-live.
   it. The `Verify Supabase migrations are applied` gate (issue #47) fails
   closed whenever production is missing a migration the repo expects — check
   the latest `ios-release.yml` run's `Verify Supabase migrations are
-  applied` job for current status — and App Store Connect error 90592
-  ("Invalid Export Compliance Code") at the upload step still keeps a run
-  from completing — see
+  applied` job for current status. App Store Connect error 90592
+  ("Invalid Export Compliance Code") at the upload step kept runs from
+  completing for a time; the run of 2026-09-30 uploaded to TestFlight
+  successfully. If it returns, see
   [`docs/ops/ios-export-compliance.md`](ios-export-compliance.md) for what
   to do if App Store Connect asks for compliance documentation or a code.
 - The whole "Social logins and passwordless (issue #2)" go-live section

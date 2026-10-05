@@ -329,7 +329,9 @@ Part of the home lab; the canonical inventory lives in the lab root's
   the `RELEASE_GATE_ACCOUNT_DELETION` repository variable is set to
   `shipped` ([`.github/scripts/check-release-gate.sh`](.github/scripts/check-release-gate.sh)
   fails closed until then; a Play `production` dispatch also requires
-  typing `production` into `confirm_production`). Flipping the variable —
+  typing `production` into `confirm_production`). The variable read
+  `shipped` on 2026-10-05 (set 2026-09-12); `gh variable list` shows its
+  current value. Flipping the variable —
   once issue #17 has merged and the device checklist has passed — is a
   separate, deliberate release action, not automatic from merging the
   code.
