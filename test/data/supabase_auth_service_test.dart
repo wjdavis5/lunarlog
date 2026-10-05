@@ -746,6 +746,39 @@ void main() {
       expect(classifyAuthLink(Uri.parse('https://example.com/?foo=bar')),
           const AuthLinkIgnored());
     });
+
+    // Every incoming link is offered to the classifier, invitations
+    // included. An invitation's `code` is its own token: an https one used
+    // to be taken for a sign-in callback, so opening it also sent the token
+    // to the sign-in exchange and reported an expired sign-in link.
+    test('an invitation link is never a sign-in callback, on either scheme',
+        () {
+      for (final link in [
+        'https://lunarlog.app/invite?code=RAWTOKEN&profile=01ARZ3NDEKTSV4RRFFQ69G5FAV',
+        'https://lunarlog.app/invite?code=RAWTOKEN&profile=01ARZ3NDEKTSV4RRFFQ69G5FAV&kind=claim',
+        'lunarlog://invite?code=RAWTOKEN&profile=01ARZ3NDEKTSV4RRFFQ69G5FAV',
+      ]) {
+        expect(classifyAuthLink(Uri.parse(link)), const AuthLinkIgnored(),
+            reason: link);
+      }
+    });
+
+    test('only lunarlog://auth-callback is a sign-in callback', () {
+      for (final link in [
+        'https://lunarlog.app/auth/callback?code=abc',
+        'https://lunarlog.app/?code=abc&type=recovery',
+        'https://example.com/#access_token=x',
+        'https://example.com/?error=access_denied',
+        'http://auth-callback/?code=abc',
+        'lunarlog://auth-callback.example.com?code=abc',
+        'other://auth-callback?code=abc',
+      ]) {
+        expect(classifyAuthLink(Uri.parse(link)), const AuthLinkIgnored(),
+            reason: link);
+      }
+      expect(classifyAuthLink(Uri.parse('$callback?code=abc')),
+          const AuthLinkCallback(recovery: false));
+    });
   });
 
   group('deep links (KTD8)', () {
@@ -830,6 +863,23 @@ void main() {
       expect(service.pendingRecovery, isFalse);
       expect(service.pendingLinkFailure, isA<AuthExpiredLinkFailure>());
       expect(failures, hasLength(1));
+    });
+
+    // On a build with universal links on, an invitation arrives as an
+    // https link, and every incoming link reaches the auth service. Its
+    // `code` is the invitation's token, not a sign-in code.
+    test('an invitation opened by its https link is not exchanged and '
+        'reports no failed sign-in', () async {
+      final service = await started();
+      final failures = <AuthFailure>[];
+      service.linkFailures.listen(failures.add);
+      await service.handleLink(Uri.parse(
+          'https://lunarlog.app/invite?code=RAWTOKEN&profile=01ARZ3NDEKTSV4RRFFQ69G5FAV'));
+      await settle();
+      expect(gateway.getSessionFromUrlCalls, isEmpty);
+      expect(service.pendingLinkFailure, isNull);
+      expect(failures, isEmpty);
+      expect(service.state, AuthSessionState.signedOut);
     });
 
     test('a link carrying error_description is never exchanged and the '
