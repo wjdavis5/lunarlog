@@ -5230,6 +5230,18 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get healthSyncSectionHowItWorks => 'How it works';
+
+  @override
+  String get healthSyncSectionWritten => 'What is written';
+
+  @override
+  String get healthSyncSectionImported => 'What is imported';
+
+  @override
+  String get healthSyncSectionTurningOff => 'Turning sync off';
+
+  @override
   String get healthSyncWriteIntro =>
       'Choose the one profile whose data this phone may ever write to its Health app. Every other profile stays out of this phone\'s Health app entirely.';
 

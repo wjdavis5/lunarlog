@@ -2444,4 +2444,256 @@ void main() {
       );
     });
   });
+
+  // Issue #1521. The explanations stood above the profile rows, so the only
+  // things a person can do on the screen (choose a profile, import, stop)
+  // sat under six or more paragraphs, below the fold on Android. They are
+  // first now. The screen is a disclosure surface, so the other half of the
+  // change is what did not change: every sentence is still on it, unedited.
+  group('Issue #1521 what a person can do comes before what is explained',
+      () {
+    // A 6.1-inch iPhone in logical points; the Pixel the screenshots use is
+    // a little taller, so this is the tighter of the two.
+    const phone = Size(393, 852);
+    final l10n = AppLocalizationsEn();
+
+    Future<HealthSyncBinding> boundBinding() async {
+      final binding = HealthSyncBinding(FakeSettingsStore());
+      await binding.bind(
+        profile: profiles.firstWhere((p) => p.id == 'eligible'),
+        signedInUserId: 'u1',
+        ownerUserId: 'u1',
+        minorBindingAllowed: false,
+      );
+      return binding;
+    }
+
+    Rect rectOf(WidgetTester tester, String key) =>
+        tester.getRect(find.byKey(ValueKey(key)));
+
+    void expectOnScreen(WidgetTester tester, String key) {
+      final rect = rectOf(tester, key);
+      expect(rect.top, greaterThanOrEqualTo(0), reason: key);
+      expect(rect.bottom, lessThanOrEqualTo(phone.height), reason: key);
+    }
+
+    /// The explanation paragraphs, by key, in the order they are shown.
+    List<String> detailKeys(HealthImportPlatform platform) => [
+          'health-sync-forward-only-copy',
+          if (platform == HealthImportPlatform.healthConnect) ...[
+            'health-sync-written-types-copy',
+            'health-sync-period-record-copy',
+          ],
+          'health-sync-flow-collapse-copy',
+          if (platform == HealthImportPlatform.healthConnect)
+            'health-sync-symptoms-android-limitation'
+          else
+            'health-sync-symptoms-copy',
+          'health-sync-full-history-copy',
+          'health-sync-revocation-copy',
+        ];
+
+    /// Every sentence the write screen showed before the reorder.
+    List<String> disclosures(HealthImportPlatform platform) =>
+        platform == HealthImportPlatform.healthConnect
+            ? [
+                l10n.healthSyncWriteIntroHealthConnect,
+                l10n.healthSyncWriteForwardOnlyHealthConnect,
+                l10n.healthSyncWrittenTypesHealthConnect,
+                l10n.healthSyncPeriodRecordNoteHealthConnect,
+                l10n.healthSyncFlowCollapseNoteHealthConnect,
+                l10n.settingsHealthSyncSymptomsAndroidLimitation,
+                l10n.healthSyncRevocationNoteHealthConnect,
+                l10n.healthSyncFullHistoryNote,
+              ]
+            : [
+                l10n.healthSyncWriteIntro,
+                l10n.healthSyncWriteForwardOnly,
+                l10n.healthSyncFlowCollapseNote,
+                l10n.healthSyncWriteSymptoms,
+                l10n.healthSyncRevocationNote,
+                l10n.healthSyncFullHistoryNote,
+              ];
+
+    for (final platform in HealthImportPlatform.values) {
+      final name = platform == HealthImportPlatform.healthConnect
+          ? 'Android'
+          : 'iPhone';
+
+      testWidgets('$name: with nothing bound, every profile row is on '
+          'screen without scrolling', (tester) async {
+        await pumpScreen(
+          tester,
+          binding: HealthSyncBinding(FakeSettingsStore()),
+          permissionProbe: buildPermissionProbe(),
+          storePlatform: platform,
+          viewport: phone,
+        );
+
+        for (final id in ['eligible', 'minor', 'other']) {
+          expectOnScreen(tester, 'health-sync-profile-$id');
+        }
+      });
+
+      testWidgets('$name: with a profile bound, the access line, Import '
+          'and Stop syncing are on screen without scrolling', (tester) async {
+        await pumpScreen(
+          tester,
+          binding: await boundBinding(),
+          importer: _FakeImporter(const HealthImportSummary(), platform: platform),
+          permissionProbe: buildPermissionProbe(),
+          storePlatform: platform,
+          viewport: phone,
+        );
+
+        expectOnScreen(tester, 'health-sync-permission-status');
+        expectOnScreen(tester, 'health-sync-import-tile');
+        expectOnScreen(tester, 'health-sync-unbind-tile');
+      });
+
+      testWidgets('$name: the order is the intro, the choice, the access '
+          'line, Import, Stop syncing, and only then the explanations',
+          (tester) async {
+        await pumpScreen(
+          tester,
+          binding: await boundBinding(),
+          importer: _FakeImporter(const HealthImportSummary(), platform: platform),
+          permissionProbe: buildPermissionProbe(),
+          storePlatform: platform,
+          viewport: const Size(800, 3200),
+        );
+
+        final tops = <double>[
+          tester.getRect(find.text(disclosures(platform).first)).top,
+          for (final key in [
+            'health-sync-profile-eligible',
+            'health-sync-profile-minor',
+            'health-sync-profile-other',
+            'health-sync-permission-status',
+            'health-sync-import-tile',
+            'health-sync-unbind-tile',
+            ...detailKeys(platform),
+          ])
+            rectOf(tester, key).top,
+        ];
+        for (var i = 1; i < tops.length; i++) {
+          expect(tops[i], greaterThan(tops[i - 1]), reason: 'item $i');
+        }
+      });
+
+      testWidgets('$name: every sentence the screen showed is still on it, '
+          'unedited', (tester) async {
+        await pumpScreen(
+          tester,
+          binding: await boundBinding(),
+          importer: _FakeImporter(const HealthImportSummary(), platform: platform),
+          permissionProbe: buildPermissionProbe(),
+          storePlatform: platform,
+          viewport: const Size(800, 3200),
+        );
+
+        for (final sentence in disclosures(platform)) {
+          expect(find.text(sentence), findsOneWidget, reason: sentence);
+        }
+      });
+
+      testWidgets('$name: each group of explanations has a heading, read '
+          'out as one', (tester) async {
+        final handle = tester.ensureSemantics();
+        await pumpScreen(
+          tester,
+          binding: HealthSyncBinding(FakeSettingsStore()),
+          storePlatform: platform,
+          viewport: const Size(800, 3200),
+        );
+
+        final headings = [
+          'How it works',
+          'What is written',
+          'What is imported',
+          'Turning sync off',
+        ];
+        final tops = <double>[];
+        for (final heading in headings) {
+          expect(find.text(heading), findsOneWidget);
+          expect(
+            tester.getSemantics(find.text(heading)),
+            matchesSemantics(label: heading, isHeader: true),
+          );
+          tops.add(tester.getRect(find.text(heading)).top);
+        }
+        // Each heading stands directly over its own group.
+        final keys = detailKeys(platform);
+        final firstOfGroup = [
+          keys.first,
+          keys[1],
+          'health-sync-full-history-copy',
+          'health-sync-revocation-copy',
+        ];
+        for (var i = 0; i < headings.length; i++) {
+          final paragraph = rectOf(tester, firstOfGroup[i]).top;
+          expect(paragraph, greaterThan(tops[i]), reason: headings[i]);
+          if (i + 1 < headings.length) {
+            expect(paragraph, lessThan(tops[i + 1]), reason: headings[i]);
+          }
+        }
+        handle.dispose();
+      });
+    }
+
+    testWidgets('an import-only screen has the two headings that apply and '
+        'keeps both of its sentences', (tester) async {
+      await pumpScreen(
+        tester,
+        binding: HealthSyncBinding(FakeSettingsStore()),
+        writeEnabled: false,
+        storePlatform: HealthImportPlatform.healthConnect,
+        viewport: const Size(800, 3200),
+      );
+
+      expect(find.text('How it works'), findsOneWidget);
+      expect(find.text('What is imported'), findsOneWidget);
+      expect(find.text('What is written'), findsNothing);
+      expect(find.text('Turning sync off'), findsNothing);
+      expect(find.text(l10n.healthSyncImportIntro), findsOneWidget);
+      expect(find.text(l10n.healthSyncImportOnly), findsOneWidget);
+      expect(find.text(l10n.healthSyncFullHistoryNote), findsOneWidget);
+      expect(
+        rectOf(tester, 'health-sync-profile-eligible').top,
+        lessThan(rectOf(tester, 'health-sync-import-only-copy').top),
+      );
+    });
+
+    testWidgets('each profile row carries a radio mark, filled for the '
+        'profile that is bound', (tester) async {
+      await pumpScreen(tester, binding: await boundBinding());
+
+      ListTile tile(String id) => tester.widget<ListTile>(
+            find.byKey(ValueKey('health-sync-profile-$id')),
+          );
+      Finder markIn(String id, IconData icon) => find.descendant(
+            of: find.byKey(ValueKey('health-sync-profile-$id')),
+            matching: find.byIcon(icon),
+          );
+
+      expect(markIn('eligible', Icons.radio_button_checked), findsOneWidget);
+      expect(tile('eligible').selected, isTrue);
+      for (final id in ['minor', 'other']) {
+        expect(markIn(id, Icons.radio_button_unchecked), findsOneWidget);
+        expect(markIn(id, Icons.radio_button_checked), findsNothing);
+        expect(tile(id).selected, isFalse);
+      }
+      // A profile that cannot be chosen is still listed, greyed, with why.
+      expect(tile('other').enabled, isFalse);
+      expect(tile('other').subtitle, isNotNull);
+    });
+
+    testWidgets('with nothing bound no row is marked as chosen',
+        (tester) async {
+      await pumpScreen(tester, binding: HealthSyncBinding(FakeSettingsStore()));
+
+      expect(find.byIcon(Icons.radio_button_checked), findsNothing);
+      expect(find.byIcon(Icons.radio_button_unchecked), findsNWidgets(3));
+    });
+  });
 }

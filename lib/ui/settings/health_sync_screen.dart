@@ -861,6 +861,10 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
           l10n.settingsHealthSyncTitle(_sourceTitle(l10n, _importPlatform)),
         ),
       ),
+      // Issue #1521: what a person can do comes first, and what the screen
+      // explains comes after it. The explanations used to stand above the
+      // profile rows, so the only controls on the screen sat under six or
+      // more paragraphs (below the fold on Android).
       body: ListView(
         children: [
           Padding(
@@ -871,79 +875,118 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
                   : l10n.healthSyncImportIntro,
             ),
           ),
+          for (final profile in _profiles) _profileTile(profile),
           // Issue #959: the OS permission state, shown per platform, with
           // the settings deep link only when it is denied.
           ?permissionSection,
-          if (widget.writeEnabled)
-            ..._writeCopy(l10n)
-          else
-            // Issue #458: a platform that wires only the import direction
-            // gets this in place of the write copy, rather than a promise
-            // of writes that never happen. Issue #1478: nothing else rides
-            // along — the symptom line that used to follow said "days
-            // logged with symptoms still sync their flow and spotting",
-            // two lines under "nothing is written automatically".
-            Padding(
-              key: const ValueKey('health-sync-import-only-copy'),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(l10n.healthSyncImportOnly),
-            ),
-          // Issue #992: the scope decision, stated plainly. Reads are
-          // full-history now, and the #993 background pass runs wherever
-          // Health Connect offers the background-read feature and its
-          // permission is granted (issue #1211: the permission is
-          // requested at runtime with the rest of the set, and the
-          // background worker skips cleanly without it); the copy below is
-          // the user-facing statement of that.
-          Padding(
-            key: const ValueKey('health-sync-full-history-copy'),
-            padding: const EdgeInsets.all(16),
-            child: Text(
-              AppLocalizations.of(context).healthSyncFullHistoryNote,
-            ),
-          ),
-          for (final profile in _profiles) _profileTile(profile),
           // Issues #217/#458: the import action appears only once a profile
           // is bound — the import writes into that profile and no other.
           if (_boundProfileId != null && widget.importer != null)
-            ListTile(
-              key: const ValueKey('health-sync-import-tile'),
-              leading: const Icon(Icons.download_outlined),
-              title: Text(
-                AppLocalizations.of(context)
-                    .healthSyncImportFrom(
-                      _sourceName(l10n, _importPlatform),
-                    ),
-              ),
-              subtitle: Text(
-                AppLocalizations.of(context).healthSyncImportTileSubtitle,
-              ),
-              trailing: _importing
-                  ? const SizedBox(
-                      key: ValueKey('health-sync-import-progress'),
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : null,
-              enabled: !_importing,
-              onTap: _runImport,
-            ),
+            _importTile(l10n),
           if (_importing || _importFailed || _importSummary != null)
             _importResult(),
           if (_boundProfileId != null)
             ListTile(
               key: const ValueKey('health-sync-unbind-tile'),
               leading: const Icon(Icons.link_off),
-              title: Text(
-                AppLocalizations.of(context).healthSyncUnbindAction,
-              ),
+              title: Text(l10n.healthSyncUnbindAction),
               onTap: _unbind,
             ),
+          ..._details(l10n),
         ],
       ),
     );
   }
+
+  Widget _importTile(AppLocalizations l10n) => ListTile(
+        key: const ValueKey('health-sync-import-tile'),
+        leading: const Icon(Icons.download_outlined),
+        title: Text(
+          l10n.healthSyncImportFrom(_sourceName(l10n, _importPlatform)),
+        ),
+        subtitle: Text(l10n.healthSyncImportTileSubtitle),
+        trailing: _importing
+            ? const SizedBox(
+                key: ValueKey('health-sync-import-progress'),
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : null,
+        enabled: !_importing,
+        onTap: _runImport,
+      );
+
+  /// Everything the screen explains, under headings, below the controls
+  /// (Issue #1521).
+  ///
+  /// This is a disclosure surface (`docs/ops/play-health-declaration.md`),
+  /// so the rule for it is strict: every sentence that was on the screen is
+  /// still on it, unedited and in plain view. Nothing is collapsed, shortened
+  /// or moved to another screen; only the order changed, and each group got
+  /// a heading. A string is never split to fit a heading, which is why the
+  /// first group is "How it works": its one paragraph covers both
+  /// directions.
+  List<Widget> _details(AppLocalizations l10n) => [
+        const Divider(height: 32),
+        _detailHeading(l10n.healthSyncSectionHowItWorks),
+        if (widget.writeEnabled)
+          _detail(
+            'health-sync-forward-only-copy',
+            _isHealthConnect
+                ? l10n.healthSyncWriteForwardOnlyHealthConnect
+                : l10n.healthSyncWriteForwardOnly,
+          )
+        else
+          // Issue #458: a platform that wires only the import direction
+          // gets this in place of the write copy, rather than a promise
+          // of writes that never happen. Issue #1478: nothing else rides
+          // along — the symptom line that used to follow said "days
+          // logged with symptoms still sync their flow and spotting",
+          // two lines under "nothing is written automatically".
+          _detail('health-sync-import-only-copy', l10n.healthSyncImportOnly),
+        if (widget.writeEnabled) ...[
+          _detailHeading(l10n.healthSyncSectionWritten),
+          ..._writtenCopy(l10n),
+        ],
+        _detailHeading(l10n.healthSyncSectionImported),
+        // Issue #992: the scope decision, stated plainly. Reads are
+        // full-history now, and the #993 background pass runs wherever
+        // Health Connect offers the background-read feature and its
+        // permission is granted (issue #1211: the permission is
+        // requested at runtime with the rest of the set, and the
+        // background worker skips cleanly without it); the copy below is
+        // the user-facing statement of that.
+        _detail('health-sync-full-history-copy', l10n.healthSyncFullHistoryNote),
+        if (widget.writeEnabled) ...[
+          _detailHeading(l10n.healthSyncSectionTurningOff),
+          // Issue #186 (AC7): stopping sync or revoking the OS permission
+          // never deletes what was already written.
+          _detail(
+            'health-sync-revocation-copy',
+            _isHealthConnect
+                ? l10n.healthSyncRevocationNoteHealthConnect
+                : l10n.healthSyncRevocationNote,
+          ),
+        ],
+        const SizedBox(height: 16),
+      ];
+
+  /// A heading over one group of [_details], announced as a heading.
+  Widget _detailHeading(String text) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: Semantics(
+          header: true,
+          child: Text(text, style: Theme.of(context).textTheme.titleSmall),
+        ),
+      );
+
+  /// One paragraph of [_details], keyed as it always was.
+  Widget _detail(String key, String text) => Padding(
+        key: ValueKey(key),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        child: Text(text),
+      );
 
   bool get _isHealthConnect =>
       _importPlatform == HealthImportPlatform.healthConnect;
@@ -954,14 +997,13 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       ? l10n.healthSyncWriteIntroHealthConnect
       : l10n.healthSyncWriteIntro;
 
-  /// The write disclosures, for the store this platform writes to.
+  /// What is written, for the store this platform writes to: the "What is
+  /// written" group of [_details].
   ///
   /// Issue #193: document the write surface the way Clue documents its own
-  /// — one-way, forward-only, and the lossy mappings (superHeavy collapses
-  /// to `heavy`; spotting follows the A3-4 in/outside-episode rule). Issue
-  /// #217 adds the read direction: the first import is user-initiated.
-  /// Issue #186 (AC7): stopping sync or revoking the OS permission never
-  /// deletes what was already written.
+  /// — one-way, forward-only (the forward-only paragraph is the "How it
+  /// works" group), and the lossy mappings (superHeavy collapses to
+  /// `heavy`; spotting follows the A3-4 in/outside-episode rule).
   ///
   /// Issue #1478: Health Connect gets its own strings. It is written a
   /// different set of things (listed in full, in Health Connect's own
@@ -969,78 +1011,57 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// says symptoms are written, this one says they are not (Issue #238's
   /// permanent platform limitation) — and nothing here may say "Health
   /// app".
-  List<Widget> _writeCopy(AppLocalizations l10n) {
+  List<Widget> _writtenCopy(AppLocalizations l10n) {
     final healthConnect = _isHealthConnect;
     return [
-      Padding(
-        key: const ValueKey('health-sync-forward-only-copy'),
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Text(
-          healthConnect
-              ? l10n.healthSyncWriteForwardOnlyHealthConnect
-              : l10n.healthSyncWriteForwardOnly,
-        ),
-      ),
       if (healthConnect) ...[
-        Padding(
-          key: const ValueKey('health-sync-written-types-copy'),
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: Text(l10n.healthSyncWrittenTypesHealthConnect),
+        _detail(
+          'health-sync-written-types-copy',
+          l10n.healthSyncWrittenTypesHealthConnect,
         ),
         // The one way a day logged before write access reaches Health
         // Connect: as the first day of a period that has a written day.
-        Padding(
-          key: const ValueKey('health-sync-period-record-copy'),
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: Text(l10n.healthSyncPeriodRecordNoteHealthConnect),
+        _detail(
+          'health-sync-period-record-copy',
+          l10n.healthSyncPeriodRecordNoteHealthConnect,
         ),
       ],
-      Padding(
-        key: const ValueKey('health-sync-flow-collapse-copy'),
-        padding: const EdgeInsets.all(16),
-        child: Text(
-          healthConnect
-              ? l10n.healthSyncFlowCollapseNoteHealthConnect
-              : l10n.healthSyncFlowCollapseNote,
-        ),
+      _detail(
+        'health-sync-flow-collapse-copy',
+        healthConnect
+            ? l10n.healthSyncFlowCollapseNoteHealthConnect
+            : l10n.healthSyncFlowCollapseNote,
       ),
       if (healthConnect)
-        Padding(
-          key: const ValueKey('health-sync-symptoms-android-limitation'),
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(l10n.settingsHealthSyncSymptomsAndroidLimitation),
+        _detail(
+          'health-sync-symptoms-android-limitation',
+          l10n.settingsHealthSyncSymptomsAndroidLimitation,
         )
       else
         // Issue #238 / #918: disclosure of symptom and mood writes.
-        Padding(
-          key: const ValueKey('health-sync-symptoms-copy'),
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(l10n.healthSyncWriteSymptoms),
-        ),
-      Padding(
-        key: const ValueKey('health-sync-revocation-copy'),
-        padding: const EdgeInsets.all(16),
-        child: Text(
-          healthConnect
-              ? l10n.healthSyncRevocationNoteHealthConnect
-              : l10n.healthSyncRevocationNote,
-        ),
-      ),
+        _detail('health-sync-symptoms-copy', l10n.healthSyncWriteSymptoms),
     ];
   }
 
+  /// One profile of the choice. Issue #1521: each row carries a radio mark,
+  /// because a bare name did not look like something to tap; the chosen
+  /// profile's is filled.
   Widget _profileTile(Profile profile) {
     final check = _eligibility(profile);
     final isBound = profile.id == _boundProfileId;
     return ListTile(
       key: ValueKey('health-sync-profile-${profile.id}'),
+      leading: isBound
+          ? const Icon(
+              Icons.radio_button_checked,
+              key: ValueKey('health-sync-bound-check'),
+            )
+          : const Icon(Icons.radio_button_unchecked),
       title: Text(profile.displayName),
       subtitle: check.isAllowed
           ? null
           : Text(_denyReasonText(AppLocalizations.of(context), check)),
-      trailing: isBound
-          ? const Icon(Icons.check_circle, key: ValueKey('health-sync-bound-check'))
-          : null,
+      selected: isBound,
       enabled: check.isAllowed,
       onTap: check.isAllowed ? () => _tapProfile(profile) : null,
     );
