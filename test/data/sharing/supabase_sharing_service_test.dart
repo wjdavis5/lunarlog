@@ -141,6 +141,35 @@ void main() {
       expect(invite.inviteUri.queryParameters['code'], invite.rawToken);
       expect(invite.inviteUri.queryParameters['profile'], '01JABCDEF01234567890123456');
     });
+
+    test('a subject invitation refused because the profile already has a '
+        'subject (issue #1499) is the generic failure, not a network or '
+        'permission one', () async {
+      // The exact error the server's guardian_invitations trigger raises
+      // (pinned in supabase/tests/self_profile_subject_test.sql): P0001,
+      // and wording none of the specific mappings match.
+      final client = makeClient((req) async {
+        return http.Response(
+          jsonEncode({
+            'message': 'this profile already has a subject; a subject '
+                'invitation cannot be created for it',
+            'code': 'P0001',
+          }),
+          400,
+        );
+      });
+      await signIn(client, 'user-mom');
+      final service = SupabaseSharingService(client: client, syncEngine: syncEngine);
+
+      expect(
+        () => service.createInvite(
+          profileId: '01JABCDEF01234567890123456',
+          role: GuardianRole.caregiver,
+          subject: true,
+        ),
+        throwsA(isA<SharingOtherFailure>()),
+      );
+    });
   });
 
   group('acceptInvite', () {

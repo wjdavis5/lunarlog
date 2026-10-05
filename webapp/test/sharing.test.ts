@@ -265,6 +265,22 @@ describe('the error ladders (mirroring the two Dart mappers)', () => {
     });
   });
 
+  it('a subject invitation refused because the profile already has a subject is the generic failure', () => {
+    // The exact error the server's guardian_invitations trigger raises
+    // (issue 1499; pinned in supabase/tests/self_profile_subject_test.sql):
+    // P0001, and wording none of the specific mappings match.
+    expect(
+      mapSharingFailure(
+        {
+          message:
+            'this profile already has a subject; a subject invitation cannot be created for it',
+          code: 'P0001',
+        },
+        true,
+      ),
+    ).toMatchObject({ kind: 'other' });
+  });
+
   it('transfer failures read 23505 as already-armed, never already-guardian', () => {
     expect(mapTransferFailure({ message: 'duplicate', code: '23505' })).toMatchObject({
       kind: 'alreadyArmed',

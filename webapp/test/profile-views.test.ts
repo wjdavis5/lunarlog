@@ -234,15 +234,22 @@ describe('guardianLensFor (the app lens rule, issue #850)', () => {
     },
   );
 
-  it('the account that created the profile is a guardian, whatever the relationship says', () => {
-    // No marker at all (the server stamps it only on a subject invitation
-    // or an ownership transfer), on a profile whose relationship is "self".
+  it('only the marker is read: an owner whose row has none is a guardian, whatever the relationship says', () => {
+    // The lens never reads the profile's relationship. The server does: it
+    // stamps the marker on the owner of a "self" profile (issue 1499). A
+    // row that reaches the browser without it is a guardian's row.
     const data = synced();
     expect(profileRow().relationship).toBe('self');
     expect(data.profile_guardians[0]?.is_subject).toBeUndefined();
     expect(guardianLensFor(data, PROFILE, UID)).toBe('guardian');
     const nullMarker = synced({ profile_guardians: [guardianRow({ is_subject: null })] });
     expect(guardianLensFor(nullMarker, PROFILE, UID)).toBe('guardian');
+  });
+
+  it('an owner whose own row carries the marker is the subject (a profile she made for herself)', () => {
+    const data = synced({ profile_guardians: [guardianRow({ is_subject: true })] });
+    expect(guardianRow().role).toBe('primary_guardian');
+    expect(guardianLensFor(data, PROFILE, UID)).toBe('subject');
   });
 
   it('no account id, no rows, and a stranger are the subject lens', () => {

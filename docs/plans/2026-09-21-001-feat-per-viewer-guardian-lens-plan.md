@@ -39,6 +39,22 @@ tier-gated reveal; (c) `ProfileMode.caregiver` is retired as a mode (wire
 value kept, mapped to `standard`) and reminder presets move from mode to
 lens.
 
+> **Correction, 2026-10-05 (issue #1499).** Adjustment (a) misreports the
+> decision. What the owner wrote on #850 was that the `isSubject`
+> derivation "stays as written (#802's marker, `relationship == self` on
+> an owned profile until then)": someone who creates a profile for herself
+> is its subject. This plan recorded that as the `relationship == self`
+> fallback being dropped, on the grounds that #802's marker now existed.
+> But the marker was only ever stamped by a subject invitation or an
+> ownership transfer, so the creator of a `self` profile was resolved as a
+> guardian of her own profile once her membership row had synced. Issue
+> #1499 restores the decision on the server:
+> `supabase/migrations/20261005143105_self_profile_subject.sql` stamps
+> `is_subject` on the owner of a profile she creates for herself or marks
+> as her own (relationship `self`), and backfills the rows that already
+> existed. The client still reads only the marker. The text above is left
+> as written.
+
 The surface this plan describes does not exist yet, and the issue's own
 citations have drifted (its `lib/ui/overview/month_calendar.dart`,
 `lib/ui/day/day_sheet.dart`, and `lib/ui/analysis/analysis_tab.dart` paths
@@ -72,6 +88,27 @@ have not synced) resolves to **subject**, matching the existing
 fail-open-to-the-operator discipline of `_effectiveReadOnly`
 (`overview_panel.dart:491-496`). This is presentation only and changes no
 permission: a viewer still cannot write.
+
+> **Correction, 2026-10-05 (issue #1499).** The resolver above is unchanged
+> and still right, but two statements in this decision no longer hold.
+> First, the marker is not stamped only by the subject-invitation accept
+> path and `accept_ownership_transfer`: the server also stamps it on the
+> owner (the accepted primary guardian) of a profile whose `relationship`
+> is `self`, when she creates it or when she herself sets the relationship
+> to `self`. It clears that marker again when she herself changes the
+> relationship away from `self`, unless the profile was transferred to her
+> (the marker is then the transfer's) or has a live private note, which the
+> change would otherwise unmask. Only the primary guardian can change the
+> relationship at all: the server puts back a value sent by anyone else, a
+> co-parent included, and lets the rest of that edit through. A profile has
+> one subject, and whoever holds the marker keeps it: a "this is your
+> profile" invitation cannot be created while the profile has a subject,
+> and pending ones are revoked when someone becomes it.
+> Second, `relationship == self` therefore *is* consulted: by the server,
+> when it stamps the marker, and still never by the client resolver. So a
+> primary guardian who created the profile for herself resolves to the
+> **subject** lens, and a primary guardian who created it for someone else
+> still resolves to the guardian lens.
 
 **D-2 — Two lenses, two front pages.** Subject lens keeps the existing
 `_overviewBody` (`lib/ui/overview/overview_panel.dart:618-709`)

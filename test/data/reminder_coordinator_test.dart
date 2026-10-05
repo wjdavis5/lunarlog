@@ -271,6 +271,74 @@ void main() {
             'for someone else\'s record');
   });
 
+  test('a primary guardian whose own row carries the subject marker is in '
+      'the local reminder plan; one whose row does not is not (issue #1499)',
+      () async {
+    final scheduler = FakeReminderScheduler();
+    final permissionState =
+        NotificationPermissionState(NotificationAvailability.available);
+    final profiles = StreamController<List<Profile>>(sync: true);
+    final predictions = <String, StreamController<CyclePrediction>>{};
+    final today = LocalDate(2026, 8, 30);
+
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: permissionState,
+      activeProfiles: profiles.stream,
+      predictionFor: (id) => predictions
+          .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
+          .stream,
+      today: () => today,
+      // The same signed-in owner of two profiles: one she created for
+      // herself (the server marks her primary_guardian row as the subject)
+      // and one she created for her daughter (no marker).
+      isSubjectFor: _lensSource(
+        viewerId: 'u-owner',
+        rows: {
+          'mine': [
+            _row(
+              profileId: 'mine',
+              userId: 'u-owner',
+              role: GuardianRole.primaryGuardian,
+              isSubject: true,
+            ),
+          ],
+          'daughter': [
+            _row(
+              profileId: 'daughter',
+              userId: 'u-owner',
+              role: GuardianRole.primaryGuardian,
+            ),
+          ],
+        },
+      ),
+      replanDebounce: Duration.zero,
+    );
+    await coordinator.start();
+    addTearDown(() async {
+      await coordinator.dispose();
+      await profiles.close();
+      for (final c in predictions.values) {
+        await c.close();
+      }
+    });
+
+    profiles.add([
+      _profile('mine').copyWith(mode: ProfileMode.standard),
+      _profile('daughter').copyWith(mode: ProfileMode.standard),
+    ]);
+    predictions['mine']!.add(_late(today));
+    predictions['daughter']!.add(_late(today));
+    await pumpEventQueue();
+
+    final plan = scheduler.rescheduleCalls.last;
+    expect(plan.any((r) => r.profileId == 'mine'), isTrue,
+        reason: 'she is the subject of the profile she made for herself, so '
+            'her phone schedules her own reminders');
+    expect(plan.any((r) => r.profileId == 'daughter'), isFalse,
+        reason: 'owning a profile is not being its subject');
+  });
+
   test('a null lens source keeps the pre-#850 all-subject default '
       '(Issue #850, D-6)', () async {
     final scheduler = FakeReminderScheduler();

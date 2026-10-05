@@ -112,12 +112,15 @@ export type GuardianLens = 'subject' | 'guardian';
  * `is_subject` marker sees the profile as a guardian; the subject, and a
  * viewer with no accepted membership, see it as the subject.
  *
- * The marker is stamped by the server alone, when someone accepts a "this
- * is your profile" invitation or an ownership transfer. The account that
- * created a profile does not carry it, so by this rule the creator is a
- * guardian of that profile, whoever the profile is about. That is the
- * app's rule and this follows it; the profile's `relationship` is
- * deliberately not consulted, as it is not in the app.
+ * The marker is stamped by the server alone: when someone accepts a "this
+ * is your profile" invitation or an ownership transfer, and (issue 1499)
+ * on the owner of a profile she created for herself or marked as her own
+ * (`relationship` `self`, a field only the primary guardian can change:
+ * the server puts back anyone else's value). So someone who created a
+ * profile for herself sees it as the subject, and an account that created
+ * a profile for someone else is a guardian of it. This reads only the
+ * marker; the profile's `relationship` is deliberately not consulted here,
+ * as it is not in the app (the server is what reads it).
  *
  * Presentation only. It changes no permission: what a caller may write is
  * `callerRoleFor`'s answer, and the server's.

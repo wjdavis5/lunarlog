@@ -337,8 +337,10 @@ primary/co-parent; delete: primary only).
   issue #850) on the membership row's server-stamped `is_subject`: the
   person the profile is about sees it, any other accepted member does
   not, and someone who cannot log sees the summary without Edit. The
-  account that created a profile does not carry that marker, so it counts
-  as a guardian here exactly as it does in the app.
+  server sets that marker on the owner of a profile she created for
+  herself (relationship `self`, issue #1499), so she sees the card; an
+  account that created a profile for someone else does not carry it and
+  counts as a guardian here exactly as it does in the app.
 - **Tests**: `test/profile-views.test.ts` and `test/calendar-cells.test.ts`
   pin the pure ports; `test/today-page.test.tsx` and
   `test/profiles-page.test.tsx` render the pages against a fake domain
