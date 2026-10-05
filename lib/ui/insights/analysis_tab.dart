@@ -31,10 +31,12 @@
 /// screen.
 ///
 /// Issue #314: `OverviewPanel` (Today tab) no longer embeds this same
-/// [CycleHistorySection] — this tab is now its only mount, and the single
-/// `CycleHistoryService.watch` subscription per profile that follows from
-/// that. `OverviewPanel` instead carries a "See cycle history" link that
-/// switches to this tab through the #313 tab-switch seam.
+/// [CycleHistorySection] — this tab is now its only mount. `OverviewPanel`
+/// instead carries a "See cycle history" link that switches to this tab
+/// through the #313 tab-switch seam. The link watches the same history view
+/// for one bool — whether there is any history here to come and see
+/// (`CycleHistoryView.hasHistory`, the test this section's own empty state
+/// uses) — and is hidden without it; it renders no second list.
 ///
 /// This tab's read-only gating mirrors [OverviewPanel]'s: within the app
 /// shell a profile is always the active, non-archived one (an archived

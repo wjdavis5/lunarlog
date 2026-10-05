@@ -477,6 +477,61 @@ void main() {
     });
   });
 
+  group('the Undo snackbar\'s time on screen', () {
+    /// Confirms a day-17 start, lets it save, and dismisses the sheet --
+    /// leaving the cycle-start snackbar up.
+    Future<void> startCycleAndDismiss(WidgetTester tester, Harness h) async {
+      await pumpSheet(tester, h);
+      await tester.tap(find.text('Light').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('cycle-start-confirm')));
+      await tester.pumpAndSettle();
+      await _settleAutosave(tester);
+      await _dismissSheet(tester);
+    }
+
+    testWidgets('it stays long enough to use, then leaves after eight '
+        'seconds with the write still in place', (tester) async {
+      final h = await createHarness();
+      addTearDown(h.dispose);
+      await startCycleAndDismiss(tester, h);
+      expect(find.byKey(const ValueKey('day-sheet-cycle-start-snackbar')),
+          findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 7));
+      expect(find.widgetWithText(SnackBarAction, 'Undo'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('day-sheet-cycle-start-snackbar')),
+          findsNothing,
+          reason: 'a snackbar with an action used to persist until swiped');
+      expect((await h.entries.find(h.profileId, kToday))?.flow,
+          FlowLevel.light,
+          reason: 'timing out is not an undo');
+    });
+
+    testWidgets('with assistive navigation on it is still there after '
+        'eight seconds, and Undo still works', (tester) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(accessibleNavigation: true);
+      addTearDown(
+          tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+      final h = await createHarness();
+      addTearDown(h.dispose);
+      await startCycleAndDismiss(tester, h);
+
+      await tester.pump(const Duration(seconds: 9));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('day-sheet-cycle-start-snackbar')),
+          findsOneWidget);
+
+      await tester.tap(find.widgetWithText(SnackBarAction, 'Undo'));
+      await tester.pumpAndSettle();
+      expect(await h.entries.find(h.profileId, kToday), isNull);
+    });
+  });
+
   group('the guard fails open', () {
     testWidgets('a history-read failure logs without a dialog',
         (tester) async {

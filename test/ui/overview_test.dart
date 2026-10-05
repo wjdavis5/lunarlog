@@ -89,6 +89,12 @@ RemoteProfileGuardianRow guardianRow(
 const String kDisclaimer = 'Estimates only — not medical advice.';
 const String kReminderHint = 'Reminders unavailable — notifications are off';
 
+/// The quick-log confirmation, and the reply to a tap that changed nothing.
+const String kRecordedSnackbar =
+    'Recorded a medium-flow period start for today.';
+const String kAlreadyLoggedSnackbar =
+    "Today's flow was already logged, so it stays as it was.";
+
 /// R13 vocabulary sweep: stems that must never appear in rendered text.
 const List<String> kForbiddenStems = [
   'fertil',
@@ -2957,6 +2963,117 @@ void main() {
       expect(kept!.flow, FlowLevel.heavy);
       expect(kept.tags, ['cramps']);
       expect(kept.note, 'already logged');
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('the "recorded" snackbar stays long enough to reach Undo, '
+        'then leaves on its own after eight seconds', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kActiveStarts),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('today-card-log-action')));
+      await tester.pumpAndSettle();
+      expect(find.text(kRecordedSnackbar), findsOneWidget);
+      expect(find.text('Undo'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 7));
+      expect(
+        find.text('Undo'),
+        findsOneWidget,
+        reason: 'still usable well past a plain snackbar\'s four seconds',
+      );
+
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(kRecordedSnackbar),
+        findsNothing,
+        reason:
+            'a snackbar with an action used to persist until swiped away',
+      );
+      expect(find.text('Undo'), findsNothing);
+      expect(
+        await h.entries.find(h.profile.id, kToday),
+        isNotNull,
+        reason: 'timing out is not an undo: the entry stays logged',
+      );
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('with assistive navigation on, the "recorded" snackbar and '
+        'its Undo are still there after eight seconds', (tester) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(accessibleNavigation: true);
+      addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+      final h = await pumpOverview(
+        tester,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kActiveStarts),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('today-card-log-action')));
+      await tester.pumpAndSettle();
+      expect(find.text(kRecordedSnackbar), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 9));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(kRecordedSnackbar),
+        findsOneWidget,
+        reason:
+            'someone navigating with assistive technology keeps the '
+            'snackbar until they dismiss it',
+      );
+      expect(find.text('Undo'), findsOneWidget);
+
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(await h.entries.find(h.profile.id, kToday), isNull);
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('a second tap straight after the first is answered at once: '
+        'the first tap creates the entry, and the "already logged" reply '
+        'replaces its snackbar instead of queueing behind it', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kActiveStarts),
+      );
+      expect(await h.entries.find(h.profile.id, kToday), isNull);
+
+      // First tap: today had no entry, so this one creates it and offers
+      // Undo -- the snackbar the second tap's reply used to wait behind.
+      await tester.tap(find.byKey(const ValueKey('today-card-log-action')));
+      await tester.pumpAndSettle();
+      expect(find.text(kRecordedSnackbar), findsOneWidget);
+      expect(find.text('Undo'), findsOneWidget);
+
+      // Second tap, no waiting in between.
+      await tester.tap(find.byKey(const ValueKey('today-card-log-action')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(kAlreadyLoggedSnackbar),
+        findsOneWidget,
+        reason:
+            'the reply to a tap shows at once, not after the first '
+            'snackbar has run out its time',
+      );
+      expect(find.text(kRecordedSnackbar), findsNothing);
+      expect(
+        find.text('Undo'),
+        findsNothing,
+        reason: 'the second tap changed nothing, so it offers no Undo',
+      );
+      final todays = (await h.entries.listForProfile(h.profile.id))
+          .where((e) => e.localDate == kToday)
+          .toList();
+      expect(todays, hasLength(1));
+      expect(todays.single.flow, FlowLevel.medium);
       await disposeOverview(tester, h);
     });
   });

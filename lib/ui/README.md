@@ -195,14 +195,24 @@ are unchanged. The one-tap write itself goes through the same
 that keeps a second tap (or a day already logged heavier via the full day
 sheet) from ever downgrading an existing flow level — the upsert's own
 (profileId, date) identity is what keeps a second tap from ever creating a
-second entry.
+second entry. Every tap is answered at once: the confirmation
+(`overview/quick_log_snackbar.dart`, shared with the home-screen widget's
+acknowledgement in `lib/app.dart`) is shown after
+`hideCurrentSnackBar()`, so a second tap's "already logged" reply replaces
+the first tap's snackbar instead of queueing behind it.
 
 Issue #314: below the active/not-enough card, `OverviewPanel` renders a
 "See cycle history" `TextButton` (`ValueKey('overview-see-history-link')`)
 that switches the shell to Insights via the tab-switch seam above —
 `AppShellScope.maybeOf(context)?.select(AppTab.insights)` — instead of
 mounting its own copy of `CycleHistorySection` the way it used to. The link
-renders nothing when no `AppShellScope` is present.
+renders nothing when no `AppShellScope` is present, and nothing until the
+profile has cycle history to show: Insights renders no history for a
+profile with nothing logged (onboarding answers seed an estimate, never a
+history row), so the link would lead to an empty place. "Has history" has
+one definition, `CycleHistoryView.hasHistory`, read by both the section
+and the link off the same `CycleHistoryService.watch` view; the link keeps
+only that one bool and rebuilds when it flips.
 
 `components/today_log_fab.dart` (`TodayLogFab`) is the shell-level "Log
 today" `FloatingActionButton.extended` (issue #209 item 4a): it floats over
@@ -274,3 +284,7 @@ To keep UI components predictable, touch-friendly, and accessible across dynamic
 ### Destructive action styling (`DestructiveButton`)
 
 Irreversible actions — deleting a day entry, archiving a profile, revoking guardian access, unlinking an auth provider, erasing local data — must use `DestructiveButton` or `DestructiveButton.icon` (`lib/ui/components/destructive_button.dart`). These resolve their visual presentation dynamically from `colorScheme.error` and `colorScheme.onError` with high-contrast accessibility compliance. Never hardcode `Colors.red` or `Colors.redAccent`.
+
+### Snackbars with an action (`actionSnackBar`)
+
+A snackbar that carries an action (an "Undo", the sync glyph's shortcut to Settings) is built with `actionSnackBar` (`lib/ui/components/action_snack_bar.dart`), never with a `SnackBarAction` of its own. On the pinned Flutter a `SnackBar` with an `action` defaults to `persist: true` and never times out, so it stays until swiped away and every later snackbar queues unseen behind it. The helper keeps it up for `kActionSnackBarDuration` (8 seconds) and then lets it leave; it persists only when `MediaQuery.accessibleNavigationOf(context)` is true, which the call site passes in. `test/architecture/action_snack_bar_test.dart` fails if any other file under `lib/` constructs a `SnackBarAction`.
