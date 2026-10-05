@@ -129,9 +129,7 @@ function currentFor(href: string): "page" | "true" | undefined {
             {
               headerLinks.map((link) => (
                 <li>
-                  <a href={link.href} aria-current={currentFor(link.href)}>
-                    {link.label}
-                  </a>
+                  <a href={link.href} aria-current={currentFor(link.href)}>{link.label}</a>
                 </li>
               ))
             }
@@ -154,9 +152,7 @@ function currentFor(href: string): "page" | "true" | undefined {
                 <ul>
                   {group.links.map((link) => (
                     <li>
-                      <a href={link.href} aria-current={currentFor(link.href)}>
-                        {link.label}
-                      </a>
+                      <a href={link.href} aria-current={currentFor(link.href)}>{link.label}</a>
                     </li>
                   ))}
                 </ul>
