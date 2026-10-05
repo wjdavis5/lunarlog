@@ -849,6 +849,71 @@ void main() {
     expect(denied.isBlocked, isFalse);
   });
 
+  group('Issue #1523 a pass knows whether it read only what changed', () {
+    test('a pass over change pages is incremental, and one that brings '
+        'nothing back is still the empty state', () async {
+      await bind();
+      source.result = const HealthReadResult.samples([], incremental: true);
+      final summary = await build().importNow();
+      expect(summary.incremental, isTrue);
+      expect(summary.isEmpty, isTrue);
+      expect(summary.isBlocked, isFalse);
+    });
+
+    test('a full-history pass is not incremental, empty or not', () async {
+      await bind();
+      source.result = const HealthReadResult.samples([]);
+      final empty = await build().importNow();
+      expect(empty.incremental, isFalse);
+      expect(empty.isEmpty, isTrue);
+
+      source.result = HealthReadResult.samples([
+        _sample(
+          id: 'full-1',
+          flow: HealthFlowValue.light,
+          startIso: '2026-09-10T04:00:00Z',
+        ),
+      ]);
+      final withData = await build().importNow();
+      expect(withData.incremental, isFalse);
+      expect(withData.daysWritten, 1);
+    });
+
+    test('an incremental pass that does bring days back says so too',
+        () async {
+      await bind();
+      source.pages = [
+        HealthReadResult.samples(
+          [
+            _sample(
+              id: 'chg-1',
+              flow: HealthFlowValue.medium,
+              startIso: '2026-09-11T04:00:00Z',
+            ),
+          ],
+          nextCursor: 'chg:2',
+          incremental: true,
+        ),
+        const HealthReadResult.samples([], incremental: true),
+      ];
+      final summary = await build().importNow();
+      expect(summary.incremental, isTrue);
+      expect(summary.isEmpty, isFalse);
+      expect(summary.daysWritten, 1);
+    });
+
+    test('a read the store refuses is never reported as incremental',
+        () async {
+      await bind();
+      source.result = const HealthReadResult.permissionDenied();
+      final denied = await build().importNow();
+      // Still the neutral empty state, and with no claim that the pass
+      // only looked at what changed: nothing was read at all.
+      expect(denied.isEmpty, isTrue);
+      expect(denied.incremental, isFalse);
+    });
+  });
+
   test('a read failure surfaces as a blocked failed summary', () async {
     await bind();
     source.result = const HealthReadResult.failed('boom');

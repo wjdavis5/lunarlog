@@ -209,10 +209,13 @@ sealed class HealthReadResult {
 
   /// The query ran; [samples] is what the store returned (possibly empty).
   /// [nextCursor] is the opaque page cursor for the *next* page, or null
-  /// when this was the last page.
+  /// when this was the last page. [incremental] is true when the store was
+  /// asked only for what changed since the previous import (see
+  /// [HealthReadSamples.incremental]).
   const factory HealthReadResult.samples(
     List<HealthFlowSample> samples, {
     String? nextCursor,
+    bool incremental,
   }) = HealthReadSamples;
 
   /// No health store exists on this device.
@@ -235,9 +238,24 @@ sealed class HealthReadResult {
 }
 
 final class HealthReadSamples extends HealthReadResult {
-  const HealthReadSamples(this.samples, {this.nextCursor});
+  const HealthReadSamples(
+    this.samples, {
+    this.nextCursor,
+    this.incremental = false,
+  });
 
   final List<HealthFlowSample> samples;
+
+  /// True when this page came from a read that asked the store only for
+  /// what changed since the bound profile's previous import (Issue #1523):
+  /// Health Connect's change token. False for a full-history read, which is
+  /// every Apple Health pass (its anchor starts over each pass) and a first
+  /// Health Connect pass, or one made after its token expired.
+  ///
+  /// It is what lets an empty pass be described truthfully. An incremental
+  /// read that brings nothing back means nothing changed; a full read that
+  /// brings nothing back means the store had nothing to give.
+  final bool incremental;
 
   /// The opaque cursor the platform returned for the next page, or null
   /// when the read is exhausted. Opaque to Dart by design: an iOS anchor,
@@ -361,6 +379,7 @@ class HealthImportSummary {
     this.pagesRead = 0,
     this.pageLimitReached = false,
     this.repeatedCursor = false,
+    this.incremental = false,
   });
 
   /// False when no profile is bound to this device — the import action is
@@ -429,6 +448,12 @@ class HealthImportSummary {
   /// already seen this pass), so the service stopped rather than spin —
   /// a buggy adapter, not a normal completion.
   final bool repeatedCursor;
+
+  /// True when the pass read only what changed since the bound profile's
+  /// previous import (Issue #1523; see [HealthReadSamples.incremental]). An
+  /// incremental pass that [isEmpty] found nothing new; it does not mean the
+  /// store holds nothing or that reading is off.
+  final bool incremental;
 
   /// Whether the pass ended before any read could run.
   bool get isBlocked => blocked != null;

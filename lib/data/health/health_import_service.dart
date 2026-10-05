@@ -557,6 +557,7 @@ class LocalHealthImportService
       }
       accumulator.pagesRead++;
       accumulator.samplesRead += read.samples.length;
+      accumulator.incremental |= read.incremental;
       accumulator.addPage(
         await _resolvePageOffThread(
           (samples: read.samples, from: window.from, to: window.to),
@@ -657,6 +658,7 @@ class LocalHealthImportService
       pagesRead: accumulator.pagesRead,
       pageLimitReached: accumulator.pageLimitReached,
       repeatedCursor: accumulator.repeatedCursor,
+      incremental: accumulator.incremental,
     );
   }
 
@@ -812,6 +814,10 @@ class _Accumulator {
   int pagesRead = 0;
   bool pageLimitReached = false;
   bool repeatedCursor = false;
+
+  /// Whether the pass read only what changed since the last import (Issue
+  /// #1523). A pass is one or the other for all its pages.
+  bool incremental = false;
 
   void addPage(_PageResolveResult page) {
     for (final entry in page.flowDays.entries) {

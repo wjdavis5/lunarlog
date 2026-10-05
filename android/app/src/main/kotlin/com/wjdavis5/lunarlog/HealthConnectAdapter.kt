@@ -1242,6 +1242,12 @@ class HealthConnectAdapter(context: Context) {
         }
         val payload = mutableMapOf<String, Any>(
             "samples" to records.values.mapNotNull { sampleFor(it, start, end) },
+            // Issue #1523: this page holds only what changed since the
+            // profile's previous import. Dart uses it to say "nothing new
+            // since the last import" for an empty pass, where it used to
+            // say Health Connect returned no data and reading might be
+            // off. A full-range page (readRangePage) never carries it.
+            "incremental" to true,
         )
         val next = page.nextChangesToken
         if (page.hasMore && next.isNotEmpty()) {

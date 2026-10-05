@@ -8278,6 +8278,18 @@ abstract class AppLocalizations {
   /// **'Health Connect returned no menstrual-flow data. This can mean nothing was tracked, or that read access is off.'**
   String get healthSyncImportEmptyHealthConnect;
 
+  /// Issue #1523: the result of an import from Health Connect that read the whole history and got nothing back, when Health Connect says lunarlog is allowed to read. Replaces healthSyncImportEmptyHealthConnect in that case, because 'or that read access is off' would contradict the access line on the same screen. 'From other apps' because lunarlog never imports what it wrote itself. Android only: Apple Health never says whether reading is allowed.
+  ///
+  /// In en, this message translates to:
+  /// **'Health Connect has no period or spotting data from other apps to import.'**
+  String get healthSyncImportEmptyHealthConnectReadable;
+
+  /// Issue #1523: the result of a repeat import that asked the health store only for what changed since the previous import and got nothing back. Says nothing about access or about whether anything was ever tracked, since an earlier import already ran. {source} is the store's mid-sentence name ('Health Connect', 'the Health app').
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing new in {source} since the last import.'**
+  String healthSyncImportNothingSinceLast(String source);
+
   /// Issue #1004 (tranche 5): bind-screen intro on a write-wired platform (iOS).
   ///
   /// In en, this message translates to:

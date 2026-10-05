@@ -71,6 +71,10 @@ String _sourceName(AppLocalizations l10n, HealthImportPlatform platform) =>
         l10n.healthSyncSourceNameHealthConnect,
     };
 
+/// What the permission probe says: the status line's state and, where the
+/// store discloses it, the read-side answer on its own (Issue #1523).
+typedef _Access = ({HealthAccessState? state, HealthPermissionStatus? read});
+
 /// The human name of [platform]'s health store for titles and headings.
 /// Arb-backed since issue #1004, tranche 5 (`healthSyncSourceTitle*`).
 String _sourceTitle(AppLocalizations l10n, HealthImportPlatform platform) =>
@@ -204,6 +208,12 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// alone where it does not (see [_readAccessState]).
   HealthAccessState? _accessState;
 
+  /// The read-side answer behind [_accessState] (Issue #1523): null where
+  /// the store does not disclose read access (an iPhone) or no probe is
+  /// wired. Kept so the line for an import that brought nothing back can
+  /// leave out "or read access is off" when reading is known to be on.
+  HealthPermissionStatus? _readStatus;
+
   /// The store this screen is about — drives every store name and the
   /// write copy below. See [HealthSyncScreen.storePlatform] for the order.
   HealthImportPlatform get _importPlatform {
@@ -241,9 +251,18 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
 
   Future<void> _refreshPermissionStatus() async {
     if (_loading) return;
-    final state = await _readAccessState();
-    if (!mounted || state == _accessState) return;
-    setState(() => _accessState = state);
+    final access = await _readAccess();
+    if (!mounted || _sameAccess(access)) return;
+    setState(() => _setAccess(access));
+  }
+
+  bool _sameAccess(_Access access) =>
+      access.state == _accessState && access.read == _readStatus;
+
+  /// Stores a fresh probe answer. Call inside `setState`.
+  void _setAccess(_Access access) {
+    _accessState = access.state;
+    _readStatus = access.read;
   }
 
   /// Loads the bound profile id, every non-archived profile, and each
@@ -274,13 +293,13 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       final guardians = await widget.guardiansForProfile(profile.id);
       owners[profile.id] = ownerUserIdFor(guardians);
     }
-    final accessState = await _readAccessState();
+    final access = await _readAccess();
     if (!mounted) return;
     setState(() {
       _boundProfileId = bound;
       _profiles = profiles;
       _ownerUserIdByProfile = owners;
-      _accessState = accessState;
+      _setAccess(access);
       _loading = false;
       _loadFailed = false;
     });
@@ -293,17 +312,17 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   ///
   /// Issue #1515: the write answer and, where the store discloses it, the
   /// read answer, folded into the one state the line shows by
-  /// [healthAccessState].
-  Future<HealthAccessState?> _readAccessState() async {
+  /// [healthAccessState]. The read answer rides along ([_Access.read]) for
+  /// the import result line (Issue #1523).
+  Future<_Access> _readAccess() async {
     final probe = widget.permissionProbe;
-    if (probe == null) return null;
+    if (probe == null) return (state: null, read: null);
     try {
-      return healthAccessState(
-        write: await probe.permissionStatus(),
-        read: await _readSideStatus(probe),
-      );
+      final write = await probe.permissionStatus();
+      final read = await _readSideStatus(probe);
+      return (state: healthAccessState(write: write, read: read), read: read);
     } catch (_) {
-      return HealthAccessState.unavailable;
+      return (state: HealthAccessState.unavailable, read: null);
     }
   }
 
@@ -585,7 +604,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       } catch (_) {
         // Ignored: the snapshot is a display cache, not part of the import.
       }
-      final accessState = await _readAccessState();
+      final access = await _readAccess();
       if (!mounted) return;
       setState(() {
         _importing = false;
@@ -594,7 +613,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
         // Issue #959: re-read the OS permission after the pass, so an
         // import that hit a revoked permission updates the status line
         // (and offers the settings link) without leaving the screen.
-        _accessState = accessState;
+        _setAccess(access);
       });
       _announceResult(summary);
     } catch (_) {
@@ -746,6 +765,30 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
     return l10n.healthSyncImportProgress(progress.samplesRead);
   }
 
+  /// The line for a pass that ran and brought nothing back (Issue #1523).
+  ///
+  /// A pass that asked only for what changed since the last import found
+  /// nothing new, and says so: that is no sign the store is empty or that
+  /// reading is off, which is what the neutral copy used to tell someone
+  /// whose earlier import was sitting on her calendar.
+  ///
+  /// A full read that came back empty keeps the neutral copy wherever the
+  /// store will not say whether reading is allowed (an iPhone). Where it
+  /// does say, and says it is allowed, "or read access is off" would
+  /// contradict the status line on this same screen, so the line states
+  /// only what is left: there is nothing from another app to import.
+  String _emptyImportCopy(AppLocalizations l10n, HealthImportSummary summary) {
+    if (summary.incremental) {
+      return l10n.healthSyncImportNothingSinceLast(
+        _sourceName(l10n, _importPlatform),
+      );
+    }
+    if (_readStatus == HealthPermissionStatus.granted) {
+      return l10n.healthSyncImportEmptyHealthConnectReadable;
+    }
+    return healthImportEmptyCopy(l10n, _importPlatform);
+  }
+
   /// The lines for a finished pass: the blocked line, the neutral empty
   /// copy, or the stopped-early note plus the positive result lines.
   List<Widget> _importSummaryChildren(
@@ -755,9 +798,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
     if (summary.isBlocked) {
       return [Text(_blockedImportCopy(l10n, summary.blocked!))];
     }
-    if (summary.isEmpty) {
-      return [Text(healthImportEmptyCopy(l10n, _importPlatform))];
-    }
+    if (summary.isEmpty) return [Text(_emptyImportCopy(l10n, summary))];
     return [
       // Issue #992: a pass stopped by the page cap or a repeated cursor says
       // so plainly rather than pretending it finished.
