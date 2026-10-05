@@ -151,7 +151,7 @@ function AcceptInviteForm(props: { rawToken: string }) {
     return (
       <main className="page">
         <h1 className="headline">{t('sharingAcceptInviteTitle')}</h1>
-        <p className="body">{t('sharingAcceptInviteNeutralIntro')}</p>
+        <p className="body">{t('webInviteNeutralIntro')}</p>
         <p className="error">{t('sharingFailureNotSignedIn')}</p>
       </main>
     );
@@ -182,8 +182,8 @@ function AcceptInviteForm(props: { rawToken: string }) {
           {previewData !== null ? (
             <p className="body">
               {isSubject
-                ? t('acceptInviteSubjectIntro', { profile: previewData.profile_display_name })
-                : t('sharingAcceptInvitePreviewIntro', {
+                ? t('webInviteSubjectIntro', { profile: previewData.profile_display_name })
+                : t('webInvitePreviewIntro', {
                     profileName: previewData.profile_display_name,
                     roleLabel,
                   })}

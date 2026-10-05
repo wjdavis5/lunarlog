@@ -186,7 +186,7 @@ describe('AcceptInviteForm (issue #1255)', () => {
       is_subject: true,
     });
     renderAt('/invite?code=T0KEN');
-    const intro = (messages['acceptInviteSubjectIntro'] ?? '').replace('{profile}', 'Maya');
+    const intro = (messages['webInviteSubjectIntro'] ?? '').replace('{profile}', 'Maya');
     expect(await screen.findByText(intro)).toBeInTheDocument();
     expect(
       screen.getByText(messages['firstRunAgeAcknowledgementParentInviteLabel'] ?? ''),
@@ -205,7 +205,7 @@ describe('AcceptInviteForm (issue #1255)', () => {
     });
     renderAt('/invite?code=T0KEN');
     const roleLabel = messages['guardianRoleLabelCoParent'] ?? '';
-    const intro = (messages['sharingAcceptInvitePreviewIntro'] ?? '')
+    const intro = (messages['webInvitePreviewIntro'] ?? '')
       .replace('{profileName}', 'Maya')
       .replace('{roleLabel}', roleLabel);
     expect(await screen.findByText(intro)).toBeInTheDocument();

@@ -141,7 +141,7 @@ export function ProfileHomeCalendar(props: {
         <p className="card-body" data-testid="calendar-empty-banner">
           {t('calendarNoEntriesTitle')}
           {DASH_SEPARATOR}
-          {t('calendarNoEntriesBody')}
+          {t('webCalendarNoEntriesBody')}
         </p>
       ) : null}
 

@@ -83,6 +83,24 @@ void main() {
       },
     );
 
+    // An issue number belongs in a key's `@description`, never in the
+    // sentence a reader sees. The password-reset confirmation shipped
+    // ending "an earlier one stops working (issue #32)."
+    test('no user-facing value carries an internal issue reference', () {
+      final content =
+          json.decode(File('lib/l10n/app_en.arb').readAsStringSync())
+              as Map<String, dynamic>;
+      final issueReference = RegExp(r'\bissue #\d+|\(#\d+\)', caseSensitive: false);
+      final violations = <String>[
+        for (final entry in content.entries)
+          if (!entry.key.startsWith('@') &&
+              entry.value is String &&
+              issueReference.hasMatch(entry.value as String))
+            '${entry.key}: "${entry.value}"',
+      ];
+      expect(violations, isEmpty, reason: violations.join('\n'));
+    });
+
     test('allowlist stays minimal and does not contain obsolete keys', () {
       final arbFile = File('lib/l10n/app_en.arb');
       final content =

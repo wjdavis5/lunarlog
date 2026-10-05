@@ -102,7 +102,7 @@ export function SignUpPage() {
       <h1 className="display">{t('accountSignInTitleCreate')}</h1>
       {confirmationSent ? (
         <div className="auth-info">
-          <p className="body">{t('accountSignInConfirmEmailInfo')}</p>
+          <p className="body">{t('webAuthConfirmEmailInfo')}</p>
           <div className="auth-links">
             <Link
               to={withNext(

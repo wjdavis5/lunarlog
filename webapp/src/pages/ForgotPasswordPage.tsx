@@ -45,7 +45,7 @@ export function ForgotPasswordPage() {
       <h1 className="display">{t('accountSignInForgotPasswordAction')}</h1>
       {sent ? (
         <div className="auth-info">
-          <p className="body">{t('accountSignInResetInfo')}</p>
+          <p className="body">{t('webAuthResetInfo')}</p>
           <div className="auth-links">
             <Link to={`/sign-in/code?email=${encodeURIComponent(email.trim())}&mode=recovery`}>
               {t('accountSignInVerifyCodeAction')}

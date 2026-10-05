@@ -95,7 +95,7 @@ test('a signed-out visitor at an invitation is sent to sign in, and back', async
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   test.skip(
     await page
-      .getByText(messages['sharingAcceptInviteNeutralIntro'] ?? 'missing')
+      .getByText(messages['webInviteNeutralIntro'] ?? 'missing')
       .isVisible()
       .catch(() => false),
     'unconfigured build (fork); runs in CI',
