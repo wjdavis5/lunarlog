@@ -118,9 +118,11 @@ const privacyPolicyUrl =
           The account itself — including, if you signed in with Apple, that
           app's access being revoked through Apple.
         </li>
+        <!-- cite: PRIVACY.md §6 "Browser Client (Web)" (nothing at rest in the browser); webapp/src/lib/authQueries.ts (useDeleteAccount drops the page's data and session). -->
         <li>
-          The copy of your data on this device. In the browser version, that
-          is the copy the browser holds.
+          The copy of your data on this device. The browser version keeps no
+          copy to begin with, so deleting your account there clears what the
+          open tab was showing and signs it out.
         </li>
       </ul>
     </section>
