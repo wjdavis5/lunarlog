@@ -1,6 +1,7 @@
 /// Profile picker (home when no valid active profile): active profiles by
 /// sort order, tap to make active; rename/archive from the row menu; archived
-/// profiles live in a collapsed section at the bottom with one-tap unarchive.
+/// profiles live in a collapsed section at the bottom with one-tap unarchive
+/// (primary guardian only, like Archive - issue #1411).
 /// The app bar carries the sync status glyph when the build has a sync
 /// engine (U6); tapping it opens Settings.
 ///
@@ -114,7 +115,12 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
     void openSettings() => pushNamedScreen<void>(context, kRouteSettingsScreen);
     final overview = _overview;
     if (overview != null) {
-      overview.observeProfiles([for (final profile in active) profile.id]);
+      // Issue #1411: archived rows resolve the operator's role too - their
+      // unarchive control follows it, the way the active rows' menu does.
+      overview.observeProfiles([
+        for (final profile in active) profile.id,
+        for (final profile in archived) profile.id,
+      ]);
     }
     final sharing = Provider.of<SharingService?>(context);
     final l10n = AppLocalizations.of(context);
@@ -157,31 +163,52 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
                     title: Text(l10n.profilePickerArchivedHeader(archived.length)),
                     children: [
                       for (final profile in archived)
-                        ListTile(
-                          title: Text(profile.displayName),
-                          subtitle: Text(l10n.profilePickerCreated(
-                              formatCreatedDate(profile.createdAt,
-                                  locale: dates.calendarLocale(context)))),
-                          onTap: () => Navigator.of(context).push(
-                            buildNamedRoute<void>(
-                              name: kRouteProfileDetailScreen,
-                              builder: (_) => ProfileDetailScreen(
-                                profile: profile,
-                                readOnly: true,
-                              ),
-                            ),
-                          ),
-                          trailing: IconButton(
-                            tooltip: l10n.profilePickerUnarchiveTooltip,
-                            icon: const Icon(Icons.unarchive),
-                            onPressed: () =>
-                                controller.unarchiveProfile(profile.id),
-                          ),
-                        ),
+                        _archivedRow(context, overview, profile),
                     ],
                   ),
               ],
             ),
+    );
+  }
+
+  /// One archived profile's row. The row itself - name, created date, and
+  /// the tap-through to the read-only detail screen - is there for every
+  /// role; only the unarchive control follows the operator's role.
+  ///
+  /// Issue #1411: the server lets only the primary guardian change a
+  /// profile's archive state, in either direction, so unarchive is gated
+  /// exactly like the active rows' Archive item ([canChangeArchiveState]).
+  /// An unknown role fails open and keeps the control (#531).
+  Widget _archivedRow(
+    BuildContext context,
+    SharingOverviewController? overview,
+    Profile profile,
+  ) {
+    final l10n = AppLocalizations.of(context);
+    final info = overview?.infoFor(profile.id) ?? const SharingProfileInfo.unknown();
+    return ListTile(
+      title: Text(profile.displayName),
+      subtitle: Text(l10n.profilePickerCreated(formatCreatedDate(
+          profile.createdAt,
+          locale: dates.calendarLocale(context)))),
+      onTap: () => Navigator.of(context).push(
+        buildNamedRoute<void>(
+          name: kRouteProfileDetailScreen,
+          builder: (_) => ProfileDetailScreen(
+            profile: profile,
+            readOnly: true,
+          ),
+        ),
+      ),
+      trailing: canChangeArchiveState(info.myRole)
+          ? IconButton(
+              tooltip: l10n.profilePickerUnarchiveTooltip,
+              icon: const Icon(Icons.unarchive),
+              onPressed: () => context
+                  .read<ProfileController>()
+                  .unarchiveProfile(profile.id),
+            )
+          : null,
     );
   }
 
@@ -332,14 +359,16 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
         // resolved role that is actually insufficient hides an item.
         final role = info.myRole;
         final canEdit = role == null || role.canEditProfile;
-        final canDelete = role == null || role.canDeleteProfile;
+        // Issue #1411: one rule for both directions - the archived rows'
+        // unarchive control reads the same predicate.
+        final canArchive = canChangeArchiveState(role);
         return [
           PopupMenuItem(
               value: 'caregivers', child: Text(l10n.profilePickerMenuGuardians)),
           if (canEdit)
             PopupMenuItem(
                 value: 'rename', child: Text(l10n.editProfileAction)),
-          if (canDelete)
+          if (canArchive)
             PopupMenuItem(value: 'archive', child: Text(l10n.profileArchive)),
         ];
       },
