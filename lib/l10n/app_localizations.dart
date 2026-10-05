@@ -1208,10 +1208,10 @@ abstract class AppLocalizations {
   /// **'Log a period'**
   String get overviewStaleHistoryLog;
 
-  /// Hint line shown when notification permission is denied.
+  /// Hint line on Today while the app may not post notifications. Shown both to someone who has never been asked (the app no longer asks at launch) and to someone who said no, so it states what reminders need and does not call anything unavailable or broken. The button beside it is overviewTurnOnReminders.
   ///
   /// In en, this message translates to:
-  /// **'Reminders unavailable — notifications are off'**
+  /// **'Reminders need notifications turned on'**
   String get overviewReminderHint;
 
   /// Action on the denied-permission reminder hint.

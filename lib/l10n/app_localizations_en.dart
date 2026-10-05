@@ -664,8 +664,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get overviewStaleHistoryLog => 'Log a period';
 
   @override
-  String get overviewReminderHint =>
-      'Reminders unavailable — notifications are off';
+  String get overviewReminderHint => 'Reminders need notifications turned on';
 
   @override
   String get overviewTurnOnReminders => 'Turn on reminders';

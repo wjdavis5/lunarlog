@@ -184,7 +184,7 @@
   "overviewStaleHistoryTitle": "Your history is out of date",
   "overviewStaleHistoryBody": "It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick estimates back up. You can also turn estimates off. If there's any chance of pregnancy, take a pregnancy test. Going 3 months (90 days) without a period is a reason to see a doctor.",
   "overviewStaleHistoryLog": "Log a period",
-  "overviewReminderHint": "Reminders unavailable — notifications are off",
+  "overviewReminderHint": "Reminders need notifications turned on",
   "overviewTurnOnReminders": "Turn on reminders",
   "overviewAboutThisEstimate": "About this estimate",
   "todayCardLogPeriodStartedToday": "Period started today",

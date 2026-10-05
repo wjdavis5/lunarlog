@@ -852,9 +852,9 @@
   "@overviewStaleHistoryLog": {
     "description": "Issue #859: primary action on the stale-history card, logging a period start for today."
   },
-  "overviewReminderHint": "Reminders unavailable — notifications are off",
+  "overviewReminderHint": "Reminders need notifications turned on",
   "@overviewReminderHint": {
-    "description": "Hint line shown when notification permission is denied."
+    "description": "Hint line on Today while the app may not post notifications. Shown both to someone who has never been asked (the app no longer asks at launch) and to someone who said no, so it states what reminders need and does not call anything unavailable or broken. The button beside it is overviewTurnOnReminders."
   },
   "overviewTurnOnReminders": "Turn on reminders",
   "@overviewTurnOnReminders": {

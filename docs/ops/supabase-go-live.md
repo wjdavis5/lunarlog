@@ -1316,7 +1316,7 @@ build), always with a throwaway account and fabricated profiles only.
       without push configured, no notification prompt appears at launch on
       either platform and the app is not blanked behind a black cover
       while it starts (issues #863, #1425); with notifications off, Today
-      shows "Reminders unavailable — notifications are off" with a "Turn on
+      shows "Reminders need notifications turned on" with a "Turn on
       reminders" action. (A push-configured build can still prompt at
       launch from push registration — see the known exception under "No
       lock screen during the Google picker or the Apple sheet" above.)
