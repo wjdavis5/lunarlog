@@ -86,7 +86,10 @@ export function ProfileNotesPage() {
   const guardianName = (userId: string | null): string => {
     if (userId !== null && userId === me) return t('guardianNotesYou');
     const row = guardians.data?.find((candidate) => candidate.user_id === userId);
-    return row?.display_name ?? t('guardianNotesGuardianFallback');
+    // An empty name is no name (issue #1464): `??` kept it, and the note
+    // was then signed by nobody.
+    const name = row?.display_name ?? '';
+    return name !== '' ? name : t('guardianNotesGuardianFallback');
   };
 
   const notes = guardianNotes.data ?? [];

@@ -17,6 +17,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
+import 'package:lunarlog/ui/l10n/invitation_expiry_copy.dart';
 import 'package:lunarlog/ui/l10n/sharing_failure_copy.dart';
 
 import '../../domain/repositories/activity_feed_repository.dart';
@@ -626,16 +627,9 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
         targetUserId: guardian.userId,
       );
       if (mounted) {
-        final l10n = AppLocalizations.of(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              l10n.sharingManageGuardiansRemoved(
-                _guardianNameInSentence(guardian, startsSentence: false),
-              ),
-            ),
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(_revokedMessage(guardian))));
       }
     } catch (e) {
       if (mounted) {
@@ -648,6 +642,20 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
         setState(() => _revokingUserIds.remove(guardian.userId));
       }
     }
+  }
+
+  /// What the snackbar says once [guardian] is off the profile. Leaving is
+  /// told to the reader ("You left Luna's profile"); it used to share the
+  /// removal sentence and name them in the third person, "Removed Mom" shown
+  /// to Mom (issue #1464).
+  String _revokedMessage(ProfileGuardian guardian) {
+    final l10n = AppLocalizations.of(context);
+    if (guardian.userId == widget.currentUserId) {
+      return l10n.sharingManageGuardiansLeft(widget.profile.displayName);
+    }
+    return l10n.sharingManageGuardiansRemoved(
+      _guardianNameInSentence(guardian, startsSentence: false),
+    );
   }
 
   void _openInviteDialog() {
@@ -696,18 +704,12 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
 
   /// Relative time remaining until [expiresAt], clamped at "expired" rather
   /// than rendering a negative duration for a stale load (Q2/U3 test list).
-  String _expiryLabel(DateTime expiresAt) {
-    final l10n = AppLocalizations.of(context);
-    final remaining = expiresAt.difference(DateTime.now().toUtc());
-    if (remaining.isNegative) return l10n.sharingManageGuardiansExpiryExpired;
-    if (remaining.inHours >= 1) {
-      return l10n.sharingManageGuardiansExpiryHours(remaining.inHours);
-    }
-    final minutes = remaining.inMinutes;
-    return l10n.sharingManageGuardiansExpiryMinutes(
-      minutes < 1 ? 1 : minutes,
-    );
-  }
+  /// The wording, and its minutes / hours / days steps, live in
+  /// [invitationExpiryLabel].
+  String _expiryLabel(DateTime expiresAt) => invitationExpiryLabel(
+    AppLocalizations.of(context),
+    expiresAt.difference(DateTime.now().toUtc()),
+  );
 
   Future<void> _cancelInvite(PendingInvite invite) async {
     // #544: blocks a second tap while this invitation's own cancel is in

@@ -2912,6 +2912,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String sharingManageGuardiansLeft(String profile) {
+    return 'You left $profile\'s profile';
+  }
+
+  @override
   String sharingManageGuardiansCancelInviteTitle(String name) {
     return 'Cancel invitation for $name?';
   }
@@ -2967,6 +2972,17 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String sharingManageGuardiansExpiryMinutes(int minutes) {
     return 'expires in ${minutes}m';
+  }
+
+  @override
+  String sharingManageGuardiansExpiryDays(int days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: 'expires in $days days',
+      one: 'expires in 1 day',
+    );
+    return '$_temp0';
   }
 
   @override
