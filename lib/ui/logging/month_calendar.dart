@@ -38,6 +38,12 @@
 /// of each forecasted period band, keyed by the legend's "Estimated
 /// fertile days" entry — gated, like every other prediction number, by
 /// [CareModeCopy.showsFertileWindow] (`_MonthCalendarState._cellForMode`).
+///
+/// Issue #1469: the last-period date given at setup is marked with a
+/// *dotted* ring in the period colour while the estimate still counts from
+/// it ([setupPeriodMarkDateFor]) — an answer the profile was given, never a
+/// logged day, so it is never filled, its label says "not logged", and
+/// nothing is written for it. A logged entry on that day wins.
 library;
 
 import 'dart:async';
@@ -230,8 +236,81 @@ const double kDayCellCircleGutter = 4.0;
 /// Issue #810: the single stroke weight every calendar ring shares — the
 /// today ring, the spotting ring, the predicted band's hatched border, and
 /// the fertile window's dashed border. Their *patterns* (solid / dashed /
-/// hatched) carry the distinction; the weights no longer disagree.
+/// hatched) carry the distinction; the weights no longer disagree. Issue
+/// #1469's setup mark joins them as the *dotted* pattern: its dots are
+/// this wide.
 const double kCalendarRingStrokeWidth = 2.0;
+
+/// Issue #1469: the day the month grid marks as "last period start from
+/// setup", or null when there is nothing to mark.
+///
+/// The decision is the engine's, read off [prediction] and never re-derived
+/// here: [ActivePrediction.cycleStartIsSupplied] says the current cycle
+/// still counts from the date given at setup, and
+/// [ActivePrediction.lastEpisodeStart] is that date. So the mark follows
+/// the estimate everywhere the estimate is withheld — estimates turned off
+/// ([PredictionsDisabled]), a life-stage mode or continuous method that
+/// suppresses them ([PredictionsSuppressed]), answers that cannot seed one
+/// ([NotEnoughHistory]) — and goes away once a logged period takes over as
+/// the cycle start or real cycles displace the seed.
+///
+/// A stale history ([ActivePrediction.staleHistory], issue #859) hides it
+/// too: the calendar already withholds the whole forecast off that flag
+/// (issue #982), and an input to an estimate that is no longer shown has
+/// nothing left to explain. A supplied date after [today] is never marked —
+/// future cells keep their own read-only rendering (KTD8).
+///
+/// Public and pure for direct testing, the same discipline as
+/// [dayCellSemanticLabel] below.
+LocalDate? setupPeriodMarkDateFor(
+  CyclePrediction prediction,
+  LocalDate today,
+) => switch (prediction) {
+  ActivePrediction(
+    cycleStartIsSupplied: true,
+    staleHistory: false,
+    :final lastEpisodeStart,
+  )
+      when !lastEpisodeStart.isAfter(today) =>
+    lastEpisodeStart,
+  _ => null,
+};
+
+/// Issue #1469: the colour of the setup mark's dotted ring — the middle
+/// step of the logged-period ramp, so the mark reads as "period" while the
+/// outline (where a logged period day is a fill) reads as "not logged".
+/// [LunarLogColors.flowMedium] is solved for 5.6:1 against the Card
+/// background, comfortably over the 3:1 non-text floor the other calendar
+/// rings are held to; `test/ui/calendar_setup_period_mark_test.dart`
+/// re-checks it against both surfaces in both themes.
+Color setupPeriodMarkColor(LunarLogColors colors) => colors.flowMedium;
+
+/// Issue #1469: the centre-to-centre spacing of the setup mark's dots along
+/// its ring, in logical pixels. Two and a half dot widths, so the dots can
+/// never run together into the solid ring today and spotting already use.
+const double kSetupPeriodDotPitch = kCalendarRingStrokeWidth * 2.5;
+
+/// Issue #1469: the fewest dots the setup mark is ever drawn with — keeps
+/// the legend's small swatch reading as a ring of dots rather than a
+/// handful of specks.
+const int kSetupPeriodMinDots = 8;
+
+/// Issue #1469: how many dots the setup mark's ring carries inside a circle
+/// [diameter] wide — as many as fit at [kSetupPeriodDotPitch], never fewer
+/// than [kSetupPeriodMinDots]. Sized from the circle rather than fixed, so
+/// the grid's text-scaled cell and the legend's swatch both read as dotted.
+/// Public and pure for direct testing.
+int setupPeriodDotCountFor(double diameter) => math.max(
+  kSetupPeriodMinDots,
+  (math.pi * (diameter - kCalendarRingStrokeWidth) / kSetupPeriodDotPitch)
+      .round(),
+);
+
+/// Issue #1469: how much narrower the setup mark's dotted ring is drawn
+/// when the supplied date is also today, so it sits inside today's solid
+/// ring with a gap one stroke wide between them (the ring's own stroke
+/// plus that gap, on both sides).
+const double kSetupPeriodTodayInset = 4 * kCalendarRingStrokeWidth;
 
 /// [#138, B-23] The day-cell geometry for one grid width and text scale:
 /// the number circle grows from the scaled 20px baseline (never below its
@@ -392,6 +471,13 @@ Widget _haloedDayNumber(
 /// ([_MonthCalendarState._cellForMode]) has already stripped
 /// [ForecastDayCell.fertileWindow] entirely when the mode hides it, so a
 /// null here only silences an already-unreachable fragment.
+///
+/// Issue #1469: [isSetupPeriodStart] is true for the one day carrying the
+/// setup mark. The label then names where the mark came from ahead of the
+/// usual "not logged", so a screen reader hears both that the date was
+/// given at setup and that nothing is logged on it. It only ever changes a
+/// day with no entry: a logged day is announced as logged, as the grid
+/// draws it.
 String dayCellSemanticLabel({
   required LocalDate date,
   required DayEntry? entry,
@@ -406,6 +492,7 @@ String dayCellSemanticLabel({
   // no observations field, so the calendar threads its own spotting set
   // through here alongside the entry.
   bool hasSpotting = false,
+  bool isSetupPeriodStart = false,
 }) {
   final months = monthNames ?? dates.monthNames();
   final weekdays = weekdayNames ?? dates.fullWeekdayNames();
@@ -427,7 +514,14 @@ String dayCellSemanticLabel({
     parts.add(l10n.calendarCellFuture);
     return parts.join(', ');
   }
-  parts.addAll(_loggedDayParts(entry, l10n, hasSpotting: hasSpotting));
+  parts.addAll(
+    _loggedDayParts(
+      entry,
+      l10n,
+      hasSpotting: hasSpotting,
+      isSetupPeriodStart: isSetupPeriodStart,
+    ),
+  );
   if (date == today) parts.add(l10n.calendarCellToday);
   if (readOnly) parts.add(l10n.calendarCellReadOnly);
   return parts.join(', ');
@@ -439,13 +533,20 @@ String dayCellSemanticLabel({
 /// the ring the grid draws; a symptom-only day says so; a
 /// bare logged day still answers "was anything logged?" and names the
 /// absence of symptoms, so symptom presence is announced for every logged
-/// cell, not only the ones with tags.
+/// cell, not only the ones with tags. Issue #1469: an unlogged day that
+/// carries the setup mark names the mark first and still ends "not logged".
 List<String> _loggedDayParts(
   DayEntry? entry,
   AppLocalizations l10n, {
   bool hasSpotting = false,
+  bool isSetupPeriodStart = false,
 }) {
-  if (entry == null) return [l10n.calendarCellNotLogged];
+  if (entry == null) {
+    return [
+      if (isSetupPeriodStart) l10n.calendarCellSetupPeriodStart,
+      l10n.calendarCellNotLogged,
+    ];
+  }
   // Issue #249: pain_free is a positive "none today" assertion, never a
   // symptom — a day carrying only it is announced as symptom-free.
   final hasSymptoms = hasSymptomTags(entry.tags) || entry.note != null;
@@ -527,8 +628,9 @@ bool canDrivePageController({required bool hasClients}) => hasClients;
 /// How [_MonthCalendarState._legendSwatch] draws one legend entry's swatch
 /// — mirrors the shapes the grid itself uses so the legend key actually
 /// matches what a cell renders (a plain fill, spotting/today's ring,
-/// #133's hatched predicted band, or #143's dashed fertile-window ring).
-enum _LegendSwatchStyle { fill, ring, hatched, dashed, icon }
+/// #133's hatched predicted band, #143's dashed fertile-window ring, or
+/// #1469's dotted setup mark).
+enum _LegendSwatchStyle { fill, ring, hatched, dashed, dotted, icon }
 
 /// One row of the legend strip (issue #191; B-2, B-11; issue #312 review:
 /// `icon` added for the PMS/cramps badges): a swatch plus its label, keyed
@@ -744,6 +846,11 @@ class _MonthCalendarState extends State<MonthCalendar>
   late Set<String> _computedActiveLayers;
   bool _computedPmsBandActive = false;
 
+  /// Issue #1469: the day carrying the setup mark, or null — see
+  /// [setupPeriodMarkDateFor]. Derived only from the prediction and
+  /// `today`, both already in the memo key above, so it adds no input.
+  LocalDate? _computedSetupPeriodStart;
+
   bool _computeInputsUnchanged({
     required List<DayEntry> entries,
     required CyclePrediction prediction,
@@ -832,6 +939,33 @@ class _MonthCalendarState extends State<MonthCalendar>
     _computedForecastByIso = forecastByIso;
     _computedActiveLayers = activeLayers;
     _computedPmsBandActive = pmsEstimate != null;
+    _computedSetupPeriodStart = setupPeriodMarkDateFor(prediction, today);
+  }
+
+  /// Issue #1469: whether [date] carries the setup mark — the supplied
+  /// date, and only while nothing is logged on it. A logged day always
+  /// renders as logged (KTD3's rule for forecast markers, applied to this
+  /// mark too), whatever the entry holds.
+  bool _isSetupPeriodMark(LocalDate date, DayEntry? entry) =>
+      entry == null && date == _computedSetupPeriodStart;
+
+  /// Issue #1469: whether the grid can draw the setup mark for this profile
+  /// at all — the legend keys it only then (the #220 rule for the PMS
+  /// badge: never advertise a swatch that cannot appear). False once the
+  /// supplied day has an entry among the loaded ones; when that day lies
+  /// outside the loaded window nothing is known to be logged on it, so the
+  /// mark may still appear there and stays keyed.
+  bool get _setupPeriodMarkCanAppear {
+    final date = _computedSetupPeriodStart;
+    return date != null && !_computedByIso.containsKey(date.iso);
+  }
+
+  /// Issue #1469: a month whose only content is the setup mark is not
+  /// empty. No entry check is needed: this is consulted only for a month
+  /// with no entries at all, so nothing is logged on the marked day.
+  bool _monthHoldsSetupMark({required int year, required int month}) {
+    final date = _computedSetupPeriodStart;
+    return date != null && date.year == year && date.month == month;
   }
 
   /// Swipe navigation (issue #191): one page per month, indexed by
@@ -1729,11 +1863,12 @@ class _MonthCalendarState extends State<MonthCalendar>
                           // banner appear/disappear a beat after the swipe
                           // landed and shifted the grid under the operator's
                           // thumb.
-                          if (!_monthHasEntries(
-                            entries,
-                            year: year,
-                            month: month,
-                          ))
+                          //
+                          // Issue #1469: the month holding the setup mark is
+                          // not empty either — the banner's "No entries this
+                          // month" sat directly above the one date the
+                          // profile was given ([_monthIsEmpty]).
+                          if (_monthIsEmpty(entries, year: year, month: month))
                             EmptyState(
                               // Issue #312 review: unique per page (previously a
                               // single constant key shared by every page in the
@@ -1902,6 +2037,16 @@ class _MonthCalendarState extends State<MonthCalendar>
         colors.flowHeavy,
         l10n.calendarLegendSuperHeavy,
       ),
+      // Issue #1469: the setup mark sits with the logged flow levels it
+      // contrasts with (the same period colour, dotted where they are
+      // filled), and only while the grid can actually draw it.
+      if (_setupPeriodMarkCanAppear)
+        _LegendEntry(
+          'setup-period',
+          setupPeriodMarkColor(colors),
+          l10n.calendarLegendSetupPeriodStart,
+          style: _LegendSwatchStyle.dotted,
+        ),
       _LegendEntry('symptom', colors.symptomDot, l10n.calendarLegendSymptom),
       _LegendEntry(
         'today',
@@ -2049,6 +2194,11 @@ class _MonthCalendarState extends State<MonthCalendar>
         diameter: 14,
         child: const SizedBox.shrink(),
       ),
+      _LegendSwatchStyle.dotted => _DottedCircle(
+        color: entry.color,
+        diameter: 14,
+        child: const SizedBox.shrink(),
+      ),
       _LegendSwatchStyle.icon => Icon(entry.icon, size: 14, color: entry.color),
     };
   }
@@ -2067,6 +2217,16 @@ class _MonthCalendarState extends State<MonthCalendar>
   }) => entries.any(
     (entry) => entry.localDate.year == year && entry.localDate.month == month,
   );
+
+  /// Whether [year]/[month] shows the empty-month banner: no entry in it
+  /// (issue #187) and, since issue #1469, no setup mark either.
+  bool _monthIsEmpty(
+    List<DayEntry> entries, {
+    required int year,
+    required int month,
+  }) =>
+      !_monthHasEntries(entries, year: year, month: month) &&
+      !_monthHoldsSetupMark(year: year, month: month);
 
   /// The symptom-layers summary row (R2): names the active layers and
   /// opens the chooser sheet. Issue #810: the chip panel is no longer
@@ -2241,6 +2401,10 @@ class _MonthCalendarState extends State<MonthCalendar>
       entry == null && isFuture ? forecastByIso[iso] : null,
     );
     final marks = _bleedAndSpottingFor(iso, entry);
+    // Issue #1469: the setup mark changes how this day is drawn and
+    // announced, never what tapping it does — `selectable` and the tap
+    // handler below are exactly those of any other day with no entry.
+    final setupMark = _isSetupPeriodMark(date, entry);
     final selectable = !isFuture && (!_effectiveReadOnly || entry != null);
     final tapHandler = _cellTapHandler(
       selectable: selectable,
@@ -2278,6 +2442,7 @@ class _MonthCalendarState extends State<MonthCalendar>
         // Issue #761: bleed wins in the label too — a day carrying both
         // announces only the bleed level, matching the rendered fill.
         hasSpotting: marks.hasSpotting,
+        isSetupPeriodStart: setupMark,
       ),
       onTap: tapHandler,
       excludeSemantics: true,
@@ -2289,6 +2454,7 @@ class _MonthCalendarState extends State<MonthCalendar>
           entry: entry,
           bleedLevel: marks.bleed,
           forecastCell: forecastCell,
+          setupMark: setupMark,
           isFuture: isFuture,
           isToday: isToday,
           theme: theme,
@@ -2312,6 +2478,7 @@ class _MonthCalendarState extends State<MonthCalendar>
     required DayEntry? entry,
     required FlowLevel? bleedLevel,
     required ForecastDayCell? forecastCell,
+    required bool setupMark,
     required bool isFuture,
     required bool isToday,
     required ThemeData theme,
@@ -2324,16 +2491,27 @@ class _MonthCalendarState extends State<MonthCalendar>
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _dayCircle(
-          date,
-          bleedLevel: bleedLevel,
-          forecastCell: forecastCell,
-          isToday: isToday,
-          theme: theme,
-          colors: colors,
-          metrics: metrics,
-          dimmed: dimmed,
-        ),
+        // Issue #1469: the setup mark is its own branch here rather than
+        // one more case inside [_dayCircle], which already sits near the
+        // quality gate's per-method complexity cap.
+        setupMark
+            ? _setupPeriodCircle(
+                date,
+                isToday: isToday,
+                theme: theme,
+                colors: colors,
+                circleSize: metrics.circleSize,
+              )
+            : _dayCircle(
+                date,
+                bleedLevel: bleedLevel,
+                forecastCell: forecastCell,
+                isToday: isToday,
+                theme: theme,
+                colors: colors,
+                metrics: metrics,
+                dimmed: dimmed,
+              ),
         const SizedBox(height: 2),
         SizedBox(
           height: metrics.markersHeight,
@@ -2455,6 +2633,49 @@ class _MonthCalendarState extends State<MonthCalendar>
       ),
       alignment: Alignment.center,
       child: label,
+    );
+  }
+
+  /// The setup mark (issue #1469; key `setup-period-<iso>`): the day number
+  /// inside a ring of dots in the period colour, with no fill. A logged
+  /// period day is a fill, so the outline alone says "not logged"; the dots
+  /// keep it apart from every ring the grid already draws without leaning
+  /// on colour — today's and spotting's are solid, the estimated period is
+  /// hatched, the fertile window is long dashes over a wash, and those last
+  /// two only ever sit on future days while this one never does.
+  ///
+  /// When the supplied date is today, today's solid ring is drawn around it
+  /// on the same outer box every other today cell uses (key
+  /// `today-ring-<iso>`, as [_flowCircle] does), and the dotted ring steps
+  /// in by [kSetupPeriodTodayInset] so the two never touch.
+  Widget _setupPeriodCircle(
+    LocalDate date, {
+    required bool isToday,
+    required ThemeData theme,
+    required LunarLogColors colors,
+    required double circleSize,
+  }) {
+    final iso = date.iso;
+    final mark = _DottedCircle(
+      key: ValueKey('setup-period-$iso'),
+      color: setupPeriodMarkColor(colors),
+      diameter: isToday ? circleSize - kSetupPeriodTodayInset : circleSize,
+      child: _fittedNumeral(Text('${date.day}')),
+    );
+    if (!isToday) return mark;
+    return Container(
+      key: ValueKey('today-ring-$iso'),
+      width: circleSize,
+      height: circleSize,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: theme.colorScheme.primary,
+          width: kCalendarRingStrokeWidth,
+        ),
+      ),
+      child: mark,
     );
   }
 
@@ -2870,6 +3091,70 @@ class _DashPainter extends CustomPainter {
       oldDelegate.bandColor != bandColor ||
       oldDelegate.opacity != opacity ||
       oldDelegate.borderOpacity != borderOpacity;
+}
+
+/// The setup mark's circle (issue #1469): a ring of round dots in [color]
+/// and nothing else — no fill and no wash, because the day it sits on is
+/// not logged. Dotted, where today's and spotting's rings are solid, the
+/// predicted band is hatched ([_HatchedCircle]) and the fertile window is
+/// long dashes over a wash ([_DashedCircle]), so it is told apart without
+/// relying on colour, the rule those two follow.
+class _DottedCircle extends StatelessWidget {
+  const _DottedCircle({
+    super.key,
+    required this.color,
+    required this.child,
+    this.diameter = 34,
+  });
+
+  final Color color;
+  final Widget child;
+
+  /// Defaults to the grid cell's own 34px circle; the legend swatch passes
+  /// a smaller value, mirroring [_HatchedCircle.diameter].
+  final double diameter;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _DotPainter(color: color),
+      child: SizedBox(
+        width: diameter,
+        height: diameter,
+        child: Center(child: child),
+      ),
+    );
+  }
+}
+
+class _DotPainter extends CustomPainter {
+  const _DotPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Each dot is as wide as every other calendar ring's stroke (issue
+    // #810's single weight), and the ring they sit on is inset by half of
+    // that so the dots stay inside the box, as a `BoxDecoration` border
+    // (today's ring) does.
+    const dotRadius = kCalendarRingStrokeWidth / 2;
+    final ringRadius = size.shortestSide / 2 - dotRadius;
+    final center = size.center(Offset.zero);
+    final count = setupPeriodDotCountFor(size.shortestSide);
+    final step = 2 * math.pi / count;
+    final dot = Paint()..color = color;
+    for (var i = 0; i < count; i++) {
+      canvas.drawCircle(
+        center + Offset.fromDirection(step * i, ringRadius),
+        dotRadius,
+        dot,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DotPainter oldDelegate) => oldDelegate.color != color;
 }
 
 /// The symptom-layer chooser (issue #810): every `kTagTaxonomy` chip in a

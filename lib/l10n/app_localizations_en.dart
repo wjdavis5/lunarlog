@@ -66,6 +66,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get calendarLegendPredicted => 'Estimated day';
 
   @override
+  String get calendarLegendSetupPeriodStart =>
+      'Last period start from setup (not logged)';
+
+  @override
   String get calendarLegendPms => 'PMS window';
 
   @override
@@ -116,6 +120,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get calendarCellNotLogged => 'not logged';
+
+  @override
+  String get calendarCellSetupPeriodStart => 'last period start from setup';
 
   @override
   String get calendarCellToday => 'today';

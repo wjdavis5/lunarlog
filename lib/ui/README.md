@@ -178,6 +178,15 @@ rather than the bleed band's solid hatch so the two estimates stay
 distinguishable without relying on colour alone, keyed in the calendar
 legend as "Estimated fertile days" and gated, like every other prediction
 number, on `CareModeCopy.showsFertileWindow` (`irregular` mode hides it).
+Issue #1469 adds one more ring, on a past day: the last-period date given
+at setup is drawn as a *dotted* ring in the period colour
+(`setupPeriodMarkColor`, the flow ramp's middle step) while the estimate
+still counts from it. Whether it does is the engine's call
+(`ActivePrediction.cycleStartIsSupplied`, read by
+`setupPeriodMarkDateFor`), so the mark is hidden wherever the estimate is:
+estimates turned off, a suppressing life-stage mode or method, a stale
+history, answers that cannot seed. It is never a filled day and writes
+nothing; an entry on that date wins.
 
 `components/today_card.dart` (`TodayCard`) wraps the wheel with the
 next-period estimate, a compact confidence chip (`LunarLogColors`'

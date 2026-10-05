@@ -690,10 +690,30 @@ class ActivePrediction extends CyclePrediction {
     this.staleHistory = false,
     this.pms,
     this.basis = PredictionBasis.statistical,
+    this.cycleStartIsSupplied = false,
   });
 
   final LocalDate today;
   final LocalDate lastEpisodeStart;
+
+  /// Issue #1469: true when [lastEpisodeStart] is the last-period date
+  /// supplied at setup ([CycleFacts.lastPeriodStart]) rather than the start
+  /// of a logged episode — the engine's own answer to "does this estimate
+  /// still count from the setup answer?". Only [seedProvisionalPrediction]
+  /// sets it, from the same anchor decision that picks [lastEpisodeStart]
+  /// (issue #1392), so it goes false the moment a period logged on or
+  /// after the supplied date takes over as the current cycle's start.
+  ///
+  /// Deliberately its own flag rather than something a consumer infers from
+  /// [tier]: a re-anchored seed is still [CycleConfidence.provisional] (the
+  /// supplied cycle *length* keeps standing in for the mean) although the
+  /// supplied *date* no longer starts the cycle, and a seed older than
+  /// [kMaxOpenCycleDays] reads [CycleConfidence.irregular] while it still
+  /// counts from the supplied date.
+  ///
+  /// Nothing is logged on that date. A consumer that shows it (the month
+  /// calendar's setup mark) must never present it as a logged day.
+  final bool cycleStartIsSupplied;
 
   /// Estimated start date of the next episode — the "live" date calendar
   /// and reminder consumers should track (issue #221/A2-11). Equal to
@@ -1620,6 +1640,11 @@ class CycleFacts {
 /// still-open cycle, as they are for a skip on a computed estimate. An
 /// omission keyed on any other date has no effect here — there are no
 /// averaged cycle lengths for it to leave out.
+///
+/// Issue #1469: the result says which of the two dates the anchor is —
+/// [ActivePrediction.cycleStartIsSupplied] is true while the cycle still
+/// counts from the supplied start and false once a logged period has taken
+/// over. The month calendar marks the supplied date off that flag.
 CyclePrediction seedProvisionalPrediction({
   required CycleFacts facts,
   required LocalDate today,
@@ -1708,6 +1733,10 @@ CyclePrediction seedProvisionalPrediction({
     forecast: forecast,
     unusuallyLongCycle: unusuallyLongCycle,
     staleHistory: staleHistory,
+    // Issue #1469: the anchor decision above is the one source for "the
+    // cycle counts from the setup answer", so the flag can never disagree
+    // with [lastEpisodeStart].
+    cycleStartIsSupplied: !anchor.logged,
   );
 }
 

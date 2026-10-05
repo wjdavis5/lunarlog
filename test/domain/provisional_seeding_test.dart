@@ -495,6 +495,94 @@ void main() {
     });
   });
 
+  group('cycleStartIsSupplied says when the cycle counts from the setup '
+      'answer (issue #1469)', () {
+    // 13 days before this file's `today`.
+    final supplied = LocalDate(2026, 5, 7);
+    final facts = CycleFacts(
+      lastPeriodStart: supplied,
+      typicalCycleLengthDays: 28,
+      typicalPeriodLengthDays: 5,
+    );
+
+    ActivePrediction seeded(List<Episode> episodes, {LocalDate? on}) =>
+        seedProvisionalPrediction(
+          facts: facts,
+          today: on ?? today,
+          episodes: episodes,
+        ) as ActivePrediction;
+
+    test('true for the pure onboarding seed, whose start is the supplied '
+        'date', () {
+      final p = seeded(const []);
+      expect(p.cycleStartIsSupplied, isTrue);
+      expect(p.lastEpisodeStart, supplied);
+    });
+
+    test('still true when only an earlier period is logged: the supplied '
+        'date stays the most recent start known', () {
+      final p = seeded([
+        Episode(LocalDate(2026, 4, 9), LocalDate(2026, 4, 12)),
+      ]);
+      expect(p.cycleStartIsSupplied, isTrue);
+      expect(p.lastEpisodeStart, supplied);
+    });
+
+    test('false once a period logged after the supplied date starts the '
+        'cycle, although the tier is still provisional', () {
+      final p = seeded([Episode(today, today)]);
+      expect(p.cycleStartIsSupplied, isFalse);
+      expect(p.lastEpisodeStart, today);
+      expect(p.tier, CycleConfidence.provisional);
+    });
+
+    test('false when the same period is logged day by day, on the supplied '
+        'date or straddling it', () {
+      expect(
+        seeded([Episode(supplied, supplied.addDays(3))]).cycleStartIsSupplied,
+        isFalse,
+      );
+      final straddling = seeded([
+        Episode(LocalDate(2026, 5, 5), LocalDate(2026, 5, 8)),
+      ]);
+      expect(straddling.cycleStartIsSupplied, isFalse);
+      expect(straddling.lastEpisodeStart, LocalDate(2026, 5, 5));
+    });
+
+    test('a future-dated logged period does not take over (issue LLA-071)',
+        () {
+      final p = seeded([
+        Episode(LocalDate(2026, 5, 25), LocalDate(2026, 5, 27)),
+      ]);
+      expect(p.cycleStartIsSupplied, isTrue);
+    });
+
+    test('still true once the seed is old enough to read irregular: the '
+        'tier changes, where the cycle counts from does not', () {
+      final p = seeded(const [], on: supplied.addDays(75));
+      expect(p.unusuallyLongCycle, isTrue);
+      expect(p.tier, CycleConfidence.irregular);
+      expect(p.cycleStartIsSupplied, isTrue);
+    });
+
+    test('never set on an estimate computed from logged cycles', () {
+      final computed = computePrediction(
+        episodes: [
+          for (final start in [
+            LocalDate(2026, 2, 11),
+            LocalDate(2026, 3, 11),
+            LocalDate(2026, 4, 8),
+            LocalDate(2026, 5, 6),
+          ])
+            Episode(start, start.addDays(3)),
+        ],
+        today: today,
+      );
+      expect(computed, isA<ActivePrediction>());
+      expect((computed as ActivePrediction).cycleStartIsSupplied, isFalse);
+    });
+  });
+
   group('a skipped provisional cycle advances the estimate (issue #1412)',
       () {
     // 35 days before this file's `today` with a 28-day typical cycle: the
