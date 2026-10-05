@@ -1,8 +1,10 @@
 """Turn a failed `CI` run on `main` into one prioritized issue.
 
 Invoked by `.github/workflows/ci-failure-watch.yml` on a `workflow_run`
-completion for `main`. Creates one issue per failing head SHA, or comments on
-the existing one, so a flapping main does not spam the backlog.
+completion for `main`. A failure creates one rolling issue per workflow, or
+comments on the existing one, so a flapping main does not spam the backlog.
+A success notes the recovery on that issue, once, so an open "failing on
+main" issue never outlives the failure unremarked.
 
 Pure builders are unit-tested; `main` is the thin `gh`-calling wrapper.
 """
@@ -18,6 +20,9 @@ FAIL_CONCLUSIONS = {
     "failure", "timed_out", "cancelled", "action_required", "startup_failure",
 }
 MARKER = "<!-- ci-failure-watch -->"
+# Leads every recovery comment, so the next run can tell "already noted"
+# from "still needs noting" without parsing prose.
+RECOVERY_MARKER = "<!-- ci-failure-watch: recovered -->"
 
 
 class WatchError(RuntimeError):
@@ -141,6 +146,81 @@ def find_existing_number(issues: list[dict], workflow_name: str = "CI") -> int |
     return None
 
 
+def is_recovery_note(comment_body: str) -> bool:
+    return (comment_body or "").lstrip().startswith(RECOVERY_MARKER)
+
+
+def recovery_noted(comments: list[dict]) -> bool:
+    """True when the issue's newest comment is already a recovery note.
+
+    Every success on `main` runs the watch, so without this an open issue
+    would collect one "passing again" comment per merge. Only the newest
+    comment counts: a failure after a recovery adds a newer comment, which
+    makes the next success worth noting again.
+    """
+    if not comments:
+        return False
+    return is_recovery_note(comments[-1].get("body") or "")
+
+
+def recovery_comment(head_sha: str, run_url: str, workflow_name: str = "CI") -> str:
+    """The one comment a recovered workflow leaves on its rolling issue.
+
+    It does not close the issue. A pass can be a flake going quiet as easily
+    as a fix, and the issue body tells the reader not to accept green without
+    a cause; closing is the triager's call. What this does is stop the issue
+    from reading as a live outage when it is not.
+    """
+    return "\n".join([
+        RECOVERY_MARKER,
+        f"`{workflow_name}` passed on `main` at `{head_sha}`.",
+        "",
+        f"Run: {run_url}",
+        "",
+        "Close this if the failure is understood. If it is not, it is still",
+        "open for triage: a pass without a known cause may be a flake.",
+    ])
+
+
+def failure_comment(head_sha: str, run_url: str, after_recovery: bool) -> str:
+    """The comment a further failure leaves on the open rolling issue."""
+    lead = "Failing again" if after_recovery else "Still failing"
+    return f"{lead} at `{head_sha}`.\n\n{run_url}"
+
+
+def _open_issue_number(workflow_name: str) -> int | None:
+    existing = json.loads(
+        _run([
+            "issue", "list", "--state", "open", "--limit", "100",
+            "--json", "number,body",
+        ])
+    )
+    return find_existing_number(existing, workflow_name)
+
+
+def _comments(number: int) -> list[dict]:
+    raw = _run(["issue", "view", str(number), "--json", "comments"]).strip()
+    # Nothing readable means "no recovery note seen": the failure path must
+    # never be held up by this lookup.
+    if not raw:
+        return []
+    return json.loads(raw).get("comments") or []
+
+
+def note_recovery(head_sha: str, run_url: str, workflow_name: str) -> str:
+    """Handle a successful run: note it on the open rolling issue, once."""
+    number = _open_issue_number(workflow_name)
+    if not number:
+        return f"no open issue for {workflow_name}; nothing to note"
+    if recovery_noted(_comments(number)):
+        return f"issue #{number} already notes the recovery"
+    _run([
+        "issue", "comment", str(number),
+        "--body", recovery_comment(head_sha, run_url, workflow_name),
+    ])
+    return f"noted the recovery on issue #{number}"
+
+
 def main() -> int:
     run_id = os.environ.get("RUN_ID")
     head_sha = os.environ.get("HEAD_SHA")
@@ -149,6 +229,9 @@ def main() -> int:
     head_repository = os.environ.get("HEAD_REPOSITORY")
     head_branch = os.environ.get("HEAD_BRANCH")
     workflow_name = os.environ.get("WORKFLOW_NAME") or "CI"
+    # "failure" when unset, so a caller that predates the recovery path
+    # behaves exactly as before.
+    conclusion = (os.environ.get("RUN_CONCLUSION") or "failure").lower()
     if not (run_id and head_sha and run_url and repo and head_repository and head_branch):
         print(
             "error: RUN_ID, HEAD_SHA, RUN_URL, GITHUB_REPOSITORY, HEAD_REPOSITORY, "
@@ -168,20 +251,20 @@ def main() -> int:
         return 0
 
     try:
+        if conclusion == "success":
+            print(note_recovery(head_sha, run_url, workflow_name))
+            return 0
         jobs_payload = json.loads(
             _run(["api", f"repos/{repo}/actions/runs/{run_id}/jobs"])
         )
         jobs = failing_jobs(jobs_payload)
         body = issue_body(run_url, head_sha, jobs, workflow_name)
-        existing = json.loads(
-            _run([
-                "issue", "list", "--state", "open", "--limit", "100",
-                "--json", "number,body",
-            ])
-        )
-        number = find_existing_number(existing, workflow_name)
+        number = _open_issue_number(workflow_name)
         if number:
-            _run(["issue", "comment", str(number), "--body", f"Still failing at `{head_sha}`.\n\n{run_url}"])
+            comment = failure_comment(
+                head_sha, run_url, after_recovery=recovery_noted(_comments(number))
+            )
+            _run(["issue", "comment", str(number), "--body", comment])
             print(f"updated issue #{number}")
         else:
             args = [

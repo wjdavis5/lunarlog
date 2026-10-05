@@ -5,6 +5,12 @@ name: CI failure watch
 # never silent even when no Claude Code session is running. Triage and fix
 # happen through the normal issue pipeline.
 #
+# When a watched workflow next passes, the same issue gets one comment saying
+# so. Nothing used to mark a recovery, and a "CI failing on main" issue sat
+# open at P1 through a day of green runs (#1386). The comment does not close
+# the issue: a pass can be a flake going quiet, and that call is the
+# triager's.
+#
 # Issue #537: this used to watch only "CI". supabase-migrate.yml,
 # supabase-reconcile.yml, ios-release.yml, and play-store-release.yml failing
 # on main produced no issue and no notification -- the direct cause of a
@@ -31,14 +37,17 @@ permissions:
 
 jobs:
   file-issue:
-    if: github.event.workflow_run.conclusion == 'failure'
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - name: File or update a prioritized issue
+      - name: File or update a prioritized issue, or note a recovery
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
