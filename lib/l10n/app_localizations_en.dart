@@ -1131,6 +1131,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'The widget shows only a discreet state: a cycle-day count, never a name, a date, or flow details. When the profile is one you can log for, tapping it records a period started today — the entry applies only after you unlock the app, and logging it twice changes nothing. Profiles you can only view are not offered here.';
 
   @override
+  String get settingsHomeWidgetDisclosureAndroid =>
+      'The widget shows only a discreet state: a cycle-day count, never a name, a date, or flow details. When the profile is one you can log for, it has a Log button: tapping that records a period started today — the entry applies only after you unlock the app, and logging it twice changes nothing. Tapping anywhere else on the widget opens the app. Profiles you can only view are not offered here.';
+
+  @override
   String get settingsSectionFamilySharing => 'Family & sharing';
 
   @override

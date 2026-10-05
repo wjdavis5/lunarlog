@@ -134,6 +134,66 @@ void main() {
     expect(find.text("Follow the app's current profile"), findsOneWidget);
   });
 
+  group('the note says what a tap on the widget does on this phone', () {
+    Future<String> noteOn(WidgetTester tester, TargetPlatform platform) async {
+      debugDefaultTargetPlatformOverride = platform;
+      try {
+        await _pumpSection(
+          tester,
+          settings: FakeSettingsStore(),
+          profiles: _FakeProfilesRepository([_profile('p1', 'Alice')]),
+          guardians: _FakeGuardiansRepository(const {}),
+          auth: _signedInAuth('u1'),
+        );
+        return tester
+            .widget<Text>(
+              find.descendant(
+                of: find.byKey(const ValueKey('home-widget-privacy-note')),
+                matching: find.byType(Text),
+              ),
+            )
+            .data!;
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    }
+
+    testWidgets('Android: the Log button records a period, and the rest of '
+        'the widget opens the app', (tester) async {
+      final note = await noteOn(tester, TargetPlatform.android);
+      // It used to say "tapping it records a period started today", which
+      // is what the iPhone widget does. On Android only the button does.
+      expect(note, contains('it has a Log button'));
+      expect(note, contains('tapping that records a period started today'));
+      expect(
+        note,
+        contains('Tapping anywhere else on the widget opens the app.'),
+      );
+      expect(note, isNot(contains('tapping it records')));
+    });
+
+    testWidgets('iPhone: the whole widget is the tap target, and the note '
+        'says so', (tester) async {
+      final note = await noteOn(tester, TargetPlatform.iOS);
+      expect(note, contains('tapping it records a period started today'));
+      expect(note, isNot(contains('Log button')));
+      expect(note, isNot(contains('anywhere else')));
+    });
+
+    testWidgets('both say what the two notes share', (tester) async {
+      for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
+        final note = await noteOn(tester, platform);
+        expect(note, startsWith('The widget shows only a discreet state:'));
+        expect(note, contains('only after you unlock the app'));
+        expect(note, contains('logging it twice changes nothing'));
+        expect(
+          note,
+          endsWith('Profiles you can only view are not offered here.'),
+        );
+      }
+    });
+  });
+
   testWidgets('the picker offers loggable profiles and persists a pin',
       (tester) async {
     final settings = FakeSettingsStore();

@@ -176,6 +176,18 @@ class _WidgetProfileTile extends StatelessWidget {
 /// The privacy disclosure under the picker: the widget's discreet default
 /// and the gated quick-log behavior, in the app's own words.
 class _WidgetPrivacyNote extends StatelessWidget {
+  /// What a tap does is not the same on the two platforms, so neither is
+  /// the note. On Android the widget's Log button records the period and
+  /// the rest of the widget opens the app (`LunarLogWidgetProvider.kt`
+  /// gives the two their own intents). On an iPhone the whole widget is one
+  /// tap target (`LunarLogWidget.swift`'s `widgetURL`), and a tap anywhere
+  /// on it records the period when the profile can be logged for.
+  /// `home_widget_boundary_test.dart` holds each note to its native side.
+  static String _note(AppLocalizations l10n) =>
+      defaultTargetPlatform == TargetPlatform.android
+      ? l10n.settingsHomeWidgetDisclosureAndroid
+      : l10n.settingsHomeWidgetDisclosure;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -183,7 +195,7 @@ class _WidgetPrivacyNote extends StatelessWidget {
       key: const ValueKey('home-widget-privacy-note'),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Text(
-        AppLocalizations.of(context).settingsHomeWidgetDisclosure,
+        _note(AppLocalizations.of(context)),
         style: theme.textTheme.bodySmall?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,
         ),
