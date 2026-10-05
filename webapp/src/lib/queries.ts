@@ -184,14 +184,44 @@ export function useSyncSignalsRefetch(profileIds: string[]): void {
 }
 
 /**
- * Sign-out: drops the synced-data snapshot/cursors and clears the TanStack
+ * Empties the query cache at an identity boundary without stranding the
+ * hooks that are on screen.
+ *
+ * `queryClient.clear()` removes every query, including the ones mounted
+ * components are reading. Such a component keeps the result it last saw and
+ * is told nothing more: the query it reads is no longer in the cache, so a
+ * later invalidation finds nothing to refetch. Two things followed. The
+ * header is never unmounted, so after a sign-in on the page it went on
+ * showing the signed-out links, and after a sign-out the signed-in ones,
+ * until a reload. And a page showing one account's data when the session
+ * changed underneath it (the shell's identity watcher) kept that data on
+ * screen, which is the opposite of what the reset is for.
+ *
+ * So a query nothing is reading is removed, as before, and a query on
+ * screen is reset in place: its data is dropped at once, which empties the
+ * page, and it is fetched again under whatever session now holds. Mutations
+ * are dropped as `clear()` dropped them: a finished sign-in still holds the
+ * password it was given.
+ */
+function dropQueriesAtIdentityBoundary(queryClient: QueryClient): void {
+  queryClient.getMutationCache().clear();
+  const cache = queryClient.getQueryCache();
+  for (const query of cache.getAll()) {
+    if (query.getObserversCount() === 0) cache.remove(query);
+  }
+  // Everything left is being read by something on screen.
+  void queryClient.resetQueries();
+}
+
+/**
+ * Sign-out: drops the synced-data snapshot/cursors and empties the TanStack
  * cache — the whole point of keeping them in memory. The auth mutations
  * call this at every identity boundary (issue #1281): the sign-out mutation
  * in a `finally`, the sign-in paths on session adoption, and the shell's
  * identity watcher whenever the signed-in user id changes.
  */
 export function resetWebData(queryClient: QueryClient): void {
-  resetWebDataForSignOut(queryClient);
+  resetWebDataForSignOut({ clear: () => dropQueriesAtIdentityBoundary(queryClient) });
 }
 
 // --- Sharing and notes queries (issue #1255). Same shape as `useProfiles`:

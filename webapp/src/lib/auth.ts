@@ -213,7 +213,9 @@ export class WebAuthClient {
     await raiseForError(response);
     const raw = (await response.json()) as Record<string, unknown>;
     if (raw.session === false) return 'confirmation_required';
-    this.adoptSession(await parseSession(response));
+    // The body is already read: a second read of the same response throws,
+    // which turned a sign-up that needs no confirmation into an error.
+    this.adoptSession(parseSessionBody(raw));
     return 'signed_in';
   }
 

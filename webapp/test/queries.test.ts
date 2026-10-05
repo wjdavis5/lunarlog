@@ -1,5 +1,10 @@
-import { QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
+import {
+  QueryClientProvider,
+  useMutation,
+  useQuery,
+  type QueryClient,
+} from '@tanstack/react-query';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -41,13 +46,96 @@ describe('the session-gated hooks (issue #1252)', () => {
     await waitFor(() => expect(hook.result.current).toEqual([]));
   });
 
-  it('resetWebData clears the query cache (the sign-out path)', () => {
+  it('resetWebData removes a query nothing is reading (the sign-out path)', () => {
     const client = createAppQueryClient();
     client.setQueryData(['synced-data'], { profiles: [1] });
-    const clearSpy = vi.spyOn(client, 'clear');
     resetWebData(client);
-    expect(clearSpy).toHaveBeenCalledTimes(1);
     expect(client.getQueryData(['synced-data'])).toBeUndefined();
+    expect(client.getQueryCache().getAll()).toEqual([]);
+  });
+
+  // A query on screen is reset in place, not removed: its hook would
+  // otherwise go on showing the old session's data and never hear of the
+  // new one. Removing it is what left the header saying "Sign in" after a
+  // sign-in until the page was reloaded.
+  it('resetWebData empties a query on screen before the new answer arrives', async () => {
+    const client = createAppQueryClient();
+    // The second read is held open, so the test can look at the page in
+    // between: after the old account's answer has gone, before the new one.
+    let releaseSecond: (value: string) => void = () => {};
+    const second = new Promise<string>((resolve) => {
+      releaseSecond = resolve;
+    });
+    const queryFn = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValueOnce('first')
+      .mockReturnValueOnce(second);
+    const hook = renderHook(() => useQuery({ queryKey: ['who'], queryFn }), {
+      wrapper: wrapperFor(client),
+    });
+    await waitFor(() => expect(hook.result.current.data).toBe('first'));
+
+    act(() => resetWebData(client));
+    // Gone from memory in the same step, and still on the cache's books.
+    expect(client.getQueryData(['who'])).toBeUndefined();
+    expect(client.getQueryCache().getAll()).toHaveLength(1);
+    // Gone from the screen while the new read is still out.
+    await waitFor(() => expect(hook.result.current.data).toBeUndefined());
+    expect(hook.result.current.isPending).toBe(true);
+    expect(queryFn).toHaveBeenCalledTimes(2);
+
+    await act(async () => releaseSecond('second'));
+    await waitFor(() => expect(hook.result.current.data).toBe('second'));
+  });
+
+  it('resetWebData leaves a hook on screen reachable by a later invalidation', async () => {
+    const client = createAppQueryClient();
+    let reads = 0;
+    const hook = renderHook(
+      () =>
+        useQuery({
+          queryKey: ['reads'],
+          queryFn: () => {
+            reads += 1;
+            return Promise.resolve(reads);
+          },
+        }),
+      { wrapper: wrapperFor(client) },
+    );
+    await waitFor(() => expect(hook.result.current.data).toBe(1));
+
+    act(() => resetWebData(client));
+    await waitFor(() => expect(hook.result.current.data).toBe(2));
+    await act(() => client.invalidateQueries({ queryKey: ['reads'] }));
+    await waitFor(() => expect(hook.result.current.data).toBe(3));
+  });
+
+  it('resetWebData resets a switched-off query on screen without fetching it', async () => {
+    const client = createAppQueryClient();
+    const queryFn = vi.fn(() => Promise.resolve('fetched'));
+    client.setQueryData(['off'], 'old session');
+    const hook = renderHook(() => useQuery({ queryKey: ['off'], queryFn, enabled: false }), {
+      wrapper: wrapperFor(client),
+    });
+    expect(hook.result.current.data).toBe('old session');
+
+    act(() => resetWebData(client));
+    expect(client.getQueryData(['off'])).toBeUndefined();
+    await waitFor(() => expect(hook.result.current.data).toBeUndefined());
+    expect(queryFn).not.toHaveBeenCalled();
+  });
+
+  it('resetWebData drops finished mutations, which still hold what they were given', async () => {
+    const client = createAppQueryClient();
+    const hook = renderHook(
+      () => useMutation({ mutationFn: (secret: string) => Promise.resolve(secret.length) }),
+      { wrapper: wrapperFor(client) },
+    );
+    await act(() => hook.result.current.mutateAsync('a password'));
+    expect(client.getMutationCache().getAll()).toHaveLength(1);
+
+    resetWebData(client);
+    expect(client.getMutationCache().getAll()).toEqual([]);
   });
 
   it('repullMembershipData is a no-op on an unconfigured build — no pull, no invalidation', async () => {
@@ -63,9 +151,12 @@ describe('the session-gated hooks (issue #1252)', () => {
   });
 });
 
-function createWrapper() {
-  const client = createAppQueryClient();
+function wrapperFor(client: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
     return createElement(QueryClientProvider, { client }, children);
   };
+}
+
+function createWrapper() {
+  return wrapperFor(createAppQueryClient());
 }
