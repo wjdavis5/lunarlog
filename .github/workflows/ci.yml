@@ -1073,6 +1073,17 @@ jobs:
             --dart-define=FCM_IOS_API_KEY="$FCM_IOS_API_KEY" \
             --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID"
 
+      # The JVM unit tests under android/app/src/test: the pure logic of the
+      # Health Connect adapter (the import paging cursor, the permission
+      # state). Nothing ran them. `flutter test` does not reach Kotlin and
+      # the debug build above does not compile the test source set, so a
+      # broken one could sit on main unnoticed. The build has already
+      # generated android/gradlew (it is not committed) and warmed Gradle.
+      - name: Android unit tests (Kotlin)
+        if: steps.check_run.outputs.run == 'true'
+        working-directory: android
+        run: ./gradlew :app:testDebugUnitTest
+
   ios:
     name: Build iOS (unsigned)
     # GitHub-hosted, like ios-release.yml's signing job: free on a public
