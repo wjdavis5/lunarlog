@@ -382,6 +382,58 @@ void main() {
       );
     });
 
+    // The chip must never take width from the estimate. Beside it in a
+    // Row, the estimate wrapped in what was left and an ordinary phone
+    // showed the date broken in two.
+    Future<void> pumpAtWidth(WidgetTester tester, double width) async {
+      tester.view.physicalSize = Size(width, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: AppTheme.lightTheme,
+          home: Scaffold(body: SingleChildScrollView(child: cardFor())),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('where the estimate and the chip do not fit on one line, the '
+        'chip goes below and the estimate keeps the full width', (
+      tester,
+    ) async {
+      await pumpAtWidth(tester, 360);
+
+      final estimate = tester.getRect(
+        find.byKey(const ValueKey('overview-next-period')),
+      );
+      final chip = tester.getRect(
+        find.byKey(const ValueKey('today-card-confidence-chip')),
+      );
+      expect(tester.takeException(), isNull);
+      expect(chip.top, greaterThanOrEqualTo(estimate.bottom));
+      expect(chip.left, estimate.left);
+      // Wider than the chip would have left it.
+      expect(estimate.width, greaterThan(360 - chip.width));
+    });
+
+    testWidgets('where both fit on one line, the chip sits beside the '
+        'estimate', (tester) async {
+      await pumpAtWidth(tester, 1400);
+
+      final estimate = tester.getRect(
+        find.byKey(const ValueKey('overview-next-period')),
+      );
+      final chip = tester.getRect(
+        find.byKey(const ValueKey('today-card-confidence-chip')),
+      );
+      expect(chip.left, greaterThan(estimate.right));
+      expect(chip.center.dy, inInclusiveRange(estimate.top, estimate.bottom));
+    });
+
     testWidgets(
       'dynamic type accessibility (#836): stacks estimate and chip at large text scale with no overflow',
       (tester) async {
@@ -408,6 +460,21 @@ void main() {
         expect(
           find.byKey(const ValueKey('today-card-confidence-chip')),
           findsOneWidget,
+        );
+        // Stacked: the chip starts below the estimate, not beside it.
+        expect(
+          tester
+              .getTopLeft(
+                find.byKey(const ValueKey('today-card-confidence-chip')),
+              )
+              .dy,
+          greaterThanOrEqualTo(
+            tester
+                .getBottomLeft(
+                  find.byKey(const ValueKey('overview-next-period')),
+                )
+                .dy,
+          ),
         );
       },
     );
