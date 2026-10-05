@@ -166,11 +166,20 @@ Map<String, Object?> _colorScheme(ColorScheme s) => <String, Object?>{
 /// the fills with `color-mix(in srgb, var(--ll-cal-…-border) 16%,
 /// transparent)`. Enumerated explicitly so a new palette slot lands here
 /// as a reviewed change.
+///
+/// The `onFlow*` tones are the ink for content drawn on a `flow*` fill:
+/// the web calendar fills a logged period day with its flow colour, as the
+/// app's does, and writes the day number and flow marks in the matching
+/// tone.
 const List<String> _kCalendarColorSlots = <String>[
   'flowSpotting',
   'flowLight',
   'flowMedium',
   'flowHeavy',
+  'onFlowSpotting',
+  'onFlowLight',
+  'onFlowMedium',
+  'onFlowHeavy',
   'symptomDot',
   'symptomLayer1',
   'symptomLayer2',
@@ -193,6 +202,10 @@ Color _calendarSlot(LunarLogColors c, String slot) => switch (slot) {
       'flowLight' => c.flowLight,
       'flowMedium' => c.flowMedium,
       'flowHeavy' => c.flowHeavy,
+      'onFlowSpotting' => c.onFlowSpotting,
+      'onFlowLight' => c.onFlowLight,
+      'onFlowMedium' => c.onFlowMedium,
+      'onFlowHeavy' => c.onFlowHeavy,
       'symptomDot' => c.symptomDot,
       'symptomLayer1' => c.symptomLayer1,
       'symptomLayer2' => c.symptomLayer2,

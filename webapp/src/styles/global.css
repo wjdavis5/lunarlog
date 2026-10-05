@@ -801,6 +801,13 @@ body {
   min-height: 0;
 }
 
+/* The weekday initials are a label row, not a row of days: without this
+   they took a day cell's full height and left a blank band under them. */
+.cal-head .cal-cell {
+  min-height: 0;
+  padding-bottom: var(--ll-space-1);
+}
+
 .cal-day {
   background: var(--ll-surface-container-low);
 }
@@ -880,6 +887,47 @@ body {
 
 .cal-mark:nth-child(-n + 5) {
   background: var(--ll-cal-flow-heavy);
+}
+
+/* A logged period day is filled with its flow colour, as in the app, so
+   what was recorded reads more strongly than what is only estimated. The
+   day number and the flow marks take the app theme's matching on-flow ink
+   (the colour-scheme-aware pair: white on these fills in the light scheme,
+   black in the dark one). These rules sit after the mark ramp above on
+   purpose: same specificity, so order decides. */
+.cal-flow-light .cal-day-link {
+  background: var(--ll-cal-flow-light);
+  color: var(--ll-cal-on-flow-light);
+}
+
+.cal-flow-medium .cal-day-link {
+  background: var(--ll-cal-flow-medium);
+  color: var(--ll-cal-on-flow-medium);
+}
+
+.cal-flow-heavy .cal-day-link {
+  background: var(--ll-cal-flow-heavy);
+  color: var(--ll-cal-on-flow-heavy);
+}
+
+.cal-flow .cal-mark {
+  background: currentColor;
+}
+
+.cal-flow .cal-cycle-day {
+  color: inherit;
+}
+
+/* Symptom dots keep their own colours; a hairline in the cell's ink keeps
+   them distinct from the fill behind them. */
+.cal-flow .cal-dot {
+  box-shadow: 0 0 0 1px currentColor;
+}
+
+/* The focus ring is the primary colour, which is the fill's own family:
+   lift it clear of the cell so it stays visible. */
+.cal-flow .cal-day-link:focus-visible {
+  outline-offset: 2px;
 }
 
 .cal-layers {
