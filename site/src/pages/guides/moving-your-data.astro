@@ -18,13 +18,14 @@ import HelpCard from "../../components/HelpCard.astro";
   <article class="doc">
     <h1 class="doc__title">Moving your data</h1>
     <p class="doc__lede">
-      Your history is yours: this guide covers bringing it in, and getting
-      it all back out. Everything here happens on your device, at your
-      initiative — lunarlog never reads your other accounts, and it never
-      touches your health store before you turn the connection on. Once a
-      profile is bound and you have run the first import yourself, the
-      import keeps itself current in the background (issue #993): still on
-      your device, still never a write.
+      Your history is yours: this guide covers bringing it in, keeping
+      your phone's health app up to date, and getting it all back out.
+      Everything here happens on your device, at your initiative —
+      lunarlog never reads your other accounts, and it never touches your
+      health store before you turn the connection on. Once a profile is
+      bound and you have run the first import yourself, the import keeps
+      itself current in the background: still on your device, and the
+      import itself never writes.
       <!-- cite: PRIVACY.md#7-data-export--retention--deletion-rights; PRIVACY.md#4-third-party-service-providers (the §4 background paragraph); lib/data/health/health_import_service.dart ("Bound. Two entry points."); ios/Runner/AppDelegate.swift (the HKObserverQuery trigger); android/app/src/main/kotlin/com/wjdavis5/lunarlog/HealthBackgroundImportWorker.kt (the periodic trigger) -->
     </p>
 
@@ -122,12 +123,62 @@ import HelpCard from "../../components/HelpCard.astro";
           <!-- cite: lib/domain/health/health_sync_binding.dart (#153 device binding); lib/l10n/app_en.arb (healthSyncUnbindDialogImportBody) -->
         </li>
       </ul>
+    </section>
+
+    <section id="health-app-writes">
+      <h2>Keeping your phone's health app up to date</h2>
       <p>
-        On Android there is one honest limitation the app states in place:
-        symptoms cannot be written to Health Connect, because Health
-        Connect has no symptom categories — flow and spotting still sync;
-        the symptoms stay in lunarlog.
-        <!-- cite: lib/l10n/app_en.arb (settingsHealthSyncSymptomsAndroidLimitation) -->
+        The same switch works in the other direction. For the one profile
+        you choose there, what you log in lunarlog is also written to
+        Apple Health on iPhone, or to Health Connect on Android, so the
+        other health apps you use see the same history.
+        <!-- cite: lib/config.dart (healthSyncWritePlatforms); lib/data/health/health_flow_write_service.dart; PRIVACY.md#4-third-party-service-providers -->
+      </p>
+      <ul>
+        <li>
+          It is off until you choose a profile, and it only ever writes
+          that one profile. Every other profile on the phone stays out of
+          the health app.
+          <!-- cite: lib/domain/health/health_sync_binding.dart (#153 device binding); lib/l10n/app_en.arb (healthSyncWriteIntro, healthSyncWriteIntroHealthConnect) -->
+        </li>
+        <li>
+          Only days you log after it is on, and allowed to write, get an
+          entry of their own. Nothing already in lunarlog is sent on its
+          own. One thing reaches back on Android: once a day in a period
+          is written, the first and last day you logged for that period
+          are written with it, even if the period began earlier.
+          <!-- cite: lib/data/health/health_flow_write_service.dart (forward-only cursor, stamped when write access is granted); lib/l10n/app_en.arb (healthSyncWriteForwardOnly, healthSyncWriteForwardOnlyHealthConnect, healthSyncPeriodRecordNoteHealthConnect) -->
+        </li>
+        <li>
+          Flow and spotting are written on both. On iPhone, so are the
+          symptoms and moods you tag, cervical mucus, ovulation tests, and
+          basal body temperature. On Android: each period's first and last
+          day, cervical mucus, ovulation tests, and basal body temperature
+          — but not symptoms or moods, because Health Connect has no
+          categories for them; those stay in lunarlog.
+          <!-- cite: PRIVACY.md#4-third-party-service-providers; lib/l10n/app_en.arb (healthSyncWriteSymptoms, healthSyncWrittenTypesHealthConnect, settingsHealthSyncSymptomsAndroidLimitation) -->
+        </li>
+        <li>
+          A super heavy day is written as Heavy: neither health app has a
+          level above it.
+          <!-- cite: lib/l10n/app_en.arb (healthSyncFlowCollapseNote, healthSyncFlowCollapseNoteHealthConnect) -->
+        </li>
+        <li>
+          Edit or delete a day in lunarlog and its copy in the health app
+          follows.
+          <!-- cite: lib/data/health/health_flow_write_service.dart (re-write by record id, removed-record reconcile); lib/data/health/health_sync_tombstone_coordinator.dart -->
+        </li>
+        <li>
+          Turning it off, or taking away lunarlog's access, stops new
+          writes and leaves what was already written where it is. To
+          remove that, delete it in the health app itself.
+          <!-- cite: lib/l10n/app_en.arb (healthSyncRevocationNote, healthSyncRevocationNoteHealthConnect) -->
+        </li>
+      </ul>
+      <p>
+        All of this happens on the phone, between lunarlog and the health
+        app. It sends nothing to lunarlog's servers.
+        <!-- cite: PRIVACY.md#4-third-party-service-providers -->
       </p>
     </section>
 

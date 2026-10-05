@@ -86,6 +86,10 @@ email capture (the site collects nothing).
 - claim: Import from Clue, Apple Health, or Health Connect — you start the first import; the Clue import is a one-off file pick, and Apple Health and Health Connect imports then keep themselves current in the background once a profile is bound and that first import has completed, never over a hand-logged value.
   page: /
   ships: lib/data/import/clue_importer.dart (one-off file import, no background pass); lib/data/health/health_import_service.dart (importInBackground, issue #993 — the background pass); ios/Runner/AppDelegate.swift (HKObserverQuery + enableBackgroundDelivery); android/app/src/main/kotlin/com/wjdavis5/lunarlog/HealthBackgroundImportWorker.kt (periodic WorkManager trigger); PRIVACY.md (§2.A import provenance; §4 health paragraph)
+- claim: For the one profile you choose, what you log is also written to Apple Health (iPhone) or Health Connect (Android), on the phone itself.
+  page: /
+  ships: lib/config.dart (healthSyncWritePlatforms: iOS and Android); lib/data/health/health_flow_write_service.dart (the opt-in, one-bound-profile, forward-only write path); lib/domain/health/health_sync_binding.dart (the one bound profile); PRIVACY.md (§4 "is not an off-device transfer")
+  issue: #1478
 - claim: Export as JSON, CSV, FHIR, or a one-page PDF — built on the device, no account required.
   page: /
   ships: PRIVACY.md (§7); lib/domain/export/account_export.dart; lib/domain/export/csv_export.dart; lib/domain/export/fhir_bundle.dart; lib/domain/export/clinical_pdf.dart
