@@ -342,11 +342,18 @@ List<String> selectedFlowChipLabels(WidgetTester tester) => [
       for (final level in kSelectableFlowLevels)
         if (tester
             .widget<ChoiceChip>(
-              find.widgetWithText(ChoiceChip, flowLabel(level)),
+              find.widgetWithText(ChoiceChip, _flowChipLabel(level)),
             )
             .selected)
-          flowLabel(level),
+          _flowChipLabel(level),
     ];
+
+/// The label on a flow chip. The chip for a day with no flow recorded reads
+/// "Not logged" (the catalogue's `flowLevelNone`); the domain's own
+/// [flowLabel] still calls that level "None", as the FHIR export's display
+/// text does.
+String _flowChipLabel(FlowLevel level) =>
+    level == FlowLevel.none ? 'Not logged' : flowLabel(level);
 
 Future<void> showMonth(WidgetTester tester, int year, int month) async {
   final label = '${monthNames()[month - 1]} $year';
@@ -1565,7 +1572,7 @@ void main() {
 
         await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
         await tester.pumpAndSettle();
-        expect(selectedFlowChipLabels(tester), ['None']);
+        expect(selectedFlowChipLabels(tester), ['Not logged']);
 
         await tester.tap(find.byKey(const ValueKey('spotting-chip')));
         await tester.pump();
@@ -1610,7 +1617,7 @@ void main() {
         await tester.pump();
         expect(
           selectedFlowChipLabels(tester),
-          ['None'],
+          ['Not logged'],
           reason: 'this toggle is what raised the flow, so turning spotting '
               'off undoes exactly that raise',
         );

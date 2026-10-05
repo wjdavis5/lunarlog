@@ -77,7 +77,7 @@
   "futureExplainerCramps": "Inside the estimated cramps window — cramps commonly occur within two days of a period start.",
   "futureExplainerNumeral": "Cycle day {day} of the first estimated cycle. Only the first estimated cycle is counted day by day — estimates compound too much further out.",
   "futureExplainerConfidence": "Estimate confidence: {tier}.",
-  "flowLevelNone": "None",
+  "flowLevelNone": "Not logged",
   "flowLevelSpotting": "Spotting",
   "flowLevelLight": "Light",
   "flowLevelMedium": "Medium",
