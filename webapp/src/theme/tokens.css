@@ -50,6 +50,10 @@
   --ll-cal-flow-light: #2e7e83;
   --ll-cal-flow-medium: #186b6f;
   --ll-cal-flow-heavy: #07575c;
+  --ll-cal-on-flow-spotting: #000000;
+  --ll-cal-on-flow-light: #ffffff;
+  --ll-cal-on-flow-medium: #ffffff;
+  --ll-cal-on-flow-heavy: #ffffff;
   --ll-cal-symptom-dot: #6b8fd4;
   --ll-cal-symptom-layer-1: #ba6dd4;
   --ll-cal-symptom-layer-2: #279c90;
@@ -107,6 +111,10 @@
     --ll-cal-flow-light: #348b93;
     --ll-cal-flow-medium: #25a4af;
     --ll-cal-flow-heavy: #11becc;
+    --ll-cal-on-flow-spotting: #ffffff;
+    --ll-cal-on-flow-light: #000000;
+    --ll-cal-on-flow-medium: #000000;
+    --ll-cal-on-flow-heavy: #000000;
     --ll-cal-symptom-dot: #355eb8;
     --ll-cal-symptom-layer-1: #9e38bf;
     --ll-cal-symptom-layer-2: #1d746b;

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -158,5 +158,38 @@ describe('ProfileHomeCalendar', () => {
     const bleed = dayCell('2026-10-02').cell;
     expect(bleed).not.toHaveClass('cal-spotting');
     expect(bleed.querySelectorAll('.cal-mark')).toHaveLength(3);
+  });
+
+  // The app fills a logged period day with its flow colour. The web drew
+  // only the marks, so a recorded period read more weakly than an estimate.
+  it('fills a logged bleed day with its flow colour', () => {
+    renderCalendar({
+      entries: [
+        entryRow('2026-09-28', 'light'),
+        entryRow('2026-09-29', 'medium'),
+        entryRow('2026-09-30', 'heavy'),
+      ],
+    });
+    // The calendar opens on October; step back to the month just logged.
+    fireEvent.click(screen.getByRole('button', { name: 'Previous month' }));
+    expect(dayCell('2026-09-28').cell).toHaveClass('cal-flow', 'cal-flow-light');
+    expect(dayCell('2026-09-29').cell).toHaveClass('cal-flow', 'cal-flow-medium');
+    expect(dayCell('2026-09-30').cell).toHaveClass('cal-flow', 'cal-flow-heavy');
+  });
+
+  it('leaves a day with no bleed unfilled, logged or not', () => {
+    renderCalendar({
+      entries: [entryRow('2026-10-01', 'not_bleeding'), entryRow('2026-10-02', 'spotting')],
+      spottingIsos: ['2026-10-02'],
+      forecast: { '2026-10-20': forecastCell({ predictedBleed: true }) },
+    });
+    expect(dayCell('2026-10-01').cell).not.toHaveClass('cal-flow');
+    expect(dayCell('2026-10-02').cell).not.toHaveClass('cal-flow');
+    // An estimated period day is never drawn as a recorded one.
+    const predicted = dayCell('2026-10-20').cell;
+    expect(predicted).toHaveClass('cal-predicted');
+    expect(predicted).not.toHaveClass('cal-flow');
+    // Nor is a day nobody logged.
+    expect(dayCell('2026-10-03').cell).not.toHaveClass('cal-flow');
   });
 });

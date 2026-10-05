@@ -117,6 +117,30 @@ export function flowMarkCount(flow: string): number {
   }
 }
 
+/**
+ * The fill class for a logged bleed day, or null for a day with no bleed.
+ *
+ * The app fills a logged period day with its flow colour and writes the
+ * day number and the flow marks on top (lib/ui/logging/month_calendar.dart).
+ * The web calendar drew the marks alone, so a recorded period was two or
+ * three small dots while an estimated one was a tinted, outlined box: what
+ * was only predicted read more strongly than what had happened. Super heavy
+ * shares heavy's colour, as in the app; its five marks tell them apart.
+ */
+export function flowFillClass(flow: string): string | null {
+  switch (flow) {
+    case 'light':
+      return 'cal-flow-light';
+    case 'medium':
+      return 'cal-flow-medium';
+    case 'heavy':
+    case 'super_heavy':
+      return 'cal-flow-heavy';
+    default:
+      return null;
+  }
+}
+
 /** Whether a flow level is a bleed — the port of `isBleed` (lib/domain/models/flow_level.dart). */
 export function flowIsBleed(flow: string): boolean {
   return flow === 'light' || flow === 'medium' || flow === 'heavy' || flow === 'super_heavy';
