@@ -38,7 +38,12 @@ test("store badges and store links come with the switch, not before it", () => {
   // listings are not public (site/claims.md). Flipping the switch is the
   // moment to add them, in the same change.
   if (!STORE_LISTINGS_LIVE) {
-    assert.ok(!guide.includes("apps.apple.com"));
-    assert.ok(!guide.includes("play.google.com"));
+    // Every link in the guide, by the host it goes to.
+    const linkedHosts = [...guide.matchAll(/href="(https?:\/\/[^"]+)"/g)].map(
+      (match) => new URL(match[1]).hostname,
+    );
+    for (const store of ["apps.apple.com", "itunes.apple.com", "play.google.com"]) {
+      assert.equal(linkedHosts.includes(store), false, store);
+    }
   }
 });
