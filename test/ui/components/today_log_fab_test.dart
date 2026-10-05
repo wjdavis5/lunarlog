@@ -102,15 +102,18 @@ class Harness {
         observationsToUpsert: attached,
       );
 
+  /// A reading for today, to attach in [saveDay]. With a [dayEntryId] it
+  /// is one to write on its own, through `observations.save`.
   Observation reading(
     String profileId,
     ObservationCategory category,
     double value,
-    String unit,
-  ) =>
+    String unit, {
+    String dayEntryId = '',
+  }) =>
       Observation(
         id: '',
-        dayEntryId: '',
+        dayEntryId: dayEntryId,
         profileId: profileId,
         localDate: kToday,
         tz: 'America/Chicago',
@@ -120,10 +123,13 @@ class Harness {
         updatedAt: DateTime.utc(2026, 1, 1),
       );
 
-  /// A spotting record for today, to attach in [saveDay].
-  Observation spotting(String profileId) => Observation(
+  /// A spotting record for today, to attach in [saveDay]. With a
+  /// [dayEntryId] it is one to write on its own, through
+  /// `observations.save`.
+  Observation spotting(String profileId, {String dayEntryId = ''}) =>
+      Observation(
         id: '',
-        dayEntryId: '',
+        dayEntryId: dayEntryId,
         profileId: profileId,
         localDate: kToday,
         tz: 'America/Chicago',
@@ -272,6 +278,96 @@ void main() {
     await h.pump(profileId);
 
     expect(fabLabel(tester), kEdit);
+    await h.dispose();
+  });
+
+  // The reminder's "Spotting" action, the health import and a sync pull all
+  // write an observation with no day-entry write beside it.
+  testWidgets('spotting written on its own, with no entry write, flips the '
+      'label, and taking it off flips it back', (tester) async {
+    final h = Harness(tester);
+    final profileId = await h.createProfile();
+    final entry = await h.saveDay(profileId, kToday);
+    await h.pump(profileId);
+    expect(fabLabel(tester), kLog);
+
+    final spotting = await h.observations
+        .save(h.spotting(profileId, dayEntryId: entry.id));
+    await tester.pumpAndSettle();
+    expect(fabLabel(tester), kEdit);
+
+    await h.observations.delete(spotting.id);
+    await tester.pumpAndSettle();
+    expect(fabLabel(tester), kLog);
+    await h.dispose();
+  });
+
+  testWidgets('an empty day, then the entry and the spotting in two writes, '
+      'ends at "Edit today"', (tester) async {
+    final h = Harness(tester);
+    final profileId = await h.createProfile();
+    await h.pump(profileId);
+    expect(fabLabel(tester), kLog);
+
+    // The health import's order: an entry with no flow, and only then the
+    // spotting that makes it a logged day.
+    final entry = await h.saveDay(profileId, kToday);
+    await tester.pumpAndSettle();
+    expect(fabLabel(tester), kLog);
+    await h.observations.save(h.spotting(profileId, dayEntryId: entry.id));
+    await tester.pumpAndSettle();
+    expect(fabLabel(tester), kEdit);
+
+    // The reminder action's order, on the next day: its entry is already a
+    // logged day ("not bleeding"), and stays one when the spotting lands.
+    h.now = kToday.addDays(1);
+    final next =
+        await h.saveDay(profileId, h.now, flow: FlowLevel.notBleeding);
+    await tester.pumpAndSettle();
+    expect(fabLabel(tester), kEdit);
+    await h.observations.save(
+      h.spotting(profileId, dayEntryId: next.id).copyWith(localDate: h.now),
+    );
+    await tester.pumpAndSettle();
+    expect(fabLabel(tester), kEdit);
+    await h.dispose();
+  });
+
+  testWidgets('a temperature written on its own flips the label',
+      (tester) async {
+    final h = Harness(tester);
+    final profileId = await h.createProfile();
+    final entry = await h.saveDay(profileId, kToday);
+    await h.pump(profileId);
+    expect(fabLabel(tester), kLog);
+
+    await h.observations.save(
+      h.reading(
+        profileId,
+        ObservationCategory.bbt,
+        36.7,
+        'celsius',
+        dayEntryId: entry.id,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(fabLabel(tester), kEdit);
+    await h.dispose();
+  });
+
+  testWidgets('a deleted entry is no longer followed: "Log today" again',
+      (tester) async {
+    final h = Harness(tester);
+    final profileId = await h.createProfile();
+    final entry = await h.saveDay(profileId, kToday);
+    await h.pump(profileId);
+    await h.observations.save(h.spotting(profileId, dayEntryId: entry.id));
+    await tester.pumpAndSettle();
+    expect(fabLabel(tester), kEdit);
+
+    await h.entries.delete(profileId, kToday);
+    await tester.pumpAndSettle();
+    expect(fabLabel(tester), kLog);
     await h.dispose();
   });
 

@@ -15,6 +15,12 @@
 /// caller's own day-change signal fires — see
 /// [TodayLogWatchMixin.watchTodayLog].
 ///
+/// And the day's log changes with no entry written: spotting and readings
+/// are observations, and the reminder's "Spotting" action, the health
+/// import and a sync pull write them on their own. So the watch also
+/// follows today's entry's observations where the repository offers a
+/// stream of them.
+///
 /// Reads, never writes. The entries read is the repository's existing
 /// windowed watch; the observations read is its existing one-day read, the
 /// one the day sheet itself opens with.
@@ -89,6 +95,16 @@ class _ResumeObserver with WidgetsBindingObserver {
   }
 }
 
+/// What one [TodayLogWatchMixin.watchTodayLog] call was given, kept for the
+/// reads that follow it.
+class _TodayLogWatch {
+  const _TodayLogWatch(this.observations, this.todayProvider, this.onLog);
+
+  final ObservationsRepository? observations;
+  final LocalDate Function() todayProvider;
+  final void Function(TodayLog? log) onLog;
+}
+
 /// Mixed into a [State] that shows something about today's log. The mixing
 /// state owns its own field and `setState` call; this only owns the
 /// subscription, as `GuardianWatchMixin` does for guardians.
@@ -96,6 +112,14 @@ mixin TodayLogWatchMixin<T extends StatefulWidget> on State<T> {
   StreamSubscription<List<DayEntry>>? _todayLogSub;
   StreamSubscription<Object?>? _todayLogDaySub;
   _ResumeObserver? _todayLogResume;
+
+  /// The subscription to today's entry's own observations, and the entry it
+  /// is for. An observation can be written with no day-entry write beside
+  /// it, so the entries subscription alone never hears of one. Held only
+  /// while today has an entry and the repository offers the stream
+  /// ([DayEntryObservationsWatchRepository]).
+  StreamSubscription<Object?>? _todayLogObservationsSub;
+  String? _todayLogObservedEntryId;
 
   /// The entries the subscription last emitted, and the day the last read
   /// picked out of them. Kept so a change of day can be answered from what
@@ -139,6 +163,16 @@ mixin TodayLogWatchMixin<T extends StatefulWidget> on State<T> {
   /// deliberately starts no timer of its own: the app keeps one date ticker
   /// per profile, paused in the background (#839), and this does not add
   /// to them.
+  ///
+  /// An observation written on its own is the third case: the reminder's
+  /// "Spotting" action, the health import and a sync pull all write a
+  /// spotting or temperature row with no day-entry write beside it, so the
+  /// entries stream says nothing. When [observations] offers a stream per
+  /// day entry ([DayEntryObservationsWatchRepository]) the watch follows
+  /// today's entry's and reads again on each of its emissions. It takes
+  /// that stream once the entry is known, and lets go of it when today's
+  /// entry becomes a different one or there is none. A repository with no
+  /// such stream is read once per entries emission, as before.
   void watchTodayLog({
     required DayEntriesRepository? entries,
     required ObservationsRepository? observations,
@@ -150,44 +184,76 @@ mixin TodayLogWatchMixin<T extends StatefulWidget> on State<T> {
     _cancelTodayLogWatch();
     onLog(null);
     if (entries == null) return;
-
-    void read(List<DayEntry> window) =>
-        unawaited(_readTodayLog(window, observations, todayProvider, onLog));
-    void readIfDayChanged() {
-      final window = _todayLogWindow;
-      if (window == null || todayProvider() == _todayLogDate) return;
-      read(window);
-    }
+    final watch = _TodayLogWatch(observations, todayProvider, onLog);
 
     _todayLogSub = entries
         .watchForProfile(profileId, from: todayProvider().addDays(-1))
         .listen(
-          read,
+          (window) => unawaited(_readTodayLog(watch, window)),
           onError: (Object error, StackTrace stackTrace) =>
               _recordTodayLogFailure('watchForProfile', error, stackTrace),
         );
     _todayLogDaySub = dayTicks?.listen(
-      (_) => readIfDayChanged(),
+      (_) => _readIfDayChanged(watch),
       onError: (Object _, StackTrace _) {},
     );
-    final resume = _todayLogResume = _ResumeObserver(readIfDayChanged);
+    final resume =
+        _todayLogResume = _ResumeObserver(() => _readIfDayChanged(watch));
     WidgetsBinding.instance.addObserver(resume);
   }
 
+  /// Reads again from the window in hand if "today" is no longer the day
+  /// the last read was for.
+  void _readIfDayChanged(_TodayLogWatch watch) {
+    final window = _todayLogWindow;
+    if (window == null || watch.todayProvider() == _todayLogDate) return;
+    unawaited(_readTodayLog(watch, window));
+  }
+
+  /// Reads again from the window in hand: an observation of today's entry
+  /// changed, with no entries emission to say so.
+  void _readAgain(_TodayLogWatch watch) {
+    final window = _todayLogWindow;
+    if (window == null) return;
+    unawaited(_readTodayLog(watch, window));
+  }
+
   Future<void> _readTodayLog(
+    _TodayLogWatch watch,
     List<DayEntry> window,
-    ObservationsRepository? observations,
-    LocalDate Function() todayProvider,
-    void Function(TodayLog? log) onLog,
   ) async {
     final tick = ++_todayLogTick;
-    final date = todayProvider();
+    final date = watch.todayProvider();
     _todayLogWindow = window;
     _todayLogDate = date;
     final entry = _liveEntryOn(window, date);
-    final attached = await _observationsOf(entry, observations);
+    _followObservationsOf(watch, entry);
+    final attached = await _observationsOf(entry, watch.observations);
     if (!mounted || tick != _todayLogTick) return;
-    onLog(TodayLog(entry: entry, observations: attached));
+    watch.onLog(TodayLog(entry: entry, observations: attached));
+  }
+
+  /// Keeps the observations subscription on today's [entry]: nothing to do
+  /// while it is the same entry, otherwise the old one is dropped and, if
+  /// there is an entry and a stream to follow, the new one taken. Each
+  /// emission is one re-read ([_readAgain]); a read it overtakes is dropped
+  /// by the same tick that guards the entries path.
+  void _followObservationsOf(_TodayLogWatch watch, DayEntry? entry) {
+    final entryId = entry?.id;
+    if (entryId == _todayLogObservedEntryId) return;
+    unawaited(_todayLogObservationsSub?.cancel());
+    _todayLogObservationsSub = null;
+    _todayLogObservedEntryId = entryId;
+    final observations = watch.observations;
+    if (entryId == null ||
+        observations is! DayEntryObservationsWatchRepository) {
+      return;
+    }
+    _todayLogObservationsSub = observations.watchForDayEntry(entryId).listen(
+      (_) => _readAgain(watch),
+      onError: (Object error, StackTrace stackTrace) =>
+          _recordTodayLogFailure('watchForDayEntry', error, stackTrace),
+    );
   }
 
   /// The observations attached to [entry]. A failed read is recorded and
@@ -213,6 +279,9 @@ mixin TodayLogWatchMixin<T extends StatefulWidget> on State<T> {
     _todayLogSub = null;
     unawaited(_todayLogDaySub?.cancel());
     _todayLogDaySub = null;
+    unawaited(_todayLogObservationsSub?.cancel());
+    _todayLogObservationsSub = null;
+    _todayLogObservedEntryId = null;
     final resume = _todayLogResume;
     if (resume != null) WidgetsBinding.instance.removeObserver(resume);
     _todayLogResume = null;

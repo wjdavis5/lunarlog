@@ -17,7 +17,10 @@ import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'mappers.dart';
 
 class DriftObservationsRepository
-    implements ObservationsRepository, SpottingObservationsRangeRepository {
+    implements
+        ObservationsRepository,
+        SpottingObservationsRangeRepository,
+        DayEntryObservationsWatchRepository {
   DriftObservationsRepository(this._storage);
 
   final ObservationsRepositoryStore _storage;
@@ -54,6 +57,15 @@ class DriftObservationsRepository
         for (final row in await _storage.getObservationsForDayEntry(dayEntryId))
           observationToDomain(row),
       ];
+
+  /// Issue #1489: [listForDayEntry] as a stream, over the storage layer's
+  /// own per-entry watch — the same indexed, tombstone-filtered read, and
+  /// no new query.
+  @override
+  Stream<List<domain.Observation>> watchForDayEntry(String dayEntryId) =>
+      _storage.watchObservationsForDayEntry(dayEntryId).map(
+            (rows) => [for (final row in rows) observationToDomain(row)],
+          );
 
   /// Issue #795: [listForProfile]'s spotting rows and legacy
   /// `flow = 'spotting'` alias synthesis, scoped to the inclusive

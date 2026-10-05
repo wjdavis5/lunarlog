@@ -803,6 +803,70 @@ void main() {
     });
   });
 
+  // Issue #1489: the optional per-entry stream a reader follows to notice
+  // an observation written with no day-entry write beside it.
+  group('watchForDayEntry (issue #1489)', () {
+    Observation spottingOn(DayEntry entry) => Observation(
+          id: '',
+          dayEntryId: entry.id,
+          profileId: entry.profileId,
+          localDate: entry.localDate,
+          tz: entry.tz,
+          category: ObservationCategory.spotting,
+          code: 'spotting',
+          updatedAt: DateTime.utc(2026, 7, 28),
+        );
+
+    /// The drift repository as the capability it offers.
+    DayEntryObservationsWatchRepository watching() =>
+        observations as DayEntryObservationsWatchRepository;
+
+    test('the drift repository offers it', () {
+      expect(observations, isA<DayEntryObservationsWatchRepository>());
+    });
+
+    test('emits the entry\'s observations on listen, and again when one is '
+        'saved or tombstoned on its own', () async {
+      final profile = await profiles.create(displayName: 'P', isMinor: false);
+      final entry =
+          await dayEntries.save(entryFor(profile.id, LocalDate(2026, 7, 28)));
+      final seen = <List<ObservationCategory>>[];
+      final sub = watching().watchForDayEntry(entry.id).listen(
+            (rows) => seen.add([for (final row in rows) row.category]),
+          );
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+      expect(seen, [<ObservationCategory>[]]);
+
+      // No day-entry write beside either of these.
+      final saved = await observations.save(spottingOn(entry));
+      await pumpEventQueue();
+      expect(seen.last, [ObservationCategory.spotting]);
+
+      await observations.delete(saved.id);
+      await pumpEventQueue();
+      expect(seen.last, isEmpty);
+    });
+
+    test('is scoped to the one entry', () async {
+      final profile = await profiles.create(displayName: 'P', isMinor: false);
+      final mine =
+          await dayEntries.save(entryFor(profile.id, LocalDate(2026, 7, 28)));
+      final other =
+          await dayEntries.save(entryFor(profile.id, LocalDate(2026, 7, 29)));
+      await observations.save(spottingOn(other));
+
+      await expectLater(
+        watching().watchForDayEntry(mine.id),
+        emits(isEmpty),
+      );
+      await expectLater(
+        watching().watchForDayEntry(other.id),
+        emits(hasLength(1)),
+      );
+    });
+  });
+
   group('observation category store round-trip (issue #847)', () {
     test('a known and an unknown category both survive store -> read',
         () async {

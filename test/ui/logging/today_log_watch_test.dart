@@ -90,13 +90,45 @@ class _HandFedEntries implements DayEntriesRepository {
 class _HandFedObservations implements ObservationsRepository {
   final Map<String, Completer<List<Observation>>> reads = {};
 
+  /// The entry id of every read made, in order.
+  final List<String> readLog = [];
+
   @override
-  Future<List<Observation>> listForDayEntryWithLegacyAlias(String dayEntryId) =>
-      (reads[dayEntryId] = Completer<List<Observation>>()).future;
+  Future<List<Observation>> listForDayEntryWithLegacyAlias(String dayEntryId) {
+    readLog.add(dayEntryId);
+    return (reads[dayEntryId] = Completer<List<Observation>>()).future;
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) =>
       throw UnimplementedError('${invocation.memberName}');
+}
+
+/// The same seam with the optional per-entry stream: one hand-fed stream
+/// per call, so the test decides when an entry's observations "change".
+class _HandFedWatchedObservations extends _HandFedObservations
+    implements DayEntryObservationsWatchRepository {
+  /// The entry id of every stream asked for, in order.
+  final List<String> watchLog = [];
+  final List<StreamController<List<Observation>>> _streams = [];
+
+  @override
+  Stream<List<Observation>> watchForDayEntry(String dayEntryId) {
+    watchLog.add(dayEntryId);
+    final controller = StreamController<List<Observation>>();
+    _streams.add(controller);
+    return controller.stream;
+  }
+
+  /// Whether the stream handed out by the [call]th `watchForDayEntry` still
+  /// has its listener.
+  bool isListenedTo(int call) => _streams[call].hasListener;
+
+  /// Says the observations behind the [call]th stream changed.
+  void change(int call) => _streams[call].add(const []);
+
+  /// Fails the [call]th stream.
+  void fail(int call) => _streams[call].addError(StateError('simulated'));
 }
 
 /// A tag registry whose one stream the test feeds by hand.
@@ -202,13 +234,15 @@ void main() {
     bool withEntries = true,
     bool withObservations = true,
     bool withDayTicks = false,
+    ObservationsRepository? observationsSeam,
     LocalDate Function()? today,
   }) =>
       tester.pumpWidget(
         _Probe(
           profileId: profileId,
           entries: withEntries ? entries : null,
-          observations: withObservations ? observations : null,
+          observations:
+              observationsSeam ?? (withObservations ? observations : null),
           today: today ?? () => kToday,
           seen: seen,
           dayTicks: withDayTicks ? dayTicks.stream : null,
@@ -398,6 +432,205 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(seen.last!.entry, same(today));
     expect(seen.last!.observations, isEmpty);
+  });
+
+  // The reminder's "Spotting" action, the health import and a sync pull all
+  // write an observation with no day-entry write beside it, so the entries
+  // stream alone never hears of it.
+  group('an observation written on its own', () {
+    late _HandFedWatchedObservations watched;
+
+    setUp(() => watched = _HandFedWatchedObservations());
+
+    testWidgets('a repository with no stream to offer is read once per '
+        'entries emission, as before', (tester) async {
+      await pump(tester);
+      entries.latest.add([entryOn(kToday)]);
+      await tester.pump();
+      entries.latest.add([entryOn(kToday)]);
+      await tester.pump();
+
+      expect(observations.readLog, ['e1', 'e1']);
+    });
+
+    testWidgets('takes the stream for today\'s entry once the entry is '
+        'known, and reads again on each of its emissions', (tester) async {
+      await pump(tester, observationsSeam: watched);
+      expect(watched.watchLog, isEmpty, reason: 'no entry is known yet');
+
+      final today = entryOn(kToday);
+      entries.latest.add([today]);
+      await tester.pump();
+      expect(watched.watchLog, ['e1']);
+      expect(watched.isListenedTo(0), isTrue);
+      expect(watched.readLog, ['e1']);
+      watched.reads['e1']!.complete(const []);
+      await tester.pump();
+      expect(seen.last!.hasSpotting, isFalse);
+
+      // Spotting is written on its own: the entries stream says nothing.
+      watched.change(0);
+      await tester.pump();
+      expect(watched.readLog, ['e1', 'e1'], reason: 'one re-read');
+      final spotting = spottingFor('e1');
+      watched.reads['e1']!.complete([spotting]);
+      await tester.pump();
+      expect(seen.last!.entry, same(today));
+      expect(seen.last!.observations, [spotting]);
+
+      // And taken off again.
+      watched.change(0);
+      await tester.pump();
+      expect(watched.readLog, hasLength(3));
+      watched.reads['e1']!.complete(const []);
+      await tester.pump();
+      expect(seen.last!.hasSpotting, isFalse);
+      expect(entries.watches, hasLength(1),
+          reason: 'none of this is a new entries subscription');
+    });
+
+    testWidgets('the same entry keeps its one stream across entries '
+        'emissions', (tester) async {
+      await pump(tester, observationsSeam: watched);
+      entries.latest.add([entryOn(kToday)]);
+      await tester.pump();
+      entries.latest.add([entryOn(kToday, tags: const ['headache'])]);
+      await tester.pump();
+
+      expect(watched.watchLog, ['e1']);
+      expect(watched.isListenedTo(0), isTrue);
+    });
+
+    testWidgets('a read overtaken by an observations emission is dropped',
+        (tester) async {
+      await pump(tester, observationsSeam: watched);
+      entries.latest.add([entryOn(kToday)]);
+      await tester.pump();
+      final first = watched.reads['e1']!;
+      watched.change(0);
+      await tester.pump();
+      final second = watched.reads['e1']!;
+      expect(second, isNot(same(first)));
+
+      final spotting = spottingFor('e1');
+      second.complete([spotting]);
+      await tester.pump();
+      expect(seen.last!.observations, [spotting]);
+      final settled = seen.length;
+
+      // The older read answers last, with what is no longer true.
+      first.complete(const []);
+      await tester.pump();
+      expect(seen, hasLength(settled));
+      expect(seen.last!.observations, [spotting]);
+    });
+
+    testWidgets('a different entry for today drops the old stream and takes '
+        'the new one', (tester) async {
+      await pump(tester, observationsSeam: watched);
+      entries.latest.add([entryOn(kToday)]);
+      await tester.pump();
+      entries.latest.add([entryOn(kToday, id: 'e2')]);
+      await tester.pump();
+
+      expect(watched.watchLog, ['e1', 'e2']);
+      expect(watched.isListenedTo(0), isFalse);
+      expect(watched.isListenedTo(1), isTrue);
+
+      // What happens to the old entry is nobody's business now.
+      final reads = watched.readLog.length;
+      watched.change(0);
+      await tester.pump();
+      expect(watched.readLog, hasLength(reads));
+    });
+
+    testWidgets('a day left with no entry drops the stream, and a new entry '
+        'takes a new one', (tester) async {
+      await pump(tester, observationsSeam: watched);
+      entries.latest.add([entryOn(kToday)]);
+      await tester.pump();
+      expect(watched.isListenedTo(0), isTrue);
+
+      entries.latest.add(const []);
+      await tester.pump();
+      expect(watched.isListenedTo(0), isFalse);
+      expect(watched.watchLog, ['e1']);
+      expect(seen.last!.entry, isNull);
+
+      entries.latest.add([entryOn(kToday)]);
+      await tester.pump();
+      expect(watched.watchLog, ['e1', 'e1']);
+      expect(watched.isListenedTo(1), isTrue);
+    });
+
+    testWidgets('a change of day moves the stream to that day\'s entry',
+        (tester) async {
+      var now = kToday;
+      await pump(
+        tester,
+        observationsSeam: watched,
+        withDayTicks: true,
+        today: () => now,
+      );
+      entries.latest.add([
+        entryOn(kToday),
+        entryOn(kToday.addDays(1), id: 'e2'),
+      ]);
+      await tester.pump();
+      expect(watched.watchLog, ['e1']);
+
+      now = kToday.addDays(1);
+      dayTicks.add(null);
+      await tester.pump();
+      expect(watched.watchLog, ['e1', 'e2']);
+      expect(watched.isListenedTo(0), isFalse);
+      expect(watched.isListenedTo(1), isTrue);
+    });
+
+    testWidgets('a re-watch and dispose let go of the stream',
+        (tester) async {
+      await pump(tester, observationsSeam: watched);
+      entries.latest.add([entryOn(kToday)]);
+      await tester.pump();
+      expect(watched.isListenedTo(0), isTrue);
+
+      await pump(tester, profileId: 'p2', observationsSeam: watched);
+      expect(watched.isListenedTo(0), isFalse);
+      entries.latest.add([entryOn(kToday, id: 'e9')]);
+      await tester.pump();
+      expect(watched.watchLog, ['e1', 'e9']);
+      expect(watched.isListenedTo(1), isTrue);
+      final settled = seen.length;
+      final reads = watched.readLog.length;
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(watched.isListenedTo(1), isFalse);
+
+      // Nothing is read for a widget that has gone.
+      watched.change(1);
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      expect(watched.readLog, hasLength(reads));
+      expect(seen, hasLength(settled));
+    });
+
+    testWidgets('an error on the stream is recorded and dropped; later '
+        'changes still count', (tester) async {
+      await pump(tester, observationsSeam: watched);
+      entries.latest.add([entryOn(kToday)]);
+      await tester.pump();
+      watched.reads['e1']!.complete(const []);
+      await tester.pump();
+
+      watched.fail(0);
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      expect(watched.readLog, hasLength(1));
+
+      watched.change(0);
+      await tester.pump();
+      expect(watched.readLog, hasLength(2));
+    });
   });
 
   group('a new day with nothing written', () {

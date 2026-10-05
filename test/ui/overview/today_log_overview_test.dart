@@ -120,6 +120,47 @@ class _FailingObservations implements ObservationsRepository {
       throw StateError('observations read failed');
 }
 
+/// The real observations repository with its per-entry streams watched in
+/// turn: [listening] is the entry ids that have a listener right now, which
+/// is the one thing the database itself cannot be asked.
+class _WatchedObservations implements DayEntryObservationsWatchRepository {
+  _WatchedObservations(this._inner);
+
+  final DriftObservationsRepository _inner;
+
+  /// The entry id behind every per-entry stream currently listened to.
+  final List<String> listening = [];
+  final List<StreamController<List<Observation>>> _controllers = [];
+
+  @override
+  Stream<List<Observation>> watchForDayEntry(String dayEntryId) {
+    StreamSubscription<List<Observation>>? inner;
+    late final StreamController<List<Observation>> controller;
+    controller = StreamController<List<Observation>>(
+      onListen: () {
+        listening.add(dayEntryId);
+        inner = _inner
+            .watchForDayEntry(dayEntryId)
+            .listen(controller.add, onError: controller.addError);
+      },
+      onCancel: () {
+        listening.remove(dayEntryId);
+        unawaited(inner?.cancel());
+      },
+    );
+    _controllers.add(controller);
+    return controller.stream;
+  }
+
+  @override
+  Future<List<Observation>> listForDayEntryWithLegacyAlias(String dayEntryId) =>
+      _inner.listForDayEntryWithLegacyAlias(dayEntryId);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError('${invocation.memberName}');
+}
+
 class Harness {
   Harness(this.tester) : db = LunarLogDatabase(NativeDatabase.memory()) {
     profiles = DriftProfilesRepository(db.storage);
@@ -228,17 +269,21 @@ class Harness {
         observationsToUpsert: attached,
       );
 
-  /// An observation to attach to [date]'s entry in [saveDay].
+  /// An observation to attach to [date]'s entry in [saveDay]. With a
+  /// [dayEntryId] it is one to write on its own instead, through
+  /// `observations.save`, with no day-entry write beside it — what the
+  /// reminder's "Spotting" action, the health import and a sync pull do.
   Observation attachment(
     String profileId,
     LocalDate date,
     ObservationCategory category, {
     double? valueNum,
     String? unit,
+    String dayEntryId = '',
   }) =>
       Observation(
         id: '',
-        dayEntryId: '',
+        dayEntryId: dayEntryId,
         profileId: profileId,
         localDate: date,
         tz: 'America/Chicago',
@@ -830,6 +875,180 @@ void main() {
       await tester.pumpAndSettle();
       expect(cardTexts(tester), [kEmptyLine]);
       await h.dispose();
+    });
+  });
+
+  // The reminder's "Spotting" action, the health import and a sync pull all
+  // write an observation with no day-entry write beside it. Every write
+  // below goes through the real repositories, one table at a time.
+  group('the card follows an observation written on its own', () {
+    testWidgets('spotting written alone, on a day that already has an entry',
+        (tester) async {
+      final h = Harness(tester);
+      final profile = await h.createProfile();
+      final entry =
+          await h.saveDay(profile.id, kToday, tags: const ['cramps']);
+      await h.pump(profile);
+      expect(cardTexts(tester), ['Logged today', 'Edit', 'Cramps']);
+
+      await h.observations.save(
+        h.attachment(
+          profile.id,
+          kToday,
+          ObservationCategory.spotting,
+          dayEntryId: entry.id,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        cardTexts(tester),
+        ['Logged today', 'Edit', 'Spotting', 'Cramps'],
+      );
+      await h.dispose();
+    });
+
+    testWidgets('spotting written alone, on an entry with nothing else on '
+        'it: nothing logged becomes a logged day', (tester) async {
+      final h = Harness(tester);
+      final profile = await h.createProfile();
+      final entry = await h.saveDay(profile.id, kToday);
+      await h.pump(profile);
+      expect(cardTexts(tester), [kEmptyLine]);
+
+      final spotting = await h.observations.save(
+        h.attachment(
+          profile.id,
+          kToday,
+          ObservationCategory.spotting,
+          dayEntryId: entry.id,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(cardTexts(tester), ['Logged today', 'Edit', 'Spotting']);
+
+      // Taken off again, also on its own.
+      await h.observations.delete(spotting.id);
+      await tester.pumpAndSettle();
+      expect(cardTexts(tester), [kEmptyLine]);
+      await h.dispose();
+    });
+
+    testWidgets('an empty day, then the entry and the spotting in two '
+        'writes: the reminder action\'s order', (tester) async {
+      final h = Harness(tester);
+      final profile = await h.createProfile();
+      await h.pump(profile);
+      expect(cardTexts(tester), [kEmptyLine]);
+
+      // The action first makes sure the day has an entry...
+      final entry =
+          await h.saveDay(profile.id, kToday, flow: FlowLevel.notBleeding);
+      await tester.pumpAndSettle();
+      expect(cardTexts(tester), ['Logged today', 'Edit', 'Not bleeding']);
+
+      // ...and only then attaches the spotting.
+      await h.observations.save(
+        h.attachment(
+          profile.id,
+          kToday,
+          ObservationCategory.spotting,
+          dayEntryId: entry.id,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(cardTexts(tester), ['Logged today', 'Edit', 'Spotting']);
+      await h.dispose();
+    });
+
+    testWidgets('a temperature written alone, and taken away again',
+        (tester) async {
+      final h = Harness(tester);
+      final profile = await h.createProfile();
+      final entry =
+          await h.saveDay(profile.id, kToday, tags: const ['cramps']);
+      await h.pump(profile);
+      expect(cardTexts(tester), ['Logged today', 'Edit', 'Cramps']);
+
+      final reading = await h.observations.save(
+        h.attachment(
+          profile.id,
+          kToday,
+          ObservationCategory.bbt,
+          valueNum: 36.7,
+          unit: 'celsius',
+          dayEntryId: entry.id,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        cardTexts(tester),
+        ['Logged today', 'Edit', 'Cramps', 'BBT (°C): 36.7'],
+      );
+
+      await h.observations.delete(reading.id);
+      await tester.pumpAndSettle();
+      expect(cardTexts(tester), ['Logged today', 'Edit', 'Cramps']);
+      await h.dispose();
+    });
+
+    testWidgets('only today\'s entry is followed: a profile switch and a '
+        'deleted entry each let go of the one before', (tester) async {
+      final h = Harness(tester);
+      final watched = _WatchedObservations(h.observations);
+      final alice = await h.createProfile();
+      final bea = await h.createProfile(name: 'Bea');
+      final aliceDay =
+          await h.saveDay(alice.id, kToday, tags: const ['cramps']);
+      final beaDay =
+          await h.saveDay(bea.id, kToday, tags: const ['headache']);
+      await h.pump(alice, observationsSeam: watched);
+      expect(watched.listening, [aliceDay.id]);
+
+      await h.pump(bea, observationsSeam: watched);
+      expect(watched.listening, [beaDay.id]);
+      expect(cardTexts(tester), ['Logged today', 'Edit', 'Headache']);
+
+      // Alice's day changing is no longer this panel's business.
+      await h.observations.save(
+        h.attachment(
+          alice.id,
+          kToday,
+          ObservationCategory.spotting,
+          dayEntryId: aliceDay.id,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(cardTexts(tester), ['Logged today', 'Edit', 'Headache']);
+      expect(watched.listening, [beaDay.id]);
+
+      // Bea's still is.
+      await h.observations.save(
+        h.attachment(
+          bea.id,
+          kToday,
+          ObservationCategory.spotting,
+          dayEntryId: beaDay.id,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        cardTexts(tester),
+        ['Logged today', 'Edit', 'Spotting', 'Headache'],
+      );
+
+      // With the entry gone there is nothing left to follow.
+      await h.entries.delete(bea.id, kToday);
+      await tester.pumpAndSettle();
+      expect(cardTexts(tester), [kEmptyLine]);
+      expect(watched.listening, isEmpty);
+
+      // A new entry for the day is followed in its turn, and the panel
+      // going away lets go of that too.
+      final again = await h.saveDay(bea.id, kToday, tags: const ['fatigue']);
+      await tester.pumpAndSettle();
+      expect(watched.listening, [again.id]);
+      await h.dispose();
+      expect(watched.listening, isEmpty);
     });
   });
 
