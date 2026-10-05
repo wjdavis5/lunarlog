@@ -712,7 +712,7 @@ function ProfileSection(props: SectionProps & { title: string; profiles: Profile
                   ) : (
                     <button
                       type="button"
-                      className="btn"
+                      className="btn btn-danger-quiet"
                       onClick={() => {
                         props.setConfirmingArchiveId(null);
                         props.setDeleteStep2(false);

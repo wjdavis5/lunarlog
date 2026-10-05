@@ -304,7 +304,13 @@ function SignInMethodsCard(props: {
               <li className="row" key={provider}>
                 <div className="row-main">
                   <span className="row-title">{label}</span>
-                  <span className="row-sub">{t('accountSectionLinkSubtitle')}</span>
+                  {/* "Sign in to this account another way." invites adding a
+                      method, so it sits under one that can still be added.
+                      It used to follow every row, including Email and the
+                      methods already linked. */}
+                  {!linked ? (
+                    <span className="row-sub">{t('accountSectionLinkSubtitle')}</span>
+                  ) : null}
                 </div>
                 {linked && linkable ? (
                   props.confirmingRemove === provider ? (

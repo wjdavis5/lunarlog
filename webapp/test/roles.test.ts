@@ -7,6 +7,7 @@ import {
   canUpdateGuardianRole,
   guardianRoleFromDb,
   guardianRoleFromDbOrViewer,
+  guardianRowKind,
   guardianStatusFromDb,
   guardianStatusFromDbOrRevoked,
   roleCanEditProfile,
@@ -374,5 +375,22 @@ describe('canCancelInvitation (the client mirror of revoke_guardian_invitation, 
         }),
       ).toBe(false);
     }
+  });
+});
+
+describe('guardianRowKind (issue #1427)', () => {
+  it('uses a name when there is one, whoever the row belongs to', () => {
+    expect(guardianRowKind('Jordan', false)).toBe('named');
+    expect(guardianRowKind('Mom', true)).toBe('named');
+  });
+
+  it("is the reader's own row when they have no name", () => {
+    expect(guardianRowKind(null, true)).toBe('self');
+    expect(guardianRowKind('', true)).toBe('self');
+  });
+
+  it('falls back to the role for someone else with no name', () => {
+    expect(guardianRowKind(null, false)).toBe('role');
+    expect(guardianRowKind('', false)).toBe('role');
   });
 });

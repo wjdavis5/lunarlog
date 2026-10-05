@@ -763,6 +763,20 @@ body {
   border-color: var(--ll-error);
 }
 
+/* The button that only opens a destructive confirmation: marked as such,
+   without the weight of the button that does the deed. It matches
+   `.button.danger` on the guardians and notes pages. */
+.btn-danger-quiet {
+  background: transparent;
+  border-color: var(--ll-error);
+  color: var(--ll-error);
+}
+
+/* A page's one link back to where it came from. */
+.page-back {
+  margin: 0;
+}
+
 .home-switcher {
   display: flex;
   flex-wrap: wrap;

@@ -295,6 +295,13 @@ test.describe('the day editor on a cold load', () => {
       page.getByRole('button', { name: messages['webDaySave'] ?? 'Save' }),
     ).toBeVisible();
     await expect(page.getByText(messages['webDayNoAccess'] ?? 'missing')).toHaveCount(0);
+    // The day editor is axe-clean too, and has one navigation landmark:
+    // its back link used to be a second, unnamed one beside the header's.
+    const axe = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa'])
+      .withRules(['landmark-unique'])
+      .analyze();
+    expect(axe.violations).toEqual([]);
   });
 
   test('still opens after a reload', async ({ page }) => {
