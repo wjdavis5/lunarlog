@@ -523,8 +523,19 @@ async function handleIdentities(request: Request, deps: AuthDeps): Promise<Respo
   });
   if (!response.ok) return upstreamError(response);
   const raw = (await response.json()) as Record<string, unknown>;
-  const identities = Array.isArray(raw.identities) ? raw.identities : [];
-  const providers = identities
+  return jsonResponse(
+    {
+      email: typeof raw.email === 'string' ? raw.email : null,
+      providers: identityProviders(raw),
+    },
+    { 'cache-control': 'no-store' },
+  );
+}
+
+/** The sign-in methods on a GoTrue user body: one provider per identity. */
+function identityProviders(user: Record<string, unknown>): string[] {
+  const identities = Array.isArray(user.identities) ? user.identities : [];
+  return identities
     .map((identity) =>
       typeof identity === 'object' &&
       identity !== null &&
@@ -533,10 +544,6 @@ async function handleIdentities(request: Request, deps: AuthDeps): Promise<Respo
         : null,
     )
     .filter((provider): provider is string => provider !== null);
-  return jsonResponse(
-    { email: typeof raw.email === 'string' ? raw.email : null, providers },
-    { 'cache-control': 'no-store' },
-  );
 }
 
 /**
@@ -633,28 +640,47 @@ async function handleIdentityUnlink(request: Request, deps: AuthDeps): Promise<R
   return jsonResponse({ ok: true }, { 'cache-control': 'no-store' });
 }
 
+/** The account a bearer belongs to, as GoTrue reports it. */
+interface CallerAccount {
+  id: string;
+  /** Its sign-in methods: `email`, `google`, `apple`. */
+  providers: string[];
+}
+
 /**
- * The id of the account [bearer] belongs to, or the response that says why
- * it could not be read. GoTrue checks the token; the Worker never decodes
- * one itself.
+ * The account [bearer] belongs to, or the response that says why it could
+ * not be read. GoTrue checks the token; the Worker never decodes one itself.
+ *
+ * It always answers. Supabase being unreachable, or answering with
+ * something that is not JSON, comes back as a 502 like any other refusal,
+ * so the caller can still clear what it has to clear.
  */
-async function callerUserId(
+async function callerAccount(
   request: Request,
   deps: AuthDeps,
   bearer: string,
-): Promise<string | Response> {
-  const response = await deps.supabaseFetch('/auth/v1/user', {
-    method: 'GET',
-    headers: upstreamHeaders(request, deps.publishableKey, {
-      authorization: `Bearer ${bearer}`,
-    }),
-  });
-  if (!response.ok) return upstreamError(response);
-  const raw = (await response.json()) as Record<string, unknown>;
-  if (typeof raw.id !== 'string' || raw.id === '') {
+): Promise<CallerAccount | Response> {
+  let raw: unknown;
+  try {
+    const response = await deps.supabaseFetch('/auth/v1/user', {
+      method: 'GET',
+      headers: upstreamHeaders(request, deps.publishableKey, {
+        authorization: `Bearer ${bearer}`,
+      }),
+    });
+    if (!response.ok) return await upstreamError(response);
+    raw = await response.json();
+  } catch {
+    return errorResponse(502, 'upstream_unavailable');
+  }
+  if (typeof raw !== 'object' || raw === null) {
     return errorResponse(502, 'upstream_user_shape');
   }
-  return raw.id;
+  const user = raw as Record<string, unknown>;
+  if (typeof user.id !== 'string' || user.id === '') {
+    return errorResponse(502, 'upstream_user_shape');
+  }
+  return { id: user.id, providers: identityProviders(user) };
 }
 
 /** [response] again, with one more cookie set. */
@@ -691,10 +717,19 @@ function withCookie(response: Response, cookie: string): Response {
 async function handleAppleDeleteStart(request: Request, deps: AuthDeps): Promise<Response> {
   const bearer = requireBearer(request);
   if (bearer === null) return errorResponse(401, 'access_token_required');
-  const userId = await callerUserId(request, deps, bearer);
-  if (userId instanceof Response) return userId;
+  const account = await callerAccount(request, deps, bearer);
+  if (account instanceof Response) return account;
+  // Only an account that has Sign in with Apple has an Apple step. The page
+  // asks for one only after the deletion itself answered
+  // `apple_code_required`, so this refuses nothing the page does. It means a
+  // ceremony is never armed for an account whose deletion would not look at
+  // the Apple code at all: for those, the state cookie would be the only
+  // thing between a landing and the deletion.
+  if (!account.providers.includes('apple')) {
+    return errorResponse(409, 'apple_identity_required');
+  }
   const state = deps.randomVerifier();
-  const cookie = buildAppleDeleteCookie(state, userId);
+  const cookie = buildAppleDeleteCookie(state, account.id);
   if (cookie === null) return errorResponse(502, 'upstream_user_shape');
   const target = new URL('https://appleid.apple.com/auth/authorize');
   target.searchParams.set('response_type', 'code');
@@ -713,7 +748,8 @@ async function handleAppleDeleteStart(request: Request, deps: AuthDeps): Promise
  * Apple echoed, as the signed-in account. The Worker checks the state
  * against its HttpOnly cookie (a 64-char random value) and the caller
  * against the account the cookie names, and clears the cookie on every
- * settled outcome — the state is single-use. Success here means "this
+ * outcome once it has read it, an unreachable Supabase included — the
+ * state is single-use. Success here means "this
  * account, in this browser, asked for a delete ceremony"; the deletion
  * itself stays the page's call to the Edge Function, carrying the code and
  * `appleCodeClient: "web"`.
@@ -746,11 +782,11 @@ async function handleAppleDeleteComplete(request: Request, deps: AuthDeps): Prom
   if (bearer === null) {
     return errorResponse(401, 'access_token_required', { 'set-cookie': clearedCookie });
   }
-  const userId = await callerUserId(request, deps, bearer);
-  if (userId instanceof Response) return withCookie(userId, clearedCookie);
+  const account = await callerAccount(request, deps, bearer);
+  if (account instanceof Response) return withCookie(account, clearedCookie);
   // Someone else is signed in now than when the ceremony began: it is not
   // theirs to finish.
-  if (userId !== pending.userId) {
+  if (account.id !== pending.userId) {
     return errorResponse(403, 'state_mismatch', { 'set-cookie': clearedCookie });
   }
   return jsonResponse(

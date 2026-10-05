@@ -7,7 +7,7 @@ import {
   type AuthEnv,
   type SupabaseAuthFetch,
 } from './auth.ts';
-import { PKCE_COOKIE, REFRESH_COOKIE, REFRESH_MAX_AGE_SECONDS } from './cookies.ts';
+import { PKCE_COOKIE, readCookie, REFRESH_COOKIE, REFRESH_MAX_AGE_SECONDS } from './cookies.ts';
 
 /**
  * The /auth/* Worker routes against a stubbed Supabase Auth (issue #1250).
@@ -1284,14 +1284,33 @@ const OTHER_USER = '99999999-8888-4777-8666-555555555555';
 const APPLE_DELETE_PENDING = `__Host-ll_apple_delete=verifier-abc.${APPLE_USER}`;
 
 /** Upstream answers GET /auth/v1/user as [userId]; anything else is a bug. */
-function userIs(userId: string): (call: UpstreamCall) => Response {
+function userIs(
+  userId: string,
+  providers: string[] = ['email', 'apple'],
+): (call: UpstreamCall) => Response {
   return (call) => {
     if (call.path !== '/auth/v1/user') throw new Error(`unexpected upstream call ${call.path}`);
-    return new Response(JSON.stringify({ id: userId, email: 'a@example.com' }), {
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-    });
+    return new Response(
+      JSON.stringify({
+        id: userId,
+        email: 'a@example.com',
+        identities: providers.map((provider) => ({ provider, id: `${provider}-identity` })),
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    );
   };
+}
+
+/** Upstream cannot be reached at all. */
+function unreachable(): (call: UpstreamCall) => Response {
+  return () => {
+    throw new TypeError('network unreachable');
+  };
+}
+
+/** Upstream answers 200 with something that is not JSON. */
+function notJson(): (call: UpstreamCall) => Response {
+  return () => new Response('<html>bad gateway</html>', { status: 200 });
 }
 
 Deno.test(
@@ -1409,7 +1428,7 @@ Deno.test(
     for (const id of [undefined, '', 'not.a.uuid', 'a;b']) {
       const odd = fakeDeps(
         () =>
-          new Response(JSON.stringify({ id }), {
+          new Response(JSON.stringify({ id, identities: [{ provider: 'apple' }] }), {
             status: 200,
             headers: { 'content-type': 'application/json' },
           }),
@@ -1542,6 +1561,128 @@ Deno.test('only the account that started the Apple delete ceremony can finish it
   assertEquals(badToken?.status, 403);
   assertEquals(await errorOf(badToken), 'bad_jwt');
   assertEquals(badToken?.headers.get('set-cookie')?.includes('Max-Age=0'), true);
+  // The refusal is passed on whole: still never cached, still JSON.
+  assertEquals(badToken?.headers.get('cache-control'), 'no-store');
+  assertEquals(badToken?.headers.get('content-type'), 'application/json');
+});
+
+Deno.test('an account with no Sign in with Apple has no Apple step to start', async () => {
+  // Its deletion never looks at an Apple code, so a ceremony armed for it
+  // would leave the state cookie as the only thing between a landing and
+  // the deletion. The page never asks for one either.
+  for (const providers of [['email'], ['email', 'google'], []]) {
+    const { deps } = fakeDeps(userIs(APPLE_USER, providers));
+    const response = await handleAuthRequest(
+      post('/auth/apple/delete/start', {}, { bearer: 'access-1' }),
+      ENV,
+      deps,
+    );
+    assertEquals(response?.status, 409, providers.join(','));
+    assertEquals(await errorOf(response), 'apple_identity_required');
+    assertEquals(response?.headers.get('set-cookie'), null);
+    assertEquals(response?.headers.get('cache-control'), 'no-store');
+  }
+});
+
+Deno.test('the Apple delete ceremony always answers, whatever Supabase does', async () => {
+  for (const [what, responder] of [
+    ['unreachable', unreachable()],
+    ['not JSON', notJson()],
+  ] as const) {
+    // Starting: a plain refusal, and nothing armed.
+    const starting = fakeDeps(responder);
+    const start = await handleAuthRequest(
+      post('/auth/apple/delete/start', {}, { bearer: 'access-1' }),
+      ENV,
+      starting.deps,
+    );
+    assertEquals(start?.status, 502, what);
+    assertEquals(await errorOf(start), 'upstream_unavailable', what);
+    assertEquals(start?.headers.get('set-cookie'), null, what);
+
+    // Finishing: a refusal too, and the state is spent like on any other
+    // outcome. This used to throw, with no answer and the cookie left.
+    const finishing = fakeDeps(responder);
+    const complete = await handleAuthRequest(
+      post(
+        '/auth/apple/delete/complete',
+        { code: 'one-time-code', state: 'verifier-abc' },
+        { cookie: APPLE_DELETE_PENDING, bearer: 'access-1' },
+      ),
+      ENV,
+      finishing.deps,
+    );
+    assertEquals(complete?.status, 502, what);
+    assertEquals(await errorOf(complete), 'upstream_unavailable', what);
+    assertEquals(complete?.headers.get('set-cookie')?.includes('Max-Age=0'), true, what);
+    assertEquals(complete?.headers.get('cache-control'), 'no-store', what);
+  }
+});
+
+Deno.test('POST /auth/apple/delete/complete is behind the whole CSRF gate', async () => {
+  for (const options of [
+    { origin: 'https://attacker.test' },
+    { origin: null },
+    { csrf: false },
+  ]) {
+    const { deps, calls } = fakeDeps(userIs(APPLE_USER));
+    const response = await handleAuthRequest(
+      post(
+        '/auth/apple/delete/complete',
+        { code: 'one-time-code', state: 'verifier-abc' },
+        { ...options, cookie: APPLE_DELETE_PENDING, bearer: 'access-1' },
+      ),
+      ENV,
+      deps,
+    );
+    assertEquals(response?.status, 403, JSON.stringify(options));
+    assertEquals(await errorOf(response), 'csrf_rejected');
+    assertEquals(calls.length, 0);
+  }
+});
+
+Deno.test('a cookie is read by its exact name, as the browser holds it', async () => {
+  // A browser trims only spaces and tabs before it decides whether a cookie
+  // may be called `__Host-…`. With any other character in front, the name is
+  // not a `__Host-` name to the browser, so a sibling domain may set it, and
+  // it must not be read here as the real one. A no-break space is the case
+  // that `String.prototype.trim` would have let through.
+  const header = (value: string): Request =>
+    ({
+      headers: { get: (key: string) => (key === 'cookie' ? value : null) },
+    }) as unknown as Request;
+  const name = '__Host-ll_apple_delete';
+  for (const lead of ['\u00a0', '\u2003', '\u3000', '\ufeff', '\u000b', '\u000c', '\r', '\n']) {
+    const code = lead.codePointAt(0)?.toString(16);
+    assertEquals(readCookie(header(`${lead}${name}=PLANTED`), name), null, `U+${code}`);
+    assertEquals(readCookie(header(`${name}${lead}=PLANTED`), name), null, `U+${code} after`);
+    // Planted ahead of the real one, it does not win.
+    assertEquals(
+      readCookie(header(`${lead}${name}=PLANTED; ${name}=real`), name),
+      'real',
+      `U+${code} ahead of the real cookie`,
+    );
+  }
+  // What a browser does send still reads: pairs padded with spaces or tabs.
+  assertEquals(readCookie(header(`a=1; ${name}=real ;b=2`), name), 'real');
+  assertEquals(readCookie(header(`a=1;\t${name}=real\t; b=2`), name), 'real');
+  assertEquals(readCookie(header(`a=1; ${name}=real`), 'missing'), null);
+
+  // Through the route: a planted lookalike naming the right account is no
+  // state cookie at all.
+  const { deps, calls } = fakeDeps(userIs(APPLE_USER));
+  const response = await handleAuthRequest(
+    post(
+      '/auth/apple/delete/complete',
+      { code: 'not-an-apple-code', state: 'PLANTED' },
+      { cookie: `\u00a0${name}=PLANTED.${APPLE_USER}`, bearer: 'access-1' },
+    ),
+    ENV,
+    deps,
+  );
+  assertEquals(response?.status, 401);
+  assertEquals(await errorOf(response), 'state_missing');
+  assertEquals(calls.length, 0);
 });
 
 Deno.test('a state cookie that names no account finishes nothing', async () => {

@@ -73,6 +73,8 @@ export function AccountPage() {
   const t = useT();
   const session = useAuthSession();
   const signedIn = session.data?.signedIn === true;
+  // True once the session question has an answer either way.
+  const sessionSettled = session.data !== undefined;
   const identities = useIdentities(signedIn);
   const link = useLinkIdentity();
   const unlink = useUnlinkIdentity();
@@ -129,7 +131,14 @@ export function AccountPage() {
   useEffect(() => {
     if (appleCode === null || appleState === null) return;
     if (ceremonyStartedRef.current) return; // StrictMode/loop guard: one completion per landing.
-    if (!signedIn) return; // The session is still restoring from the cookie.
+    if (!signedIn) {
+      // Still restoring from the cookie: wait. Restored and signed out: this
+      // landing is nobody's to finish, so the code and state leave the
+      // address now. Left there, signing in and going Back within the
+      // ceremony's ten minutes would have finished it without another word.
+      if (sessionSettled) setSearchParameters({}, { replace: true });
+      return;
+    }
     ceremonyStartedRef.current = true;
     webAuth
       .completeAppleDelete(appleCode, appleState)
@@ -148,7 +157,7 @@ export function AccountPage() {
         // material, not something a refresh should re-offer.
         setSearchParameters({}, { replace: true });
       });
-  }, [appleCode, appleState, signedIn, deleteAccount, setSearchParameters]);
+  }, [appleCode, appleState, signedIn, sessionSettled, deleteAccount, setSearchParameters]);
 
   const startDeletion = () => {
     setConfirmingDelete(false);

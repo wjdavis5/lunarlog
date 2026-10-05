@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppIntlProvider } from '../src/i18n/i18n';
@@ -49,6 +49,12 @@ vi.mock('../src/lib/export', () => exportMocks);
 
 const IDENTITIES = { email: 'a@example.com', providers: ['email', 'google'] };
 
+/** Shows the address the router is on, so a test can read it. */
+function Address() {
+  const location = useLocation();
+  return <output data-testid="address">{`${location.pathname}${location.search}`}</output>;
+}
+
 function renderPage(
   options: { signedIn?: boolean; identities?: typeof IDENTITIES | Error; entry?: string } = {},
 ) {
@@ -77,6 +83,7 @@ function renderPage(
     <AppIntlProvider>
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={[entry]}>
+          <Address />
           <Routes>
             <Route path="/" element={<div>home</div>} />
             <Route path="/account" element={<AccountPage />} />
@@ -432,6 +439,75 @@ describe('AccountPage (issue #1256)', () => {
     );
     await waitFor(() =>
       expect(authMocks.deleteAccount).toHaveBeenCalledWith('one-time-code', 'web'),
+    );
+  });
+
+  it('the landing spends the code and state: they leave the address either way', async () => {
+    authMocks.deleteAccount.mockResolvedValue(undefined);
+    renderPage({
+      signedIn: true,
+      identities: IDENTITIES,
+      entry: '/account?code=one-time-code&state=state-nonce',
+    });
+    expect(screen.getByTestId('address').textContent).toBe(
+      '/account?code=one-time-code&state=state-nonce',
+    );
+    await waitFor(() => expect(authMocks.completeAppleDelete).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId('address').textContent).toBe('/account'));
+    // One landing, one check: clearing the address does not run it again.
+    expect(authMocks.completeAppleDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it('a landing with nobody signed in finishes nothing and keeps nothing', async () => {
+    renderPage({ signedIn: false, entry: '/account?code=one-time-code&state=state-nonce' });
+
+    await screen.findByRole('link', { name: messages['accountSignInTitle'] });
+    // The code and state do not stay in the address for a later sign-in and
+    // a press of Back to pick up.
+    await waitFor(() => expect(screen.getByTestId('address').textContent).toBe('/account'));
+    expect(authMocks.completeAppleDelete).not.toHaveBeenCalled();
+    expect(authMocks.deleteAccount).not.toHaveBeenCalled();
+  });
+
+  it('a landing waits while the session is still being restored', async () => {
+    // No answer yet to "is anyone signed in": the page neither finishes the
+    // ceremony nor throws the landing away.
+    let answer: (token: string | null) => void = () => undefined;
+    authMocks.getToken.mockReturnValue(
+      new Promise<string | null>((resolve) => {
+        answer = resolve;
+      }),
+    );
+    authMocks.deleteAccount.mockResolvedValue(undefined);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    authMocks.getIdentities.mockResolvedValue(IDENTITIES);
+    render(
+      <AppIntlProvider>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={['/account?code=one-time-code&state=state-nonce']}>
+            <Address />
+            <Routes>
+              <Route path="/account" element={<AccountPage />} />
+            </Routes>
+          </MemoryRouter>
+        </QueryClientProvider>
+      </AppIntlProvider>,
+    );
+
+    await screen.findByText(messages['accountSectionTitle']);
+    expect(authMocks.completeAppleDelete).not.toHaveBeenCalled();
+    expect(screen.getByTestId('address').textContent).toBe(
+      '/account?code=one-time-code&state=state-nonce',
+    );
+
+    answer('access-1');
+    await waitFor(() =>
+      expect(authMocks.completeAppleDelete).toHaveBeenCalledWith(
+        'one-time-code',
+        'state-nonce',
+      ),
     );
   });
 

@@ -161,15 +161,31 @@ export function buildClearedCookie(
   return `${name}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`;
 }
 
-/** Reads one cookie from a Request's Cookie header, or null. */
+/** [text] without the spaces and tabs around it: all that pads a cookie pair. */
+function trimCookiePadding(text: string): string {
+  return text.replace(/^[ \t]+|[ \t]+$/g, '');
+}
+
+/**
+ * Reads one cookie from a Request's Cookie header, or null.
+ *
+ * Only spaces and tabs are trimmed from around a name, which is what a
+ * browser trims before it decides whether a cookie is entitled to the
+ * `__Host-` prefix. `String.prototype.trim` strips more than that (a
+ * no-break space, for one). A cookie named with such a character in front
+ * of `__Host-…` is not a `__Host-` cookie to the browser, so anything on a
+ * sibling domain may set it; trimmed too generously here, it would be read
+ * as the real one. Every cookie this Worker trusts comes through this
+ * function, so the name must match exactly.
+ */
 export function readCookie(request: Request, name: string): string | null {
   const header = request.headers.get('cookie');
   if (header === null) return null;
   for (const part of header.split(';')) {
     const separator = part.indexOf('=');
     if (separator === -1) continue;
-    if (part.slice(0, separator).trim() === name) {
-      return part.slice(separator + 1).trim();
+    if (trimCookiePadding(part.slice(0, separator)) === name) {
+      return trimCookiePadding(part.slice(separator + 1));
     }
   }
   return null;
