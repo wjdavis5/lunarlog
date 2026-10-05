@@ -1308,6 +1308,46 @@ abstract class AppLocalizations {
     int periodDays,
   );
 
+  /// Issue #1517: the centre of the Today ring when the estimate beneath it is a date range that has not opened yet: the days until the range's first and last day, with an en dash, above the unit cycleWheelDaysUntilUnit ("7–11" over "days"). The ring used to count down to the middle of the range.
+  ///
+  /// In en, this message translates to:
+  /// **'{from}–{to}'**
+  String cycleWheelRangeHero(int from, int to);
+
+  /// Issue #1517: the centre of the Today ring when today is inside the estimate's date range. Read with cycleWheelRangeNowUnit beneath it as "Any day now". No count: the ring used to say "1 day" and then "1 day past estimate" on days inside the range shown beneath it.
+  ///
+  /// In en, this message translates to:
+  /// **'Any day'**
+  String get cycleWheelRangeNowHero;
+
+  /// Issue #1517: the small line under cycleWheelRangeNowHero; together they read "Any day now".
+  ///
+  /// In en, this message translates to:
+  /// **'now'**
+  String get cycleWheelRangeNowUnit;
+
+  /// Issue #1517: the Today ring's screen-reader label when the estimate is a date range that has not opened yet. The range counterpart of cycleWheelSemanticsMidCycle.
+  ///
+  /// In en, this message translates to:
+  /// **'About {from} to {to} days until next period. Cycle day {cycleDay} of about {cycleDays} days. Period usually runs about {periodDays} days.'**
+  String cycleWheelSemanticsRangeAhead(
+    int from,
+    int to,
+    int cycleDay,
+    int cycleDays,
+    int periodDays,
+  );
+
+  /// Issue #1517: the Today ring's screen-reader label when today is inside the estimate's date range.
+  ///
+  /// In en, this message translates to:
+  /// **'Next period may start any day now. Cycle day {cycleDay} of about {cycleDays} days. Period usually runs about {periodDays} days.'**
+  String cycleWheelSemanticsRangeNow(
+    int cycleDay,
+    int cycleDays,
+    int periodDays,
+  );
+
   /// The overview wheel's screen-reader label; {phase} is a cycleWheelCenter*/cycleWheelPhase* fragment.
   ///
   /// In en, this message translates to:

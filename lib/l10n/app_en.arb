@@ -981,6 +981,62 @@
       }
     }
   },
+  "cycleWheelRangeHero": "{from}–{to}",
+  "@cycleWheelRangeHero": {
+    "description": "Issue #1517: the centre of the Today ring when the estimate beneath it is a date range that has not opened yet: the days until the range's first and last day, with an en dash, above the unit cycleWheelDaysUntilUnit (\"7–11\" over \"days\"). The ring used to count down to the middle of the range.",
+    "placeholders": {
+      "from": {
+        "type": "int"
+      },
+      "to": {
+        "type": "int"
+      }
+    }
+  },
+  "cycleWheelRangeNowHero": "Any day",
+  "@cycleWheelRangeNowHero": {
+    "description": "Issue #1517: the centre of the Today ring when today is inside the estimate's date range. Read with cycleWheelRangeNowUnit beneath it as \"Any day now\". No count: the ring used to say \"1 day\" and then \"1 day past estimate\" on days inside the range shown beneath it."
+  },
+  "cycleWheelRangeNowUnit": "now",
+  "@cycleWheelRangeNowUnit": {
+    "description": "Issue #1517: the small line under cycleWheelRangeNowHero; together they read \"Any day now\"."
+  },
+  "cycleWheelSemanticsRangeAhead": "About {from} to {to} days until next period. Cycle day {cycleDay} of about {cycleDays} days. Period usually runs about {periodDays} days.",
+  "@cycleWheelSemanticsRangeAhead": {
+    "description": "Issue #1517: the Today ring's screen-reader label when the estimate is a date range that has not opened yet. The range counterpart of cycleWheelSemanticsMidCycle.",
+    "placeholders": {
+      "from": {
+        "type": "int"
+      },
+      "to": {
+        "type": "int"
+      },
+      "cycleDay": {
+        "type": "int"
+      },
+      "cycleDays": {
+        "type": "int"
+      },
+      "periodDays": {
+        "type": "int"
+      }
+    }
+  },
+  "cycleWheelSemanticsRangeNow": "Next period may start any day now. Cycle day {cycleDay} of about {cycleDays} days. Period usually runs about {periodDays} days.",
+  "@cycleWheelSemanticsRangeNow": {
+    "description": "Issue #1517: the Today ring's screen-reader label when today is inside the estimate's date range.",
+    "placeholders": {
+      "cycleDay": {
+        "type": "int"
+      },
+      "cycleDays": {
+        "type": "int"
+      },
+      "periodDays": {
+        "type": "int"
+      }
+    }
+  },
   "cycleWheelSemanticsBody": "{phase} of about {cycleDays} days. Period usually runs about {periodDays} days.",
   "@cycleWheelSemanticsBody": {
     "description": "The overview wheel's screen-reader label; {phase} is a cycleWheelCenter*/cycleWheelPhase* fragment.",

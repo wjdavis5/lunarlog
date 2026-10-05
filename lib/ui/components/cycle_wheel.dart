@@ -88,6 +88,7 @@ String cycleWheelSemanticsLabel({
   required AppLocalizations l10n,
   int? daysUntilNextPeriod,
   bool irregularFraming = false,
+  ({int start, int end})? rangeDaysAhead,
 }) {
   if (duringEpisode) {
     return l10n.cycleWheelSemanticsBleed(
@@ -95,6 +96,23 @@ String cycleWheelSemanticsLabel({
       cycleLengthDays,
       periodLengthDays,
     );
+  }
+  // Issue #1517: a range estimate is read as a range, never as a count to
+  // the middle of it.
+  if (rangeDaysAhead != null) {
+    return rangeDaysAhead.start > 0
+        ? l10n.cycleWheelSemanticsRangeAhead(
+            rangeDaysAhead.start,
+            rangeDaysAhead.end,
+            cycleDay,
+            cycleLengthDays,
+            periodLengthDays,
+          )
+        : l10n.cycleWheelSemanticsRangeNow(
+            cycleDay,
+            cycleLengthDays,
+            periodLengthDays,
+          );
   }
   final days = daysUntilNextPeriod ?? (cycleLengthDays - cycleDay);
   if (days < 0) {
@@ -122,6 +140,7 @@ class CycleWheel extends StatelessWidget {
     required this.periodLengthDays,
     this.daysUntilNextPeriod,
     this.irregularFraming = false,
+    this.rangeDaysAhead,
     this.diameter = 200,
   });
 
@@ -149,7 +168,53 @@ class CycleWheel extends StatelessWidget {
   /// (`irregularFramingInEffect`). Presentation only.
   final bool irregularFraming;
 
+  /// Issue #1517: the days from today to each end of the estimate's range,
+  /// when the line beneath the ring shows a range (`estimateRangeDaysAhead`
+  /// in `estimate_copy.dart`). The centre then shows both distances before
+  /// the range opens ("7–11 days") and no count once today is inside it
+  /// ("Any day now"), and [daysUntilNextPeriod] is used for the ring's arc
+  /// alone. Null keeps the single count.
+  final ({int start, int end})? rangeDaysAhead;
+
   final double diameter;
+
+  /// The centre for a range estimate ([rangeDaysAhead] non-null). Scaled
+  /// down to fit: "24–32" is wider than the single figure the ring was
+  /// sized for.
+  Widget _rangeCenterContent(
+    ThemeData theme,
+    AppLocalizations l10n,
+    ({int start, int end}) range,
+  ) {
+    final ahead = range.start > 0;
+    return Column(
+      key: const ValueKey('cycle-wheel-center-label'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            ahead
+                ? l10n.cycleWheelRangeHero(range.start, range.end)
+                : l10n.cycleWheelRangeNowHero,
+            key: const ValueKey('overview-days-until'),
+            style: ahead
+                ? theme.textTheme.displayMedium
+                : theme.textTheme.displaySmall,
+            textAlign: TextAlign.center,
+          ),
+        ),
+        Text(
+          ahead
+              ? l10n.cycleWheelDaysUntilUnit(range.end)
+              : l10n.cycleWheelRangeNowUnit,
+          key: const ValueKey('cycle-wheel-center-unit'),
+          style: theme.textTheme.labelLarge,
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
 
   Widget _centerContent(ThemeData theme, AppLocalizations l10n) {
     if (duringEpisode) {
@@ -172,6 +237,8 @@ class CycleWheel extends StatelessWidget {
         ],
       );
     }
+    final range = rangeDaysAhead;
+    if (range != null) return _rangeCenterContent(theme, l10n, range);
     final effectiveDays = daysUntilNextPeriod ?? (cycleLengthDays - cycleDay);
     final isLate = effectiveDays < 0;
     final displayCount = isLate ? -effectiveDays : effectiveDays;
@@ -214,6 +281,7 @@ class CycleWheel extends StatelessWidget {
         periodLengthDays: periodLengthDays,
         daysUntilNextPeriod: daysUntilNextPeriod,
         irregularFraming: irregularFraming,
+        rangeDaysAhead: rangeDaysAhead,
         l10n: l10n,
       ),
       // The centre label below is purely visual duplication of this node's

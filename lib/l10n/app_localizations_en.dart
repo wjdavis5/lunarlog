@@ -762,6 +762,37 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String cycleWheelRangeHero(int from, int to) {
+    return '$from–$to';
+  }
+
+  @override
+  String get cycleWheelRangeNowHero => 'Any day';
+
+  @override
+  String get cycleWheelRangeNowUnit => 'now';
+
+  @override
+  String cycleWheelSemanticsRangeAhead(
+    int from,
+    int to,
+    int cycleDay,
+    int cycleDays,
+    int periodDays,
+  ) {
+    return 'About $from to $to days until next period. Cycle day $cycleDay of about $cycleDays days. Period usually runs about $periodDays days.';
+  }
+
+  @override
+  String cycleWheelSemanticsRangeNow(
+    int cycleDay,
+    int cycleDays,
+    int periodDays,
+  ) {
+    return 'Next period may start any day now. Cycle day $cycleDay of about $cycleDays days. Period usually runs about $periodDays days.';
+  }
+
+  @override
   String cycleWheelSemanticsBody(String phase, int cycleDays, int periodDays) {
     return '$phase of about $cycleDays days. Period usually runs about $periodDays days.';
   }

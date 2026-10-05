@@ -47,6 +47,7 @@ class TodayCard extends StatefulWidget {
     required this.periodLengthDays,
     this.daysUntilNextPeriod,
     this.irregularFraming = false,
+    this.rangeDaysAhead,
     required this.estimateText,
     required this.tier,
     required this.showConfidenceChip,
@@ -74,6 +75,10 @@ class TodayCard extends StatefulWidget {
   /// wheel's overdue unit and semantics off "late" wording. Forwarded to
   /// [CycleWheel]; see that widget's own doc for the resolution rule.
   final bool irregularFraming;
+
+  /// Issue #1517: passed straight to the ring. Non-null when [estimateText]
+  /// is a range, so the ring shows that range instead of a single count.
+  final ({int start, int end})? rangeDaysAhead;
 
   /// The fully-formatted next-period estimate line (issue #131/#213: the
   /// mode's own label plus either the single date or the range), computed
@@ -142,6 +147,7 @@ class _TodayCardState extends State<TodayCard> {
             periodLengthDays: widget.periodLengthDays,
             daysUntilNextPeriod: widget.daysUntilNextPeriod,
             irregularFraming: widget.irregularFraming,
+            rangeDaysAhead: widget.rangeDaysAhead,
           ),
         ),
         if (!widget.duringEpisode) ...[
