@@ -236,6 +236,31 @@ describe('ProfileNotesPage (issue #1255)', () => {
     expect(editors).toHaveLength(1);
   });
 
+  // Issue #1464: an empty name is no name. `??` kept it, so the note was
+  // signed by nobody at all.
+  it.each([
+    ['no', null],
+    ['an empty', ''],
+  ])('a note from a guardian with %s name is signed "Guardian"', async (_described, name) => {
+    sharingMocks.fetchGuardians.mockResolvedValue([
+      guardianRow(),
+      guardianRow({
+        id: GUARDIAN_ROW_ID_2,
+        user_id: OTHER,
+        role: 'caregiver',
+        display_name: name,
+      }),
+    ]);
+    sharingMocks.fetchGuardianNotesForDate.mockResolvedValue([noteRow()]);
+    renderPage();
+    const note = (await screen.findByText('Felt better after lunch.')).closest(
+      'li',
+    ) as HTMLElement;
+    expect(
+      within(note).getByText(messages['guardianNotesGuardianFallback'] ?? 'missing'),
+    ).toHaveClass('row-title');
+  });
+
   it("the operator's own note adopts the editor with an update button", async () => {
     sharingMocks.fetchGuardianNotesForDate.mockResolvedValue([
       noteRow({ id: ULID, logged_by_user_id: ME, body: 'My note.' }),

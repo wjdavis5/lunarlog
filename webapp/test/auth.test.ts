@@ -153,7 +153,10 @@ describe('WebAuthClient (issue #1250)', () => {
     });
 
     // An unmarked callback (sign-up, magic link, OAuth) is not recovery.
-    expect(await client.exchangeCallback('pkce-code')).toEqual({ recovery: false });
+    expect(await client.exchangeCallback('pkce-code')).toEqual({
+      recovery: false,
+      next: null,
+    });
     expect(JSON.parse(String(calls[0].init?.body))).toEqual({ code: 'pkce-code' });
     expect(client.getUser()?.id).toBe('u1');
 
@@ -176,7 +179,10 @@ describe('WebAuthClient (issue #1250)', () => {
       return Promise.resolve(jsonResponse({ ...SESSION_BODY, recovery: true }));
     });
 
-    expect(await client.exchangeCallback('pkce-code')).toEqual({ recovery: true });
+    expect(await client.exchangeCallback('pkce-code')).toEqual({
+      recovery: true,
+      next: null,
+    });
     expect(client.getUser()?.id).toBe('u1');
   });
 
@@ -262,6 +268,99 @@ describe('WebAuthClient (issue #1250)', () => {
         value: originalLocation,
       });
     }
+  });
+
+  // Issue #1456: a sign-in that leaves the site takes the return path with
+  // it, so an invited visitor comes back to the invitation.
+  describe('the return path through a sign-in that leaves the site', () => {
+    const INVITE = '/invite?code=ABC123&kind=claim';
+
+    function assignedBy(run: () => void): string[] {
+      const assigned: string[] = [];
+      const originalLocation = window.location;
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        value: { assign: (url: string) => assigned.push(url) },
+      });
+      try {
+        run();
+      } finally {
+        Object.defineProperty(window, 'location', {
+          configurable: true,
+          value: originalLocation,
+        });
+      }
+      return assigned;
+    }
+
+    function bodyOf(call: FetchCall | undefined): Record<string, unknown> {
+      return JSON.parse(String(call?.init?.body ?? '{}')) as Record<string, unknown>;
+    }
+
+    it('OAuth start carries it, encoded', () => {
+      expect(assignedBy(() => webAuth.startOAuth('google', INVITE))).toEqual([
+        `/auth/oauth/start?provider=google&next=${encodeURIComponent(INVITE)}`,
+      ]);
+    });
+
+    it('OAuth start drops one that is not a page on this site', () => {
+      for (const hostile of [
+        '//evil.example',
+        '/.//evil.example',
+        'https://evil.example',
+        '/sign-in',
+      ]) {
+        expect(assignedBy(() => webAuth.startOAuth('apple', hostile))).toEqual([
+          '/auth/oauth/start?provider=apple',
+        ]);
+      }
+    });
+
+    it('the emailed link request carries it, and says nothing when there is none', async () => {
+      const { calls } = stubFetch(() => Promise.resolve(jsonResponse({ ok: true })));
+      await client.sendOtp('a@example.com', false, INVITE);
+      await client.sendOtp('a@example.com', false);
+      await client.sendOtp('a@example.com', false, '//evil.example');
+      expect(bodyOf(calls[0])).toEqual({
+        email: 'a@example.com',
+        create_user: false,
+        next: INVITE,
+      });
+      expect(bodyOf(calls[1])).toEqual({ email: 'a@example.com', create_user: false });
+      expect(bodyOf(calls[2])).toEqual({ email: 'a@example.com', create_user: false });
+    });
+
+    it('a sign-up carries it for the confirmation link', async () => {
+      const { calls } = stubFetch(() => Promise.resolve(jsonResponse({ session: false })));
+      await client.signUp('new@example.com', 'long enough password', INVITE);
+      expect(bodyOf(calls[0])).toEqual({
+        email: 'new@example.com',
+        password: 'long enough password',
+        next: INVITE,
+      });
+    });
+
+    it('the callback reports the path the Worker carried', async () => {
+      stubFetch(() => Promise.resolve(jsonResponse({ ...SESSION_BODY, next: INVITE })));
+      expect(await client.exchangeCallback('pkce-code')).toEqual({
+        recovery: false,
+        next: INVITE,
+      });
+    });
+
+    it('the callback checks it again: a path off this site is not reported', async () => {
+      for (const hostile of [
+        '//evil.example/x',
+        '/.//evil.example',
+        '/%2Fevil.example',
+        '/sign-in',
+        42,
+        {},
+      ]) {
+        stubFetch(() => Promise.resolve(jsonResponse({ ...SESSION_BODY, next: hostile })));
+        expect((await client.exchangeCallback('pkce-code')).next).toBeNull();
+      }
+    });
   });
 });
 

@@ -90,9 +90,10 @@ export function useSignUpMutation() {
   return useMutation<
     'signed_in' | 'confirmation_required',
     Error,
-    { email: string; password: string }
+    { email: string; password: string; next?: string | null }
   >({
-    mutationFn: (variables) => webAuth.signUp(variables.email, variables.password),
+    mutationFn: (variables) =>
+      webAuth.signUp(variables.email, variables.password, variables.next ?? null),
     onSuccess: (result) => {
       // Only a session adoption is an identity boundary; a pending email
       // confirmation signs nobody in (issue #1281).
@@ -106,8 +107,9 @@ export function useSignUpMutation() {
 
 /** Emailed-code / magic-link send. */
 export function useSendOtp() {
-  return useAuthMutation((variables: { email: string; createUser: boolean }) =>
-    webAuth.sendOtp(variables.email, variables.createUser),
+  return useAuthMutation(
+    (variables: { email: string; createUser: boolean; next?: string | null }) =>
+      webAuth.sendOtp(variables.email, variables.createUser, variables.next ?? null),
   );
 }
 
@@ -177,8 +179,8 @@ export function useResetWebDataOnIdentityChange(): void {
  * OAuth start is a navigation, not a fetch (the browser must land on the
  * provider); exposed for the tests' seam symmetry.
  */
-export function startOAuth(provider: OAuthProvider): void {
-  webAuth.startOAuth(provider);
+export function startOAuth(provider: OAuthProvider, next: string | null = null): void {
+  webAuth.startOAuth(provider, next);
 }
 
 // ---------------------------------------------------------------------------

@@ -99,7 +99,10 @@ export function SignInPage() {
     // copy on this page, not strand the user on the code screen waiting
     // for an email that never comes.
     sendOtp.mutate(
-      { email: email.trim(), createUser: false },
+      // The emailed link comes back through /auth/callback, so the return
+      // path goes with the request (issue #1456); the emailed code keeps
+      // it in the address, below.
+      { email: email.trim(), createUser: false, next },
       {
         onSuccess: () =>
           navigate(withNext(`/sign-in/code?email=${encodeURIComponent(email.trim())}`, next)),
@@ -205,14 +208,14 @@ export function SignInPage() {
         <button
           type="button"
           className="auth-button auth-button-secondary"
-          onClick={() => startOAuth('google')}
+          onClick={() => startOAuth('google', next)}
         >
           {t('accountGoogleButtonLabel')}
         </button>
         <button
           type="button"
           className="auth-button auth-button-secondary"
-          onClick={() => startOAuth('apple')}
+          onClick={() => startOAuth('apple', next)}
         >
           {t('webAuthAppleButtonLabel')}
         </button>

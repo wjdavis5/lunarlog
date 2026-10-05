@@ -85,12 +85,24 @@ function formatDate(iso: string): string {
   return new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(new Date(iso));
 }
 
-/** The expiry fragment of `sharingManageGuardiansPendingSubtitle` (issue #362). */
+/** From two days up the expiry counts days (issue #1465); the app's `kExpiryDaysFromHours`. */
+const EXPIRY_DAYS_FROM_MINUTES = 48 * 60;
+
+/**
+ * The expiry fragment of `sharingManageGuardiansPendingSubtitle` (issue #362).
+ *
+ * Minutes up to an hour and a half, hours up to two days, whole days after
+ * that. An invitation that lasts a week used to read "expires in 144h". The
+ * day count rounds down, so it never promises more time than is left.
+ */
 export function expiryLabel(expiresAt: string, now: Date, t: TFunction): string {
   const ms = new Date(expiresAt).getTime() - now.getTime();
   if (ms <= 0) return t('sharingManageGuardiansExpiryExpired');
   const minutes = Math.ceil(ms / 60_000);
   if (minutes <= 90) return t('sharingManageGuardiansExpiryMinutes', { minutes });
+  if (minutes >= EXPIRY_DAYS_FROM_MINUTES) {
+    return t('sharingManageGuardiansExpiryDays', { days: Math.floor(minutes / (24 * 60)) });
+  }
   return t('sharingManageGuardiansExpiryHours', { hours: Math.round(minutes / 60) });
 }
 

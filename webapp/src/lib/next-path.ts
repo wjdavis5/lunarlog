@@ -97,6 +97,12 @@ export function safeNextPath(raw: string | null | undefined): string | null {
   if (isAuthScreen(decoded)) return null;
 
   const result = `${url.pathname}${url.search}${url.hash}`;
+  // The limit holds for what is handed back, not only for what was typed.
+  // Resolving percent-encodes, and a letter outside ASCII grows ninefold:
+  // 58 characters could come out as 514, a value this function then refused
+  // when the cookie handed it back, and a few hundred as a cookie too large
+  // for the browser to keep at all.
+  if (result.length > MAX_NEXT_LENGTH) return null;
   // The last word: whatever the rules above let through, the value handed
   // back must itself resolve to this origin and to the same path.
   let again: URL;
