@@ -5218,6 +5218,15 @@ class AppLocalizationsEn extends AppLocalizations {
       'Health Connect returned no menstrual-flow data. This can mean nothing was tracked, or that read access is off.';
 
   @override
+  String get healthSyncImportEmptyHealthConnectReadable =>
+      'Health Connect has no period or spotting data from other apps to import.';
+
+  @override
+  String healthSyncImportNothingSinceLast(String source) {
+    return 'Nothing new in $source since the last import.';
+  }
+
+  @override
   String get healthSyncWriteIntro =>
       'Choose the one profile whose data this phone may ever write to its Health app. Every other profile stays out of this phone\'s Health app entirely.';
 

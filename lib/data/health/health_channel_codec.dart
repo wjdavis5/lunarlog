@@ -31,7 +31,11 @@
 /// *Page result* (`readMenstrualFlowPage`, Issue #992): a `Map` with
 /// `'samples'` — a `List` of the sample maps below — and `'nextCursor'` —
 /// the opaque cursor string for the next page, omitted or null when the
-/// stream is exhausted. A bare `List` is also still accepted by
+/// stream is exhausted. An optional Android-only `'incremental'` boolean
+/// (Issue #1523) is true on a page read through Health Connect's change
+/// token, that is, a page of what changed since the profile's previous
+/// import; it is absent on a full-history page and Swift never sends it. A
+/// bare `List` is also still accepted by
 /// [decodeHealthReadResult] as a legacy single-page/exhausted success, so a
 /// result-string protocol error is never silently read as data.
 ///
@@ -338,7 +342,13 @@ HealthReadResult _decodeReadPage(Map<Object?, Object?> raw) {
   final cursorText = cursor as String?;
   final nextCursor =
       (cursorText == null || cursorText.isEmpty) ? null : cursorText;
-  return _decodeSampleList(rawSamples, nextCursor: nextCursor);
+  return _decodeSampleList(
+    rawSamples,
+    nextCursor: nextCursor,
+    // Only a literal true counts: absent, null, or any other value is a
+    // full-history page.
+    incremental: raw['incremental'] == true,
+  );
 }
 
 /// The result-String branch of [decodeHealthReadResult] (`unavailable` /
@@ -363,7 +373,11 @@ HealthReadResult _decodeReadString(String raw) {
 /// Decodes a list of sample maps into [HealthReadSamples], carrying
 /// [nextCursor] through. A single malformed map fails the whole page rather
 /// than dropping it silently.
-HealthReadResult _decodeSampleList(Object? raw, {String? nextCursor}) {
+HealthReadResult _decodeSampleList(
+  Object? raw, {
+  String? nextCursor,
+  bool incremental = false,
+}) {
   if (raw is! List) return HealthReadResult.failed('samples is not a list');
   final samples = <HealthFlowSample>[];
   for (final entry in raw) {
@@ -373,7 +387,11 @@ HealthReadResult _decodeSampleList(Object? raw, {String? nextCursor}) {
     }
     samples.add(sample);
   }
-  return HealthReadResult.samples(samples, nextCursor: nextCursor);
+  return HealthReadResult.samples(
+    samples,
+    nextCursor: nextCursor,
+    incremental: incremental,
+  );
 }
 
 /// One sample map from `readMenstrualFlowPage`, or null when a required key is

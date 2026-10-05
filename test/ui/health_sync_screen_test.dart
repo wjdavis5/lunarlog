@@ -2139,6 +2139,188 @@ void main() {
       expect(find.byKey(settingsKey), findsOneWidget);
     });
 
+    // Issue #1523. A second import with nothing new showed "Health Connect
+    // returned no menstrual-flow data. This can mean nothing was tracked,
+    // or that read access is off." to someone whose first import was on her
+    // calendar and whose status line, on the same screen, said reading was
+    // on. After the first import Health Connect is asked only for what
+    // changed, so an empty answer means nothing changed.
+    group('Issue #1523 an import that brings nothing back', () {
+      const nothingNew = 'Nothing new in Health Connect since the last import.';
+      const nothingToImport = 'Health Connect has no period or spotting data '
+          'from other apps to import.';
+      final neutralHealthConnect = healthImportEmptyCopy(
+        AppLocalizationsEn(),
+        HealthImportPlatform.healthConnect,
+      );
+      final neutralAppleHealth = healthImportEmptyCopy(
+        AppLocalizationsEn(),
+        HealthImportPlatform.appleHealth,
+      );
+
+      Future<String> importAndReadResult(WidgetTester tester) async {
+        await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
+        await tester.pumpAndSettle();
+        return tester
+            .widget<Text>(
+              find.descendant(
+                of: find.byKey(const ValueKey('health-sync-import-summary')),
+                matching: find.byType(Text),
+              ),
+            )
+            .data!;
+      }
+
+      _FakeImporter androidImporter(HealthImportSummary summary) =>
+          _FakeImporter(summary, platform: HealthImportPlatform.healthConnect);
+
+      testWidgets('Android: a repeat import with nothing new says so, and '
+          'says nothing about access', (tester) async {
+        await pumpAndroid(
+          tester,
+          binding: await boundBinding(),
+          permissionProbe: _ScriptedProbe(
+            readAccessDisclosed: true,
+            write: HealthPermissionStatus.denied,
+            read: HealthPermissionStatus.granted,
+          ),
+          importer: androidImporter(
+            const HealthImportSummary(incremental: true, pagesRead: 1),
+          ),
+        );
+
+        final line = await importAndReadResult(tester);
+        expect(line, nothingNew);
+        expect(line, isNot(contains('access')));
+        expect(line, isNot(contains('returned no')));
+        // The line above it still says what her access is.
+        expect(statusLine(tester), readingOnly);
+      });
+
+      testWidgets('Android: a whole-history import that comes back empty '
+          'while reading is allowed does not suggest access is off',
+          (tester) async {
+        await pumpAndroid(
+          tester,
+          binding: await boundBinding(),
+          permissionProbe: _ScriptedProbe(
+            readAccessDisclosed: true,
+            write: HealthPermissionStatus.granted,
+            read: HealthPermissionStatus.granted,
+          ),
+          importer: androidImporter(const HealthImportSummary(pagesRead: 1)),
+        );
+
+        final line = await importAndReadResult(tester);
+        expect(line, nothingToImport);
+        expect(line, isNot(contains('access')));
+      });
+
+      testWidgets('Android: when reading is not known to be allowed, an '
+          'empty whole-history import keeps the neutral line', (tester) async {
+        for (final probe in [
+          _ScriptedProbe(
+            readAccessDisclosed: true,
+            write: HealthPermissionStatus.granted,
+            read: HealthPermissionStatus.denied,
+          ),
+          _ScriptedProbe(
+            readAccessDisclosed: true,
+            write: HealthPermissionStatus.granted,
+            read: HealthPermissionStatus.notAsked,
+          ),
+          // Cannot tell: the read-side probe throws.
+          _ScriptedProbe(
+            readAccessDisclosed: true,
+            write: HealthPermissionStatus.granted,
+            readThrows: true,
+          ),
+        ]) {
+          await pumpAndroid(
+            tester,
+            binding: await boundBinding(),
+            permissionProbe: probe,
+            importer: androidImporter(const HealthImportSummary(pagesRead: 1)),
+          );
+          expect(await importAndReadResult(tester), neutralHealthConnect);
+          await tester.pumpWidget(const SizedBox.shrink());
+        }
+      });
+
+      testWidgets('Android: reading switched off between the tap and the '
+          'answer is read again after the pass', (tester) async {
+        final probe = _ScriptedProbe(
+          readAccessDisclosed: true,
+          write: HealthPermissionStatus.granted,
+          read: HealthPermissionStatus.granted,
+        );
+        await pumpAndroid(
+          tester,
+          binding: await boundBinding(),
+          permissionProbe: probe,
+          importer: androidImporter(const HealthImportSummary()),
+        );
+        // What the screen loaded with is no longer true when the pass ends.
+        probe.read = HealthPermissionStatus.denied;
+
+        expect(await importAndReadResult(tester), neutralHealthConnect);
+      });
+
+      testWidgets('iPhone: an empty import keeps the neutral line whatever '
+          'a read-side probe could answer, and that probe is never asked',
+          (tester) async {
+        final probe = _ScriptedProbe(
+          readAccessDisclosed: false,
+          write: HealthPermissionStatus.granted,
+          read: HealthPermissionStatus.granted,
+        );
+        await pumpScreen(
+          tester,
+          binding: await boundBinding(),
+          importer: _FakeImporter(const HealthImportSummary(pagesRead: 1)),
+          permissionProbe: probe,
+          writeEnabled: true,
+          storePlatform: HealthImportPlatform.appleHealth,
+          viewport: const Size(800, 2400),
+        );
+
+        expect(await importAndReadResult(tester), neutralAppleHealth);
+        expect(probe.readProbes, 0);
+      });
+
+      testWidgets('with no permission probe wired, an empty import keeps '
+          'the neutral line', (tester) async {
+        await pumpScreen(
+          tester,
+          binding: await boundBinding(),
+          importer: androidImporter(const HealthImportSummary(pagesRead: 1)),
+          writeEnabled: true,
+          storePlatform: HealthImportPlatform.healthConnect,
+          viewport: const Size(800, 2400),
+        );
+
+        expect(await importAndReadResult(tester), neutralHealthConnect);
+      });
+
+      testWidgets('a pass that never read (reading declined) is not '
+          'described as nothing new', (tester) async {
+        await pumpAndroid(
+          tester,
+          binding: await boundBinding(),
+          permissionProbe: _ScriptedProbe(
+            readAccessDisclosed: true,
+            write: HealthPermissionStatus.granted,
+            read: HealthPermissionStatus.denied,
+          ),
+          importer: androidImporter(
+            const HealthImportSummary(blocked: HealthPlatformPermissionDenied()),
+          ),
+        );
+
+        expect(await importAndReadResult(tester), neutralHealthConnect);
+      });
+    });
+
     testWidgets('Android: a read-side probe that throws leaves the write '
         'answer on the line', (tester) async {
       final probe = _ScriptedProbe(

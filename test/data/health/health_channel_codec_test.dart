@@ -368,6 +368,36 @@ void main() {
       );
     });
 
+    test('Issue #1523: a page says whether it is only what changed since '
+        'the last import, and only a literal true counts', () {
+      bool incremental(Map<String, Object?> page) =>
+          (decodeHealthReadResult(page) as HealthReadSamples).incremental;
+
+      expect(
+        incremental({'samples': <Object?>[], 'incremental': true}),
+        isTrue,
+      );
+      // A full-history page carries no key at all (and Swift never sends it).
+      expect(incremental({'samples': <Object?>[]}), isFalse);
+      expect(
+        incremental({'samples': <Object?>[], 'incremental': false}),
+        isFalse,
+      );
+      expect(
+        incremental({'samples': <Object?>[], 'incremental': null}),
+        isFalse,
+      );
+      expect(
+        incremental({'samples': <Object?>[], 'incremental': 'true'}),
+        isFalse,
+      );
+      // The legacy bare list is a full read.
+      expect(
+        (decodeHealthReadResult(<Object?>[]) as HealthReadSamples).incremental,
+        isFalse,
+      );
+    });
+
     test('a non-string cursor, or a page with no samples list, is a failure',
         () {
       expect(
