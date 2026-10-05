@@ -4490,7 +4490,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get healthSyncFlowCollapseNote =>
-      'Super heavy days are written to the Health app as Heavy. Spotting logged inside a period is written as Light bleeding; spotting between periods is written as intermenstrual bleeding.';
+      'Super heavy days are written to the Health app as Heavy. Spotting logged inside a period is written as Light bleeding; spotting between periods is written as intermenstrual bleeding. A peak ovulation test is written the same as a positive one.';
 
   @override
   String get healthSyncRevocationNote =>
@@ -5260,7 +5260,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get healthSyncWriteSymptoms =>
-      'Symptoms you tag — cramps, headache, bloating, and mood — are written to the Health app as symptom entries. Mood tags are written as \'Mood Changes\' without saying which mood.';
+      'These tags are written to the Health app, each as the closest symptom type it has: Cramps, Headache, Back pain, Breast tenderness, Bloating, Acne, Nausea, Fatigue, Dizziness, Sleep trouble and Other craving. Every tag under Feelings is written as \'Mood Changes\' without saying which mood. No other tag is written as a symptom.';
 
   @override
   String get healthSyncImportOnly =>
@@ -5277,6 +5277,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get healthSyncPeriodRecordNoteHealthConnect =>
       'Once a day in a period is written, the first and last day you logged in lunarlog for that period are written with it, even if the period began before you allowed lunarlog to write. Days imported from Health Connect are never written back and never count towards a period lunarlog writes.';
+
+  @override
+  String get healthSyncWrittenTypes =>
+      'What lunarlog writes to the Health app: flow, spotting between periods, discharge you tag as sticky, creamy or egg white (cervical mucus), ovulation test results, basal body temperature, and the symptoms and moods listed below.';
 
   @override
   String get healthSyncWrittenTypesHealthConnect =>

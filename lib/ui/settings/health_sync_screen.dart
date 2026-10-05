@@ -1030,18 +1030,22 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   List<Widget> _writtenCopy(AppLocalizations l10n) {
     final healthConnect = _isHealthConnect;
     return [
-      if (healthConnect) ...[
-        _detail(
-          'health-sync-written-types-copy',
-          l10n.healthSyncWrittenTypesHealthConnect,
-        ),
+      // Issue #1526: both stores get the list of what is written. The
+      // iPhone had none, so its screen never mentioned cervical mucus,
+      // ovulation tests or basal body temperature.
+      _detail(
+        'health-sync-written-types-copy',
+        healthConnect
+            ? l10n.healthSyncWrittenTypesHealthConnect
+            : l10n.healthSyncWrittenTypes,
+      ),
+      if (healthConnect)
         // The one way a day logged before write access reaches Health
         // Connect: as the first day of a period that has a written day.
         _detail(
           'health-sync-period-record-copy',
           l10n.healthSyncPeriodRecordNoteHealthConnect,
         ),
-      ],
       _detail(
         'health-sync-flow-collapse-copy',
         healthConnect
