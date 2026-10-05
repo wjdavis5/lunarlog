@@ -191,6 +191,20 @@ while IFS= read -r file; do
       app_flutter=true
       ;;
 
+    # The web client's sign-in providers are read by the app's own
+    # test/site/privacy_browser_error_reporting_test.dart with File('...'):
+    # it pins PRIVACY.md's list of web sign-in methods to the OAuthProvider
+    # type declared here. Same failure class as the arm above -- a provider
+    # added or removed used to classify webapp+database only, skip that
+    # Dart pin, merge green, and turn the next unrelated Flutter PR red.
+    # Matched before the generic webapp/src/lib arm below, so webapp=true
+    # and database=true are restated here on purpose.
+    webapp/src/lib/auth.ts)
+      webapp=true
+      database=true
+      app_flutter=true
+      ;;
+
     # The web data layer (issue #1252): typed against the schema snapshot
     # and integration-tested against the live local stack, so its changes
     # run the database suite too — the same coupling as
