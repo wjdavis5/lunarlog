@@ -56,8 +56,7 @@ void main() {
     test('delete page walks the real in-app flow, per platform', () {
       // The steps must match the shipped UI: More tab → Settings →
       // Account → Delete account (lib/ui/settings/settings_screen.dart,
-      // lib/ui/account/account_section.dart), identical on iOS, Android,
-      // and the browser build.
+      // lib/ui/account/account_section.dart), identical on iOS and Android.
       expect(deleteAccountPage, contains('Delete from inside the app'));
       expect(deleteAccountPage, contains('iPhone'));
       expect(deleteAccountPage, contains('Android'));
@@ -77,6 +76,42 @@ void main() {
         deleteAccountPage,
         contains('normally gone by the time the confirmation completes'),
       );
+    });
+
+    // The browser version is the React web client. It has no More tab and
+    // no Settings screen: deletion is a card on its Account page, reached
+    // from the header. The page used to say the phone steps applied to the
+    // browser too, which sent a reader looking for a tab that is not
+    // there, on the page a store links to for account deletion.
+    test('delete page gives the browser version its own steps', () {
+      expect(
+        deleteAccountPage,
+        isNot(contains('iPhone, Android, and the browser version')),
+        reason: 'the phone steps (More, Settings) do not exist in the browser',
+      );
+      final start = deleteAccountPage.indexOf('<section id="browser">');
+      expect(start, greaterThanOrEqualTo(0));
+      final browser = deleteAccountPage.substring(
+        start,
+        deleteAccountPage.indexOf('</section>', start),
+      );
+      expect(browser, contains('Delete from the browser version'));
+      expect(browser, contains('https://app.lunarlog.app'));
+      // Every control is named through UiLabel, so a renamed label fails
+      // the site build instead of leaving a stale instruction.
+      expect(browser, contains('<UiLabel key="accountSectionTitle" />'));
+      expect(browser, contains('<UiLabel key="yourDataExportTitle" />'));
+      expect(browser, contains('<UiLabel key="accountSectionDelete" />'));
+      expect(
+        browser,
+        contains('<UiLabel key="accountDeleteDialogConfirm" />'),
+      );
+      expect(browser, isNot(contains('<strong>More</strong>')));
+      expect(browser, isNot(contains('<strong>Settings</strong>')));
+      // The claim is tied to the client that ships it.
+      expect(browser, contains('webapp/src/pages/AccountPage.tsx'));
+      // The phone section links down to it.
+      expect(deleteAccountPage, contains('<a href="#browser">'));
     });
 
     test('delete page covers what is deleted, kept, shared, and minors', () {
