@@ -19,8 +19,14 @@ const messages = JSON.parse(
 
 // CSP / Trusted Types refusals surface as console errors and page errors;
 // any other console noise is reported but only CSP violations fail.
+//
+// Chromium words a Trusted Types refusal as "This document requires
+// 'TrustedScript' assignment" (or 'TrustedHTML' / 'TrustedScriptURL'), with
+// no "TrustedTypes" in it. The pattern used to look for that word only, so
+// zod's eval probe was refused on every page load and this test stayed
+// green. `Trusted(Script|HTML|ScriptURL)` is what the browser actually says.
 const CSP_PATTERN =
-  /Content Security Policy|Refused to (?:apply|load|execute|connect|create)|TrustedTypes|Content-Security-Policy/i;
+  /Content Security Policy|Refused to (?:apply|load|execute|connect|create)|TrustedTypes|Trusted(?:Script|HTML|ScriptURL)|Content-Security-Policy/i;
 
 test('the shell renders, is accessible, and violates nothing', async ({ page }) => {
   const consoleErrors: string[] = [];
