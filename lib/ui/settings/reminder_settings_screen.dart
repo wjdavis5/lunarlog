@@ -28,11 +28,14 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/app_lifecycle.dart'
+    show RequestNotificationPermissionCallback;
 import 'package:lunarlog/domain/birth_control.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/notifications/birth_control_reminder_kind.dart'
     show birthControlReminderKindFor;
+import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences.dart'
     show QuietHours;
 import 'package:lunarlog/domain/notifications/reminder_config.dart';
@@ -42,6 +45,7 @@ import 'package:lunarlog/domain/notifications/scheduling.dart'
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/components/list_section_header.dart';
+import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/settings/reminder_text_editor_screen.dart';
 import 'package:provider/provider.dart';
@@ -166,6 +170,67 @@ BirthControlMethod? _birthControlMethodInEffect(
     );
   } on ArgumentError {
     return null;
+  }
+}
+
+/// Says, above the list, that the phone is not letting the app show
+/// notifications, and offers the button that asks.
+///
+/// Every switch below can read as on while nothing will ever appear: the
+/// app does not ask for the notification permission at startup (issues
+/// #863, #1425), so a new install arrives here with it simply off, and
+/// until now only the hint on Today said so. This is that hint's words and
+/// its seam ([RequestNotificationPermissionCallback]: whether the tap
+/// raises the system prompt or opens the phone's settings is the
+/// scheduler's decision), in the banner form the shell uses for a sync
+/// problem, and outside the scrolling list so it is not scrolled away.
+///
+/// Shows nothing when notifications are allowed, and nothing when the
+/// answer is not known at all (no [NotificationPermissionState] above this
+/// route). With nothing that can ask, it is the sentence without a button.
+class _NotificationsOffBanner extends StatefulWidget {
+  const _NotificationsOffBanner();
+
+  @override
+  State<_NotificationsOffBanner> createState() =>
+      _NotificationsOffBannerState();
+}
+
+class _NotificationsOffBannerState extends State<_NotificationsOffBanner> {
+  bool _requesting = false;
+
+  Future<void> _ask(RequestNotificationPermissionCallback request) async {
+    setState(() => _requesting = true);
+    try {
+      await request();
+    } finally {
+      if (mounted) setState(() => _requesting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final availability = context.watch<NotificationPermissionState?>()?.value;
+    if (availability != NotificationAvailability.denied) {
+      return const SizedBox.shrink();
+    }
+    final l10n = AppLocalizations.of(context);
+    final request = context.read<RequestNotificationPermissionCallback?>();
+    return MaterialBanner(
+      key: const ValueKey('reminders-notifications-off'),
+      leading: const Icon(Icons.notifications_off_outlined),
+      content: Text(l10n.overviewReminderHint),
+      actions: [
+        if (request == null)
+          const SizedBox.shrink()
+        else
+          TextButton(
+            key: const ValueKey('reminders-notifications-off-action'),
+            onPressed: _requesting ? null : () => _ask(request),
+            child: Text(l10n.overviewTurnOnReminders),
+          ),
+      ],
+    );
   }
 }
 
@@ -351,7 +416,12 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
       appBar: AppBar(
         title: Text(AppLocalizations.of(context).settingsSectionReminders),
       ),
-      body: _body(profiles, profile),
+      body: Column(
+        children: [
+          const _NotificationsOffBanner(),
+          Expanded(child: _body(profiles, profile)),
+        ],
+      ),
     );
   }
 
