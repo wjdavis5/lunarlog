@@ -294,6 +294,8 @@ void main() {
   group('SharingFailure types', () {
     test('constructors and message descriptions', () {
       expect(const SharingFailure.expired(), isA<SharingExpiredFailure>());
+      expect(const SharingFailure.revoked(), isA<SharingRevokedFailure>());
+      expect('${const SharingFailure.revoked()}', 'SharingFailure.revoked');
       expect(const SharingFailure.alreadyAccepted(), isA<SharingAlreadyAcceptedFailure>());
       expect(const SharingFailure.alreadyGuardian(), isA<SharingAlreadyGuardianFailure>());
       expect(const SharingFailure.notFound(), isA<SharingNotFoundFailure>());

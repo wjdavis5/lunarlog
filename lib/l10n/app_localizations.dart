@@ -2616,6 +2616,12 @@ abstract class AppLocalizations {
   /// **'This invitation has expired.'**
   String get sharingFailureExpired;
 
+  /// SharingFailure.revoked copy (issue #1504), shown to someone accepting an invitation that the person who sent it has cancelled, or that was sent before her own access to the profile was removed. The server refuses both and a new invitation is the only way forward, so the copy says so. Before #1504 both refusals were shown as commonNetworkError.
+  ///
+  /// In en, this message translates to:
+  /// **'This invitation is no longer valid. Ask for a new one.'**
+  String get sharingFailureRevoked;
+
   /// SharingFailure.alreadyAccepted copy.
   ///
   /// In en, this message translates to:
@@ -5985,6 +5991,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'None'**
   String get profileDialogRelationshipNone;
+
+  /// Issue #1503: the line under the relationship in both profile editors (the app's Edit profile sheet and the browser's profiles page) for anyone but the profile's primary guardian, who sees the relationship as read-only. The server lets only the primary guardian change who a profile is for (issue #1499) and keeps the stored value for anyone else, so no control is offered. Says 'primary guardian', the role's name everywhere else in the app (issue #1003), not 'owner'.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the primary guardian can change this.'**
+  String get profileDialogRelationshipPrimaryGuardianOnly;
 
   /// Issue #1004 (tranche 3): cancel action of the profile edit dialog.
   ///

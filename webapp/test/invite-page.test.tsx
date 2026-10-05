@@ -282,6 +282,19 @@ describe('AcceptInviteForm (issue #1255)', () => {
     // membership change to converge.
     expect(queriesMocks.repullMembershipData).not.toHaveBeenCalled();
   });
+
+  // Issue #1504: a revoked invitation used to be mapped to the network
+  // failure, so the form told the invitee to check her connection.
+  it('a revoked invitation says to ask for a new one, not to check the connection', async () => {
+    sharingMocks.previewGuardianInvitation.mockResolvedValue(null);
+    sharingMocks.acceptGuardianInvitation.mockRejectedValue(new SharingError('revoked'));
+    renderAt('/invite?code=T0KEN');
+    fireEvent.click(await screen.findByText(messages['sharingAcceptInviteAccept'] ?? ''));
+    expect(
+      await screen.findByText('This invitation is no longer valid. Ask for a new one.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(messages['commonNetworkError'] ?? '')).toBeNull();
+  });
 });
 
 describe('ClaimTransferForm (kind=claim, issue #1255)', () => {

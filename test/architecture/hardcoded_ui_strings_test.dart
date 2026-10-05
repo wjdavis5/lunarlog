@@ -250,6 +250,14 @@ const Map<String, List<String>> _helperCopyFileLiterals = {
     'edit-birth-control-start-date-field',
     'edit-birth-control-start-date-value',
     'edit-birth-control-start-date-hint',
+    // Issue #1503: the relationship control's keys - the read-only value
+    // and its line for anyone but the primary guardian, the dropdown for
+    // her (copy is arb-backed via firstRunRelationshipLabel,
+    // profileDialogRelationshipNone and
+    // profileDialogRelationshipPrimaryGuardianOnly).
+    'edit-relationship-read-only',
+    'edit-relationship-locked-hint',
+    'edit-relationship-dropdown',
   ],
   'lib/ui/care/guardian_notes_section.dart': [
     'guardian-notes-disclosure',

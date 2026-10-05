@@ -30,6 +30,7 @@ void main() {
       SharingFailure.network(),
       SharingFailure.notFound(),
       SharingFailure.expired(),
+      SharingFailure.revoked(),
       SharingFailure.alreadyAccepted(),
       SharingFailure.alreadyGuardian(),
       SharingFailure.unauthorized(),
@@ -50,6 +51,55 @@ void main() {
           'Network error. Please check your connection.');
       expect(sharingFailureCopy(_l10n, const SharingFailure.unauthorized()),
           'You do not have permission for this action.');
+    });
+
+    test('every case has its own pinned copy', () {
+      const expected = <(SharingFailure, String)>[
+        (SharingFailure.network(), 'Network error. Please check your connection.'),
+        (SharingFailure.notFound(), 'Invitation not found or invalid link.'),
+        (SharingFailure.expired(), 'This invitation has expired.'),
+        (
+          SharingFailure.revoked(),
+          'This invitation is no longer valid. Ask for a new one.',
+        ),
+        (
+          SharingFailure.alreadyAccepted(),
+          'This invitation was already accepted.',
+        ),
+        (
+          SharingFailure.alreadyGuardian(),
+          'You are already an active guardian for this child.',
+        ),
+        (
+          SharingFailure.unauthorized(),
+          'You do not have permission for this action.',
+        ),
+        (
+          SharingFailure.notSignedIn(),
+          'Sign in to your account to manage sharing.',
+        ),
+        (SharingFailure.invalidToken(), 'Invalid invitation link.'),
+        (
+          SharingFailure.other(),
+          'Failed to accept invitation. Please try again.',
+        ),
+      ];
+      expect([for (final (failure, _) in expected) failure],
+          unorderedEquals(allFailures),
+          reason: 'every case is pinned');
+      for (final (failure, copy) in expected) {
+        expect(sharingFailureCopy(_l10n, failure), copy, reason: '$failure');
+      }
+    });
+
+    test('a revoked invitation says what to do next, and is not the network '
+        'copy it used to get (issue #1504)', () {
+      final copy = sharingFailureCopy(_l10n, const SharingFailure.revoked());
+      expect(copy, 'This invitation is no longer valid. Ask for a new one.');
+      expect(
+        copy,
+        isNot(sharingFailureCopy(_l10n, const SharingFailure.network())),
+      );
     });
 
     test('a no-session refusal gets its own copy, not the permission one '

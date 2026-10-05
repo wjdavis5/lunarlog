@@ -448,4 +448,286 @@ void main() {
       expect(defaultBreadcrumbLog.snapshot().single, contains('ownershipTransfer'));
     });
   });
+
+  // Issue #1504. The same fault as in the invitation mapper: any all-digit
+  // code of 500 or more read as a network failure, and the transfer RPCs
+  // raise their refusals with SQLSTATE 55000. Every one but the last was
+  // already caught by its wording first.
+  group('every refusal the ownership-transfer RPCs raise (issue #1504)', () {
+    const profile = '01JABCDEF01234567890123456';
+
+    /// Calls the service method that rides the RPC named [function].
+    Future<Object?> call(
+      SupabaseOwnershipTransferService service,
+      String function,
+    ) =>
+        switch (function) {
+          'create_ownership_transfer' => service.createTransfer(
+              profileId: profile,
+              parentPostTransferRole: ParentPostTransferRole.coManager,
+            ),
+          'cancel_ownership_transfer' =>
+            service.cancelTransfer(transferId: 'transfer-1'),
+          'accept_ownership_transfer' =>
+            service.claimProfile(rawToken: 'any-token'),
+          _ => throw ArgumentError.value(function, 'function'),
+        };
+
+    /// A service whose server answers every call the way PostgREST answers
+    /// a `raise exception`: the SQLSTATE in the body's `code`, the HTTP
+    /// status beside it.
+    SupabaseOwnershipTransferService refusing(
+      String sqlstate,
+      int status,
+      String message,
+    ) =>
+        SupabaseOwnershipTransferService(
+          client: makeClient((req) async => http.Response(
+                jsonEncode({
+                  'code': sqlstate,
+                  'details': null,
+                  'hint': null,
+                  'message': message,
+                }),
+                status,
+              )),
+          syncEngine: syncEngine,
+        );
+
+    // Function, SQLSTATE, the HTTP status PostgREST gives that SQLSTATE,
+    // the message, and what it reads as. Taken from the newest definition
+    // of each function in supabase/migrations: 20260915010000
+    // (create_ownership_transfer, plus the one-live-transfer unique index
+    // of 20260906170000), 20260906180000 (cancel_ownership_transfer) and
+    // 20260920120000 (accept_ownership_transfer). The browser client's
+    // webapp/test/sharing.test.ts holds the same rows with the same kinds.
+    const refusals = <(String, String, int, String, TransferFailure)>[
+      (
+        'create_ownership_transfer',
+        '42501',
+        401,
+        'authentication required',
+        TransferFailure.unauthorized(),
+      ),
+      (
+        'create_ownership_transfer',
+        '42501',
+        403,
+        'only the accepted primary guardian can transfer ownership of this '
+            'profile',
+        TransferFailure.unauthorized(),
+      ),
+      (
+        'create_ownership_transfer',
+        '22023',
+        400,
+        'invalid parent_post_transfer_role: owner',
+        TransferFailure.other(),
+      ),
+      (
+        'create_ownership_transfer',
+        '22023',
+        400,
+        'p_ttl_hours must be between 1 and 168',
+        TransferFailure.other(),
+      ),
+      (
+        'create_ownership_transfer',
+        '22023',
+        400,
+        'token_hash must be a 64-character hex string',
+        TransferFailure.invalidToken(),
+      ),
+      (
+        'create_ownership_transfer',
+        '22023',
+        400,
+        'recipient_label must be at most 80 characters',
+        TransferFailure.other(),
+      ),
+      (
+        'create_ownership_transfer',
+        '23505',
+        409,
+        'duplicate key value violates unique constraint '
+            '"ownership_transfers_one_live_uq"',
+        TransferFailure.alreadyArmed(),
+      ),
+      (
+        'cancel_ownership_transfer',
+        '42501',
+        401,
+        'authentication required',
+        TransferFailure.unauthorized(),
+      ),
+      (
+        'cancel_ownership_transfer',
+        'P0002',
+        500,
+        'transfer not found',
+        TransferFailure.notFound(),
+      ),
+      (
+        'cancel_ownership_transfer',
+        '42501',
+        403,
+        'only the arming parent can cancel this transfer',
+        TransferFailure.unauthorized(),
+      ),
+      (
+        'accept_ownership_transfer',
+        '42501',
+        401,
+        'authentication required',
+        TransferFailure.unauthorized(),
+      ),
+      (
+        'accept_ownership_transfer',
+        '22023',
+        400,
+        'token_hash must be a 64-character hex string',
+        TransferFailure.invalidToken(),
+      ),
+      (
+        'accept_ownership_transfer',
+        'P0002',
+        500,
+        'transfer not found',
+        TransferFailure.notFound(),
+      ),
+      (
+        'accept_ownership_transfer',
+        '55000',
+        500,
+        'transfer was already accepted',
+        TransferFailure.alreadyAccepted(),
+      ),
+      (
+        'accept_ownership_transfer',
+        '55000',
+        500,
+        'transfer was cancelled',
+        TransferFailure.cancelled(),
+      ),
+      (
+        'accept_ownership_transfer',
+        '55000',
+        500,
+        'transfer has expired',
+        TransferFailure.expired(),
+      ),
+      (
+        'accept_ownership_transfer',
+        '55000',
+        500,
+        'the arming parent cannot accept their own transfer',
+        TransferFailure.selfTransfer(),
+      ),
+      (
+        'accept_ownership_transfer',
+        'P0002',
+        500,
+        'profile not found',
+        TransferFailure.notFound(),
+      ),
+      (
+        'accept_ownership_transfer',
+        '55000',
+        500,
+        'the arming parent no longer owns this profile; the link is stale',
+        TransferFailure.staleOwner(),
+      ),
+      (
+        'accept_ownership_transfer',
+        '55000',
+        500,
+        'the arming parent is no longer the primary guardian of this '
+            'profile; the link is stale',
+        TransferFailure.staleOwner(),
+      ),
+      // Was the network failure. The claimant's own role on the profile
+      // changed after the link was made, which is what this copy says.
+      (
+        'accept_ownership_transfer',
+        '55000',
+        500,
+        'guardian access to this profile was revoked; a new transfer link '
+            'is required',
+        TransferFailure.staleOwner(),
+      ),
+    ];
+
+    for (final (function, sqlstate, status, message, expected) in refusals) {
+      test('$function: "$message" ($sqlstate, HTTP $status) is $expected',
+          () async {
+        final service = refusing(sqlstate, status, message);
+
+        await expectLater(call(service, function), throwsA(expected));
+        expect(requests.last.url.path, '/rest/v1/rpc/$function');
+      });
+    }
+
+    test('a SQLSTATE no refusal matches is the generic failure, never the '
+        'network one, whatever its digits', () async {
+      for (final (sqlstate, status, message) in const [
+        ('55000', 500, 'a refusal this build has not heard of'),
+        ('57014', 500, 'canceling statement due to statement timeout'),
+        ('23514', 400, 'new row violates check constraint'),
+      ]) {
+        await expectLater(
+          refusing(sqlstate, status, message).claimProfile(rawToken: 'any'),
+          throwsA(const TransferFailure.other()),
+          reason: '$sqlstate is a SQLSTATE, not an HTTP status',
+        );
+      }
+    });
+  });
+
+  group('a transport or server failure is still the network kind '
+      '(issue #1504)', () {
+    /// A server that answers with [body] under [status]: not PostgREST's
+    /// error document, so postgrest reports the status itself as the code.
+    SupabaseOwnershipTransferService answering(int status, String body) =>
+        SupabaseOwnershipTransferService(
+          client: SupabaseClient(
+            'https://example.supabase.co',
+            'anon-key',
+            httpClient: MockClient((request) async =>
+                http.Response(body, status, request: request)),
+            authOptions: const AuthClientOptions(autoRefreshToken: false),
+            postgrestOptions: const PostgrestClientOptions(retryEnabled: false),
+          ),
+          syncEngine: syncEngine,
+        );
+
+    test('an HTTP 503 whose body carries no code of its own', () async {
+      for (final body in const [
+        '<html><body><h1>503 Service Temporarily Unavailable</h1></body></html>',
+        '{"message":"name resolution failed"}',
+      ]) {
+        await expectLater(
+          answering(503, body).claimProfile(rawToken: 'any'),
+          throwsA(const TransferFailure.network()),
+          reason: 'HTTP 503 with body $body',
+        );
+      }
+    });
+
+    test('a gateway page is not read for a refusal, whatever it says',
+        () async {
+      // Each of these used to be matched on its wording before the status
+      // was looked at: a not-found, a cancelled and an expired failure.
+      for (final (status, body) in const [
+        (502, '<html><body>The origin server was not found</body></html>'),
+        (503, '<html><body>The request was cancelled upstream</body></html>'),
+        (504, '<html><body>The gateway timed out; the request expired</body></html>'),
+      ]) {
+        await expectLater(
+          answering(status, body).claimProfile(rawToken: 'any'),
+          throwsA(const TransferFailure.network()),
+          reason: 'HTTP $status with body $body',
+        );
+      }
+    });
+  });
 }

@@ -232,6 +232,13 @@ sealed class SharingFailure implements Exception {
   const factory SharingFailure.network() = SharingNetworkFailure;
   const factory SharingFailure.notFound() = SharingNotFoundFailure;
   const factory SharingFailure.expired() = SharingExpiredFailure;
+
+  /// The invitation can no longer be used and a new one is needed (issue
+  /// #1504): the person who sent it cancelled it, or it was sent before
+  /// the invitee's own access to the profile was removed. Distinct from
+  /// [expired] and [notFound] because the server says which it is, and
+  /// from [network], which is how both refusals used to read.
+  const factory SharingFailure.revoked() = SharingRevokedFailure;
   const factory SharingFailure.alreadyAccepted() = SharingAlreadyAcceptedFailure;
   const factory SharingFailure.alreadyGuardian() = SharingAlreadyGuardianFailure;
   const factory SharingFailure.unauthorized() = SharingUnauthorizedFailure;
@@ -267,6 +274,12 @@ final class SharingExpiredFailure extends SharingFailure {
   const SharingExpiredFailure();
   @override
   String toString() => 'SharingFailure.expired';
+}
+
+final class SharingRevokedFailure extends SharingFailure {
+  const SharingRevokedFailure();
+  @override
+  String toString() => 'SharingFailure.revoked';
 }
 
 final class SharingAlreadyAcceptedFailure extends SharingFailure {

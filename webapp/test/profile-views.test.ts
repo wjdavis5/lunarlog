@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   acceptedMembershipFor,
   callerRoleFor,
+  canChangeRelationship,
   canEditProfile,
   entriesToDomainJson,
   estimateDateText,
@@ -202,6 +203,17 @@ describe('callerRoleFor / canEditProfile', () => {
     expect(canEditProfile('caregiver')).toBe(false);
     expect(canEditProfile('viewer')).toBe(false);
     expect(canEditProfile(null)).toBe(false);
+  });
+
+  // Issue #1503: the server puts back a relationship changed by anyone but
+  // the primary guardian. The same cases as the app's own rule
+  // (test/domain/models/profile_guardian_test.dart).
+  it('leaves who the profile is for to the primary guardian, and to a role that is not known', () => {
+    expect(canChangeRelationship('primary_guardian')).toBe(true);
+    expect(canChangeRelationship('co_parent')).toBe(false);
+    expect(canChangeRelationship('caregiver')).toBe(false);
+    expect(canChangeRelationship('viewer')).toBe(false);
+    expect(canChangeRelationship(null)).toBe(true);
   });
 });
 

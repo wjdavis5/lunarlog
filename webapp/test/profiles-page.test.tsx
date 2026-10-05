@@ -459,6 +459,107 @@ describe('ProfilesPage (issue #1253)', () => {
     // payload omits the key entirely (the server's containment guard).
     expect('irregular_framing' in pushArg.p_profiles[0]).toBe(false);
   });
+
+  // Issue #1503: who the profile is for is the primary guardian's alone to
+  // change. The server puts anyone else's value back and lets the rest of
+  // her save through, so the form offers her no way to change it.
+  describe('the relationship in the edit form (issue #1503)', () => {
+    const lockedLine = messages['profileDialogRelationshipPrimaryGuardianOnly'] ?? 'missing';
+
+    function openEditor(): HTMLSelectElement {
+      const row = screen.getByText('Maya').closest('li') as HTMLElement;
+      fireEvent.click(
+        within(row).getByRole('button', { name: messages['webProfilesEditAction'] ?? '' }),
+      );
+      return screen.getByLabelText(messages['firstRunRelationshipLabel'] ?? '');
+    }
+
+    async function savedProfile(rpc: ReturnType<typeof fakeClient>['rpc']) {
+      fireEvent.submit(
+        screen.getByRole('button', { name: messages['profileDialogSave'] ?? '' }),
+      );
+      await waitFor(() => expect(rpc).toHaveBeenCalledWith('sync_push', expect.anything()));
+      const pushArg = rpc.mock.calls.find(
+        (call) => call[0] === 'sync_push',
+      )?.[1] as unknown as {
+        p_profiles: Record<string, unknown>[];
+      };
+      return pushArg.p_profiles[0];
+    }
+
+    it('a co-parent sees the stored value, cannot change it, and her save does not send it', async () => {
+      callerRoles = { ...kDefaultRoles, [MINE_ID]: 'co_parent' };
+      const { rpc } = fakeClient();
+      renderPage();
+      const relationship = openEditor();
+
+      // The stored value shows ("Self"), the control is off, and the line
+      // saying who can change it is what describes it.
+      expect(relationship).toBeDisabled();
+      expect(relationship).toHaveValue('self');
+      expect(relationship).toHaveDisplayValue(messages['webProfilesRelationshipSelf'] ?? '');
+      expect(screen.getByText(lockedLine)).toBeInTheDocument();
+      expect(relationship).toHaveAccessibleDescription(lockedLine);
+
+      // Everything else a co-parent can edit stays editable.
+      const name = screen.getByLabelText(messages['firstRunNameLabel'] ?? '');
+      expect(name).toBeEnabled();
+      expect(
+        screen.getByLabelText(messages['profileDialogBirthYearLabel'] ?? ''),
+      ).toBeEnabled();
+      expect(screen.getByLabelText(messages['firstRunCareModeLabel'] ?? '')).toBeEnabled();
+      fireEvent.change(name, { target: { value: 'Maya B' } });
+
+      const pushed = await savedProfile(rpc);
+      expect(pushed).toMatchObject({ id: MINE_ID, display_name: 'Maya B' });
+      // No relationship in the payload: the server keeps the stored one.
+      expect('relationship' in pushed).toBe(false);
+    });
+
+    it('a primary guardian keeps the control, and her change is saved', async () => {
+      const { rpc } = fakeClient();
+      renderPage();
+      const relationship = openEditor();
+
+      expect(relationship).toBeEnabled();
+      expect(relationship).toHaveValue('self');
+      expect(screen.queryByText(lockedLine)).toBeNull();
+      fireEvent.change(relationship, { target: { value: 'daughter' } });
+
+      const pushed = await savedProfile(rpc);
+      expect(pushed).toMatchObject({ id: MINE_ID, relationship: 'daughter' });
+    });
+
+    it('a role that is not known keeps the control', async () => {
+      const { rpc } = fakeClient();
+      renderPage();
+      const relationship = openEditor();
+      // The caller's membership row is no longer in the snapshot: her role
+      // on this profile is unknown from here on.
+      callerRoles = {};
+      fireEvent.change(screen.getByLabelText(messages['firstRunNameLabel'] ?? ''), {
+        target: { value: 'Maya B' },
+      });
+
+      expect(relationship).toBeEnabled();
+      expect(screen.queryByText(lockedLine)).toBeNull();
+      fireEvent.change(relationship, { target: { value: 'partner' } });
+
+      const pushed = await savedProfile(rpc);
+      expect(pushed).toMatchObject({ id: MINE_ID, relationship: 'partner' });
+    });
+
+    it('creating a profile always offers the control', () => {
+      callerRoles = { ...kDefaultRoles, [MINE_ID]: 'co_parent' };
+      fakeClient();
+      renderPage();
+      fireEvent.click(
+        screen.getByRole('button', { name: messages['profilePickerAddProfileTooltip'] ?? '' }),
+      );
+      expect(screen.getByLabelText(messages['firstRunRelationshipLabel'] ?? '')).toBeEnabled();
+      expect(screen.queryByText(lockedLine)).toBeNull();
+    });
+  });
 });
 
 import { within } from '@testing-library/react';

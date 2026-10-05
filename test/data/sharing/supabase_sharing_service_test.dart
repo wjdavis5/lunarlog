@@ -721,4 +721,380 @@ void main() {
       );
     });
   });
+
+  // Issue #1504. The server raised several ordinary refusals with SQLSTATE
+  // 55000, and the mapper read any all-digit code of 500 or more as a
+  // network failure before it looked at the message. A SQLSTATE is five
+  // characters and is never an HTTP status; postgrest puts the status in
+  // `code` only when the body carried no code of its own, and then it is
+  // three.
+  group('every refusal the sharing RPCs raise (issue #1504)', () {
+    const profile = '01JABCDEF01234567890123456';
+
+    /// Calls the service method that rides the RPC named [function].
+    Future<Object?> call(SupabaseSharingService service, String function) =>
+        switch (function) {
+          'create_guardian_invitation' => service.createInvite(
+              profileId: profile,
+              role: GuardianRole.caregiver,
+            ),
+          'accept_guardian_invitation' =>
+            service.acceptInvite(rawToken: 'any-token'),
+          'preview_guardian_invitation' =>
+            service.previewInvite(rawToken: 'any-token'),
+          'revoke_guardian_invitation' => service.cancelInvite('inv-1'),
+          'revoke_guardian' => service.revokeGuardian(
+              profileId: profile,
+              targetUserId: 'u1',
+            ),
+          'update_guardian_role' => service.updateGuardianRole(
+              profileId: profile,
+              targetUserId: 'u1',
+              newRole: GuardianRole.viewer,
+            ),
+          _ => throw ArgumentError.value(function, 'function'),
+        };
+
+    /// A client whose server answers every call the way PostgREST answers
+    /// a `raise exception`: the SQLSTATE in the body's `code`, the HTTP
+    /// status beside it.
+    SupabaseClient refusing(String sqlstate, int status, String message) =>
+        makeClient((req) async => http.Response(
+              jsonEncode({
+                'code': sqlstate,
+                'details': null,
+                'hint': null,
+                'message': message,
+              }),
+              status,
+            ));
+
+    // Function, SQLSTATE, the HTTP status PostgREST gives that SQLSTATE,
+    // the message, and what it reads as. Taken from the newest definition
+    // of each function in supabase/migrations: 20260920120000 (create,
+    // accept and preview_guardian_invitation), 20260906190000
+    // (revoke_guardian_invitation), 20260918160000 (revoke_guardian),
+    // 20260915010000 (update_guardian_role), and the 20261005143105 trigger
+    // on a second subject invitation. The browser client's
+    // webapp/test/sharing.test.ts holds the same rows with the same kinds.
+    // Each is read as a signed-in caller; "authentication required" is
+    // below.
+    const refusals = <(String, String, int, String, SharingFailure)>[
+      (
+        'create_guardian_invitation',
+        '42501',
+        403,
+        'caller lacks permission to invite guardians for this profile',
+        SharingFailure.unauthorized(),
+      ),
+      (
+        'create_guardian_invitation',
+        '22023',
+        400,
+        'invalid role: owner',
+        SharingFailure.invalidToken(),
+      ),
+      (
+        'create_guardian_invitation',
+        '42501',
+        403,
+        'only the primary guardian can invite a co-parent',
+        SharingFailure.unauthorized(),
+      ),
+      (
+        'create_guardian_invitation',
+        '22023',
+        400,
+        'a subject invitation must grant the caregiver role',
+        SharingFailure.invalidToken(),
+      ),
+      (
+        'create_guardian_invitation',
+        '22023',
+        400,
+        'p_ttl_hours must be between 1 and 168',
+        SharingFailure.invalidToken(),
+      ),
+      (
+        'create_guardian_invitation',
+        '22023',
+        400,
+        'token_hash must be a 64-character hex string',
+        SharingFailure.invalidToken(),
+      ),
+      (
+        'create_guardian_invitation',
+        'P0001',
+        400,
+        'this profile already has a subject; a subject invitation cannot be '
+            'created for it',
+        SharingFailure.other(),
+      ),
+      (
+        'accept_guardian_invitation',
+        '22023',
+        400,
+        'token_hash must be a 64-character hex string',
+        SharingFailure.invalidToken(),
+      ),
+      (
+        'accept_guardian_invitation',
+        'P0002',
+        500,
+        'invitation not found',
+        SharingFailure.notFound(),
+      ),
+      (
+        'accept_guardian_invitation',
+        '55000',
+        500,
+        'invitation already accepted',
+        SharingFailure.alreadyAccepted(),
+      ),
+      // Was the network failure.
+      (
+        'accept_guardian_invitation',
+        '55000',
+        500,
+        'invitation was revoked',
+        SharingFailure.revoked(),
+      ),
+      (
+        'accept_guardian_invitation',
+        '55000',
+        500,
+        'invitation has expired',
+        SharingFailure.expired(),
+      ),
+      (
+        'accept_guardian_invitation',
+        '23505',
+        409,
+        'user is already an active guardian of this profile',
+        SharingFailure.alreadyGuardian(),
+      ),
+      // Was the network failure.
+      (
+        'accept_guardian_invitation',
+        '55000',
+        500,
+        'guardian access to this profile was revoked; a new invitation is '
+            'required',
+        SharingFailure.revoked(),
+      ),
+      (
+        'preview_guardian_invitation',
+        '22023',
+        400,
+        'token_hash must be a 64-character hex string',
+        SharingFailure.invalidToken(),
+      ),
+      // Was the network failure. Neither client shows a preview's kind
+      // (both say the preview could not be loaded), so it needs no copy of
+      // its own.
+      (
+        'preview_guardian_invitation',
+        '55000',
+        500,
+        'too many preview attempts; wait a moment and try again',
+        SharingFailure.other(),
+      ),
+      (
+        'revoke_guardian_invitation',
+        '42501',
+        403,
+        'caller lacks permission to cancel this invitation',
+        SharingFailure.unauthorized(),
+      ),
+      (
+        'revoke_guardian',
+        '42501',
+        403,
+        'caller is not a guardian of this profile',
+        SharingFailure.unauthorized(),
+      ),
+      // Was the network failure. Manage guardians shows its own line for a
+      // failed removal, whatever the kind.
+      (
+        'revoke_guardian',
+        '55000',
+        500,
+        'the sole primary guardian cannot leave the profile',
+        SharingFailure.other(),
+      ),
+      (
+        'revoke_guardian',
+        '42501',
+        403,
+        'insufficient permission to revoke this guardian',
+        SharingFailure.unauthorized(),
+      ),
+      (
+        'update_guardian_role',
+        '42501',
+        403,
+        'primary_guardian cannot be granted through update_guardian_role',
+        SharingFailure.unauthorized(),
+      ),
+      (
+        'update_guardian_role',
+        '22023',
+        400,
+        'invalid role: owner',
+        SharingFailure.invalidToken(),
+      ),
+      (
+        'update_guardian_role',
+        '42501',
+        403,
+        'cannot change your own role',
+        SharingFailure.unauthorized(),
+      ),
+      (
+        'update_guardian_role',
+        '42501',
+        403,
+        'caller is not a guardian of this profile',
+        SharingFailure.unauthorized(),
+      ),
+      (
+        'update_guardian_role',
+        'P0002',
+        500,
+        'target is not an active guardian of this profile',
+        SharingFailure.notFound(),
+      ),
+      (
+        'update_guardian_role',
+        '42501',
+        403,
+        "insufficient permission to change this guardian's role",
+        SharingFailure.unauthorized(),
+      ),
+    ];
+
+    for (final (function, sqlstate, status, message, expected) in refusals) {
+      test('$function: "$message" ($sqlstate, HTTP $status) is $expected',
+          () async {
+        final client = refusing(sqlstate, status, message);
+        await signIn(client, 'user-mom');
+        final service =
+            SupabaseSharingService(client: client, syncEngine: syncEngine);
+
+        await expectLater(call(service, function), throwsA(expected));
+        expect(requests.last.url.path, '/rest/v1/rpc/$function');
+      });
+    }
+
+    // Every one of the six opens with the same check. It can only be
+    // raised when there is no session, which reads as "sign in" (#885).
+    for (final function in const [
+      'create_guardian_invitation',
+      'accept_guardian_invitation',
+      'preview_guardian_invitation',
+      'revoke_guardian_invitation',
+      'revoke_guardian',
+      'update_guardian_role',
+    ]) {
+      test('$function: "authentication required" (42501, HTTP 401) is '
+          '${const SharingFailure.notSignedIn()}', () async {
+        final client = refusing('42501', 401, 'authentication required');
+        // Deliberately no signIn(): the client holds no session.
+        final service =
+            SupabaseSharingService(client: client, syncEngine: syncEngine);
+
+        await expectLater(
+          call(service, function),
+          throwsA(const SharingFailure.notSignedIn()),
+        );
+      });
+    }
+
+    test('a SQLSTATE no refusal matches is the generic failure, never the '
+        'network one, whatever its digits', () async {
+      for (final (sqlstate, status, message) in const [
+        ('55000', 500, 'a refusal this build has not heard of'),
+        ('57014', 500, 'canceling statement due to statement timeout'),
+        ('23514', 400, 'new row violates check constraint'),
+      ]) {
+        final client = refusing(sqlstate, status, message);
+        await signIn(client, 'user-mom');
+        final service =
+            SupabaseSharingService(client: client, syncEngine: syncEngine);
+
+        await expectLater(
+          service.acceptInvite(rawToken: 'any-token'),
+          throwsA(const SharingFailure.other()),
+          reason: '$sqlstate is a SQLSTATE, not an HTTP status',
+        );
+      }
+    });
+  });
+
+  group('a transport or server failure is still the network kind '
+      '(issue #1504)', () {
+    SupabaseSharingService serviceOver(http.Client httpClient) =>
+        SupabaseSharingService(
+          client: SupabaseClient(
+            'https://example.supabase.co',
+            'anon-key',
+            httpClient: httpClient,
+            authOptions: const AuthClientOptions(autoRefreshToken: false),
+            postgrestOptions: const PostgrestClientOptions(retryEnabled: false),
+          ),
+          syncEngine: syncEngine,
+        );
+
+    /// A server that answers with [body] under [status]: not PostgREST's
+    /// error document, so postgrest reports the status itself as the code.
+    SupabaseSharingService answering(int status, String body) => serviceOver(
+          MockClient((request) async =>
+              http.Response(body, status, request: request)),
+        );
+
+    test('a request that never completes', () async {
+      for (final Object error in [
+        const SocketException('connection refused'),
+        http.ClientException('Connection closed before full header was received'),
+      ]) {
+        final service = serviceOver(MockClient((request) async => throw error));
+
+        await expectLater(
+          service.acceptInvite(rawToken: 'any-token'),
+          throwsA(const SharingFailure.network()),
+          reason: '${error.runtimeType} is a transport failure',
+        );
+      }
+    });
+
+    test('an HTTP 503 whose body carries no code of its own', () async {
+      for (final body in const [
+        '<html><body><h1>503 Service Temporarily Unavailable</h1></body></html>',
+        '{"message":"name resolution failed"}',
+      ]) {
+        await expectLater(
+          answering(503, body).acceptInvite(rawToken: 'any-token'),
+          throwsA(const SharingFailure.network()),
+          reason: 'HTTP 503 with body $body',
+        );
+      }
+    });
+
+    test('a gateway page is not read for a refusal, whatever it says',
+        () async {
+      // Each of these used to be matched on its wording before the status
+      // was looked at: an invalid-link, a not-found and an expired failure.
+      for (final (status, body) in const [
+        (526, '<html><head><title>Invalid SSL certificate</title></head></html>'),
+        (502, '<html><body>The origin server was not found</body></html>'),
+        (504, '<html><body>The gateway timed out; the request expired</body></html>'),
+      ]) {
+        await expectLater(
+          answering(status, body).acceptInvite(rawToken: 'any-token'),
+          throwsA(const SharingFailure.network()),
+          reason: 'HTTP $status with body $body',
+        );
+      }
+    });
+  });
 }

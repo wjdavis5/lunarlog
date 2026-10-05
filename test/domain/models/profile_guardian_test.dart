@@ -175,4 +175,22 @@ void main() {
       expect(canChangeArchiveState(null), isTrue);
     });
   });
+
+  // Issue #1503: the server puts back a `relationship` changed by anyone
+  // but the primary guardian (issue #1499), so the profile editor offers
+  // the control to her alone.
+  group('canChangeRelationship', () {
+    test('only the primary guardian among the resolved roles may', () {
+      expect(canChangeRelationship(GuardianRole.primaryGuardian), isTrue);
+      for (final role in GuardianRole.values
+          .where((r) => r != GuardianRole.primaryGuardian)) {
+        expect(canChangeRelationship(role), isFalse,
+            reason: '${role.name} cannot change the relationship');
+      }
+    });
+
+    test('an unknown role fails open (#531)', () {
+      expect(canChangeRelationship(null), isTrue);
+    });
+  });
 }

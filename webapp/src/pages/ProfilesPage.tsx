@@ -20,6 +20,7 @@ import {
 } from '../lib/profiles/consent';
 import {
   callerRoleFor,
+  canChangeRelationship,
   canEditProfile,
   profileListsFromSyncedData,
   type ProfileLists,
@@ -50,7 +51,10 @@ import { SignedOutHome } from './SignedOutHome';
  * co-parent; archive, unarchive and delete: primary only) — the server
  * re-authorises every change, exactly as the app's client-side mirror
  * does. An archived profile is read-only until it is unarchived, as it is
- * in the app.
+ * in the app. Inside the edit form, who the profile is for (the
+ * relationship) is the primary guardian's alone to change (issue #1503):
+ * anyone else sees the stored value, disabled, with a line saying so, and
+ * her save does not send it.
  */
 
 const kLocale = 'en';
@@ -118,13 +122,23 @@ function formStateFor(profile: ProfileRow | null): FormState {
   };
 }
 
-function fieldsFromForm(form: FormState): ProfileFields {
+/**
+ * The fields a submit sends. With `relationshipLocked` (an edit by anyone
+ * but the profile's primary guardian, issue #1503) the relationship is
+ * left out, so the save keeps the one the profile already has.
+ */
+function fieldsFromForm(
+  form: FormState,
+  options: { relationshipLocked: boolean } = { relationshipLocked: false },
+): ProfileFields {
   const parsedYear = form.birthYear.trim() === '' ? null : Number(form.birthYear);
   return {
     displayName: form.displayName,
     isMinor: form.isMinor,
     birthYear: parsedYear !== null && Number.isFinite(parsedYear) ? parsedYear : null,
-    relationship: form.relationship === '' ? null : form.relationship,
+    ...(options.relationshipLocked
+      ? {}
+      : { relationship: form.relationship === '' ? null : form.relationship }),
     mode: form.mode,
     irregularFraming: form.irregularFraming,
   };
@@ -176,6 +190,12 @@ export function ProfilesPage() {
     }
     return map;
   }, [data, me]);
+
+  // Issue #1503: who the profile is for is the primary guardian's alone to
+  // change. The role is the one the list's own actions key on; one that is
+  // not known keeps the control (`canChangeRelationship`).
+  const relationshipLockedFor = (profile: ProfileRow): boolean =>
+    !canChangeRelationship(roles.get(profile.id) ?? null);
 
   const profileCount = lists.mine.length + lists.shared.length + lists.archived.length;
 
@@ -257,7 +277,9 @@ export function ProfilesPage() {
       profile: ProfileRow,
     ): Promise<{ ok: true } | { ok: false; reason: 'validation'; violation: string }> => {
       const client = requireClient();
-      const fields = fieldsFromForm(form);
+      const fields = fieldsFromForm(form, {
+        relationshipLocked: relationshipLockedFor(profile),
+      });
       const validation = validateProfileFields(fields);
       if (!validation.valid) {
         return { ok: false, reason: 'validation', violation: validation.violation };
@@ -301,6 +323,7 @@ export function ProfilesPage() {
   if (!signedIn) return <SignedOutHome />;
 
   const editing = editingId !== null ? findProfile(lists, editingId) : null;
+  const relationshipLocked = editing !== null && relationshipLockedFor(editing);
   const showForm = creating || editing !== null;
   const formTitle = creating ? t('profileDialogAddTitle') : t('webProfilesEditTitle');
   const busy =
@@ -414,6 +437,10 @@ export function ProfilesPage() {
               <select
                 id="profile-relationship"
                 value={form.relationship}
+                disabled={relationshipLocked}
+                aria-describedby={
+                  relationshipLocked ? 'profile-relationship-locked' : undefined
+                }
                 onChange={(event) =>
                   setForm({ ...form, relationship: event.target.value as RelationshipValue })
                 }
@@ -425,6 +452,11 @@ export function ProfilesPage() {
                   </option>
                 ))}
               </select>
+              {relationshipLocked ? (
+                <p className="form-hint" id="profile-relationship-locked">
+                  {t('profileDialogRelationshipPrimaryGuardianOnly')}
+                </p>
+              ) : null}
             </div>
 
             <div className="form-row">

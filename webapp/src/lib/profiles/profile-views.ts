@@ -139,6 +139,23 @@ export function canEditProfile(role: GuardianRole | null): boolean {
   return role !== null && roleCanEditProfile(role);
 }
 
+/**
+ * Whether the caller may change who the profile is for (its
+ * `relationship`): the app's own rule, `canChangeRelationship`
+ * (lib/domain/models/profile_guardian.dart, issue 1503). The server lets
+ * only the accepted primary guardian change it and puts anyone else's
+ * value back while letting the rest of her save through (issue 1499), so
+ * a co-parent's editor shows the stored value and offers no control.
+ *
+ * A role that is not known (`null`: no accepted membership row for the
+ * caller in the snapshot) keeps the control, as it does in the app. That
+ * is not a permission: `canEditProfile` still decides who is offered the
+ * editor at all, and the server decides what is written.
+ */
+export function canChangeRelationship(role: GuardianRole | null): boolean {
+  return role === null || role === 'primary_guardian';
+}
+
 // ---------------------------------------------------------------------------
 // The domain module's inputs, built from the synced snapshot
 // ---------------------------------------------------------------------------

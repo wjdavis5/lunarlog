@@ -210,3 +210,19 @@ ProfileGuardian? acceptedGuardianFor(
 /// insufficient withholds the control.
 bool canChangeArchiveState(GuardianRole? role) =>
     role == null || role.canDeleteProfile;
+
+/// Whether a caller holding [role] may change who a profile is for - its
+/// `relationship` (issue #1503). The server lets only the profile's
+/// accepted primary guardian change it (issue #1499): it is her statement
+/// of who the profile is about, and it decides who can read private notes.
+/// Anyone else's value is put back without refusing the rest of the save,
+/// so a control that looked editable to a co-parent reverted on the next
+/// sync. Every other profile detail a co-parent can edit
+/// ([GuardianRole.canEditProfile]) is unaffected.
+///
+/// A null [role] (the guardian rows haven't synced, or the profile is
+/// local-only) fails open, exactly as [canChangeArchiveState] does
+/// (issue #531): only a known, resolved role that is not the primary
+/// guardian's makes the field read-only.
+bool canChangeRelationship(GuardianRole? role) =>
+    role == null || role == GuardianRole.primaryGuardian;

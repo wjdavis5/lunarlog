@@ -484,6 +484,39 @@ void main() {
       expect(find.text('This invitation has expired.'), findsOneWidget);
     });
 
+    // Issue #1504: a revoked invitation used to be mapped to the network
+    // failure, so the sheet told the invitee to check her connection.
+    testWidgets('a revoked invitation says to ask for a new one, not to '
+        'check the connection', (tester) async {
+      final failingService = FakeSharingService()
+        ..scriptedError = const SharingFailure.revoked();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: AcceptInviteSheet(
+              rawToken: 'test-raw-token',
+              sharingService: failingService,
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Accept & Sync'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('This invitation is no longer valid. Ask for a new one.'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Network error. Please check your connection.'),
+        findsNothing,
+      );
+    });
+
     testWidgets('shows error message on unexpected exception', (tester) async {
       final failingService = FakeSharingService()
         ..scriptedError = Exception('network crashed');
