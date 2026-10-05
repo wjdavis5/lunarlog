@@ -35,10 +35,18 @@ class ListSectionHeader extends StatelessWidget {
     final theme = Theme.of(context);
     return Padding(
       padding: padding,
-      child: Text(
-        title,
-        style: theme.textTheme.titleSmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
+      // A heading, and a node of its own. Without `container`, a title
+      // above a single tile was folded into that tile: Settings' Health
+      // section was read as one button, "Health, Health Connect sync, ...",
+      // and the heading flag would have landed on the button with it.
+      child: Semantics(
+        header: true,
+        container: true,
+        child: Text(
+          title,
+          style: theme.textTheme.titleSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
       ),
     );

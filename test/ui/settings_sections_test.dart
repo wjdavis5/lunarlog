@@ -229,6 +229,38 @@ void main() {
   });
 
   testWidgets(
+      'every section title is a heading to a screen reader, and a section '
+      "with one tile does not read its title as part of that tile's label",
+      (tester) async {
+    final handle = tester.ensureSemantics();
+    await pumpSettings(
+      tester,
+      profiles: [_profile('p1', 'Alice')],
+      notificationService: FakeNotificationPreferencesService(),
+      withSharing: true,
+    );
+
+    for (final header in tester.widgetList<ListSectionHeader>(
+      find.byType(ListSectionHeader),
+    )) {
+      expect(
+        tester.getSemantics(find.text(header.title)),
+        isSemantics(label: header.title, isHeader: true, hasTapAction: false),
+        reason: '${header.title} is a heading and nothing else',
+      );
+    }
+
+    // Health is a section of one tile: its title used to be the first line
+    // of the tile's own label.
+    final healthTile = tester.getSemantics(
+      find.byKey(const ValueKey('health-sync-tile')),
+    );
+    expect(healthTile, isSemantics(isHeader: false, hasTapAction: true));
+    expect(healthTile.label, isNot(startsWith('Health\n')));
+    handle.dispose();
+  });
+
+  testWidgets(
       'the relock toggle keeps its explanation inside the Privacy & '
       'security section, among section-mates', (tester) async {
     await pumpSettings(tester, profiles: [_profile('p1', 'Alice')]);
