@@ -100,6 +100,25 @@ class CustomTag {
   String toString() => 'CustomTag($code, $displayName)';
 }
 
+/// The label a stored tag [code] is shown by: the curated taxonomy's label
+/// first, then the display name of the [registry] entry that owns the code
+/// (a retired entry still names its rows), else the raw code itself — a
+/// code this device's registry copy does not hold yet is shown as text,
+/// never dropped (#237).
+///
+/// [registry] is the profile's live registry entries, as
+/// `TagRegistryRepository.watchForProfile` emits them. The day sheet and
+/// the Today screen's log card (issue #1489) both resolve through this, so
+/// a tag reads the same wherever it is named.
+String tagDisplayLabel(String code, Iterable<CustomTag> registry) {
+  final curated = tagByCode(code);
+  if (curated != null) return curated.display;
+  for (final tag in registry) {
+    if (tag.code == code) return tag.displayName;
+  }
+  return code;
+}
+
 /// Derives a registry code from a user-typed label: lowercase, every
 /// non-alphanumeric run collapsed to one underscore, underscores trimmed,
 /// clamped to `kMaxTagLength` (64 -- the server's per-element bound).

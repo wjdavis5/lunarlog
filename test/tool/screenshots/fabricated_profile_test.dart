@@ -110,12 +110,37 @@ void main() {
       );
     });
 
+    test('the Today capture has a day to show on its log card: between '
+        'periods, with tags and a note (issue #1489)', () {
+      final maya = fabricatedScreenshotProfiles().first;
+      final today = maya.days.singleWhere((d) => d.date == kScreenshotToday);
+      expect(
+        isBleed(today.flow),
+        isFalse,
+        reason: 'cycle day 26 is between periods; a bleed here would also '
+            'change the estimate the capture exists to show',
+      );
+      expect(
+        today.tags.length,
+        inInclusiveRange(2, 3),
+        reason: 'enough to show the card filled in, few enough to fit a line',
+      );
+      expect(today.note, isNotNull,
+          reason: 'the card shows that a note exists (never its text)');
+    });
+
     test('the teen profile is the learning-tier shape: three completed '
         'cycles of varying length', () {
       final riley = fabricatedScreenshotProfiles().last;
       expect(riley.isMinor, isTrue);
       final bleeds = riley.days.where((d) => d.flow != FlowLevel.notBleeding);
       expect(bleeds, isNotEmpty);
+    });
+
+    test('the teen profile has nothing logged today, so the estimates '
+        'capture shows the log card\'s empty line (issue #1489)', () {
+      final riley = fabricatedScreenshotProfiles().last;
+      expect(riley.days.where((d) => d.date == kScreenshotToday), isEmpty);
     });
 
     test('two builds are identical — the data is a pure function of the '

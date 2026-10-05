@@ -145,7 +145,11 @@ FabricatedProfile mayaScreenshotProfile() {
       note: kSeedDayNotePool[2],
     ),
     // Today (cycle day 26): the day the "Log a day" screenshot opens on —
-    // a pre-period day with the note field filled from the same pool.
+    // a pre-period day with the note field filled from the same pool. It
+    // is also what the Today capture's log card shows (issue #1489): "Not
+    // bleeding", the two tags, and "Note added" — never the note's text.
+    // The site's alt text for that capture describes this card, so change
+    // the two together.
     FabricatedDay(
       date: today,
       flow: FlowLevel.notBleeding,

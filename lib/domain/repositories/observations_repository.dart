@@ -69,6 +69,33 @@ abstract interface class SpottingObservationsRangeRepository
   });
 }
 
+/// Optional capability of an [ObservationsRepository] (issue #1489): a live
+/// view of one day entry's observations, for a reader that has to notice an
+/// observation written with no day-entry write beside it.
+///
+/// That happens: the reminder's "Spotting" action, the health import and a
+/// sync pull all write the observation on its own, after (or long after)
+/// the entry it belongs to. A reader that only follows the day-entries
+/// stream never hears of it. The Today screen's log card and the floating
+/// button's label are such readers (`TodayLogWatchMixin`).
+///
+/// A separate interface rather than a new member on
+/// [ObservationsRepository], for the reason
+/// [SpottingObservationsRangeRepository] gives: existing `implements` fakes
+/// keep compiling, and a repository without the capability simply has no
+/// stream to offer — its readers go on reading once per day-entries
+/// emission, as before.
+abstract interface class DayEntryObservationsWatchRepository
+    implements ObservationsRepository {
+  /// Reactive variant of [listForDayEntry]: the live observations attached
+  /// to [dayEntryId], emitted on listen and again on every write or
+  /// tombstone that may have changed them. Like [listForDayEntry] it does
+  /// not synthesise the legacy `flow = 'spotting'` alias; a reader that
+  /// needs it treats an emission as the cue to read through
+  /// [listForDayEntryWithLegacyAlias].
+  Stream<List<Observation>> watchForDayEntry(String dayEntryId);
+}
+
 /// Range-scoped spotting reads for any [ObservationsRepository] (issue
 /// #795). The calendar only needs the ISO dates carrying a live spotting
 /// observation inside its already-subscribed entries window; dispatching

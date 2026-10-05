@@ -734,4 +734,75 @@ void main() {
       expect(descending, {'cramps': 4});
     });
   });
+
+  // Issue #1489: the pick the day sheet's BBT/weight fields load with, now
+  // shared with the Today screen's log card.
+  group('manualMeasurementIn', () {
+    test('null when the day has no reading in the category', () {
+      expect(manualMeasurementIn(const [], ObservationCategory.bbt), isNull);
+      expect(
+        manualMeasurementIn(
+          [_measurementObs('o1', ObservationCategory.weight, valueNum: 61)],
+          ObservationCategory.bbt,
+        ),
+        isNull,
+      );
+    });
+
+    test('the hand-entered reading in the category', () {
+      final bbt = _measurementObs(
+        'o1',
+        ObservationCategory.bbt,
+        valueNum: 36.7,
+        unit: 'celsius',
+      );
+      final weight = _measurementObs(
+        'o2',
+        ObservationCategory.weight,
+        valueNum: 61,
+        unit: 'kg',
+      );
+      expect(
+        manualMeasurementIn([_spottingObs('o0'), bbt, weight],
+            ObservationCategory.bbt),
+        same(bbt),
+      );
+      expect(
+        manualMeasurementIn([bbt, weight], ObservationCategory.weight),
+        same(weight),
+      );
+    });
+
+    test('a reading another source wrote is never the field\'s value', () {
+      final wearable = _measurementObs(
+        'o1',
+        ObservationCategory.bbt,
+        valueNum: 36.9,
+        unit: 'celsius',
+        source: ObservationSource.wearable,
+      );
+      expect(manualMeasurementIn([wearable], ObservationCategory.bbt), isNull);
+
+      final manual = _measurementObs(
+        'o2',
+        ObservationCategory.bbt,
+        valueNum: 36.7,
+        unit: 'celsius',
+      );
+      expect(
+        manualMeasurementIn([wearable, manual], ObservationCategory.bbt),
+        same(manual),
+      );
+    });
+
+    test('a hand-entered row with no number is treated as absent', () {
+      expect(
+        manualMeasurementIn(
+          [_measurementObs('o1', ObservationCategory.bbt)],
+          ObservationCategory.bbt,
+        ),
+        isNull,
+      );
+    });
+  });
 }
