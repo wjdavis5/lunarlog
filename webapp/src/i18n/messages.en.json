@@ -1500,6 +1500,7 @@
   "webHomeCycleStartedLength": "Started {startedDate} · {length, plural, =1{1 day} other{{length} days}}",
   "webProfilesEditAction": "Edit",
   "webProfilesSaving": "Saving…",
+  "webGuardiansLoadFailed": "Could not load guardians.",
   "webProfilesLoadFailed": "Could not load profiles.",
   "webProfilesActionFailed": "That change didn't save. Try again.",
   "webProfilesDeleted": "Profile deleted.",

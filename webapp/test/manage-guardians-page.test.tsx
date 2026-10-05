@@ -474,6 +474,25 @@ describe('ManageGuardiansPage (issue #1255)', () => {
     ).toBeInTheDocument();
   });
 
+  it('a list that fails to load says so, not that an invitation was not accepted', async () => {
+    sharingMocks.fetchGuardians.mockRejectedValue(new SharingError('other'));
+    renderPage();
+    expect(
+      await screen.findByText(messages['webGuardiansLoadFailed'] ?? ''),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(messages['sharingFailureOther'] ?? '')).not.toBeInTheDocument();
+  });
+
+  it('an invitation the server refuses to create is not blamed on the connection', async () => {
+    sharingMocks.createGuardianInvitation.mockRejectedValue(new SharingError('unauthorized'));
+    renderPage();
+    fireEvent.click(await screen.findByText(messages['sharingInviteGuardianCreateLink'] ?? ''));
+    expect(await screen.findByText(messages['commonUnauthorized'] ?? '')).toBeInTheDocument();
+    expect(
+      screen.queryByText(messages['sharingInviteGuardianGenerateFailed'] ?? ''),
+    ).not.toBeInTheDocument();
+  });
+
   it('a revoked membership row is never listed', async () => {
     sharingMocks.fetchGuardians.mockResolvedValue([guardianRow({ status: 'revoked' })]);
     renderPage();

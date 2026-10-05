@@ -110,6 +110,43 @@ export function revokeFailureMessageId(kind: SharingFailureKind, selfPrimaryLeav
   return 'sharingManageGuardiansRemoveFailed' as const;
 }
 
+/**
+ * The line for an invitation that could not be created, the app's
+ * `inviteCreateFailureCopy`. `sharingFailureMessageId` is written for the
+ * person accepting one, so only the three answers that mean the same for
+ * any action are shared with it.
+ */
+export function createInviteFailureMessageId(kind: SharingFailureKind) {
+  switch (kind) {
+    case 'network':
+      return 'commonNetworkError' as const;
+    case 'unauthorized':
+      return 'commonUnauthorized' as const;
+    case 'notSignedIn':
+      return 'sharingFailureNotSignedIn' as const;
+    default:
+      return 'commonSomethingWentWrong' as const;
+  }
+}
+
+/**
+ * The line for a guardian list that could not be loaded. Again not
+ * `sharingFailureMessageId`: its generic line is "Failed to accept
+ * invitation", which is what this page used to show for a failed load.
+ */
+export function guardiansLoadFailureMessageId(kind: SharingFailureKind) {
+  switch (kind) {
+    case 'network':
+      return 'commonNetworkError' as const;
+    case 'unauthorized':
+      return 'commonUnauthorized' as const;
+    case 'notSignedIn':
+      return 'sharingFailureNotSignedIn' as const;
+    default:
+      return 'webGuardiansLoadFailed' as const;
+  }
+}
+
 /** The line for a role change that failed, the app's `_roleChangeErrorMessage`. */
 export function roleChangeFailureMessageId(kind: SharingFailureKind) {
   return kind === 'unauthorized'

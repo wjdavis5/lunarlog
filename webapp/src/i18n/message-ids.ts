@@ -1503,6 +1503,7 @@ export const MESSAGE_IDS = [
   "webHomeCycleStartedLength",
   "webProfilesEditAction",
   "webProfilesSaving",
+  "webGuardiansLoadFailed",
   "webProfilesLoadFailed",
   "webProfilesActionFailed",
   "webProfilesDeleted",

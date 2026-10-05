@@ -427,6 +427,21 @@ void main() {
         find.text('You do not have permission for this action.'),
         findsNothing,
       );
+
+      // A refusal with no line of its own is not described as a failure
+      // to accept an invitation: this person was making one.
+      failing.failure = const SharingFailure.other();
+      await tester.tap(find.text('Create Link'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Something went wrong. Please try again.'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Failed to accept invitation. Please try again.'),
+        findsNothing,
+      );
     });
   });
 

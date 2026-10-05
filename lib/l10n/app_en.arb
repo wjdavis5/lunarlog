@@ -7509,6 +7509,10 @@
   "@webProfilesSaving": {
     "description": "Issue #1253: the web profiles page's in-flight marker on a profile write."
   },
+  "webGuardiansLoadFailed": "Could not load guardians.",
+  "@webGuardiansLoadFailed": {
+    "description": "Browser only: inline error on the Manage guardians page when the guardian list fails to load for a reason that is not the connection, permission, or being signed out. Before this the page showed sharingFailureOther there, which is about accepting an invitation."
+  },
   "webProfilesLoadFailed": "Could not load profiles.",
   "@webProfilesLoadFailed": {
     "description": "Issue #1253: the web profiles page's failure state when the synced-data pull itself errors."

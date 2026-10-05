@@ -21,13 +21,14 @@ import { subjectInviteAvailable } from '../lib/schemas';
 import {
   cancelOwnershipTransfer,
   createGuardianInvitation,
+  createInviteFailureMessageId,
   createOwnershipTransfer,
+  guardiansLoadFailureMessageId,
   invitePath,
   revokeFailureMessageId,
   revokeGuardian,
   revokeGuardianInvitation,
   roleChangeFailureMessageId,
-  sharingFailureMessageId,
   transferFailureMessageId,
   updateGuardianRole,
   type GuardianRow,
@@ -193,7 +194,9 @@ export function ManageGuardiansPage() {
         </section>
       ) : null}
       {guardians.error instanceof Error ? (
-        <p className="error">{t(sharingFailureMessageId(failureKindOf(guardians.error)))}</p>
+        <p className="error">
+          {t(guardiansLoadFailureMessageId(failureKindOf(guardians.error)))}
+        </p>
       ) : null}
 
       {canManage ? (
@@ -602,7 +605,10 @@ function InviteSection(props: {
   const [nickname, setNickname] = useState('');
   const [createdToken, setCreatedToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [failed, setFailed] = useState(false);
+  // The line to show for the last failed attempt, or null.
+  const [failure, setFailure] = useState<ReturnType<
+    typeof createInviteFailureMessageId
+  > | null>(null);
 
   const create = useMutation({
     mutationFn: async () => {
@@ -620,12 +626,12 @@ function InviteSection(props: {
     onSuccess: (result) => {
       setCreatedToken(result.rawToken);
       setCopied(false);
-      setFailed(false);
+      setFailure(null);
       void queryClient.invalidateQueries({
         queryKey: pendingInvitesQueryKey(props.profileId),
       });
     },
-    onError: () => setFailed(true),
+    onError: (error) => setFailure(createInviteFailureMessageId(failureKindOf(error))),
   });
 
   const busy = create.isPending;
@@ -677,7 +683,7 @@ function InviteSection(props: {
               onChange={(event) => setNickname(event.target.value)}
             />
           </div>
-          {failed ? <p className="error">{t('sharingInviteGuardianGenerateFailed')}</p> : null}
+          {failure !== null ? <p className="error">{t(failure)}</p> : null}
           <div className="actions">
             <button
               type="button"

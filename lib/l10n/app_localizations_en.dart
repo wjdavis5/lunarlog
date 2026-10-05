@@ -5872,6 +5872,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get webProfilesSaving => 'Saving…';
 
   @override
+  String get webGuardiansLoadFailed => 'Could not load guardians.';
+
+  @override
   String get webProfilesLoadFailed => 'Could not load profiles.';
 
   @override

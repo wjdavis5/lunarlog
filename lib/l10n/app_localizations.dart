@@ -9157,6 +9157,12 @@ abstract class AppLocalizations {
   /// **'Saving…'**
   String get webProfilesSaving;
 
+  /// Browser only: inline error on the Manage guardians page when the guardian list fails to load for a reason that is not the connection, permission, or being signed out. Before this the page showed sharingFailureOther there, which is about accepting an invitation.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load guardians.'**
+  String get webGuardiansLoadFailed;
+
   /// Issue #1253: the web profiles page's failure state when the synced-data pull itself errors.
   ///
   /// In en, this message translates to:
