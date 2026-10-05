@@ -12,6 +12,16 @@ import { defineConfig } from "astro/config";
 export default defineConfig({
   site: "https://lunarlog.app",
   output: "static",
+  // Since v7 Astro's default is `compressHTML: 'jsx'`: JSX whitespace rules,
+  // which drop the line break between a word and an element that starts
+  // the next source line. These pages are written as HTML prose, where that
+  // line break is the space — so every link wrapped onto its own line
+  // rendered glued to the word before it ("sees whattheir role allows", 38
+  // places across the site). `true` is the lossless compression Astro used
+  // before v7: it still minifies, and keeps the whitespace the rendering
+  // depends on. `npm run check:spacing` fails the build if a word ever
+  // touches a link again.
+  compressHTML: true,
   build: {
     // The CSP in `site/public/_headers` is `style-src 'self'` with no
     // `'unsafe-inline'`, so Astro must never inline a stylesheet into the

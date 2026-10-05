@@ -12,6 +12,7 @@
     "screenshots": "node scripts/screenshots.mjs",
     "check:html": "html-validate \"dist/**/*.html\"",
     "check:links": "node scripts/check-internal-links.mjs",
+    "check:spacing": "node scripts/check-inline-spacing.mjs",
     "check:privacy-anchors": "node scripts/check-privacy-anchors.mjs",
     "check:external-links": "node scripts/check-external-links.mjs",
     "check:claims": "node scripts/check-claims.mjs",
