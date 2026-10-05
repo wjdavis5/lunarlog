@@ -30,7 +30,11 @@ const { title, description, noindex = false } = Astro.props;
 const site = Astro.site ?? new URL("https://lunarlog.app");
 const canonical = new URL(Astro.url.pathname, site).href;
 const ogImage = new URL("/og-image.png", site).href;
-const fullTitle = title === "lunarlog" ? title : `${title} — lunarlog`;
+// The home page's title says what lunarlog is. It used to be the bare
+// name, which is all a search result, a browser tab or a shared link
+// showed of it. Every other page is "<page> — lunarlog".
+const homeTitle = "lunarlog — a cycle tracker a family shares";
+const fullTitle = title === "lunarlog" ? homeTitle : `${title} — lunarlog`;
 
 // The header carries the four pages a first-time visitor asks for, in the
 // order the story is told: what it does, who it is shared with, whether it
