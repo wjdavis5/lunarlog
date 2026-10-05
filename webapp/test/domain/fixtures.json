@@ -15396,5 +15396,1095 @@
       "ok": true,
       "data": null
     }
+  },
+  {
+    "name": "todayLog.no-entry",
+    "method": "todayLog",
+    "request": {
+      "entry": null
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": false,
+        "flow": null,
+        "hasSpotting": false,
+        "pms": false,
+        "tags": [],
+        "moreTagCount": 0,
+        "bbt": null,
+        "weight": null,
+        "hasNote": false
+      }
+    }
+  },
+  {
+    "name": "todayLog.empty-entry",
+    "method": "todayLog",
+    "request": {
+      "entry": {
+        "id": "entry-today",
+        "profileId": "profile-1",
+        "localDate": "2026-09-30",
+        "tz": "UTC",
+        "flow": "none",
+        "tags": [],
+        "note": null,
+        "notePrivate": false,
+        "pms": false,
+        "source": "manual",
+        "sourceId": null,
+        "importId": null,
+        "updatedAt": "2026-09-30T08:00:00.000Z"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": false,
+        "flow": null,
+        "hasSpotting": false,
+        "pms": false,
+        "tags": [],
+        "moreTagCount": 0,
+        "bbt": null,
+        "weight": null,
+        "hasNote": false
+      }
+    }
+  },
+  {
+    "name": "todayLog.tombstone-says-nothing",
+    "method": "todayLog",
+    "request": {
+      "entry": {
+        "id": "entry-today",
+        "profileId": "profile-1",
+        "localDate": "2026-09-30",
+        "tz": "UTC",
+        "flow": "heavy",
+        "tags": [
+          "cramps"
+        ],
+        "note": "kept on the deleted row",
+        "notePrivate": false,
+        "pms": true,
+        "source": "manual",
+        "sourceId": null,
+        "importId": null,
+        "updatedAt": "2026-09-30T08:00:00.000Z",
+        "deletedAt": "2026-09-30T09:00:00.000Z"
+      },
+      "observations": [
+        {
+          "dayEntryId": "entry-today",
+          "category": "bbt",
+          "valueNum": 36.7,
+          "unit": "celsius",
+          "source": "manual",
+          "deletedAt": null
+        }
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": false,
+        "flow": null,
+        "hasSpotting": false,
+        "pms": false,
+        "tags": [],
+        "moreTagCount": 0,
+        "bbt": null,
+        "weight": null,
+        "hasNote": false
+      }
+    }
+  },
+  {
+    "name": "todayLog.flow-medium",
+    "method": "todayLog",
+    "request": {
+      "entry": {
+        "id": "entry-today",
+        "profileId": "profile-1",
+        "localDate": "2026-09-30",
+        "tz": "UTC",
+        "flow": "medium",
+        "tags": [],
+        "note": null,
+        "notePrivate": false,
+        "pms": false,
+        "source": "manual",
+        "sourceId": null,
+        "importId": null,
+        "updatedAt": "2026-09-30T08:00:00.000Z"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": true,
+        "flow": "medium",
+        "hasSpotting": false,
+        "pms": false,
+        "tags": [],
+        "moreTagCount": 0,
+        "bbt": null,
+        "weight": null,
+        "hasNote": false
+      }
+    }
+  },
+  {
+    "name": "todayLog.flow-super-heavy",
+    "method": "todayLog",
+    "request": {
+      "entry": {
+        "id": "entry-today",
+        "profileId": "profile-1",
+        "localDate": "2026-09-30",
+        "tz": "UTC",
+        "flow": "super_heavy",
+        "tags": [],
+        "note": null,
+        "notePrivate": false,
+        "pms": false,
+        "source": "manual",
+        "sourceId": null,
+        "importId": null,
+        "updatedAt": "2026-09-30T08:00:00.000Z"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": true,
+        "flow": "super_heavy",
+        "hasSpotting": false,
+        "pms": false,
+        "tags": [],
+        "moreTagCount": 0,
+        "bbt": null,
+        "weight": null,
+        "hasNote": false
+      }
+    }
+  },
+  {
+    "name": "todayLog.flow-not-bleeding",
+    "method": "todayLog",
+    "request": {
+      "entry": {
+        "id": "entry-today",
+        "profileId": "profile-1",
+        "localDate": "2026-09-30",
+        "tz": "UTC",
+        "flow": "not_bleeding",
+        "tags": [],
+        "note": null,
+        "notePrivate": false,
+        "pms": false,
+        "source": "manual",
+        "sourceId": null,
+        "importId": null,
+        "updatedAt": "2026-09-30T08:00:00.000Z"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": true,
+        "flow": "not_bleeding",
+        "hasSpotting": false,
+        "pms": false,
+        "tags": [],
+        "moreTagCount": 0,
+        "bbt": null,
+        "weight": null,
+        "hasNote": false
+      }
+    }
+  },
+  {
+    "name": "todayLog.spotting-over-not-bleeding",
+    "method": "todayLog",
+    "request": {
+      "entry": {
+        "id": "entry-today",
+        "profileId": "profile-1",
+        "localDate": "2026-09-30",
+        "tz": "UTC",
+        "flow": "not_bleeding",
+        "tags": [],
+        "note": null,
+        "notePrivate": false,
+        "pms": false,
+        "source": "manual",
+        "sourceId": null,
+        "importId": null,
+        "updatedAt": "2026-09-30T08:00:00.000Z"
+      },
+      "observations": [
+        {
+          "dayEntryId": "entry-today",
+          "category": "spotting",
+          "valueNum": null,
+          "unit": null,
+          "source": "manual",
+          "deletedAt": null
+        }
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": true,
+        "flow": "spotting",
+        "hasSpotting": true,
+        "pms": false,
+        "tags": [],
+        "moreTagCount": 0,
+        "bbt": null,
+        "weight": null,
+        "hasNote": false
+      }
+    }
+  },
+  {
+    "name": "todayLog.bleed-wins-over-spotting",
+    "method": "todayLog",
+    "request": {
+      "entry": {
+        "id": "entry-today",
+        "profileId": "profile-1",
+        "localDate": "2026-09-30",
+        "tz": "UTC",
+        "flow": "heavy",
+        "tags": [],
+        "note": null,
+        "notePrivate": false,
+        "pms": false,
+        "source": "manual",
+        "sourceId": null,
+        "importId": null,
+        "updatedAt": "2026-09-30T08:00:00.000Z"
+      },
+      "observations": [
+        {
+          "dayEntryId": "entry-today",
+          "category": "spotting",
+          "valueNum": null,
+          "unit": null,
+          "source": "manual",
+          "deletedAt": null
+        }
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": true,
+        "flow": "heavy",
+        "hasSpotting": true,
+        "pms": false,
+        "tags": [],
+        "moreTagCount": 0,
+        "bbt": null,
+        "weight": null,
+        "hasNote": false
+      }
+    }
+  },
+  {
+    "name": "todayLog.spotting-only-from-import",
+    "method": "todayLog",
+    "request": {
+      "entry": {
+        "id": "entry-today",
+        "profileId": "profile-1",
+        "localDate": "2026-09-30",
+        "tz": "UTC",
+        "flow": "none",
+        "tags": [],
+        "note": null,
+        "notePrivate": false,
+        "pms": false,
+        "source": "manual",
+        "sourceId": null,
+        "importId": null,
+        "updatedAt": "2026-09-30T08:00:00.000Z"
+      },
+      "observations": [
+        {
+          "dayEntryId": "entry-today",
+          "category": "spotting",
+          "valueNum": null,
+          "unit": null,
+          "source": "apple_health",
+          "deletedAt": null
+        }
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": true,
+        "flow": "spotting",
+        "hasSpotting": true,
+        "pms": false,
+        "tags": [],
+        "moreTagCount": 0,
+        "bbt": null,
+        "weight": null,
+        "hasNote": false
+      }
+    }
+  },
+  {
+    "name": "todayLog.legacy-spotting-flow",
+    "method": "todayLog",
+    "request": {
+      "entry": {
+        "id": "entry-today",
+        "profileId": "profile-1",
+        "localDate": "2026-09-30",
+        "tz": "UTC",
+        "flow": "spotting",
+        "tags": [],
+        "note": null,
+        "notePrivate": false,
+        "pms": false,
+        "source": "manual",
+        "sourceId": null,
+        "importId": null,
+        "updatedAt": "2026-09-30T08:00:00.000Z"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": true,
+        "flow": "spotting",
+        "hasSpotting": true,
+        "pms": false,
+        "tags": [],
+        "moreTagCount": 0,
+        "bbt": null,
+        "weight": null,
+        "hasNote": false
+      }
+    }
+  },
+  {
+    "name": "todayLog.tags-in-stored-order",
+    "method": "todayLog",
+    "request": {
+      "entry": {
+        "id": "entry-today",
+        "profileId": "profile-1",
+        "localDate": "2026-09-30",
+        "tz": "UTC",
+        "flow": "none",
+        "tags": [
+          "headache",
+          "cramps",
+          "pain_free"
+        ],
+        "note": null,
+        "notePrivate": false,
+        "pms": false,
+        "source": "manual",
+        "sourceId": null,
+        "importId": null,
+        "updatedAt": "2026-09-30T08:00:00.000Z"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": true,
+        "flow": null,
+        "hasSpotting": false,
+        "pms": false,
+        "tags": [
+          "Headache",
+          "Cramps",
+          "Pain free"
+        ],
+        "moreTagCount": 0,
+        "bbt": null,
+        "weight": null,
+        "hasNote": false
+      }
+    }
+  },
+  {
+    "name": "todayLog.tags-contextual-labels",
+    "method": "todayLog",
+    "request": {
+      "entry": {
+        "id": "entry-today",
+        "profileId": "profile-1",
+        "localDate": "2026-09-30",
+        "tz": "UTC",
+        "flow": "none",
+        "tags": [
+          "sticky",
+          "normal",
+          "sweet",
+          "0_to_3_hours",
+          "pain",
+          "bloating"
+        ],
+        "note": null,
+        "notePrivate": false,
+        "pms": false,
+        "source": "manual",
+        "sourceId": null,
+        "importId": null,
+        "updatedAt": "2026-09-30T08:00:00.000Z"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": true,
+        "flow": null,
+        "hasSpotting": false,
+        "pms": false,
+        "tags": [
+          "Vaginal discharge: Sticky",
+          "Stool: Normal",
+          "Craving: Sweet",
+          "Sleep duration: 0-3 hours",
+          "Took pain medication",
+          "Bloating"
+        ],
+        "moreTagCount": 0,
+        "bbt": null,
+        "weight": null,
+        "hasNote": false
+      }
+    }
+  },
+  {
+    "name": "todayLog.tags-digestion-clash",
+    "method": "todayLog",
+    "request": {
+      "entry": {
+        "id": "entry-today",
+        "profileId": "profile-1",
+        "localDate": "2026-09-30",
+        "tz": "UTC",
+        "flow": "none",
+        "tags": [
+          "great_digestion",
+          "nausea"
+        ],
+        "note": null,
+        "notePrivate": false,
+        "pms": false,
+        "source": "manual",
+        "sourceId": null,
+        "importId": null,
+        "updatedAt": "2026-09-30T08:00:00.000Z"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": true,
+        "flow": null,
+        "hasSpotting": false,
+        "pms": false,
+        "tags": [
+          "Great (digestion)",
+          "Nausea"
+        ],
+        "moreTagCount": 0,
+        "bbt": null,
+        "weight": null,
+        "hasNote": false
+      }
+    }
+  },
+  {
+    "name": "todayLog.tags-unnamed-are-counted",
+    "method": "todayLog",
+    "request": {
+      "entry": {
+        "id": "entry-today",
+        "profileId": "profile-1",
+        "localDate": "2026-09-30",
+        "tz": "UTC",
+        "flow": "none",
+        "tags": [
+          "cramps",
+          "unprotected_sex",
+          "pregnancy_positive",
+          "some_new_code"
+        ],
+        "note": null,
+        "notePrivate": false,
+        "pms": false,
+        "source": "manual",
+        "sourceId": null,
+        "importId": null,
+        "updatedAt": "2026-09-30T08:00:00.000Z"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": true,
+        "flow": null,
+        "hasSpotting": false,
+        "pms": false,
+        "tags": [
+          "Cramps"
+        ],
+        "moreTagCount": 3,
+        "bbt": null,
+        "weight": null,
+        "hasNote": false
+      }
+    }
+  },
+  {
+    "name": "todayLog.tags-only-unnamed",
+    "method": "todayLog",
+    "request": {
+      "entry": {
+        "id": "entry-today",
+        "profileId": "profile-1",
+        "localDate": "2026-09-30",
+        "tz": "UTC",
+        "flow": "none",
+        "tags": [
+          "protected_sex",
+          "ovulation_positive"
+        ],
+        "note": null,
+        "notePrivate": false,
+        "pms": false,
+        "source": "manual",
+        "sourceId": null,
+        "importId": null,
+        "updatedAt": "2026-09-30T08:00:00.000Z"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": true,
+        "flow": null,
+        "hasSpotting": false,
+        "pms": false,
+        "tags": [],
+        "moreTagCount": 2,
+        "bbt": null,
+        "weight": null,
+        "hasNote": false
+      }
+    }
+  },
+  {
+    "name": "todayLog.tags-more-than-fit",
+    "method": "todayLog",
+    "request": {
+      "entry": {
+        "id": "entry-today",
+        "profileId": "profile-1",
+        "localDate": "2026-09-30",
+        "tz": "UTC",
+        "flow": "none",
+        "tags": [
+          "cramps",
+          "headache",
+          "back_pain",
+          "fatigue",
+          "acne",
+          "migraine",
+          "protected_sex",
+          "anxious",
+          "bloating"
+        ],
+        "note": null,
+        "notePrivate": false,
+        "pms": false,
+        "source": "manual",
+        "sourceId": null,
+        "importId": null,
+        "updatedAt": "2026-09-30T08:00:00.000Z"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": true,
+        "flow": null,
+        "hasSpotting": false,
+        "pms": false,
+        "tags": [
+          "Cramps",
+          "Headache",
+          "Back pain",
+          "Fatigue",
+          "Acne",
+          "Migraine"
+        ],
+        "moreTagCount": 3,
+        "bbt": null,
+        "weight": null,
+        "hasNote": false
+      }
+    }
+  },
+  {
+    "name": "todayLog.tags-exactly-six",
+    "method": "todayLog",
+    "request": {
+      "entry": {
+        "id": "entry-today",
+        "profileId": "profile-1",
+        "localDate": "2026-09-30",
+        "tz": "UTC",
+        "flow": "none",
+        "tags": [
+          "cramps",
+          "headache",
+          "back_pain",
+          "fatigue",
+          "acne",
+          "migraine"
+        ],
+        "note": null,
+        "notePrivate": false,
+        "pms": false,
+        "source": "manual",
+        "sourceId": null,
+        "importId": null,
+        "updatedAt": "2026-09-30T08:00:00.000Z"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": true,
+        "flow": null,
+        "hasSpotting": false,
+        "pms": false,
+        "tags": [
+          "Cramps",
+          "Headache",
+          "Back pain",
+          "Fatigue",
+          "Acne",
+          "Migraine"
+        ],
+        "moreTagCount": 0,
+        "bbt": null,
+        "weight": null,
+        "hasNote": false
+      }
+    }
+  },
+  {
+    "name": "todayLog.custom-tags",
+    "method": "todayLog",
+    "request": {
+      "entry": {
+        "id": "entry-today",
+        "profileId": "profile-1",
+        "localDate": "2026-09-30",
+        "tz": "UTC",
+        "flow": "none",
+        "tags": [
+          "back_cracking",
+          "cramps",
+          "sex_ed_class",
+          "gone_tag",
+          "never_synced"
+        ],
+        "note": null,
+        "notePrivate": false,
+        "pms": false,
+        "source": "manual",
+        "sourceId": null,
+        "importId": null,
+        "updatedAt": "2026-09-30T08:00:00.000Z"
+      },
+      "customTags": [
+        {
+          "code": "back_cracking",
+          "displayName": "Back cracking",
+          "deletedAt": null
+        },
+        {
+          "code": "sex_ed_class",
+          "displayName": "Sex ed class",
+          "deletedAt": null
+        },
+        {
+          "code": "gone_tag",
+          "displayName": "Gone",
+          "deletedAt": "2026-09-01T00:00:00.000Z"
+        }
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": true,
+        "flow": null,
+        "hasSpotting": false,
+        "pms": false,
+        "tags": [
+          "Back cracking",
+          "Cramps",
+          "Sex ed class"
+        ],
+        "moreTagCount": 2,
+        "bbt": null,
+        "weight": null,
+        "hasNote": false
+      }
+    }
+  },
+  {
+    "name": "todayLog.pms-and-note",
+    "method": "todayLog",
+    "request": {
+      "entry": {
+        "id": "entry-today",
+        "profileId": "profile-1",
+        "localDate": "2026-09-30",
+        "tz": "UTC",
+        "flow": "none",
+        "tags": [],
+        "note": "zebra crossing after the dentist",
+        "notePrivate": false,
+        "pms": true,
+        "source": "manual",
+        "sourceId": null,
+        "importId": null,
+        "updatedAt": "2026-09-30T08:00:00.000Z"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": true,
+        "flow": null,
+        "hasSpotting": false,
+        "pms": true,
+        "tags": [],
+        "moreTagCount": 0,
+        "bbt": null,
+        "weight": null,
+        "hasNote": true
+      }
+    }
+  },
+  {
+    "name": "todayLog.blank-note-is-no-note",
+    "method": "todayLog",
+    "request": {
+      "entry": {
+        "id": "entry-today",
+        "profileId": "profile-1",
+        "localDate": "2026-09-30",
+        "tz": "UTC",
+        "flow": "none",
+        "tags": [],
+        "note": "   ",
+        "notePrivate": false,
+        "pms": false,
+        "source": "manual",
+        "sourceId": null,
+        "importId": null,
+        "updatedAt": "2026-09-30T08:00:00.000Z"
+      }
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": false,
+        "flow": null,
+        "hasSpotting": false,
+        "pms": false,
+        "tags": [],
+        "moreTagCount": 0,
+        "bbt": null,
+        "weight": null,
+        "hasNote": false
+      }
+    }
+  },
+  {
+    "name": "todayLog.readings-as-stored",
+    "method": "todayLog",
+    "request": {
+      "entry": {
+        "id": "entry-today",
+        "profileId": "profile-1",
+        "localDate": "2026-09-30",
+        "tz": "UTC",
+        "flow": "none",
+        "tags": [],
+        "note": null,
+        "notePrivate": false,
+        "pms": false,
+        "source": "manual",
+        "sourceId": null,
+        "importId": null,
+        "updatedAt": "2026-09-30T08:00:00.000Z"
+      },
+      "observations": [
+        {
+          "dayEntryId": "entry-today",
+          "category": "bbt",
+          "valueNum": 36.7,
+          "unit": "celsius",
+          "source": "manual",
+          "deletedAt": null
+        },
+        {
+          "dayEntryId": "entry-today",
+          "category": "weight",
+          "valueNum": 61,
+          "unit": "kg",
+          "source": "manual",
+          "deletedAt": null
+        }
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": true,
+        "flow": null,
+        "hasSpotting": false,
+        "pms": false,
+        "tags": [],
+        "moreTagCount": 0,
+        "bbt": {
+          "value": 36.7,
+          "unit": "celsius"
+        },
+        "weight": {
+          "value": 61.0,
+          "unit": "kg"
+        },
+        "hasNote": false
+      }
+    }
+  },
+  {
+    "name": "todayLog.readings-in-profile-units",
+    "method": "todayLog",
+    "request": {
+      "entry": {
+        "id": "entry-today",
+        "profileId": "profile-1",
+        "localDate": "2026-09-30",
+        "tz": "UTC",
+        "flow": "none",
+        "tags": [],
+        "note": null,
+        "notePrivate": false,
+        "pms": false,
+        "source": "manual",
+        "sourceId": null,
+        "importId": null,
+        "updatedAt": "2026-09-30T08:00:00.000Z"
+      },
+      "observations": [
+        {
+          "dayEntryId": "entry-today",
+          "category": "bbt",
+          "valueNum": 37,
+          "unit": "celsius",
+          "source": "manual",
+          "deletedAt": null
+        },
+        {
+          "dayEntryId": "entry-today",
+          "category": "weight",
+          "valueNum": 50,
+          "unit": "kg",
+          "source": "manual",
+          "deletedAt": null
+        }
+      ],
+      "bbtUnit": "fahrenheit",
+      "weightUnit": "lb"
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": true,
+        "flow": null,
+        "hasSpotting": false,
+        "pms": false,
+        "tags": [],
+        "moreTagCount": 0,
+        "bbt": {
+          "value": 98.6,
+          "unit": "fahrenheit"
+        },
+        "weight": {
+          "value": 110.23113109243879,
+          "unit": "lb"
+        },
+        "hasNote": false
+      }
+    }
+  },
+  {
+    "name": "todayLog.readings-not-this-days",
+    "method": "todayLog",
+    "request": {
+      "entry": {
+        "id": "entry-today",
+        "profileId": "profile-1",
+        "localDate": "2026-09-30",
+        "tz": "UTC",
+        "flow": "none",
+        "tags": [],
+        "note": null,
+        "notePrivate": false,
+        "pms": false,
+        "source": "manual",
+        "sourceId": null,
+        "importId": null,
+        "updatedAt": "2026-09-30T08:00:00.000Z"
+      },
+      "observations": [
+        {
+          "dayEntryId": "entry-today",
+          "category": "bbt",
+          "valueNum": 36.5,
+          "unit": "celsius",
+          "source": "wearable",
+          "deletedAt": null
+        },
+        {
+          "dayEntryId": "entry-today",
+          "category": "weight",
+          "valueNum": 60,
+          "unit": "kg",
+          "source": "manual",
+          "deletedAt": "2026-09-30T09:00:00.000Z"
+        },
+        {
+          "dayEntryId": "entry-yesterday",
+          "category": "bbt",
+          "valueNum": 36.9,
+          "unit": "celsius",
+          "source": "manual",
+          "deletedAt": null
+        },
+        {
+          "dayEntryId": "entry-yesterday",
+          "category": "spotting",
+          "valueNum": null,
+          "unit": null,
+          "source": "manual",
+          "deletedAt": null
+        }
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": false,
+        "flow": null,
+        "hasSpotting": false,
+        "pms": false,
+        "tags": [],
+        "moreTagCount": 0,
+        "bbt": null,
+        "weight": null,
+        "hasNote": false
+      }
+    }
+  },
+  {
+    "name": "todayLog.everything",
+    "method": "todayLog",
+    "request": {
+      "entry": {
+        "id": "entry-today",
+        "profileId": "profile-1",
+        "localDate": "2026-09-30",
+        "tz": "UTC",
+        "flow": "light",
+        "tags": [
+          "cramps",
+          "withdrawal",
+          "sticky"
+        ],
+        "note": "zebra crossing after the dentist",
+        "notePrivate": false,
+        "pms": true,
+        "source": "manual",
+        "sourceId": null,
+        "importId": null,
+        "updatedAt": "2026-09-30T08:00:00.000Z"
+      },
+      "observations": [
+        {
+          "dayEntryId": "entry-today",
+          "category": "spotting",
+          "valueNum": null,
+          "unit": null,
+          "source": "manual",
+          "deletedAt": null
+        },
+        {
+          "dayEntryId": "entry-today",
+          "category": "bbt",
+          "valueNum": 97.9,
+          "unit": "fahrenheit",
+          "source": "manual",
+          "deletedAt": null
+        },
+        {
+          "dayEntryId": "entry-today",
+          "category": "weight",
+          "valueNum": 134.5,
+          "unit": "lb",
+          "source": "manual",
+          "deletedAt": null
+        }
+      ],
+      "bbtUnit": "fahrenheit",
+      "weightUnit": "lb"
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "hasContent": true,
+        "flow": "light",
+        "hasSpotting": true,
+        "pms": true,
+        "tags": [
+          "Cramps",
+          "Vaginal discharge: Sticky"
+        ],
+        "moreTagCount": 1,
+        "bbt": {
+          "value": 97.9,
+          "unit": "fahrenheit"
+        },
+        "weight": {
+          "value": 134.5,
+          "unit": "lb"
+        },
+        "hasNote": true
+      }
+    }
   }
 ]

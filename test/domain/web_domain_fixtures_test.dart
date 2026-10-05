@@ -28,6 +28,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/insights/symptom_trends.dart';
+import 'package:lunarlog/domain/models/flow_level.dart';
 
 import '../../tool/web_domain/facade.dart';
 
@@ -60,6 +61,107 @@ void main() {
       );
     });
   }
+
+  // The Today log card's rules reach the browser only through `todayLog`,
+  // so the fixtures have to keep exercising it: the Vitest parity suite
+  // loops over this same file, and a method with no case here is a method
+  // the compiled module is not pinned on. The names are the things the card
+  // must get right, one case each.
+  test('the fixtures pin what the Today log card says', () {
+    final names = [
+      for (final raw in cases)
+        if ((raw! as Map<String, Object?>)['method'] == 'todayLog')
+          (raw as Map<String, Object?>)['name']! as String,
+    ];
+    expect(
+      names,
+      containsAll(<String>[
+        'todayLog.no-entry',
+        'todayLog.empty-entry',
+        'todayLog.tombstone-says-nothing',
+        'todayLog.flow-medium',
+        'todayLog.flow-not-bleeding',
+        'todayLog.spotting-over-not-bleeding',
+        'todayLog.bleed-wins-over-spotting',
+        'todayLog.spotting-only-from-import',
+        'todayLog.legacy-spotting-flow',
+        'todayLog.tags-contextual-labels',
+        'todayLog.tags-digestion-clash',
+        'todayLog.tags-unnamed-are-counted',
+        'todayLog.tags-only-unnamed',
+        'todayLog.tags-more-than-fit',
+        'todayLog.custom-tags',
+        'todayLog.pms-and-note',
+        'todayLog.readings-in-profile-units',
+        'todayLog.readings-not-this-days',
+      ]),
+    );
+  });
+
+  // The note's text goes into the call and never comes out of it: the card
+  // is told only that a note exists. Checked on the committed envelopes,
+  // which are what the browser's card is tested against.
+  test('no Today log fixture answers with the note it was given', () {
+    var notesSeen = 0;
+    for (final raw in cases) {
+      final case_ = raw! as Map<String, Object?>;
+      if (case_['method'] != 'todayLog') continue;
+      final request = case_['request']! as Map<String, Object?>;
+      final entry = request['entry'] as Map<String, Object?>?;
+      final note = (entry?['note'] as String?)?.trim() ?? '';
+      if (note.isEmpty) continue;
+      notesSeen++;
+      final expected = jsonEncode(case_['expected']);
+      // Words of four letters and up: "on" and "the" are inside the
+      // response's own key names.
+      for (final word in note.split(' ').where((word) => word.length > 3)) {
+        expect(
+          expected,
+          isNot(contains(word)),
+          reason: '"${case_['name']}" answers with a word of its note',
+        );
+      }
+    }
+    expect(notesSeen, greaterThan(0), reason: 'no fixture carries a note');
+  });
+
+  // `todayLog` answers its flow line as a `FlowLevel` wire value, and the
+  // browser's card has words for exactly the values in `todayLogFlowSchema`.
+  // The two lists must match: a level the schema does not list makes the
+  // card's call throw for a day logged at that level, fixture or no fixture
+  // (the same class of bug as the trend enum below). `none` is the one
+  // level left out, because a day with no flow answers null.
+  test('todayLogFlowSchema lists every flow level but none', () {
+    final schemasSource =
+        File('webapp/src/domain/schemas.ts').readAsStringSync();
+    final match = RegExp(
+      r'todayLogFlowSchema\s*=\s*z\.enum\(\[([^\]]*)\]',
+    ).firstMatch(schemasSource);
+    expect(
+      match,
+      isNotNull,
+      reason: 'webapp/src/domain/schemas.ts no longer carries '
+          '`todayLogFlowSchema = z.enum([...])`. If it moved or was renamed, '
+          'point this test at the new shape.',
+    );
+    final schemaValues = RegExp(r"'([^']+)'")
+        .allMatches(match!.group(1)!)
+        .map((m) => m.group(1)!)
+        .toSet();
+    final dartValues = {
+      for (final level in FlowLevel.values)
+        if (level != FlowLevel.none) level.toDb(),
+    };
+    expect(
+      schemaValues,
+      dartValues,
+      reason: 'The flow values the web card can label '
+          '(webapp/src/domain/schemas.ts) and FlowLevel '
+          '(lib/domain/models/flow_level.dart) have drifted. Update both '
+          'sides, and the card\'s wording '
+          '(webapp/src/lib/profiles/today-log.ts), in the same change.',
+    );
+  });
 
   // Issue #1272: the facade serialises `TrendDirection` by `.name`
   // (`tool/web_domain/facade.dart`'s `insightsReportToJson`), and the web

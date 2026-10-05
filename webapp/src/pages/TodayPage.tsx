@@ -9,12 +9,18 @@ import { browserTimeZone, todayInBrowserZone } from '../lib/day/day-entry-policy
 import { spottingIsosFor } from '../lib/profiles/calendar-cells';
 import {
   callerRoleFor,
+  guardianLensFor,
   profileDomainInputs,
   profileListsFromSyncedData,
   profileModeFromDb,
   showsFertileWindow,
   withClockInputs,
 } from '../lib/profiles/profile-views';
+import {
+  readTodayLog,
+  todayLogCardView,
+  type TodayLogCardView,
+} from '../lib/profiles/today-log';
 import { canWriteDayContent } from '../lib/day/payloads';
 import {
   useHasSyncSession,
@@ -26,6 +32,7 @@ import type { DayEntryRow } from '../lib/schemas';
 import { ProfileHomeCalendar } from './ProfileHomeCalendar';
 import { ProfileHomeComparison, ProfileHomeHistory } from './ProfileHomeHistory';
 import { ProfileHomeStatus } from './ProfileHomeStatus';
+import { ProfileHomeTodayLog } from './ProfileHomeTodayLog';
 import { SignedOutHome } from './SignedOutHome';
 
 /**
@@ -76,6 +83,27 @@ export function TodayPage() {
     }
   }, [active, requested, setSearchParams]);
 
+  // Today is the browser's today, read once per render so the button, the
+  // card and the calendar under them all mean the same day.
+  const todayIso = todayInBrowserZone();
+  const activeId = active?.id ?? null;
+
+  // What is logged today for the active profile: the one answer the
+  // button's label and the "Logged today" card are both read from, as in
+  // the app. It is the compiled domain module's answer over the snapshot
+  // already in hand, so no request is made for it and it follows every
+  // re-pull. A module that is missing or refuses the call leaves it null,
+  // which reads as "Log today" and no card: never a wrong one.
+  const todayLog = useMemo(() => {
+    const data = synced.data;
+    if (data === undefined || activeId === null) return null;
+    try {
+      return readTodayLog(getDomainModule(), data, activeId, todayIso);
+    } catch {
+      return null;
+    }
+  }, [synced.data, activeId, todayIso]);
+
   if (!signedIn) return <SignedOutHome />;
 
   // The same test the day editor applies to its own form: no accepted
@@ -85,6 +113,19 @@ export function TodayPage() {
     canWriteDayContent(
       callerRoleFor(synced.data ?? emptySyncedData(), active.id, me) ?? 'viewer',
     );
+
+  // Who sees the card. A guardian's page says nothing of what was logged
+  // (the app's lens rule, guardianLensFor); the person the profile is
+  // about sees it. Until the account id has loaded there is no telling the
+  // two apart, so nothing is shown rather than shown to the wrong reader.
+  const todayLogView: TodayLogCardView =
+    active === null || me === null
+      ? { kind: 'none' }
+      : todayLogCardView({
+          log: todayLog,
+          lens: guardianLensFor(synced.data ?? emptySyncedData(), active.id, me),
+          canLog: canLogActive,
+        });
 
   if (synced.isError) {
     return (
@@ -135,10 +176,12 @@ export function TodayPage() {
               on the page and the only filled one. It used to be a text
               link under everything else, labelled "Today" like the header
               link that goes somewhere else. A viewer cannot log, so a
-              viewer is not offered it; the calendar still opens any day. */}
+              viewer is not offered it; the calendar still opens any day.
+              It reads "Edit today" once today has something logged, as
+              the app's button does. */}
           {active !== null && canLogActive ? (
             <Link className="btn btn-primary home-log-today" to={`/day/${active.id}`}>
-              {t('householdLogToday')}
+              {t(todayLog?.hasContent === true ? 'todayLogFabEdit' : 'householdLogToday')}
             </Link>
           ) : null}
         </div>
@@ -155,14 +198,18 @@ export function TodayPage() {
       )}
 
       {active !== null ? (
-        <ProfileHome profileId={active.id} todayIso={todayInBrowserZone()} />
+        <ProfileHome profileId={active.id} todayIso={todayIso} todayLogView={todayLogView} />
       ) : null}
     </main>
   );
 }
 
-/** One active profile's home: status card, month calendar, history. */
-function ProfileHome(props: { profileId: string; todayIso: string }) {
+/** One active profile's home: status card, today's log, month calendar, history. */
+function ProfileHome(props: {
+  profileId: string;
+  todayIso: string;
+  todayLogView: TodayLogCardView;
+}) {
   const t = useT();
   const synced = useSyncedData();
   const tz = browserTimeZone();
@@ -243,6 +290,9 @@ function ProfileHome(props: { profileId: string; todayIso: string }) {
           displayName={profile.display_name}
         />
       )}
+      {/* Directly under the estimate, above the calendar: what is logged
+          today. Draws nothing for a reader who is not shown it. */}
+      <ProfileHomeTodayLog view={props.todayLogView} profileId={props.profileId} />
       <ProfileHomeCalendar
         todayIso={props.todayIso}
         profileId={props.profileId}

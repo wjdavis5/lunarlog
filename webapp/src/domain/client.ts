@@ -29,12 +29,14 @@ import {
   insightsReportSchema,
   inviteLinkSchema,
   predictionSchema,
+  todayLogSchema,
   type CalendarForecast,
   type CycleHistoryView,
   type ExportDocument,
   type InsightsReport,
   type InviteLink,
   type Prediction,
+  type TodayLog,
 } from './schemas';
 import type { z } from 'zod';
 
@@ -232,4 +234,48 @@ export function parseInviteLink(
   request: { url: string; linkDomain?: string },
 ): InviteLink | null {
   return callDomain(module, 'parseInviteLink', request, inviteLinkSchema.nullable());
+}
+
+/** One observation of the day's entry, as much of it as the Today log reads. */
+export interface TodayLogObservationJson {
+  dayEntryId: string;
+  category: string | null;
+  valueNum: number | null;
+  unit: string | null;
+  source: string;
+  deletedAt?: string | null;
+}
+
+/** One row of the profile's own tag registry: the code and what it is called. */
+export interface TodayLogCustomTagJson {
+  code: string;
+  displayName: string;
+  deletedAt?: string | null;
+}
+
+/** The `todayLog` request (`todayLogFromJson`, tool/web_domain/facade.dart). */
+export interface TodayLogRequest {
+  /** The day's entry, or null when the day has none. */
+  entry: DayEntryJson | null;
+  /** The observations attached to that entry. */
+  observations?: TodayLogObservationJson[];
+  /** The profile's own tag registry. */
+  customTags?: TodayLogCustomTagJson[];
+  /** The profile's display units; a reading is answered in them. */
+  bbtUnit?: string;
+  weightUnit?: string;
+}
+
+/**
+ * What is logged for one day, as the app's Today log card says it: the
+ * app's own rules (lib/domain/logging/today_log.dart), not a TypeScript
+ * copy of them.
+ *
+ * The entry goes in whole, its note included, because "is there a note"
+ * is the domain's question to answer. Nothing of the note comes back: the
+ * response carries `hasNote` and no text, and the schema strips any key it
+ * does not name.
+ */
+export function todayLog(module: DomainModule, request: TodayLogRequest): TodayLog {
+  return callDomain(module, 'todayLog', request, todayLogSchema);
 }

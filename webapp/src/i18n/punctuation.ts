@@ -17,3 +17,6 @@ export const RANGE_SEPARATOR = ' – ';
 
 /** Label colon inside a composed value ("Length: 28"). */
 export const LABEL_COLON = ': ';
+
+/** Comma between the items of a short list ("Cramps, Headache"). */
+export const LIST_SEPARATOR = ', ';

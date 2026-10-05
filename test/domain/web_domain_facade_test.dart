@@ -497,4 +497,349 @@ void main() {
       expect(missingCode['data'], isNull);
     });
   });
+
+  // What the Today log card says about a day. The browser version's card
+  // asks here, so the rules are the app's own
+  // (lib/domain/logging/today_log.dart); these pin the request decoding and
+  // what the response must never carry.
+  group('todayLog', () {
+    const noteText = 'zebra crossing after the dentist';
+    const noteWords = ['zebra', 'crossing', 'dentist'];
+
+    Map<String, Object?> todayEntry({
+      String flow = 'none',
+      List<String> tags = const [],
+      bool pms = false,
+      String? note,
+      String? deletedAt,
+    }) => {
+      ...bleedEntry('e-today', '2026-09-30', flow: flow, pms: pms),
+      'tags': tags,
+      'note': note,
+      'deletedAt': deletedAt,
+    };
+
+    Map<String, Object?> todayLog(Map<String, Object?> request) {
+      final response = call('todayLog', request);
+      expect(response['ok'], true, reason: '${response['error']}');
+      return response['data']! as Map<String, Object?>;
+    }
+
+    const empty = {
+      'hasContent': false,
+      'flow': null,
+      'hasSpotting': false,
+      'pms': false,
+      'tags': <Object?>[],
+      'moreTagCount': 0,
+      'bbt': null,
+      'weight': null,
+      'hasNote': false,
+    };
+
+    test('no entry, an absent entry and an empty entry are nothing logged',
+        () {
+      expect(todayLog({'entry': null}), empty);
+      expect(todayLog({}), empty);
+      expect(todayLog({'entry': todayEntry()}), empty);
+    });
+
+    test('a tombstoned entry says nothing about what it used to hold', () {
+      final data = todayLog({
+        'entry': todayEntry(
+          flow: 'heavy',
+          tags: const ['cramps'],
+          pms: true,
+          note: noteText,
+          deletedAt: '2026-09-30T09:00:00.000Z',
+        ),
+        'observations': [
+          {'dayEntryId': 'e-today', 'category': 'spotting'},
+          {
+            'dayEntryId': 'e-today',
+            'category': 'bbt',
+            'valueNum': 36.7,
+            'unit': 'celsius',
+          },
+        ],
+      });
+      expect(data, empty);
+    });
+
+    test('the response never carries the note, only that one exists', () {
+      final response = handleFacadeCall(
+        'todayLog',
+        jsonEncode({
+          'entry': todayEntry(
+            flow: 'medium',
+            tags: const ['cramps'],
+            note: noteText,
+          ),
+        }),
+      );
+      final data = (jsonDecode(response) as Map<String, Object?>)['data']!
+          as Map<String, Object?>;
+      expect(data['hasNote'], true);
+      expect(data.containsKey('note'), isFalse);
+      for (final word in noteWords) {
+        expect(response, isNot(contains(word)));
+      }
+    });
+
+    test('a note of only spaces is not a note', () {
+      expect(todayLog({'entry': todayEntry(note: '   ')}), empty);
+    });
+
+    test('the response names tags by label and never by code', () {
+      final response = handleFacadeCall(
+        'todayLog',
+        jsonEncode({
+          'entry': todayEntry(
+            tags: const [
+              'back_pain',
+              'unprotected_sex',
+              'pregnancy_positive',
+              'some_new_code',
+            ],
+          ),
+        }),
+      );
+      final data = (jsonDecode(response) as Map<String, Object?>)['data']!
+          as Map<String, Object?>;
+      expect(data['tags'], ['Back pain']);
+      expect(data['moreTagCount'], 3);
+      for (final hidden in [
+        'back_pain',
+        'unprotected_sex',
+        'Unprotected',
+        'pregnancy',
+        'Pregnancy',
+        'some_new_code',
+      ]) {
+        expect(response, isNot(contains(hidden)));
+      }
+    });
+
+    test('at most six labels come back; the rest are counted', () {
+      final data = todayLog({
+        'entry': todayEntry(
+          tags: const [
+            'cramps',
+            'headache',
+            'back_pain',
+            'fatigue',
+            'acne',
+            'migraine',
+            'anxious',
+            'protected_sex',
+          ],
+        ),
+      });
+      expect(data['tags'], [
+        'Cramps',
+        'Headache',
+        'Back pain',
+        'Fatigue',
+        'Acne',
+        'Migraine',
+      ]);
+      expect(data['moreTagCount'], 2);
+    });
+
+    test('a registry row names its tag; a deleted row names nothing', () {
+      final data = todayLog({
+        'entry': todayEntry(tags: const ['back_cracking', 'gone_tag']),
+        'customTags': [
+          {'code': 'back_cracking', 'displayName': 'Back cracking'},
+          {
+            'code': 'gone_tag',
+            'displayName': 'Gone',
+            'deletedAt': '2026-09-01T00:00:00.000Z',
+          },
+        ],
+      });
+      expect(data['tags'], ['Back cracking']);
+      expect(data['moreTagCount'], 1);
+    });
+
+    test('bleed wins over spotting, and spotting over "not bleeding"', () {
+      const spotting = [
+        {'dayEntryId': 'e-today', 'category': 'spotting'},
+      ];
+      final bleed = todayLog({
+        'entry': todayEntry(flow: 'heavy'),
+        'observations': spotting,
+      });
+      expect(bleed['flow'], 'heavy');
+      expect(bleed['hasSpotting'], true);
+
+      final spotted = todayLog({
+        'entry': todayEntry(flow: 'not_bleeding'),
+        'observations': spotting,
+      });
+      expect(spotted['flow'], 'spotting');
+      expect(spotted['hasSpotting'], true);
+
+      final dry = todayLog({'entry': todayEntry(flow: 'not_bleeding')});
+      expect(dry['flow'], 'not_bleeding');
+      expect(dry['hasSpotting'], false);
+    });
+
+    test('a row that stores spotting as its flow level reads as spotting, '
+        'as the device reads it', () {
+      final data = todayLog({'entry': todayEntry(flow: 'spotting')});
+      expect(data['hasContent'], true);
+      expect(data['flow'], 'spotting');
+      expect(data['hasSpotting'], true);
+    });
+
+    test('an observation that is deleted, or attached to another entry, '
+        'is not this day\'s', () {
+      final data = todayLog({
+        'entry': todayEntry(),
+        'observations': [
+          {
+            'dayEntryId': 'e-today',
+            'category': 'spotting',
+            'deletedAt': '2026-09-30T09:00:00.000Z',
+          },
+          {'dayEntryId': 'e-yesterday', 'category': 'spotting'},
+          {
+            'dayEntryId': 'e-yesterday',
+            'category': 'weight',
+            'valueNum': 60,
+            'unit': 'kg',
+          },
+        ],
+      });
+      expect(data, empty);
+    });
+
+    test('a reading another source wrote is not the day\'s reading', () {
+      final data = todayLog({
+        'entry': todayEntry(),
+        'observations': [
+          {
+            'dayEntryId': 'e-today',
+            'category': 'bbt',
+            'valueNum': 36.5,
+            'unit': 'celsius',
+            'source': 'wearable',
+          },
+        ],
+      });
+      expect(data, empty);
+    });
+
+    test('a reading is answered in the profile\'s units, whatever it was '
+        'stored in', () {
+      final data = todayLog({
+        'entry': todayEntry(),
+        'observations': [
+          {
+            'dayEntryId': 'e-today',
+            'category': 'bbt',
+            'valueNum': 37,
+            'unit': 'celsius',
+          },
+          {
+            'dayEntryId': 'e-today',
+            'category': 'weight',
+            'valueNum': 50,
+            'unit': 'kg',
+          },
+        ],
+        'bbtUnit': 'fahrenheit',
+        'weightUnit': 'lb',
+      });
+      final bbt = data['bbt']! as Map<String, Object?>;
+      final weight = data['weight']! as Map<String, Object?>;
+      expect(bbt['unit'], 'fahrenheit');
+      expect(bbt['value'], closeTo(98.6, 1e-9));
+      expect(weight['unit'], 'lb');
+      expect(weight['value'], closeTo(110.2311, 1e-4));
+    });
+
+    test('with no units named, a reading comes back in Celsius and '
+        'kilograms', () {
+      final data = todayLog({
+        'entry': todayEntry(),
+        'observations': [
+          {
+            'dayEntryId': 'e-today',
+            'category': 'bbt',
+            'valueNum': 98.6,
+            'unit': 'fahrenheit',
+          },
+          {
+            'dayEntryId': 'e-today',
+            'category': 'weight',
+            'valueNum': 61,
+            'unit': 'kg',
+          },
+        ],
+      });
+      final bbt = data['bbt']! as Map<String, Object?>;
+      expect(bbt['unit'], 'celsius');
+      expect(bbt['value'], closeTo(37, 1e-9));
+      expect(data['weight'], {'value': 61, 'unit': 'kg'});
+    });
+
+    test('malformed inputs are error envelopes, not throws', () {
+      expect(call('todayLog', {'entry': 'nope'})['error'], contains('entry'));
+      expect(
+        call('todayLog', {
+          'entry': todayEntry(flow: 'medium'),
+          'observations': 'nope',
+        })['error'],
+        contains('observations'),
+      );
+      expect(
+        call('todayLog', {
+          'entry': todayEntry(flow: 'medium'),
+          'observations': ['nope'],
+        })['error'],
+        contains('observations[0]'),
+      );
+      expect(
+        call('todayLog', {
+          'entry': todayEntry(flow: 'medium'),
+          'observations': [
+            {'dayEntryId': 'e-today', 'category': 'bbt', 'valueNum': 'warm'},
+          ],
+        })['error'],
+        contains('valueNum'),
+      );
+      expect(
+        call('todayLog', {
+          'entry': todayEntry(tags: const ['cramps']),
+          'customTags': 'nope',
+        })['error'],
+        contains('customTags'),
+      );
+      expect(
+        call('todayLog', {
+          'entry': todayEntry(tags: const ['cramps']),
+          'customTags': ['nope'],
+        })['error'],
+        contains('customTags[0]'),
+      );
+    });
+
+    test('a row missing what the log reads is skipped, not an error', () {
+      final data = todayLog({
+        'entry': todayEntry(tags: const ['back_cracking']),
+        'observations': [
+          {'dayEntryId': 'e-today', 'category': null},
+        ],
+        'customTags': [
+          {'code': 'back_cracking'},
+          {'displayName': 'No code'},
+        ],
+      });
+      expect(data['tags'], <Object?>[]);
+      expect(data['moreTagCount'], 1);
+      expect(data['hasSpotting'], false);
+    });
+  });
 }

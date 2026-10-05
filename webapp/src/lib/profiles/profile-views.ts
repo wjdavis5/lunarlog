@@ -6,7 +6,7 @@ import type {
 } from '../../domain/client';
 import type { CycleConfidence, Prediction } from '../../domain/schemas';
 import type { SyncedData } from '../domain';
-import type { ProfileRow } from '../schemas';
+import type { DayEntryRow, ProfileGuardianRow, ProfileRow } from '../schemas';
 import { guardianRoleFromDbOrViewer, roleCanEditProfile, type GuardianRole } from '../roles';
 
 /**
@@ -71,16 +71,64 @@ export function callerRoleFor(
   profileId: string,
   uid: string | null,
 ): GuardianRole | null {
-  if (uid === null) return null;
-  const membership = synced.profile_guardians.find(
-    (row) =>
-      row.profile_id === profileId &&
-      row.user_id === uid &&
-      (row.revoked_at ?? null) === null &&
-      row.status === 'accepted',
-  );
-  if (membership === undefined) return null;
+  const membership = acceptedMembershipFor(synced, profileId, uid);
+  if (membership === null) return null;
   return guardianRoleFromDbOrViewer(membership.role);
+}
+
+/**
+ * The caller's live, accepted membership row on `profileId`, or null: the
+ * one lookup `callerRoleFor` and `guardianLensFor` both read, so the role
+ * and the lens are always decided from the same row.
+ */
+export function acceptedMembershipFor(
+  synced: SyncedData,
+  profileId: string,
+  uid: string | null,
+): ProfileGuardianRow | null {
+  if (uid === null) return null;
+  return (
+    synced.profile_guardians.find(
+      (row) =>
+        row.profile_id === profileId &&
+        row.user_id === uid &&
+        (row.revoked_at ?? null) === null &&
+        row.status === 'accepted',
+    ) ?? null
+  );
+}
+
+/**
+ * Which front page a viewer sees a profile through: the person the
+ * profile is about (`subject`), or anyone else who holds a membership on
+ * it (`guardian`).
+ */
+export type GuardianLens = 'subject' | 'guardian';
+
+/**
+ * The app's own lens rule, `guardianLensFor`
+ * (lib/domain/sharing/guardian_lens.dart, issue 850), on the rows the web
+ * already holds: an accepted member whose row does not carry the server's
+ * `is_subject` marker sees the profile as a guardian; the subject, and a
+ * viewer with no accepted membership, see it as the subject.
+ *
+ * The marker is stamped by the server alone, when someone accepts a "this
+ * is your profile" invitation or an ownership transfer. The account that
+ * created a profile does not carry it, so by this rule the creator is a
+ * guardian of that profile, whoever the profile is about. That is the
+ * app's rule and this follows it; the profile's `relationship` is
+ * deliberately not consulted, as it is not in the app.
+ *
+ * Presentation only. It changes no permission: what a caller may write is
+ * `callerRoleFor`'s answer, and the server's.
+ */
+export function guardianLensFor(
+  synced: SyncedData,
+  profileId: string,
+  uid: string | null,
+): GuardianLens {
+  const membership = acceptedMembershipFor(synced, profileId, uid);
+  return membership !== null && membership.is_subject !== true ? 'guardian' : 'subject';
 }
 
 /** Whether the caller may write this profile's metadata (the server re-checks). */
@@ -106,24 +154,29 @@ export function entriesToDomainJson(rows: {
   const out: DayEntryJson[] = [];
   for (const row of rows.entries) {
     if (row.profile_id !== rows.profileId || row.deleted_at !== null) continue;
-    out.push({
-      id: row.id,
-      profileId: row.profile_id,
-      localDate: row.local_date,
-      tz: row.tz,
-      flow: row.flow,
-      tags: row.tags,
-      note: row.note,
-      notePrivate: row.note_private,
-      pms: row.pms,
-      source: row.source,
-      sourceId: row.source_id ?? null,
-      importId: row.import_id ?? null,
-      updatedAt: row.updated_at,
-      deletedAt: null,
-    });
+    out.push(liveEntryToDomainJson(row));
   }
   return out;
+}
+
+/** One live `day_entries` row in the export-row shape the facade decodes. */
+export function liveEntryToDomainJson(row: DayEntryRow): DayEntryJson {
+  return {
+    id: row.id,
+    profileId: row.profile_id,
+    localDate: row.local_date,
+    tz: row.tz,
+    flow: row.flow,
+    tags: row.tags,
+    note: row.note,
+    notePrivate: row.note_private,
+    pms: row.pms,
+    source: row.source,
+    sourceId: row.source_id ?? null,
+    importId: row.import_id ?? null,
+    updatedAt: row.updated_at,
+    deletedAt: null,
+  };
 }
 
 /** The domain request inputs shared by predict / cycleHistory / calendarForecast. */

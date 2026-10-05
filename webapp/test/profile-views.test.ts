@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  acceptedMembershipFor,
   callerRoleFor,
   canEditProfile,
   entriesToDomainJson,
   estimateDateText,
+  guardianLensFor,
   homeEstimateView,
   irregularFramingInEffect,
   isCivilDate,
@@ -200,6 +202,72 @@ describe('callerRoleFor / canEditProfile', () => {
     expect(canEditProfile('caregiver')).toBe(false);
     expect(canEditProfile('viewer')).toBe(false);
     expect(canEditProfile(null)).toBe(false);
+  });
+});
+
+// The same cases as the app's own resolver tests
+// (test/domain/sharing/guardian_lens_test.dart): membership identity
+// decides the lens, never the role and never the profile's relationship.
+describe('guardianLensFor (the app lens rule, issue #850)', () => {
+  const PROFILE = profileRow().id;
+  const TEEN = '00000000-0000-4000-8000-0000000000u3';
+  const subjectRow = guardianRow({
+    id: '00000000-0000-4000-8000-0000000000g2',
+    user_id: TEEN,
+    role: 'caregiver',
+    is_subject: true,
+  });
+
+  it("the subject's own accepted membership is the subject lens", () => {
+    const data = synced({ profile_guardians: [guardianRow(), subjectRow] });
+    expect(guardianLensFor(data, PROFILE, TEEN)).toBe('subject');
+    expect(acceptedMembershipFor(data, PROFILE, TEEN)).toEqual(subjectRow);
+  });
+
+  it.each(['primary_guardian', 'co_parent', 'caregiver', 'viewer'])(
+    'any other accepted membership is the guardian lens: %s',
+    (role) => {
+      const data = synced({
+        profile_guardians: [subjectRow, guardianRow({ role, is_subject: false })],
+      });
+      expect(guardianLensFor(data, PROFILE, UID)).toBe('guardian');
+    },
+  );
+
+  it('the account that created the profile is a guardian, whatever the relationship says', () => {
+    // No marker at all (the server stamps it only on a subject invitation
+    // or an ownership transfer), on a profile whose relationship is "self".
+    const data = synced();
+    expect(profileRow().relationship).toBe('self');
+    expect(data.profile_guardians[0]?.is_subject).toBeUndefined();
+    expect(guardianLensFor(data, PROFILE, UID)).toBe('guardian');
+    const nullMarker = synced({ profile_guardians: [guardianRow({ is_subject: null })] });
+    expect(guardianLensFor(nullMarker, PROFILE, UID)).toBe('guardian');
+  });
+
+  it('no account id, no rows, and a stranger are the subject lens', () => {
+    expect(guardianLensFor(synced(), PROFILE, null)).toBe('subject');
+    expect(guardianLensFor(synced({ profile_guardians: [] }), PROFILE, UID)).toBe('subject');
+    expect(guardianLensFor(synced(), PROFILE, OTHER)).toBe('subject');
+    expect(acceptedMembershipFor(synced(), PROFILE, OTHER)).toBeNull();
+  });
+
+  it('a revoked or pending row is not a membership', () => {
+    const revoked = synced({
+      profile_guardians: [
+        guardianRow({ status: 'revoked', revoked_at: '2026-09-01T00:00:00Z' }),
+      ],
+    });
+    expect(guardianLensFor(revoked, PROFILE, UID)).toBe('subject');
+    const pending = synced({ profile_guardians: [guardianRow({ status: 'pending' })] });
+    expect(guardianLensFor(pending, PROFILE, UID)).toBe('subject');
+  });
+
+  it("a membership on another profile says nothing about this one's lens", () => {
+    const data = synced({
+      profile_guardians: [guardianRow({ profile_id: '01M2FWKNG0ZMH2ANCH7R2CM2SB' })],
+    });
+    expect(guardianLensFor(data, PROFILE, UID)).toBe('subject');
   });
 });
 

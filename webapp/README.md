@@ -257,8 +257,9 @@ is compiled to JavaScript once and both platforms run the same engine.
   prediction (life-stage/birth-control suppression and the confidence tier
   included), cycle history, the home-screen insights, day-entry date-bounds
   validation, the JSON export builder (app file format, phone-restorable),
-  and invite-link parsing. `today` and the browser's IANA zone are passed
-  in on every request; the tz database (`latest_10y`) is loaded explicitly.
+  invite-link parsing, and what the Today log card says about a day
+  (`todayLog`). `today` and the browser's IANA zone are passed in on every
+  date-math request; the tz database (`latest_10y`) is loaded explicitly.
 
 - **The typed client** (`src/domain/client.ts`) unwraps the envelope
   (`DomainCallError` on `ok: false`) and validates every output with the
@@ -320,11 +321,32 @@ primary/co-parent; delete: primary only).
   creation when the account's `account_consents` row is missing or older
   than the current policy version - the #845 flow, mirrored from
   `lib/ui/profiles/first_run_screen.dart`.
+- **What is logged today** (the app's Today log card, issue #1489): under
+  the status card, a "Logged today" card says what is logged for the
+  browser's today - the flow, the tags, the PMS marker, a temperature or
+  weight reading, and "Note added" - with an Edit link to today's day
+  page, or one quiet line when nothing is logged; the home's button reads
+  "Edit today" once something is. What it says is the compiled module's
+  answer (`todayLog`, over `lib/domain/logging/today_log.dart`, the rules
+  the app's own card calls): which tags are named and by what label, which
+  are only counted (sex life, test results, any code the build does not
+  know), and where "and N more" starts. The page only picks today's rows
+  out of the snapshot (`src/lib/profiles/today-log.ts`) and lays the
+  answer out. The note goes into the call and only "a note exists" comes
+  back. Who sees the card is the app's lens rule (`guardianLensFor`,
+  issue #850) on the membership row's server-stamped `is_subject`: the
+  person the profile is about sees it, any other accepted member does
+  not, and someone who cannot log sees the summary without Edit. The
+  account that created a profile does not carry that marker, so it counts
+  as a guardian here exactly as it does in the app.
 - **Tests**: `test/profile-views.test.ts` and `test/calendar-cells.test.ts`
   pin the pure ports; `test/today-page.test.tsx` and
   `test/profiles-page.test.tsx` render the pages against a fake domain
   module (serving the committed parity fixtures) and a fake Supabase
-  client; `e2e/profile-home.spec.ts` drives the real built app with the
+  client; `test/today-page-today-log.test.tsx` renders the home against
+  the real compiled module (`test/domain/load-module.ts`), since what it
+  checks is what the app's rules say about a snapshot;
+  `e2e/profile-home.spec.ts` drives the real built app with the
   real compiled module over an intercepted `sync_pull` - profile
   switching, month navigation, and a pregnancy-mode profile showing its
   suppression copy, all axe-clean. The suite self-skips on an

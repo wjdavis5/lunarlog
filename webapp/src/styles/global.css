@@ -859,6 +859,44 @@ body {
   line-height: var(--ll-type-body-small-line-height);
 }
 
+/* The "Logged today" card (the app's Today log card, issue 1489). The
+   title and its Edit link share a row; when the two no longer fit side by
+   side, at a large text size, the link wraps under the title instead of
+   squeezing it. */
+.home-today-log-head {
+  display: flex;
+  flex-wrap: wrap;
+  /* The title and the link are set in different sizes: they share a
+     baseline, not a centre line. */
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ll-space-1) var(--ll-space-3);
+}
+
+.home-today-log-head .card-title {
+  margin: 0;
+}
+
+/* The link is given more padding than a link in the row above the cards,
+   since it is a short word to hit with a thumb, and hands all of it back
+   as a negative margin: the word "Edit" ends on the card's gutter and the
+   row is no taller than the title alone. The auto margin keeps it at that
+   edge when it wraps onto a row of its own. */
+.home-today-log-edit {
+  padding: var(--ll-space-2) var(--ll-space-3);
+  margin: calc(-1 * var(--ll-space-2)) calc(-1 * var(--ll-space-3)) calc(-1 * var(--ll-space-2))
+    auto;
+}
+
+.home-today-log-lines {
+  list-style: none;
+  margin: var(--ll-space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ll-space-1);
+}
+
 .home-stats,
 .home-compare {
   display: flex;

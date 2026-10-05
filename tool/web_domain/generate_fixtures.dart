@@ -16,7 +16,8 @@
 /// The cases mirror the shapes the Dart domain tests exercise (regular and
 /// irregular histories, pack-driven and suppressed predictions, the
 /// omission list, provisional seeding, PMS intervals, the date-bounds
-/// policy, the export builder, and invite links), plus one `seed18m` case
+/// policy, the export builder, invite links, and what the Today log card
+/// says about a day), plus one `seed18m` case
 /// shaped like the #710 seeded account (18 months, cycles 26–32 days) —
 /// the input the parity suite also times for the spike's per-prediction
 /// number.
@@ -48,6 +49,7 @@ void main() {
     ..._validateDateCases(),
     ..._exportCases(),
     ..._inviteLinkCases(),
+    ..._todayLogCases(),
   ];
 
   const path = 'webapp/test/domain/fixtures.json';
@@ -761,6 +763,261 @@ List<Map<String, Object?>> _inviteLinkCases() {
     _case('parseInviteLink.missing-code', 'parseInviteLink', {
       'url': 'lunarlog://invite?profile=p1',
       'linkDomain': '',
+    }),
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// todayLog
+// ---------------------------------------------------------------------------
+
+/// What the Today log card says about one day (issue #1489 in the app; the
+/// browser version's card asks the same code). One case per thing the card
+/// can say, and per thing it must not: the flow line and its precedence,
+/// the tag labels and the two kinds of tag that are only counted, the
+/// six-tag limit, readings in the profile's units, and a note reduced to
+/// the fact that it exists.
+List<Map<String, Object?>> _todayLogCases() {
+  const today = '2026-09-30';
+  const entryId = 'entry-today';
+
+  Map<String, Object?> entry({
+    String flow = 'none',
+    List<String> tags = const [],
+    bool pms = false,
+    String? note,
+    String? deletedAt,
+  }) => _entry(
+    id: entryId,
+    localDate: today,
+    updatedAt: '${today}T08:00:00.000Z',
+    flow: flow,
+    tags: tags,
+    pms: pms,
+    note: note,
+    deletedAt: deletedAt,
+  );
+
+  Map<String, Object?> observation(
+    String category, {
+    num? valueNum,
+    String? unit,
+    String source = 'manual',
+    String dayEntryId = entryId,
+    String? deletedAt,
+  }) => {
+    'dayEntryId': dayEntryId,
+    'category': category,
+    'valueNum': valueNum,
+    'unit': unit,
+    'source': source,
+    'deletedAt': deletedAt,
+  };
+
+  Map<String, Object?> customTag(
+    String code,
+    String displayName, {
+    String? deletedAt,
+  }) => {'code': code, 'displayName': displayName, 'deletedAt': deletedAt};
+
+  return [
+    // Nothing logged, three ways: no entry at all, an entry left with
+    // nothing on it (the day editor saves a row even when everything was
+    // taken off again), and a tombstone that still carries what it held.
+    _case('todayLog.no-entry', 'todayLog', {'entry': null}),
+    _case('todayLog.empty-entry', 'todayLog', {'entry': entry()}),
+    _case('todayLog.tombstone-says-nothing', 'todayLog', {
+      'entry': entry(
+        flow: 'heavy',
+        tags: const ['cramps'],
+        pms: true,
+        note: 'kept on the deleted row',
+        deletedAt: '${today}T09:00:00.000Z',
+      ),
+      'observations': [observation('bbt', valueNum: 36.7, unit: 'celsius')],
+    }),
+
+    // The flow line. A bleed level is answered as the level; "not
+    // bleeding" as itself; no flow as null.
+    _case('todayLog.flow-medium', 'todayLog', {'entry': entry(flow: 'medium')}),
+    _case('todayLog.flow-super-heavy', 'todayLog', {
+      'entry': entry(flow: 'super_heavy'),
+    }),
+    _case('todayLog.flow-not-bleeding', 'todayLog', {
+      'entry': entry(flow: 'not_bleeding'),
+    }),
+    // Spotting is its own record: the day editor raises the flow to "not
+    // bleeding" when it stores one, and the card says "Spotting".
+    _case('todayLog.spotting-over-not-bleeding', 'todayLog', {
+      'entry': entry(flow: 'not_bleeding'),
+      'observations': [observation('spotting')],
+    }),
+    // Bleed wins over spotting, as on the calendar.
+    _case('todayLog.bleed-wins-over-spotting', 'todayLog', {
+      'entry': entry(flow: 'heavy'),
+      'observations': [observation('spotting')],
+    }),
+    // A spotting-only day as a health import stores it: no flow at all.
+    // It is a logged day.
+    _case('todayLog.spotting-only-from-import', 'todayLog', {
+      'entry': entry(),
+      'observations': [observation('spotting', source: 'apple_health')],
+    }),
+    // A row stored before spotting became its own record carries it as
+    // the flow level, with no spotting record beside it.
+    _case('todayLog.legacy-spotting-flow', 'todayLog', {
+      'entry': entry(flow: 'spotting'),
+    }),
+
+    // Tags. Stored order; a tag whose word needs its heading carries it,
+    // and digestion keeps its own word.
+    _case('todayLog.tags-in-stored-order', 'todayLog', {
+      'entry': entry(tags: const ['headache', 'cramps', 'pain_free']),
+    }),
+    _case('todayLog.tags-contextual-labels', 'todayLog', {
+      'entry': entry(
+        tags: const [
+          'sticky',
+          'normal',
+          'sweet',
+          '0_to_3_hours',
+          'pain',
+          'bloating',
+        ],
+      ),
+    }),
+    _case('todayLog.tags-digestion-clash', 'todayLog', {
+      'entry': entry(tags: const ['great_digestion', 'nausea']),
+    }),
+    // Sex-life and test-result tags, and a code this build does not know,
+    // are counted and never named.
+    _case('todayLog.tags-unnamed-are-counted', 'todayLog', {
+      'entry': entry(
+        tags: const [
+          'cramps',
+          'unprotected_sex',
+          'pregnancy_positive',
+          'some_new_code',
+        ],
+      ),
+    }),
+    _case('todayLog.tags-only-unnamed', 'todayLog', {
+      'entry': entry(tags: const ['protected_sex', 'ovulation_positive']),
+    }),
+    // Six are named; the two past the limit are counted, with the unnamed
+    // one.
+    _case('todayLog.tags-more-than-fit', 'todayLog', {
+      'entry': entry(
+        tags: const [
+          'cramps',
+          'headache',
+          'back_pain',
+          'fatigue',
+          'acne',
+          'migraine',
+          'protected_sex',
+          'anxious',
+          'bloating',
+        ],
+      ),
+    }),
+    _case('todayLog.tags-exactly-six', 'todayLog', {
+      'entry': entry(
+        tags: const [
+          'cramps',
+          'headache',
+          'back_pain',
+          'fatigue',
+          'acne',
+          'migraine',
+        ],
+      ),
+    }),
+    // A profile's own tag reads by its registry name, even one that shares
+    // a word with a category that is never named. A deleted registry row
+    // names nothing, so its code is counted like any other this build
+    // cannot name; so is a custom code with no row at all.
+    _case('todayLog.custom-tags', 'todayLog', {
+      'entry': entry(
+        tags: const [
+          'back_cracking',
+          'cramps',
+          'sex_ed_class',
+          'gone_tag',
+          'never_synced',
+        ],
+      ),
+      'customTags': [
+        customTag('back_cracking', 'Back cracking'),
+        customTag('sex_ed_class', 'Sex ed class'),
+        customTag('gone_tag', 'Gone', deletedAt: '2026-09-01T00:00:00.000Z'),
+      ],
+    }),
+
+    // The PMS marker, and a note reduced to the fact that it exists.
+    _case('todayLog.pms-and-note', 'todayLog', {
+      'entry': entry(pms: true, note: 'zebra crossing after the dentist'),
+    }),
+    _case('todayLog.blank-note-is-no-note', 'todayLog', {
+      'entry': entry(note: '   '),
+    }),
+
+    // Readings: the one the day editor would open on (entered by hand,
+    // with a number), in the profile's units whatever it was stored in.
+    _case('todayLog.readings-as-stored', 'todayLog', {
+      'entry': entry(),
+      'observations': [
+        observation('bbt', valueNum: 36.7, unit: 'celsius'),
+        observation('weight', valueNum: 61, unit: 'kg'),
+      ],
+    }),
+    _case('todayLog.readings-in-profile-units', 'todayLog', {
+      'entry': entry(),
+      'observations': [
+        observation('bbt', valueNum: 37, unit: 'celsius'),
+        observation('weight', valueNum: 50, unit: 'kg'),
+      ],
+      'bbtUnit': 'fahrenheit',
+      'weightUnit': 'lb',
+    }),
+    // What is not this day's reading: one a wearable wrote, a deleted
+    // one, and one attached to another day's entry. With nothing else on
+    // the entry, nothing is logged.
+    _case('todayLog.readings-not-this-days', 'todayLog', {
+      'entry': entry(),
+      'observations': [
+        observation('bbt', valueNum: 36.5, unit: 'celsius', source: 'wearable'),
+        observation(
+          'weight',
+          valueNum: 60,
+          unit: 'kg',
+          deletedAt: '${today}T09:00:00.000Z',
+        ),
+        observation(
+          'bbt',
+          valueNum: 36.9,
+          unit: 'celsius',
+          dayEntryId: 'entry-yesterday',
+        ),
+        observation('spotting', dayEntryId: 'entry-yesterday'),
+      ],
+    }),
+
+    // Everything at once.
+    _case('todayLog.everything', 'todayLog', {
+      'entry': entry(
+        flow: 'light',
+        tags: const ['cramps', 'withdrawal', 'sticky'],
+        pms: true,
+        note: 'zebra crossing after the dentist',
+      ),
+      'observations': [
+        observation('spotting'),
+        observation('bbt', valueNum: 97.9, unit: 'fahrenheit'),
+        observation('weight', valueNum: 134.5, unit: 'lb'),
+      ],
+      'bbtUnit': 'fahrenheit',
+      'weightUnit': 'lb',
     }),
   ];
 }

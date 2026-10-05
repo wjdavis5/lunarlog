@@ -272,6 +272,54 @@ export const exportDocumentSchema = z.object({
 
 export type ExportDocument = z.infer<typeof exportDocumentSchema>;
 
+/**
+ * What the Today log's flow line says (`TodayLog.flowLine` on the Dart
+ * side, answered as the flow level to label): a bleed level reads
+ * "{level} flow", `spotting` reads "Spotting", `not_bleeding` reads "Not
+ * bleeding". Bleed has already won over spotting by the time it arrives,
+ * so the card only looks the value up. These are `FlowLevel`'s wire
+ * values minus `none` (a day with no flow answers null);
+ * `test/domain/web_domain_fixtures_test.dart` fails if the two lists drift.
+ */
+export const todayLogFlowSchema = z.enum([
+  'light',
+  'medium',
+  'heavy',
+  'super_heavy',
+  'spotting',
+  'not_bleeding',
+]);
+
+export type TodayLogFlow = z.infer<typeof todayLogFlowSchema>;
+
+/**
+ * The `todayLog` response: what is logged for one day, as the app's Today
+ * log card says it (lib/domain/logging/today_log.dart, through
+ * `todayLogFromJson`). Labels, counts and facts only.
+ *
+ * `tags` is already limited to the six the card names and is in stored
+ * order; `moreTagCount` is the tags past that limit plus the ones that are
+ * counted and never named (sex life, test results, and any code this build
+ * does not know). A reading is in the profile's own unit.
+ *
+ * There is no note here and never a tag code: the response says only that
+ * a note exists. The object strips unknown keys, so nothing else the
+ * module answered can reach a component either.
+ */
+export const todayLogSchema = z.object({
+  hasContent: z.boolean(),
+  flow: todayLogFlowSchema.nullable(),
+  hasSpotting: z.boolean(),
+  pms: z.boolean(),
+  tags: z.array(z.string()),
+  moreTagCount: z.number().int(),
+  bbt: z.object({ value: z.number(), unit: z.enum(['celsius', 'fahrenheit']) }).nullable(),
+  weight: z.object({ value: z.number(), unit: z.enum(['kg', 'lb']) }).nullable(),
+  hasNote: z.boolean(),
+});
+
+export type TodayLog = z.infer<typeof todayLogSchema>;
+
 export const inviteLinkSchema = z.object({
   code: z.string(),
   profileId: z.string().nullable(),

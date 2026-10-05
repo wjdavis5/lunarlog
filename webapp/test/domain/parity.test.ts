@@ -19,11 +19,10 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import vm from 'node:vm';
 import { expect, describe, it } from 'vitest';
 import type { z } from 'zod';
 
-import { DomainCallError, callDomain, type DomainModule } from '../../src/domain/client';
+import { DomainCallError, callDomain } from '../../src/domain/client';
 import {
   calendarForecastSchema,
   cycleHistoryViewSchema,
@@ -32,26 +31,9 @@ import {
   insightsReportSchema,
   inviteLinkSchema,
   predictionSchema,
+  todayLogSchema,
 } from '../../src/domain/schemas';
-
-/** Runs the compiled script in a bare context with the `self` global dart2js writes to. */
-function loadDomainModule(): DomainModule {
-  const code = readFileSync(
-    join(import.meta.dirname, '..', '..', 'public', 'domain', 'lunarlog_domain.js'),
-    'utf8',
-  );
-  const sandbox: Record<string, unknown> = { self: {}, console };
-  vm.createContext(sandbox);
-  vm.runInContext(code, sandbox, { filename: 'lunarlog_domain.js' });
-  const module = (sandbox as { self: { lunarlogDomain?: DomainModule } }).self.lunarlogDomain;
-  if (!module || typeof module.invoke !== 'function') {
-    throw new Error(
-      'public/domain/lunarlog_domain.js did not install lunarlogDomain — rebuild the module: ' +
-        'dart compile js -O2 tool/web_domain/main.dart -o webapp/public/domain/lunarlog_domain.js',
-    );
-  }
-  return module;
-}
+import { loadDomainModule } from './load-module';
 
 interface FixtureCase {
   name: string;
@@ -73,6 +55,7 @@ const schemas: Record<string, z.ZodType<unknown>> = {
   validateDayEntryDate: dateValidationSchema,
   buildExport: exportDocumentSchema,
   parseInviteLink: inviteLinkSchema.nullable(),
+  todayLog: todayLogSchema,
 };
 
 /** Structural equality with numeric tolerance for Dart's `29.0` vs JS's `29`. */

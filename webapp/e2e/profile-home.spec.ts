@@ -173,13 +173,28 @@ async function installSignedInFacade(page: Page): Promise<void> {
 
 let configuredProbe: boolean | null = null;
 
-/** True when the build carries Supabase config (the app signs in at all). */
+/**
+ * True when the build carries Supabase config (the app signs in at all).
+ *
+ * It waits for the signed-in home rather than reading the page once. The
+ * signed-out welcome is also what a configured build shows for the moment
+ * it takes the session to be restored, so a single look straight after
+ * the load sometimes caught it and reported "unconfigured": the test was
+ * then skipped, not failed, and nothing said so (about one run in three
+ * skipped a test here). An unconfigured build never leaves the welcome,
+ * so there the wait runs out, once per worker.
+ */
 async function buildIsConfigured(page: Page): Promise<boolean> {
   if (configuredProbe !== null) return configuredProbe;
   await installSignedInFacade(page);
   await page.goto('/');
-  const signInCopy = page.getByText(messages['webHomeNeedsSignIn'] ?? 'missing');
-  configuredProbe = !(await signInCopy.isVisible().catch(() => false));
+  configuredProbe = await page
+    .getByLabel(messages['webHomeProfileSwitcherLabel'] ?? 'Profile')
+    .waitFor({ state: 'visible', timeout: 5_000 })
+    .then(
+      () => true,
+      () => false,
+    );
   return configuredProbe;
 }
 
@@ -272,6 +287,174 @@ test.describe('the profile home (issue #1253)', () => {
     // And the suppressed home is axe-clean too.
     const axe = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
     expect(axe.violations).toEqual([]);
+  });
+});
+
+// What is logged today, on the home (the browser version of the app's
+// Today log card, issue #1489): a card under the estimate that says what
+// is logged for today, and a button that reads "Edit today" once something
+// is. The rules are the app's own, asked of the real compiled domain
+// module; the page's clock is fixed so "today" is a day the snapshot has
+// rows for, or has none for.
+test.describe('what is logged today, on the home', () => {
+  const NOTE = 'zebra crossing after the dentist';
+  const TODAY_ENTRY_ID = '01M2FWKNG0ZMH2ANCH7R2CM2E3';
+
+  /** The snapshot with Maya's 30 September filled in: flow, tags, a note, a reading. */
+  function loggedSnapshot(subject: boolean) {
+    return {
+      ...snapshot,
+      day_entries: snapshot.day_entries.map((row) =>
+        row['id'] === TODAY_ENTRY_ID
+          ? { ...row, tags: ['cramps', 'fatigue', 'unprotected_sex'], note: NOTE, pms: true }
+          : row,
+      ),
+      observations: [
+        {
+          id: '01M2FWKNG0ZMH2ANCH7R2CM2B1',
+          day_entry_id: TODAY_ENTRY_ID,
+          profile_id: RICH_ID,
+          local_date: '2026-09-30',
+          tz: 'UTC',
+          observed_at: null,
+          category: 'bbt',
+          code: null,
+          value_num: 36.7,
+          value_text: null,
+          unit: 'celsius',
+          intensity: null,
+          excluded: false,
+          source: 'manual',
+          source_id: null,
+          created_at: '2026-09-30T08:00:00Z',
+          updated_at: '2026-09-30T08:00:00Z',
+          deleted_at: null,
+          server_version: 4,
+        },
+      ],
+      profile_guardians: snapshot.profile_guardians.map((row) => ({
+        ...row,
+        is_subject: subject,
+      })),
+    };
+  }
+
+  /** Noon, local time, on the given day: the page reads this as its clock. */
+  async function setToday(page: Page, year: number, month: number, day: number) {
+    await page.clock.setFixedTime(new Date(year, month - 1, day, 12, 0, 0));
+  }
+
+  test.beforeEach(async ({ page }) => {
+    await installSignedInFacade(page);
+  });
+
+  test('something logged: the card says what, and the button reads Edit today', async ({
+    page,
+  }) => {
+    test.skip(!(await buildIsConfigured(page)), 'unconfigured build (fork); runs in CI');
+    await page.route('**/rest/v1/rpc/sync_pull', (route) => json(route, loggedSnapshot(true)));
+    await setToday(page, 2026, 9, 30);
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Maya' })).toBeVisible();
+
+    const card = page.getByRole('region', { name: messages['todayLogTitle'] ?? 'missing' });
+    await expect(card).toBeVisible();
+    // The app's lines, in the app's order: flow, tags (the sex-life tag is
+    // counted, never named), the PMS marker, the reading, the note.
+    await expect(card.getByRole('listitem')).toHaveText([
+      'Medium flow',
+      'Cramps, Fatigue and 1 more',
+      'PMS',
+      'BBT (°C): 36.7',
+      messages['todayLogNoteAdded'] ?? 'missing',
+    ]);
+    await expect(
+      card.getByRole('link', { name: messages['todayLogEdit'] ?? 'missing' }),
+    ).toHaveAttribute('href', `/day/${RICH_ID}`);
+    await expect(
+      page.getByRole('link', { name: messages['todayLogFabEdit'] ?? 'missing', exact: true }),
+    ).toHaveAttribute('href', `/day/${RICH_ID}`);
+    await expect(
+      page.getByRole('link', { name: messages['householdLogToday'] ?? 'missing' }),
+    ).toHaveCount(0);
+
+    // It sits between the estimate card and the calendar.
+    const order = await page.evaluate(() => {
+      const sections = [...document.querySelectorAll('.home-stack > section')];
+      return sections.map((section) => section.getAttribute('aria-labelledby'));
+    });
+    expect(order.slice(0, 3)).toEqual([
+      'home-estimate-title',
+      'home-today-log-title',
+      'home-calendar-title',
+    ]);
+
+    // The note's text went into the domain call and came back as the one
+    // fact that a note exists: it is nowhere in the page.
+    const html = await page.content();
+    for (const word of ['zebra', 'crossing', 'dentist']) {
+      expect(html).not.toContain(word);
+    }
+    // And the card does not name the tag it only counted. (The calendar's
+    // layer picker below lists every tag there is, logged or not, so this
+    // is asked of the card alone.)
+    const cardHtml = await card.innerHTML();
+    for (const hidden of ['nprotected', 'sex', 'Sex']) {
+      expect(cardHtml).not.toContain(hidden);
+    }
+
+    const axe = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
+    expect(axe.violations).toEqual([]);
+  });
+
+  test('nothing logged: one quiet line, and the button reads Log today', async ({ page }) => {
+    test.skip(!(await buildIsConfigured(page)), 'unconfigured build (fork); runs in CI');
+    await page.route('**/rest/v1/rpc/sync_pull', (route) => json(route, loggedSnapshot(true)));
+    // The day after: nothing is dated 1 October.
+    await setToday(page, 2026, 10, 1);
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Maya' })).toBeVisible();
+
+    await expect(page.getByText(messages['todayLogEmpty'] ?? 'missing')).toBeVisible();
+    // Exact: "Nothing logged today yet" contains the title's words.
+    await expect(
+      page.getByText(messages['todayLogTitle'] ?? 'missing', { exact: true }),
+    ).toHaveCount(0);
+    await expect(page.getByTestId('today-log-card')).toHaveText(
+      messages['todayLogEmpty'] ?? 'missing',
+    );
+    await expect(
+      page.getByRole('link', { name: messages['householdLogToday'] ?? 'missing' }),
+    ).toHaveAttribute('href', `/day/${RICH_ID}`);
+    await expect(
+      page.getByRole('link', { name: messages['todayLogFabEdit'] ?? 'missing', exact: true }),
+    ).toHaveCount(0);
+
+    const axe = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
+    expect(axe.violations).toEqual([]);
+  });
+
+  // The app's lens rule (issue #850): a member whose row does not carry the
+  // server's subject marker is a guardian, and a guardian's front page does
+  // not say what was logged.
+  test('a guardian sees no card, logged or not, and keeps the button', async ({ page }) => {
+    test.skip(!(await buildIsConfigured(page)), 'unconfigured build (fork); runs in CI');
+    await page.route('**/rest/v1/rpc/sync_pull', (route) => json(route, loggedSnapshot(false)));
+    await setToday(page, 2026, 9, 30);
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Maya' })).toBeVisible();
+    await expect(page.getByRole('grid')).toBeVisible();
+
+    await expect(
+      page.getByText(messages['todayLogTitle'] ?? 'missing', { exact: true }),
+    ).toHaveCount(0);
+    await expect(page.getByText(messages['todayLogNoteAdded'] ?? 'missing')).toHaveCount(0);
+    await expect(page.getByText(messages['todayLogEmpty'] ?? 'missing')).toHaveCount(0);
+    // A guardian who may log is still offered the button, with its label.
+    await expect(
+      page.getByRole('link', { name: messages['todayLogFabEdit'] ?? 'missing', exact: true }),
+    ).toHaveAttribute('href', `/day/${RICH_ID}`);
+    expect(await page.content()).not.toContain('zebra');
   });
 });
 

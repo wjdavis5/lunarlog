@@ -163,7 +163,17 @@ const fixtureCases = fixtures as FixtureCase[];
 
 function fixtureEnvelope(method: string, request: Record<string, unknown>): unknown {
   const suppressed = method === 'predict' && request['lifecycleMode'] === 'pregnancy';
-  const wanted = suppressed ? 'predict.suppressed-lifecycle' : undefined;
+  // "What is logged today" follows the request too: this snapshot's entries
+  // are dated in September, so on any real today the page asks about no
+  // entry, and the engine's answer to that is "nothing logged". (The card
+  // and the button's two labels are tested against the real compiled
+  // module in today-page-today-log.test.tsx.)
+  const nothingToday = method === 'todayLog' && (request['entry'] ?? null) === null;
+  const wanted = suppressed
+    ? 'predict.suppressed-lifecycle'
+    : nothingToday
+      ? 'todayLog.no-entry'
+      : undefined;
   const candidates = fixtureCases.filter((fixture) => fixture.method === method);
   const match =
     (wanted !== undefined
