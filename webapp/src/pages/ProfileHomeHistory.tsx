@@ -99,16 +99,11 @@ export function ProfileHomeHistory(props: { history: CycleHistoryView }) {
 export function ProfileHomeComparison(props: { history: CycleHistoryView }) {
   const t = useT();
   const closed = closedCycles(props.history);
-  if (closed.length < 2) {
-    return (
-      <section className="card" aria-labelledby="home-compare-title">
-        <h2 className="card-title" id="home-compare-title">
-          {t('cycleComparisonNotEnoughTitle')}
-        </h2>
-        <p className="card-body">{t('cycleComparisonNotEnoughBody')}</p>
-      </section>
-    );
-  }
+  // With fewer than two completed cycles there is nothing to compare, so
+  // there is no card. The app's empty state for this ("Select two cycles
+  // from your cycle history...") describes a picker this page does not
+  // have: here the two newest cycles are compared automatically.
+  if (closed.length < 2) return null;
   const [newest, previous] = closed;
   const lengthDiff =
     newest.lengthDays !== null && previous.lengthDays !== null
