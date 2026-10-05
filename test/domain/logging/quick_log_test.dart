@@ -48,4 +48,35 @@ void main() {
       ]);
     });
   });
+
+  group('quickLogChangesFlow (issue #1412: what the confirmation may claim)',
+      () {
+    test('a day with no entry yet is changed: the tap creates it', () {
+      expect(quickLogChangesFlow(null), isTrue);
+    });
+
+    test('a day logged below the default is changed: the tap raises it', () {
+      expect(quickLogChangesFlow(FlowLevel.none), isTrue);
+      // ignore: deprecated_member_use_from_same_package
+      expect(quickLogChangesFlow(FlowLevel.spotting), isTrue);
+      expect(quickLogChangesFlow(FlowLevel.notBleeding), isTrue);
+      expect(quickLogChangesFlow(FlowLevel.light), isTrue);
+    });
+
+    test('a day already at the default or heavier stays as it was', () {
+      expect(quickLogChangesFlow(kQuickLogFlowLevel), isFalse);
+      expect(quickLogChangesFlow(FlowLevel.heavy), isFalse);
+      expect(quickLogChangesFlow(FlowLevel.superHeavy), isFalse);
+    });
+
+    test('agrees with quickLogFlowLevel for every level', () {
+      for (final level in FlowLevel.values) {
+        expect(
+          quickLogChangesFlow(level),
+          quickLogFlowLevel(level) != level,
+          reason: level.name,
+        );
+      }
+    });
+  });
 }

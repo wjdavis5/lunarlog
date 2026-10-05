@@ -164,6 +164,7 @@
   "overviewSeeHistory": "See cycle history",
   "overviewEstimateLoadError": "Could not load your cycle estimate.",
   "overviewLoggedSnackbar": "Recorded a medium-flow period start for today.",
+  "overviewAlreadyLoggedSnackbar": "Today's flow was already logged, so it stays as it was.",
   "overviewUndo": "Undo",
   "overviewExcludedSnackbar": "This cycle is excluded from future averages.",
   "overviewLongCycleTitle": "This cycle is unusually long",

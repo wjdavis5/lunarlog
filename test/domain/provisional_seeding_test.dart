@@ -495,6 +495,189 @@ void main() {
     });
   });
 
+  group('a skipped provisional cycle advances the estimate (issue #1412)',
+      () {
+    // 35 days before this file's `today` with a 28-day typical cycle: the
+    // estimate (2026-05-13) is 7 days past, so the late resolver shows.
+    final lateSeed = CycleFacts(
+      lastPeriodStart: LocalDate(2026, 4, 15),
+      typicalCycleLengthDays: 28,
+      typicalPeriodLengthDays: 5,
+    );
+
+    ActivePrediction seeded(
+      CycleFacts facts, {
+      List<Episode> episodes = const [],
+      Set<LocalDate> omitted = const {},
+    }) =>
+        seedProvisionalPrediction(
+          facts: facts,
+          today: today,
+          episodes: episodes,
+          omittedCycleStarts: omitted,
+        ) as ActivePrediction;
+
+    test('skipping the onboarding-anchored cycle moves the estimate one '
+        'supplied cycle length later and it is no longer overdue', () {
+      final before = seeded(lateSeed);
+      expect(before.originalEstimatedNextStart, LocalDate(2026, 5, 13));
+      expect(before.daysLate, 7);
+      expect(before.isLate, isTrue);
+      expect(before.estimatedNextStart, LocalDate(2026, 6, 10),
+          reason: 'the late roll, one 28-day step past the original');
+
+      // The key the late resolver records: the prediction's own
+      // lastEpisodeStart.
+      final after = seeded(lateSeed, omitted: {before.lastEpisodeStart});
+      expect(after.originalEstimatedNextStart, LocalDate(2026, 6, 10),
+          reason: '2026-04-15 + 28 + one skipped 28-day cycle');
+      expect(after.estimatedNextStart, LocalDate(2026, 6, 10));
+      expect(after.forecast.first.start, LocalDate(2026, 6, 10));
+      expect(after.forecast[1].start, LocalDate(2026, 7, 8));
+      expect(after.daysLate, isNull);
+      expect(after.isLate, isFalse);
+      expect(after.daysUntilNextPeriod, 21);
+    });
+
+    test('a skip changes only the estimate: the open cycle, its day count, '
+        'the supplied answers and the provisional tier stay as they were',
+        () {
+      final before = seeded(lateSeed);
+      final after = seeded(lateSeed, omitted: {LocalDate(2026, 4, 15)});
+      expect(after.lastEpisodeStart, before.lastEpisodeStart);
+      expect(after.cycleDay, 36);
+      expect(after.duringEpisode, isFalse);
+      expect(after.tier, CycleConfidence.provisional);
+      expect(after.meanCycleLengthDays, 28.0);
+      expect(after.meanPeriodLengthDays, 5.0);
+      expect(after.spreadDays, kProvisionalSpreadDays);
+      expect(after.averagedCycleLengths, isEmpty);
+      expect(after.completedCycleCount, 0);
+      expect(after.unusuallyLongCycle, isFalse);
+      expect(after.staleHistory, isFalse);
+    });
+
+    test('the advance is exactly kSkipAdvanceCycles supplied cycles, like '
+        'the computed path\'s mean-length advance', () {
+      final facts = CycleFacts(
+        lastPeriodStart: LocalDate(2026, 4, 15),
+        typicalCycleLengthDays: 31,
+      );
+      final skipped = seeded(facts, omitted: {LocalDate(2026, 4, 15)});
+      expect(
+        skipped.originalEstimatedNextStart,
+        LocalDate(2026, 4, 15).addDays(31 + 31 * kSkipAdvanceCycles),
+      );
+    });
+
+    test('a skip keyed on a logged anchor advances from the logged start '
+        '(issue #1392\'s anchor rules are untouched)', () {
+      // Onboarding said 3/10; one period is logged 4/15-4/18, so that is
+      // where the open cycle starts.
+      final facts = CycleFacts(
+        lastPeriodStart: LocalDate(2026, 3, 10),
+        typicalCycleLengthDays: 28,
+      );
+      final episodes = [
+        Episode(LocalDate(2026, 4, 15), LocalDate(2026, 4, 18)),
+      ];
+      final before = seeded(facts, episodes: episodes);
+      expect(before.lastEpisodeStart, LocalDate(2026, 4, 15));
+      expect(before.daysLate, 7);
+
+      final after = seeded(
+        facts,
+        episodes: episodes,
+        omitted: {LocalDate(2026, 4, 15)},
+      );
+      expect(after.lastEpisodeStart, LocalDate(2026, 4, 15));
+      expect(after.originalEstimatedNextStart, LocalDate(2026, 6, 10));
+      expect(after.daysLate, isNull);
+      expect(after.duringEpisode, isFalse);
+
+      // The onboarding date is no longer the anchor, so an omission keyed
+      // on it is not a skip of the open cycle.
+      final staleKey = seeded(
+        facts,
+        episodes: episodes,
+        omitted: {LocalDate(2026, 3, 10)},
+      );
+      expect(staleKey.originalEstimatedNextStart, LocalDate(2026, 5, 13));
+      expect(staleKey.daysLate, 7);
+    });
+
+    test('logging the next period supersedes the skip: the new start is '
+        'the anchor and the old omission no longer applies', () {
+      final after = seeded(
+        lateSeed,
+        episodes: [Episode(today, today)],
+        omitted: {LocalDate(2026, 4, 15)},
+      );
+      expect(after.lastEpisodeStart, today);
+      expect(after.cycleDay, 1);
+      expect(after.originalEstimatedNextStart, LocalDate(2026, 6, 17));
+      expect(after.estimatedNextStart, LocalDate(2026, 6, 17));
+    });
+
+    test('a skipped cycle that outlasts the advance is late again and '
+        'still rolls forward (#221 posture)', () {
+      // today is 2026-05-20: 79 days after a 3/2 start. Skipped estimate
+      // 3/2 + 56 = 4/27, 23 days past.
+      final facts = CycleFacts(
+        lastPeriodStart: LocalDate(2026, 3, 2),
+        typicalCycleLengthDays: 28,
+      );
+      final after = seeded(facts, omitted: {LocalDate(2026, 3, 2)});
+      expect(after.originalEstimatedNextStart, LocalDate(2026, 4, 27));
+      expect(after.daysLate, 23);
+      expect(after.estimatedNextStart, LocalDate(2026, 5, 25));
+    });
+
+    test('"Exclude this cycle" on a seed past kMaxOpenCycleDays records the '
+        'same key: the days-late count drops one supplied cycle while the '
+        'long-cycle flag stays, exactly as on the computed path', () {
+      // 64 open days (> kMaxOpenCycleDays) on a 30-day typical cycle.
+      final facts = CycleFacts(
+        lastPeriodStart: LocalDate(2026, 3, 17),
+        typicalCycleLengthDays: 30,
+      );
+      final before = seeded(facts);
+      expect(before.unusuallyLongCycle, isTrue);
+      expect(before.daysLate, 34);
+
+      final after = seeded(facts, omitted: {before.lastEpisodeStart});
+      expect(after.originalEstimatedNextStart, LocalDate(2026, 5, 16));
+      expect(after.daysLate, 4);
+      expect(after.unusuallyLongCycle, isTrue,
+          reason: 'a skip never closes the open cycle');
+      expect(after.tier, CycleConfidence.irregular);
+      expect(after.staleHistory, isFalse);
+    });
+
+    test('seedProvisionalPredictionFromEntries forwards the omission list '
+        '(the call the service and the web facade make)', () {
+      final after = seedProvisionalPredictionFromEntries(
+        facts: lateSeed,
+        entries: const [],
+        today: today,
+        omittedCycleStarts: {LocalDate(2026, 4, 15)},
+      ) as ActivePrediction;
+      expect(after.originalEstimatedNextStart, LocalDate(2026, 6, 10));
+      expect(after.daysLate, isNull);
+    });
+
+    test('no omission, or one keyed on another date, leaves the seed '
+        'exactly as before', () {
+      expect(seeded(lateSeed).originalEstimatedNextStart,
+          LocalDate(2026, 5, 13));
+      expect(
+        seeded(lateSeed, omitted: {LocalDate(2026, 4, 14)})
+            .originalEstimatedNextStart,
+        LocalDate(2026, 5, 13),
+      );
+    });
+  });
+
   group('tier vocabulary (issue #218)', () {
     test('the provisional tier floors when stepped down', () {
       // `irregular` claims observed variation a seeded estimate has no

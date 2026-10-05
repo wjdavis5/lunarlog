@@ -757,6 +757,10 @@
   "@overviewLoggedSnackbar": {
     "description": "Snackbar confirming the today card's quick-log action."
   },
+  "overviewAlreadyLoggedSnackbar": "Today's flow was already logged, so it stays as it was.",
+  "@overviewAlreadyLoggedSnackbar": {
+    "description": "Issue #1412: snackbar shown instead of overviewLoggedSnackbar when the quick-log action (the today card's, or the home-screen widget's) finds today already logged at medium flow or heavier, so the tap changed nothing. It carries no Undo action."
+  },
   "overviewUndo": "Undo",
   "@overviewUndo": {
     "description": "Snackbar action undoing the today card's quick log."

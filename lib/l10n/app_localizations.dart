@@ -1088,6 +1088,12 @@ abstract class AppLocalizations {
   /// **'Recorded a medium-flow period start for today.'**
   String get overviewLoggedSnackbar;
 
+  /// Issue #1412: snackbar shown instead of overviewLoggedSnackbar when the quick-log action (the today card's, or the home-screen widget's) finds today already logged at medium flow or heavier, so the tap changed nothing. It carries no Undo action.
+  ///
+  /// In en, this message translates to:
+  /// **'Today\'s flow was already logged, so it stays as it was.'**
+  String get overviewAlreadyLoggedSnackbar;
+
   /// Snackbar action undoing the today card's quick log.
   ///
   /// In en, this message translates to:

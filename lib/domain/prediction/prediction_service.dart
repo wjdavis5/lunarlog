@@ -775,7 +775,9 @@ class CyclePredictionService {
   /// entries too ([seedProvisionalPredictionFromEntries]). The supplied
   /// cycle length still stands in for the mean and the tier stays
   /// `provisional`, but a period logged on or after the supplied start is
-  /// where the current cycle begins.
+  /// where the current cycle begins. Issue #1412: step (2) receives
+  /// [omissions] as well, so skipping the open cycle advances the seeded
+  /// estimate one supplied cycle length — the computed path's skip rule.
   ///
   /// Issue #233: a tracked method in effect ([birthControl]) short-circuits
   /// before both — [computePredictionFromEntries] returns
@@ -816,11 +818,14 @@ class CyclePredictionService {
         facts.canSeed) {
       // Issue #1392: the entries go in too, so a period logged since
       // onboarding re-anchors the provisional estimate instead of being
-      // ignored until three whole cycles exist.
+      // ignored until three whole cycles exist. Issue #1412: so do the
+      // omissions — "Skip this cycle" on a provisional estimate advances it
+      // exactly as it advances a computed one.
       return seedProvisionalPredictionFromEntries(
         facts: facts,
         entries: entries,
         today: today,
+        omittedCycleStarts: omissions,
       );
     }
     return computed;

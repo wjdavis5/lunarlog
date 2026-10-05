@@ -3355,6 +3355,142 @@
     }
   },
   {
+    "name": "predict.provisional-seed-skipped",
+    "method": "predict",
+    "request": {
+      "today": "2026-09-30",
+      "tz": "UTC",
+      "entries": [],
+      "facts": {
+        "lastPeriodStart": "2026-08-26",
+        "typicalCycleLengthDays": 28,
+        "typicalPeriodLengthDays": 5
+      },
+      "omittedCycleStarts": [
+        "2026-08-26"
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "kind": "active",
+        "today": "2026-09-30",
+        "lastEpisodeStart": "2026-08-26",
+        "estimatedNextStart": "2026-10-21",
+        "originalEstimatedNextStart": "2026-10-21",
+        "averagedCycleLengths": [],
+        "meanCycleLengthDays": 28.0,
+        "cycleDay": 36,
+        "duringEpisode": false,
+        "completedCycleCount": 0,
+        "validCycleCount": 0,
+        "meanPeriodLengthDays": 5.0,
+        "spreadDays": 4.0,
+        "validRatio": 1.0,
+        "tier": "provisional",
+        "basis": "statistical",
+        "unusuallyLongCycle": false,
+        "staleHistory": false,
+        "daysLate": null,
+        "daysUntilNextPeriod": 21,
+        "forecast": [
+          {
+            "cycleIndex": 1,
+            "start": "2026-10-21",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 4.0
+          },
+          {
+            "cycleIndex": 2,
+            "start": "2026-11-18",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 5.656854249492381
+          },
+          {
+            "cycleIndex": 3,
+            "start": "2026-12-16",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 6.928203230275509
+          },
+          {
+            "cycleIndex": 4,
+            "start": "2027-01-13",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 8.0
+          },
+          {
+            "cycleIndex": 5,
+            "start": "2027-02-10",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 8.94427190999916
+          },
+          {
+            "cycleIndex": 6,
+            "start": "2027-03-10",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 9.797958971132712
+          },
+          {
+            "cycleIndex": 7,
+            "start": "2027-04-07",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 10.583005244258363
+          },
+          {
+            "cycleIndex": 8,
+            "start": "2027-05-05",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 11.313708498984761
+          },
+          {
+            "cycleIndex": 9,
+            "start": "2027-06-02",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 12.0
+          },
+          {
+            "cycleIndex": 10,
+            "start": "2027-06-30",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 12.649110640673518
+          },
+          {
+            "cycleIndex": 11,
+            "start": "2027-07-28",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 13.2664991614216
+          },
+          {
+            "cycleIndex": 12,
+            "start": "2027-08-25",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 13.856406460551018
+          },
+          {
+            "cycleIndex": 13,
+            "start": "2027-09-22",
+            "estimatedPeriodLengthDays": 5,
+            "tier": "provisional",
+            "spreadDays": 14.422205101855956
+          }
+        ],
+        "pms": null
+      }
+    }
+  },
+  {
     "name": "predict.with-pms-band",
     "method": "predict",
     "request": {

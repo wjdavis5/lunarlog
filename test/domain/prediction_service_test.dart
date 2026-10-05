@@ -696,6 +696,99 @@ void main() {
     });
   });
 
+  group('"Skip this cycle" reaches the provisional estimate (issue #1412)',
+      () {
+    late DriftSettingsStore settings;
+    late CycleExclusionList exclusions;
+    late CyclePredictionService seeded;
+
+    setUp(() {
+      settings = DriftSettingsStore(db.storage);
+      exclusions = CycleExclusionList(settings);
+      seeded = CyclePredictionService(
+        dayEntries,
+        settings: settings,
+        profiles: profiles,
+      );
+    });
+
+    test('omitting the onboarding-anchored cycle advances the estimate one '
+        'supplied cycle and clears the late state; including it again '
+        'restores it', () async {
+      // The supplied start is 35 days old with a 28-day typical cycle: the
+      // estimate (2026-05-13) is 7 days past, so the late resolver shows.
+      final profile = await profiles.create(
+        displayName: 'A',
+        isMinor: false,
+        lastPeriodStart: LocalDate(2026, 4, 15),
+        typicalCycleLengthDays: 28,
+        typicalPeriodLengthDays: 5,
+      );
+
+      final seen = <CyclePrediction>[];
+      final sub =
+          seeded.watch(profile.id, today: () => today).listen(seen.add);
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+      final before = seen.last as ActivePrediction;
+      expect(before.tier, CycleConfidence.provisional);
+      expect(before.lastEpisodeStart, LocalDate(2026, 4, 15));
+      expect(before.originalEstimatedNextStart, LocalDate(2026, 5, 13));
+      expect(before.daysLate, 7);
+
+      // What the late resolver's "Skip this cycle" writes: the open cycle's
+      // start, as the prediction itself names it.
+      await exclusions.omit(profile.id, before.lastEpisodeStart);
+      await pumpEventQueue();
+
+      final after = seen.last as ActivePrediction;
+      expect(after.originalEstimatedNextStart, LocalDate(2026, 6, 10),
+          reason: 'one supplied 28-day cycle later');
+      expect(after.estimatedNextStart, LocalDate(2026, 6, 10));
+      expect(after.daysLate, isNull);
+      expect(after.isLate, isFalse);
+      expect(after.daysUntilNextPeriod, 21);
+      expect(after.tier, CycleConfidence.provisional,
+          reason: 'a skip completes no cycle');
+      expect(after.lastEpisodeStart, LocalDate(2026, 4, 15),
+          reason: 'the open cycle itself does not move');
+      expect(after.cycleDay, 36);
+
+      await exclusions.include(profile.id, LocalDate(2026, 4, 15));
+      await pumpEventQueue();
+      expect((seen.last as ActivePrediction).daysLate, 7,
+          reason: 'reversible, like a skip on a computed estimate');
+    });
+
+    test('current() applies the skip when the provisional cycle is anchored '
+        'on a logged period', () async {
+      final profile = await profiles.create(
+        displayName: 'A',
+        isMinor: false,
+        lastPeriodStart: LocalDate(2026, 3, 10),
+        typicalCycleLengthDays: 28,
+      );
+      // One period logged after onboarding (issue #1392's anchor): its
+      // estimate, 2026-05-13, is 7 days past.
+      await recordBleed(profile.id, LocalDate(2026, 4, 15), 4);
+
+      final before =
+          await seeded.current(profile.id, today: () => today)
+              as ActivePrediction;
+      expect(before.lastEpisodeStart, LocalDate(2026, 4, 15));
+      expect(before.daysLate, 7);
+
+      await exclusions.omit(profile.id, before.lastEpisodeStart);
+
+      final after =
+          await seeded.current(profile.id, today: () => today)
+              as ActivePrediction;
+      expect(after.originalEstimatedNextStart, LocalDate(2026, 6, 10));
+      expect(after.daysLate, isNull);
+      expect(after.tier, CycleConfidence.provisional);
+    });
+  });
+
   group('memoised recomputation (issue #197)', () {
     test('two emissions carrying the same entries stamp compute the '
         'prediction once — the second is dropped by .distinct(identical) '

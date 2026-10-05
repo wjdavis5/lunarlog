@@ -253,6 +253,8 @@ const int kLateGraceDays = 2;
 /// cycle later than usual. When the next period is eventually logged, the
 /// skipped cycle's real length is excluded from the average like any other
 /// omitted cycle, so an atypically long cycle never poisons the mean.
+/// Issue #1412: a provisional estimate advances the same way, by the
+/// supplied typical cycle length that stands in for its mean.
 const int kSkipAdvanceCycles = 1;
 
 /// PROVISIONAL (issue #233): the fixed regimen length a withdrawal-bleed
@@ -1302,18 +1304,39 @@ _CycleLengthEstimate _cycleLengthEstimate({
   }
   final mean = total / usableLengths.length;
   final meanDays = mean.round();
-  // A skipped open cycle ("skip this cycle", R6) advances the estimate
-  // one averaged cycle: the skipped cycle is expected to run a mean length.
-  final skipAdvanceDays = omittedCycleStarts.contains(lastStart)
-      ? meanDays * kSkipAdvanceCycles
-      : 0;
-  final firstEstimateStart = lastStart.addDays(meanDays + skipAdvanceDays);
+  final firstEstimateStart = lastStart.addDays(
+    meanDays +
+        _skipAdvanceDays(
+          openCycleStart: lastStart,
+          cycleDays: meanDays,
+          omittedCycleStarts: omittedCycleStarts,
+        ),
+  );
   return _CycleLengthEstimate(
     mean: mean,
     meanDays: meanDays,
     firstEstimateStart: firstEstimateStart,
   );
 }
+
+/// The extra days a skipped open cycle adds to the un-rolled next-start
+/// estimate ("skip this cycle", R6): [kSkipAdvanceCycles] whole cycles of
+/// [cycleDays] when [openCycleStart] is in [omittedCycleStarts], otherwise
+/// none — the skipped cycle is expected to run one more typical length.
+///
+/// One rule for both estimate paths (issue #1412): the computed path passes
+/// its rounded mean, the provisional path the supplied typical cycle length
+/// that stands in for it. [openCycleStart] is the date every skip is keyed
+/// on — [ActivePrediction.lastEpisodeStart], which is what the late
+/// resolver and the long-cycle prompt hand to the omission list.
+int _skipAdvanceDays({
+  required LocalDate openCycleStart,
+  required int cycleDays,
+  required Set<LocalDate> omittedCycleStarts,
+}) =>
+    omittedCycleStarts.contains(openCycleStart)
+        ? cycleDays * kSkipAdvanceCycles
+        : 0;
 
 /// The 6-cycle spread metric and derived confidence tier (issue #213,
 /// item 2/3 — split out of `computePrediction` for the CRAP gate).
@@ -1586,10 +1609,22 @@ class CycleFacts {
 /// [CycleConfidence.provisional] until the computed path displaces it —
 /// and no blending happens: the anchor is one date or the other, never an
 /// average of the two.
+///
+/// Issue #1412: a skipped open cycle is honoured exactly as on the computed
+/// path. When the anchor (the returned `lastEpisodeStart`, the key "Skip
+/// this cycle" and "Exclude this cycle" record) is in [omittedCycleStarts],
+/// the un-rolled estimate advances [kSkipAdvanceCycles] supplied cycle
+/// lengths ([_skipAdvanceDays]), so `daysLate` is measured from the later
+/// date and the late state clears. Nothing else moves: the anchor, the
+/// cycle day, the tier, and the long-cycle and stale flags are those of the
+/// still-open cycle, as they are for a skip on a computed estimate. An
+/// omission keyed on any other date has no effect here — there are no
+/// averaged cycle lengths for it to leave out.
 CyclePrediction seedProvisionalPrediction({
   required CycleFacts facts,
   required LocalDate today,
   List<Episode> episodes = const [],
+  Set<LocalDate> omittedCycleStarts = const {},
 }) {
   final seedStart = facts.lastPeriodStart;
   final cycleDays = facts.typicalCycleLengthDays;
@@ -1623,7 +1658,14 @@ CyclePrediction seedProvisionalPrediction({
           kDefaultPeriodLengthDays)
       .clamp(1, maxPeriodLengthDays);
 
-  final originalEstimate = lastStart.addDays(cycleDays);
+  final originalEstimate = lastStart.addDays(
+    cycleDays +
+        _skipAdvanceDays(
+          openCycleStart: lastStart,
+          cycleDays: cycleDays,
+          omittedCycleStarts: omittedCycleStarts,
+        ),
+  );
   final rolledStart = _rollLateEstimate(
     original: originalEstimate,
     today: today,
@@ -1741,16 +1783,20 @@ bool _provisionalDuringEpisode({
 /// Convenience: derives the logged episodes from raw entries first, then
 /// seeds (mirrors [computePredictionFromEntries]). This is the call the
 /// service and the web facade make, so both anchor the provisional
-/// estimate on the same episodes the computed path and cycle history read.
+/// estimate on the same episodes the computed path and cycle history read
+/// — and (issue #1412) hand it the same omission list they hand
+/// [computePredictionFromEntries].
 CyclePrediction seedProvisionalPredictionFromEntries({
   required CycleFacts facts,
   required Iterable<DayEntry> entries,
   required LocalDate today,
+  Set<LocalDate> omittedCycleStarts = const {},
 }) =>
     seedProvisionalPrediction(
       facts: facts,
       today: today,
       episodes: deriveEpisodes(bleedDatesOf(entries)),
+      omittedCycleStarts: omittedCycleStarts,
     );
 
 /// Convenience: derives episodes from raw entries first, then predicts.
