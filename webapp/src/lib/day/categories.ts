@@ -121,3 +121,20 @@ export function resolveDayCategories(profile: ProfileRow): SurfacedCategory[] {
     label: category.label,
   }));
 }
+
+/**
+ * The categories the symptom picker draws: every surfaced category that has
+ * at least one tag to pick, in order. Several taxonomy categories carry no
+ * tags yet (Sleep quality, Urine, Meditation and others); drawn as a bare
+ * heading they read as a broken page. `tests` is excluded because it has a
+ * fieldset of its own (issue #1291).
+ */
+export function symptomPickerCategories(
+  surfaced: SurfacedCategory[],
+  grouped: Map<string, TaxonomyTag[]> = tagsByCategory(),
+): { category: SurfacedCategory; tags: TaxonomyTag[] }[] {
+  return surfaced
+    .filter((category) => category.name !== 'tests')
+    .map((category) => ({ category, tags: grouped.get(category.name) ?? [] }))
+    .filter((entry) => entry.tags.length > 0);
+}

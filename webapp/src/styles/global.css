@@ -16,6 +16,13 @@ body,
   min-height: 100vh;
 }
 
+/* Room for the day form's pinned Save row: when the keyboard moves focus
+   to a control low on the screen, the browser scrolls it clear of the row
+   instead of leaving it underneath. */
+html {
+  scroll-padding-bottom: 6rem;
+}
+
 body {
   font-family: var(--ll-font-text);
   font-size: var(--ll-type-body-medium-font-size);
@@ -296,11 +303,19 @@ body {
   margin-top: var(--ll-space-2);
 }
 
+/* The day form is long: on a desktop the Save button sat more than three
+   screens below the flow chips. The row stays pinned to the bottom of the
+   window while the form scrolls under it, and settles into place at the
+   end of the form. */
 .day-actions {
   display: flex;
   align-items: center;
   gap: var(--ll-space-3);
   margin-top: var(--ll-space-4);
+  position: sticky;
+  bottom: var(--ll-space-3);
+  z-index: 1;
+  background: var(--ll-surface-container-high);
 }
 
 .save-button {

@@ -36,6 +36,7 @@ import {
 import {
   isSingleSelectCategory,
   resolveDayCategories,
+  symptomPickerCategories,
   taxonomy,
   tagsByCategory,
 } from '../lib/day/categories';
@@ -338,7 +339,8 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
   // here keeps its chips to exactly one copy, and gating that fieldset on
   // `surfaced` makes it honour the profile's tracking_preferences like every
   // other category.
-  const symptomCategories = surfaced.filter((category) => category.name !== 'tests');
+  // Only categories with something to pick are drawn (symptomPickerCategories).
+  const symptomCategories = symptomPickerCategories(surfaced, grouped);
   const testsSurfaced = surfaced.some((category) => category.name === 'tests');
   const bbtUnit = (view?.profile.bbt_unit ?? 'celsius') as BbtUnit;
   const weightUnit = (view?.profile.weight_unit ?? 'kg') as WeightUnit;
@@ -450,8 +452,7 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
 
           <fieldset className="card day-group" disabled={readOnly}>
             <legend className="card-title">{t('webDaySymptomsSection')}</legend>
-            {symptomCategories.map((category) => {
-              const codes = grouped.get(category.name) ?? [];
+            {symptomCategories.map(({ category, tags: codes }) => {
               return (
                 <div key={category.name} className="tag-category">
                   <p className="card-title">{category.label}</p>
