@@ -102,8 +102,8 @@ export function SignInPage() {
 
   if (session.data?.signedIn === true) {
     return (
-      <main className="page">
-        <h1 className="headline">{t('accountSignInTitle')}</h1>
+      <main className="page page-auth">
+        <h1 className="display">{t('accountSignInTitle')}</h1>
         <p className="body">
           {t('accountSectionSignedInAs', { email: session.data.email ?? '' })}
         </p>
@@ -136,8 +136,8 @@ export function SignInPage() {
   }
 
   return (
-    <main className="page">
-      <h1 className="headline">{t('accountSignInTitle')}</h1>
+    <main className="page page-auth">
+      <h1 className="display">{t('accountSignInTitle')}</h1>
       <form className="auth-form" onSubmit={submit} noValidate>
         <div className="auth-field">
           <label htmlFor="sign-in-email">{t('accountSignInEmailLabel')}</label>
@@ -188,7 +188,7 @@ export function SignInPage() {
       {signOutCopy !== null ? (
         <p className="auth-error">{t(signOutCopy.id, signOutCopy.values)}</p>
       ) : null}
-      <div className="auth-actions" style={{ marginTop: 'var(--ll-space-3)' }}>
+      <div className="auth-actions auth-providers">
         <button
           type="button"
           className="auth-button auth-button-secondary"

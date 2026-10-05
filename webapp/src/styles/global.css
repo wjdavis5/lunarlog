@@ -437,6 +437,43 @@ body {
 
 /* Auth screens (issue 1250): plain, token-valued form styling only. */
 
+/* The sign-in pages (sign in, create account, reset, emailed code). A
+   form reads best in a column about as wide as an email address: in the
+   40rem page column the two inputs ran 608px across. Buttons stack at full
+   width so the primary action is the widest thing on the page and each one
+   is a comfortable touch target. */
+
+.page-auth {
+  max-width: 26rem;
+}
+
+.page-auth .display {
+  margin: 0;
+}
+
+.page-auth .auth-actions {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.page-auth .auth-button {
+  min-height: 2.75rem;
+  border-radius: var(--ll-r-full);
+}
+
+.page-auth .auth-links {
+  margin-top: var(--ll-space-5);
+  gap: var(--ll-space-2);
+}
+
+/* Another way in, so it is set apart from the password form by a rule
+   rather than by a heading. */
+.auth-providers {
+  margin-top: var(--ll-space-5);
+  padding-top: var(--ll-space-5);
+  border-top: 1px solid var(--ll-outline-variant);
+}
+
 .auth-form {
   margin-top: var(--ll-space-4);
   display: flex;
@@ -454,9 +491,12 @@ body {
   font-weight: var(--ll-type-title-small-font-weight, 500);
 }
 
+/* The field boundary uses the outline role, not its variant: the variant
+   is a divider colour and is too faint to mark where to type. */
 .auth-field input {
+  min-height: 2.75rem;
   padding: var(--ll-space-2) var(--ll-space-3);
-  border: 1px solid var(--ll-outline-variant);
+  border: 1px solid var(--ll-outline);
   border-radius: var(--ll-r-md);
   background: var(--ll-surface);
   color: var(--ll-on-surface);
@@ -465,6 +505,15 @@ body {
 
 .auth-field input:focus-visible {
   outline: 2px solid var(--ll-primary);
+}
+
+/* A rule about the field above it (the password length), in the small
+   variant ink; the input points at it with aria-describedby. */
+.auth-hint {
+  margin: 0;
+  font-size: var(--ll-type-body-small-font-size);
+  line-height: var(--ll-type-body-small-line-height);
+  color: var(--ll-on-surface-variant);
 }
 
 .auth-error {

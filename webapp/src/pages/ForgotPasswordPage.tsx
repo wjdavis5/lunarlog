@@ -41,8 +41,8 @@ export function ForgotPasswordPage() {
   };
 
   return (
-    <main className="page">
-      <h1 className="headline">{t('accountSignInForgotPasswordAction')}</h1>
+    <main className="page page-auth">
+      <h1 className="display">{t('accountSignInForgotPasswordAction')}</h1>
       {sent ? (
         <div className="auth-info">
           <p className="body">{t('accountSignInResetInfo')}</p>

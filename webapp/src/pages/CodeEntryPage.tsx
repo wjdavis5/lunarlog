@@ -54,8 +54,8 @@ export function CodeEntryPage() {
   };
 
   return (
-    <main className="page">
-      <h1 className="headline">{t('accountSignInTitle')}</h1>
+    <main className="page page-auth">
+      <h1 className="display">{t('accountSignInTitle')}</h1>
       <p className="body">{t('accountSignInMagicLinkInfo')}</p>
       {resetDone ? (
         <div className="auth-info">

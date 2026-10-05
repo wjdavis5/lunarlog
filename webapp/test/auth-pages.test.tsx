@@ -197,6 +197,15 @@ describe('SignInPage (issue #1250)', () => {
 });
 
 describe('SignUpPage (issue #1250)', () => {
+  // The length rule used to be a loose paragraph under the field. A screen
+  // reader landing in the password box never heard it.
+  it('ties the password length rule to the password field', () => {
+    renderWithProviders(<SignUpPage />, '/sign-up');
+    expect(
+      screen.getByLabelText(messages['accountSignInPasswordLabel'] ?? ''),
+    ).toHaveAccessibleDescription(/at least 12 characters/i);
+  });
+
   it('rejects a short password client-side with the catalogue error', async () => {
     renderWithProviders(<SignUpPage />, '/sign-up');
     await fill(messages['accountSignInEmailLabel'] ?? '', 'a@b.co');
@@ -339,6 +348,13 @@ describe('ForgotPasswordPage (issue #1250)', () => {
 });
 
 describe('ResetPasswordPage (issue #1250)', () => {
+  it('ties the password length rule to the new-password field', () => {
+    renderWithProviders(<ResetPasswordPage />, '/reset-password');
+    expect(
+      screen.getByLabelText(messages['accountPasswordRecoveryNewLabel'] ?? ''),
+    ).toHaveAccessibleDescription(/at least 12 characters/i);
+  });
+
   it('saves the new password when both fields agree', async () => {
     renderWithProviders(<ResetPasswordPage />, '/reset-password');
     await fill(messages['accountPasswordRecoveryNewLabel'] ?? '', 'long enough password');
