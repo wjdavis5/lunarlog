@@ -571,10 +571,16 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   /// read first (the mapper has told a network failure from a refusal
   /// since issue #1504; before that the sole-primary refusal itself read
   /// as a network failure, which is why this used to ignore the error).
+  /// So is a refusal for having no session (issue #1527): it reached the
+  /// guess below, and a primary guardian whose session had gone was told
+  /// she was the only one.
   String _revokeErrorMessage(Object error, ProfileGuardian guardian) {
     final l10n = AppLocalizations.of(context);
     if (error is SharingUnauthorizedFailure) {
       return l10n.commonUnauthorized;
+    }
+    if (error is SharingNotSignedInFailure) {
+      return l10n.sharingFailureNotSignedIn;
     }
     if (error is SharingNetworkFailure) {
       return l10n.sharingManageGuardiansRemoveFailed;
@@ -1409,6 +1415,11 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   String _roleChangeErrorMessage(Object error) {
     if (error is SharingUnauthorizedFailure) {
       return AppLocalizations.of(context).commonUnauthorized;
+    }
+    // Issue #1527: with no session the thing to do is sign in, which the
+    // generic line below did not say.
+    if (error is SharingNotSignedInFailure) {
+      return AppLocalizations.of(context).sharingFailureNotSignedIn;
     }
     return AppLocalizations.of(context).sharingManageGuardiansRoleUpdateFailed;
   }

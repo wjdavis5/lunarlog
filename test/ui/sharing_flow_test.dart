@@ -1403,6 +1403,46 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     });
 
+    testWidgets('a role change with no session says to sign in (issue #1527)',
+        (tester) async {
+      sharingService.scriptedRoleChangeError =
+          const SharingFailure.notSignedIn();
+      await storage.applyRemoteRows([
+        guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+        guardianRow('g-2', 'user-sue', 'viewer', 'Sue'),
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ManageGuardiansScreen(
+            profile: testProfile,
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
+            sharingService: sharingService,
+            currentUserId: 'user-mom',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('change-role-user-sue')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Caregiver'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Change role'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Sign in to your account to manage sharing.'),
+        findsOneWidget,
+      );
+      expect(find.text('Failed to update role. Check connection.'), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
     testWidgets('co-parent sees a role control only on caregiver/viewer rows', (
       tester,
     ) async {
@@ -1730,6 +1770,13 @@ void main() {
         'a refusal for lack of permission',
         const SharingFailure.unauthorized(),
         'You do not have permission for this action.',
+      ),
+      // Issue #1527: her session had gone. The line said she was the only
+      // primary guardian, with another one on the list above it.
+      (
+        'no session',
+        const SharingFailure.notSignedIn(),
+        'Sign in to your account to manage sharing.',
       ),
     ]) {
       testWidgets('a primary guardian leaving, and $name: the line says so, '
