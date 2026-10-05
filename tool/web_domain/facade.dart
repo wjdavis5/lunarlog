@@ -64,13 +64,17 @@ import 'package:lunarlog/domain/export/account_export.dart';
 import 'package:lunarlog/domain/insights/cramp_prediction.dart';
 import 'package:lunarlog/domain/insights/cycle_insights_calculator.dart';
 import 'package:lunarlog/domain/insights/symptom_trends.dart';
+import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
 import 'package:lunarlog/domain/logging/day_entry_policy.dart';
+import 'package:lunarlog/domain/logging/today_log.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
+import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
@@ -97,7 +101,7 @@ const String kWebDomainFacadeVersion = '1';
 // Dispatch
 // ---------------------------------------------------------------------------
 
-/// Runs one facade call. [method] names one of the six supported calls;
+/// Runs one facade call. [method] names one of the supported calls;
 /// [requestJson] is its request object, JSON-encoded. Never throws: every
 /// failure mode is an `{"ok": false, "error": ...}` envelope (see this
 /// file's doc comment).
@@ -115,6 +119,7 @@ String handleFacadeCall(String method, String requestJson) {
       'validateDayEntryDate' => validateDayEntryDateFromJson(decoded),
       'buildExport' => buildExportFromJson(decoded),
       'parseInviteLink' => parseInviteLinkFromJson(decoded),
+      'todayLog' => todayLogFromJson(decoded),
       _ => throw ArgumentError.value(method, 'method', 'unknown facade method'),
     };
     return jsonEncode({'ok': true, 'data': data});
@@ -529,6 +534,224 @@ Object? parseInviteLinkFromJson(Map<String, Object?> request) {
     'isClaim': link.isClaim,
     'isPrediction': link.isPrediction,
   };
+}
+
+// ---------------------------------------------------------------------------
+// todayLog
+// ---------------------------------------------------------------------------
+
+/// What is logged for one day, as the Today log card says it (issue #1489
+/// in the app; the browser version's card asks here so the two cannot say
+/// different things). Every rule is `lib/domain/logging/today_log.dart`'s:
+/// whether anything is logged ([TodayLog.hasContent]), which flow the day
+/// reads as ([TodayLog.flowLine]), which tags are named, by what label, and
+/// how many are only counted ([todayLogTagsOf]), and which reading the day
+/// sheet would open on ([TodayLog.bbt], [TodayLog.weight]).
+///
+/// Request keys:
+///
+/// * `entry` — the day's entry as an export-shaped row, or null/absent when
+///   the day has none. A tombstoned row is nothing logged.
+/// * `observations` (optional) — the rows attached to that entry, each with
+///   `dayEntryId`, `category`, `valueNum`, `unit`, `source`, and
+///   `deletedAt`. A tombstoned row, and a row attached to another entry,
+///   are dropped here, as the device's per-entry read drops them.
+/// * `customTags` (optional) — the profile's own tag registry, each row
+///   with `code`, `displayName`, and `deletedAt`. A tombstoned row no
+///   longer names anything; a retired one still does.
+/// * `bbtUnit` / `weightUnit` (optional) — the profile's display units; a
+///   reading is answered in them, whatever unit it was stored in.
+///
+/// Response: `hasContent`; `flow`, the level to label (`light`, `medium`,
+/// `heavy`, `super_heavy`, `spotting`, `not_bleeding`) with bleed already
+/// winning over spotting, or null when the day records no flow;
+/// `hasSpotting`; `pms`; `tags`, the labels to show, already limited and in
+/// stored order; `moreTagCount`, the tags past the limit plus the ones that
+/// are counted and never named; `bbt` and `weight`, each `{value, unit}` or
+/// null; and `hasNote`.
+///
+/// **The note's text is never in the response**, only the fact that one
+/// exists. Nor is any tag code: a label, or a count. A day with nothing
+/// logged answers the same shape with every field empty, so a tombstone
+/// says nothing about what it used to hold.
+Map<String, Object?> todayLogFromJson(Map<String, Object?> request) {
+  final log = _todayLogFromJson(request);
+  final entry = log.entry;
+  if (entry == null || !log.hasContent) return _emptyTodayLog;
+  final tags = todayLogTagsOf(
+    entry.tags,
+    _customTagsFromJson(request['customTags'], entry),
+  );
+  final bbtUnit = BbtUnit.fromDb(_optionalString(request['bbtUnit']));
+  final weightUnit = WeightUnit.fromDb(_optionalString(request['weightUnit']));
+  final bbt = log.bbt;
+  final weight = log.weight;
+  return {
+    'hasContent': true,
+    'flow': switch (log.flowLine) {
+      null => null,
+      TodayLogFlow.bleed => entry.flow.toDb(),
+      TodayLogFlow.spotting => 'spotting',
+      TodayLogFlow.notBleeding => FlowLevel.notBleeding.toDb(),
+    },
+    'hasSpotting': log.hasSpotting,
+    'pms': entry.pms,
+    'tags': tags.shown,
+    'moreTagCount': tags.moreCount,
+    'bbt': bbt == null
+        ? null
+        : {
+            'value': convertTemperature(
+              bbt.valueNum!,
+              from: BbtUnit.fromDb(bbt.unit),
+              to: bbtUnit,
+            ),
+            'unit': bbtUnit.toDb(),
+          },
+    'weight': weight == null
+        ? null
+        : {
+            'value': convertWeight(
+              weight.valueNum!,
+              from: WeightUnit.fromDb(weight.unit),
+              to: weightUnit,
+            ),
+            'unit': weightUnit.toDb(),
+          },
+    'hasNote': log.hasNote,
+  };
+}
+
+/// The answer for a day with nothing logged.
+const Map<String, Object?> _emptyTodayLog = {
+  'hasContent': false,
+  'flow': null,
+  'hasSpotting': false,
+  'pms': false,
+  'tags': <String>[],
+  'moreTagCount': 0,
+  'bbt': null,
+  'weight': null,
+  'hasNote': false,
+};
+
+/// Decodes the request's entry and the observations attached to it into
+/// the [TodayLog] the device's own watch would build.
+TodayLog _todayLogFromJson(Map<String, Object?> request) {
+  final rawEntry = request['entry'];
+  if (rawEntry == null) return const TodayLog();
+  if (rawEntry is! Map<String, Object?>) {
+    throw ArgumentError('entry must be a JSON object or null');
+  }
+  final entry = dayEntryFromJson(
+    rawEntry,
+    profileId: _optionalString(rawEntry['profileId']) ?? 'web',
+    field: 'entry',
+  );
+  final observations = _observationsFromJson(request['observations'], entry);
+  return TodayLog(
+    entry: entry,
+    observations: [
+      ...observations,
+      // A row stored before spotting became its own record (issue #247)
+      // carries it as the flow level. The device's read gives such a row a
+      // spotting record when it has none
+      // (`listForDayEntryWithLegacyAlias`); so does this one.
+      if (_isLegacySpottingRow(entry) &&
+          !observations.any(
+            (o) => o.category == ObservationCategory.spotting,
+          ))
+        _observationFor(entry, category: ObservationCategory.spotting),
+    ],
+  );
+}
+
+bool _isLegacySpottingRow(DayEntry entry) =>
+    entry.deletedAt == null &&
+    // ignore: deprecated_member_use_from_same_package
+    entry.flow == FlowLevel.spotting;
+
+/// The live observations attached to [entry] among [raw]'s rows.
+List<Observation> _observationsFromJson(Object? raw, DayEntry entry) {
+  if (raw == null) return const [];
+  if (raw is! List) {
+    throw ArgumentError('observations must be a JSON array');
+  }
+  final observations = <Observation>[];
+  for (var i = 0; i < raw.length; i++) {
+    final json = raw[i];
+    if (json is! Map<String, Object?>) {
+      throw ArgumentError('observations[$i] must be a JSON object');
+    }
+    if (_optionalDateTime(json['deletedAt']) != null) continue;
+    final dayEntryId = _optionalString(json['dayEntryId']);
+    if (dayEntryId != null && dayEntryId != entry.id) continue;
+    final category = _optionalString(json['category']);
+    if (category == null) continue;
+    observations.add(
+      _observationFor(
+        entry,
+        category: ObservationCategory.fromCode(category),
+        valueNum: _optionalNum(json['valueNum'], 'observations[$i].valueNum'),
+        unit: _optionalString(json['unit']),
+        source: ObservationSource.fromDb(_optionalString(json['source'])),
+      ),
+    );
+  }
+  return observations;
+}
+
+/// One observation of [entry]'s day. The log reads only its category,
+/// value, unit and source; the rest is the entry's own.
+Observation _observationFor(
+  DayEntry entry, {
+  required ObservationCategory category,
+  double? valueNum,
+  String? unit,
+  ObservationSource source = ObservationSource.manual,
+}) => Observation(
+  id: '',
+  dayEntryId: entry.id,
+  profileId: entry.profileId,
+  localDate: entry.localDate,
+  tz: entry.tz,
+  category: category,
+  valueNum: valueNum,
+  unit: unit,
+  source: source,
+  updatedAt: entry.updatedAt,
+);
+
+/// The live rows of the profile's own tag registry among [raw]'s. The log
+/// reads only a row's code and display name.
+List<CustomTag> _customTagsFromJson(Object? raw, DayEntry entry) {
+  if (raw == null) return const [];
+  if (raw is! List) {
+    throw ArgumentError('customTags must be a JSON array');
+  }
+  final tags = <CustomTag>[];
+  for (var i = 0; i < raw.length; i++) {
+    final json = raw[i];
+    if (json is! Map<String, Object?>) {
+      throw ArgumentError('customTags[$i] must be a JSON object');
+    }
+    if (_optionalDateTime(json['deletedAt']) != null) continue;
+    final code = _optionalString(json['code']);
+    final displayName = _optionalString(json['displayName']);
+    if (code == null || displayName == null) continue;
+    tags.add(
+      CustomTag(
+        id: '',
+        profileId: entry.profileId,
+        code: code,
+        displayName: displayName,
+        category: kCustomTagCategory,
+        createdAt: entry.updatedAt,
+        updatedAt: entry.updatedAt,
+      ),
+    );
+  }
+  return tags;
 }
 
 // ---------------------------------------------------------------------------
@@ -993,6 +1216,12 @@ int? _optionalInt(Object? raw, String field) {
   if (raw == null) return null;
   if (raw is int) return raw;
   throw ArgumentError.value(raw, field, 'not an integer');
+}
+
+double? _optionalNum(Object? raw, String field) {
+  if (raw == null) return null;
+  if (raw is num) return raw.toDouble();
+  throw ArgumentError('$field must be a number');
 }
 
 bool _optionalBool(Object? raw, {required bool defaultValue}) {

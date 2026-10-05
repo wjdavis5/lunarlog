@@ -34,6 +34,20 @@ export function weightUnitFromDb(value: string | null | undefined): WeightUnit {
   return value === 'lb' ? 'lb' : 'kg';
 }
 
+/**
+ * The international symbol for a temperature unit ("°C"/"°F") — the app's
+ * `bbtUnitSymbol` (lib/domain/models/measurement_unit.dart). A unit symbol,
+ * not translatable copy.
+ */
+export function bbtUnitSymbol(unit: BbtUnit): string {
+  return unit === 'celsius' ? '°C' : '°F';
+}
+
+/** The symbol for a weight unit ("kg"/"lb") — the app's `weightUnitSymbol`. */
+export function weightUnitSymbol(unit: WeightUnit): string {
+  return unit === 'kg' ? 'kg' : 'lb';
+}
+
 /** Basal body temperature sanity floor/ceiling, in Celsius (34.0-42.0 °C). */
 export const MIN_BBT_CELSIUS = 34.0;
 export const MAX_BBT_CELSIUS = 42.0;
