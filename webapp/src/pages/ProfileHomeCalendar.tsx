@@ -12,6 +12,7 @@ import {
   defaultLayerTags,
   flowFillClass,
   leadingBlanksFor,
+  monthHasContent,
   monthDayIsos,
   shiftMonth,
   toggledLayers,
@@ -70,6 +71,12 @@ export function ProfileHomeCalendar(props: {
    * irregular framing and the Perimenopause life stage hide it).
    */
   fertileShown: boolean;
+  /**
+   * The day to mark as "last period start from setup" (issue #1476), or
+   * null. It is the domain's answer; the legend row and the empty-month
+   * line follow it too.
+   */
+  setupPeriodMarkIso?: string | null;
 }) {
   const t = useT();
   const [now] = useState(() => new Date(`${props.todayIso}T00:00:00`));
@@ -103,7 +110,12 @@ export function ProfileHomeCalendar(props: {
   });
   const days = monthDayIsos(displayed.year, displayed.month);
   const blanks = leadingBlanksFor(displayed.year, displayed.month);
-  const monthHasEntries = days.some((iso) => props.entryByIso.has(iso));
+  const setupPeriodMarkIso = props.setupPeriodMarkIso ?? null;
+  const monthHasEntries = monthHasContent({
+    days,
+    entryByIso: props.entryByIso,
+    setupPeriodMarkIso,
+  });
 
   return (
     <section className="card" aria-labelledby="home-calendar-title">
@@ -182,6 +194,7 @@ export function ProfileHomeCalendar(props: {
                 spottingIsos: props.spottingIsos,
                 showsFertileWindow: props.fertileShown,
                 activeLayers,
+                setupPeriodMarkIso,
               });
               const decoration = cell.forecast;
               // A logged bleed day is filled with its flow colour.
@@ -195,12 +208,15 @@ export function ProfileHomeCalendar(props: {
                 cell.isToday ? 'cal-today' : '',
                 flowFill !== null ? `cal-flow ${flowFill}` : '',
                 cell.spottingStyle ? 'cal-spotting' : '',
+                cell.setupPeriodMark ? 'cal-setup-period' : '',
                 decoration?.predictedBleed ? 'cal-predicted' : '',
                 decoration?.fertileWindow ? 'cal-fertile' : '',
               ]
                 .filter(Boolean)
                 .join(' ');
               const fragments: string[] = [];
+              // Says where the mark came from, as the app's cell does.
+              if (cell.setupPeriodMark) fragments.push(t('calendarCellSetupPeriodStart'));
               if (decoration?.predictedBleed) fragments.push(t('calendarLegendPredicted'));
               if (decoration?.pmsBadge) fragments.push(t('calendarLegendPms'));
               if (decoration?.crampsBadge) fragments.push(t('calendarLegendCramps'));
@@ -280,6 +296,11 @@ export function ProfileHomeCalendar(props: {
           <li>
             <LegendSwatch kind="predicted" /> {t('calendarLegendPredicted')}
           </li>
+          {setupPeriodMarkIso !== null ? (
+            <li data-testid="legend-setup-period">
+              <LegendSwatch kind="setup-period" /> {t('calendarLegendSetupPeriodStart')}
+            </li>
+          ) : null}
           {props.fertileShown ? (
             <li>
               <LegendSwatch kind="fertile" /> {t('sharingPredictionCalendarLegendFertile')}

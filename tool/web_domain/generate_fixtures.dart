@@ -536,6 +536,36 @@ List<Map<String, Object?>> _calendarForecastCases() {
       'entries': regular,
       'lifecycleMode': 'pregnancy',
     }),
+    // Issue #1476: a profile with nothing logged, whose estimate is seeded
+    // from the setup answers. The response names the supplied date as
+    // `setupPeriodMarkDate`, the day both calendars mark as "last period
+    // start from setup".
+    _case('calendarForecast.setup-answer-seeds-the-estimate', 'calendarForecast', {
+      'today': today,
+      'tz': 'UTC',
+      'entries': const <Object?>[],
+      'facts': {
+        'lastPeriodStart': _addDays(today, -12),
+        'typicalCycleLengthDays': 30,
+        'typicalPeriodLengthDays': 5,
+      },
+    }),
+    // The same answers once a period logged after the supplied date has
+    // taken over as the cycle's start: the estimate is still provisional,
+    // and there is no mark (`setupPeriodMarkDate` is null).
+    _case('calendarForecast.logged-period-takes-over-from-setup', 'calendarForecast', {
+      'today': today,
+      'tz': 'UTC',
+      'entries': _cycleEntries(
+        cycleLengths: const [28],
+        firstStart: _addDays(today, -4),
+      ),
+      'facts': {
+        'lastPeriodStart': _addDays(today, -32),
+        'typicalCycleLengthDays': 30,
+        'typicalPeriodLengthDays': 5,
+      },
+    }),
     // A stale history (issue #982) suppresses the whole forecast off the
     // same flag the app's calendar reads: five completed 28-day cycles,
     // then an open cycle 141 days old — well past the 4×mean stale

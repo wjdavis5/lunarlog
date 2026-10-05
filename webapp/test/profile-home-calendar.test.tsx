@@ -61,6 +61,7 @@ function renderCalendar(
     forecast?: Record<string, ForecastDayCell>;
     spottingIsos?: string[];
     fertileShown?: boolean;
+    setupPeriodMarkIso?: string | null;
   } = {},
 ) {
   return render(
@@ -74,6 +75,7 @@ function renderCalendar(
           spottingIsos={new Set(options.spottingIsos ?? [])}
           pmsBandActive={false}
           fertileShown={options.fertileShown ?? true}
+          setupPeriodMarkIso={options.setupPeriodMarkIso}
         />
       </MemoryRouter>
     </AppIntlProvider>,
@@ -191,5 +193,62 @@ describe('ProfileHomeCalendar', () => {
     expect(predicted).not.toHaveClass('cal-flow');
     // Nor is a day nobody logged.
     expect(dayCell('2026-10-03').cell).not.toHaveClass('cal-flow');
+  });
+
+  // Issue #1476: the last-period date given at setup drives the estimate,
+  // and the calendar used to show nothing for it. The domain names the day;
+  // the calendar marks it as something that was given, not logged.
+  describe('the last-period date given at setup', () => {
+    const SETUP = messages['calendarCellSetupPeriodStart'] ?? 'missing';
+    const LEGEND = messages['calendarLegendSetupPeriodStart'] ?? 'missing';
+    const emptyBanner = () => screen.queryByTestId('calendar-empty-banner');
+
+    it('marks that day, says where the mark came from, and no other day', () => {
+      renderCalendar({ setupPeriodMarkIso: '2026-10-01' });
+      const marked = dayCell('2026-10-01');
+      expect(marked.cell).toHaveClass('cal-setup-period');
+      expect(marked.link).toHaveAccessibleName(`Thursday, October 1, 2026, ${SETUP}`);
+      // Given, not logged: never drawn as a recorded or an estimated day.
+      expect(marked.cell).not.toHaveClass('cal-flow');
+      expect(marked.cell).not.toHaveClass('cal-predicted');
+      expect(document.querySelectorAll('.cal-setup-period')).toHaveLength(1);
+      expect(dayCell('2026-10-02').link).toHaveAccessibleName('Friday, October 2, 2026');
+    });
+
+    it('a month whose only content is the mark is not "No entries this month"', () => {
+      renderCalendar({ setupPeriodMarkIso: '2026-10-01' });
+      expect(emptyBanner()).toBeNull();
+      // The month before has nothing at all, and still says so.
+      fireEvent.click(
+        screen.getByRole('button', { name: messages['calendarPreviousMonthTooltip'] }),
+      );
+      expect(emptyBanner()).not.toBeNull();
+    });
+
+    it('has a legend row while the mark can appear, and none otherwise', () => {
+      const { unmount } = renderCalendar({ setupPeriodMarkIso: '2026-10-01' });
+      expect(screen.getByTestId('legend-setup-period')).toHaveTextContent(LEGEND);
+      unmount();
+      renderCalendar();
+      expect(screen.queryByTestId('legend-setup-period')).toBeNull();
+      expect(document.querySelector('.cal-setup-period')).toBeNull();
+      expect(emptyBanner()).not.toBeNull();
+    });
+
+    it('a logged day shows what was logged, not the mark', () => {
+      renderCalendar({
+        setupPeriodMarkIso: '2026-10-01',
+        entries: [entryRow('2026-10-01', 'medium')],
+      });
+      const logged = dayCell('2026-10-01');
+      expect(logged.cell).not.toHaveClass('cal-setup-period');
+      expect(logged.cell).toHaveClass('cal-flow', 'cal-flow-medium');
+      expect(logged.link).toHaveAccessibleName('Thursday, October 1, 2026');
+    });
+
+    it('sits inside the ring for today when the two fall on the same day', () => {
+      renderCalendar({ setupPeriodMarkIso: TODAY });
+      expect(dayCell(TODAY).cell).toHaveClass('cal-today', 'cal-setup-period');
+    });
   });
 });

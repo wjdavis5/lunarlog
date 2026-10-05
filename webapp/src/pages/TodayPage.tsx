@@ -248,6 +248,9 @@ function ProfileHome(props: { profileId: string; todayIso: string }) {
         profileId={props.profileId}
         entryByIso={entryByIso}
         forecastByIso={forecastByIso}
+        // The domain says which day, if any, to mark as the last-period
+        // date given at setup (issue #1476).
+        setupPeriodMarkIso={domain?.forecast.setupPeriodMarkDate ?? null}
         // The PMS legend swatch only shows while the live estimate
         // actually carries a band — the app's "no band rather than a
         // noisy one" rule (issue #220).
