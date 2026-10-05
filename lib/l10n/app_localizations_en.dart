@@ -5553,6 +5553,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get webDayNoAccess => 'You don\'t have access to this profile.';
 
   @override
+  String get webDayLoading => 'Loading this day…';
+
+  @override
+  String get webDayLoadFailed =>
+      'Couldn\'t load this day. Check your connection and try again.';
+
+  @override
   String get webDayReadOnlyViewer =>
       'You have view-only access to this profile.';
 

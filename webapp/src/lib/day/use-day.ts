@@ -87,6 +87,11 @@ export function useDayView(
     isPending: query.isPending || uid === null,
     signedOut: client !== null && uid === '',
     isError: query.isError || notFound,
+    // The fetch itself failed (offline, a server error): worth retrying.
+    // The other way to be in error — a profile that is not in the caller's
+    // data — is not, and the page says different things for the two.
+    loadFailed: query.isError,
+    refetch: query.refetch,
     error:
       (query.error as Error | null) ??
       (notFound ? new DaySaveError('profile not found (or not visible to you)') : null),

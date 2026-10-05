@@ -7158,6 +7158,14 @@
   "@webDayNoAccess": {
     "description": "Issue #1254: shown when the signed-in operator holds no accepted guardianship for the profile."
   },
+  "webDayLoading": "Loading this day…",
+  "@webDayLoading": {
+    "description": "The web day editor's loading state, shown while the account's data is being fetched."
+  },
+  "webDayLoadFailed": "Couldn't load this day. Check your connection and try again.",
+  "@webDayLoadFailed": {
+    "description": "The web day editor's retryable failure state: the fetch itself failed (offline, server error). Distinct from webDayNoAccess, which is not retryable."
+  },
   "webDayReadOnlyViewer": "You have view-only access to this profile.",
   "@webDayReadOnlyViewer": {
     "description": "Issue #1254: banner above the read-only day a viewer sees."
