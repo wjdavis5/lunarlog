@@ -2012,12 +2012,12 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
     );
   }
 
-  /// The flow chip row plus the standalone spotting toggle (issue #247).
-  /// Split out of [_editableBody] to keep each method under the CRAP gate.
-  /// Every chip re-arms the autosave debounce (#198) — a flow/spotted
-  /// change is a change like any other. #138: every chip is wrapped in
-  /// [groupedChipSemantics] so it announces its group ("Flow") and its
-  /// own label/selected state as one node.
+  /// The flow levels: pick one. Split out of [_editableBody] to keep each
+  /// method under the CRAP gate. Every chip re-arms the autosave debounce
+  /// (#198). #138: every chip is wrapped in [groupedChipSemantics] so it
+  /// announces its group ("Flow") and its own label/selected state as one
+  /// node. The two things a day can also be, whatever its flow, sit on
+  /// their own row beneath ([_flowToggles]).
   Widget _flowChips(AppLocalizations l10n) {
     final group = l10n.daySheetFlowLabel;
     return Wrap(
@@ -2042,30 +2042,46 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
                     },
             ),
           ),
-        // Issue #247: spotting is its own `observations` category,
-        // not a flow level — a standalone toggle rather than one of
-        // the flow chips above, so it can coexist with any flow
-        // selection (see `_syncSpottingObservation`). #160/#138: the
-        // label reads from ARB (same string the deprecated flow level
-        // uses) like every other chip here.
-        groupedChipSemantics(
-          group: group,
-          label: l10n.flowLevelSpotting,
-          selected: _spotting,
-          onTap: _busy ? null : () => _toggleSpotting(!_spotting),
-          child: FilterChip(
-            key: const ValueKey('spotting-chip'),
-            label: Text(l10n.flowLevelSpotting),
-            selected: _spotting,
-            onSelected: _busy ? null : _toggleSpotting,
-          ),
-        ),
       ],
     );
   }
 
+  /// Spotting and PMS, side by side on one row beneath the flow levels.
+  /// Neither is a flow level and either can go with any of them, so they
+  /// are switches of their own, not more choices in the row above. Spotting
+  /// used to be the last child of that row's `Wrap`, where it usually
+  /// landed alone on a line of its own and read as a seventh flow level,
+  /// with PMS alone on the line after it.
+  Widget _flowToggles(AppLocalizations l10n) => Padding(
+        padding: const EdgeInsets.only(top: LLSpace.space1),
+        child: Wrap(
+          spacing: LLSpace.space2,
+          runSpacing: LLSpace.space1,
+          children: [_spottingChip(l10n), _pmsChip(l10n)],
+        ),
+      );
+
+  /// Issue #247: spotting is its own `observations` category, not a flow
+  /// level, so it can coexist with any flow selection (see
+  /// `_syncSpottingObservation`). It still announces "Flow" as its group.
+  /// #160/#138: the label reads from ARB (the same string the deprecated
+  /// flow level uses) like every other chip here.
+  Widget _spottingChip(AppLocalizations l10n) => groupedChipSemantics(
+        group: l10n.daySheetFlowLabel,
+        label: l10n.flowLevelSpotting,
+        selected: _spotting,
+        onTap: _busy ? null : () => _toggleSpotting(!_spotting),
+        child: FilterChip(
+          key: const ValueKey('spotting-chip'),
+          label: Text(l10n.flowLevelSpotting),
+          selected: _spotting,
+          onSelected: _busy ? null : _toggleSpotting,
+        ),
+      );
+
   /// Issue #220: the first-class PMS toggle — its own chip *outside* the
-  /// flow row's group, mirroring the issue's (and Clue's) separation of
+  /// flow group (it announces its own group, and sits beside Spotting on
+  /// the row beneath the flow levels), mirroring the issue's (and Clue's) separation of
   /// the PMS phase from both the flow levels and the taxonomy chips: a day
   /// can be PMS without any flow at all, and without being tagged for
   /// every symptom present. Rides the entry itself (`DayEntry.pms`), so
@@ -2775,9 +2791,9 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
                 ),
                 _sectionHeading(theme, l10n.daySheetFlowLabel),
                 _flowChips(l10n),
-                // Issue #220: the first-class PMS toggle sits between the
-                // flow row and the taxonomy grid — it belongs to neither.
-                _pmsChip(l10n),
+                // Spotting and PMS (issues #247, #220): switches of their
+                // own between the flow levels and the taxonomy grid.
+                _flowToggles(l10n),
                 // Issue #259: the profile's curated categories and order
                 // (resolved above) replace the mode's default list; an
                 // entry's already-logged tags for a disabled category stay

@@ -63,8 +63,9 @@
 /// re-write, no authorization prompt — and, since Issue #1215, no read at
 /// all until one [importNow] pass has completed for the current binding:
 /// the first import is the person's to start). The OS permission is
-/// *probed* via Issue #959's `permissionStatus` and anything but
-/// `granted` ends the pass before a single read. The platform triggers
+/// *probed* — the read-side `importPermissionStatus` since Issue #1491,
+/// not the write-side `permissionStatus` — and anything but `granted`
+/// ends the pass before a single read. The platform triggers
 /// behind it (an HKObserverQuery on iOS, a WorkManager job on Android —
 /// see `health_background_import_service.dart`) are import-only: no
 /// write, no UI, counts-only logging at the coordinator.
@@ -451,15 +452,21 @@ class LocalHealthImportService
       return const HealthImportSummary(firstImportNotStarted: true);
     }
 
-    // Issue #993: a background pass probes the OS permission (Issue #959's
-    // own check) and stops before any read unless it is granted. It must
-    // never prompt — no `bindProfile` re-write, no `requestWriteAuthorization`
-    // — so a trigger on a device that never granted the reads (`notAsked`)
-    // or that had permission revoked (`denied`) is a silent no-op.
-    // Deliberately conservative on iOS, where the probe covers the write
-    // (share) types only: a user who granted the reads but denied the
-    // writes skips background passes too.
-    if (await _platform.permissionStatus() !=
+    // Issue #993: a background pass probes the OS permission and stops
+    // before any read unless it is granted. It must never prompt — no
+    // `bindProfile` re-write, no `requestWriteAuthorization` — so a trigger
+    // on a device that never granted the reads (`notAsked`) or that had
+    // them removed (`denied`) is a silent no-op.
+    //
+    // Issue #1491: the probe is the READ-side one. This used to be the
+    // write-side `permissionStatus`, so someone who let lunarlog read from
+    // Health Connect but not write to it had a working Import button and a
+    // background import that never ran. On Android the read-side probe
+    // answers for the two record reads this pass performs. On iOS it
+    // cannot — HealthKit never discloses read access — so there it is
+    // still the write (share) types, and an iPhone that may read but not
+    // write skips background passes; the Health sync screen says so.
+    if (await _platform.importPermissionStatus() !=
         HealthPermissionStatus.granted) {
       return const HealthImportSummary(
         blocked: HealthPlatformPermissionDenied(),
@@ -486,7 +493,7 @@ class LocalHealthImportService
   /// The pass body both entry points share, serialized on [_passTail]:
   /// one pass at a time on this service. Everything prompt-shaped stays
   /// in the entry points (which run before the queue is joined — the
-  /// guard, the binding mirror, and the Issue #959 probe are read-free
+  /// guard, the binding mirror, and the permission probe are read-free
   /// and race-free).
   Future<HealthImportSummary> _runPass(
     ({Profile profile, HealthGuardFacts facts}) bound,

@@ -682,10 +682,10 @@ void main() {
       final handle = tester.ensureSemantics();
       final db = await pumpDaySheet(tester);
 
-      // The seeded entry carries no flow, so "None" is the selected chip.
+      // The seeded entry carries no flow, so "Not logged" is the selected chip.
       final medium = tester.getSemantics(find.bySemanticsLabel('Flow, Medium'));
       expect(medium.flagsCollection.isSelected, isNot(Tristate.isTrue));
-      final none = tester.getSemantics(find.bySemanticsLabel('Flow, None'));
+      final none = tester.getSemantics(find.bySemanticsLabel('Flow, Not logged'));
       expect(none.flagsCollection.isSelected, Tristate.isTrue);
       expect(
         find.bySemanticsLabel('Flow, Spotting'),

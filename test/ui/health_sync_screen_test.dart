@@ -380,6 +380,16 @@ void main() {
           'after it lunarlog keeps the import current in the background'),
       findsOneWidget,
     );
+    // Issue #1491: on an iPhone that promise has a condition the screen
+    // used to leave out. The Health app never tells an app whether it may
+    // read, so the background import goes by the write permissions — all
+    // of them — and the sentence that makes the promise says so.
+    expect(
+      find.textContaining(
+          'keeps the import current in the background, as long as all of '
+          "lunarlog's write permissions in the Health app are on."),
+      findsOneWidget,
+    );
     expect(
       find.textContaining('nothing is read unless'),
       findsNothing,
@@ -1620,6 +1630,61 @@ void main() {
             'Connect'),
         findsOneWidget,
       );
+    });
+
+    // Issue #1491. On Android the background import is gated on the reads
+    // it performs, no longer on the write permissions, so the promise holds
+    // for someone who allowed reading only — and the sentence names what it
+    // does depend on, in the words Health Connect's own screens use.
+    testWidgets('the background-import promise names the reads and the '
+        'background access it depends on, and no write permission',
+        (tester) async {
+      await pumpAndroid(tester, binding: await boundBinding());
+
+      final forwardOnly = tester.widget<Text>(
+        find.descendant(
+          of: find.byKey(const ValueKey('health-sync-forward-only-copy')),
+          matching: find.byType(Text),
+        ),
+      );
+      const promise = 'after it lunarlog keeps the import current in the '
+          'background';
+      expect(forwardOnly.data, contains(promise));
+      final condition = forwardOnly.data!.substring(
+        forwardOnly.data!.indexOf(promise) + promise.length,
+      );
+      expect(
+        condition,
+        ', as long as Health Connect allows it to read Menstruation and '
+        'Spotting and to access data in the background.',
+      );
+      expect(condition, isNot(contains('write')));
+    });
+
+    testWidgets('the scope note makes the same promise with a condition, on '
+        'both stores, naming neither', (tester) async {
+      const note = 'Imports everything the health store makes available, not '
+          'a recent window — and, once you have run it once, keeps itself '
+          'current in the background as long as it still has the permissions '
+          'it needs for that.';
+      Text scopeNote() => tester.widget<Text>(
+            find.descendant(
+              of: find.byKey(const ValueKey('health-sync-full-history-copy')),
+              matching: find.byType(Text),
+            ),
+          );
+
+      await pumpAndroid(tester, binding: await boundBinding());
+      expect(scopeNote().data, note);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await pumpScreen(
+        tester,
+        binding: HealthSyncBinding(FakeSettingsStore()),
+        writeEnabled: true,
+        storePlatform: HealthImportPlatform.appleHealth,
+      );
+      expect(scopeNote().data, note);
     });
 
     // The review of #1478 (decision G): a period that began before write

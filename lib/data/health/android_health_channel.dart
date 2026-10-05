@@ -32,9 +32,17 @@ import 'health_channel.dart';
 /// See `health_channel.dart`'s library doc for the guard-ordering
 /// contract; `health_platform.dart`'s for the (a)-vs-(b) first-party
 /// channel decision this file is half of.
+///
+/// `readAccessDisclosed: true` (Issue #1491): Health Connect's
+/// `getGrantedPermissions` says which reads are granted, so the read-side
+/// permission probe crosses the channel to the Kotlin
+/// `importPermissionStatus` handler.
 class AndroidHealthChannel extends MethodChannelHealthPlatform {
   AndroidHealthChannel({
     required super.binding,
     required super.minorBindingAllowed,
-  }) : super(channel: const MethodChannel(kHealthChannelName));
+  }) : super(
+         channel: const MethodChannel(kHealthChannelName),
+         readAccessDisclosed: true,
+       );
 }

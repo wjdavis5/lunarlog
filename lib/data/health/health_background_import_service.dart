@@ -7,8 +7,8 @@
 /// [HealthBackgroundImportRunner.importInBackground] pass — the same
 /// anchored, never-overwrite, own-writes-excluded pipeline the Settings
 /// tap runs, minus everything a background context must never do (see
-/// `health_import.dart`'s interface doc: no prompt, no UI, and the Issue
-/// #959 permission probe before any read).
+/// `health_import.dart`'s interface doc: no prompt, no UI, and the
+/// read-side permission probe (Issue #1491) before any read).
 ///
 /// **What the coordinator itself is responsible for** (everything else is
 /// the service's or the natives' job):

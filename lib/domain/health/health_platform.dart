@@ -125,6 +125,12 @@ enum HealthFlowValue {
 /// Health sync screen renders and what the write pass re-checks before each
 /// pass so a revocation in OS settings stops the next write.
 ///
+/// The same four values also answer the read-side question
+/// ([HealthPermissionProbe.importPermissionStatus], Issue #1491: may the
+/// import read?). Everything below describes the write-side answer,
+/// [HealthPermissionProbe.permissionStatus]; that method's own doc says
+/// what the read-side one is decided on.
+///
 /// **Platform honesty (the property the status line must never break):**
 ///
 /// * **iOS** derives this from `HKHealthStore.authorizationStatus(for:)`
@@ -184,15 +190,37 @@ enum HealthPermissionStatus {
       };
 }
 
-/// The narrow seam `lib/ui` and the write pass read for the OS permission
-/// state (Issue #959): the OS consent plus the platform settings deep link,
-/// with none of [HealthPlatformStore]'s write surface. [HealthPlatformStore]
-/// implements it, so the concrete adapter and the production factory remain
-/// one object.
+/// The narrow seam `lib/ui`, the write pass and the background import read
+/// for the OS permission state (Issues #959/#1491): the OS consent — one
+/// answer for the writes, one for the import's reads — plus the platform
+/// settings deep link, with none of [HealthPlatformStore]'s write surface.
+/// [HealthPlatformStore] implements it, so the concrete adapter and the
+/// production factory remain one object.
 abstract interface class HealthPermissionProbe {
   /// The current OS permission state for the types this app writes. Never
   /// touches user data; safe to call before any binding exists.
   Future<HealthPermissionStatus> permissionStatus();
+
+  /// The current OS permission state for what the **import** reads (Issue
+  /// #1491) — the gate of the prompt-free background pass
+  /// (`HealthBackgroundImportRunner.importInBackground`). It only ever
+  /// looks: it never raises a permission request, never touches user data,
+  /// and never changes what [permissionStatus] answers.
+  ///
+  /// * **Android** answers from Health Connect's granted set:
+  ///   [HealthPermissionStatus.granted] exactly when both record reads the
+  ///   import performs are granted — menstruation and intermenstrual
+  ///   bleeding. No write permission counts, and neither do Health
+  ///   Connect's two optional extras: "access past data" only widens how
+  ///   far back a read reaches, and the background-read permission is
+  ///   checked natively by the worker that wakes the pass. Otherwise it is
+  ///   [HealthPermissionStatus.notAsked] or [HealthPermissionStatus.denied]
+  ///   by the same rule [permissionStatus] uses to tell the two apart.
+  /// * **iOS** cannot answer this question: HealthKit never discloses read
+  ///   access. So there this is [permissionStatus] — the write types — and
+  ///   an iPhone that may read but not write still runs no background
+  ///   import. The Health sync screen states that condition in words.
+  Future<HealthPermissionStatus> importPermissionStatus();
 
   /// Opens this platform's settings screen where the operator can change
   /// the health permission: the iOS Settings app for this app, or Health
@@ -631,12 +659,14 @@ abstract interface class HealthPlatformStore implements HealthPermissionProbe {
   /// Health Connect installed and available). Never touches user data.
   Future<bool> isAvailable();
 
-  // [permissionStatus] and [openPermissionSettings] are declared by
-  // [HealthPermissionProbe] (Issue #959): the OS consent state and the
-  // platform settings deep link. They are deliberately unguarded like
-  // [isAvailable] — they read no health content and the Settings screen
-  // needs them before any binding exists — and the write pass re-checks
-  // [permissionStatus] before each pass.
+  // [permissionStatus], [importPermissionStatus] and
+  // [openPermissionSettings] are declared by [HealthPermissionProbe]
+  // (Issues #959/#1491): the OS consent state for the writes, the one for
+  // the import's reads, and the platform settings deep link. They are
+  // deliberately unguarded like [isAvailable] — they read no health content
+  // and the Settings screen needs them before any binding exists. The write
+  // pass re-checks [permissionStatus] before each pass; the background
+  // import checks [importPermissionStatus] before each of its own.
 
   /// Records the native-side copy of the device-owner binding after the
   /// Dart-side `HealthSyncBinding.bind` succeeded — the value the

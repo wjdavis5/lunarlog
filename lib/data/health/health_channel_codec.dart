@@ -22,6 +22,7 @@
 /// | `writeBasalBodyTemperature` | guard + BBT instant args + `celsius` + `healthConnectMeasurementLocation` + `recordId` + `recordVersionMs` | result string |
 /// | `deleteRecords` | guard + `recordIds` | result string |
 /// | `permissionStatus` | none | one of `granted` / `notAsked` / `denied` / `unavailable` |
+/// | `importPermissionStatus` (Android only) | none | one of `granted` / `notAsked` / `denied` / `unavailable` |
 /// | `openPermissionSettings` | none | `null` |
 /// | `readMenstrualFlowPage` | guard + `startMs` + `endMs` + `pageSize` + `cursor?` | a page `Map` (`samples` list + `nextCursor`), or a result string |
 /// | `readCycleDeviations` | guard + `startMs` + `endMs` + `kinds` (list of wire names) | a `List` of deviation maps, or a result string |
@@ -101,9 +102,11 @@
 /// read while the app is backgrounded (the worker skips its pass cleanly
 /// without the grant, and the `permissionStatus` check — which since issue
 /// #1478 covers the write permissions only — never includes it or any other
-/// read permission). On iOS there is no history/background split: the read set
-/// is the single menstrual-flow type, and full history is simply the query
-/// range.
+/// read permission). The background pass's own gate is
+/// `importPermissionStatus` (issue #1491): the two record reads the import
+/// performs, and neither of these two optional extras. On iOS there is no
+/// history/background split: the read set is the single menstrual-flow
+/// type, and full history is simply the query range.
 library;
 
 import 'package:lunarlog/domain/health/day_boundary.dart';
@@ -137,6 +140,14 @@ abstract final class HealthChannelMethods {
   static const permissionStatus = 'permissionStatus';
   static const openPermissionSettings = 'openPermissionSettings';
 
+  /// The read-side OS-permission method (Issue #1491): the consent state
+  /// for the record types the import reads, which gates the background
+  /// pass. Unguarded like [permissionStatus], and it only ever looks — it
+  /// raises no permission request. **Android only:** Health Connect says
+  /// which reads are granted; HealthKit never does, so the iOS adapter
+  /// answers the question in Dart from [permissionStatus] and this name is
+  /// never sent to Swift (see `MethodChannelHealthPlatform`).
+  static const importPermissionStatus = 'importPermissionStatus';
 
   /// The read/import method (Issue #217, paged in #992). Its success
   /// result is a page `Map` (`samples` + `nextCursor`) rather than a result

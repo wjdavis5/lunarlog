@@ -133,7 +133,7 @@ const deleteAccountUrl = "/delete-account";
            is half of the Android read, so the type axis must not be narrowed again —
            issue #1180; since issue #993 the same import also runs prompt-free in the
            background — Apple Health's background delivery and Android's periodic
-           Health Connect check, #153 guard + #959 probe inside importInBackground, so
+           Health Connect check, #153 guard + the #1491 read-side probe inside importInBackground, so
            the background axis must not be denied again either); bulk Clue import
            (issue #167/#172). -->
       <p>

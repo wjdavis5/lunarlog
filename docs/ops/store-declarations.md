@@ -187,7 +187,7 @@ is the cross-reference so both consoles are typed in the same sitting.
 | 6 | `WRITE_CERVICAL_MUCUS` | Write | fertility family (issue #228), write-only |
 | 7 | `WRITE_OVULATION_TEST` | Write | write-only |
 | 8 | `WRITE_BASAL_BODY_TEMPERATURE` | Write | write-only, no wearable-sourced value |
-| 9 | `READ_HEALTH_DATA_IN_BACKGROUND` | Read | background import trigger (issue #993) — read-only; the pass runs the same #153 guard and #959 permission probe |
+| 9 | `READ_HEALTH_DATA_IN_BACKGROUND` | Read | background import trigger (issue #993) — read-only; the pass runs the same #153 guard and a read-side permission probe (issue #1491: rows 3 and 4, not the write permissions) |
 
 Symptom and mood health-store writes are **iOS-only** (HealthKit); Health
 Connect has no symptom category types, so they are not part of this Android

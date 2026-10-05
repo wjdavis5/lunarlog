@@ -289,6 +289,30 @@ void main() {
     await disposeActivity(tester, h);
   });
 
+  testWidgets('a day logged without a flow names no flow in its row',
+      (tester) async {
+    final h = await pumpActivity(
+      tester,
+      seed: (db, profileId) async {
+        await seedShared(db, profileId);
+        await db.storage.applyRemoteRows([
+          entryRow(profileId, 'e-flow', LocalDate(2026, 8, 18),
+              loggedByUserId: 'user-mom'),
+          entryRow(profileId, 'e-none', LocalDate(2026, 8, 19),
+              updatedAt: DateTime.utc(2026, 8, 21),
+              loggedByUserId: 'user-dad',
+              flow: FlowLevel.none),
+        ]);
+      },
+    );
+    // The row for the medium-flow day still says so.
+    expect(find.textContaining('Medium'), findsOneWidget);
+    // "None" in that list read as a value; it is the absence of one.
+    expect(find.textContaining('None'), findsNothing);
+    expect(find.textContaining('Not logged'), findsNothing);
+    await disposeActivity(tester, h);
+  });
+
   testWidgets('the current user\u2019s own rows read as "you" (AC2)',
       (tester) async {
     final auth = FakeAuthService()

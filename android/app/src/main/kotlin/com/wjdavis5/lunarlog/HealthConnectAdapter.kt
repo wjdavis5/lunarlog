@@ -197,11 +197,24 @@ class HealthConnectAdapter(context: Context) {
     // read permission is — see [statusPermissions] below): a user who
     // declines background reads can still import by tap, and
     // HealthBackgroundImportWorker skips its own pass without it.
-    private val readPermissions = setOf(
+    //
+    // Issue #1491: the reads the import itself performs — the two record
+    // types [readSamples] reads, by time range (readRecords) and by change
+    // token (getChanges). This is the whole set `importPermissionStatus`
+    // requires, and so the gate of the Dart background import pass. The two
+    // optional extras that ride the request sheet beside them are
+    // deliberately NOT in it: READ_HEALTH_DATA_HISTORY only widens how far
+    // back a read reaches (the pass still reads without it), and
+    // READ_HEALTH_DATA_IN_BACKGROUND is what the worker's own tick checks
+    // ([backgroundReadRefused]) before it wakes Dart at all.
+    private val importReadPermissions = setOf(
         HealthPermission.getReadPermission(MenstruationFlowRecord::class),
         HealthPermission.getReadPermission(IntermenstrualBleedingRecord::class),
+    )
+
+    private val readPermissions = setOf(
         HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY,
-    ) + backgroundReadPermissions()
+    ) + importReadPermissions + backgroundReadPermissions()
 
     private val allPermissions = writePermissions + readPermissions
 
@@ -220,6 +233,10 @@ class HealthConnectAdapter(context: Context) {
     // missing read permission surfaces where it matters, as the import's own
     // "no data, or read access is off" result, and the background worker
     // gates its own tick (see the companion's [backgroundReadRefused]).
+    // The background import pass has a status of its own for the same
+    // reason in the other direction (issue #1491, `importPermissionStatus`
+    // over [importReadPermissions]): gated on this write status, it never
+    // ran for a person who allowed reading and not writing.
     private val statusPermissions = writePermissions
 
     // The background-read permission, only where it can actually be
@@ -381,6 +398,43 @@ class HealthConnectAdapter(context: Context) {
                     // The one sheet covers write and read types (Issue #458);
                     // a user who has only ever imported still sees the prompt.
                     launcher.launch(allPermissions)
+                }
+            }
+
+            "importPermissionStatus" -> {
+                // Issue #1491: the READ-side permission state, the gate of
+                // the Dart background import pass (importInBackground). That
+                // pass used to be gated on `permissionStatus` below, which
+                // answers for the WRITE permissions — so a person who let
+                // lunarlog read from Health Connect and not write to it had
+                // a tap import that worked and a background import that
+                // never ran. This answers for [importReadPermissions] alone:
+                // no write permission, and neither optional extra.
+                //
+                // It only looks. It raises no permission request (a
+                // background pass must never put a sheet in front of the
+                // person), and it reads the asked-marker without ever
+                // setting it — unlike `permissionStatus`, which remembers a
+                // grant it sees — so asking this question never changes
+                // what `permissionStatus` answers for the write path.
+                val client = healthConnectClient()
+                if (client == null) {
+                    result.success("unavailable")
+                    return
+                }
+                CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
+                    try {
+                        val granted = client.permissionController.getGrantedPermissions()
+                        result.success(
+                            HealthPermissionState.importStatusFor(
+                                granted = granted,
+                                importReads = importReadPermissions,
+                                requested = allPermissions,
+                                everRequested = permissionEverRequested(),
+                            ))
+                    } catch (e: Exception) {
+                        result.success("unavailable")
+                    }
                 }
             }
 
@@ -1321,10 +1375,11 @@ class HealthConnectAdapter(context: Context) {
         // permission is not granted. Deliberately false (let the tick run
         // its usual path) in every can't-tell case: the feature absent
         // means background reads were never permission-gated, so the
-        // pre-#1211 behavior stands; the SDK unavailable means Dart's #959
-        // probe answers "unavailable" and no-ops anyway; and a query
-        // failure must not invent a refusal. Kept here rather than in the
-        // worker so all Health Connect access stays in the adapter.
+        // pre-#1211 behavior stands; the SDK unavailable means Dart's own
+        // probe (`importPermissionStatus`, issue #1491) answers
+        // "unavailable" and no-ops anyway; and a query failure must not
+        // invent a refusal. Kept here rather than in the worker so all
+        // Health Connect access stays in the adapter.
         suspend fun backgroundReadRefused(context: Context): Boolean {
             return try {
                 if (HealthConnectClient.getSdkStatus(context) !=
@@ -1422,6 +1477,37 @@ internal object HealthPermissionState {
      */
     fun provesAsked(granted: Set<String>, requested: Set<String>): Boolean =
         granted.any { it in requested }
+
+    /**
+     * The `importPermissionStatus` decision (Issue #1491): may the import
+     * read? It is the gate of the Dart background import pass, which stops
+     * silently on anything but `granted`.
+     *
+     *  * `granted`  — every permission in `importReads` is granted: the two
+     *                 record reads the import performs (menstruation and
+     *                 intermenstrual bleeding). No write permission counts
+     *                 either way, and neither does "access past data" nor
+     *                 the background read — the adapter passes neither in.
+     *  * `denied` / `notAsked` — a read is missing; told apart exactly as
+     *                 [statusFor] tells them apart for the writes, so the
+     *                 two statuses never disagree about whether the person
+     *                 has been asked.
+     *
+     * The adapter reads its asked-marker for `everRequested` here but never
+     * sets it on this path: asking this question must not change what
+     * `permissionStatus` answers for the write path.
+     */
+    fun importStatusFor(
+        granted: Set<String>,
+        importReads: Set<String>,
+        requested: Set<String>,
+        everRequested: Boolean,
+    ): String = statusFor(
+        granted = granted,
+        required = importReads,
+        requested = requested,
+        everRequested = everRequested,
+    )
 }
 
 /**

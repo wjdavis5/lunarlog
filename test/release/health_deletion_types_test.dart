@@ -382,4 +382,140 @@ void main() {
       expect(kotlin, contains('ACTION_HEALTH_CONNECT_SETTINGS'));
     });
   });
+
+  // Issue #1491: the background import is gated on a read-side status of
+  // its own. Gated on `permissionStatus` (the writes), it never ran for a
+  // person who let lunarlog read from Health Connect and not write to it.
+  // These guards keep the Kotlin handler on the reads the import performs,
+  // keep it from ever asking or remembering, and keep the question off the
+  // Swift side, where HealthKit could not answer it.
+  group('Android importPermissionStatus consults only the reads the import '
+      'performs (#1491)', () {
+    late String kotlin;
+    late String handler;
+
+    setUpAll(() {
+      kotlin = _stripLineComments(readRepoFile(_adapterPath));
+      final start = kotlin.indexOf('"importPermissionStatus" ->');
+      final end = kotlin.indexOf('"permissionStatus" ->');
+      expect(start, isNonNegative);
+      expect(end, greaterThan(start),
+          reason: 'the read-side handler sits just above permissionStatus');
+      handler = kotlin.substring(start, end);
+    });
+
+    test('the required set is the two record reads and nothing else', () {
+      // The set literal: from its declaration to the line that closes it.
+      const declaration = 'private val importReadPermissions = setOf(';
+      final start = kotlin.indexOf(declaration);
+      expect(start, isNonNegative,
+          reason: 'importReadPermissions changed shape — update this guard');
+      final close = RegExp(r'\n\s*\)\s*\n').firstMatch(kotlin.substring(start));
+      expect(close, isNotNull);
+      final body = kotlin.substring(start, start + close!.start);
+      expect(
+        RegExp(r'getReadPermission\((\w+)::class\)')
+            .allMatches(body)
+            .map((match) => match.group(1))
+            .toSet(),
+        {'MenstruationFlowRecord', 'IntermenstrualBleedingRecord'},
+        reason: 'exactly the record types readSamples reads',
+      );
+      // Neither optional extra: "access past data" only widens a read, and
+      // the worker checks the background read itself.
+      expect(body, isNot(contains('PERMISSION_READ_HEALTH_DATA')));
+      expect(body, isNot(contains('getWritePermission')));
+      expect(body, isNot(contains('backgroundReadPermissions')));
+      // The pass really does read those two types and no third.
+      expect(
+        RegExp(r'ReadRecordsRequest\(\s*(\w+)::class')
+            .allMatches(kotlin)
+            .map((match) => match.group(1))
+            .toSet(),
+        {'MenstruationFlowRecord', 'IntermenstrualBleedingRecord'},
+      );
+    });
+
+    test('the request sheet still asks for the same permissions', () {
+      // Factoring the two record reads out must not have dropped either
+      // from what is requested.
+      expect(
+        RegExp(r'private\s+val\s+readPermissions\s*=\s*setOf\(\s*'
+                r'HealthPermission\.PERMISSION_READ_HEALTH_DATA_HISTORY,\s*\)'
+                r'\s*\+\s*importReadPermissions\s*\+\s*backgroundReadPermissions\(\)')
+            .hasMatch(kotlin),
+        isTrue,
+      );
+      expect(
+        kotlin,
+        contains('private val allPermissions = writePermissions + readPermissions'),
+      );
+    });
+
+    test('the status is the SDK check plus getGrantedPermissions over that '
+        'set', () {
+      expect(handler, contains('healthConnectClient()'));
+      expect(handler, contains('result.success("unavailable")'));
+      expect(handler, contains('permissionController.getGrantedPermissions()'));
+      expect(handler, contains('HealthPermissionState.importStatusFor('));
+      expect(handler, contains('importReads = importReadPermissions'));
+      expect(handler, contains('requested = allPermissions'));
+      expect(handler, isNot(contains('statusPermissions')));
+      expect(handler, isNot(contains('writePermissions')));
+    });
+
+    test('it only looks: no permission request, and the asked-marker is read '
+        'but never set', () {
+      expect(handler, isNot(contains('launcher')));
+      expect(handler, isNot(contains('requestPermissions')));
+      expect(handler, isNot(contains('.launch(')));
+      expect(handler, contains('everRequested = permissionEverRequested()'));
+      // Setting the marker here would change what permissionStatus answers
+      // for the write path: a first write pass would read "denied" where it
+      // should read "not yet asked", and stop before it could ask.
+      expect(handler, isNot(contains('prefs.edit()')));
+      expect(handler, isNot(contains('PERMISSION_REQUESTED_KEY')));
+      expect(handler, isNot(contains('provesAsked')));
+    });
+
+    test('the decision is the write-side one over the read set, not a second '
+        'rule', () {
+      expect(
+        RegExp(
+          r'fun importStatusFor\(\s*granted: Set<String>,\s*'
+          r'importReads: Set<String>,\s*requested: Set<String>,\s*'
+          r'everRequested: Boolean,\s*\): String = statusFor\(\s*'
+          r'granted = granted,\s*required = importReads,\s*'
+          r'requested = requested,\s*everRequested = everRequested,\s*\)',
+        ).hasMatch(kotlin),
+        isTrue,
+        reason: 'HealthPermissionState.importStatusFor changed shape — '
+            'update HealthImportPermissionStateTest.kt and this guard together',
+      );
+    });
+  });
+
+  group('iOS answers the read-side status in Dart, from the write types '
+      '(#1491)', () {
+    test('Swift has no importPermissionStatus handler to guess with', () {
+      // HealthKit never discloses read access, so a native answer could
+      // only be invented. The iOS adapter never sends the method.
+      expect(
+        _stripLineComments(readRepoFile(_appDelegatePath)),
+        isNot(contains('importPermissionStatus')),
+      );
+    });
+
+    test('each platform pin states whether its store discloses read access',
+        () {
+      final ios = _stripLineComments(
+        readRepoFile('lib/data/health/ios_health_channel.dart'),
+      );
+      final android = _stripLineComments(
+        readRepoFile('lib/data/health/android_health_channel.dart'),
+      );
+      expect(ios, contains('readAccessDisclosed: false'));
+      expect(android, contains('readAccessDisclosed: true'));
+    });
+  });
 }

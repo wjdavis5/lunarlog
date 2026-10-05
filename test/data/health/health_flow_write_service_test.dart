@@ -191,6 +191,18 @@ class _FakePlatform implements HealthPlatformStore {
     return permission;
   }
 
+  /// Issue #1491: the read-side probe gates the background import and
+  /// nothing else. Programmable and counted so a test can prove a write
+  /// pass is neither stopped by it nor reads it.
+  HealthPermissionStatus importPermission = HealthPermissionStatus.granted;
+  int importPermissionStatusCalls = 0;
+
+  @override
+  Future<HealthPermissionStatus> importPermissionStatus() async {
+    importPermissionStatusCalls++;
+    return importPermission;
+  }
+
   @override
   Future<void> openPermissionSettings() async {}
 
@@ -467,6 +479,28 @@ void main() {
       expect(platform.flowWrites, isEmpty);
       expect(platform.markerWrites, isEmpty);
       expect(platform.deleteCalls, isEmpty);
+    });
+
+    // Issue #1491: the background import moved to a read-side probe of its
+    // own. The write pass is still decided by the write permissions alone:
+    // reads that are off must not stop a write, and the write pass must not
+    // read that probe at all.
+    test('the read-side probe is not the write pass\'s: reads off and '
+        'writes on still writes, and the probe is never read', () async {
+      final grant = clock.subtract(const Duration(hours: 1));
+      await seedGranted(grant);
+      platform.importPermission = HealthPermissionStatus.denied;
+      dayEntries.entries = [
+        _entry('2026-06-01', FlowLevel.medium, clock),
+      ];
+
+      final report = await buildService().syncNow();
+
+      expect(report.blocked, isNull);
+      expect(report.samplesWritten, 1);
+      expect(platform.flowWrites.single.date, LocalDate.fromIso('2026-06-01'));
+      expect(platform.permissionStatusCalls, 1);
+      expect(platform.importPermissionStatusCalls, 0);
     });
 
     test('a not-yet-asked permission does not block — the grant stage asks',
