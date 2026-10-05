@@ -325,7 +325,7 @@ describe('AccountPage (issue #1256)', () => {
     // Role-scoped: the card title shares the tile button's string.
     fireEvent.click(screen.getByRole('button', { name: messages['accountSectionDelete'] }));
     // The inline dialog: body, ack, confirm, cancel.
-    expect(screen.getByText(messages['accountDeleteDialogBody'])).toBeDefined();
+    expect(screen.getByText(messages['webAccountDeleteBody'])).toBeDefined();
     expect(screen.getByText(messages['accountDeleteDialogAck'])).toBeDefined();
     fireEvent.click(
       screen.getByRole('button', { name: messages['accountDeleteDialogConfirm'] }),

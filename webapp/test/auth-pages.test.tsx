@@ -243,9 +243,7 @@ describe('SignUpPage (issue #1250)', () => {
       screen.getByRole('button', { name: messages['accountSignInCreateAccountAction'] }),
     );
     await waitFor(() => expect(fakes.signUp).toHaveBeenCalledOnce());
-    expect(
-      await screen.findByText(messages['accountSignInConfirmEmailInfo']),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(messages['webAuthConfirmEmailInfo'])).toBeInTheDocument();
   });
 
   it('navigates to the code screen only after the send resolves (issue #1294)', async () => {
@@ -343,7 +341,7 @@ describe('ForgotPasswordPage (issue #1250)', () => {
     await fill(messages['accountSignInEmailLabel'] ?? '', 'a@b.co');
     fireEvent.click(screen.getByRole('button', { name: messages['webAuthSendResetAction'] }));
     await waitFor(() => expect(fakes.sendPasswordReset).toHaveBeenCalledWith('a@b.co'));
-    expect(await screen.findByText(messages['accountSignInResetInfo'])).toBeInTheDocument();
+    expect(await screen.findByText(messages['webAuthResetInfo'])).toBeInTheDocument();
   });
 });
 

@@ -621,7 +621,7 @@ function ProfileSection(props: SectionProps & { title: string; profiles: Profile
                       >
                         <span className="confirm-text">
                           {t('profileArchiveConfirmTitle', { name: profile.display_name })}{' '}
-                          {t('profileArchiveConfirmBody')}
+                          {t('webProfileArchiveConfirmBody')}
                         </span>
                         <button
                           type="button"

@@ -509,7 +509,7 @@ function DeleteAccountCard(props: {
           </>
         ) : props.confirming ? (
           <>
-            <p className="row-sub">{t('accountDeleteDialogBody')}</p>
+            <p className="row-sub">{t('webAccountDeleteBody')}</p>
             <p className="row-sub">{t('accountDeleteDialogAck')}</p>
             <div className="auth-actions">
               <button
