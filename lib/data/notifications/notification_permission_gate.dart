@@ -8,6 +8,14 @@
 /// (`lib/app.dart`) are two independent widgets with no ordering
 /// relationship between them.
 ///
+/// **Since then** the scheduler has stopped asking at database open on
+/// both platforms (Darwin `requestAlertPermission: false`, issue #863; the
+/// Android `requestNotificationsPermission()` call removed from
+/// `initialize()`, issue #1425): its only request is now the user-triggered
+/// "Turn on reminders" tap. [FirebasePushTokenSource]'s request still fires
+/// at database open on a `hasPush` build, so the two can still overlap (a
+/// tap while that request is pending) and both still go through this gate.
+///
 /// **Decision (issue #287):** neither side is designated the sole owner —
 /// which of the two actually runs first is genuine start-up timing, not
 /// something either widget can cheaply guarantee without a larger

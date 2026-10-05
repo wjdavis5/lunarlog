@@ -76,8 +76,10 @@ class FirebasePushTokenSource implements PushTokenSource {
 
   /// Issue #287: serializes `FirebaseMessaging.instance.requestPermission()`
   /// (below) against `FlutterLocalNotificationsScheduler`'s own Android/
-  /// Darwin permission requests — both fire at database open with no
-  /// ordering relationship between the two widgets that start them. See
+  /// Darwin permission requests. This one fires at database open; the
+  /// scheduler's no longer do (issues #863 and #1425 — they are now made
+  /// only from the "Turn on reminders" tap), but a tap can still land
+  /// while this request is pending. See
   /// `notification_permission_gate.dart`'s library doc for the full
   /// decision record.
   final NotificationPermissionGate _permissionGate;

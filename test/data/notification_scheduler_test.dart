@@ -284,22 +284,101 @@ void main() {
     });
   });
 
-  group('Android POST_NOTIFICATIONS request (issue #168)', () {
-    test('initialize() requests the Android runtime permission before the '
-        'first availability check', () async {
-      requestPermissionGranted = true;
-      permissionEnabled = true;
-      final scheduler = schedulerFor(TargetPlatform.android);
+  group('Android init-time permission (issue #1425)', () {
+    // The Android twin of the Darwin group above. Issue #168 had
+    // `initialize()` request POST_NOTIFICATIONS on every start; that put
+    // the system dialog over a black screen at first launch and again on
+    // the next launch after "Don't allow", spending both dialogs Android
+    // will ever show.
+    test('initialize() never asks for the Android permission -- the system '
+        'dialog must not fire at first launch', () async {
+      // A fresh install on API 33+: the manifest declares
+      // POST_NOTIFICATIONS, but it stays off until it is requested.
+      permissionEnabled = false;
+      requestPermissionGranted = false;
+      final store = FakeSettingsStore();
+      final scheduler =
+          schedulerFor(TargetPlatform.android, settingsStore: store);
 
       final availability = await scheduler.initialize();
 
       expect(
         calls.any((c) => c.method == 'requestNotificationsPermission'),
-        isTrue,
-        reason: 'API 33+ requires an explicit runtime request even though '
-            'the manifest already declares POST_NOTIFICATIONS',
+        isFalse,
+        reason: 'the request belongs to the in-product "Turn on reminders" '
+            'moment, not database open',
       );
+      expect(
+        calls.any((c) => c.method == 'openAppNotificationSettings'),
+        isFalse,
+        reason: 'no other system UI at launch either',
+      );
+      expect(
+        calls.any((c) => c.method == 'createNotificationChannel'),
+        isTrue,
+        reason: 'the channel is still created -- that shows nothing',
+      );
+      expect(
+        calls.any((c) => c.method == 'areNotificationsEnabled'),
+        isTrue,
+        reason: 'availability is read, not requested',
+      );
+      expect(
+        availability,
+        NotificationAvailability.denied,
+        reason: 'a never-asked permission must still report truthfully, so '
+            'the overview shows its "Turn on reminders" hint',
+      );
+      expect(
+        await store.get(SettingsKeys.androidNotificationDeniedAttempts),
+        isNull,
+        reason: 'nothing was asked, so there is no refusal to count',
+      );
+    });
+
+    test('initialize() reports an already-enabled Android permission as '
+        'available, still without asking', () async {
+      // Granted on an earlier launch, or a pre-API-33 device where
+      // notifications are on by default.
+      permissionEnabled = true;
+      requestPermissionGranted = true;
+      final scheduler = schedulerFor(TargetPlatform.android);
+
+      final availability = await scheduler.initialize();
+
       expect(availability, NotificationAvailability.available);
+      expect(
+        calls.any((c) => c.method == 'requestNotificationsPermission'),
+        isFalse,
+      );
+    });
+
+    test('a relaunch after "Don\'t allow" does not ask again, and leaves '
+        'the persisted denial count as it found it', () async {
+      // One refusal already on record -- from a "Turn on reminders" tap,
+      // or from a pre-#1425 build's startup ask.
+      final store = FakeSettingsStore(
+          {SettingsKeys.androidNotificationDeniedAttempts: '1'});
+      permissionEnabled = false;
+      requestPermissionGranted = false;
+      final scheduler =
+          schedulerFor(TargetPlatform.android, settingsStore: store);
+
+      final availability = await scheduler.initialize();
+
+      expect(
+        calls.any((c) => c.method == 'requestNotificationsPermission'),
+        isFalse,
+        reason: 'the pre-fix bug: every launch re-asked, so the second '
+            '(and last) dialog was spent on the very next start',
+      );
+      expect(availability, NotificationAvailability.denied);
+      expect(
+        await store.get(SettingsKeys.androidNotificationDeniedAttempts),
+        '1',
+        reason: 'initialize() no longer asks, so it must not count a '
+            'refusal either',
+      );
     });
 
     test('initialize() never requests the Android permission on iOS -- '
@@ -317,30 +396,56 @@ void main() {
     });
 
     test(
-        'initialize() requests the permission regardless of push/FCM '
-        'configuration -- the scheduler has no such gate at all', () async {
+        'the permission request does not depend on push/FCM configuration '
+        '-- initialize() makes none, and requestPermission() makes it with '
+        'no such gate at all', () async {
       // There is no AppConfig.hasPush-style parameter anywhere on
-      // FlutterLocalNotificationsScheduler or its initialize(); this test
-      // documents that absence rather than exercising a flag.
+      // FlutterLocalNotificationsScheduler, its initialize(), or its
+      // requestPermission(); this test documents that absence rather than
+      // exercising a flag. Issue #168's point stands -- the local reminder
+      // path must be able to obtain POST_NOTIFICATIONS on a build with no
+      // FCM at all -- but since issue #1425 it does so from the "Turn on
+      // reminders" tap rather than at startup.
       requestPermissionGranted = false;
       permissionEnabled = false;
       final scheduler = schedulerFor(TargetPlatform.android);
 
       await scheduler.initialize();
-
       expect(
-        calls.any((c) => c.method == 'requestNotificationsPermission'),
-        isTrue,
+        calls.where((c) => c.method == 'requestNotificationsPermission'),
+        isEmpty,
+      );
+
+      await scheduler.requestPermission();
+      expect(
+        calls.where((c) => c.method == 'requestNotificationsPermission'),
+        hasLength(1),
       );
     });
+  });
 
+  group('Android POST_NOTIFICATIONS request (issue #168)', () {
     test(
-        'requestPermission() re-requests after one denial, then opens '
+        'requestPermission() asks, asks again after one denial, then opens '
         'settings once denied twice', () async {
       requestPermissionGranted = false;
       permissionEnabled = false;
       final scheduler = schedulerFor(TargetPlatform.android);
-      await scheduler.initialize(); // first ask, denied -> attempts = 1
+      await scheduler.initialize(); // no ask -> attempts stays 0
+      calls.clear();
+
+      await scheduler.requestPermission(); // first ask, denied -> attempts = 1
+      expect(
+        calls.any((c) => c.method == 'requestNotificationsPermission'),
+        isTrue,
+        reason: 'the first "Turn on reminders" tap is the first dialog',
+      );
+      expect(
+        calls.any((c) => c.method == 'openAppNotificationSettings'),
+        isFalse,
+        reason: 'a never-asked permission must not jump straight to '
+            'Settings',
+      );
       calls.clear();
 
       await scheduler.requestPermission(); // second ask, denied -> attempts = 2
@@ -372,31 +477,48 @@ void main() {
     test(
         'requestPermission() reports available once granted and resets '
         'the denial count', () async {
+      final store = FakeSettingsStore();
       requestPermissionGranted = false;
       permissionEnabled = false;
-      final scheduler = schedulerFor(TargetPlatform.android);
-      await scheduler.initialize(); // denied -> attempts = 1
+      final scheduler =
+          schedulerFor(TargetPlatform.android, settingsStore: store);
+      await scheduler.initialize(); // no ask
+      await scheduler.requestPermission(); // denied -> attempts = 1
+      expect(
+        await store.get(SettingsKeys.androidNotificationDeniedAttempts),
+        '1',
+      );
 
       requestPermissionGranted = true;
       permissionEnabled = true;
       final availability = await scheduler.requestPermission();
       expect(availability, NotificationAvailability.available);
+      expect(
+        await store.get(SettingsKeys.androidNotificationDeniedAttempts),
+        '0',
+        reason: 'a grant clears the refusals on record',
+      );
 
-      // A later denial goes through one more full request cycle rather
-      // than jumping straight to settings, proving the grant reset the
-      // count.
+      // Two later denials each go through a full request cycle rather
+      // than the second one jumping straight to settings, proving the
+      // grant reset the count (left at 1, the second tap here would
+      // already be at Android's two-refusal line).
       requestPermissionGranted = false;
       permissionEnabled = false;
-      calls.clear();
-      await scheduler.requestPermission();
-      expect(
-        calls.any((c) => c.method == 'requestNotificationsPermission'),
-        isTrue,
-      );
-      expect(
-        calls.any((c) => c.method == 'openAppNotificationSettings'),
-        isFalse,
-      );
+      for (var tap = 1; tap <= 2; tap++) {
+        calls.clear();
+        await scheduler.requestPermission();
+        expect(
+          calls.any((c) => c.method == 'requestNotificationsPermission'),
+          isTrue,
+          reason: 'tap $tap after the grant still asks',
+        );
+        expect(
+          calls.any((c) => c.method == 'openAppNotificationSettings'),
+          isFalse,
+          reason: 'tap $tap after the grant must not open settings',
+        );
+      }
     });
 
     test('requestPermission() re-requests the Darwin permission on iOS',
@@ -465,15 +587,22 @@ void main() {
   });
 
   group('Persisted Android denial count (issue #168)', () {
-    test('initialize() persists the post-request count to the settings '
-        'store', () async {
+    test('requestPermission() persists the post-request count to the '
+        'settings store', () async {
       final store = FakeSettingsStore();
       requestPermissionGranted = false;
       permissionEnabled = false;
       final scheduler =
           schedulerFor(TargetPlatform.android, settingsStore: store);
-
       await scheduler.initialize();
+      expect(
+        await store.get(SettingsKeys.androidNotificationDeniedAttempts),
+        isNull,
+        reason: 'issue #1425: initialize() asks nothing, so it writes no '
+            'count',
+      );
+
+      await scheduler.requestPermission();
 
       expect(
         await store.get(SettingsKeys.androidNotificationDeniedAttempts),
@@ -491,7 +620,8 @@ void main() {
 
       final beforeRestart =
           schedulerFor(TargetPlatform.android, settingsStore: store);
-      await beforeRestart.initialize(); // denied -> persisted count = 1
+      await beforeRestart.initialize(); // no ask
+      await beforeRestart.requestPermission(); // denied -> persisted count = 1
       await beforeRestart.requestPermission(); // denied -> persisted count = 2
       expect(
         await store.get(SettingsKeys.androidNotificationDeniedAttempts),
@@ -505,7 +635,18 @@ void main() {
       // can happen.
       final afterRestart =
           schedulerFor(TargetPlatform.android, settingsStore: store);
+      calls.clear();
       await afterRestart.initialize();
+      expect(
+        calls.any((c) => c.method == 'requestNotificationsPermission'),
+        isFalse,
+        reason: 'issue #1425: the restart itself asks nothing',
+      );
+      expect(
+        await store.get(SettingsKeys.androidNotificationDeniedAttempts),
+        '2',
+        reason: 'and it leaves the count on record alone',
+      );
       calls.clear();
 
       await afterRestart.requestPermission();
@@ -526,6 +667,67 @@ void main() {
     });
 
     test(
+        'a count left by a pre-#1425 build\'s two denied startup asks still '
+        'routes the first "Turn on reminders" tap to settings', () async {
+      // The upgrade case: the old build's automatic ask was refused on two
+      // launches, so Android will never show the dialog again. This build
+      // has never run before on this device, and the user has never
+      // tapped the hint -- the count on record is all it has to go on.
+      final store = FakeSettingsStore(
+          {SettingsKeys.androidNotificationDeniedAttempts: '2'});
+      requestPermissionGranted = false;
+      permissionEnabled = false;
+      final scheduler =
+          schedulerFor(TargetPlatform.android, settingsStore: store);
+      await scheduler.initialize();
+      calls.clear();
+
+      final availability = await scheduler.requestPermission();
+
+      expect(
+        calls.any((c) => c.method == 'openAppNotificationSettings'),
+        isTrue,
+        reason: 'the dialog is spent; a request here would silently no-op '
+            'and leave the tap dead',
+      );
+      expect(
+        calls.any((c) => c.method == 'requestNotificationsPermission'),
+        isFalse,
+      );
+      expect(availability, NotificationAvailability.denied);
+      expect(
+        await store.get(SettingsKeys.androidNotificationDeniedAttempts),
+        '2',
+      );
+    });
+
+    test(
+        'a count of one left by a pre-#1425 build still leaves the second '
+        'dialog for the first tap, and a refusal there reaches the line',
+        () async {
+      final store = FakeSettingsStore(
+          {SettingsKeys.androidNotificationDeniedAttempts: '1'});
+      requestPermissionGranted = false;
+      permissionEnabled = false;
+      final scheduler =
+          schedulerFor(TargetPlatform.android, settingsStore: store);
+      await scheduler.initialize();
+      calls.clear();
+
+      await scheduler.requestPermission();
+
+      expect(
+        calls.any((c) => c.method == 'requestNotificationsPermission'),
+        isTrue,
+        reason: 'Android still has one dialog left to show',
+      );
+      expect(
+        await store.get(SettingsKeys.androidNotificationDeniedAttempts),
+        '2',
+      );
+    });
+
+    test(
         'a null result from the Android request is treated as unknown, not '
         'a denial -- the persisted count is unchanged', () async {
       final store = FakeSettingsStore(
@@ -534,9 +736,16 @@ void main() {
       permissionEnabled = false;
       final scheduler =
           schedulerFor(TargetPlatform.android, settingsStore: store);
-
       await scheduler.initialize();
+      calls.clear();
 
+      await scheduler.requestPermission();
+
+      expect(
+        calls.any((c) => c.method == 'requestNotificationsPermission'),
+        isTrue,
+        reason: 'the request was made; it is its answer that never came',
+      );
       expect(
         await store.get(SettingsKeys.androidNotificationDeniedAttempts),
         '1',
@@ -547,8 +756,11 @@ void main() {
   });
 
   group('Platform-call failures are tolerated (issue #168 #3)', () {
-    test('initialize() tolerates a throwing Android permission request',
-        () async {
+    test('initialize() is unaffected by a failing Android permission API '
+        '-- it never calls it', () async {
+      // Was "initialize() tolerates a throwing Android permission
+      // request": with the startup ask gone (issue #1425) there is no
+      // request left to tolerate, which this pins from the other side.
       requestPermissionError = PlatformException(code: 'in_progress');
       permissionEnabled = true;
       final scheduler = schedulerFor(TargetPlatform.android);
@@ -556,6 +768,10 @@ void main() {
       final availability = await scheduler.initialize();
 
       expect(availability, NotificationAvailability.available);
+      expect(
+        calls.any((c) => c.method == 'requestNotificationsPermission'),
+        isFalse,
+      );
     });
 
     test('requestPermission() tolerates a throwing Android permission '
@@ -563,11 +779,39 @@ void main() {
       requestPermissionGranted = false;
       permissionEnabled = false;
       final scheduler = schedulerFor(TargetPlatform.android);
-      await scheduler.initialize(); // denied -> attempts = 1
+      await scheduler.initialize(); // no ask
+      calls.clear();
 
       requestPermissionError = PlatformException(code: 'in_progress');
       final availability = await scheduler.requestPermission();
 
+      expect(
+        calls.any((c) => c.method == 'requestNotificationsPermission'),
+        isTrue,
+        reason: 'the throwing call is the request itself',
+      );
+      expect(availability, NotificationAvailability.denied);
+    });
+
+    test('requestPermission() tolerates a throwing Android '
+        'openAppNotificationSettings call', () async {
+      // Two refusals on record, so the tap takes the settings branch and
+      // hits the throw there rather than in the request.
+      final store = FakeSettingsStore(
+          {SettingsKeys.androidNotificationDeniedAttempts: '2'});
+      permissionEnabled = false;
+      final scheduler =
+          schedulerFor(TargetPlatform.android, settingsStore: store);
+      await scheduler.initialize();
+      calls.clear();
+
+      requestPermissionError = PlatformException(code: 'boom');
+      final availability = await scheduler.requestPermission();
+
+      expect(
+        calls.any((c) => c.method == 'openAppNotificationSettings'),
+        isTrue,
+      );
       expect(availability, NotificationAvailability.denied);
     });
 

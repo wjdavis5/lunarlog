@@ -26,13 +26,18 @@ abstract final class SettingsKeys {
   static const String relockTimeout = 'relock_timeout';
 
   /// How many consecutive times the Android OS has refused
-  /// `POST_NOTIFICATIONS` — the automatic ask in `initialize()` plus every
-  /// "Turn on reminders" tap (Issue #168). Persisted so a permanently-
-  /// denied user's next launch remembers the count instead of restarting
-  /// it at zero, which used to make the very first post-restart tap a
-  /// silent re-ask (the OS no longer shows a dialog past two refusals, so
-  /// that tap did nothing) instead of opening notification settings. A
-  /// stringified non-negative int; absent (or unparsable) reads as `0`.
+  /// `POST_NOTIFICATIONS` when the app asked for it (Issue #168). Since
+  /// issue #1425 the only ask is the "Turn on reminders" tap, and that tap
+  /// is the only reader and writer of this key: the scheduler's
+  /// `initialize()` no longer asks at startup, so it no longer counts a
+  /// refusal there either. A count written by an earlier build (whose
+  /// startup ask did count) is kept as it stands — those refusals spent
+  /// real OS dialogs. Persisted so a permanently-denied user's next launch
+  /// remembers the count instead of restarting it at zero, which used to
+  /// make the very first post-restart tap a silent re-ask (the OS no
+  /// longer shows a dialog past two refusals, so that tap did nothing)
+  /// instead of opening notification settings. A stringified non-negative
+  /// int; absent (or unparsable) reads as `0`.
   static const String androidNotificationDeniedAttempts =
       'android_notification_denied_attempts';
 

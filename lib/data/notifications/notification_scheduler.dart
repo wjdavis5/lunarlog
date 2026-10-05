@@ -147,9 +147,12 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
 
   /// Issue #287: serializes every OS permission-request call below against
   /// [FirebasePushTokenSource]'s own `FirebaseMessaging.instance
-  /// .requestPermission()` — both fire at database open with no ordering
-  /// relationship between the two widgets that start them. See
-  /// `notification_permission_gate.dart`'s library doc for the full
+  /// .requestPermission()`, which fires at database open on a push-
+  /// configured build. This class no longer requests anything at database
+  /// open itself (Darwin since issue #863, Android since issue #1425), so
+  /// what the gate serializes here is [requestPermission] — the "Turn on
+  /// reminders" tap — plus the plugin's own `initialize()` channel call.
+  /// See `notification_permission_gate.dart`'s library doc for the full
   /// decision record.
   final NotificationPermissionGate _permissionGate;
 
@@ -161,13 +164,20 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
   /// behavior this counter used to always have.
   final SettingsStore? settingsStore;
 
-  // Issue #168: how many OS asks (the automatic one in [initialize], plus
-  // every [requestPermission] tap) have come back refused on Android.
-  // Mirrors (and is kept in sync with) the persisted copy in
-  // [settingsStore] under [SettingsKeys.androidNotificationDeniedAttempts]
-  // — reading here avoids an `await` on every [nextNotificationPermissionAction]
-  // decision. Feeds that function so a permanently-denied permission opens
-  // settings instead of re-prompting into silence.
+  // Issue #168: how many OS asks have come back refused on Android. Since
+  // issue #1425 the only ask is [requestPermission] (the "Turn on
+  // reminders" tap) — [initialize] no longer asks, and so neither reads nor
+  // writes this count. Mirrors the persisted copy in [settingsStore] under
+  // [SettingsKeys.androidNotificationDeniedAttempts], which
+  // [requestPermission] re-reads on every tap; this field is what carries
+  // the count between taps when no store is attached. Feeds
+  // [nextNotificationPermissionAction] so a permanently-denied permission
+  // opens settings instead of re-prompting into silence.
+  //
+  // A count persisted by a pre-#1425 build (whose automatic startup ask
+  // also counted) is deliberately left as it is: those refusals really did
+  // spend Android's dialogs, so a user that build was refused twice still
+  // goes straight to settings on their first tap.
   int _androidDeniedAttempts = 0;
 
   /// Loads the persisted count ([SettingsKeys.androidNotificationDeniedAttempts])
@@ -296,45 +306,27 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
     await androidPlugin?.createNotificationChannel(
       kReminderNotificationChannel,
     );
-    // Issue #168: API 33+ (Android 13) treats POST_NOTIFICATIONS as a
-    // runtime permission that stays denied until requested, no matter what
-    // the manifest declares -- mirrors the Darwin `requestAlertPermission`
-    // request above, and runs unconditionally (not gated on push/FCM being
-    // configured, unlike the request in firebase_push_token_source.dart --
-    // see [requestPermission]'s Darwin branch note on why that matters).
-    if (androidPlugin != null) {
-      try {
-        final previous = await _loadAndroidDeniedAttempts();
-        // Issue #287: guarded so this never runs concurrently with
-        // FirebasePushTokenSource's own `requestPermission()` -- previously
-        // the two could race, and Android drops a second
-        // `requestPermissions()` call while one is already pending.
-        final granted = await _permissionGate
-            .guard(() => androidPlugin.requestNotificationsPermission());
-        // #5: a `null` result means the OS never actually resolved this
-        // request -- kept as defense in depth now that [_permissionGate]
-        // closes the race that used to cause it (a concurrent
-        // `FirebaseMessaging.requestPermission()` reporting
-        // `PERMISSION_REQUEST_IN_PROGRESS`): still "unknown", not a
-        // refusal, whatever else might produce a `null` here. Don't
-        // ratchet the count toward `openSettings` on an answer the OS
-        // never actually gave.
-        _androidDeniedAttempts = switch (granted) {
-          true => 0,
-          false => previous + 1,
-          null => previous,
-        };
-        await _persistAndroidDeniedAttempts(_androidDeniedAttempts);
-      } catch (error) {
-        // #3: never let a platform-call failure escape `initialize()` --
-        // it is `unawaited` from `_startReminders`, so a throw here would
-        // leave `_started` false and the "Turn on reminders" hint's
-        // callback permanently unusable. `checkAvailability()` below is
-        // still the source of truth for what gets reported.
-        debugPrint('lunarlog notifications: requestNotificationsPermission '
-            'failed (${error.runtimeType})');
-      }
-    }
+    // Issue #1425: `initialize()` must never request POST_NOTIFICATIONS.
+    // Issue #168 added an unconditional `requestNotificationsPermission()`
+    // here (API 33+ keeps the permission denied until it is requested, no
+    // matter what the manifest declares), which is why the system dialog
+    // fired over a black screen at first launch, before onboarding, and
+    // again on the next launch after "Don't allow" -- spending both of the
+    // dialogs Android will ever show before the user had seen what a
+    // reminder is. Same reasoning, and now the same shape, as the Darwin
+    // `requestAlertPermission: false` above: creating the channel shows
+    // nothing (this app targets API 33+), and the request is made only
+    // from the in-product "Turn on reminders" action ([requestPermission]).
+    // Do not put a request back here.
+    //
+    // #168's own concern -- reminders that silently never show -- is
+    // covered without asking: [checkAvailability] below reads
+    // `areNotificationsEnabled()`, which on API 33+ is `false` until the
+    // permission is granted, so a never-asked install reports `denied` and
+    // the overview shows the "Turn on reminders" hint.
+    //
+    // The persisted denial count is left alone here too (neither read nor
+    // written): see [_androidDeniedAttempts].
     _initialized = true;
 
     // Cold start from a notification tap carries its payload (and, for an
@@ -395,10 +387,11 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
     final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     if (androidPlugin != null) {
-      // #1: read the persisted count fresh rather than trusting whatever
-      // is already in memory — covers a caller that reaches this before
-      // (or without ever calling) [initialize] on this instance, not just
-      // the ordinary startup-then-tap sequence.
+      // #1: read the persisted count fresh on every tap rather than
+      // trusting whatever is already in memory. Since issue #1425 this is
+      // the only place the count is read at all ([initialize] no longer
+      // touches it), so it is also what picks up a count an earlier
+      // process -- or a pre-#1425 build's startup asks -- left behind.
       _androidDeniedAttempts = await _loadAndroidDeniedAttempts();
       final action =
           nextNotificationPermissionAction(_androidDeniedAttempts);
@@ -407,15 +400,21 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
           await androidPlugin.openAppNotificationSettings();
         } else {
           final previous = _androidDeniedAttempts;
-          // Issue #287: same gate as [initialize]'s own Android request --
-          // this is user-triggered (the "Turn on reminders" tap) rather
-          // than a startup race, but routing it through the same gate
-          // costs nothing and keeps every real request serialized, not
-          // just the ones known to race today.
+          // Issue #287: guarded so this never runs concurrently with
+          // FirebasePushTokenSource's own `requestPermission()` -- Android
+          // drops a second `requestPermissions()` call while one is
+          // already pending. This is user-triggered (the "Turn on
+          // reminders" tap) rather than a startup race, but routing it
+          // through the gate costs nothing and keeps every real request
+          // serialized, not just the ones known to race.
           final granted = await _permissionGate
               .guard(() => androidPlugin.requestNotificationsPermission());
-          // #5: `null` is "unknown", not a refusal -- see the matching
-          // note in [initialize].
+          // #5: a `null` result means the OS never actually resolved this
+          // request (historically a concurrent
+          // `FirebaseMessaging.requestPermission()` reporting
+          // `PERMISSION_REQUEST_IN_PROGRESS`, which [_permissionGate] now
+          // closes): "unknown", not a refusal. Don't ratchet the count
+          // toward `openSettings` on an answer the OS never actually gave.
           _androidDeniedAttempts = switch (granted) {
             true => 0,
             false => previous + 1,
@@ -424,10 +423,10 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
           await _persistAndroidDeniedAttempts(_androidDeniedAttempts);
         }
       } catch (error) {
-        // #3: tolerate a platform-call failure the same way [initialize]
-        // does -- report through [checkAvailability] below rather than
-        // throwing back into the (also unawaited-in-practice) caller.
-        debugPrint('lunarlog notifications: Android permission re-request '
+        // #3: tolerate a platform-call failure -- report through
+        // [checkAvailability] below rather than throwing back into the
+        // (unawaited-in-practice) caller.
+        debugPrint('lunarlog notifications: Android permission request '
             'failed (${error.runtimeType})');
       }
       return checkAvailability();
@@ -462,7 +461,7 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
         await macosPlugin?.openAppNotificationSettings();
       } else {
         // Issue #287: same gate as every other permission request in this
-        // class -- see [initialize]'s Android branch note.
+        // class -- see the Android branch above.
         await _permissionGate.guard(() async {
           await iosPlugin?.requestPermissions(
               alert: true, badge: false, sound: false);
