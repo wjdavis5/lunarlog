@@ -8691,6 +8691,18 @@ abstract class AppLocalizations {
   /// **'You don\'t have access to this profile.'**
   String get webDayNoAccess;
 
+  /// The web day editor's loading state, shown while the account's data is being fetched.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading this day…'**
+  String get webDayLoading;
+
+  /// The web day editor's retryable failure state: the fetch itself failed (offline, server error). Distinct from webDayNoAccess, which is not retryable.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load this day. Check your connection and try again.'**
+  String get webDayLoadFailed;
+
   /// Issue #1254: banner above the read-only day a viewer sees.
   ///
   /// In en, this message translates to:

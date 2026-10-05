@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppIntlProvider } from '../src/i18n/i18n';
 import { createAppQueryClient } from '../src/lib/queries';
 import { getSyncedDataCache } from '../src/lib/domain';
-import { DayPage } from '../src/pages/DayPage';
+import { DayPage, formatDayHeading } from '../src/pages/DayPage';
 import type { AppSupabaseClient } from '../src/lib/supabase';
 import type {
   DayEntryRow,
@@ -27,6 +27,8 @@ import type {
 const PROFILE_ID = '01M2FWKNG0ZMH2ANCH7R2CM2XZ';
 const ENTRY_ID = '01M2FWKNG0ZMH2ANCH7R2CM2Y2';
 const DATE = '2026-09-29';
+// The heading writes the day out; it used to print the ISO date.
+const HEADING = 'Maya — Tuesday, September 29, 2026';
 
 const profile: ProfileRow = {
   id: PROFILE_ID,
@@ -215,7 +217,7 @@ describe('DayPage (issue #1254)', () => {
   it('renders the heading and the flow chips for a writer', async () => {
     const { client } = fakeClient();
     renderDay(client);
-    expect(await screen.findByText('Maya — 2026-09-29')).toBeInTheDocument();
+    expect(await screen.findByText(HEADING)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'None' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Heavy' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
@@ -224,7 +226,7 @@ describe('DayPage (issue #1254)', () => {
   it('hides the metadata sections from a caregiver but keeps the day editable', async () => {
     const { client } = fakeClient({ membership: membership('caregiver', false) });
     renderDay(client);
-    await screen.findByText('Maya — 2026-09-29');
+    await screen.findByText(HEADING);
     expect(screen.queryByText('Cycle corrections')).not.toBeInTheDocument();
     expect(screen.queryByText('Life stage')).not.toBeInTheDocument();
     const note = screen.getByLabelText('Notes');
@@ -424,7 +426,7 @@ describe('DayPage (issue #1254)', () => {
     const addSpy = vi.spyOn(window, 'addEventListener');
     try {
       renderDay(client);
-      await screen.findByText('Maya — 2026-09-29');
+      await screen.findByText(HEADING);
       expect(addSpy.mock.calls.filter(([type]) => type === 'beforeunload')).toHaveLength(0);
       fireEvent.change(screen.getByLabelText('Notes'), { target: { value: 'unsaved' } });
       await waitFor(() =>
@@ -605,7 +607,7 @@ describe('DayPage (issue #1254)', () => {
   it('renders the test chips exactly once when the category is enabled', async () => {
     const { client } = fakeClient();
     renderDay(client);
-    await screen.findByText('Maya — 2026-09-29');
+    await screen.findByText(HEADING);
     // The default (never-customized, non-minor) profile surfaces every
     // category, `tests` among them — but only through its own fieldset.
     expect(screen.getAllByRole('button', { name: 'Ovulation · positive' })).toHaveLength(1);
@@ -618,7 +620,7 @@ describe('DayPage (issue #1254)', () => {
       trackingPreferences: { tests: { enabled: false, sort_order: 0 } },
     });
     renderDay(client);
-    await screen.findByText('Maya — 2026-09-29');
+    await screen.findByText(HEADING);
     for (const chip of [
       'Ovulation · negative',
       'Ovulation · positive',
@@ -631,5 +633,92 @@ describe('DayPage (issue #1254)', () => {
     expect(screen.queryByText('Tests')).not.toBeInTheDocument();
     // The rest of the symptom picker is untouched by the `tests` disable.
     expect(screen.getByRole('button', { name: 'Cramps' })).toBeInTheDocument();
+  });
+});
+
+// The states around the editor: before the data arrives, and when it
+// does not. These used to share the editor's happy-path wording — the
+// loading card said "Saving…", every failure said "You don't have access",
+// and the heading fell back to the profile's raw id.
+describe('DayPage — loading and failure', () => {
+  beforeEach(() => {
+    getSyncedDataCache().reset();
+  });
+
+  afterEach(cleanup);
+
+  const DATE_ONLY = 'Tuesday, September 29, 2026';
+
+  it('says it is loading, under a heading that is just the date', async () => {
+    const { client, rpc } = fakeClient();
+    rpc.mockImplementation(() => new Promise(() => {})); // never answers
+    renderDay(client);
+    expect(await screen.findByText('Loading this day…')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(DATE_ONLY);
+    expect(screen.queryByText('Saving…')).not.toBeInTheDocument();
+  });
+
+  it('offers a retry when the fetch fails, and never shows the profile id', async () => {
+    const { client, rpc } = fakeClient();
+    const working = rpc.getMockImplementation();
+    rpc.mockImplementation(() =>
+      Promise.resolve({ data: null, error: { message: 'network down' } }),
+    );
+    renderDay(client);
+    expect(
+      await screen.findByText("Couldn't load this day. Check your connection and try again."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("You don't have access to this profile."),
+    ).not.toBeInTheDocument();
+    const heading = screen.getByRole('heading', { level: 1 });
+    expect(heading).toHaveTextContent(DATE_ONLY);
+    expect(heading).not.toHaveTextContent(PROFILE_ID);
+
+    // The connection comes back: Retry loads the day.
+    rpc.mockImplementation(working!);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText(HEADING)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+  });
+
+  it('says there is no access, with no retry, for a profile that is not in the data', async () => {
+    const { client } = fakeClient();
+    const queryClient = createAppQueryClient();
+    render(
+      <AppIntlProvider>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={[`/day/01ARZ3NDEKTSV4RRFFQ69G5FAV?date=${DATE}`]}>
+            <Routes>
+              <Route path="/day/:profileId" element={<DayPage client={client} />} />
+            </Routes>
+          </MemoryRouter>
+        </QueryClientProvider>
+      </AppIntlProvider>,
+    );
+    expect(
+      await screen.findByText("You don't have access to this profile."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+    const heading = screen.getByRole('heading', { level: 1 });
+    expect(heading).toHaveTextContent(DATE_ONLY);
+    expect(heading).not.toHaveTextContent('01ARZ3NDEKTSV4RRFFQ69G5FAV');
+  });
+});
+
+describe('formatDayHeading', () => {
+  it('writes a calendar date out in full', () => {
+    expect(formatDayHeading('2026-09-29')).toBe('Tuesday, September 29, 2026');
+  });
+
+  it('does not shift the day for a reader west of UTC', () => {
+    // The suite runs in America/Los_Angeles (vite.config.ts): a formatter
+    // in the local zone would print the 28th.
+    expect(formatDayHeading('2026-01-01')).toBe('Thursday, January 1, 2026');
+  });
+
+  it('shows a value that is not a date as typed, never "Invalid Date"', () => {
+    expect(formatDayHeading('not-a-date')).toBe('not-a-date');
+    expect(formatDayHeading('2026-13-45')).not.toContain('Invalid');
   });
 });

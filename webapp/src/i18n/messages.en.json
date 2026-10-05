@@ -1423,6 +1423,8 @@
   "webDayBackToToday": "Back to today",
   "webDayNeedsSignIn": "Sign in to log a day.",
   "webDayNoAccess": "You don't have access to this profile.",
+  "webDayLoading": "Loading this day…",
+  "webDayLoadFailed": "Couldn't load this day. Check your connection and try again.",
   "webDayReadOnlyViewer": "You have view-only access to this profile.",
   "webDayFlowSection": "Flow",
   "webDaySpottingToggle": "Spotting",
