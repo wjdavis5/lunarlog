@@ -11,6 +11,12 @@
        sets one anchor's href. It never sends anything anywhere.
      - Neutral copy only: no profile, child, or sender names — the server
        never personalises this page and the static file cannot know them.
+     - One ordinary link, to this site's own home page, for someone who
+       has never heard of the app. It is a link, not a resource: nothing
+       is requested until it is followed, and it carries no Referer.
+     - The colours are the site's own (site/src/styles/global.css), written
+       out inline, and the fonts are the system's, because this page may
+       load nothing.
      - The redeemable code stays in URLs only: it is never rendered as page
        text, never written to storage, and — via the no-referrer policy and
        noreferrer links — never leaked in a Referer header.
@@ -22,27 +28,36 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>Lunarlog invitation</title>
+<meta name="robots" content="noindex">
+<title>Your lunarlog invitation</title>
 <style>
-  body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 2rem 1.25rem; color: #222; background: #fff; }
-  main { max-width: 32rem; margin: 0 auto; }
-  h1 { font-size: 1.4rem; }
-  p { line-height: 1.5; }
-  ol { line-height: 1.7; padding-left: 1.25rem; }
-  .open { display: inline-block; margin-top: 1rem; padding: 0.75rem 1.5rem; background: #4a6fa5; color: #fff; text-decoration: none; border-radius: 0.5rem; }
+  html { background: #f6f4fa; }
+  body { margin: 0; padding: 2.5rem 1.25rem; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 1rem; line-height: 1.6; color: #1c1b22; }
+  main { max-width: 30rem; margin: 0 auto; padding: 2rem 1.5rem; background: #ffffff; border: 1px solid #e4dff1; border-radius: 1rem; }
+  .brand { margin: 0 0 1.5rem; font-family: Georgia, "Times New Roman", serif; font-size: 1.25rem; font-weight: 600; color: #37156c; }
+  h1 { margin: 0 0 0.75rem; font-family: Georgia, "Times New Roman", serif; font-size: 1.75rem; line-height: 1.2; font-weight: 600; color: #37156c; }
+  p { margin: 0 0 1rem; }
+  ol { margin: 0 0 1.5rem; padding-left: 1.25rem; }
+  li { margin-bottom: 0.25rem; }
+  a { color: #00696f; }
+  a:focus-visible { outline: 3px solid #00696f; outline-offset: 3px; border-radius: 0.25rem; }
+  .open { display: inline-block; padding: 0.875rem 1.5rem; border-radius: 0.75rem; background: #37156c; color: #ffffff; font-weight: 600; text-decoration: none; }
+  .open:hover { background: #2a1052; }
+  .note { margin: 1.5rem 0 0; padding-top: 1rem; border-top: 1px solid #e4dff1; color: #55525f; font-size: 0.9375rem; }
 </style>
 </head>
 <body>
 <main>
-<h1>You have a Lunarlog invitation</h1>
-<p>Someone invited you to connect on Lunarlog, a private family cycle-tracking app. This device does not have the app installed (or it could not open the link directly), so the invitation is waiting for you inside the app instead.</p>
+<p class="brand">lunarlog</p>
+<h1>You have a lunarlog invitation</h1>
+<p>Someone invited you to connect on lunarlog, a private family cycle-tracking app. This device does not have the app installed (or it could not open the link directly), so the invitation is waiting for you inside the app instead.</p>
 <ol>
-<li>Install Lunarlog on your device.</li>
+<li>Install lunarlog on your device.</li>
 <li>Open this same invitation link again on that device.</li>
 <li>Sign in (or create an account) and follow the prompt to accept.</li>
 </ol>
 <p>If the app is already installed, tap below to open the invitation in it:</p>
-<p><a id="open-in-app" class="open" href="lunarlog://invite" rel="noreferrer noopener">Open in Lunarlog</a></p>
+<p><a id="open-in-app" class="open" href="lunarlog://invite" rel="noreferrer noopener">Open in lunarlog</a></p>
 <!-- Issue #1279: the #1255 web-app button is deliberately withheld until
      #1258 puts the React client on the app subdomain — until then that
      origin is still the Flutter web build, which rejects https invite links
@@ -51,7 +66,7 @@
      /invite to a real accept flow, and remove the pins in
      site/scripts/invite-page.test.mjs, site/worker/index.test.ts, and
      test/domain/sharing/link_artifacts_test.dart in the same change. -->
-<p>Invitation links expire. If yours no longer works, ask the sender for a fresh one.</p>
+<p class="note">Invitation links expire. If yours no longer works, ask the sender for a fresh one. New to lunarlog? <a href="/" rel="noreferrer noopener">See what it is and how it works.</a></p>
 </main>
 <script>
 (function () {
