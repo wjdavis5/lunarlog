@@ -6,9 +6,12 @@ import { calendarForecast, cycleHistory, getDomainModule, predict } from '../dom
 import type { ForecastDayCell } from '../domain/schemas';
 import { emptySyncedData } from '../lib/domain';
 import { browserTimeZone, todayInBrowserZone } from '../lib/day/day-entry-policy';
+import { spottingIsosFor } from '../lib/profiles/calendar-cells';
 import {
   profileDomainInputs,
   profileListsFromSyncedData,
+  profileModeFromDb,
+  showsFertileWindow,
   withClockInputs,
 } from '../lib/profiles/profile-views';
 import {
@@ -183,6 +186,12 @@ function ProfileHome(props: { profileId: string; todayIso: string }) {
     return map;
   }, [synced.data, props.profileId]);
 
+  const spottingIsos = useMemo(
+    () =>
+      spottingIsosFor(entryByIso.values(), synced.data?.observations ?? [], props.profileId),
+    [entryByIso, synced.data, props.profileId],
+  );
+
   const forecastByIso = useMemo(() => {
     const map = new Map<string, ForecastDayCell>();
     if (domain === null) return map;
@@ -229,12 +238,20 @@ function ProfileHome(props: { profileId: string; todayIso: string }) {
           !domain.prediction.staleHistory &&
           domain.prediction.pms !== null
         }
-        // The composed framing hides the fertile layer (care_modes.dart's
-        // showsFertileWindow); a stale history draws no forecast at all.
+        spottingIsos={spottingIsos}
+        // The irregular framing and the Perimenopause life stage hide the
+        // fertile layer (showsFertileWindow); a stale history draws no
+        // forecast at all.
         fertileShown={
           domain !== null &&
           domain.prediction.kind === 'active' &&
-          !domain.prediction.staleHistory
+          !domain.prediction.staleHistory &&
+          showsFertileWindow({
+            profileMode: profileModeFromDb(profile.mode),
+            storedIrregularFraming: profile.irregular_framing ?? null,
+            tier: domain.prediction.tier,
+            lifecycleMode: inputs?.lifecycleMode ?? null,
+          })
         }
       />
       {domain !== null ? (

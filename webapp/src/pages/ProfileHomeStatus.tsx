@@ -3,6 +3,7 @@ import { DASH_SEPARATOR, RANGE_SEPARATOR } from '../i18n/punctuation';
 import type { ActivePrediction, Prediction } from '../domain/schemas';
 import {
   homeEstimateView,
+  isoDateFormatter,
   profileModeFromDb,
   type HomeEstimateView,
   type WebProfileMode,
@@ -21,11 +22,7 @@ import {
 const kDateLocale = 'en';
 
 /** Formats an ISO date the way the app's estimate row does (medium). */
-export function formatEstimateDate(iso: string): string {
-  return new Intl.DateTimeFormat(kDateLocale, { dateStyle: 'medium' }).format(
-    new Date(`${iso}T00:00:00Z`),
-  );
-}
+export const formatEstimateDate = isoDateFormatter(kDateLocale, { dateStyle: 'medium' });
 
 /** The catalogue id for one prediction's tier chip label. */
 export function tierLabelId(tier: ActivePrediction['tier']) {

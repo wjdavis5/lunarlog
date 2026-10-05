@@ -18,6 +18,11 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // The suite runs west of UTC (issue #1389). A civil date parsed as UTC
+    // midnight and formatted in the local zone reads one day early for
+    // everyone in the Americas, and a UTC runner cannot see it. Node on
+    // Windows ignores TZ, so a Windows checkout runs in its own zone.
+    env: { TZ: 'America/Los_Angeles' },
     setupFiles: ['./test/setup.ts'],
     include: ['test/**/*.test.{ts,tsx}'],
   },

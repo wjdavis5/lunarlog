@@ -7,11 +7,13 @@ import {
   estimateDateText,
   homeEstimateView,
   irregularFramingInEffect,
+  isoDateFormatter,
   isoDaysBetween,
   profileDomainInputs,
   profileListsFromSyncedData,
   profileModeFromDb,
   shiftIsoDate,
+  showsFertileWindow,
 } from '../src/lib/profiles/profile-views';
 import { emptySyncedData, mergeSyncedData, type SyncedData } from '../src/lib/domain';
 import type {
@@ -350,6 +352,86 @@ describe('irregularFramingInEffect (the #853 rule)', () => {
     expect(irregularFramingInEffect({ mode: 'irregular', stored: null, tier: 'high' })).toBe(
       true,
     );
+  });
+});
+
+// Issue #1390: the port of the calendar's `_showsFertileWindow`.
+describe('showsFertileWindow', () => {
+  const steady = { storedIrregularFraming: null, tier: 'high', lifecycleMode: null } as const;
+
+  it('shows the window for a standard profile and for a teen whose cycles have steadied', () => {
+    expect(showsFertileWindow({ ...steady, profileMode: 'standard' })).toBe(true);
+    expect(showsFertileWindow({ ...steady, profileMode: 'standard', tier: 'learning' })).toBe(
+      true,
+    );
+    expect(showsFertileWindow({ ...steady, profileMode: 'teen' })).toBe(true);
+  });
+
+  it('hides it for the retired irregular mode, whatever framing is stored', () => {
+    expect(showsFertileWindow({ ...steady, profileMode: 'irregular' })).toBe(false);
+    expect(
+      showsFertileWindow({
+        ...steady,
+        profileMode: 'irregular',
+        storedIrregularFraming: false,
+      }),
+    ).toBe(false);
+  });
+
+  it('hides it whenever the irregular framing is in effect', () => {
+    // An explicit choice on a standard profile.
+    expect(
+      showsFertileWindow({ ...steady, profileMode: 'standard', storedIrregularFraming: true }),
+    ).toBe(false);
+    // The teen default: on until the estimate reaches high.
+    expect(showsFertileWindow({ ...steady, profileMode: 'teen', tier: 'learning' })).toBe(
+      false,
+    );
+    expect(showsFertileWindow({ ...steady, profileMode: 'teen', tier: null })).toBe(false);
+    // And an explicit "off" lifts it for a teen at any tier.
+    expect(
+      showsFertileWindow({
+        ...steady,
+        profileMode: 'teen',
+        tier: 'learning',
+        storedIrregularFraming: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('hides it for the Perimenopause life stage and no other', () => {
+    expect(
+      showsFertileWindow({
+        ...steady,
+        profileMode: 'standard',
+        lifecycleMode: 'perimenopause',
+      }),
+    ).toBe(false);
+    expect(
+      showsFertileWindow({ ...steady, profileMode: 'standard', lifecycleMode: 'conceive' }),
+    ).toBe(true);
+  });
+});
+
+// Issue #1389: a civil date has no zone, so it must not shift with the
+// browser's. These hold only because the formatter pins UTC — the suite
+// runs west of UTC (vite.config.ts) precisely so they would fail without it.
+describe('isoDateFormatter', () => {
+  it('writes the civil date it was given', () => {
+    const medium = isoDateFormatter('en', { dateStyle: 'medium' });
+    expect(medium('2026-10-20')).toBe('Oct 20, 2026');
+    expect(medium('2026-01-01')).toBe('Jan 1, 2026');
+    expect(medium('2026-12-31')).toBe('Dec 31, 2026');
+  });
+
+  it('keeps the weekday in step with the date', () => {
+    const long = isoDateFormatter('en', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    expect(long('2026-10-04')).toBe('Sunday, October 4, 2026');
   });
 });
 

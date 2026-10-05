@@ -6,12 +6,14 @@ import {
   dayCellView,
   daysInMonth,
   defaultLayerTags,
-  flowIsSpottingStyle,
+  flowIsBleed,
   flowMarkCount,
+  forecastCellForMode,
   leadingBlanksFor,
   monthDayIsos,
   rankTagUsage,
   shiftMonth,
+  spottingIsosFor,
   toggledLayers,
   weekdayInitials,
 } from '../src/lib/profiles/calendar-cells';
@@ -109,11 +111,93 @@ describe('flow marks (the app mark-count port)', () => {
     expect(flowMarkCount('super_heavy')).toBe(5);
   });
 
-  it('renders spotting-style levels as the single ring', () => {
-    expect(flowIsSpottingStyle('none')).toBe(true);
-    expect(flowIsSpottingStyle('spotting')).toBe(true);
-    expect(flowIsSpottingStyle('not_bleeding')).toBe(true);
-    expect(flowIsSpottingStyle('heavy')).toBe(false);
+  it('counts only the four bleed levels as a bleed (the isBleed port)', () => {
+    for (const flow of ['light', 'medium', 'heavy', 'super_heavy']) {
+      expect(flowIsBleed(flow)).toBe(true);
+    }
+    for (const flow of ['none', 'not_bleeding', 'spotting', 'unrecognised']) {
+      expect(flowIsBleed(flow)).toBe(false);
+    }
+  });
+});
+
+// Issue #1391: the spotting ring is drawn from recorded spotting, never
+// inferred from a non-bleed flow level.
+describe('spottingIsosFor', () => {
+  const PROFILE = '01M2FWKNG0ZMH2ANCH7R2CM2XZ';
+  const observation = (
+    overrides: Partial<{
+      profile_id: string;
+      local_date: string;
+      category: string | null;
+      deleted_at: string | null;
+    }> = {},
+  ) => ({
+    profile_id: PROFILE,
+    local_date: '2026-10-05',
+    category: 'spotting',
+    deleted_at: null,
+    ...overrides,
+  });
+
+  it('collects the dates of live spotting observations for the profile', () => {
+    const isos = spottingIsosFor(
+      [],
+      [
+        observation(),
+        observation({ local_date: '2026-10-06', deleted_at: '2026-10-07T00:00:00Z' }),
+        observation({ local_date: '2026-10-08', category: 'bbt' }),
+        observation({ local_date: '2026-10-09', profile_id: '01M2FWKNG0ZMH2ANCH7R2CM2YA' }),
+      ],
+      PROFILE,
+    );
+    expect([...isos]).toEqual(['2026-10-05']);
+  });
+
+  it('counts a legacy spotting flow row as recorded spotting', () => {
+    const isos = spottingIsosFor(
+      [
+        entryRow({ local_date: '2026-10-02', flow: 'spotting' }),
+        entryRow({ local_date: '2026-10-03', flow: 'none' }),
+        entryRow({ local_date: '2026-10-04', flow: 'not_bleeding' }),
+      ],
+      [],
+      PROFILE,
+    );
+    expect([...isos]).toEqual(['2026-10-02']);
+  });
+});
+
+// Issue #1390: the app strips the fertile flag once, before any rendering.
+describe('forecastCellForMode (the _cellForMode port)', () => {
+  it('passes every cell through while the fertile window is shown', () => {
+    const cell = forecastCell({ predictedBleed: false, fertileWindow: true });
+    expect(forecastCellForMode(cell, true)).toBe(cell);
+    expect(forecastCellForMode(null, true)).toBeNull();
+  });
+
+  it('leaves a cell with no fertile flag untouched when the window is hidden', () => {
+    const cell = forecastCell({ predictedBleed: true });
+    expect(forecastCellForMode(cell, false)).toBe(cell);
+  });
+
+  it('strips the fertile flag but keeps the rest of a mixed cell', () => {
+    const cell = forecastCell({ predictedBleed: false, pmsBadge: true, fertileWindow: true });
+    expect(forecastCellForMode(cell, false)).toEqual({ ...cell, fertileWindow: false });
+  });
+
+  it('turns a fertile-only cell into no forecast at all', () => {
+    const cell = forecastCell({ predictedBleed: false, fertileWindow: true });
+    expect(forecastCellForMode(cell, false)).toBeNull();
+  });
+
+  it('keeps a hidden fertile day that carries a cycle-day numeral', () => {
+    const cell = forecastCell({
+      predictedBleed: false,
+      cycleDayNumber: 14,
+      fertileWindow: true,
+    });
+    expect(forecastCellForMode(cell, false)?.cycleDayNumber).toBe(14);
   });
 });
 
@@ -159,6 +243,8 @@ describe('dayCellView', () => {
       todayIso,
       entryByIso: new Map([['2026-10-12', entryRow({ flow: 'heavy', tags: ['cramps'] })]]),
       forecastByIso: new Map([['2026-10-12', forecastCell({ predictedBleed: true })]]),
+      spottingIsos: new Set(),
+      showsFertileWindow: true,
       activeLayers: ['cramps'],
     });
     expect(cell.dayNumber).toBe(12);
@@ -173,6 +259,8 @@ describe('dayCellView', () => {
       todayIso,
       entryByIso: new Map(),
       forecastByIso: new Map([['2026-10-01', forecastCell()]]),
+      spottingIsos: new Set(),
+      showsFertileWindow: true,
       activeLayers: [],
     });
     expect(cell.forecast).toBeNull();
@@ -184,6 +272,8 @@ describe('dayCellView', () => {
       todayIso,
       entryByIso: new Map([['2026-10-12', entryRow()]]),
       forecastByIso: new Map([['2026-10-12', forecastCell()]]),
+      spottingIsos: new Set(),
+      showsFertileWindow: true,
       activeLayers: [],
     });
     expect(cell.forecast).toBeNull();
@@ -200,6 +290,8 @@ describe('dayCellView', () => {
           forecastCell({ cycleDayNumber: 10, pmsBadge: true, fertileWindow: true }),
         ],
       ]),
+      spottingIsos: new Set(),
+      showsFertileWindow: true,
       activeLayers: [],
     });
     expect(dayCellSemantics(cell)).toEqual({
@@ -208,6 +300,90 @@ describe('dayCellView', () => {
       pms: true,
       cramps: false,
       fertile: true,
+    });
+  });
+
+  // Issue #1391: a symptom-only day used to carry the spotting ring.
+  it('draws no flow mark for a day logged as none or not bleeding', () => {
+    for (const flow of ['none', 'not_bleeding']) {
+      const cell = dayCellView({
+        iso: '2026-10-02',
+        todayIso,
+        entryByIso: new Map([['2026-10-02', entryRow({ flow, tags: ['cramps'] })]]),
+        forecastByIso: new Map(),
+        spottingIsos: new Set(),
+        showsFertileWindow: true,
+        activeLayers: [],
+      });
+      expect(cell.spottingStyle).toBe(false);
+      expect(cell.flowMarkCount).toBe(0);
+    }
+  });
+
+  it('rings a non-bleed day only when spotting was recorded for it', () => {
+    const cell = dayCellView({
+      iso: '2026-10-02',
+      todayIso,
+      entryByIso: new Map([['2026-10-02', entryRow({ flow: 'not_bleeding' })]]),
+      forecastByIso: new Map(),
+      spottingIsos: new Set(['2026-10-02']),
+      showsFertileWindow: true,
+      activeLayers: [],
+    });
+    expect(cell.spottingStyle).toBe(true);
+    expect(cell.flowMarkCount).toBe(0);
+  });
+
+  it('shows the bleed marks, never the ring, when a bleed day also has spotting', () => {
+    const cell = dayCellView({
+      iso: '2026-10-02',
+      todayIso,
+      entryByIso: new Map([['2026-10-02', entryRow({ flow: 'light' })]]),
+      forecastByIso: new Map(),
+      spottingIsos: new Set(['2026-10-02']),
+      showsFertileWindow: true,
+      activeLayers: [],
+    });
+    expect(cell.spottingStyle).toBe(false);
+    expect(cell.flowMarkCount).toBe(2);
+  });
+
+  it('never rings a day with no logged entry', () => {
+    const cell = dayCellView({
+      iso: '2026-10-02',
+      todayIso,
+      entryByIso: new Map(),
+      forecastByIso: new Map(),
+      spottingIsos: new Set(['2026-10-02']),
+      showsFertileWindow: true,
+      activeLayers: [],
+    });
+    expect(cell.spottingStyle).toBe(false);
+  });
+
+  // Issue #1390: the hidden fertile window reaches neither the band nor
+  // the screen-reader label.
+  it('hides the fertile window from the cell and its label when the framing hides it', () => {
+    const forecastByIso = new Map([
+      ['2026-10-12', forecastCell({ predictedBleed: false, fertileWindow: true })],
+      ['2026-10-13', forecastCell({ predictedBleed: true, fertileWindow: true })],
+    ]);
+    const view = (iso: string) =>
+      dayCellView({
+        iso,
+        todayIso,
+        entryByIso: new Map(),
+        forecastByIso,
+        spottingIsos: new Set(),
+        showsFertileWindow: false,
+        activeLayers: [],
+      });
+    expect(view('2026-10-12').forecast).toBeNull();
+    expect(dayCellSemantics(view('2026-10-12')).estimated).toBe(false);
+    expect(view('2026-10-13').forecast?.fertileWindow).toBe(false);
+    expect(dayCellSemantics(view('2026-10-13'))).toMatchObject({
+      estimated: true,
+      fertile: false,
     });
   });
 });

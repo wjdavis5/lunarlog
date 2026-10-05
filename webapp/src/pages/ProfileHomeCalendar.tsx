@@ -16,6 +16,7 @@ import {
   toggledLayers,
   weekdayInitials,
 } from '../lib/profiles/calendar-cells';
+import { isoDateFormatter } from '../lib/profiles/profile-views';
 
 /**
  * The web month calendar (issue #1253): the app's month grid — Sunday
@@ -30,7 +31,7 @@ import {
 
 const kLocale = 'en';
 
-const kCellDateFormat = new Intl.DateTimeFormat(kLocale, {
+const formatCellDate = isoDateFormatter(kLocale, {
   weekday: 'long',
   year: 'numeric',
   month: 'long',
@@ -58,9 +59,15 @@ export function ProfileHomeCalendar(props: {
   entryByIso: Map<string, DayEntryRow>;
   /** The domain facade's per-date forecast cells. */
   forecastByIso: Map<string, ForecastDayCell>;
+  /** Dates with spotting recorded — the only days that carry the spotting ring. */
+  spottingIsos: ReadonlySet<string>;
   /** Whether the estimate carries a PMS band (the legend keys off it). */
   pmsBandActive: boolean;
-  /** Whether the fertile layer renders at all (the composed framing hides it). */
+  /**
+   * Whether the fertile layer renders at all: the legend entry, the cell
+   * band and the screen-reader fragment all follow this one flag (the
+   * irregular framing and the Perimenopause life stage hide it).
+   */
   fertileShown: boolean;
 }) {
   const t = useT();
@@ -171,6 +178,8 @@ export function ProfileHomeCalendar(props: {
                 todayIso: props.todayIso,
                 entryByIso: props.entryByIso,
                 forecastByIso: props.forecastByIso,
+                spottingIsos: props.spottingIsos,
+                showsFertileWindow: props.fertileShown,
                 activeLayers,
               });
               const decoration = cell.forecast;
@@ -190,8 +199,7 @@ export function ProfileHomeCalendar(props: {
               if (decoration?.crampsBadge) fragments.push(t('calendarLegendCramps'));
               if (decoration?.fertileWindow)
                 fragments.push(t('sharingPredictionCalendarLegendFertile'));
-              const dayDate = new Date(`${iso}T00:00:00Z`);
-              const label = [kCellDateFormat.format(dayDate), ...fragments].join(', ');
+              const label = [formatCellDate(iso), ...fragments].join(', ');
               return (
                 <span role="gridcell" className={classes} key={iso}>
                   <Link
