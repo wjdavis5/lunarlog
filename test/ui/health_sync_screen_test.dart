@@ -1607,16 +1607,53 @@ void main() {
         ),
         findsOneWidget,
       );
-      // Forward-only, and the import named for Health Connect.
+      // Forward-only, dated from write access (not from "sync turned on":
+      // the clock starts when the write permissions are granted), and the
+      // import named for Health Connect.
       expect(
-        find.textContaining('Only days logged after sync is turned on are '
-            'written'),
+        find.textContaining('Only days logged after you allow lunarlog to '
+            'write to Health Connect are written'),
         findsOneWidget,
       );
       expect(
         find.textContaining('import menstrual flow and spotting from Health '
             'Connect'),
         findsOneWidget,
+      );
+    });
+
+    // The review of #1478 (decision G): a period that began before write
+    // access is written with its true first day, and the screen has to say
+    // so — it is the one way anything logged earlier reaches Health Connect.
+    testWidgets('it says what a period record covers, and that imported '
+        'days are never written back', (tester) async {
+      await pumpAndroid(tester, binding: await boundBinding());
+
+      final note = tester.widget<Text>(
+        find.descendant(
+          of: find.byKey(const ValueKey('health-sync-period-record-copy')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(
+        note.data,
+        "Once a day in a period is written, that period's first and last day "
+        'are written with it, even if the period began before you allowed '
+        'lunarlog to write. Days imported from Health Connect are never '
+        'written back and never change a period lunarlog has written.',
+      );
+
+      // An iPhone has no period record: the note is Health Connect's alone.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await pumpScreen(
+        tester,
+        binding: HealthSyncBinding(FakeSettingsStore()),
+        writeEnabled: true,
+        storePlatform: HealthImportPlatform.appleHealth,
+      );
+      expect(
+        find.byKey(const ValueKey('health-sync-period-record-copy')),
+        findsNothing,
       );
     });
 

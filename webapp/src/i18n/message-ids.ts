@@ -1348,6 +1348,7 @@ export const MESSAGE_IDS = [
   "healthSyncImportOnly",
   "healthSyncWriteIntroHealthConnect",
   "healthSyncWriteForwardOnlyHealthConnect",
+  "healthSyncPeriodRecordNoteHealthConnect",
   "healthSyncWrittenTypesHealthConnect",
   "healthSyncFlowCollapseNoteHealthConnect",
   "healthSyncRevocationNoteHealthConnect",

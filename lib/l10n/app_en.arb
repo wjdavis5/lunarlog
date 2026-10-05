@@ -6646,9 +6646,13 @@
     "@healthSyncWriteIntroHealthConnect": {
       "description": "Issue #1478: bind-screen intro on Android, where lunarlog writes to Health Connect. The Health Connect counterpart of healthSyncWriteIntro, which names the iPhone Health app."
     },
-    "healthSyncWriteForwardOnlyHealthConnect": "Only days logged after sync is turned on are written \u2014 nothing already in the app is sent on its own. Separately, you can import menstrual flow and spotting from Health Connect \u2014 you start the first import yourself, and after it lunarlog keeps the import current in the background.",
+    "healthSyncWriteForwardOnlyHealthConnect": "Only days logged after you allow lunarlog to write to Health Connect are written \u2014 nothing already in the app is sent on its own. Separately, you can import menstrual flow and spotting from Health Connect \u2014 you start the first import yourself, and after it lunarlog keeps the import current in the background.",
     "@healthSyncWriteForwardOnlyHealthConnect": {
-      "description": "Issue #1478: forward-only write explanation plus the read-direction disclosure on Android (Health Connect). The counterpart of healthSyncWriteForwardOnly; the import half keeps issue #1215's wording (the first import is the person's to start)."
+      "description": "Issue #1478: forward-only write explanation plus the read-direction disclosure on Android (Health Connect). The counterpart of healthSyncWriteForwardOnly. It says 'after you allow lunarlog to write' rather than 'after sync is turned on' because the forward-only clock starts when the write permissions are actually granted: choosing a profile and then allowing only the read permissions starts nothing. The import half keeps issue #1215's wording (the first import is the person's to start)."
+    },
+    "healthSyncPeriodRecordNoteHealthConnect": "Once a day in a period is written, that period's first and last day are written with it, even if the period began before you allowed lunarlog to write. Days imported from Health Connect are never written back and never change a period lunarlog has written.",
+    "@healthSyncPeriodRecordNoteHealthConnect": {
+      "description": "Issue #1478: what a Health Connect period record covers, in plain words. The one way anything logged before write access can reach Health Connect: a period that began earlier is written with its true first day, because a period clipped to start on the first written day would be a wrong period. Also states that an imported day is never written back and never starts, extends or reshapes a written period."
     },
     "healthSyncWrittenTypesHealthConnect": "What lunarlog writes to Health Connect: flow and the first and last day of each period (Menstruation), spotting between periods (Spotting), discharge you tag as sticky, creamy or egg white (Cervical mucus), ovulation test results, and basal body temperature.",
     "@healthSyncWrittenTypesHealthConnect": {

@@ -329,15 +329,53 @@ void main() {
       // then asked-and-not-granted, and only then not-asked.
       final decision = RegExp(
         r'granted\.containsAll\(required\)\s*->\s*GRANTED\s*'
-        r'everRequested\s*\|\|\s*granted\.any\s*\{\s*it in requested\s*\}\s*->\s*DENIED\s*'
+        r'everRequested\s*\|\|\s*provesAsked\(granted,\s*requested\)\s*->\s*DENIED\s*'
         r'else\s*->\s*NOT_ASKED',
       );
       expect(decision.hasMatch(kotlin), isTrue,
           reason: 'HealthPermissionState.statusFor changed shape — update '
               'HealthPermissionStateTest.kt and this guard together');
+      expect(
+        RegExp(r'fun provesAsked\(granted: Set<String>, requested: Set<String>\)'
+                r': Boolean =\s*granted\.any\s*\{\s*it in requested\s*\}')
+            .hasMatch(kotlin),
+        isTrue,
+      );
       for (final wire in ['"granted"', '"notAsked"', '"denied"']) {
         expect(kotlin, contains(wire));
       }
+    });
+
+    // The review of issue #1478. Access granted without this install's own
+    // sheet — by an older build's, or in Health Connect's settings — leaves
+    // no marker. Removed altogether later, it would read "not yet asked";
+    // and with a forward-only cursor already in place the write pass never
+    // asks again, so every write would fail behind a screen with no link to
+    // Health Connect's settings. So permissionStatus sets the marker as
+    // soon as it sees a grant.
+    test('a grant seen by permissionStatus is remembered as asked, so a '
+        'later revocation reads "denied" (issue #1478 review)', () {
+      final handler = kotlin.indexOf('"permissionStatus" ->');
+      final nextHandler = kotlin.indexOf('"openPermissionSettings" ->');
+      expect(handler, isNonNegative);
+      expect(nextHandler, greaterThan(handler));
+      final body = kotlin.substring(handler, nextHandler);
+
+      final seen = body.indexOf(
+          'HealthPermissionState.provesAsked(granted, allPermissions)');
+      final remembered = RegExp(
+        r'prefs\.edit\(\)\s*\.putLong\(PERMISSION_REQUESTED_KEY, installStamp\)'
+        r'\s*\.apply\(\)',
+      ).firstMatch(body);
+      final answered = body.indexOf('HealthPermissionState.statusFor(');
+      expect(seen, isNonNegative,
+          reason: 'permissionStatus must look for a grant of any requested '
+              'permission');
+      expect(remembered, isNotNull,
+          reason: 'and set the marker when it finds one');
+      expect(remembered!.start, greaterThan(seen));
+      expect(remembered.start, lessThan(answered),
+          reason: 'the marker is set before the status is decided');
     });
 
     test('the settings deep link is Health Connect settings', () {

@@ -98,7 +98,7 @@ is the behavior the form must describe.
 | Flow: super heavy | `MenstruationFlowRecord`, `FLOW_HEAVY` (Health Connect has no heavier level) | "Heavy flow" |
 | Spotting on a day inside a period | `MenstruationFlowRecord`, `FLOW_LIGHT` | "Light flow" |
 | Spotting between periods | `IntermenstrualBleedingRecord` | Spotting |
-| Each period (a run of bleed days) | one `MenstruationPeriodRecord`, first day's midnight to the last instant of the last day | "Period day N of M" |
+| Each period (a run of hand-logged bleed days) with at least one day written | one `MenstruationPeriodRecord`, first day's midnight to the last instant of the last day | "Period day N of M" |
 | Discharge: sticky, creamy, egg white | `CervicalMucusRecord` (appearance only; sensation unknown) | Cervical mucus |
 | Ovulation test: negative, positive, peak | `OvulationTestRecord` (peak is written as positive) | Ovulation test |
 | Basal body temperature | `BasalBodyTemperatureRecord`, Celsius, location unknown | Vitals — Basal body temperature |
@@ -115,11 +115,30 @@ walkthrough:
   the opt-in; the first write pass then opens Health Connect's permission
   sheet (writes and reads together). Until that has happened the screen
   reads "Health Connect access: not yet asked".
-- **Forward-only.** Nothing logged before access was granted is written.
-- **Edits and deletions.** Every record carries the lunarlog row's id as
-  its `clientRecordId`, so an edit replaces the record and a deleted
-  entry (or a day set back to no flow) deletes it. The period record is
-  corrected or deleted with the days it covers.
+- **Forward-only.** A day gets a record of its own only if it was logged
+  after the *write* permissions were granted. That moment is read back
+  from Health Connect after the sheet closes, not taken from the sheet
+  having been answered: someone who allows only the reads and turns the
+  writes on weeks later has nothing from those weeks written.
+- **The one thing that reaches back: a period's first day.** Once a day
+  in a period is written, that period's first and last day are written
+  with it as the period record, even if the period began before write
+  access was granted. A period record clipped to start on the first
+  written day would be a wrong period. The earlier days' own flow is
+  still not written. The in-app screen says this in plain words.
+- **Edits and deletions.** Every daily record carries the lunarlog row's
+  id as its `clientRecordId`, so an edit replaces the record and a
+  deleted entry (or a day set back to no flow) deletes it.
+- **Which periods get a period record.** A period has one exactly when
+  this phone has written at least one of its days and it is 30 days or
+  shorter. The record is rewritten when the period's days change
+  (a day added, the first or last day removed, a period split in two)
+  and deleted when the period no longer qualifies.
+- **Imported days never go back.** A period record is built from the days
+  logged in lunarlog only. A day imported from Health Connect is never
+  written back, and it never starts, extends or changes a period record,
+  so an import — the background one included — writes nothing to Health
+  Connect.
 - **Which permissions writing needs.** Every write permission, and no
   read permission: declining "Access past data" or background access
   does not stop writes. While any one write permission is off, nothing is

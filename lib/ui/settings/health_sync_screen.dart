@@ -908,12 +908,20 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
               : l10n.healthSyncWriteForwardOnly,
         ),
       ),
-      if (healthConnect)
+      if (healthConnect) ...[
         Padding(
           key: const ValueKey('health-sync-written-types-copy'),
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
           child: Text(l10n.healthSyncWrittenTypesHealthConnect),
         ),
+        // The one way a day logged before write access reaches Health
+        // Connect: as the first day of a period that has a written day.
+        Padding(
+          key: const ValueKey('health-sync-period-record-copy'),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: Text(l10n.healthSyncPeriodRecordNoteHealthConnect),
+        ),
+      ],
       Padding(
         key: const ValueKey('health-sync-flow-collapse-copy'),
         padding: const EdgeInsets.all(16),

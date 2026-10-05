@@ -1,6 +1,8 @@
 package com.wjdavis5.lunarlog
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -102,6 +104,40 @@ class HealthPermissionStateTest {
             "notAsked",
             status(setOf("android.permission.health.READ_STEPS"), everRequested = false),
         )
+    }
+
+    // The review of Issue #1478: access granted without this install's own
+    // sheet (an older build's, or Health Connect's settings) and later
+    // removed altogether must read "denied", not "not yet asked" — with a
+    // forward-only cursor in place the write pass never asks again, so
+    // "not yet asked" would leave every write failing with no Settings
+    // link. The adapter sets its marker whenever provesAsked is true, which
+    // turns the later revocation into everRequested = true.
+    @Test
+    fun `a grant of anything the app requests proves the person was asked`() {
+        assertTrue(HealthPermissionState.provesAsked(required, requested))
+        assertTrue(HealthPermissionState.provesAsked(setOf(readMenstruation), requested))
+        assertTrue(HealthPermissionState.provesAsked(setOf(readBackground), requested))
+    }
+
+    @Test
+    fun `nothing granted, or only something the app never requests, proves nothing`() {
+        assertFalse(HealthPermissionState.provesAsked(emptySet(), requested))
+        assertFalse(
+            HealthPermissionState.provesAsked(
+                setOf("android.permission.health.READ_STEPS"),
+                requested,
+            ),
+        )
+    }
+
+    @Test
+    fun `access seen granted and then removed altogether reads denied`() {
+        // While granted, the adapter sees provesAsked and sets the marker...
+        assertTrue(HealthPermissionState.provesAsked(required, requested))
+        assertEquals("granted", status(required, everRequested = false))
+        // ...so once everything is revoked the marker answers for it.
+        assertEquals("denied", status(emptySet(), everRequested = true))
     }
 
     @Test

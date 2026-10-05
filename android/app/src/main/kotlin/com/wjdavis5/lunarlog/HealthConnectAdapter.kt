@@ -421,6 +421,23 @@ class HealthConnectAdapter(context: Context) {
                 CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
                     try {
                         val granted = client.permissionController.getGrantedPermissions()
+                        // Issue #1478's review: a grant seen here counts
+                        // as having been asked, and is remembered as such.
+                        // Access can be granted without this install's
+                        // sheet — by an older build's, or in Health
+                        // Connect's own settings — and if it is later
+                        // removed altogether, nothing granted and no marker
+                        // would read "not yet asked". With a forward-only
+                        // cursor already in place the write pass never asks
+                        // again, so every write would fail behind a screen
+                        // that offers no way to Health Connect's settings.
+                        // Remembered, the same revocation reads "denied".
+                        if (HealthPermissionState.provesAsked(granted, allPermissions) &&
+                            !permissionEverRequested()) {
+                            prefs.edit()
+                                .putLong(PERMISSION_REQUESTED_KEY, installStamp)
+                                .apply()
+                        }
                         result.success(
                             HealthPermissionState.statusFor(
                                 granted = granted,
@@ -1367,12 +1384,13 @@ class HealthConnectAdapter(context: Context) {
  *  * `granted`  — every permission in `required` (the write permissions)
  *                 is granted;
  *  * `denied`   — something in `required` is missing AND the person has
- *                 been asked: either this install launched the request
- *                 (`everRequested`), or at least one permission the app
- *                 requests is already granted, which can only follow a
- *                 decision the person made (on the request sheet of a build
- *                 older than the `everRequested` marker, or in Health
- *                 Connect's own settings);
+ *                 been asked: either this install launched the request or
+ *                 has seen a grant before (`everRequested` — the adapter
+ *                 sets its marker in both cases), or at least one
+ *                 permission the app requests is granted right now, which
+ *                 can only follow a decision the person made (on the
+ *                 request sheet of a build older than the marker, or in
+ *                 Health Connect's own settings);
  *  * `notAsked` — nothing is granted and the request was never launched.
  *                 The Dart write pass asks in exactly this state; the
  *                 screen says "not yet asked" rather than "denied".
@@ -1392,9 +1410,18 @@ internal object HealthPermissionState {
         everRequested: Boolean,
     ): String = when {
         granted.containsAll(required) -> GRANTED
-        everRequested || granted.any { it in requested } -> DENIED
+        everRequested || provesAsked(granted, requested) -> DENIED
         else -> NOT_ASKED
     }
+
+    /**
+     * Whether what is granted shows the person has been asked: at least one
+     * permission the app requests is granted. The adapter remembers this as
+     * soon as it sees it (the review of Issue #1478), so that access which
+     * is later removed altogether still reads `denied`, never `notAsked`.
+     */
+    fun provesAsked(granted: Set<String>, requested: Set<String>): Boolean =
+        granted.any { it in requested }
 }
 
 /**

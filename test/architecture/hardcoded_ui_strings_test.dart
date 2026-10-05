@@ -176,6 +176,7 @@ const Map<String, List<String>> _helperCopyFileLiterals = {
     'health-sync-load-error',
     'health-sync-forward-only-copy',
     'health-sync-written-types-copy',
+    'health-sync-period-record-copy',
     'health-sync-flow-collapse-copy',
     'health-sync-symptoms-copy',
     'health-sync-revocation-copy',

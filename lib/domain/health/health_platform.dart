@@ -401,17 +401,21 @@ class HealthIntermenstrualBleedingWrite {
 ///
 /// [start]/[end] are the episode's inclusive civil dates from
 /// `lib/domain/episodes/episodes.dart` (a write pass derives episodes from
-/// the bound profile's bleed-day set). The adapter converts them to the
+/// the bound profile's hand-logged bleed days — never from a day imported
+/// from a health store, Issue #1478). The adapter converts them to the
 /// record's instants/offsets through `day_boundary.dart` — `startTime` at
-/// local midnight of [start], `endTime` at the *exclusive* local midnight
-/// after [end], and the matching `zoneOffset`/`endZoneOffset` — the #180
-/// timezone contract, never the device's current zone.
+/// local midnight of [start], `endTime` at the last instant of [end]
+/// (Issue #1478: Health Connect counts a period's days from its start date
+/// to its end date inclusive, so the next midnight would add a day), and
+/// the matching `zoneOffset`/`endZoneOffset` — the #180 timezone contract,
+/// never the device's current zone.
 ///
 /// [recordId] is the episode's stable id (the same for the same episode
 /// across re-writes as it extends — Issue #186/HS-11 `clientRecordId`, which
 /// Health Connect upserts by, so an in-progress episode is *updated*, not
 /// duplicated) and [recordVersionMs] a per-write increasing version
-/// (`clientRecordVersion`) so a re-write replaces the prior record.
+/// (`clientRecordVersion`) so a re-write replaces the prior record: the
+/// moment of the write, never a day entry's own timestamp (Issue #1478).
 class HealthMenstrualPeriodWrite {
   const HealthMenstrualPeriodWrite({
     required this.facts,
@@ -428,7 +432,7 @@ class HealthMenstrualPeriodWrite {
   final LocalDate start;
 
   /// The episode's last bleed day (inclusive); the record's `endTime` is
-  /// the exclusive local midnight after this date.
+  /// the last instant of this date.
   final LocalDate end;
 
   /// The episode's IANA zone — from the entries' own `tz` (#180), never the
