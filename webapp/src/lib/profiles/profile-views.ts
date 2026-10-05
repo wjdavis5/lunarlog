@@ -419,3 +419,12 @@ export function homeEstimateView(options: {
     }
   }
 }
+
+/**
+ * The address of one profile's home. The home reads `?profile=` and falls
+ * back to the first live profile without it, so a link that means "back to
+ * this profile" has to name the profile.
+ */
+export function profileHomePath(profileId: string): string {
+  return profileId === '' ? '/' : `/?profile=${encodeURIComponent(profileId)}`;
+}

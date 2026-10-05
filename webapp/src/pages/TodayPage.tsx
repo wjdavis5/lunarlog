@@ -124,6 +124,13 @@ export function TodayPage() {
               {t('profilePickerMenuGuardians')}
             </Link>
           ) : null}
+          {/* Guardian notes and care notes had a page and no link to it:
+              the only way in was to know the address. */}
+          {active !== null ? (
+            <Link className="nav-link" to={`/profile/${active.id}/notes`}>
+              {t('webDayNotesSection')}
+            </Link>
+          ) : null}
           {/* The one thing most visits are for, so it is the first button
               on the page and the only filled one. It used to be a text
               link under everything else, labelled "Today" like the header

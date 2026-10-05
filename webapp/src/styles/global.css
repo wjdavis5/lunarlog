@@ -406,6 +406,36 @@ body {
   font-weight: var(--ll-type-title-medium-font-weight, 500);
 }
 
+/* A control inside a row (the guardians page's "Change role") is styled
+   like the form fields on the same page. It was the browser's bare select,
+   a few pixels tall, beside a full-size button. */
+.row select {
+  font: inherit;
+  padding: var(--ll-space-2) var(--ll-space-3);
+  border: 1px solid var(--ll-outline);
+  border-radius: var(--ll-r-full);
+  background: var(--ll-surface-container-lowest);
+  color: var(--ll-on-surface);
+}
+
+/* A heading for a run of content that is not inside a card. */
+.section-title {
+  margin: var(--ll-space-5) 0 0;
+  font-size: var(--ll-type-title-medium-font-size);
+  line-height: var(--ll-type-title-medium-line-height);
+  font-weight: var(--ll-type-title-medium-font-weight);
+}
+
+/* A field whose label is also its card's title: the label keeps the
+   title's ink instead of the quieter field-label colour. */
+.field-titled {
+  margin-top: 0;
+}
+
+.field-titled label.card-title {
+  color: var(--ll-on-surface);
+}
+
 .row-sub {
   margin: 0;
   color: var(--ll-on-surface-variant);

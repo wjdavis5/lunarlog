@@ -267,6 +267,16 @@ describe('TodayPage — the profile home (issue #1253)', () => {
     expect(guardians.closest('.home-switcher')).not.toBeNull();
   });
 
+  // Guardian notes and care notes had a page and nothing that linked to it.
+  it('links to the notes of the active profile from the switcher row', async () => {
+    renderHome();
+    const notes = await screen.findByRole('link', {
+      name: messages['webDayNotesSection'] ?? 'missing',
+    });
+    expect(notes).toHaveAttribute('href', `/profile/${RICH_ID}/notes`);
+    expect(notes.closest('.home-switcher')).not.toBeNull();
+  });
+
   it('does not offer Log today to a viewer, who cannot log', async () => {
     const fixture = syncedFixture();
     vi.mocked(useSyncedData).mockReturnValue({

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useParams } from 'react-router';
+import { Link, useParams } from 'react-router';
 
 import { useT } from '../i18n/t';
 import { serverAdjustedNow } from '../lib/domain';
@@ -20,6 +20,7 @@ import {
   type CareNoteRow,
   type GuardianNoteRow,
 } from '../lib/sharing';
+import { isoDateFormatter, profileHomePath } from '../lib/profiles/profile-views';
 import { roleCanLog } from '../lib/roles';
 import { getSupabaseClient } from '../lib/supabase';
 
@@ -31,6 +32,9 @@ import { getSupabaseClient } from '../lib/supabase';
  * here by which row the editor adopts. Care notes stay the shared list they
  * are in the app: any writing role may add or remove any of them.
  */
+
+/** The chosen day in words ("Monday, October 5, 2026"), never as an ISO string. */
+const formatNotesDate = isoDateFormatter('en', { dateStyle: 'full' });
 
 /** Today in the operator's zone, as the `local_date` column wants it. */
 export function localDateToday(now: Date = new Date()): string {
@@ -93,11 +97,22 @@ export function ProfileNotesPage() {
 
   return (
     <main className="page">
-      <h1 className="display">{t('guardianNotesSectionTitle')}</h1>
+      {/* The page is reached by its own address, so it says whose notes
+          these are. It used to be titled "Notes from guardians" for any
+          profile, with the care notes underneath that heading too. */}
+      <h1 className="display">
+        {profile !== null ? t('webNotesTitle', { profileName: profile.display_name }) : ''}
+      </h1>
+      <nav>
+        <Link className="nav-link" to={profileHomePath(profileId)}>
+          {t('webDayBackToToday')}
+        </Link>
+      </nav>
 
+      <h2 className="section-title">{t('guardianNotesSectionTitle')}</h2>
       <div className="field">
         <label htmlFor="notes-date">
-          {t('sharingActivityFeedForDate', { date: localDate })}
+          {t('sharingActivityFeedForDate', { date: formatNotesDate(localDate) })}
         </label>
         <input
           id="notes-date"
@@ -137,8 +152,10 @@ export function ProfileNotesPage() {
         />
       ) : null}
 
-      <section className="card">
-        <p className="card-title">{t('careNotesSectionTitle')}</p>
+      <section className="card" aria-labelledby="care-notes-title">
+        <h2 className="card-title" id="care-notes-title">
+          {t('careNotesSectionTitle')}
+        </h2>
         <p className="card-body">{t('careNotesDisclosure')}</p>
         {careNotes.error instanceof Error ? (
           <p className="error">{t('careNotesSaveError')}</p>
@@ -151,11 +168,7 @@ export function ProfileNotesPage() {
             <CareNoteRowItem
               key={row.id}
               row={row}
-              authorName={
-                row.logged_by_user_id === me
-                  ? t('careNotesActorYou')
-                  : guardianName(row.logged_by_user_id)
-              }
+              authorName={guardianName(row.logged_by_user_id)}
               canWrite={canWrite && client !== null}
               profileId={profileId}
             />
@@ -216,9 +229,10 @@ function MyNoteEditor(props: {
 
   return (
     <section className="card">
-      <p className="card-title">{t('guardianNotesFieldLabel')}</p>
-      <div className="field">
-        <label htmlFor="my-guardian-note">{t('guardianNotesFieldLabel')}</label>
+      <div className="field field-titled">
+        <label className="card-title" htmlFor="my-guardian-note">
+          {t('guardianNotesFieldLabel')}
+        </label>
         <textarea
           id="my-guardian-note"
           value={body}
@@ -291,8 +305,8 @@ function CareNoteRowItem(props: {
   return (
     <li className="row">
       <div className="row-main">
-        <p className="row-title">{props.row.body}</p>
-        <p className="row-sub">{props.authorName}</p>
+        <p className="row-title">{props.authorName}</p>
+        <p className="row-sub">{props.row.body}</p>
         {failed ? <p className="error">{t('careNotesRemoveNoteError')}</p> : null}
       </div>
       <div className="actions">

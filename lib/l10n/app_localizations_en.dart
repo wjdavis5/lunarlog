@@ -5698,6 +5698,11 @@ class AppLocalizationsEn extends AppLocalizations {
       'You\'ve been invited to a shared profile in lunarlog. Sign in, or create an account, to see the invitation and accept it.';
 
   @override
+  String webNotesTitle(String profileName) {
+    return 'Notes for $profileName';
+  }
+
+  @override
   String get webHomeNeedsSignIn =>
       'Sign in to log a day, look back over the calendar, and manage guardians for the profiles you keep or share.';
 

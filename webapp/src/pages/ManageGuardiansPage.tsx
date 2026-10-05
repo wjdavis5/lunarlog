@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 
 import { useT, type TFunction } from '../i18n/t';
 import {
@@ -15,6 +15,7 @@ import {
   usePendingInvites,
   useLiveProfiles,
 } from '../lib/queries';
+import { profileHomePath } from '../lib/profiles/profile-views';
 import { subjectInviteAvailable } from '../lib/schemas';
 import {
   cancelOwnershipTransfer,
@@ -147,6 +148,11 @@ export function ManageGuardiansPage() {
           ? t('sharingManageGuardiansScreenTitle', { profileName: profile.display_name })
           : ''}
       </h1>
+      <nav>
+        <Link className="nav-link" to={profileHomePath(profileId)}>
+          {t('webDayBackToToday')}
+        </Link>
+      </nav>
 
       <ul className="row-list">
         {(guardians.data ?? [])

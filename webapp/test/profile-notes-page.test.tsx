@@ -158,7 +158,69 @@ describe('ProfileNotesPage (issue #1255)', () => {
     expect(
       await screen.findByText(messages['careNotesSectionTitle'] ?? ''),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText(/for \d{4}-\d{2}-\d{2}/)).toBeInTheDocument();
+    // The chosen day is written out, never as an ISO string.
+    expect(screen.getByLabelText(/^for \w+day, \w+ \d{1,2}, \d{4}$/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/\d{4}-\d{2}-\d{2}/)).toBeNull();
+  });
+
+  // The page is reached by its own address and holds two kinds of note. It
+  // used to be titled "Notes from guardians" whoever it was about.
+  it("is titled with the profile's name, and that is the only top-level heading", async () => {
+    renderPage();
+    const headings = await screen.findAllByRole('heading', { level: 1 });
+    expect(headings).toHaveLength(1);
+    expect(headings[0]).toHaveTextContent(
+      (messages['webNotesTitle'] ?? '').replace('{profileName}', 'Maya'),
+    );
+    expect(
+      screen.getByRole('heading', { level: 2, name: messages['guardianNotesSectionTitle'] }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 2, name: messages['careNotesSectionTitle'] }),
+    ).toBeInTheDocument();
+  });
+
+  it("leads back to this profile's home, not to whichever profile is first", () => {
+    renderPage();
+    expect(screen.getByRole('link', { name: messages['webDayBackToToday'] })).toHaveAttribute(
+      'href',
+      `/?profile=${ULID}`,
+    );
+  });
+
+  it("prints the editor's label once", async () => {
+    renderPage();
+    await screen.findByLabelText(messages['guardianNotesFieldLabel'] ?? '');
+    expect(screen.getAllByText(messages['guardianNotesFieldLabel'] ?? '')).toHaveLength(1);
+  });
+
+  it('credits a care note to its author above the note, "You" for your own', async () => {
+    sharingMocks.fetchCareNotes.mockResolvedValue([
+      {
+        id: ULID,
+        profile_id: ULID,
+        body: 'Refill the heat pad.',
+        logged_by_user_id: ME,
+        last_modified_by_user_id: null,
+        updated_at: '2026-09-30T18:00:00Z',
+      },
+      {
+        id: ULID2,
+        profile_id: ULID,
+        body: 'Bring the pain diary.',
+        logged_by_user_id: OTHER,
+        last_modified_by_user_id: null,
+        updated_at: '2026-09-30T19:00:00Z',
+      },
+    ]);
+    renderPage();
+    const mine = (await screen.findByText('Refill the heat pad.')).closest('li') as HTMLElement;
+    expect(within(mine).getByText(messages['guardianNotesYou'] ?? 'missing')).toHaveClass(
+      'row-title',
+    );
+    expect(within(mine).getByText('Refill the heat pad.')).toHaveClass('row-sub');
+    const theirs = screen.getByText('Bring the pain diary.').closest('li') as HTMLElement;
+    expect(within(theirs).getByText('Grandma')).toHaveClass('row-title');
   });
 
   it("another guardian's note is read-only and attributed", async () => {

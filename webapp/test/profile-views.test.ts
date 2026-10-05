@@ -10,6 +10,7 @@ import {
   isoDateFormatter,
   isoDaysBetween,
   profileDomainInputs,
+  profileHomePath,
   profileListsFromSyncedData,
   profileModeFromDb,
   shiftIsoDate,
@@ -432,6 +433,22 @@ describe('isoDateFormatter', () => {
       day: 'numeric',
     });
     expect(long('2026-10-04')).toBe('Sunday, October 4, 2026');
+  });
+});
+
+describe('profileHomePath', () => {
+  it('names the profile, because the home opens the first one without it', () => {
+    expect(profileHomePath('01M2FWKNG0ZMH2ANCH7R2CM2XZ')).toBe(
+      '/?profile=01M2FWKNG0ZMH2ANCH7R2CM2XZ',
+    );
+  });
+
+  it('is the plain home when there is no profile to name', () => {
+    expect(profileHomePath('')).toBe('/');
+  });
+
+  it('encodes whatever it is given', () => {
+    expect(profileHomePath('a b&c')).toBe('/?profile=a%20b%26c');
   });
 });
 

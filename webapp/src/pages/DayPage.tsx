@@ -46,7 +46,7 @@ import {
   getDomainModule,
   validateDayEntryDate,
 } from '../domain/client';
-import { isoDateFormatter } from '../lib/profiles/profile-views';
+import { isoDateFormatter, profileHomePath } from '../lib/profiles/profile-views';
 
 /** The day in the heading, written out: "Tuesday, September 29, 2026". */
 const formatFullDate = isoDateFormatter('en', { dateStyle: 'full' });
@@ -388,7 +388,10 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
     <main className="page">
       <h1 className="display">{dateHeading}</h1>
       <nav>
-        <Link className="nav-link" to="/">
+        {/* Back to this profile's home. A bare "/" opens the first profile
+            in the list, which is someone else's whenever the day belongs
+            to any other. */}
+        <Link className="nav-link" to={profileHomePath(profileId)}>
           {t('webDayBackToToday')}
         </Link>
       </nav>
