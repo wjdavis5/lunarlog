@@ -335,8 +335,65 @@ describe('AccountPage (issue #1256)', () => {
     // The nothing-was-deleted copy, then the ceremony's Continue button.
     expect(await screen.findByText(messages['accountDeletionAppleCodeRequired'])).toBeDefined();
     expect(authMocks.startAppleDelete).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByText(messages['webAuthContinueAction']));
-    expect(authMocks.startAppleDelete).toHaveBeenCalledTimes(1);
+
+    // Continue asks for Apple's address and only then leaves for it: the
+    // page never follows a link of its own to start the ceremony.
+    const apple = 'https://appleid.apple.com/auth/authorize?response_type=code&state=s';
+    authMocks.startAppleDelete.mockResolvedValue(apple);
+    const assigned: string[] = [];
+    const originalLocation = window.location;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { assign: (url: string) => assigned.push(url) },
+    });
+    try {
+      fireEvent.click(screen.getByText(messages['webAuthContinueAction']));
+      await waitFor(() => expect(assigned).toEqual([apple]));
+      expect(authMocks.startAppleDelete).toHaveBeenCalledTimes(1);
+    } finally {
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        value: originalLocation,
+      });
+    }
+  });
+
+  it('a ceremony that cannot start says so, goes nowhere, and can be tried again', async () => {
+    const { DeletionError, AuthError } = await import('../src/lib/auth');
+    authMocks.deleteAccount.mockRejectedValue(
+      new (DeletionError as new (code: string, status: number) => Error)(
+        'apple_code_required',
+        400,
+      ),
+    );
+    authMocks.startAppleDelete.mockRejectedValue(
+      new (AuthError as new (code: string, status: number) => Error)('csrf_rejected', 403),
+    );
+    await renderSignedIn();
+    fireEvent.click(screen.getByRole('button', { name: messages['accountSectionDelete'] }));
+    fireEvent.click(
+      screen.getByRole('button', { name: messages['accountDeleteDialogConfirm'] }),
+    );
+    await screen.findByText(messages['accountDeletionAppleCodeRequired']);
+
+    const assigned: string[] = [];
+    const originalLocation = window.location;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { assign: (url: string) => assigned.push(url) },
+    });
+    try {
+      fireEvent.click(screen.getByText(messages['webAuthContinueAction']));
+      expect(await screen.findByText(messages['commonSomethingWentWrong'])).toBeDefined();
+      expect(assigned).toEqual([]);
+      // Still offered: nothing was deleted and nothing was started.
+      expect(screen.getByText(messages['webAuthContinueAction'])).toBeEnabled();
+    } finally {
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        value: originalLocation,
+      });
+    }
   });
 
   it('a deletion failure after the rows are gone renders its own copy', async () => {

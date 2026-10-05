@@ -360,23 +360,89 @@ describe('WebAuthClient account surfaces (issue #1256)', () => {
     });
   });
 
-  it('completeAppleDelete posts the landed code and state through the CSRF gate', async () => {
-    const { calls } = stubFetch(() => Promise.resolve(jsonResponse({ ok: true })));
+  // The Apple step of account deletion starts with a request the page
+  // makes as the signed-in account. It used to be a link the browser
+  // followed, and a link can be followed from anywhere.
+  it('startAppleDelete asks the Worker as the signed-in account and returns the address', async () => {
+    await signIn();
+    const apple = 'https://appleid.apple.com/auth/authorize?response_type=code&state=s';
+    const { calls } = stubFetch((call) =>
+      call.url === '/auth/session'
+        ? Promise.resolve(jsonResponse(SESSION_BODY))
+        : Promise.resolve(jsonResponse({ url: apple })),
+    );
+
+    expect(await client.startAppleDelete()).toBe(apple);
+
+    const call = calls.find((entry) => entry.url === '/auth/apple/delete/start');
+    expect(call?.init?.method).toBe('POST');
+    const headers = new Headers(call?.init?.headers);
+    expect(headers.get('authorization')).toBe('Bearer access-1');
+    expect(headers.get('x-lunarlog-csrf')).toBe('1');
+  });
+
+  it.each([
+    ['nothing', {}],
+    ['another site', { url: 'https://evil.example/auth/authorize?state=s' }],
+    ['a lookalike host', { url: 'https://appleid.apple.com.evil.example/auth/authorize?x=1' }],
+    ['a path on this site', { url: '/account?code=c&state=s' }],
+    ['a script address', { url: 'javascript:alert(1)' }],
+  ])('startAppleDelete goes nowhere when it is handed %s', async (_described, body) => {
+    await signIn();
+    stubFetch((call) =>
+      call.url === '/auth/session'
+        ? Promise.resolve(jsonResponse(SESSION_BODY))
+        : Promise.resolve(jsonResponse(body)),
+    );
+
+    await expect(client.startAppleDelete()).rejects.toMatchObject({
+      code: 'upstream_authorize_shape',
+    });
+  });
+
+  it('startAppleDelete surfaces a refusal as AuthError', async () => {
+    await signIn();
+    stubFetch((call) =>
+      call.url === '/auth/session'
+        ? Promise.resolve(jsonResponse(SESSION_BODY))
+        : Promise.resolve(jsonResponse({ error: 'csrf_rejected' }, 403)),
+    );
+
+    await expect(client.startAppleDelete()).rejects.toMatchObject({
+      code: 'csrf_rejected',
+      status: 403,
+    });
+  });
+
+  it('completeAppleDelete posts the landed code and state as the signed-in account', async () => {
+    await signIn();
+    const { calls } = stubFetch((call) =>
+      call.url === '/auth/session'
+        ? Promise.resolve(jsonResponse(SESSION_BODY))
+        : Promise.resolve(jsonResponse({ ok: true })),
+    );
 
     await client.completeAppleDelete('one-time-code', 'state-nonce');
 
-    const call = calls[0];
-    expect(call.url).toBe('/auth/apple/delete/complete');
-    expect(call.init?.method).toBe('POST');
-    expect(JSON.parse(String(call.init?.body))).toEqual({
+    const call = calls.find((entry) => entry.url === '/auth/apple/delete/complete');
+    expect(call?.init?.method).toBe('POST');
+    expect(JSON.parse(String(call?.init?.body))).toEqual({
       code: 'one-time-code',
       state: 'state-nonce',
     });
-    expect(new Headers(call.init?.headers).get('x-lunarlog-csrf')).toBe('1');
+    const headers = new Headers(call?.init?.headers);
+    expect(headers.get('x-lunarlog-csrf')).toBe('1');
+    // The Worker checks that the account finishing is the one that started.
+    expect(headers.get('authorization')).toBe('Bearer access-1');
   });
 
   it('completeAppleDelete surfaces the Worker state codes as AuthError', async () => {
-    stubFetch(() => Promise.resolve(jsonResponse({ error: 'state_mismatch' }, 403)));
+    await signIn();
+    stubFetch((call) =>
+      call.url === '/auth/session'
+        ? Promise.resolve(jsonResponse(SESSION_BODY))
+        : Promise.resolve(jsonResponse({ error: 'state_mismatch' }, 403)),
+    );
 
     await expect(client.completeAppleDelete('c', 'wrong')).rejects.toMatchObject({
       code: 'state_mismatch',

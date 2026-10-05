@@ -22,13 +22,14 @@ export const PKCE_COOKIE = '__Host-ll_pkce';
 
 /**
  * The Apple delete-ceremony state cookie (issue #1256): set by
- * /auth/apple/delete/start next to the 302 out to Apple's authorize
+ * POST /auth/apple/delete/start beside the address of Apple's authorize
  * endpoint, and consumed once by /auth/apple/delete/complete when the
- * redirect back lands with `?code=&state=`. The nonce is the only thing
- * binding "this code came from a delete ceremony this browser asked for" —
- * the web app holds nothing at rest, so the Worker holds the check.
- * SameSite=Lax so Apple's top-level redirect back still carries it, exactly
- * like the PKCE cookie.
+ * redirect back lands with `?code=&state=`. Its value is the ceremony's
+ * nonce and the id of the account that asked (see `buildAppleDeleteCookie`).
+ * Together they are the only thing saying "this code came from a delete
+ * ceremony this account asked for, in this browser" — the web app holds
+ * nothing at rest, so the Worker holds the check. SameSite=Lax so Apple's
+ * top-level redirect back still carries it, exactly like the PKCE cookie.
  */
 export const APPLE_DELETE_COOKIE = '__Host-ll_apple_delete';
 
@@ -96,10 +97,47 @@ export function buildPkceCookie(value: string, recovery = false): string {
   );
 }
 
-/** The Apple delete-ceremony state cookie: short-lived, SameSite=Lax (see
- * its own doc comment above). */
-export function buildAppleDeleteCookie(value: string): string {
-  return buildCookie(APPLE_DELETE_COOKIE, value, APPLE_DELETE_MAX_AGE_SECONDS, 'Lax');
+/** What the Apple delete-ceremony cookie's value decodes back into. */
+export interface AppleDeleteValue {
+  /** The nonce Apple echoes back as `state`. */
+  state: string;
+  /** The id of the account that started the ceremony. */
+  userId: string;
+}
+
+/** Neither half of the cookie's value may hold its separator, or anything a
+ * cookie value cannot. */
+const APPLE_DELETE_PART = /^[A-Za-z0-9_-]+$/;
+
+/**
+ * The Apple delete-ceremony state cookie: short-lived, SameSite=Lax (see
+ * its own doc comment above). The value is `<state>.<user id>`: the account
+ * that asked rides with the nonce, so the ceremony can only be finished by
+ * the account that started it. Null when either half could not be written
+ * safely, which a random nonce and a GoTrue user id never are.
+ */
+export function buildAppleDeleteCookie(state: string, userId: string): string | null {
+  if (!APPLE_DELETE_PART.test(state) || !APPLE_DELETE_PART.test(userId)) return null;
+  return buildCookie(
+    APPLE_DELETE_COOKIE,
+    `${state}.${userId}`,
+    APPLE_DELETE_MAX_AGE_SECONDS,
+    'Lax',
+  );
+}
+
+/**
+ * Decodes the Apple delete-ceremony cookie's value; null when it is not
+ * `<state>.<user id>`. That includes a value written before the account id
+ * rode along (the bare nonce): a ceremony in flight across that change is
+ * simply started again.
+ */
+export function parseAppleDeleteValue(value: string): AppleDeleteValue | null {
+  const parts = value.split('.');
+  if (parts.length !== 2) return null;
+  const [state, userId] = parts;
+  if (!APPLE_DELETE_PART.test(state) || !APPLE_DELETE_PART.test(userId)) return null;
+  return { state, userId };
 }
 
 /**

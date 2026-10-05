@@ -22,9 +22,9 @@ import {
   useIdentities,
   useLinkIdentity,
   useSignOut,
+  useStartAppleDelete,
   useUnlinkIdentity,
   useUpdatePassword,
-  startAppleDelete,
 } from '../lib/authQueries';
 import { downloadAccountExport } from '../lib/export';
 import { getSupabaseClient } from '../lib/supabase';
@@ -79,6 +79,7 @@ export function AccountPage() {
   const signOut = useSignOut();
   const update = useUpdatePassword();
   const deleteAccount = useDeleteAccount();
+  const appleCeremony = useStartAppleDelete();
 
   // The remove confirmations inline into their row (the Manage-guardians
   // page's pattern): one at a time, named by provider.
@@ -107,6 +108,14 @@ export function AccountPage() {
     deleteAccount.error instanceof DeletionError ? deleteAccount.error : null;
   const deletionCopy =
     deletionError !== null && !awaitingAppleCeremony ? deletionCopyFor(deletionError) : null;
+  // The ceremony could not be started: the reader is still on this page,
+  // nothing was deleted, and the button is there to try again.
+  const ceremonyStartCopy =
+    appleCeremony.error instanceof AuthError
+      ? authCopyFor(appleCeremony.error)
+      : appleCeremony.isError
+        ? ({ id: 'commonSomethingWentWrong' } satisfies AuthCopy)
+        : null;
 
   // The Apple ceremony's landing: Apple redirects back here with
   // ?code=&state=. The session restores from the refresh cookie on the way
@@ -245,8 +254,18 @@ export function AccountPage() {
             onDelete={startDeletion}
             deleting={deleteAccount.isPending}
             awaitingAppleCeremony={awaitingAppleCeremony}
-            onAppleCeremony={() => startAppleDelete()}
+            startingAppleCeremony={appleCeremony.isPending}
+            onAppleCeremony={() =>
+              // The page asks as the signed-in account and is handed
+              // Apple's address; it never follows a link to get there.
+              appleCeremony.mutate(undefined, {
+                onSuccess: (url) => window.location.assign(url),
+              })
+            }
           />
+          {ceremonyStartCopy !== null ? (
+            <p className="auth-error">{t(ceremonyStartCopy.id, ceremonyStartCopy.values)}</p>
+          ) : null}
           {deletionCopy !== null ? (
             <p className="auth-error">{t(deletionCopy.id, deletionCopy.values)}</p>
           ) : null}
@@ -491,6 +510,7 @@ function DeleteAccountCard(props: {
   onDelete: () => void;
   deleting: boolean;
   awaitingAppleCeremony: boolean;
+  startingAppleCeremony: boolean;
   onAppleCeremony: () => void;
 }) {
   const t = useT();
@@ -502,7 +522,12 @@ function DeleteAccountCard(props: {
           <>
             <p className="row-sub">{t('accountDeletionAppleCodeRequired')}</p>
             <div className="auth-actions">
-              <button type="button" className="button danger" onClick={props.onAppleCeremony}>
+              <button
+                type="button"
+                className="button danger"
+                disabled={props.startingAppleCeremony}
+                onClick={props.onAppleCeremony}
+              >
                 {t('webAuthContinueAction')}
               </button>
             </div>
