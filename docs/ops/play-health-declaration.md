@@ -32,9 +32,15 @@ Scoped to the menstruation data types [#202](https://github.com/wjdavis5/lunarlo
 (HS-7) needs for v1. The [#173](https://github.com/wjdavis5/lunarlog/issues/173)
 platform-channel adapter and the [#193](https://github.com/wjdavis5/lunarlog/issues/193)/#374
 opt-in, forward-only write paths are now live (`AppConfig.hasHealthSync`
-is `true`): a bound profile's user-logged flow and spotting records are
+is `true`): a bound profile's user-logged records are
 written into the on-device Health Connect store, and nothing is
-transmitted off-device through this feature. Writes carry user-logged or
+transmitted off-device through this feature. **This paragraph said so
+before it was true on Android:** the Kotlin write handlers and the
+manifest permissions existed, but the write coordinator was built on iOS
+only, so Android requested the five write permissions and wrote nothing
+until issue [#1478](https://github.com/wjdavis5/lunarlog/issues/1478)
+turned the write direction on (see "What the Android build writes"
+below, verified on an Android 15 emulator). Writes carry user-logged or
 imported data only — never a predicted or derived cycle value (the
 written rule in `lib/data/health/health_channel.dart`'s library doc,
 issue [#254](https://github.com/wjdavis5/lunarlog/issues/254). **Read
@@ -79,6 +85,69 @@ with the new rows before the next tracked build.
 | `android.permission.health.WRITE_OVULATION_TEST` | Write | Same rationale, for a logged ovulation-test result (`OvulationTestRecord`). The positive/peak distinction collapses to `RESULT_POSITIVE` (Health Connect's own docs describe positive as the possible "peak" result); a domain "high fertility" value does not exist, so `RESULT_HIGH` is deliberately never written. Write-only. |
 | `android.permission.health.WRITE_BASAL_BODY_TEMPERATURE` | Write | Same rationale, for a manually tracked basal-body-temperature reading (`BasalBodyTemperatureRecord`), converted to Celsius before the write and written with the honest `MEASUREMENT_LOCATION_UNKNOWN` (the domain has no measurement-location field). A wearable- or platform-sourced BBT value is deliberately never written, so it can never be conflated with the user's own tracked reading. Write-only. |
 
+## What the Android build writes (issue #1478)
+
+Checked on an Android 15 (API 35) emulator with the system Health
+Connect, by logging each kind of entry for a fabricated bound profile and
+reading it back in Health Connect's own "Data and access" screens. This
+is the behavior the form must describe.
+
+| Logged in lunarlog | Health Connect record | Shown by Health Connect as |
+|---|---|---|
+| Flow: light, medium, heavy | `MenstruationFlowRecord` at the day's local midnight | Menstruation — "Light / Medium / Heavy flow" |
+| Flow: super heavy | `MenstruationFlowRecord`, `FLOW_HEAVY` (Health Connect has no heavier level) | "Heavy flow" |
+| Spotting on a day inside a period | `MenstruationFlowRecord`, `FLOW_LIGHT` | "Light flow" |
+| Spotting between periods | `IntermenstrualBleedingRecord` | Spotting |
+| Each period (a run of hand-logged bleed days) with at least one day written | one `MenstruationPeriodRecord`, first day's midnight to the last instant of the last day | "Period day N of M" |
+| Discharge: sticky, creamy, egg white | `CervicalMucusRecord` (appearance only; sensation unknown) | Cervical mucus |
+| Ovulation test: negative, positive, peak | `OvulationTestRecord` (peak is written as positive) | Ovulation test |
+| Basal body temperature | `BasalBodyTemperatureRecord`, Celsius, location unknown | Vitals — Basal body temperature |
+
+Not written, and the in-app screen says so: symptoms and moods (Health
+Connect has no such types), discharge tagged "atypical" or "no
+discharge", pregnancy tests, notes, and anything logged for a profile
+other than the one bound to the device.
+
+How it behaves, for the form's free-text answers and for the reviewer's
+walkthrough:
+
+- **Asking.** Choosing the profile on Settings → Health Connect sync is
+  the opt-in; the first write pass then opens Health Connect's permission
+  sheet (writes and reads together). Until that has happened the screen
+  reads "Health Connect access: not yet asked".
+- **Forward-only.** A day gets a record of its own only if it was logged
+  after the *write* permissions were granted. That moment is read back
+  from Health Connect after the sheet closes, not taken from the sheet
+  having been answered: someone who allows only the reads and turns the
+  writes on weeks later has nothing from those weeks written.
+- **The one thing that reaches back: a period's first day.** Once a day
+  in a period is written, the first and last day logged in lunarlog for
+  that period are written with it as the period record, even if the
+  period began before write access was granted. A period record clipped to start on the first
+  written day would be a wrong period. The earlier days' own flow is
+  still not written. The in-app screen says this in plain words.
+- **Edits and deletions.** Every daily record carries the lunarlog row's
+  id as its `clientRecordId`, so an edit replaces the record and a
+  deleted entry (or a day set back to no flow) deletes it.
+- **Which periods get a period record.** A period has one exactly when
+  this phone has written at least one of its days and it is 30 days or
+  shorter. The record is rewritten when the period's days change
+  (a day added, the first or last day removed, a period split in two)
+  and deleted when the period no longer qualifies.
+- **Imported days never go back.** A period record is built from the days
+  logged in lunarlog only. A day imported from Health Connect is never
+  written back, and it never starts, extends or changes a period record,
+  so an import — the background one included — writes nothing to Health
+  Connect.
+- **Which permissions writing needs.** Every write permission, and no
+  read permission: declining "Access past data" or background access
+  does not stop writes. While any one write permission is off, nothing is
+  written and the screen reads "Health Connect access: denied — open
+  Settings to change".
+- **Turning it off.** "Stop syncing to this phone" stops writes and
+  leaves what was already written in Health Connect; so does removing the
+  permission there.
+
 ## Declaration form skeleton
 
 Fill this in against the live Play Console form at submission time — field
@@ -115,8 +184,10 @@ this as a skeleton to walk through, not a verbatim transcript.
 - [ ] **Screenshots / demonstration of the permission-request flow:**
       capture the `PermissionsRationaleActivity` screen and the system
       Health Connect grant dialog on a device with Health Connect
-      installed (the call site exists since #173/#193 — bind a profile in
-      Settings and run one sync pass to trigger them).
+      installed (bind a profile in Settings → Health Connect sync; since
+      issue #1478 the write path opens the grant dialog by itself a
+      moment later. The rationale screen opens from Health Connect → App
+      permissions → lunarlog → "Read privacy policy").
 - [ ] Submit and record the review outcome here (approved / rejected +
       reason, never the submission id or account credentials).
 - [ ] **Open the release gate:** once the form is filed and approved, set
@@ -170,4 +241,10 @@ itself, tracked in "Re-check triggers" below, not by re-flipping).
   writes — the form is no longer a draft exercise: it must actually be
   filed (and the release-gate variable above set) before any
   production-track ship.
+- **Issue #1478 turned Android's writes on.** No permission was added or
+  removed (the manifest already declared all five write permissions), but
+  the app's behavior now matches the write rows above for the first time,
+  and the `PermissionsRationaleActivity` text changed to list every type
+  written. Re-capture the rationale screen and the grant flow for the
+  form, and file it before the next track Google reviews.
 - `PRIVACY.md`'s description of Health Connect / platform sync changes.

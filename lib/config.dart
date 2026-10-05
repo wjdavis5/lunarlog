@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show TargetPlatform, kDebugMode;
 
 /// Build-time configuration read from `--dart-define` values.
 ///
@@ -185,14 +185,36 @@ abstract final class AppConfig {
   /// adapter: issue #193 wired the one-way, opt-in, forward-only
   /// menstrual-flow write path (`lib/data/health/health_flow_write_service.dart`
   /// + `health_flow_write_coordinator.dart`) over the first-party
-  /// `lunarlog/health` channel's Swift `HKHealthStore` half. Reachable on
-  /// iOS only — the Settings tile and the app.dart coordinator both gate
-  /// on `defaultTargetPlatform == TargetPlatform.iOS` until #202 wires the
-  /// Health Connect half's device checklist. Still inert in every
-  /// unconfigured build (no storage/profiles wiring, no tile).
+  /// `lunarlog/health` channel. Which platforms that write path runs on is
+  /// [healthSyncWritePlatforms], below. Still inert in every unconfigured
+  /// build (no storage/profiles wiring, no tile).
   /// Deliberately a hardcoded constant, not a `--dart-define`: there is no
   /// build-time toggle, only a code change per epic issue.
   static const bool hasHealthSync = true;
+
+  /// The platforms whose OS health store lunarlog *writes* the bound
+  /// profile's logged days to: Apple Health on iOS (issue #193) and Health
+  /// Connect on Android (issue #1478, which turned on the Kotlin half that
+  /// issues #202 and #228 had written but left behind an iOS-only gate).
+  ///
+  /// **The one source of truth for "this platform writes".** Before #1478
+  /// the composition root (`_healthWritePlatforms`) and the Settings screen
+  /// (`defaultTargetPlatform == TargetPlatform.iOS`) each decided this for
+  /// themselves, so the two could disagree: the write path could run while
+  /// the screen described an import-only feature, or the reverse. Both now
+  /// ask [healthSyncWritesOn] and nothing else may restate the list.
+  ///
+  /// Import (`_healthImportPlatforms` in the composition root) is a separate
+  /// question with its own answer; a platform may import without writing.
+  static const Set<TargetPlatform> healthSyncWritePlatforms = {
+    TargetPlatform.iOS,
+    TargetPlatform.android,
+  };
+
+  /// Whether the write direction is wired on [platform] — see
+  /// [healthSyncWritePlatforms]. False whenever [hasHealthSync] is.
+  static bool healthSyncWritesOn(TargetPlatform platform) =>
+      hasHealthSync && healthSyncWritePlatforms.contains(platform);
 
   /// The minor-binding switch, now `true` (Issue #882 — the pre-#882
   /// default was `false`, which refused every minor profile outright).

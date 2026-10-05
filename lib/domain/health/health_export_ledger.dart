@@ -46,6 +46,18 @@ enum HealthExportLedgerKind {
   /// A basal-body-temperature observation's `bbt-<id>` record id;
   /// [HealthExportLedgerEntry.sourceRowId] is the observation id.
   bbt,
+
+  /// One period episode's interval record (Issue #1478) — Health Connect's
+  /// `MenstruationPeriodRecord`, the one exported record that is derived
+  /// from *several* day entries rather than one source row. Nothing a
+  /// single tombstone carries can address it, so the write path reconciles
+  /// it itself from this row: [HealthExportLedgerEntry.sourceRowId] is the
+  /// exported interval, `<first day>/<last day>` as ISO dates, which is what
+  /// a later pass compares against the episode the profile's days derive
+  /// now. An older build that does not know this kind reads it as [entry]
+  /// (`DriftHealthExportLedger`'s documented fail-safe), which is harmless:
+  /// the source row id matches no day entry.
+  period,
 }
 
 /// One persisted health-store export.

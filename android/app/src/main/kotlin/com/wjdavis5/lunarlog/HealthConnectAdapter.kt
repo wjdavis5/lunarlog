@@ -89,6 +89,37 @@ class HealthConnectAdapter(context: Context) {
     private val prefs: SharedPreferences =
         contextApp.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
 
+    // Issue #1478: the moment this copy of the app was first installed on
+    // this device — what the "permission request was launched" marker
+    // ([PERMISSION_REQUESTED_KEY]) is stamped with, so the marker counts
+    // only for the install that made it. The Health Connect permissions are
+    // per install: a reinstall, or a new phone, starts with none granted
+    // and nothing asked. An uninstall clears these prefs, but Android's
+    // device-to-device transfer can copy them to a new phone
+    // (data_extraction_rules.xml keeps only the database out of it), and a
+    // bare flag carried over would make that phone read "denied" before it
+    // had ever been asked — the very thing the marker exists to prevent.
+    // Zero when the package manager cannot answer; the marker then counts
+    // whenever it is present.
+    private val installStamp: Long = try {
+        contextApp.packageManager
+            .getPackageInfo(contextApp.packageName, 0)
+            .firstInstallTime
+    } catch (_: Exception) {
+        0L
+    }
+
+    // Whether THIS install has launched the Health Connect permission
+    // request (see [installStamp]). A marker of any other type — no
+    // released build has written one — reads as not asked rather than
+    // throwing.
+    private fun permissionEverRequested(): Boolean = try {
+        prefs.contains(PERMISSION_REQUESTED_KEY) &&
+            prefs.getLong(PERMISSION_REQUESTED_KEY, 0L) == installStamp
+    } catch (_: ClassCastException) {
+        false
+    }
+
     init {
         // Issue #993: app start with a bound profile (re)arms the periodic
         // background-import job. KEEP policy — this never resets the
@@ -162,8 +193,8 @@ class HealthConnectAdapter(context: Context) {
     // too, but only where the platform actually offers the feature
     // ([backgroundReadPermissions] answers empty anywhere else, and there
     // this set is exactly the pre-#1211 shape). The permission is
-    // deliberately NOT part of the granted-all check `permissionStatus`
-    // answers (see [foregroundStatusPermissions] below): a user who
+    // deliberately NOT part of the check `permissionStatus` answers (no
+    // read permission is — see [statusPermissions] below): a user who
     // declines background reads can still import by tap, and
     // HealthBackgroundImportWorker skips its own pass without it.
     private val readPermissions = setOf(
@@ -174,16 +205,22 @@ class HealthConnectAdapter(context: Context) {
 
     private val allPermissions = writePermissions + readPermissions
 
-    // Issue #1211: the set `permissionStatus`'s "granted" answer requires —
-    // the foreground permissions only. The background read rides the
-    // request sheet (above) but never this check: Health Connect refuses a
-    // background read without it, yet a foreground import works without it,
-    // so requiring it here would report "denied" — and point the settings
-    // deep link — at a user whose tap import is perfectly functional. The
-    // worker gates its own tick instead (see the companion's
-    // [backgroundReadRefused]).
-    private val foregroundStatusPermissions = allPermissions -
-        setOf(HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND)
+    // The set `permissionStatus`'s "granted" answer requires: the WRITE
+    // permissions and nothing else (issue #1478). `HealthPermissionStatus`
+    // is defined on the Dart side as the OS consent for the types this app
+    // writes, and the write pass re-checks it before every pass (#959), so
+    // it must answer exactly the question "may lunarlog write?". Before
+    // #1478 this was every requested permission except the background read
+    // (#1211), which made each optional READ permission a precondition for
+    // writing: a person who allowed the writes but left "Access past data"
+    // off (READ_HEALTH_DATA_HISTORY, a switch Health Connect presents as an
+    // optional extra) was reported as "denied" and had every write pass
+    // blocked. The read permissions and the #1211 background read still ride
+    // the request sheet (`allPermissions`, above) but never this check: a
+    // missing read permission surfaces where it matters, as the import's own
+    // "no data, or read access is off" result, and the background worker
+    // gates its own tick (see the companion's [backgroundReadRefused]).
+    private val statusPermissions = writePermissions
 
     // The background-read permission, only where it can actually be
     // granted. connect-client 1.1.0 has no `isFeatureAvailable` — the
@@ -335,6 +372,12 @@ class HealthConnectAdapter(context: Context) {
                     result.error(
                         "writeFailed", "no activity to host the permission prompt", null)
                 } else {
+                    // Issue #1478: remember that this install has put the
+                    // request in front of the person, BEFORE launching it —
+                    // `permissionStatus` reports "notAsked" only until this
+                    // is set, and a request that is interrupted (the process
+                    // dies behind the sheet) has still been asked.
+                    prefs.edit().putLong(PERMISSION_REQUESTED_KEY, installStamp).apply()
                     // The one sheet covers write and read types (Issue #458);
                     // a user who has only ever imported still sees the prompt.
                     launcher.launch(allPermissions)
@@ -345,18 +388,28 @@ class HealthConnectAdapter(context: Context) {
                 // Issue #959: the OS permission state for the status line on
                 // the Health sync screen. The SDK-availability check runs
                 // first (an unavailable Health Connect is "unavailable",
-                // never "denied"), then the requested permission set is
-                // compared against getGrantedPermissions(). Android's runtime
-                // model cannot distinguish "never asked" from "denied" from
-                // the granted set alone, so a not-fully-granted result is
-                // reported as "denied" — the actionable state that offers the
-                // settings deep link. Read and write permissions ride the
-                // same requested set (allPermissions), so no read-only denial
-                // can be surfaced on its own — with the #1211 exception that
-                // the granted-all comparison runs against
-                // [foregroundStatusPermissions], the set MINUS the
-                // background read: declining only background reads must not
-                // read as a denial of the tap import.
+                // never "denied"), then the WRITE permission set
+                // ([statusPermissions]) is compared against
+                // getGrantedPermissions(). Neither a read permission nor the
+                // #1211 background read is part of that comparison: declining
+                // a read must not read as a denial of the writes (issue
+                // #1478), nor declining background reads as a denial of the
+                // tap import (#1211).
+                //
+                // Issue #1478: Android's runtime model cannot tell "never
+                // asked" from "denied" by looking at the granted set, and
+                // reporting every not-granted state as "denied" did two
+                // things wrong. A fresh install read "denied" before the
+                // person had been asked anything; and, because the Dart
+                // write pass treats "denied" as a revocation and stops
+                // before its own authorization request (#959), the write
+                // path could never ask at all. So this install remembers
+                // whether it has ever launched the request
+                // ([PERMISSION_REQUESTED_KEY], set in
+                // requestWriteAuthorization, read through
+                // [permissionEverRequested]) and
+                // [HealthPermissionState.statusFor] answers "notAsked"
+                // until it has.
                 // The client owns the PermissionController
                 // (`client.permissionController`); getGrantedPermissions is
                 // its suspend query, so it runs on a coroutine.
@@ -368,12 +421,30 @@ class HealthConnectAdapter(context: Context) {
                 CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
                     try {
                         val granted = client.permissionController.getGrantedPermissions()
+                        // Issue #1478's review: a grant seen here counts
+                        // as having been asked, and is remembered as such.
+                        // Access can be granted without this install's
+                        // sheet — by an older build's, or in Health
+                        // Connect's own settings — and if it is later
+                        // removed altogether, nothing granted and no marker
+                        // would read "not yet asked". With a forward-only
+                        // cursor already in place the write pass never asks
+                        // again, so every write would fail behind a screen
+                        // that offers no way to Health Connect's settings.
+                        // Remembered, the same revocation reads "denied".
+                        if (HealthPermissionState.provesAsked(granted, allPermissions) &&
+                            !permissionEverRequested()) {
+                            prefs.edit()
+                                .putLong(PERMISSION_REQUESTED_KEY, installStamp)
+                                .apply()
+                        }
                         result.success(
-                            if (granted.containsAll(foregroundStatusPermissions)) {
-                                "granted"
-                            } else {
-                                "denied"
-                            })
+                            HealthPermissionState.statusFor(
+                                granted = granted,
+                                required = statusPermissions,
+                                requested = allPermissions,
+                                everRequested = permissionEverRequested(),
+                            ))
                     } catch (e: Exception) {
                         result.success("unavailable")
                     }
@@ -525,7 +596,10 @@ class HealthConnectAdapter(context: Context) {
                 }
                 // #202: the interval record for one period episode. startTime
                 // at the episode's first-day local midnight; endTime at the
-                // *exclusive* local midnight after its last day — both instants
+                // last instant of its last day (issue #1478: Health Connect
+                // counts a period's days from its start date to its end date
+                // inclusive, so the next-midnight end #202 used made every
+                // period a day too long there) — both instants
                 // and their offsets computed on the Dart side from the entry's
                 // own tz (#180's timezone contract, never the device's current
                 // zone; on a DST-transition day endZoneOffset differs from
@@ -1232,6 +1306,16 @@ class HealthConnectAdapter(context: Context) {
         const val BOUND_PROFILE_KEY = "lunarlog.health.boundProfileId"
         const val CHANNEL_NAME = "lunarlog/health"
 
+        // Issue #1478: set once this install has launched the Health
+        // Connect permission request. The value is the install's own
+        // first-install time (see [installStamp]), so a copy of these prefs
+        // on another install does not count and that install starts unasked,
+        // exactly as Android's own permission state does. Lives in the same
+        // device-local prefs file as the binding mirror. Not cleared on
+        // unbind: it describes the OS permission for this install, not the
+        // binding.
+        const val PERMISSION_REQUESTED_KEY = "lunarlog.health.permissionRequested"
+
         // Issue #1211: true exactly when a background pass would be
         // refused — the background-read feature is offered AND its
         // permission is not granted. Deliberately false (let the tick run
@@ -1286,6 +1370,58 @@ class HealthConnectAdapter(context: Context) {
             "appetiteChanges",
         )
     }
+}
+
+/**
+ * The `permissionStatus` decision (Issue #959, reworked by Issue #1478), as
+ * a pure function of the facts the adapter gathers so it is unit-testable
+ * on the JVM without a Health Connect client (the same reason
+ * [HealthImportCursor] holds no Health Connect types).
+ *
+ * The wire strings are `HealthPermissionStatus`'s, defined in
+ * `lib/domain/health/health_platform.dart`:
+ *
+ *  * `granted`  — every permission in `required` (the write permissions)
+ *                 is granted;
+ *  * `denied`   — something in `required` is missing AND the person has
+ *                 been asked: either this install launched the request or
+ *                 has seen a grant before (`everRequested` — the adapter
+ *                 sets its marker in both cases), or at least one
+ *                 permission the app requests is granted right now, which
+ *                 can only follow a decision the person made (on the
+ *                 request sheet of a build older than the marker, or in
+ *                 Health Connect's own settings);
+ *  * `notAsked` — nothing is granted and the request was never launched.
+ *                 The Dart write pass asks in exactly this state; the
+ *                 screen says "not yet asked" rather than "denied".
+ *
+ * "Unavailable" is decided before this is reached (no Health Connect, or
+ * the granted-permissions query failed).
+ */
+internal object HealthPermissionState {
+    const val GRANTED = "granted"
+    const val NOT_ASKED = "notAsked"
+    const val DENIED = "denied"
+
+    fun statusFor(
+        granted: Set<String>,
+        required: Set<String>,
+        requested: Set<String>,
+        everRequested: Boolean,
+    ): String = when {
+        granted.containsAll(required) -> GRANTED
+        everRequested || provesAsked(granted, requested) -> DENIED
+        else -> NOT_ASKED
+    }
+
+    /**
+     * Whether what is granted shows the person has been asked: at least one
+     * permission the app requests is granted. The adapter remembers this as
+     * soon as it sees it (the review of Issue #1478), so that access which
+     * is later removed altogether still reads `denied`, never `notAsked`.
+     */
+    fun provesAsked(granted: Set<String>, requested: Set<String>): Boolean =
+        granted.any { it in requested }
 }
 
 /**

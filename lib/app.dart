@@ -743,6 +743,9 @@ class _LunarLogAppState extends State<LunarLogApp>
     if (state == AppLifecycleState.resumed) {
       _prediction.setAppForeground(true);
       unawaited(_predictionProjectionPublisher?.republishConnected());
+      // Issue #1478: the health store's permission can change behind its
+      // own sheet or settings screen; coming back is when to look again.
+      _healthFlowCoordinator?.onAppResumed();
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
       _prediction.setAppForeground(false);
@@ -751,8 +754,9 @@ class _LunarLogAppState extends State<LunarLogApp>
 
   /// Issue #193: the one-way, opt-in, forward-only menstrual-flow write
   /// path. AC2: construction lives in `lib/composition/` (which owns the
-  /// iOS-only gating too); this method only starts the returned instance.
-  /// Widget-test harnesses never get one.
+  /// platform gating too — `AppConfig.healthSyncWritesOn`); this method
+  /// only starts the returned instance. Widget-test harnesses never get
+  /// one.
   void _initHealthFlowWriter() {
     final coordinator = buildHealthFlowWriteCoordinator(
       settings: _settings,
@@ -776,7 +780,7 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// entry's ULID (the recorded health-store external id) is deleted from
   /// the OS health store so a deleted entry never leaves an orphaned
   /// sample. AC2: construction lives in `lib/composition/` (which owns the
-  /// same iOS-only gating as the write flow); this only starts it.
+  /// same platform gating as the write flow); this only starts it.
   void _initHealthSyncTombstonePropagation() {
     final coordinator = buildHealthSyncTombstoneCoordinator(
       settings: _settings,

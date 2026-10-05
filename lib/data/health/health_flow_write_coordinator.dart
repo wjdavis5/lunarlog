@@ -19,13 +19,18 @@
 ///   logged since the last cursor) and again on every write or tombstone,
 ///   each debounced into at most one pass per [debounce] window.
 ///
+/// And one trigger it is handed rather than subscribing to: [onAppResumed]
+/// (Issue #1478), the root's lifecycle hook, for a permission that changed
+/// while the app was behind the health store's own screens.
+///
 /// Best-effort, like every background upkeep here: a throwing pass is
 /// swallowed (the service surfaces its own expected failures as a
 /// [HealthFlowSyncReport]), never propagated into the subscription — the
 /// next genuine change re-arms it.
 ///
-/// Pure Dart (R14/R16). Wiring (iOS-only until #202) lives in `app.dart`,
-/// exactly where the other publishers are constructed and disposed.
+/// Pure Dart (R14/R16). Wiring lives in `app.dart`, exactly where the other
+/// publishers are constructed and disposed; which platforms get one is
+/// `AppConfig.healthSyncWritesOn`.
 library;
 
 import 'dart:async';
@@ -107,6 +112,12 @@ class LocalHealthFlowWriteCoordinator implements HealthFlowWriteCoordinator {
     }));
   }
 
+  @override
+  void onAppResumed() {
+    if (_lastBoundId == null) return;
+    _scheduleSync();
+  }
+
   void _subscribeEntries(String profileId) {
     _entriesSub = _dayEntries.watchForProfile(profileId).listen((_) {
       _scheduleSync();
@@ -134,11 +145,20 @@ class LocalHealthFlowWriteCoordinator implements HealthFlowWriteCoordinator {
   @override
   Future<void> dispose() async {
     _disposed = true;
-    await _boundSub?.cancel();
-    _boundSub = null;
-    await _entriesSub?.cancel();
-    _entriesSub = null;
     _debounceTimer?.cancel();
     _debounceTimer = null;
+    // Cancelled, not awaited. A cancel takes effect at once — no further
+    // event reaches this coordinator, and `_disposed` stops anything
+    // already in flight — while the future it returns only reports the
+    // source's own clean-up, which needs a turn of the real event loop.
+    // The app's teardown (and so a device reset) waits for this method,
+    // and under a widget test's fake clock that turn never comes: every
+    // test that tears the whole app down hung here once Android wrote too
+    // and the test platform started building this coordinator (Issue
+    // #1478).
+    unawaited(_boundSub?.cancel());
+    unawaited(_entriesSub?.cancel());
+    _boundSub = null;
+    _entriesSub = null;
   }
 }

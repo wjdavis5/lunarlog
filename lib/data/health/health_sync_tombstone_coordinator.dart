@@ -175,6 +175,11 @@ class HealthSyncTombstoneCoordinator {
         case HealthExportLedgerKind.spotting:
         case HealthExportLedgerKind.bbt:
           _knownObservationRecordIds[row.sourceRowId] = row.recordId;
+        case HealthExportLedgerKind.period:
+          // Issue #1478: a period interval record belongs to no single
+          // row, so no tombstone can name it. The write path reconciles
+          // it on its own pass (`_reconcilePeriodRecords`).
+          break;
       }
     }
   }
@@ -288,13 +293,15 @@ class HealthSyncTombstoneCoordinator {
 
   Future<void> dispose() async {
     _disposed = true;
-    await _boundSub?.cancel();
-    _boundSub = null;
-    await _entriesSub?.cancel();
-    _entriesSub = null;
-    await _observationsSub?.cancel();
-    _observationsSub = null;
     _debounceTimer?.cancel();
     _debounceTimer = null;
+    // Cancelled, not awaited: see the note on
+    // `LocalHealthFlowWriteCoordinator.dispose` (Issue #1478).
+    unawaited(_boundSub?.cancel());
+    unawaited(_entriesSub?.cancel());
+    unawaited(_observationsSub?.cancel());
+    _boundSub = null;
+    _entriesSub = null;
+    _observationsSub = null;
   }
 }

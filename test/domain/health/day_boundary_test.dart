@@ -306,6 +306,48 @@ void main() {
     });
   });
 
+  // Issue #1478: the end a Health Connect period record needs — a moment
+  // ON the last day, with the offset in effect at that moment.
+  group('localDayLastInstant', () {
+    test('is one second before the next local midnight, in UTC', () {
+      final last = localDayLastInstant(LocalDate(2026, 10, 5), 'America/New_York');
+      expect(last.instant, DateTime.utc(2026, 10, 6, 3, 59, 59));
+      expect(last.instant.isUtc, isTrue);
+      expect(last.offset, const Duration(hours: -4));
+      expect(last.instant, localDayInterval(LocalDate(2026, 10, 5), 'America/New_York').end);
+    });
+
+    test('on the fall-back day the offset is the one in effect that '
+        'evening, not the one at the day\'s midnight', () {
+      final date = LocalDate(2026, 11, 1);
+      final last = localDayLastInstant(date, 'America/New_York');
+      expect(zoneOffsetFor(date, 'America/New_York'), const Duration(hours: -4));
+      expect(last.offset, const Duration(hours: -5));
+      expect(last.instant, DateTime.utc(2026, 11, 2, 4, 59, 59));
+    });
+
+    test('on the spring-forward day likewise', () {
+      final date = LocalDate(2026, 3, 8);
+      final last = localDayLastInstant(date, 'America/New_York');
+      expect(zoneOffsetFor(date, 'America/New_York'), const Duration(hours: -5));
+      expect(last.offset, const Duration(hours: -4));
+      expect(last.instant, DateTime.utc(2026, 3, 9, 3, 59, 59));
+    });
+
+    test('a zone east of UTC keeps the instant on the local last day', () {
+      final last = localDayLastInstant(LocalDate(2026, 10, 5), 'Asia/Tokyo');
+      expect(last.instant, DateTime.utc(2026, 10, 5, 14, 59, 59));
+      expect(last.offset, const Duration(hours: 9));
+    });
+
+    test('throws TimeZoneResolutionException for an unknown zone', () {
+      expect(
+        () => localDayLastInstant(LocalDate(2026, 1, 1), 'Mars/Olympus'),
+        throwsA(isA<TimeZoneResolutionException>()),
+      );
+    });
+  });
+
   group('endZoneOffsetFor', () {
     test('on a fall-back day it differs from the midnight offset '
         '(Health Connect\'s endZoneOffset requirement)', () {

@@ -277,6 +277,7 @@ void main() {
     HealthImportRunner? importer,
     HealthPermissionProbe? permissionProbe,
     bool writeEnabled = true,
+    HealthImportPlatform? storePlatform,
     Size viewport = const Size(800, 1800),
   }) async {
     // Issue #186 added revocation/30-day-limit copy above the profile
@@ -304,6 +305,7 @@ void main() {
           importer: importer,
           permissionProbe: permissionProbe,
           writeEnabled: writeEnabled,
+          storePlatform: storePlatform,
         ),
       ),
     );
@@ -441,10 +443,34 @@ void main() {
     );
   });
 
-  testWidgets('an import-only platform (Android) documents the permanent '
-      'symptom limitation (Issue #238)', (tester) async {
+  // Issue #1478: an import-only screen used to follow "nothing is written
+  // automatically" with a line saying days logged with symptoms "still sync
+  // their flow and spotting". The symptom line now belongs to the Android
+  // write screen (where that is true) and is gone from here.
+  testWidgets('an import-only platform does not contradict "nothing is '
+      'written" with a line about what still syncs (Issue #1478)',
+      (tester) async {
     final binding = HealthSyncBinding(FakeSettingsStore());
     await pumpScreen(tester, binding: binding, writeEnabled: false);
+
+    expect(find.textContaining('nothing is written automatically'),
+        findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('health-sync-symptoms-android-limitation')),
+      findsNothing,
+    );
+    expect(find.textContaining('still sync their flow'), findsNothing);
+  });
+
+  testWidgets('Android, which writes, documents the permanent symptom '
+      'limitation (Issue #238)', (tester) async {
+    final binding = HealthSyncBinding(FakeSettingsStore());
+    await pumpScreen(
+      tester,
+      binding: binding,
+      writeEnabled: true,
+      storePlatform: HealthImportPlatform.healthConnect,
+    );
 
     expect(
       find.byKey(const ValueKey('health-sync-symptoms-android-limitation')),
@@ -1448,6 +1474,334 @@ void main() {
       );
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
+    });
+  });
+  // Issue #1478: Android writes to Health Connect. The write screen there
+  // must describe what Android does, in Health Connect's name — and the
+  // status line must not say "denied" before anyone has been asked.
+  group('Issue #1478 Android writes to Health Connect', () {
+    Future<HealthSyncBinding> boundBinding() async {
+      final binding = HealthSyncBinding(FakeSettingsStore());
+      await binding.bind(
+        profile: profiles.firstWhere((p) => p.id == 'eligible'),
+        signedInUserId: 'u1',
+        ownerUserId: 'u1',
+        minorBindingAllowed: false,
+      );
+      return binding;
+    }
+
+    Future<void> pumpAndroid(
+      WidgetTester tester, {
+      required HealthSyncBinding binding,
+      HealthPermissionProbe? permissionProbe,
+    }) =>
+        pumpScreen(
+          tester,
+          binding: binding,
+          importer: _FakeImporter(
+            const HealthImportSummary(),
+            platform: HealthImportPlatform.healthConnect,
+          ),
+          permissionProbe: permissionProbe,
+          writeEnabled: true,
+          storePlatform: HealthImportPlatform.healthConnect,
+          viewport: const Size(800, 2400),
+        );
+
+    /// Every string the screen (and any open dialog) currently shows.
+    Iterable<String> shown(WidgetTester tester) => tester
+        .widgetList<Text>(find.byType(Text))
+        .map((text) => text.data ?? '');
+
+    testWidgets('nothing on the Android write screen says "Health app"',
+        (tester) async {
+      permissionResult = 'granted';
+      await pumpAndroid(
+        tester,
+        binding: await boundBinding(),
+        permissionProbe: buildPermissionProbe(),
+      );
+
+      expect(shown(tester), isNotEmpty);
+      expect(
+        shown(tester).where((text) => text.contains('Health app')),
+        isEmpty,
+        reason: 'that is the iPhone store; Android writes to Health Connect',
+      );
+      expect(find.text('Health Connect sync'), findsOneWidget);
+      expect(
+        find.text(
+          'Choose the one profile whose data this phone may ever write to '
+          'Health Connect. Every other profile stays out of Health Connect '
+          'entirely.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Health Connect access: granted'), findsOneWidget);
+      expect(
+        find.textContaining("removing lunarlog's access in Health Connect"),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('it never claims symptoms are written — it says they are not',
+        (tester) async {
+      await pumpAndroid(tester, binding: await boundBinding());
+
+      expect(
+        find.byKey(const ValueKey('health-sync-symptoms-copy')),
+        findsNothing,
+        reason: 'the iPhone "written as symptom entries" paragraph',
+      );
+      expect(
+        shown(tester).where((text) => text.contains('symptom entries')),
+        isEmpty,
+      );
+      expect(
+        shown(tester).where((text) => text.contains('Mood Changes')),
+        isEmpty,
+      );
+      expect(
+        find.byKey(const ValueKey('health-sync-symptoms-android-limitation')),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining("can't be written to Health Connect"),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('it lists what Android writes, in Health Connect\'s own names',
+        (tester) async {
+      await pumpAndroid(tester, binding: await boundBinding());
+
+      final written = tester.widget<Text>(
+        find.descendant(
+          of: find.byKey(const ValueKey('health-sync-written-types-copy')),
+          matching: find.byType(Text),
+        ),
+      );
+      // The five things the adapter writes (HealthConnectAdapter.kt's
+      // writtenRecordTypes): flow + period, spotting between periods,
+      // cervical mucus, ovulation tests, basal body temperature.
+      for (final name in [
+        'flow',
+        'first and last day of each period',
+        '(Menstruation)',
+        '(Spotting)',
+        '(Cervical mucus)',
+        'ovulation test results',
+        'basal body temperature',
+      ]) {
+        expect(written.data, contains(name));
+      }
+      expect(written.data, isNot(contains('ymptom')));
+
+      // The lossy mappings, without the iPhone store's name.
+      expect(
+        find.text(
+          'Super heavy days are written as Heavy flow. Spotting logged inside '
+          'a period is written as Light flow. A peak ovulation test is '
+          'written as Positive.',
+        ),
+        findsOneWidget,
+      );
+      // Forward-only, dated from write access (not from "sync turned on":
+      // the clock starts when the write permissions are granted), and the
+      // import named for Health Connect.
+      expect(
+        find.textContaining('Only days logged after you allow lunarlog to '
+            'write to Health Connect are written'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('import menstrual flow and spotting from Health '
+            'Connect'),
+        findsOneWidget,
+      );
+    });
+
+    // The review of #1478 (decision G): a period that began before write
+    // access is written with its true first day, and the screen has to say
+    // so — it is the one way anything logged earlier reaches Health Connect.
+    testWidgets('it says what a period record covers, and that imported '
+        'days are never written back', (tester) async {
+      await pumpAndroid(tester, binding: await boundBinding());
+
+      final note = tester.widget<Text>(
+        find.descendant(
+          of: find.byKey(const ValueKey('health-sync-period-record-copy')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(
+        note.data,
+        'Once a day in a period is written, the first and last day you logged '
+        'in lunarlog for that period are written with it, even if the period '
+        'began before you allowed lunarlog to write. Days imported from Health '
+        'Connect are never written back and never count towards a period '
+        'lunarlog writes.',
+      );
+
+      // An iPhone has no period record: the note is Health Connect's alone.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await pumpScreen(
+        tester,
+        binding: HealthSyncBinding(FakeSettingsStore()),
+        writeEnabled: true,
+        storePlatform: HealthImportPlatform.appleHealth,
+      );
+      expect(
+        find.byKey(const ValueKey('health-sync-period-record-copy')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('the store decides the wording, not the write flag: with '
+        'writes on and no importer, Health Connect gets its own copy and the '
+        'iPhone keeps its own', (tester) async {
+      final binding = HealthSyncBinding(FakeSettingsStore());
+      // Before #1478 "writes on, no importer" could only mean Apple Health.
+      await pumpScreen(
+        tester,
+        binding: binding,
+        writeEnabled: true,
+        storePlatform: HealthImportPlatform.healthConnect,
+      );
+
+      expect(find.text('Health Connect sync'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('health-sync-written-types-copy')),
+        findsOneWidget,
+      );
+      expect(
+        shown(tester).where((text) => text.contains('Health app')),
+        isEmpty,
+      );
+
+      // The same screen for the iPhone store: nothing of the above leaks
+      // over, and the symptom-write paragraph stays.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await pumpScreen(
+        tester,
+        binding: binding,
+        writeEnabled: true,
+        storePlatform: HealthImportPlatform.appleHealth,
+      );
+
+      expect(find.text('Health app sync'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('health-sync-written-types-copy')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('health-sync-symptoms-copy')),
+        findsOneWidget,
+      );
+      expect(
+        shown(tester).where((text) => text.contains('Health Connect')),
+        isEmpty,
+      );
+    });
+
+    testWidgets('binding and unbinding on Android name Health Connect as the '
+        'store being written to', (tester) async {
+      final binding = HealthSyncBinding(FakeSettingsStore());
+      await pumpAndroid(tester, binding: binding);
+
+      await tester.tap(
+        find.byKey(const ValueKey('health-sync-profile-eligible')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          "Only Alice's data will ever be written to Health Connect. This "
+          'phone can sync one profile at a time — choosing a different '
+          'profile later replaces this one.',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('health-sync-confirm-bind')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('health-sync-unbind-tile')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'This phone will stop writing data for Alice to Health Connect and '
+          'stop importing from it. Nothing already logged in lunarlog, or '
+          'already written to Health Connect, is deleted.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        shown(tester).where((text) => text.contains('Health app')),
+        isEmpty,
+      );
+    });
+
+    testWidgets('"not yet asked" before the sheet, then the line follows the '
+        'answer given on Health Connect\'s own screens: it is read again '
+        'when the app comes back, and only then', (tester) async {
+      int statusReads() => permissionCalls
+          .where((call) => call.method == 'permissionStatus')
+          .length;
+
+      // A fresh install: nobody has been asked, so nothing is "denied" and
+      // there is nothing in Settings to change yet.
+      permissionResult = 'notAsked';
+      await pumpAndroid(
+        tester,
+        binding: await boundBinding(),
+        permissionProbe: buildPermissionProbe(),
+      );
+      expect(
+        find.text('Health Connect access: not yet asked'),
+        findsOneWidget,
+      );
+      expect(
+        shown(tester).where((text) => text.contains('denied')),
+        isEmpty,
+      );
+      expect(
+        find.byKey(const ValueKey('health-sync-open-settings')),
+        findsNothing,
+      );
+      final readsAfterLoad = statusReads();
+
+      // The write path raises the permission sheet a moment after the
+      // profile is bound. Going behind it reads nothing...
+      permissionResult = 'granted';
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pumpAndSettle();
+      expect(statusReads(), readsAfterLoad);
+      expect(
+        find.text('Health Connect access: not yet asked'),
+        findsOneWidget,
+      );
+
+      // ...and coming back, with access allowed, reads it once.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(statusReads(), readsAfterLoad + 1);
+      expect(find.text('Health Connect access: granted'), findsOneWidget);
+      expect(find.text('Health Connect access: not yet asked'), findsNothing);
+
+      // And the other way: access removed in Health Connect's settings.
+      permissionResult = 'denied';
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Health Connect access: denied — open Settings to change'),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('health-sync-open-settings')),
+        findsOneWidget,
+      );
     });
   });
 }
