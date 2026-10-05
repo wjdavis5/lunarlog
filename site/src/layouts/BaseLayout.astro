@@ -31,6 +31,58 @@ const site = Astro.site ?? new URL("https://lunarlog.app");
 const canonical = new URL(Astro.url.pathname, site).href;
 const ogImage = new URL("/og-image.png", site).href;
 const fullTitle = title === "lunarlog" ? title : `${title} — lunarlog`;
+
+// The header carries the four pages a first-time visitor asks for, in the
+// order the story is told: what it does, who it is shared with, whether it
+// can be trusted, and how to use it. Four is also what fits on one row of a
+// phone screen, so the header is the same at every width and needs no menu
+// button (the site ships no JavaScript). Everything else is in the footer.
+const headerLinks = [
+  { href: "/tracking", label: "Tracking" },
+  { href: "/family-sharing", label: "Family sharing" },
+  { href: "/privacy-security", label: "Privacy" },
+  { href: "/guides/", label: "Guides" },
+];
+
+// The footer is the whole map, under each page's own title, grouped by
+// what a visitor came for.
+const footerGroups = [
+  {
+    heading: "What it does",
+    links: [
+      { href: "/tracking", label: "Tracking and viewing" },
+      { href: "/family-sharing", label: "Family sharing and roles" },
+      { href: "/life-stage-modes", label: "Life-stage modes" },
+      { href: "/import", label: "Import" },
+      { href: "/export", label: "Export" },
+    ],
+  },
+  {
+    heading: "Help",
+    links: [
+      { href: "/guides/", label: "How-to guides" },
+      { href: "/support", label: "Support" },
+      { href: "/delete-account", label: "Delete your account" },
+    ],
+  },
+  {
+    heading: "Privacy",
+    links: [
+      { href: "/privacy-security", label: "Privacy and security" },
+      { href: "/privacy", label: "Privacy policy" },
+    ],
+  },
+];
+
+// `aria-current` for a link: "page" on the page itself, "true" on the
+// section a deeper page sits in (a guide marks "Guides"), nothing otherwise.
+const trimSlash = (value: string) => value.replace(/\/+$/, "") || "/";
+const here = trimSlash(Astro.url.pathname);
+function currentFor(href: string): "page" | "true" | undefined {
+  const target = trimSlash(href);
+  if (here === target) return "page";
+  return target !== "/" && here.startsWith(`${target}/`) ? "true" : undefined;
+}
 ---
 
 <!doctype html>
@@ -59,6 +111,7 @@ const fullTitle = title === "lunarlog" ? title : `${title} — lunarlog`;
     <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
+    <a class="skip-link" href="#content">Skip to content</a>
     <header class="site-header">
       <div class="site-header__inner">
         <a class="brand" href="/">
@@ -71,17 +124,45 @@ const fullTitle = title === "lunarlog" ? title : `${title} — lunarlog`;
           />
           <span>lunarlog</span>
         </a>
+        <nav class="site-nav" aria-label="Main">
+          <ul>
+            {
+              headerLinks.map((link) => (
+                <li>
+                  <a href={link.href} aria-current={currentFor(link.href)}>{link.label}</a>
+                </li>
+              ))
+            }
+          </ul>
+        </nav>
       </div>
     </header>
-    <main>
+    <main id="content">
       <div class="page">
         <slot />
       </div>
     </main>
     <footer class="site-footer">
       <div class="site-footer__inner">
-        <span>&copy; {new Date().getFullYear()} lunarlog</span>
-        <a href="/privacy">Privacy policy</a>
+        <nav class="site-map" aria-label="All pages">
+          {
+            footerGroups.map((group) => (
+              <div class="site-map__group">
+                <h2>{group.heading}</h2>
+                <ul>
+                  {group.links.map((link) => (
+                    <li>
+                      <a href={link.href} aria-current={currentFor(link.href)}>{link.label}</a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))
+          }
+        </nav>
+        <p class="site-footer__legal">
+          &copy; {new Date().getFullYear()} lunarlog
+        </p>
       </div>
     </footer>
   </body>
