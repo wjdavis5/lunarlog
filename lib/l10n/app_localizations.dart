@@ -8197,13 +8197,13 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 5): FHIR tile subtitle naming the one live profile.
   ///
   /// In en, this message translates to:
-  /// **'Export {profileName}\'s clinical summary.'**
+  /// **'{profileName}\'s cycle and symptom history as a file for a health records system.'**
   String settingsClinicalExportSubtitleOneProfile(String profileName);
 
   /// Issue #1004 (tranche 5): FHIR tile subtitle with several live profiles.
   ///
   /// In en, this message translates to:
-  /// **'Share an IPS-shaped FHIR R4 document with your cycle data, coded and self-reported.'**
+  /// **'One profile\'s cycle and symptom history as a file for a health records system.'**
   String get settingsClinicalExportSubtitleGeneric;
 
   /// Issue #1004 (tranche 5): PDF tile subtitle with nothing logged yet.
@@ -8215,13 +8215,13 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 5): PDF tile subtitle naming the one live profile.
   ///
   /// In en, this message translates to:
-  /// **'Export {profileName}\'s clinical summary as a PDF.'**
+  /// **'A summary of {profileName}\'s cycle and symptom history for an appointment.'**
   String settingsClinicalPdfSubtitleOneProfile(String profileName);
 
   /// Issue #1004 (tranche 5): PDF tile subtitle with several live profiles.
   ///
   /// In en, this message translates to:
-  /// **'Share an on-device PDF summary of logged cycle data.'**
+  /// **'A summary of one profile\'s cycle and symptom history for an appointment.'**
   String get settingsClinicalPdfSubtitleGeneric;
 
   /// Issue #1004 (tranche 5): custom export-range label naming its explicit start/end dates.

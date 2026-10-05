@@ -6685,7 +6685,7 @@
     "@settingsClinicalExportSubtitleNoEntries": {
       "description": "Issue #1004 (tranche 5): FHIR tile subtitle with nothing logged yet."
     },
-    "settingsClinicalExportSubtitleOneProfile": "Export {profileName}'s clinical summary.",
+    "settingsClinicalExportSubtitleOneProfile": "{profileName}'s cycle and symptom history as a file for a health records system.",
     "@settingsClinicalExportSubtitleOneProfile": {
       "description": "Issue #1004 (tranche 5): FHIR tile subtitle naming the one live profile.",
       "placeholders": {
@@ -6694,7 +6694,7 @@
         }
       }
     },
-    "settingsClinicalExportSubtitleGeneric": "Share an IPS-shaped FHIR R4 document with your cycle data, coded and self-reported.",
+    "settingsClinicalExportSubtitleGeneric": "One profile's cycle and symptom history as a file for a health records system.",
     "@settingsClinicalExportSubtitleGeneric": {
       "description": "Issue #1004 (tranche 5): FHIR tile subtitle with several live profiles."
     },
@@ -6702,7 +6702,7 @@
     "@settingsClinicalPdfSubtitleNoEntries": {
       "description": "Issue #1004 (tranche 5): PDF tile subtitle with nothing logged yet."
     },
-    "settingsClinicalPdfSubtitleOneProfile": "Export {profileName}'s clinical summary as a PDF.",
+    "settingsClinicalPdfSubtitleOneProfile": "A summary of {profileName}'s cycle and symptom history for an appointment.",
     "@settingsClinicalPdfSubtitleOneProfile": {
       "description": "Issue #1004 (tranche 5): PDF tile subtitle naming the one live profile.",
       "placeholders": {
@@ -6711,7 +6711,7 @@
         }
       }
     },
-    "settingsClinicalPdfSubtitleGeneric": "Share an on-device PDF summary of logged cycle data.",
+    "settingsClinicalPdfSubtitleGeneric": "A summary of one profile's cycle and symptom history for an appointment.",
     "@settingsClinicalPdfSubtitleGeneric": {
       "description": "Issue #1004 (tranche 5): PDF tile subtitle with several live profiles."
     },

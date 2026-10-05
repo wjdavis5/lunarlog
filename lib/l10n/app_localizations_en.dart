@@ -5167,12 +5167,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String settingsClinicalExportSubtitleOneProfile(String profileName) {
-    return 'Export $profileName\'s clinical summary.';
+    return '$profileName\'s cycle and symptom history as a file for a health records system.';
   }
 
   @override
   String get settingsClinicalExportSubtitleGeneric =>
-      'Share an IPS-shaped FHIR R4 document with your cycle data, coded and self-reported.';
+      'One profile\'s cycle and symptom history as a file for a health records system.';
 
   @override
   String get settingsClinicalPdfSubtitleNoEntries =>
@@ -5180,12 +5180,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String settingsClinicalPdfSubtitleOneProfile(String profileName) {
-    return 'Export $profileName\'s clinical summary as a PDF.';
+    return 'A summary of $profileName\'s cycle and symptom history for an appointment.';
   }
 
   @override
   String get settingsClinicalPdfSubtitleGeneric =>
-      'Share an on-device PDF summary of logged cycle data.';
+      'A summary of one profile\'s cycle and symptom history for an appointment.';
 
   @override
   String settingsClinicalPdfRangeCustom(String start, String end) {
