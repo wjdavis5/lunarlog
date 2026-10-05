@@ -18,3 +18,14 @@ site/src/content/help-cards/cards.json text eol=lf
 # webapp/test/tokens.test.ts compares tokens.css byte-for-byte against
 # generate.mjs's LF output, so pin it LF on every platform.
 webapp/src/theme/tokens.css text eol=lf
+
+# The web client's other generated files have the same contract: each is
+# written with LF and compared against a fresh generation
+# (test/tool/export_webapp_tokens_test.dart for the tokens JSON, and the
+# "is fresh" checks in webapp/test/messages.test.ts and taxonomy.test.ts).
+# Checked out as CRLF on Windows they failed those three checks on every
+# local run, and running a generator left a diff that was only line endings.
+webapp/src/theme/tokens.generated.json text eol=lf
+webapp/src/i18n/messages.en.json text eol=lf
+webapp/src/i18n/message-ids.ts text eol=lf
+webapp/src/lib/taxonomy/taxonomy.generated.json text eol=lf
