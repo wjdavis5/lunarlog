@@ -8,6 +8,10 @@
 /// day already logged at medium flow or heavier, so on such a day the tap
 /// leaves the flow exactly as it was; the snackbar now says that, and
 /// offers no Undo because there is nothing to undo.
+///
+/// Both callers hide the snackbar already on screen before showing this one
+/// (`ScaffoldMessengerState.hideCurrentSnackBar`), so a second tap is
+/// answered at once instead of queueing behind the first tap's message.
 library;
 
 import 'package:flutter/material.dart';
@@ -15,6 +19,7 @@ import 'package:lunarlog/domain/logging/quick_log.dart'
     show quickLogChangesFlow;
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/components/action_snack_bar.dart';
 
 /// Builds the quick-log confirmation for a day whose flow was
 /// [previousFlow] before the tap (null when the day had no entry).
@@ -25,19 +30,25 @@ import 'package:lunarlog/l10n/app_localizations.dart';
 ///   message, without Undo.
 ///
 /// [contentKey] keys the message `Text` (each caller keeps its own key).
+/// [accessibleNavigation] is the caller's
+/// `MediaQuery.accessibleNavigationOf(context)`: the Undo snackbar leaves
+/// after `kActionSnackBarDuration` unless it is true ([actionSnackBar]).
 SnackBar quickLogSnackBar({
   required AppLocalizations l10n,
   required FlowLevel? previousFlow,
   required Key contentKey,
   required VoidCallback onUndo,
+  required bool accessibleNavigation,
 }) {
   if (!quickLogChangesFlow(previousFlow)) {
     return SnackBar(
       content: Text(l10n.overviewAlreadyLoggedSnackbar, key: contentKey),
     );
   }
-  return SnackBar(
+  return actionSnackBar(
     content: Text(l10n.overviewLoggedSnackbar, key: contentKey),
-    action: SnackBarAction(label: l10n.overviewUndo, onPressed: onUndo),
+    actionLabel: l10n.overviewUndo,
+    onAction: onUndo,
+    accessibleNavigation: accessibleNavigation,
   );
 }

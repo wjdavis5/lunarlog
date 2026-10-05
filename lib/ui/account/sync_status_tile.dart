@@ -16,6 +16,7 @@ import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/upload_consent_screen.dart';
+import 'package:lunarlog/ui/components/action_snack_bar.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:provider/provider.dart';
 
@@ -413,13 +414,13 @@ class SyncStatusGlyph extends StatelessWidget {
 
   void _showStatus(BuildContext context, String copy) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
+      actionSnackBar(
         key: const ValueKey('sync-status-snackbar'),
         content: Text(copy),
-        action: SnackBarAction(
-          label: AppLocalizations.of(context).accountSyncStatusSettingsAction,
-          onPressed: onPressed,
-        ),
+        actionLabel:
+            AppLocalizations.of(context).accountSyncStatusSettingsAction,
+        onAction: onPressed,
+        accessibleNavigation: MediaQuery.accessibleNavigationOf(context),
       ),
     );
   }

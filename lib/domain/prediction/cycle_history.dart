@@ -330,6 +330,17 @@ class CycleHistoryView {
   /// Reverse-chronological; the open cycle (if any) pinned first (R4).
   final List<CycleHistoryItem> items;
 
+  /// Whether there is any cycle history to show: at least one logged period
+  /// episode. Onboarding answers alone never count — [items] come only from
+  /// logged entries, so a profile with a provisional estimate and nothing
+  /// logged has no history.
+  ///
+  /// The one definition of "has history" for the UI: `CycleHistorySection`
+  /// renders nothing without it, and the Today tab's "See cycle history"
+  /// link is hidden without it, so the link can never lead to an empty
+  /// place.
+  bool get hasHistory => items.isNotEmpty;
+
   final int episodeCount;
 
   /// All completed cycles, valid and invalid alike.

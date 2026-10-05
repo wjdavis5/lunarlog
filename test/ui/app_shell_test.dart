@@ -11,7 +11,9 @@
 /// [CycleHistorySection] mounts exactly once across the shell once both
 /// Today and Insights have been visited (it used to mount twice — once
 /// per tab, each running its own `CycleHistoryService.watch` subscription
-/// — until Overview stopped embedding its own copy). Issue #313: Android
+/// — until Overview stopped embedding its own copy). The link shows only
+/// for a profile with cycle history: one with only its onboarding answers
+/// gets none, since Insights has no history for it. Issue #313: Android
 /// back returns to Today before it exits, the Activity Feed action in the
 /// shared app bar, and the `didUpdateWidget` reset-to-Today seam.
 library;
@@ -110,15 +112,23 @@ class Harness {
   /// #314) does the same for day entries -- so a test can seed real cycle
   /// history before the shell's streams start, rather than saving through
   /// a repository after the fact and waiting on `pumpAndSettle`.
+  /// [lastPeriodStart]/[typicalCycleLengthDays] are the onboarding answers
+  /// that seed a provisional estimate for a profile with nothing logged.
   Future<void> pump({
     bool withSync = true,
+    LocalDate? lastPeriodStart,
+    int? typicalCycleLengthDays,
     Future<void> Function(LunarLogDatabase db, String profileId)?
         seedGuardians,
     Future<void> Function(LunarLogDatabase db, String profileId)?
         seedEntries,
   }) async {
-    final profile = await DriftProfilesRepository(db.storage)
-        .create(displayName: 'Alice', isMinor: false);
+    final profile = await DriftProfilesRepository(db.storage).create(
+      displayName: 'Alice',
+      isMinor: false,
+      lastPeriodStart: lastPeriodStart,
+      typicalCycleLengthDays: typicalCycleLengthDays,
+    );
     profileId = profile.id;
     await DriftSettingsStore(db.storage)
         .set(SettingsKeys.lastActiveProfile, profile.id);
@@ -145,6 +155,18 @@ class Harness {
 }
 
 Finder tabKey(String name) => find.byKey(ValueKey('app-shell-tab-$name'));
+
+/// A window tall enough for the whole Today tab. The panel is a lazy
+/// `ListView`, so in the default 800x600 test window whatever sits below a
+/// full Today card (the "See cycle history" link, the disclaimer) is never
+/// built -- and a test asserting the link's absence would pass for the
+/// wrong reason.
+void useTallWindow(WidgetTester tester) {
+  tester.view.physicalSize = const Size(800, 1600);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
 
 /// Two 4-day bleed episodes -- just enough for [CycleHistorySection] to
 /// render a populated card (issue #314's tests below only need a
@@ -297,6 +319,48 @@ void main() {
 
     expect(find.byKey(const ValueKey('sync-status-snackbar')), findsOneWidget);
     expect(find.text(AppLocalizationsEn().accountSyncStatusSyncing), findsWidgets);
+    await h.dispose();
+  });
+
+  testWidgets(
+      'the sync-status snackbar stays long enough to reach its Settings '
+      'action, then leaves on its own after eight seconds', (tester) async {
+    final h = Harness(tester);
+    await h.pump();
+
+    await tester.tap(find.byType(SyncStatusGlyph));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('sync-status-snackbar')), findsOneWidget);
+    expect(find.byType(SnackBarAction), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 7));
+    expect(find.byKey(const ValueKey('sync-status-snackbar')), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('sync-status-snackbar')), findsNothing,
+        reason: 'a snackbar with an action used to persist until swiped '
+            'away, hiding every later snackbar behind it');
+    await h.dispose();
+  });
+
+  testWidgets(
+      'with assistive navigation on, the sync-status snackbar is still '
+      'there after eight seconds', (tester) async {
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(accessibleNavigation: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    final h = Harness(tester);
+    await h.pump();
+
+    await tester.tap(find.byType(SyncStatusGlyph));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('sync-status-snackbar')), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 9));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('sync-status-snackbar')), findsOneWidget);
+    expect(find.byType(SnackBarAction), findsOneWidget);
     await h.dispose();
   });
 
@@ -679,6 +743,87 @@ void main() {
       expect(navBar.selectedIndex, AppTab.insights.index,
           reason: 'the link switched the shell\'s own selected tab, not '
               'just pushed a new screen on top of it');
+      expect(find.byKey(const ValueKey('history-card')), findsOneWidget);
+      await h.dispose();
+    });
+
+    testWidgets(
+        'a profile with only its onboarding answers gets no "See cycle '
+        'history" link: Insights has no history for it to lead to',
+        (tester) async {
+      useTallWindow(tester);
+      final h = Harness(tester);
+      // The shell runs on the real clock, so the answers are relative to it:
+      // a period that started ten days ago on a 28-day cycle.
+      await h.pump(
+        lastPeriodStart: LocalDate.today().addDays(-10),
+        typicalCycleLengthDays: 28,
+      );
+
+      expect(find.byType(OverviewPanel), findsOneWidget);
+      expect(find.text('Provisional'), findsOneWidget,
+          reason: 'the onboarding answers seed an estimate on Today');
+      expect(
+        find.byKey(const ValueKey('overview-disclaimer')),
+        findsOneWidget,
+        reason: 'the disclaimer sits below where the link goes, so the '
+            'panel is laid out past it and its absence is a decision',
+      );
+      expect(
+        find.byKey(const ValueKey('overview-see-history-link')),
+        findsNothing,
+      );
+
+      // The place the link used to lead: no history card at all.
+      await tester.tap(tabKey('insights'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AnalysisTab), findsOneWidget);
+      expect(find.byType(CycleHistorySection), findsOneWidget);
+      expect(find.byKey(const ValueKey('history-card')), findsNothing);
+      await h.dispose();
+    });
+
+    testWidgets(
+        'logging a first period brings the link in, and it then leads to a '
+        'history card', (tester) async {
+      useTallWindow(tester);
+      final h = Harness(tester);
+      await h.pump(
+        lastPeriodStart: LocalDate.today().addDays(-10),
+        typicalCycleLengthDays: 28,
+      );
+      expect(
+        find.byKey(const ValueKey('overview-disclaimer')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('overview-see-history-link')),
+        findsNothing,
+      );
+
+      await DriftDayEntriesRepository(h.db.storage).save(DayEntry(
+        id: '',
+        profileId: h.profileId!,
+        localDate: LocalDate.today(),
+        tz: 'America/Chicago',
+        flow: FlowLevel.medium,
+        updatedAt: DateTime.utc(2026, 1, 1),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Provisional'), findsOneWidget,
+          reason: 'one logged period completes no cycle: the estimate is '
+              'still provisional, yet there is now history to show');
+      expect(
+        find.byKey(const ValueKey('overview-see-history-link')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('overview-see-history-link')));
+      await tester.pumpAndSettle();
+
+      final navBar =
+          tester.widget<NavigationBar>(find.byType(NavigationBar));
+      expect(navBar.selectedIndex, AppTab.insights.index);
       expect(find.byKey(const ValueKey('history-card')), findsOneWidget);
       await h.dispose();
     });

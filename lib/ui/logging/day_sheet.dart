@@ -113,6 +113,7 @@ import 'package:provider/provider.dart';
 
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/sharing/guardian_lens.dart';
+import 'package:lunarlog/ui/components/action_snack_bar.dart';
 import 'package:lunarlog/ui/components/category_picker.dart';
 import 'package:lunarlog/ui/components/destructive_button.dart';
 import 'package:lunarlog/ui/components/responsive_body.dart';
@@ -1715,11 +1716,14 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
 
   /// Issue #856: shows the post-delete snackbar with an Undo action,
   /// mirroring `overview_panel.dart`'s `today-card-logged-snackbar` shape
-  /// (same content-plus-action layout, `SnackBar`'s own default duration).
-  /// The restore runs only from the explicit action tap, so an ignored or
-  /// dismissed snackbar simply leaves the delete in place. [messenger] is
-  /// captured before the pop because this sheet's context is gone by the
-  /// time the action can be tapped.
+  /// (same content-plus-action layout, and the same [actionSnackBar]
+  /// timing: it leaves after `kActionSnackBarDuration` unless assistive
+  /// navigation is on). The restore runs only from the explicit action tap,
+  /// so an ignored, dismissed, or timed-out snackbar simply leaves the
+  /// delete in place. [messenger] is captured before the pop because this
+  /// sheet's context is gone by the time the action can be tapped; the
+  /// caller is still mounted here, so the assistive-navigation flag is read
+  /// from this sheet's own context.
   void _showDeleteUndoSnackbar(
     ScaffoldMessengerState? messenger,
     AppLocalizations l10n,
@@ -1728,17 +1732,16 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
     List<Observation> observations,
   ) {
     messenger?.showSnackBar(
-      SnackBar(
+      actionSnackBar(
         key: const ValueKey('day-sheet-delete-snackbar'),
         content: Text(l10n.daySheetDeletedSnackbar),
-        action: SnackBarAction(
-          label: l10n.daySheetUndo,
-          onPressed: () => unawaited(_undoDelete(
-            repository: repository,
-            entry: entry,
-            observations: observations,
-          )),
-        ),
+        actionLabel: l10n.daySheetUndo,
+        onAction: () => unawaited(_undoDelete(
+          repository: repository,
+          entry: entry,
+          observations: observations,
+        )),
+        accessibleNavigation: MediaQuery.accessibleNavigationOf(context),
       ),
     );
   }
@@ -1871,22 +1874,21 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
     );
     if (!evaluation.changesCycleStartSet) return null;
     final l10n = AppLocalizations.of(context);
-    return SnackBar(
+    return actionSnackBar(
       key: const ValueKey('day-sheet-cycle-start-snackbar'),
       content: Text(
         evaluation.startsCycleAtDate
             ? l10n.daySheetCycleStartSnackbar
             : l10n.daySheetCycleHistorySnackbar,
       ),
-      action: SnackBarAction(
-        label: l10n.daySheetUndo,
-        onPressed: () => unawaited(_undoCycleStartChange(
-          repository: widget.repository,
-          previous: widget.existing,
-          profileId: widget.profileId,
-          date: widget.date,
-        )),
-      ),
+      actionLabel: l10n.daySheetUndo,
+      onAction: () => unawaited(_undoCycleStartChange(
+        repository: widget.repository,
+        previous: widget.existing,
+        profileId: widget.profileId,
+        date: widget.date,
+      )),
+      accessibleNavigation: MediaQuery.accessibleNavigationOf(context),
     );
   }
 

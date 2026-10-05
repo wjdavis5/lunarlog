@@ -119,6 +119,42 @@ void main() {
       expect(view.variationDays, isNull);
     });
 
+    test('hasHistory: false with nothing logged, true from the first logged '
+        'period on (one episode is an open cycle to list)', () {
+      expect(
+        deriveCycleHistory(episodes: const [], today: d(2026, 1, 1))
+            .hasHistory,
+        isFalse,
+      );
+
+      final onePeriod = deriveCycleHistory(
+        episodes: episodesFromStarts([d(2026, 5, 13)]),
+        today: d(2026, 5, 20),
+      );
+      expect(onePeriod.hasHistory, isTrue);
+      expect(onePeriod.items, hasLength(1));
+      expect(onePeriod.completedCycleCount, 0,
+          reason: 'history to show does not need a completed cycle');
+
+      expect(
+        deriveCycleHistory(
+          episodes: episodesFromStarts(kSteadyStarts),
+          today: d(2026, 5, 20),
+        ).hasHistory,
+        isTrue,
+      );
+    });
+
+    test('hasHistory holds when every cycle is omitted: omitted cycles stay '
+        'in the list', () {
+      final view = deriveCycleHistory(
+        episodes: episodesFromStarts(kSteadyStarts),
+        today: d(2026, 5, 20),
+        omittedCycleStarts: kSteadyStarts.toSet(),
+      );
+      expect(view.hasHistory, isTrue);
+    });
+
     test('input order is irrelevant', () {
       final forward = deriveCycleHistory(
         episodes: episodesFromStarts(kSteadyStarts),
