@@ -8937,6 +8937,12 @@ abstract class AppLocalizations {
   /// **'You\'ve been invited to a shared profile in lunarlog. Sign in, or create an account, to see the invitation and accept it.'**
   String get webInviteSignedOutBody;
 
+  /// The web notes page's heading. The page holds one profile's guardian notes and care notes and is reached by its own address, so the heading has to say whose notes they are.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes for {profileName}'**
+  String webNotesTitle(String profileName);
+
   /// Issue #1253: the web home's signed-out state (the sign-in itself is #1250). The one sentence under the welcome title: what signing in to the web client lets the reader do.
   ///
   /// In en, this message translates to:

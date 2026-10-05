@@ -7322,6 +7322,15 @@
   "@webInviteSignedOutBody": {
     "description": "The web invitation page for a visitor who is not signed in. An invitation can only be read and accepted by an account, so the page says so and offers both ways in; the sign-in pages return here afterwards."
   },
+  "webNotesTitle": "Notes for {profileName}",
+  "@webNotesTitle": {
+    "description": "The web notes page's heading. The page holds one profile's guardian notes and care notes and is reached by its own address, so the heading has to say whose notes they are.",
+    "placeholders": {
+      "profileName": {
+        "type": "String"
+      }
+    }
+  },
   "webHomeNeedsSignIn": "Sign in to log a day, look back over the calendar, and manage guardians for the profiles you keep or share.",
   "@webHomeNeedsSignIn": {
     "description": "Issue #1253: the web home's signed-out state (the sign-in itself is #1250). The one sentence under the welcome title: what signing in to the web client lets the reader do."

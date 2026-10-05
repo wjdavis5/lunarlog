@@ -1467,6 +1467,7 @@ export const MESSAGE_IDS = [
   "webDayDeclinedNotice",
   "webDayUnsavedWarning",
   "webInviteSignedOutBody",
+  "webNotesTitle",
   "webHomeNeedsSignIn",
   "webWelcomeTitle",
   "webWelcomeStorageNote",

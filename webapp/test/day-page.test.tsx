@@ -246,6 +246,16 @@ describe('DayPage (issue #1254)', () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
+  // "Back to today" used to go to "/", which opens the first profile in the
+  // list: someone else's whenever this day belongs to any other profile.
+  it('leads back to the home of the profile whose day this is', async () => {
+    renderDay(fakeClient().client);
+    expect(await screen.findByRole('link', { name: 'Back to today' })).toHaveAttribute(
+      'href',
+      `/?profile=${PROFILE_ID}`,
+    );
+  });
+
   it('renders the heading and the flow chips for a writer', async () => {
     const { client } = fakeClient();
     renderDay(client);

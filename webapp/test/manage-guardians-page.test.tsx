@@ -186,6 +186,14 @@ afterEach(() => {
 });
 
 describe('ManageGuardiansPage (issue #1255)', () => {
+  it("leads back to this profile's home", () => {
+    renderPage();
+    expect(screen.getByRole('link', { name: messages['webDayBackToToday'] })).toHaveAttribute(
+      'href',
+      `/?profile=${ULID}`,
+    );
+  });
+
   it('renders the screen title and both guardian rows with role labels', async () => {
     renderPage();
     expect(
