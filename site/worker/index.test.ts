@@ -70,8 +70,8 @@ Deno.test("/invite: serves invite.html without redirect and preserves query stri
   assertEquals(res.headers.get("referrer-policy"), "no-referrer");
   assertEquals(res.headers.get("x-content-type-options"), "nosniff");
   const body = await res.text();
-  assertStringIncludes(body, "You have a Lunarlog invitation");
-  assertStringIncludes(body, "Open in Lunarlog");
+  assertStringIncludes(body, "You have a lunarlog invitation");
+  assertStringIncludes(body, "Open in lunarlog");
   // Issue #1279: the web-app redemption link (issue #1255) is withheld until
   // #1258 serves the React client at app.lunarlog.app — that origin is still
   // the Flutter web build, which rejects https invite links, so the button
@@ -87,7 +87,7 @@ Deno.test("/invite/*: serves invite.html for subpaths", async () => {
   const res = await worker.fetch(req, {});
   assertEquals(res.status, 200);
   const body = await res.text();
-  assertStringIncludes(body, "You have a Lunarlog invitation");
+  assertStringIncludes(body, "You have a lunarlog invitation");
 });
 
 Deno.test("/invite: rejects POST with 405", async () => {
