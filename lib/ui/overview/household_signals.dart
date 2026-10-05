@@ -179,6 +179,11 @@ HouseholdTimingSignal? _activeTiming(
   // Issue #853: under the framing a precise "expected in N days" is the
   // false precision the framing exists to avoid — no upcoming line at all.
   if (irregularFraming) return null;
+  return _upcomingTiming(active);
+}
+
+/// The upcoming line for an estimate that has not been passed.
+HouseholdTimingSignal? _upcomingTiming(ActivePrediction active) {
   // Issue #1518: an estimate shown as a range is said as a range. The
   // single count below is the distance to the middle of it.
   final range = estimateRangeDaysAhead(active);
