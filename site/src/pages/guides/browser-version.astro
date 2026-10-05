@@ -1,5 +1,6 @@
 ---
 import BaseLayout from "../../layouts/BaseLayout.astro";
+import WebAppLink from "../../components/WebAppLink.astro";
 
 // Issue #1106, guide 7 — rewritten for the React web client (#1258): the
 // browser keeps nothing at rest. Every factual claim carries a
@@ -14,7 +15,7 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
     <h1 class="doc__title">Using the browser version</h1>
     <p class="doc__lede">
       lunarlog runs in a browser at
-      <a href="https://app.lunarlog.app" rel="noopener">app.lunarlog.app</a>
+      <WebAppLink />
       — the same app, signed in to the same account, with one honest
       difference you should understand before using it on a shared
       computer: where a phone keeps your data on the device under its

@@ -172,6 +172,16 @@ assert_contains "Release workflow sets app_flutter=true" "$release_wf_output" "a
 assert_contains "Release workflow sets database=false" "$release_wf_output" "database=false"
 
 # ---------------------------------------------------------------------------
+# Case 17b: site and web-app deploy workflows read by site_claims_test.dart
+# ---------------------------------------------------------------------------
+for site_wf in site-deploy.yml site.yml webapp-deploy.yml; do
+  site_wf_output="$(run_detect ".github/workflows/${site_wf}")"
+  assert_contains "${site_wf} sets app_flutter=true" "$site_wf_output" "app_flutter=true"
+  assert_contains "${site_wf} sets release_guards=true" "$site_wf_output" "release_guards=true"
+  assert_contains "${site_wf} sets database=false" "$site_wf_output" "database=false"
+done
+
+# ---------------------------------------------------------------------------
 # Case 18: site/public/* and docs/links/* (checked by link_artifacts_test.dart)
 # ---------------------------------------------------------------------------
 links_output="$(run_detect "site/public/invite.html

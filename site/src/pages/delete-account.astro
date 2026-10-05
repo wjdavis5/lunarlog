@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import UiLabel from "../components/UiLabel.astro";
+import WebAppLink from "../components/WebAppLink.astro";
 
 // Issue #1102: the account-deletion page Google Play's Data safety form
 // links to from its "Delete account URL" field. Every factual claim about
@@ -94,7 +95,7 @@ const privacyPolicyUrl =
       <!-- cite: webapp/src/App.tsx (the header's Account link, shown once signed in); webapp/src/pages/AccountPage.tsx (the Account page: the export card, and DeleteAccountCard with its confirmation step and the Apple turn); supabase/functions/delete-account/index.ts (the same function the phone apps call). Labels via UiLabel from lib/l10n/app_en.arb. -->
       <p>
         The browser version at
-        <a href="https://app.lunarlog.app">app.lunarlog.app</a> has no More
+        <WebAppLink /> has no More
         tab. Deletion is on its account page:
       </p>
       <ol class="doc__steps">

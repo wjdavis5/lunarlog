@@ -172,6 +172,23 @@ jobs:
         working-directory: site
         run: npm run check:lighthouse
 
+      - name: Build and check the site as it is when the browser version is down
+        # The deploy builds the site with LUNARLOG_WEB_APP_LIVE=false when
+        # app.lunarlog.app is not serving the browser version
+        # (site/src/lib/web-app.mjs). That build would otherwise only ever
+        # happen during an outage. Here it is built on every site change and
+        # checked: no page links to the address, the home page says so in
+        # place of its button, and the result is still valid HTML. It runs
+        # last because it replaces site/dist.
+        working-directory: site
+        env:
+          LUNARLOG_WEB_APP_LIVE: 'false'
+        run: |
+          npm run build
+          node scripts/check-web-app-down.mjs
+          npm run check:html
+          npm run check:spacing
+
       - name: Upload the Lighthouse report
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

@@ -117,6 +117,16 @@ universal-link routes.
   `lunarlog-links` name. `www.lunarlog.app` -> apex is a documented follow-up:
   Workers static-asset `_redirects` does not support domain-level redirects,
   so it needs a Bulk Redirect or a dashboard rule (see `docs/links/README.md`).
+- **Links to the browser version.** The home page's button and the in-text
+  links to `app.lunarlog.app` are shown only while that address is serving
+  the browser version. `site-deploy.yml` runs `site/scripts/probe-web-app.mjs`
+  before the build and passes the answer as `LUNARLOG_WEB_APP_LIVE`; on
+  `false` the site is built with a plain "not available right now" notice in
+  their place (`site/src/lib/web-app.mjs`, `WebAppLink.astro`). The site
+  redeploys after every successful deploy of the browser version, so the
+  links return on their own. Never hard-code a link to that address in a
+  page: `test/site/site_claims_test.dart` fails on one. `site.yml` builds and
+  checks the down variant on every site change.
 - **CI.** `.github/workflows/site.yml` is a separate, path-filtered workflow
   (`site/**`, `PRIVACY.md`, `lib/domain/content/**`, `lib/l10n/app_en.arb`,
   and the workflow itself), with a weekly outbound-link schedule. It is not

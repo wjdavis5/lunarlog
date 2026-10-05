@@ -2,6 +2,7 @@
 import BaseLayout from "../layouts/BaseLayout.astro";
 import Screenshot from "../components/Screenshot.astro";
 import UiLabel from "../components/UiLabel.astro";
+import { WEB_APP_HOST, WEB_APP_URL, webAppIsLive } from "../lib/web-app.mjs";
 
 // Issue #1160: the marketing home. The family-collaboration story leads
 // (docs/product/positioning.md) — track a cycle together, guardians by
@@ -18,14 +19,30 @@ const tagline =
   "to who logged it, estimates that explain themselves, and reminders " +
   "that reach the right person.";
 
-const browserUrl = "https://app.lunarlog.app";
+// The deploy tells the build whether the address is serving the browser
+// version right now (src/lib/web-app.mjs). When it is not, the button
+// would lead to an error page, so the hero says so instead.
+const browserUrl = WEB_APP_URL;
+const browserLive = webAppIsLive();
 ---
 
 <BaseLayout title="lunarlog" description={tagline}>
   <section class="hero">
     <h1 class="hero__title">Track a cycle, together.</h1>
     <p class="hero__tagline">{tagline}</p>
-    <a class="button" href={browserUrl}>Use lunarlog in your browser</a>
+    {
+      browserLive ? (
+        <a class="button" href={browserUrl}>Use lunarlog in your browser</a>
+      ) : (
+        <>
+          <p class="hero__notice">
+            The browser version is not available right now. It will be
+            back at {WEB_APP_HOST}.
+          </p>
+          <a class="button" href="/guides/">Read the guides</a>
+        </>
+      )
+    }
     <p class="hero__fineprint">Free for personal use.</p>
   </section>
 

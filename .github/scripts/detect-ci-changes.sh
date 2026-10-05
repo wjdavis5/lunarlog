@@ -118,6 +118,16 @@ while IFS= read -r file; do
       release_guards=true
       ;;
 
+    # Site and web-app deploy workflows read by a Dart test: site_claims_test.dart
+    # checks that site-deploy.yml asks app.lunarlog.app before it builds and
+    # runs after webapp-deploy.yml under that workflow's real name, and that
+    # site.yml builds the down variant. Without app_flutter here an edit to
+    # one of them skips that test and the next unrelated Flutter PR goes red.
+    .github/workflows/site-deploy.yml|.github/workflows/site.yml|.github/workflows/webapp-deploy.yml)
+      app_flutter=true
+      release_guards=true
+      ;;
+
     # Release guard scripts, tool coordinators, or other workflow files
     .github/workflows/*|.github/scripts/*|tool/coord/*|tool/orchestrator/*)
       release_guards=true

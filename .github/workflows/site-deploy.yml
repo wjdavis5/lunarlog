@@ -35,6 +35,15 @@ on:
       # (the issue's second acceptance criterion).
       - 'lib/ui/**'
       - 'tool/screenshots/**'
+  # The site links to the browser version at app.lunarlog.app only while
+  # that address is serving it (see the probe step below). A deploy of the
+  # browser version that succeeds is when the answer can change, so the
+  # site is rebuilt after one: the button comes back on its own once the
+  # address does, with nobody having to remember to redeploy the site.
+  workflow_run:
+    workflows: ['Web app staging deploy (Cloudflare Workers)']
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -48,6 +57,9 @@ permissions:
 jobs:
   deploy:
     name: Build and deploy the site Worker to Cloudflare
+    # After a deploy of the browser version, only when it succeeded: a
+    # failed one changed nothing the site could say differently.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -94,9 +106,29 @@ jobs:
           flutter pub get
           npm run screenshots
 
+      - name: Ask app.lunarlog.app whether it is serving the browser version
+        # The home page's main button, and links on three other pages, lead
+        # to app.lunarlog.app. In October 2026 that address answered a
+        # Cloudflare error page for hours while the site went on sending
+        # people there. So the deploy asks first. The script prints `false`
+        # only when the address answered and the answer was not the browser
+        # version; the site is then built with a plain notice in place of
+        # the button and the links (site/src/lib/web-app.mjs). If the
+        # address cannot be reached from this runner at all it prints
+        # `true`, and the site is built as usual.
+        working-directory: site
+        run: |
+          set -euo pipefail
+          live="$(node scripts/probe-web-app.mjs)"
+          echo "LUNARLOG_WEB_APP_LIVE=${live}" >> "$GITHUB_ENV"
+          if [ "${live}" = "false" ]; then
+            echo "::warning::app.lunarlog.app is not serving the browser version. The site is being deployed with a notice in place of its links to it. They return on the next site deploy after the address is back (one runs after every successful deploy of the browser version)."
+          fi
+
       - name: Build the site
         # `npm run build` runs `astro sync`, `astro check`, and the static
         # build to `site/dist`. A type error fails the deploy before upload.
+        # LUNARLOG_WEB_APP_LIVE comes from the step above.
         working-directory: site
         run: |
           npm ci

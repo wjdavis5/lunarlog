@@ -396,6 +396,16 @@ main {
   color: var(--muted);
 }
 
+/* Shown in place of the hero's button while the browser version's address
+ * is not serving it (src/lib/web-app.mjs). Body text, not a warning: it
+ * states a fact and the page carries on. */
+.hero__notice {
+  margin: 0;
+  max-width: 34rem;
+  font-size: 1.0625rem;
+  color: var(--ink);
+}
+
 .home-section {
   margin-top: 2.75rem;
   max-width: 40rem;

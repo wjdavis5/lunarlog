@@ -510,7 +510,68 @@ void main() {
     test('the default call to action stays the browser app', () {
       final home = File(pages['/']!).readAsStringSync();
       expect(home, contains('Use lunarlog in your browser'));
-      expect(home, contains('https://app.lunarlog.app'));
+      // The address itself lives in one module, which the home page and
+      // every in-text link read it from.
+      expect(home, contains('const browserUrl = WEB_APP_URL;'));
+      expect(
+        File('site/src/lib/web-app.mjs').readAsStringSync(),
+        contains('export const WEB_APP_URL = "https://app.lunarlog.app";'),
+      );
+    });
+
+    // In October 2026 app.lunarlog.app answered a Cloudflare error page for
+    // hours while the home page's one button, and links on three other
+    // pages, went on leading there. The deploy now asks the address first
+    // and the site says "not available right now" in their place.
+    test('no page links to the browser version except through the switch', () {
+      final direct = RegExp(r'href="https://app\.lunarlog\.app');
+      final offenders = <String>[];
+      for (final file in Directory('site/src')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.astro'))) {
+        if (direct.hasMatch(file.readAsStringSync())) {
+          offenders.add(file.path.replaceAll(r'\', '/'));
+        }
+      }
+      expect(
+        offenders,
+        isEmpty,
+        reason: 'a hard-coded link stays up when the address is down: use '
+            '<WebAppLink /> in running text, or webAppIsLive() as the home '
+            'page does',
+      );
+
+      final home = File(pages['/']!).readAsStringSync();
+      expect(home, contains('const browserLive = webAppIsLive();'));
+      expect(home, contains('The browser version is not available right now.'));
+      final link =
+          File('site/src/components/WebAppLink.astro').readAsStringSync();
+      expect(link, contains('webAppIsLive()'));
+      expect(link, contains('(not available right now)'));
+    });
+
+    test('the deploy asks the address before it builds, and rebuilds when '
+        'the browser version deploys', () {
+      final deploy =
+          File('.github/workflows/site-deploy.yml').readAsStringSync();
+      final probe = deploy.indexOf('node scripts/probe-web-app.mjs');
+      final build = deploy.indexOf('npm run build');
+      expect(probe, greaterThan(0));
+      expect(build, greaterThan(probe),
+          reason: 'the answer has to be in the environment before the build');
+      expect(deploy, contains(r'echo "LUNARLOG_WEB_APP_LIVE=${live}" >> "$GITHUB_ENV"'));
+      expect(deploy, contains("workflows: ['Web app staging deploy (Cloudflare Workers)']"));
+      // The name it waits for has to be the workflow's real name.
+      expect(
+        File('.github/workflows/webapp-deploy.yml').readAsStringSync(),
+        contains('name: Web app staging deploy (Cloudflare Workers)'),
+      );
+      // And the down build is exercised on every site change, not only
+      // during an outage.
+      final ci = File('.github/workflows/site.yml').readAsStringSync();
+      expect(ci, contains("LUNARLOG_WEB_APP_LIVE: 'false'"));
+      expect(ci, contains('node scripts/check-web-app-down.mjs'));
     });
 
     // Issue #1208 put a browser-width capture under the CTA, captioned as
