@@ -6316,9 +6316,9 @@
     "@analysisLoadError": {
       "description": "Issue #1004 (tranche 4a): error shown when the analysis tab's prediction stream fails."
     },
-    "analysisTitle": "Analysis",
+    "analysisTitle": "Insights",
     "@analysisTitle": {
-      "description": "Issue #1004 (tranche 4a): heading of the analysis tab."
+      "description": "Heading of the Insights tab. The same word as the tab's own label (appShellTabInsights): the page was headed \"Analysis\" under a tab called \"Insights\"."
     },
     "analysisBbtChartTitle": "BBT by cycle day",
     "@analysisBbtChartTitle": {

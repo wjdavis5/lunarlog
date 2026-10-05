@@ -263,7 +263,12 @@ void main() {
     final h = Harness(tester);
     await h.pump(starts: kSteadyStarts);
 
-    expect(find.text('Analysis'), findsOneWidget);
+    // The page is headed with the name of the tab that opens it.
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('analysis-heading'))).data,
+      'Insights',
+    );
+    expect(find.text('Analysis'), findsNothing);
     expect(find.byKey(const ValueKey('analysis-stats')), findsOneWidget);
     expect(textAt(tester, 'analysis-mean-cycle-length'), '30 days');
     expect(textAt(tester, 'analysis-mean-period-length'), '4 days');

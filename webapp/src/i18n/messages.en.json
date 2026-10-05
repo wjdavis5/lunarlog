@@ -1271,7 +1271,7 @@
   "lateResolverWhyLate": "Why is it late?",
   "overviewWhyThreeCompletedCycles": "Why three completed cycles?",
   "analysisLoadError": "Could not load your cycle analysis.",
-  "analysisTitle": "Analysis",
+  "analysisTitle": "Insights",
   "analysisBbtChartTitle": "BBT by cycle day",
   "analysisStatsTitle": "Cycle statistics",
   "analysisMeanCycleLength": "Average cycle length",
