@@ -4879,7 +4879,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get analysisLoadError => 'Could not load your cycle analysis.';
 
   @override
-  String get analysisTitle => 'Analysis';
+  String get analysisTitle => 'Insights';
 
   @override
   String get analysisBbtChartTitle => 'BBT by cycle day';

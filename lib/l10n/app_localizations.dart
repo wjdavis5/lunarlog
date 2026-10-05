@@ -7750,10 +7750,10 @@ abstract class AppLocalizations {
   /// **'Could not load your cycle analysis.'**
   String get analysisLoadError;
 
-  /// Issue #1004 (tranche 4a): heading of the analysis tab.
+  /// Heading of the Insights tab. The same word as the tab's own label (appShellTabInsights): the page was headed "Analysis" under a tab called "Insights".
   ///
   /// In en, this message translates to:
-  /// **'Analysis'**
+  /// **'Insights'**
   String get analysisTitle;
 
   /// Issue #1004 (tranche 4a): title of the BBT chart card.

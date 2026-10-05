@@ -573,7 +573,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(AnalysisTab), findsOneWidget);
-    expect(find.text('Analysis'), findsOneWidget);
+    // The tab's label and the heading of the page it opens are one word:
+    // the page used to be headed "Analysis".
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('analysis-heading'))).data,
+      'Insights',
+    );
+    expect(find.text('Analysis'), findsNothing);
     expect(find.text('Insights are on the way'), findsNothing,
         reason: 'the #182 placeholder copy is gone');
     await h.dispose();
