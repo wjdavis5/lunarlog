@@ -956,40 +956,40 @@ void main() {
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
         await storage.applyRemoteRows([
+          guardianRow('g-0', 'user-mom', 'primary_guardian', null),
           RemoteProfileGuardianRow(
-            id: 'g-0',
+            id: 'g-1',
             profileId: testProfile.id,
-            userId: 'user-mom',
-            role: 'primary_guardian',
+            userId: 'user-dad',
+            role: 'co_parent',
             status: 'accepted',
             createdAt: DateTime.utc(2026, 1, 1),
             updatedAt: DateTime.utc(2026, 1, 1),
             serverVersion: 1,
             isSubject: true,
           ),
-          guardianRow('g-1', 'user-dad', 'co_parent', null),
         ]);
         await pumpScreen(tester, textScale: 2.0);
 
         expect(tester.takeException(), isNull);
-        final ownTitle = find.ancestor(
-          of: find.text('You'),
+        expect(
+          find.ancestor(of: find.text('You'), matching: find.byType(Wrap)),
+          findsOneWidget,
+        );
+        final otherTitle = find.ancestor(
+          of: find.text('Co-Parent'),
           matching: find.byType(Wrap),
         );
-        expect(ownTitle, findsOneWidget);
+        expect(otherTitle, findsOneWidget);
         expect(
           find.descendant(
-            of: ownTitle,
+            of: otherTitle,
             matching: find.byKey(
-              const ValueKey('guardian-subject-badge-user-mom'),
+              const ValueKey('guardian-subject-badge-user-dad'),
             ),
           ),
           findsOneWidget,
           reason: 'the subject badge still rides the same Wrap as the title',
-        );
-        expect(
-          find.ancestor(of: find.text('Co-Parent'), matching: find.byType(Wrap)),
-          findsOneWidget,
         );
 
         await tester.pumpWidget(const SizedBox.shrink());
@@ -3475,7 +3475,7 @@ void main() {
       await tester.tap(find.text('Guardians'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Luna Guardians'), findsOneWidget);
+      expect(find.text('Guardians for Luna'), findsOneWidget);
 
       // U2 route naming: the pushed route is named ManageGuardiansScreen.
       final route = ModalRoute.of(

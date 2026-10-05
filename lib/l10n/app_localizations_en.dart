@@ -3043,7 +3043,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String sharingManageGuardiansScreenTitle(String profileName) {
-    return '$profileName Guardians';
+    return 'Guardians for $profileName';
   }
 
   @override

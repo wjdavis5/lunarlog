@@ -3869,9 +3869,9 @@
         }
       }
     },
-    "sharingManageGuardiansScreenTitle": "{profileName} Guardians",
+    "sharingManageGuardiansScreenTitle": "Guardians for {profileName}",
     "@sharingManageGuardiansScreenTitle": {
-      "description": "Issue #1004 (tranche 1): manage-guardians app-bar title.",
+      "description": "Manage-guardians title, in the app bar and as the browser page's heading. \"Guardians for Maya\", the form the notes page uses (\"Notes for Maya\"): the earlier \"Maya Guardians\" read as a name.",
       "placeholders": {
         "profileName": {
           "type": "String"

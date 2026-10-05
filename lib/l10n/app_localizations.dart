@@ -4788,10 +4788,10 @@ abstract class AppLocalizations {
   /// **'{days, plural, =1{expires in 1 day} other{expires in {days} days}}'**
   String sharingManageGuardiansExpiryDays(int days);
 
-  /// Issue #1004 (tranche 1): manage-guardians app-bar title.
+  /// Manage-guardians title, in the app bar and as the browser page's heading. "Guardians for Maya", the form the notes page uses ("Notes for Maya"): the earlier "Maya Guardians" read as a name.
   ///
   /// In en, this message translates to:
-  /// **'{profileName} Guardians'**
+  /// **'Guardians for {profileName}'**
   String sharingManageGuardiansScreenTitle(String profileName);
 
   /// Issue #1004 (tranche 1): invite-guardian floating action label.

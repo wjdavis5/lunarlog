@@ -22,14 +22,19 @@ import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/domain/repositories/profiles_repository.dart';
+import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/minimum_age_acknowledgement_copy.dart';
+import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/sharing/accept_invite_sheet.dart';
 import 'package:lunarlog/ui/sharing/invite_guardian_dialog.dart';
 import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
+import 'package:provider/provider.dart';
 
 import '../../support/fake_consent_service.dart';
+import '../../support/fake_settings_store.dart';
 
 /// Minimal fake recording what the dialog asked for; previews and accept
 /// results are scriptable for the sheet tests.
@@ -114,14 +119,45 @@ class _FakeGuardiansRepository implements ProfileGuardiansRepository {
   Future<List<ProfileGuardian>> getForProfile(String profileId) async => rows;
 }
 
-Profile _profile() => Profile(
+Profile _profile({
+  ProfileRelationship relationship = ProfileRelationship.daughter,
+  bool isMinor = true,
+}) =>
+    Profile(
       id: 'p-subject',
       displayName: 'Riley',
-      isMinor: true,
+      isMinor: isMinor,
       mode: ProfileMode.standard,
       createdAt: DateTime.utc(2026, 1, 1),
       updatedAt: DateTime.utc(2026, 1, 1),
-      relationship: ProfileRelationship.daughter,
+      relationship: relationship,
+    );
+
+/// The Teen-mode offer reads `watch()` and writes through `update()`.
+class _FakeProfilesRepository implements ProfilesRepository {
+  _FakeProfilesRepository(this._profiles);
+
+  final List<Profile> _profiles;
+
+  @override
+  Future<List<Profile>> list() async => List.of(_profiles);
+
+  @override
+  Stream<List<Profile>> watch() => Stream.value(List.of(_profiles));
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// [_localized] with the two seams the Teen-mode offer needs, so a test
+/// that expects no offer is not passing only because nothing could show.
+Widget _withOfferSeams(Widget child, {required ProfileController controller}) =>
+    MultiProvider(
+      providers: [
+        Provider<SettingsStore>.value(value: FakeSettingsStore()),
+        ChangeNotifierProvider<ProfileController>.value(value: controller),
+      ],
+      child: _localized(child),
     );
 
 ProfileGuardian _guardian(
@@ -469,6 +505,135 @@ void main() {
 
       expect(find.byKey(const ValueKey('invite-preset-subject')),
           findsOneWidget);
+    });
+
+    // Issue #1509: a profile has one subject, and the server refuses a
+    // second subject invitation. The preset was still offered, and
+    // selected by default, after the daughter had accepted hers.
+    testWidgets('the invite sheet withholds the subject preset once someone '
+        'is the subject', (tester) async {
+      final sharing = _FakeSharing();
+      final repo = _FakeGuardiansRepository([
+        _guardian('user-mom', GuardianRole.primaryGuardian, name: 'Mom'),
+        _guardian('user-daughter', GuardianRole.caregiver,
+            isSubject: true, name: 'Riley'),
+      ]);
+      await tester.pumpWidget(_localized(ManageGuardiansScreen(
+        profile: _profile(),
+        guardiansRepository: repo,
+        sharingService: sharing,
+        currentUserId: 'user-mom',
+      )));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Invite guardian'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('invite-preset-subject')), findsNothing);
+    });
+
+    // Issue #1510: since issue #1499 the person who keeps her own profile
+    // is its subject, so the badge landed on her own row and spoke about
+    // her in the third person.
+    testWidgets("the caller's own row carries no \"(her profile)\" badge",
+        (tester) async {
+      final repo = _FakeGuardiansRepository([
+        _guardian('user-riley', GuardianRole.primaryGuardian, isSubject: true),
+      ]);
+      await tester.pumpWidget(_localized(ManageGuardiansScreen(
+        profile: _profile(relationship: ProfileRelationship.self),
+        guardiansRepository: repo,
+        sharingService: _FakeSharing(),
+        currentUserId: 'user-riley',
+      )));
+      await tester.pumpAndSettle();
+
+      expect(find.text('You'), findsOneWidget);
+      expect(find.text('(her profile)'), findsNothing);
+    });
+  });
+
+  group('the profile someone keeps for herself (issues #1509, #1510)', () {
+    final today = DateTime.utc(2026, 10, 5);
+
+    test('is never offered a subject invitation: she is its subject', () {
+      expect(
+        _profile(relationship: ProfileRelationship.self)
+            .subjectInviteAvailableAt(today),
+        isFalse,
+        reason: 'a minor tracking her own cycle',
+      );
+      expect(
+        _profile(relationship: ProfileRelationship.self, isMinor: false)
+            .subjectInviteAvailableAt(today),
+        isFalse,
+      );
+      // Unchanged: a child's profile, and a minor's with no relationship.
+      expect(_profile().subjectInviteAvailableAt(today), isTrue);
+      expect(
+        Profile(
+          id: 'p-minor',
+          displayName: 'Sam',
+          isMinor: true,
+          mode: ProfileMode.standard,
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 1),
+        ).subjectInviteAvailableAt(today),
+        isTrue,
+      );
+    });
+
+    testWidgets('a parent is offered Teen mode once her daughter has joined',
+        (tester) async {
+      final profile = _profile();
+      final controller = ProfileController(
+        profilesRepository: _FakeProfilesRepository([profile]),
+        settingsStore: FakeSettingsStore(),
+      );
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(_withOfferSeams(
+        ManageGuardiansScreen(
+          profile: profile,
+          guardiansRepository: _FakeGuardiansRepository([
+            _guardian('user-mom', GuardianRole.primaryGuardian, name: 'Mom'),
+            _guardian('user-daughter', GuardianRole.caregiver,
+                isSubject: true, name: 'Riley'),
+          ]),
+          sharingService: _FakeSharing(),
+          currentUserId: 'user-mom',
+        ),
+        controller: controller,
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('subject-teen-mode-title')),
+          findsOneWidget);
+    });
+
+    testWidgets('a minor who keeps her own profile is not asked about herself '
+        'in the third person', (tester) async {
+      final profile = _profile(relationship: ProfileRelationship.self);
+      final controller = ProfileController(
+        profilesRepository: _FakeProfilesRepository([profile]),
+        settingsStore: FakeSettingsStore(),
+      );
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(_withOfferSeams(
+        ManageGuardiansScreen(
+          profile: profile,
+          guardiansRepository: _FakeGuardiansRepository([
+            _guardian('user-riley', GuardianRole.primaryGuardian,
+                isSubject: true),
+          ]),
+          sharingService: _FakeSharing(),
+          currentUserId: 'user-riley',
+        ),
+        controller: controller,
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('subject-teen-mode-title')),
+          findsNothing);
     });
   });
 }

@@ -896,7 +896,7 @@ void main() {
       await tester.tap(find.text('Guardians'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Alice Guardians'), findsNothing,
+      expect(find.text('Guardians for Alice'), findsNothing,
           reason: 'no sharing service means no navigation at all');
       expect(find.text('Profiles'), findsOneWidget,
           reason: 'still on the picker; nothing was pushed');

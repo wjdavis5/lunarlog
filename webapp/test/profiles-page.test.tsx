@@ -433,6 +433,29 @@ describe('ProfilesPage (issue #1253)', () => {
     ).toBeInTheDocument();
   });
 
+  // The form opens above the lists; the button that opened it can be a
+  // screen below, so focus has to move into the form or nothing appears to
+  // happen.
+  it('moves focus into the form when it opens: its title for an edit, the name for a new profile', () => {
+    fakeClient();
+    renderPage();
+    const row = screen.getByText('Maya').closest('li') as HTMLElement;
+    fireEvent.click(
+      within(row).getByRole('button', { name: messages['webProfilesEditAction'] ?? '' }),
+    );
+    expect(
+      screen.getByRole('heading', { name: messages['webProfilesEditTitle'] ?? '' }),
+    ).toHaveFocus();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: messages['profileDialogCancel'] ?? '' }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: messages['profilePickerAddProfileTooltip'] ?? '' }),
+    );
+    expect(screen.getByLabelText(messages['firstRunNameLabel'] ?? '')).toHaveFocus();
+  });
+
   it('edits a profile: name and irregular framing ride sync_push', async () => {
     const { rpc } = fakeClient();
     renderPage();

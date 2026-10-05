@@ -197,7 +197,14 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     if (_teenOfferChecked || rows.isEmpty) return;
     _teenOfferChecked = true;
     if (!(_callerRoleOf(rows)?.canEditProfile ?? false)) return;
-    final subjectJoined = _acceptedOf(rows).any((g) => g.isSubject);
+    // Issue #1510: the offer speaks to a parent about someone else ("Maya
+    // is logging her own profile now"). Since issue #1499 the person who
+    // keeps her own profile is its subject, so a subject who is the caller
+    // herself does not count: a minor tracking her own cycle was asked
+    // about herself in the third person.
+    final subjectJoined = _acceptedOf(rows).any(
+      (g) => g.isSubject && g.userId != widget.currentUserId,
+    );
     if (!shouldOfferSubjectTeenMode(
       widget.profile,
       subjectJoined: subjectJoined,
@@ -220,8 +227,18 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   /// birth year authoritative, stored flag fallback), which the first-run
   /// invite step (issue #804) answers identically. Pure display gating;
   /// the server enforces the preset's own rules independently.
+  ///
+  /// Not once the profile has its subject (issue #1509): a profile has
+  /// one, and the server refuses a second subject invitation. The preset
+  /// was still offered, and selected by default, after a daughter had
+  /// accepted hers.
   bool get _subjectInviteAvailable =>
+      !_subjectExists &&
       widget.profile.subjectInviteAvailableAt(DateTime.now());
+
+  /// Whether an accepted member is the profile's subject, as of the last
+  /// build of the member list. Read when the invite dialog opens.
+  bool _subjectExists = false;
 
   Future<void> _loadPredictionConnection() async {
     final service = _predictionService;
@@ -1100,6 +1117,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
           final rows = snapshot.data;
           final activeGuardians = _acceptedOf(rows);
           final callerRole = _callerRoleOf(rows);
+          _subjectExists = activeGuardians.any((g) => g.isSubject);
 
           final guardianList = stillLoading
               ? const Padding(
@@ -1568,8 +1586,10 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
             ),
           // Issue #802 (AC3): the subject's row is distinguishable from
           // every guardian's without reading a uuid — same Wrap flow as
-          // "(you)" for 200% text scaling.
-          if (guardian.isSubject)
+          // "(you)" for 200% text scaling. Not on the caller's own row
+          // (issue #1510): "(you)" already says whose it is, and "(her
+          // profile)" beside it spoke about her in the third person.
+          if (guardian.isSubject && guardian.userId != widget.currentUserId)
             Text(
               AppLocalizations.of(context).manageGuardiansSubjectBadge,
               key: ValueKey('guardian-subject-badge-${guardian.userId}'),
