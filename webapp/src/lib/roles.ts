@@ -212,3 +212,25 @@ export function canCancelInvitation(options: {
   }
   return false;
 }
+
+/**
+ * How a guardian's row is titled (the app's `_guardianRowLabels`,
+ * lib/ui/sharing/manage_guardians_screen.dart, issue #1427).
+ *
+ * A guardian has a display name only when the invitation they accepted
+ * supplied one, so whoever created the profile never does. The row used to
+ * fall back to the role for its title and then print the role again
+ * beneath it: "Primary Guardian (you)" over "Primary Guardian".
+ *
+ * - `named`: the name, with "(you)" after it on the reader's own row, and
+ *   the role beneath.
+ * - `self`: the reader's own row with no name: "You", and the role beneath.
+ * - `role`: someone else with no name: the role is the title, and is not
+ *   repeated beneath.
+ */
+export type GuardianRowKind = 'named' | 'self' | 'role';
+
+export function guardianRowKind(displayName: string | null, isMe: boolean): GuardianRowKind {
+  if (displayName !== null && displayName !== '') return 'named';
+  return isMe ? 'self' : 'role';
+}

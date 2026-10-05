@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router';
 
 import { useT, type TFunction } from '../i18n/t';
+import { DOT_SEPARATOR } from '../i18n/punctuation';
 import {
   activeTransferQueryKey,
   guardiansQueryKey,
@@ -37,6 +38,7 @@ import {
   canCancelInvitation,
   canRevokeGuardian,
   guardianRoleLabelId,
+  guardianRowKind,
   roleCanInviteCoParent,
   roleCanManageGuardians,
   roleCanTransferOwnership,
@@ -260,10 +262,21 @@ function GuardianRowItem(props: {
   });
 
   const roleLabel = t(guardianRoleLabelId(props.row.role));
-  const roleLine = props.row.is_subject
-    ? `${roleLabel} · ${t('manageGuardiansSubjectBadge')}`
-    : roleLabel;
-  const name = props.row.display_name ?? roleLabel;
+  // The role is said once (issue #1427): beneath a name or "You", or as
+  // the title of someone who has no name, never both.
+  const rowKind = guardianRowKind(props.row.display_name, props.isMe);
+  const name =
+    rowKind === 'named'
+      ? (props.row.display_name ?? '')
+      : rowKind === 'self'
+        ? t('guardianNotesYou')
+        : roleLabel;
+  const roleLine = [
+    rowKind === 'role' ? null : roleLabel,
+    props.row.is_subject ? t('manageGuardiansSubjectBadge') : null,
+  ]
+    .filter((part) => part !== null)
+    .join(DOT_SEPARATOR);
   const options = props.isMe
     ? []
     : allowedNewRoles({ callerRole: props.myRole, target: props.row, currentUserId: null });
@@ -274,9 +287,9 @@ function GuardianRowItem(props: {
       <div className="row-main">
         <p className="row-title">
           {name}
-          {props.isMe ? ` ${t('sharingManageGuardiansYouSuffix')}` : ''}
+          {rowKind === 'named' && props.isMe ? ` ${t('sharingManageGuardiansYouSuffix')}` : ''}
         </p>
-        <p className="row-sub">{roleLine}</p>
+        {roleLine !== '' ? <p className="row-sub">{roleLine}</p> : null}
         {props.row.status === 'pending' ? (
           <span className="badge">{t('sharingManageGuardiansPendingBadge')}</span>
         ) : null}
