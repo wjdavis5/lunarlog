@@ -7,6 +7,7 @@ import {
   estimateDateText,
   homeEstimateView,
   irregularFramingInEffect,
+  isCivilDate,
   isoDateFormatter,
   isoDaysBetween,
   profileDomainInputs,
@@ -433,6 +434,57 @@ describe('isoDateFormatter', () => {
       day: 'numeric',
     });
     expect(long('2026-10-04')).toBe('Sunday, October 4, 2026');
+  });
+
+  // Issue #1473. `Intl.DateTimeFormat` throws on an invalid date, and these
+  // formatters run while a page renders: a throw took the notes page down
+  // when the date field's year box was given a fifth digit.
+  it('never throws: a value that is not a civil date comes back as given', () => {
+    const full = isoDateFormatter('en', { dateStyle: 'full' });
+    for (const odd of [
+      '20261-10-05',
+      '10000-01-01',
+      '275760-09-13',
+      '2026-02-31',
+      '2026-13-01',
+      '2026-00-10',
+      '2026-10-5',
+      '26-10-05',
+      '',
+      'not a date',
+      '2026-10-05T00:00:00Z',
+    ]) {
+      expect(() => full(odd), odd).not.toThrow();
+      expect(full(odd), odd).toBe(odd);
+    }
+    expect(full('2026-10-05')).toBe('Monday, October 5, 2026');
+  });
+});
+
+describe('isCivilDate', () => {
+  it('accepts a real four-digit-year date', () => {
+    for (const iso of ['2026-10-05', '2024-02-29', '1999-12-31', '0001-01-01', '9999-12-31']) {
+      expect(isCivilDate(iso), iso).toBe(true);
+    }
+  });
+
+  it('refuses a longer year, a day that does not exist, and anything else', () => {
+    for (const iso of [
+      '20261-10-05',
+      '10000-01-01',
+      '2026-02-29',
+      '2026-02-31',
+      '2026-04-31',
+      '2026-13-01',
+      '2026-00-10',
+      '2026-10-00',
+      '2026-10-5',
+      '2026/10/05',
+      ' 2026-10-05',
+      '',
+    ]) {
+      expect(isCivilDate(iso), iso).toBe(false);
+    }
   });
 });
 

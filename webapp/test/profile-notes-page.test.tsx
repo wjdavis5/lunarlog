@@ -163,6 +163,36 @@ describe('ProfileNotesPage (issue #1255)', () => {
     expect(screen.queryByLabelText(/\d{4}-\d{2}-\d{2}/)).toBeNull();
   });
 
+  // Issue #1473: Chrome's year box takes more than four digits, so one
+  // extra keystroke hands the page `20261-10-05`. Formatting that threw
+  // during render and took the whole page, and any unsaved note, with it.
+  it('a date the field hands over with a five-digit year changes nothing', async () => {
+    renderPage();
+    const field = screen.getByLabelText(/^for \w+day, \w+ \d{1,2}, \d{4}$/) as HTMLInputElement;
+    const before = field.value;
+    await screen.findByLabelText(messages['guardianNotesFieldLabel'] ?? '');
+    const calls = sharingMocks.fetchGuardianNotesForDate.mock.calls.length;
+
+    for (const odd of ['20261-10-05', '10000-01-01', '']) {
+      expect(() => fireEvent.change(field, { target: { value: odd } })).not.toThrow();
+    }
+
+    // Still the page, still on the day it was on, and nothing was looked up
+    // for a date that is not one.
+    expect(
+      screen.getByRole('heading', { level: 2, name: messages['guardianNotesSectionTitle'] }),
+    ).toBeInTheDocument();
+    expect(field.value).toBe(before);
+    expect(field).toHaveAttribute('max', '9999-12-31');
+    expect(sharingMocks.fetchGuardianNotesForDate.mock.calls.length).toBe(calls);
+
+    // A real date still moves the page.
+    fireEvent.change(field, { target: { value: '2026-09-30' } });
+    expect(
+      await screen.findByLabelText('for Wednesday, September 30, 2026'),
+    ).toBeInTheDocument();
+  });
+
   // The page is reached by its own address and holds two kinds of note. It
   // used to be titled "Notes from guardians" whoever it was about.
   it("is titled with the profile's name, and that is the only top-level heading", async () => {
