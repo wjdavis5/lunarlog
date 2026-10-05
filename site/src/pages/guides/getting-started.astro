@@ -51,6 +51,16 @@ import HelpCard from "../../components/HelpCard.astro";
           <!-- cite: lib/startup/gate/local_auth_gate.dart (requiresUnlock is always true on native); lib/gate_controller.dart -->
         </li>
       </ol>
+      <p id="browser-first-steps">
+        In a browser the order is the other way round. The browser version
+        keeps nothing on the computer, so there is nothing to set up until
+        you are signed in: create the account or sign in first — with an
+        email and password, Google, or Apple — and then choose
+        <UiLabel key="profilePickerEmptyAddAction" /> on the page that
+        says <UiLabel key="profilePickerEmptyTitle" />. The rest of this
+        guide follows the phone apps.
+        <!-- cite: webapp/src/pages/SignedOutHome.tsx (signed out, the home offers sign-in and account creation only); webapp/src/lib/auth.ts (password, Google and Apple sign-in); webapp/src/pages/TodayPage.tsx (the empty home's Add profile link); PRIVACY.md#6-security-protections (nothing at rest in the browser) -->
+      </p>
     </section>
 
     <section>
