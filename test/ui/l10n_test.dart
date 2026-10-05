@@ -274,7 +274,7 @@ void main() {
       expect(l10n.predictionsDisabledAction, 'Manage in Settings');
       expect(
         l10n.overviewReminderHint,
-        'Reminders unavailable — notifications are off',
+        'Reminders need notifications turned on',
       );
       expect(l10n.overviewTurnOnReminders, 'Turn on reminders');
       expect(

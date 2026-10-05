@@ -87,7 +87,7 @@ RemoteProfileGuardianRow guardianRow(
 );
 
 const String kDisclaimer = 'Estimates only — not medical advice.';
-const String kReminderHint = 'Reminders unavailable — notifications are off';
+const String kReminderHint = 'Reminders need notifications turned on';
 
 /// The quick-log confirmation, and the reply to a tap that changed nothing.
 const String kRecordedSnackbar =
