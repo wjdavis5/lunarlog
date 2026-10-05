@@ -24,15 +24,31 @@ function closedCycles(view: CycleHistoryView) {
   return view.items.filter((item) => !item.open);
 }
 
-/** One comparison row: "Length: 28 · Bleed days: 5", entirely catalogue-sourced. */
+/**
+ * A possibly fractional day count with its unit, as the app writes it
+ * (`formatDays`, lib/ui/overview/cycle_history_section.dart): a whole
+ * number bare, anything else to one decimal, and "day" or "days" chosen
+ * from the number itself. The page used to print the bare number, so
+ * "Variation 0" did not say what it was counting, and it rounded an
+ * average of 28.5 to 29 where the app shows 28.5.
+ */
+export function formatDays(t: TFunction, value: number): string {
+  const display = Number.isInteger(value) ? String(value) : value.toFixed(1);
+  return t('daysValue', { count: value, value: display });
+}
+
+/** One comparison row: "Length: 28 days · Bleed days: 5 days", entirely catalogue-sourced. */
 export function compareRow(
   t: TFunction,
   lengthDays: number | null,
   bleedDays: number | null,
 ): string {
+  const length =
+    lengthDays !== null ? formatDays(t, lengthDays) : t('cycleComparisonOngoingLabel');
+  const bleed = bleedDays !== null ? t('daysCount', { count: bleedDays }) : '—';
   return [
-    `${t('cycleComparisonLengthLabel')}${LABEL_COLON}${lengthDays ?? t('cycleComparisonOngoingLabel')}`,
-    `${t('cycleComparisonBleedDaysLabel')}${LABEL_COLON}${bleedDays ?? '—'}`,
+    `${t('cycleComparisonLengthLabel')}${LABEL_COLON}${length}`,
+    `${t('cycleComparisonBleedDaysLabel')}${LABEL_COLON}${bleed}`,
   ].join(DOT_SEPARATOR);
 }
 
@@ -49,19 +65,25 @@ export function ProfileHomeHistory(props: { history: CycleHistoryView }) {
           <div>
             <dt>{t('cycleHistoryAvgCycle')}</dt>
             <dd data-testid="stat-avg-cycle">
-              {view.meanCycleLengthDays !== null ? Math.round(view.meanCycleLengthDays) : '—'}
+              {view.meanCycleLengthDays !== null
+                ? formatDays(t, view.meanCycleLengthDays)
+                : '—'}
             </dd>
           </div>
           <div>
             <dt>{t('cycleHistoryAvgPeriod')}</dt>
             <dd data-testid="stat-avg-period">
-              {view.meanPeriodLengthDays !== null ? Math.round(view.meanPeriodLengthDays) : '—'}
+              {view.meanPeriodLengthDays !== null
+                ? formatDays(t, view.meanPeriodLengthDays)
+                : '—'}
             </dd>
           </div>
           <div>
             <dt>{t('cycleHistoryVariation')}</dt>
             <dd data-testid="stat-variation">
-              {view.variationDays !== null ? view.variationDays : '—'}
+              {view.variationDays !== null
+                ? t('daysCount', { count: view.variationDays })
+                : '—'}
             </dd>
           </div>
         </dl>
@@ -130,13 +152,17 @@ export function ProfileHomeComparison(props: { history: CycleHistoryView }) {
         <div>
           <dt>{t('cycleComparisonLengthDifferenceLabel')}</dt>
           <dd data-testid="compare-length-diff">
-            {lengthDiff ?? t('cycleComparisonLengthDifferenceUnknown')}
+            {lengthDiff !== null
+              ? t('daysCount', { count: lengthDiff })
+              : t('cycleComparisonLengthDifferenceUnknown')}
           </dd>
         </div>
         <div>
           <dt>{t('cycleComparisonBleedDaysDifferenceLabel')}</dt>
           <dd data-testid="compare-bleed-diff">
-            {bleedDiff ?? t('cycleComparisonLengthDifferenceUnknown')}
+            {bleedDiff !== null
+              ? t('daysCount', { count: bleedDiff })
+              : t('cycleComparisonLengthDifferenceUnknown')}
           </dd>
         </div>
       </dl>

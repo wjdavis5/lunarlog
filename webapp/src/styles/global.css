@@ -683,10 +683,18 @@ body {
   gap: var(--ll-space-4);
 }
 
+/* The estimate card's one emphasised line. "Cycle day 7" is what the page
+   is for, and it was set in the same size and weight as the name above it
+   and the card titles below it. The app sets the same words in its display
+   face at the centre of the cycle wheel. */
 .home-phase {
-  font-size: var(--ll-type-title-medium-font-size);
-  line-height: var(--ll-type-title-medium-line-height);
-  font-weight: var(--ll-type-title-medium-font-weight);
+  font-family: var(--ll-font-display);
+  font-size: var(--ll-type-headline-medium-font-size);
+  line-height: var(--ll-type-headline-medium-line-height);
+  font-weight: var(--ll-type-headline-medium-font-weight);
+  letter-spacing: var(--ll-type-headline-medium-letter-spacing);
+  font-variant-numeric: tabular-nums;
+  color: var(--ll-primary);
   margin: 0 0 var(--ll-space-2);
 }
 
@@ -1109,7 +1117,15 @@ body {
   }
 }
 
+/* The same place in the card when there is no cycle day to show
+   ("Estimates paused", "Not enough history yet"): the same face, a step
+   smaller, since these run to a few words. */
 .home-state-title {
   margin: 0 0 var(--ll-space-1);
-  font-weight: var(--ll-type-title-small-font-weight, 500);
+  font-family: var(--ll-font-display);
+  font-size: var(--ll-type-headline-small-font-size);
+  line-height: var(--ll-type-headline-small-line-height);
+  font-weight: var(--ll-type-headline-small-font-weight);
+  letter-spacing: var(--ll-type-headline-small-letter-spacing);
+  color: var(--ll-primary);
 }
