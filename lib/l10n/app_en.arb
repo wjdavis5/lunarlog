@@ -3525,7 +3525,7 @@
     "@sharingAcceptInvitePreviewUnavailable": {
       "description": "Issue #1004 (tranche 1): accept-invite sheet preview status when the token returns no preview."
     },
-    "sharingAcceptInviteTitle": "Join Shared Profile",
+    "sharingAcceptInviteTitle": "Join shared profile",
     "@sharingAcceptInviteTitle": {
       "description": "Issue #1004 (tranche 1): accept-invite sheet title."
     },
@@ -3533,7 +3533,7 @@
     "@sharingAcceptInviteDecline": {
       "description": "Issue #1004 (tranche 1): accept-invite sheet decline button."
     },
-    "sharingAcceptInviteAccept": "Accept & Sync",
+    "sharingAcceptInviteAccept": "Accept & sync",
     "@sharingAcceptInviteAccept": {
       "description": "Issue #1004 (tranche 1): accept-invite sheet accept button."
     },
@@ -3561,7 +3561,7 @@
     "@sharingAcceptPredictionConnect": {
       "description": "Issue #1004 (tranche 1): accept-prediction-connection sheet connect button."
     },
-    "sharingClaimProfileTitle": "Become the Owner",
+    "sharingClaimProfileTitle": "Become the owner",
     "@sharingClaimProfileTitle": {
       "description": "Issue #1004 (tranche 1): claim-profile sheet title."
     },
@@ -3589,23 +3589,23 @@
     "@sharingInviteGuardianGenerateFailed": {
       "description": "Issue #1004 (tranche 1): invite-guardian dialog unexpected create failure."
     },
-    "sharingInviteGuardianRoleLabel": "Role:",
+    "sharingInviteGuardianRoleLabel": "Role",
     "@sharingInviteGuardianRoleLabel": {
       "description": "Issue #1004 (tranche 1): invite-guardian dialog preset picker label."
     },
-    "sharingInviteGuardianPresetCoParent": "Co-Parent (Can log, edit profile & invite)",
+    "sharingInviteGuardianPresetCoParent": "Co-Parent (can log, edit profile & invite)",
     "@sharingInviteGuardianPresetCoParent": {
       "description": "Issue #1004 (tranche 1): invite-guardian dialog co-parent preset choice."
     },
-    "sharingInviteGuardianPresetCaregiver": "Caregiver (Can log symptoms & periods)",
+    "sharingInviteGuardianPresetCaregiver": "Caregiver (can log symptoms & periods)",
     "@sharingInviteGuardianPresetCaregiver": {
       "description": "Issue #1004 (tranche 1): invite-guardian dialog caregiver preset choice."
     },
-    "sharingInviteGuardianPresetViewer": "Viewer (Read-only access)",
+    "sharingInviteGuardianPresetViewer": "Viewer (read-only access)",
     "@sharingInviteGuardianPresetViewer": {
       "description": "Issue #1004 (tranche 1): invite-guardian dialog viewer preset choice."
     },
-    "sharingInviteGuardianCreatedTitle": "Invitation Created",
+    "sharingInviteGuardianCreatedTitle": "Invitation created",
     "@sharingInviteGuardianCreatedTitle": {
       "description": "Issue #1004 (tranche 1): invite-guardian dialog generated-state title."
     },
@@ -3621,7 +3621,7 @@
     "@sharingInviteGuardianDone": {
       "description": "Issue #1004 (tranche 1): invite-guardian dialog done button."
     },
-    "sharingInviteGuardianCopyLink": "Copy Link",
+    "sharingInviteGuardianCopyLink": "Copy link",
     "@sharingInviteGuardianCopyLink": {
       "description": "Issue #1004 (tranche 1): invite-guardian dialog copy-link button."
     },
@@ -3638,7 +3638,7 @@
         }
       }
     },
-    "sharingInviteGuardianNicknameLabel": "Nickname / Label (Optional)",
+    "sharingInviteGuardianNicknameLabel": "Nickname or label (optional)",
     "@sharingInviteGuardianNicknameLabel": {
       "description": "Issue #1004 (tranche 1): invite-guardian dialog nickname field label."
     },
@@ -3654,7 +3654,7 @@
     "@sharingInviteGuardianCancel": {
       "description": "Issue #1004 (tranche 1): invite-guardian dialog cancel button."
     },
-    "sharingInviteGuardianCreateLink": "Create Link",
+    "sharingInviteGuardianCreateLink": "Create link",
     "@sharingInviteGuardianCreateLink": {
       "description": "Issue #1004 (tranche 1): invite-guardian dialog create-link button."
     },
@@ -3789,11 +3789,11 @@
     "@sharingManageGuardiansCancelInviteBody": {
       "description": "Issue #1004 (tranche 1): confirm dialog body for cancelling a pending invitation."
     },
-    "sharingManageGuardiansKeepInvitation": "Keep Invitation",
+    "sharingManageGuardiansKeepInvitation": "Keep invitation",
     "@sharingManageGuardiansKeepInvitation": {
       "description": "Issue #1004 (tranche 1): decline action for the cancel-invitation dialog."
     },
-    "sharingManageGuardiansCancelInvitation": "Cancel Invitation",
+    "sharingManageGuardiansCancelInvitation": "Cancel invitation",
     "@sharingManageGuardiansCancelInvitation": {
       "description": "Issue #1004 (tranche 1): destructive confirm action for cancelling an invitation."
     },
@@ -4282,7 +4282,7 @@
     "@sharingSharePredictionsBody": {
       "description": "Issue #1004 (tranche 1): share-predictions dialog explanatory body."
     },
-    "sharingSharePredictionsNicknameLabel": "Nickname / Label (Optional)",
+    "sharingSharePredictionsNicknameLabel": "Nickname or label (optional)",
     "@sharingSharePredictionsNicknameLabel": {
       "description": "Issue #1004 (tranche 1): share-predictions dialog nickname field label."
     },
@@ -4294,11 +4294,11 @@
     "@sharingSharePredictionsCancel": {
       "description": "Issue #1004 (tranche 1): share-predictions dialog cancel action."
     },
-    "sharingSharePredictionsCreateLink": "Create Link",
+    "sharingSharePredictionsCreateLink": "Create link",
     "@sharingSharePredictionsCreateLink": {
       "description": "Issue #1004 (tranche 1): share-predictions dialog create-link action."
     },
-    "sharingTransferOwnershipScreenTitle": "Transfer {profileName}'s Profile",
+    "sharingTransferOwnershipScreenTitle": "Transfer {profileName}'s profile",
     "@sharingTransferOwnershipScreenTitle": {
       "description": "Issue #1004 (tranche 1): transfer-ownership app-bar title.",
       "placeholders": {
@@ -4363,11 +4363,11 @@
     "@sharingTransferOwnershipRecipientHint": {
       "description": "Issue #1004 (tranche 1): recipient label field hint."
     },
-    "sharingTransferOwnershipAction": "Transfer Ownership",
+    "sharingTransferOwnershipAction": "Transfer ownership",
     "@sharingTransferOwnershipAction": {
       "description": "Issue #1004 (tranche 1): arm-transfer action."
     },
-    "sharingTransferOwnershipPendingTitle": "A Transfer Is Already Pending",
+    "sharingTransferOwnershipPendingTitle": "A transfer is already pending",
     "@sharingTransferOwnershipPendingTitle": {
       "description": "Issue #1004 (tranche 1): orphaned-transfer state title."
     },
@@ -4389,11 +4389,11 @@
         }
       }
     },
-    "sharingTransferOwnershipCancelPending": "Cancel Pending Transfer",
+    "sharingTransferOwnershipCancelPending": "Cancel pending transfer",
     "@sharingTransferOwnershipCancelPending": {
       "description": "Issue #1004 (tranche 1): cancel an orphaned transfer action."
     },
-    "sharingTransferOwnershipReadyTitle": "Transfer Ready",
+    "sharingTransferOwnershipReadyTitle": "Transfer ready",
     "@sharingTransferOwnershipReadyTitle": {
       "description": "Issue #1004 (tranche 1): generated-transfer state title."
     },
@@ -4406,7 +4406,7 @@
         }
       }
     },
-    "sharingTransferOwnershipCopyLink": "Copy Link",
+    "sharingTransferOwnershipCopyLink": "Copy link",
     "@sharingTransferOwnershipCopyLink": {
       "description": "Issue #1004 (tranche 1): copy-transfer-link action."
     },
@@ -5819,7 +5819,7 @@
       }
     }
   },
-  "cycleLiteracySourceHeading": "Sources & Review",
+  "cycleLiteracySourceHeading": "Sources & review",
   "@cycleLiteracySourceHeading": {
     "description": "Issue #1004 (tranche 4b): provenance block heading on a cycle literacy article sheet."
   },
@@ -5868,7 +5868,7 @@
       }
     }
   },
-  "cycleLiteracyLibraryTitle": "Cycle Literacy Library",
+  "cycleLiteracyLibraryTitle": "Cycle literacy library",
   "@cycleLiteracyLibraryTitle": {
     "description": "Issue #1004 (tranche 4b): app-bar title of the standalone cycle literacy library."
   },
@@ -5876,7 +5876,7 @@
   "@cycleLiteracyLibraryIntro": {
     "description": "Issue #1004 (tranche 4b): intro paragraph atop the cycle literacy library."
   },
-  "settingsCycleLiteracyTitle": "Cycle Literacy",
+  "settingsCycleLiteracyTitle": "Cycle literacy",
   "@settingsCycleLiteracyTitle": {
     "description": "Issue #854: title of the Cycle Literacy Library tile in Settings Help section."
   },
@@ -6312,11 +6312,11 @@
         }
       }
     },
-    "symptomTrendsTitle": "Symptom Trends & Patterns",
+    "symptomTrendsTitle": "Symptom trends & patterns",
     "@symptomTrendsTitle": {
       "description": "Issue #1004 (tranche 4a): heading of the symptom-trends section."
     },
-    "symptomTrendsRecurring": "Recurring Symptoms",
+    "symptomTrendsRecurring": "Recurring symptoms",
     "@symptomTrendsRecurring": {
       "description": "Issue #1004 (tranche 4a): title of the recurring-symptoms card."
     },
@@ -6328,7 +6328,7 @@
     "@symptomTrendsDisclaimer": {
       "description": "Issue #1004 (tranche 4a): disclaimer under the recurring-symptoms list."
     },
-    "symptomTrendsFlowTitle": "Typical Bleed Rhythm",
+    "symptomTrendsFlowTitle": "Typical bleed rhythm",
     "@symptomTrendsFlowTitle": {
       "description": "Issue #1004 (tranche 4a): title of the flow-distribution summary."
     },
@@ -6344,7 +6344,7 @@
         }
       }
     },
-    "symptomTrendsLibraryTitle": "Cycle Literacy Library",
+    "symptomTrendsLibraryTitle": "Cycle literacy library",
     "@symptomTrendsLibraryTitle": {
       "description": "Issue #1004 (tranche 4a): title of the cycle-literacy library call to action."
     },
@@ -6352,7 +6352,7 @@
     "@symptomTrendsLibrarySubtitle": {
       "description": "Issue #1004 (tranche 4a): subtitle of the cycle-literacy library call to action."
     },
-    "crampPredictionTitle": "Anticipated Cramp Window",
+    "crampPredictionTitle": "Anticipated cramp window",
     "@crampPredictionTitle": {
       "description": "Issue #1004 (tranche 4a): title of the cramp-prediction card."
     },

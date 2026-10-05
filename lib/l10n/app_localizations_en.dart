@@ -2775,13 +2775,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'This invite link may have expired or already been used.';
 
   @override
-  String get sharingAcceptInviteTitle => 'Join Shared Profile';
+  String get sharingAcceptInviteTitle => 'Join shared profile';
 
   @override
   String get sharingAcceptInviteDecline => 'Decline';
 
   @override
-  String get sharingAcceptInviteAccept => 'Accept & Sync';
+  String get sharingAcceptInviteAccept => 'Accept & sync';
 
   @override
   String get sharingAcceptInviteNameLabel =>
@@ -2804,7 +2804,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sharingAcceptPredictionConnect => 'Connect';
 
   @override
-  String get sharingClaimProfileTitle => 'Become the Owner';
+  String get sharingClaimProfileTitle => 'Become the owner';
 
   @override
   String get sharingClaimProfileDecline => 'Decline';
@@ -2829,21 +2829,21 @@ class AppLocalizationsEn extends AppLocalizations {
       'Failed to generate invite. Please check your connection and try again.';
 
   @override
-  String get sharingInviteGuardianRoleLabel => 'Role:';
+  String get sharingInviteGuardianRoleLabel => 'Role';
 
   @override
   String get sharingInviteGuardianPresetCoParent =>
-      'Co-Parent (Can log, edit profile & invite)';
+      'Co-Parent (can log, edit profile & invite)';
 
   @override
   String get sharingInviteGuardianPresetCaregiver =>
-      'Caregiver (Can log symptoms & periods)';
+      'Caregiver (can log symptoms & periods)';
 
   @override
-  String get sharingInviteGuardianPresetViewer => 'Viewer (Read-only access)';
+  String get sharingInviteGuardianPresetViewer => 'Viewer (read-only access)';
 
   @override
-  String get sharingInviteGuardianCreatedTitle => 'Invitation Created';
+  String get sharingInviteGuardianCreatedTitle => 'Invitation created';
 
   @override
   String get sharingInviteGuardianExpiry =>
@@ -2856,7 +2856,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sharingInviteGuardianDone => 'Done';
 
   @override
-  String get sharingInviteGuardianCopyLink => 'Copy Link';
+  String get sharingInviteGuardianCopyLink => 'Copy link';
 
   @override
   String get sharingInviteGuardianShare => 'Share';
@@ -2868,7 +2868,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get sharingInviteGuardianNicknameLabel =>
-      'Nickname / Label (Optional)';
+      'Nickname or label (optional)';
 
   @override
   String get sharingInviteGuardianNicknameHint =>
@@ -2881,7 +2881,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sharingInviteGuardianCancel => 'Cancel';
 
   @override
-  String get sharingInviteGuardianCreateLink => 'Create Link';
+  String get sharingInviteGuardianCreateLink => 'Create link';
 
   @override
   String get sharingManageGuardiansCancel => 'Cancel';
@@ -2982,10 +2982,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'The invite link will stop working immediately. You can send a new one any time.';
 
   @override
-  String get sharingManageGuardiansKeepInvitation => 'Keep Invitation';
+  String get sharingManageGuardiansKeepInvitation => 'Keep invitation';
 
   @override
-  String get sharingManageGuardiansCancelInvitation => 'Cancel Invitation';
+  String get sharingManageGuardiansCancelInvitation => 'Cancel invitation';
 
   @override
   String get sharingManageGuardiansCancelInviteFailed =>
@@ -3375,7 +3375,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get sharingSharePredictionsNicknameLabel =>
-      'Nickname / Label (Optional)';
+      'Nickname or label (optional)';
 
   @override
   String get sharingSharePredictionsNicknameHint => 'e.g. Partner, Aunt';
@@ -3384,11 +3384,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sharingSharePredictionsCancel => 'Cancel';
 
   @override
-  String get sharingSharePredictionsCreateLink => 'Create Link';
+  String get sharingSharePredictionsCreateLink => 'Create link';
 
   @override
   String sharingTransferOwnershipScreenTitle(String profileName) {
-    return 'Transfer $profileName\'s Profile';
+    return 'Transfer $profileName\'s profile';
   }
 
   @override
@@ -3441,11 +3441,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sharingTransferOwnershipRecipientHint => 'e.g. Sam';
 
   @override
-  String get sharingTransferOwnershipAction => 'Transfer Ownership';
+  String get sharingTransferOwnershipAction => 'Transfer ownership';
 
   @override
   String get sharingTransferOwnershipPendingTitle =>
-      'A Transfer Is Already Pending';
+      'A transfer is already pending';
 
   @override
   String sharingTransferOwnershipPendingBody(String profileName) {
@@ -3458,10 +3458,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get sharingTransferOwnershipCancelPending => 'Cancel Pending Transfer';
+  String get sharingTransferOwnershipCancelPending => 'Cancel pending transfer';
 
   @override
-  String get sharingTransferOwnershipReadyTitle => 'Transfer Ready';
+  String get sharingTransferOwnershipReadyTitle => 'Transfer ready';
 
   @override
   String sharingTransferOwnershipShareLink(String profileName) {
@@ -3469,7 +3469,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get sharingTransferOwnershipCopyLink => 'Copy Link';
+  String get sharingTransferOwnershipCopyLink => 'Copy link';
 
   @override
   String get sharingTransferOwnershipShare => 'Share';
@@ -4552,7 +4552,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get cycleLiteracySourceHeading => 'Sources & Review';
+  String get cycleLiteracySourceHeading => 'Sources & review';
 
   @override
   String cycleLiteracySourceItem(String publisher, String title) {
@@ -4579,14 +4579,14 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get cycleLiteracyLibraryTitle => 'Cycle Literacy Library';
+  String get cycleLiteracyLibraryTitle => 'Cycle literacy library';
 
   @override
   String get cycleLiteracyLibraryIntro =>
       'Guides to your body, hormones, and cycle rhythms, sourced from ACOG, NHS and other medical bodies.';
 
   @override
-  String get settingsCycleLiteracyTitle => 'Cycle Literacy';
+  String get settingsCycleLiteracyTitle => 'Cycle literacy';
 
   @override
   String get settingsCycleLiteracySubtitle =>
@@ -4901,10 +4901,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get symptomTrendsTitle => 'Symptom Trends & Patterns';
+  String get symptomTrendsTitle => 'Symptom trends & patterns';
 
   @override
-  String get symptomTrendsRecurring => 'Recurring Symptoms';
+  String get symptomTrendsRecurring => 'Recurring symptoms';
 
   @override
   String get symptomTrendsEmpty =>
@@ -4915,7 +4915,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Patterns reflect descriptive logs only and are not clinical diagnostics.';
 
   @override
-  String get symptomTrendsFlowTitle => 'Typical Bleed Rhythm';
+  String get symptomTrendsFlowTitle => 'Typical bleed rhythm';
 
   @override
   String symptomTrendsFlowSubtitle(int day, String flow) {
@@ -4923,14 +4923,14 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get symptomTrendsLibraryTitle => 'Cycle Literacy Library';
+  String get symptomTrendsLibraryTitle => 'Cycle literacy library';
 
   @override
   String get symptomTrendsLibrarySubtitle =>
       'Guides on hormones, cycle phases, and body signals, sourced from ACOG, NHS and other medical bodies.';
 
   @override
-  String get crampPredictionTitle => 'Anticipated Cramp Window';
+  String get crampPredictionTitle => 'Anticipated cramp window';
 
   @override
   String crampPredictionDates(String dates) {

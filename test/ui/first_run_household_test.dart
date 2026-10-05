@@ -600,8 +600,8 @@ void main() {
       await tester.tap(find.text('Invite a guardian').last);
       await tester.pumpAndSettle();
       expect(find.byType(InviteGuardianDialog), findsOneWidget);
-      await tester.ensureVisible(find.text('Create Link'));
-      await tester.tap(find.text('Create Link'));
+      await tester.ensureVisible(find.text('Create link'));
+      await tester.tap(find.text('Create link'));
       await tester.pumpAndSettle();
       expect(sharing.lastCreatedRole, 'co_parent');
       expect(sharing.lastCreatedSubject, isFalse);
@@ -633,8 +633,8 @@ void main() {
 
       await tester.tap(find.text('Invite Riley to log their own profile'));
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('Create Link'));
-      await tester.tap(find.text('Create Link'));
+      await tester.ensureVisible(find.text('Create link'));
+      await tester.tap(find.text('Create link'));
       await tester.pumpAndSettle();
       expect(sharing.lastCreatedRole, 'caregiver',
           reason: 'the subject preset grants the caregiver role');

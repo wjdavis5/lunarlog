@@ -96,7 +96,7 @@ void main() {
 
     // Cramp forecast card
     expect(find.byKey(const ValueKey('cramp-prediction-card')), findsOneWidget);
-    expect(find.text('Anticipated Cramp Window'), findsOneWidget);
+    expect(find.text('Anticipated cramp window'), findsOneWidget);
     expect(find.textContaining('Cramp estimates are based on your past logged tags'), findsOneWidget);
 
     // Symptom patterns
@@ -116,7 +116,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify navigating to library screen
-    expect(find.text('Cycle Literacy Library'), findsOneWidget);
+    expect(find.text('Cycle literacy library'), findsOneWidget);
   });
 
   testWidgets(

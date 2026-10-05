@@ -856,7 +856,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(service.lastCreatedRole, isNotNull);
-        expect(find.text('Invitation Created'), findsOneWidget);
+        expect(find.text('Invitation created'), findsOneWidget);
       },
     );
 

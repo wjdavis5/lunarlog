@@ -991,7 +991,7 @@ void main() {
         await tester.tap(find.byIcon(Icons.cancel_outlined));
         await tester.pumpAndSettle();
         await tester
-            .tap(find.widgetWithText(FilledButton, 'Cancel Invitation'));
+            .tap(find.widgetWithText(FilledButton, 'Cancel invitation'));
         await tester.pumpAndSettle();
         expect(sharing.lastCancelledId, 'inv-1');
         expect(find.text('Sitter'), findsNothing);
@@ -1110,7 +1110,7 @@ void main() {
         await tester.tap(find.byIcon(Icons.cancel_outlined));
         await tester.pumpAndSettle();
         await tester
-            .tap(find.widgetWithText(FilledButton, 'Cancel Invitation'));
+            .tap(find.widgetWithText(FilledButton, 'Cancel invitation'));
         await tester.pumpAndSettle();
         expect(sharing.lastCancelledId, 'inv-2');
         await tester.pageBack();

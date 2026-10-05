@@ -210,7 +210,7 @@ void main() {
       expect(find.byKey(const ValueKey('invite-preset-subject-detail')),
           findsOneWidget);
 
-      await tester.tap(find.text('Create Link'));
+      await tester.tap(find.text('Create link'));
       await tester.pumpAndSettle();
 
       expect(sharing.lastCreatedRole, 'caregiver');
@@ -237,7 +237,7 @@ void main() {
       expect(find.byKey(const ValueKey('invite-preset-subject-detail')),
           findsNothing);
 
-      await tester.tap(find.text('Create Link'));
+      await tester.tap(find.text('Create link'));
       await tester.pumpAndSettle();
 
       expect(sharing.lastCreatedRole, 'co_parent');
@@ -257,12 +257,12 @@ void main() {
       )));
       await tester.tap(find.byKey(const ValueKey('invite-preset-dropdown')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Viewer (Read-only access)').last);
+      await tester.tap(find.text('Viewer (read-only access)').last);
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('invite-preset-subject-detail')),
           findsNothing);
 
-      await tester.tap(find.text('Create Link'));
+      await tester.tap(find.text('Create link'));
       await tester.pumpAndSettle();
 
       expect(sharing.lastCreatedRole, 'viewer');
@@ -401,7 +401,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byType(TextField), 'Riley');
-      await tester.tap(find.text('Accept & Sync'));
+      await tester.tap(find.text('Accept & sync'));
       await tester.pumpAndSettle();
 
       expect(accepted, isNotNull);
@@ -426,7 +426,7 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Accept & Sync'));
+      await tester.tap(find.text('Accept & sync'));
       await tester.pumpAndSettle();
 
       expect(accepted, isNotNull);
@@ -446,7 +446,7 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Accept & Sync'));
+      await tester.tap(find.text('Accept & sync'));
       await tester.pumpAndSettle();
 
       expect(accepted, isNotNull);

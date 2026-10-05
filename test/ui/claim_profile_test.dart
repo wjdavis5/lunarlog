@@ -81,7 +81,7 @@ void main() {
         ),
       );
 
-      expect(find.text('Become the Owner'), findsOneWidget);
+      expect(find.text('Become the owner'), findsOneWidget);
 
       final fields = find.byType(TextField);
       expect(fields, findsNWidgets(2));
