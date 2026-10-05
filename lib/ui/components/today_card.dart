@@ -33,8 +33,8 @@ import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/tiers.dart';
 
 import '../theme/haptics.dart';
-import '../theme/lunarlog_colors.dart';
 import '../theme/tokens.dart';
+import 'confidence_chip.dart';
 import 'cycle_wheel.dart';
 import 'inline_error.dart';
 
@@ -183,7 +183,13 @@ class _TodayCardState extends State<TodayCard> {
         tierShortLabel(AppLocalizations.of(context), widget.tier),
       ),
       excludeSemantics: true,
-      child: _ConfidenceChip(tier: widget.tier),
+      // Issue #209 item 2: the compact confidence badge. It feeds the same
+      // tier vocabulary as the panel's `overview-tier-caption`, as a short
+      // label rather than the full explanatory sentence.
+      child: ConfidenceChip(
+        key: const ValueKey('today-card-confidence-chip'),
+        tier: widget.tier,
+      ),
     );
 
     // Issue #836: at accessibility text scales, a side-by-side Row cramps
@@ -240,52 +246,6 @@ class _TodayCardState extends State<TodayCard> {
               )
             : const Icon(Icons.water_drop_outlined, size: 18),
         label: Text(l10n.todayCardLogPeriodStartedToday),
-      ),
-    );
-  }
-}
-
-/// Compact confidence badge (issue #209 item 2; feeds the same tier
-/// vocabulary as the panel's own `overview-tier-caption`, just as a short
-/// label rather than the full explanatory sentence -- the two can render
-/// side by side without repeating each other word for word).
-class _ConfidenceChip extends StatelessWidget {
-  const _ConfidenceChip({required this.tier});
-
-  final CycleConfidence tier;
-
-  Color _colorFor(LunarLogColors colors) => switch (tier) {
-    CycleConfidence.high => colors.confidenceHigh,
-    CycleConfidence.learning => colors.confidenceLearning,
-    CycleConfidence.irregular => colors.confidenceIrregular,
-    CycleConfidence.provisional => colors.confidenceProvisional,
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.extension<LunarLogColors>();
-    final color = colors == null
-        ? theme.colorScheme.onSurfaceVariant
-        : _colorFor(colors);
-    return Container(
-      key: const ValueKey('today-card-confidence-chip'),
-      padding: const EdgeInsets.symmetric(
-        horizontal: LLSpace.space2,
-        vertical: LLSpace.space1,
-      ),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(LLRadius.rFull),
-        border: Border.all(color: color),
-      ),
-      child: Text(
-        // Issue #218: the chip's label routes through AppLocalizations
-        // (via the shared tier-vocabulary mapper) rather than the domain
-        // enum's own `label`, so the new `provisional` tier renders
-        // localized copy like every other surfaced string.
-        tierLabel(AppLocalizations.of(context), tier),
-        style: theme.textTheme.labelMedium?.copyWith(color: color),
       ),
     );
   }
