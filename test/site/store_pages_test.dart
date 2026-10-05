@@ -60,7 +60,6 @@ void main() {
       expect(deleteAccountPage, contains('Delete from inside the app'));
       expect(deleteAccountPage, contains('iPhone'));
       expect(deleteAccountPage, contains('Android'));
-      expect(deleteAccountPage, contains('app.lunarlog.app'));
       expect(deleteAccountPage, contains('<strong>More</strong>'));
       expect(deleteAccountPage, contains('<strong>Settings</strong>'));
       expect(deleteAccountPage, contains('<strong>Account</strong>'));
@@ -96,7 +95,9 @@ void main() {
         deleteAccountPage.indexOf('</section>', start),
       );
       expect(browser, contains('Delete from the browser version'));
-      expect(browser, contains('https://app.lunarlog.app'));
+      // The address is named through WebAppLink, which links to it only
+      // while it is serving the browser version.
+      expect(browser, contains('<WebAppLink />'));
       // Every control is named through UiLabel, so a renamed label fails
       // the site build instead of leaving a stale instruction.
       expect(browser, contains('<UiLabel key="accountSectionTitle" />'));

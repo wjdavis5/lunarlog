@@ -34,9 +34,9 @@ email capture (the site collects nothing).
 
 ## Home — site/src/pages/index.astro
 
-- claim: The browser app is the default call to action ("Use lunarlog in your browser" at app.lunarlog.app).
+- claim: The browser app is the default call to action ("Use lunarlog in your browser" at app.lunarlog.app). The button, and every in-text link to that address, is shown only while the address is serving the browser version: the deploy asks it first, and builds a plain "not available right now" notice in their place when it is not.
   page: /
-  ships: site/src/pages/index.astro
+  ships: site/src/pages/index.astro; site/src/lib/web-app.mjs; site/src/components/WebAppLink.astro; site/scripts/probe-web-app.mjs; .github/workflows/site-deploy.yml
   issue: #1105; #831
 - claim: Free for personal use — stated in the hero fineprint alone (issue #1160: no security-speak in the hero; the no-ads stance leads on /privacy-security instead).
   page: /
