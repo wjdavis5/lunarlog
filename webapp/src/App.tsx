@@ -50,9 +50,12 @@ function Shell() {
               {t('accountSectionTitle')}
             </Link>
           ) : null}
+          {/* Signed in, the link names what the page it opens is for: the
+              sign-in page is where the two sign-out choices live. It used to
+              read "Signed in", which looks like a status, not a link. */}
           <Link className="nav-link" to="/sign-in">
             {session.data?.signedIn === true
-              ? t('accountSectionSignedIn')
+              ? t('webAuthSignOutAction')
               : t('accountSectionSignIn')}
           </Link>
         </nav>

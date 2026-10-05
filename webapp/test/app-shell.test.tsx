@@ -78,4 +78,16 @@ describe('the app header', () => {
       '/account',
     );
   });
+
+  // The third header link opens the sign-in page, which is where the two
+  // sign-out choices are once signed in. It used to read "Signed in": a
+  // status, not a destination.
+  it('names the third link for what it opens: Sign out when signed in', () => {
+    renderApp(true);
+    const header = within(screen.getByRole('banner'));
+    expect(
+      header.getByRole('link', { name: messages['webAuthSignOutAction'] }),
+    ).toHaveAttribute('href', '/sign-in');
+    expect(header.queryByRole('link', { name: messages['accountSectionSignedIn'] })).toBeNull();
+  });
 });
