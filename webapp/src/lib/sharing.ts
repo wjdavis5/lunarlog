@@ -100,11 +100,14 @@ export function sharingFailureMessageId(kind: SharingFailureKind) {
  * server refuses her for, apart from permission, is being the only primary
  * guardian left, which another device can make true between the tap and
  * the call. That is inferred from who was leaving, so it is read only
- * after the two answers that say nothing about it: a refusal for lack of
- * permission, and a request that never arrived.
+ * after the three answers that say nothing about it: a refusal for lack of
+ * permission, a refusal for having no session (issue #1527: a tab left open
+ * past its sign-in told a primary guardian she was the only one), and a
+ * request that never arrived.
  */
 export function revokeFailureMessageId(kind: SharingFailureKind, selfPrimaryLeave: boolean) {
   if (kind === 'unauthorized') return 'commonUnauthorized' as const;
+  if (kind === 'notSignedIn') return 'sharingFailureNotSignedIn' as const;
   if (kind === 'network') return 'sharingManageGuardiansRemoveFailed' as const;
   if (selfPrimaryLeave) return 'sharingManageGuardiansSolePrimaryLeave' as const;
   return 'sharingManageGuardiansRemoveFailed' as const;
@@ -149,9 +152,9 @@ export function guardiansLoadFailureMessageId(kind: SharingFailureKind) {
 
 /** The line for a role change that failed, the app's `_roleChangeErrorMessage`. */
 export function roleChangeFailureMessageId(kind: SharingFailureKind) {
-  return kind === 'unauthorized'
-    ? ('commonUnauthorized' as const)
-    : ('sharingManageGuardiansRoleUpdateFailed' as const);
+  if (kind === 'unauthorized') return 'commonUnauthorized' as const;
+  if (kind === 'notSignedIn') return 'sharingFailureNotSignedIn' as const;
+  return 'sharingManageGuardiansRoleUpdateFailed' as const;
 }
 
 /**

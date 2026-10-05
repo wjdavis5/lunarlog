@@ -703,6 +703,10 @@ describe('every refusal the sharing RPCs raise (issue #1504)', () => {
     // Neither of these says anything about who the primary guardians are.
     expect(revokeFailureMessageId('network', true)).toBe('sharingManageGuardiansRemoveFailed');
     expect(revokeFailureMessageId('unauthorized', true)).toBe('commonUnauthorized');
+    // Nor does having no session (issue #1527): a tab left open past its
+    // sign-in told a primary guardian she was the only one.
+    expect(revokeFailureMessageId('notSignedIn', true)).toBe('sharingFailureNotSignedIn');
+    expect(revokeFailureMessageId('notSignedIn', false)).toBe('sharingFailureNotSignedIn');
   });
 
   // `sharingFailureMessageId` is written for the person accepting an
@@ -735,8 +739,10 @@ describe('every refusal the sharing RPCs raise (issue #1504)', () => {
     }
   });
 
-  it('a failed role change names a refusal for lack of permission', () => {
+  it('a failed role change names a refusal for lack of permission, and a missing session', () => {
     expect(roleChangeFailureMessageId('unauthorized')).toBe('commonUnauthorized');
+    // Issue #1527: with no session the thing to do is sign in.
+    expect(roleChangeFailureMessageId('notSignedIn')).toBe('sharingFailureNotSignedIn');
     expect(roleChangeFailureMessageId('network')).toBe(
       'sharingManageGuardiansRoleUpdateFailed',
     );
