@@ -23,9 +23,9 @@
 ///   platform triggers (an HKObserverQuery firing on iOS, a WorkManager
 ///   job on Android) and which runs the *same* pipeline without ever
 ///   prompting — no authorization sheet, no binding write. It probes the
-///   OS permission first (Issue #959's check) and stops silently when it
-///   is not granted, so a background pass can never put a system dialog
-///   in front of the operator.
+///   OS permission first (the read-side probe, Issue #1491) and stops
+///   silently when it is not granted, so a background pass can never put a
+///   system dialog in front of the operator.
 /// * **Full history, paged.** An import reads *everything the store will
 ///   return* for the bound profile (Issue #992 — the previous fixed 30-day
 ///   window was a sequencing choice, not a product rule), from
@@ -517,12 +517,16 @@ abstract interface class HealthImportRunner {
 /// * **never prompts.** No `bindProfile` re-write, no
 ///   `requestWriteAuthorization` — the OS permission sheet has no place in
 ///   a pass the user did not start. Instead the OS permission is *probed*
-///   (Issue #959's `permissionStatus`), and anything other than
-///   `granted` ends the pass with a
+///   (`HealthPermissionProbe.importPermissionStatus`, Issue #1491: the
+///   reads the import performs where the store discloses them — Health
+///   Connect — and the write types where it does not — HealthKit), and
+///   anything other than `granted` ends the pass with a
 ///   `HealthImportSummary(blocked: HealthPlatformPermissionDenied())`
 ///   before a single read. A never-asked install reports `notAsked`, so a
 ///   background trigger on a device that has not granted the reads is a
-///   silent no-op by this contract too.
+///   silent no-op by this contract too. The write-side `permissionStatus`
+///   is not consulted: it gates the write pass, and gating this pass on it
+///   kept the import from running for someone who allowed reading only.
 /// * **keeps the binding guard.** `HealthSyncBinding.canWrite` runs first,
 ///   exactly as in `importNow` — an unbound device or a refused guard
 ///   touches no health API.
