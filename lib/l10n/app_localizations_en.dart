@@ -5260,7 +5260,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get healthSyncWriteSymptoms =>
-      'These tags are written to the Health app, each as the closest symptom type it has: Cramps, Headache, Back pain, Breast tenderness, Bloating, Acne, Nausea, Fatigue, Dizziness, Sleep trouble and Other craving. Every tag under Feelings is written as \'Mood Changes\' without saying which mood. No other tag is written as a symptom.';
+      'These tags are written to the Health app as symptom entries: Cramps, Headache, Back pain, Breast tenderness, Bloating, Acne, Nausea, Fatigue, Dizziness, Sleep trouble and Other craving. An intensity you give Cramps, Headache, Back pain or Breast tenderness is written with it, as mild, moderate or severe. Every tag under Feelings is written as \'Mood Changes\' without saying which mood. No other tag is written as a symptom.';
 
   @override
   String get healthSyncImportOnly =>
@@ -5280,7 +5280,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get healthSyncWrittenTypes =>
-      'What lunarlog writes to the Health app: flow, spotting between periods, discharge you tag as sticky, creamy or egg white (cervical mucus), ovulation test results, basal body temperature, and the symptoms and moods listed below.';
+      'What lunarlog writes to the Health app: flow, with the first day of each period marked; spotting between periods; discharge you tag as sticky, creamy or egg white (cervical mucus); ovulation test results; basal body temperature, unless you exclude the reading from charts; and the symptoms and moods listed below.';
 
   @override
   String get healthSyncWrittenTypesHealthConnect =>

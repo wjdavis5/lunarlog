@@ -475,11 +475,21 @@ void main() {
       find.textContaining('Symptoms you tag — cramps, headache, bloating'),
       findsNothing,
     );
+    // The list itself, word for word (its items are tied to what is written
+    // in health_sync_written_types_test.dart).
     expect(
-      find.textContaining('What lunarlog writes to the Health app: flow, '
-          'spotting between periods, discharge you tag as sticky, creamy or '
-          'egg white (cervical mucus), ovulation test results, basal body '
-          'temperature'),
+      find.text('What lunarlog writes to the Health app: flow, with the '
+          'first day of each period marked; spotting between periods; '
+          'discharge you tag as sticky, creamy or egg white (cervical '
+          'mucus); ovulation test results; basal body temperature, unless '
+          'you exclude the reading from charts; and the symptoms and moods '
+          'listed below.'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('An intensity you give Cramps, Headache, Back '
+          'pain or Breast tenderness is written with it, as mild, moderate '
+          'or severe.'),
       findsOneWidget,
     );
   });

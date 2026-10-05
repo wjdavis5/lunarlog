@@ -956,9 +956,9 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// so the rule for it is strict: every sentence that was on the screen is
   /// still on it, unedited and in plain view. Nothing is collapsed, shortened
   /// or moved to another screen; only the order changed, and each group got
-  /// a heading. The headings name a subject and promise no complete list:
-  /// the iPhone's paragraphs under "Writing" are about how values are
-  /// written, not everything that is.
+  /// a heading. The headings name a subject. Under "Writing" both stores
+  /// open with the list of what is written (the iPhone's since Issue
+  /// #1526), followed by how values are mapped.
   List<Widget> _details(AppLocalizations l10n) => [
         const Divider(height: 32),
         if (widget.writeEnabled) ...[

@@ -6812,7 +6812,7 @@
     "@healthSyncWriteForwardOnly": {
       "description": "Issue #1004 (tranche 5): forward-only write explanation plus the read-direction disclosure (iOS). Issue #1215 aligned the read half with the enforced gate: the first import is the person's to start, and only after it does the import keep itself current in the background. Issue #1491 added the condition the gate has always had on iPhone: the Health app never tells an app whether it may read, so the background import goes by the write permissions, and it needs all of them (one switched off reads as denied). Someone who allows reading and not writing imports by tap only, and the screen must say so rather than promise a background import."
     },
-    "healthSyncWriteSymptoms": "These tags are written to the Health app, each as the closest symptom type it has: Cramps, Headache, Back pain, Breast tenderness, Bloating, Acne, Nausea, Fatigue, Dizziness, Sleep trouble and Other craving. Every tag under Feelings is written as 'Mood Changes' without saying which mood. No other tag is written as a symptom.",
+    "healthSyncWriteSymptoms": "These tags are written to the Health app as symptom entries: Cramps, Headache, Back pain, Breast tenderness, Bloating, Acne, Nausea, Fatigue, Dizziness, Sleep trouble and Other craving. An intensity you give Cramps, Headache, Back pain or Breast tenderness is written with it, as mild, moderate or severe. Every tag under Feelings is written as 'Mood Changes' without saying which mood. No other tag is written as a symptom.",
     "@healthSyncWriteSymptoms": {
       "description": "Symptom and mood write disclosure (iPhone, #238/#918). Issue #1526: it names every tag written as a symptom, by the label the app shows for it, where it used to name four as if they were the list. The labels and the Feelings heading must match the app's own; test/ui/health_sync_written_types_test.dart compares them with the mapping table."
     },
@@ -6832,7 +6832,7 @@
     "@healthSyncPeriodRecordNoteHealthConnect": {
       "description": "Issue #1478: what a Health Connect period record covers, in plain words. The one way anything logged before write access can reach Health Connect: a period that began earlier is written with its true first day, because a period clipped to start on the first written day would be a wrong period. Also states that an imported day is never written back and never starts, extends or reshapes a written period."
     },
-    "healthSyncWrittenTypes": "What lunarlog writes to the Health app: flow, spotting between periods, discharge you tag as sticky, creamy or egg white (cervical mucus), ovulation test results, basal body temperature, and the symptoms and moods listed below.",
+    "healthSyncWrittenTypes": "What lunarlog writes to the Health app: flow, with the first day of each period marked; spotting between periods; discharge you tag as sticky, creamy or egg white (cervical mucus); ovulation test results; basal body temperature, unless you exclude the reading from charts; and the symptoms and moods listed below.",
     "@healthSyncWrittenTypes": {
       "description": "Issue #1526: the iPhone health sync screen's list of what is written to Apple Health, the counterpart of healthSyncWrittenTypesHealthConnect. Until it existed the iPhone screen never mentioned cervical mucus, ovulation tests or basal body temperature. 'Listed below' refers to healthSyncWriteSymptoms, shown under it. Must name every HealthKit type the app writes; test/ui/health_sync_written_types_test.dart fails if a written type is not named."
     },
