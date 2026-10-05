@@ -182,6 +182,94 @@ void main() {
     expect(find.textContaining('Subphase timing is estimated'), findsOneWidget);
   });
 
+  group('rolled or skipped estimate (issue #1424)', () {
+    // Both predictions come out of the production predictor. The open
+    // cycle starts 2026-08-31 and is 28 days long by its own estimate, so
+    // late luteal is cycle days 25-28; "today" is cycle day 35.
+    final openCycleStart = LocalDate(2026, 8, 31);
+    final today = LocalDate(2026, 10, 4);
+
+    void expectLateLutealRunningLong() {
+      expect(find.text('Late Luteal (Premenstrual)'), findsOneWidget);
+      expect(find.text('Cycle Days 25–35'), findsOneWidget);
+      expect(find.byKey(const ValueKey('phase-hedged-notice')), findsOneWidget);
+      expect(
+        find.text(
+          'Cycle is running longer than average. Subphase estimates remain '
+          'in late luteal awaiting your next period.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Subphase timing is estimated'), findsNothing);
+    }
+
+    // Seven logged periods, so six completed 28-day cycles (`high` tier).
+    ActivePrediction fromHistory({bool skipped = false}) => computePrediction(
+          episodes: [
+            for (var cyclesAgo = 6; cyclesAgo >= 0; cyclesAgo--)
+              Episode(
+                openCycleStart.addDays(-28 * cyclesAgo),
+                openCycleStart.addDays(-28 * cyclesAgo + 4),
+              ),
+          ],
+          today: today,
+          omittedCycleStarts: skipped ? {openCycleStart} : const {},
+        ) as ActivePrediction;
+
+    testWidgets('a late estimate that has rolled forward keeps the day range',
+        (tester) async {
+      final prediction = fromHistory();
+      // Six days late, so the live estimate has rolled a cycle forward.
+      expect(prediction.isLate, isTrue);
+      expect(prediction.estimatedNextStart, LocalDate(2026, 10, 26));
+
+      await _pump(
+        tester,
+        PhaseInsightsCard(prediction: prediction, today: today),
+      );
+
+      expectLateLutealRunningLong();
+    });
+
+    testWidgets('"Skip this cycle" keeps the day range and the notice',
+        (tester) async {
+      final prediction = fromHistory(skipped: true);
+      // The skip pushes the estimate a cycle out and clears the late state.
+      expect(prediction.isLate, isFalse);
+      expect(prediction.estimatedNextStart, LocalDate(2026, 10, 26));
+
+      await _pump(
+        tester,
+        PhaseInsightsCard(prediction: prediction, today: today),
+      );
+
+      expectLateLutealRunningLong();
+    });
+
+    testWidgets(
+        'the issue\'s reproduction: onboarding answers only, then a skip',
+        (tester) async {
+      final prediction = seedProvisionalPrediction(
+        facts: CycleFacts(
+          lastPeriodStart: openCycleStart,
+          typicalCycleLengthDays: 28,
+        ),
+        today: today,
+        omittedCycleStarts: {openCycleStart},
+      ) as ActivePrediction;
+      expect(prediction.tier, CycleConfidence.provisional);
+      expect(prediction.isLate, isFalse);
+      expect(prediction.daysUntilNextStart, 22);
+
+      await _pump(
+        tester,
+        PhaseInsightsCard(prediction: prediction, today: today),
+      );
+
+      expectLateLutealRunningLong();
+    });
+  });
+
   testWidgets('tapping article button opens article sheet', (tester) async {
     final today = LocalDate(2026, 9, 1);
     final prediction = _makePrediction(today: today, cycleDay: 1, duringEpisode: true);
