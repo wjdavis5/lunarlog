@@ -175,9 +175,6 @@ class _TodayCardState extends State<TodayCard> {
   }
 
   Widget _estimateRow(BuildContext context, ThemeData theme) {
-    final textScaler = MediaQuery.textScalerOf(context);
-    final isLargeText = textScaler.scale(1) > 1.2;
-
     Widget buildChip() => Semantics(
       label: AppLocalizations.of(context).futureExplainerConfidence(
         tierShortLabel(AppLocalizations.of(context), widget.tier),
@@ -192,38 +189,24 @@ class _TodayCardState extends State<TodayCard> {
       ),
     );
 
-    // Issue #836: at accessibility text scales, a side-by-side Row cramps
-    // the estimate label and causes mid-word character breaks ("perio / d").
-    // Stacking vertically gives the estimate headline the full card width.
-    if (isLargeText && widget.showConfidenceChip) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            widget.estimateText,
-            key: const ValueKey('overview-next-period'),
-            style: theme.textTheme.titleMedium,
-          ),
-          const SizedBox(height: LLSpace.space1),
-          buildChip(),
-        ],
-      );
-    }
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    // The estimate always gets the card's full width, and the chip sits
+    // beside it only where both fit on one line. In a Row the chip took
+    // its width first and the estimate wrapped in what was left: on an
+    // ordinary phone that broke the date in two ("October / 1, 2026"),
+    // and at accessibility text scales it broke words (issue #836, which
+    // stacked the two for large text only). A Wrap does both jobs.
+    return Wrap(
+      key: const ValueKey('today-card-estimate-row'),
+      spacing: LLSpace.space2,
+      runSpacing: LLSpace.space1,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Expanded(
-          child: Text(
-            widget.estimateText,
-            key: const ValueKey('overview-next-period'),
-            style: theme.textTheme.titleMedium,
-          ),
+        Text(
+          widget.estimateText,
+          key: const ValueKey('overview-next-period'),
+          style: theme.textTheme.titleMedium,
         ),
-        if (widget.showConfidenceChip) ...[
-          const SizedBox(width: LLSpace.space2),
-          buildChip(),
-        ],
+        if (widget.showConfidenceChip) buildChip(),
       ],
     );
   }
