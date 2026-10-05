@@ -1,12 +1,11 @@
 /// Scheme-allowlisted external URL launching (epic #831, slice 5).
 ///
-/// `url_launcher` hands a [Uri] straight to the OS or the browser. With the
-/// web build a first-class client, a `javascript:`/`data:`/arbitrary scheme
-/// reaching the platform launcher is the same class of bug an unescaped
-/// `href` is on a page — so every launch goes through [safeLaunchUrl], which
-/// refuses any scheme outside an explicit allowlist before touching the
-/// platform. The XSS surface review that motivates this seam is
-/// `docs/web/xss-surface-review.md`.
+/// `url_launcher` hands a [Uri] straight to the OS. A `javascript:`/
+/// `data:`/arbitrary scheme reaching the platform launcher is the same
+/// class of bug an unescaped `href` is on a page — so every launch goes
+/// through [safeLaunchUrl], which refuses any scheme outside an explicit
+/// allowlist before touching the platform. The XSS surface review that
+/// motivated this seam is `docs/web/xss-surface-review.md`.
 ///
 /// Today the only caller is `lib/ui/gate/device_settings_launcher.dart`,
 /// which opens fixed *platform* settings schemes (`app-settings:`/`intent:`)

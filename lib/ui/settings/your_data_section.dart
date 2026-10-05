@@ -1,7 +1,7 @@
 /// Settings "Your data" section (Issue #222; source: B-17). Reachable
-/// without a cloud account: the section itself renders on any non-web
-/// platform, independent of sign-in state and even with zero profiles on
-/// this device — the whole point of "Import from file" (Issue #140) is
+/// without a cloud account: the section itself renders independent of
+/// sign-in state and even with zero profiles on this device — the
+/// whole point of "Import from file" (Issue #140) is
 /// restoring a device that has *no* profiles yet (a fresh install, or the
 /// README's documented "lost device, no account, no backup" case). "Export
 /// my data" stays additionally gated on at least one profile existing —
@@ -77,8 +77,6 @@ import 'package:provider/provider.dart';
 class YourDataSection extends StatefulWidget {
   const YourDataSection({
     super.key,
-    this.showExport,
-    this.showImport,
     this.exportAccount,
     this.exportCsv,
     this.profileErasureService,
@@ -98,17 +96,6 @@ class YourDataSection extends StatefulWidget {
   /// Null means [defaultTargetPlatform]; injectable so tests can pin a
   /// platform without touching the binding.
   final TargetPlatform? platform;
-
-  /// Whether "Export my data" may render at all; null means "not web"
-  /// (matches `AccountSection`'s pre-#222 `showExportAndDelete` default -
-  /// R11 never shipped either tile on web). Injectable so tests simulate
-  /// web without actually running on it.
-  final bool? showExport;
-
-  /// Whether "Import from file" may render at all (Issue #140); null means
-  /// "not web", the same default as [showExport]. Injectable so tests
-  /// simulate web without actually running on it.
-  final bool? showImport;
 
   /// Export collaborator; null means [defaultExportAccountCollaborator]
   /// (the real platform writer). Injectable so tests never touch
@@ -146,9 +133,6 @@ class _YourDataSectionState extends State<YourDataSection> {
   bool _purging = false;
   String? _purgeError;
 
-  bool get _canExport => widget.showExport ?? !kIsWeb;
-  bool get _canImport => widget.showImport ?? !kIsWeb;
-
   @override
   void initState() {
     super.initState();
@@ -179,9 +163,7 @@ class _YourDataSectionState extends State<YourDataSection> {
   @override
   Widget build(BuildContext context) {
     final profiles = _profiles;
-    if ((!_canExport && !_canImport) || profiles == null) {
-      return const SizedBox.shrink();
-    }
+    if (profiles == null) return const SizedBox.shrink();
     final auth = Provider.of<AuthController?>(context);
     // A `passwordRecovery` session counts as signed in for rendering
     // purposes here too (issue #23, AC4).
@@ -213,8 +195,8 @@ class _YourDataSectionState extends State<YourDataSection> {
     ];
   }
 
-  /// "Export my data" — empty when [_canExport] is false or there are no
-  /// profiles yet (nothing to export, unlike import: Issue #140 is exactly
+  /// "Export my data" — empty when there are no profiles yet (nothing
+  /// to export, unlike import: Issue #140 is exactly
   /// for restoring a device that has none). [signedIn] only changes the
   /// tile's subtitle copy (Issue #222: an export names the account's
   /// server data only when signed in - a signed-out export is local-only,
@@ -224,7 +206,7 @@ class _YourDataSectionState extends State<YourDataSection> {
     List<Profile> profiles,
     bool signedIn,
   ) {
-    if (!_canExport || profiles.isEmpty) return const [];
+    if (profiles.isEmpty) return const [];
     final l10n = AppLocalizations.of(context);
     final exportError = _exportErrorCopy(l10n);
     return [
@@ -258,9 +240,8 @@ class _YourDataSectionState extends State<YourDataSection> {
     ];
   }
 
-  /// "Import from file" (Issue #140) — empty when [_canImport] is false.
+  /// "Import from file" (Issue #140).
   List<Widget> _importTile(BuildContext context) {
-    if (!_canImport) return const [];
     final l10n = AppLocalizations.of(context);
     return [
       ListTile(

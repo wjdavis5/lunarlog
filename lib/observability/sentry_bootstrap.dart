@@ -10,9 +10,8 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kIsWeb, kReleaseMode;
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/widgets.dart';
-import 'package:http/http.dart' as http;
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/observability/scrub.dart';
@@ -77,23 +76,9 @@ Future<void> runWithSentry({
 /// stand-in, that catch block would be untestable and a regression in it
 /// (the round-1 gap this closes) could ship green. Default to the real
 /// [scrubEvent]/[scrubTransaction]; only tests override them.
-///
-/// [isWeb] (issue #1110) defaults to the compile-time [kIsWeb] and is
-/// injectable for the same reason [tracesSampleRate] is: under
-/// `flutter test` it is always false, so the web branch below (the Dart
-/// transport swap and the `autoInitializeNativeSdk = false` pin) would be
-/// unreachable without the seam. Only tests pass it.
-///
-/// [webHttpClient] is the HTTP client [WebDartSentryTransport] posts
-/// envelopes through when the web branch runs. Defaults to a real
-/// `http.Client()`; only tests inject one (a recording fake), so the
-/// transport's endpoint, headers, and body are asserted off the wire
-/// exactly as the SDK's own request handler would build them.
 void configureSentryOptions(
   SentryFlutterOptions options, {
   required String dsn,
-  bool? isWeb,
-  http.Client? webHttpClient,
   BreadcrumbLog? breadcrumbLog,
   double? tracesSampleRate,
   SentryEvent? Function(SentryEvent event) scrubEventFn = scrubEvent,
@@ -159,35 +144,6 @@ void configureSentryOptions(
     // than ship a value-based scrubber this file has never had reason to
     // build.
     ..enablePrintBreadcrumbs = false;
-  // Web transport swap (issue #1110). On web, sentry_flutter 9.28.0 injects
-  // its JS SDK from a hardcoded `browser.sentry-cdn.com` URL (no self-host
-  // option) and delivers every envelope through that same JS binding --
-  // which `script-src 'self'` in `web/_headers` blocks at both steps, so a
-  // DSN'd web build has a dead SDK. `autoInitializeNativeSdk = false` is the
-  // SDK's own switch for skipping the script load AND its `SentryWeb.init`
-  // (`WebSdkIntegration.call` returns before both), and it also leaves the
-  // `JavascriptTransport` the SDK installs as the default web transport
-  // pointing at a binding that was never initialized -- so the transport is
-  // swapped here for a Dart-side envelope POST straight to the DSN's
-  // `*.ingest.sentry.io` endpoint, which `connect-src` already allows.
-  // Everything above the swap (the KTD12 privacy floor) and the scrubbers
-  // wired below are platform-independent: a web event is scrubbed by exactly
-  // the same `beforeSend`/`beforeBreadcrumb` hooks a native event is.
-  //
-  // The accepted trade-off (the issue's option 2): errors that exist only in
-  // the JS layer -- engine-level console errors, anything the browser JS
-  // SDK's global handlers would catch outside Dart -- are no longer
-  // observable on web at all, where today they were merely unreachable. Dart
-  // errors, the ones a Flutter web build actually produces, keep flowing.
-  if (isWeb ?? kIsWeb) {
-    options
-      ..autoInitializeNativeSdk = false
-      ..transport = WebDartSentryTransport(
-        dsn: dsn,
-        options: options,
-        client: webHttpClient,
-      );
-  }
   // Allowlist scrubbing (R18). scrubTransaction (U4) is inert while
   // tracesSampleRate is null -- no transaction is ever produced for it to
   // see -- and proven by unit tests long before an operator opts in.
@@ -233,121 +189,6 @@ void configureSentryOptions(
   options.replay
     ..sessionSampleRate = null
     ..onErrorSampleRate = null;
-}
-
-/// A Dart-side envelope transport for the web build (issue #1110).
-///
-/// POSTs the raw envelope bytes straight to the DSN's ingest `envelope`
-/// endpoint over `package:http` — on web that means the browser's own HTTP
-/// stack, governed by `connect-src`, which `web/_headers` already pins to
-/// the DSN's `*.ingest.sentry.io` host. The wire format mirrors the core
-/// Dart SDK's own `HttpTransport` (package:sentry 9.28.0,
-/// `transport/http_transport_request_handler.dart`): `Content-Type:
-/// application/x-sentry-envelope` plus the `X-Sentry-Auth` credential
-/// header. That is the shape the core SDK itself ships to browsers — its
-/// `client_provider.dart` hands `HttpTransport` a browser `http.Client` on
-/// the non-io branch — so ingest's CORS handling for these headers is the
-/// SDK's own supported configuration, not a guess this file invented.
-///
-/// Deliberately minimal next to the real `HttpTransport`: no rate-limit
-/// tracking, no retry-after handling, no client reports. Every failure path
-/// drops the envelope and returns the SDK's empty id — exactly what the
-/// SDK's `JavascriptTransport.send` does when a capture fails — because a
-/// dropped crash report is the same loss the blocked CDN script causes
-/// today, never a data-integrity risk. A malformed DSN degrades to that
-/// same drop-everything posture rather than throwing at configure time:
-/// [configureSentryOptions] has no way to surface an error there, and a
-/// dead transport is the posture an empty DSN already produces.
-class WebDartSentryTransport implements Transport {
-  /// Builds a transport for [dsn]. [options] supplies the envelope
-  /// serializer (attachment size caps) and the `sentry_client` credential
-  /// string. [client] defaults to a real `http.Client()` — the browser's
-  /// HTTP stack on web — and is injectable so tests can record the request.
-  WebDartSentryTransport({
-    required String dsn,
-    required SentryOptions options,
-    http.Client? client,
-  }) : _options = options,
-       _client = client ?? http.Client() {
-    _parsed = _parseDsn(dsn, options.sentryClientName);
-  }
-
-  final SentryOptions _options;
-  final http.Client _client;
-
-  /// Null when [dsn] was empty or malformed: every send then drops.
-  ({Uri endpoint, String authHeader})? _parsed;
-
-  /// Parses [dsn] into the POST target and the `X-Sentry-Auth` credential
-  /// header. The header's shape mirrors package:sentry 9.28.0's
-  /// `_CredentialBuilder` verbatim; any parse failure returns null (the
-  /// drop-everything posture documented on the class).
-  static ({Uri endpoint, String authHeader})? _parseDsn(
-    String dsn,
-    String sentryClientName,
-  ) {
-    if (dsn.isEmpty) {
-      return null;
-    }
-    final Uri endpoint;
-    try {
-      final parsed = Dsn.parse(dsn);
-      // postUri builds and re-parses a new absolute Uri from the parsed
-      // pieces, so a DSN that parsed as a *relative* Uri (no scheme/host --
-      // Uri.parse accepts those) can still fail here. Both failure modes
-      // mean the DSN cannot produce a usable endpoint: drop everything.
-      endpoint = parsed.postUri;
-      var authHeader =
-          'Sentry sentry_version=7, '
-          'sentry_client=$sentryClientName, '
-          'sentry_key=${parsed.publicKey}';
-      if (parsed.secretKey != null) {
-        authHeader += ', sentry_secret=${parsed.secretKey}';
-      }
-      return (endpoint: endpoint, authHeader: authHeader);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  @override
-  Future<SentryId?> send(SentryEnvelope envelope) async {
-    final parsed = _parsed;
-    if (parsed == null) {
-      return SentryId.empty();
-    }
-    try {
-      final body = <int>[];
-      await for (final chunk in envelope.envelopeStream(_options)) {
-        body.addAll(chunk);
-      }
-      final response = await _client.post(
-        parsed.endpoint,
-        headers: <String, String>{
-          'Content-Type': 'application/x-sentry-envelope',
-          'X-Sentry-Auth': parsed.authHeader,
-        },
-        body: body,
-      );
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        return envelope.header.eventId;
-      }
-      _options.log(
-        SentryLevel.error,
-        'WebDartSentryTransport: ingest returned ${response.statusCode}; '
-        'envelope dropped.',
-      );
-      return SentryId.empty();
-    } on Exception catch (exception, stackTrace) {
-      _options.log(
-        SentryLevel.error,
-        'WebDartSentryTransport: failed to send envelope',
-        exception: exception,
-        stackTrace: stackTrace,
-      );
-      return SentryId.empty();
-    }
-  }
 }
 
 /// Wraps the root widget in [SentryWidget] when crash reporting is active;

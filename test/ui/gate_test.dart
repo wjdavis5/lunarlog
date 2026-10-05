@@ -1462,8 +1462,8 @@ void main() {
       await harness.dispose();
     });
 
-    testWidgets('web-style gate is a no-op: no lock, immediate data, no auth '
-        'requests (web dev banner is U8)', (tester) async {
+    testWidgets('a gate that needs no unlock is a no-op: no lock, immediate '
+        'data, no auth requests', (tester) async {
       final harness = Harness(tester, seed: (db) async {
         await seedTwoProfiles(db, 0);
       });
@@ -1472,7 +1472,7 @@ void main() {
 
       expect(lockScreen, findsNothing);
       expect(find.text('Alice'), findsOneWidget,
-          reason: 'un-gated platform renders data directly');
+          reason: 'an un-gated gate renders data directly');
       expect(harness.gate.requests, 0);
       expect(harness.dbOpenerCalls, 1);
       await harness.dispose();

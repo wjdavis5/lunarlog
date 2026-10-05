@@ -103,9 +103,8 @@ Future<void> _runLunarlog() async {
   // is presented instead of dropped — firebase_messaging persists the
   // callback handles at registration time, which is why this must happen
   // early in every launch. Gated on [AppConfig.hasPush] like every
-  // firebase_messaging touch (hasPush already excludes web): an
-  // unconfigured build — every CI and fork build, with empty FCM defines —
-  // never reaches the plugin. This registration is also what backs the
+  // firebase_messaging touch: an unconfigured build — every CI and fork
+  // build, with empty FCM defines — never reaches the plugin. This registration is also what backs the
   // `remote-notification` UIBackgroundModes entry in
   // ios/Runner/Info.plist.
   if (AppConfig.hasPush) {
@@ -114,15 +113,13 @@ Future<void> _runLunarlog() async {
   runApp(wrapWithSentry(LunarLogRoot(
     gate: defaultAppGate(),
     // #271: constructing the store does no I/O (it only opens secure
-    // storage lazily, per call) — safe to pass unconditionally, including
-    // on web, where the gate never consults it (`gate.requiresUnlock` is
-    // false there, so `GateController.unlock` never reaches a PIN check).
+    // storage lazily, per call) — safe to pass unconditionally.
     pinService: PinCredentialStore(),
     // Issue #244: `protectDatabaseFile` runs after `.open()` succeeds (so
     // the file is guaranteed to exist — `.open()`'s own `SELECT 1` probe
     // already forced drift to create it) and on every open, not just the
     // first — a device reset (KTD16) closes and recreates this file, which
-    // needs the same iOS hardening reapplied. A no-op on Android/web.
+    // needs the same iOS hardening reapplied. A no-op on Android.
     dbOpener: () async {
       final factory = await buildDbFactory();
       final db = await factory.open();
@@ -134,7 +131,7 @@ Future<void> _runLunarlog() async {
     },
     // KTD7/KTD9: reminders are a native-only surface. The composition
     // factory builds the platform default (with its settings store) after
-    // the database opens; web gets the no-op.
+    // the database opens.
     buildDefaultScheduler: true,
     // Issue #141: the home-screen widget is a native-only surface too —
     // the same production-only arming as the scheduler above. The store

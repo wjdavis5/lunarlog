@@ -32,7 +32,6 @@ import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:lunarlog/data/gate/pbkdf2.dart';
 import 'package:lunarlog/domain/gate/pin_credential_service.dart';
@@ -57,29 +56,12 @@ typedef Pbkdf2Runner = Future<Uint8List> Function({
 /// only plain, sendable data crosses the isolate boundary ([List<int>]/
 /// [int] arguments, a [Uint8List] result), never a closure over anything
 /// stateful.
-///
-/// `dart:isolate` has no web implementation ([Isolate.run] throws
-/// [UnsupportedError] there), so this falls back to calling
-/// [pbkdf2HmacSha256] directly on [kIsWeb]. That fallback is defense in
-/// depth, not a path any real build takes today: the PIN gate only ever
-/// engages behind [GateController.pinRequired], which — like the rest of
-/// the device-credential gate — never fires on web (`WebAppGate
-/// .requiresUnlock` is `false`, so `GateController` never reaches a PIN
-/// check there at all; see `lib/startup/gate/web_gate.dart`).
 Future<Uint8List> defaultPbkdf2Runner({
   required List<int> password,
   required List<int> salt,
   required int iterations,
   required int keyLengthBytes,
 }) {
-  if (kIsWeb) {
-    return Future.value(pbkdf2HmacSha256(
-      password: password,
-      salt: salt,
-      iterations: iterations,
-      keyLengthBytes: keyLengthBytes,
-    ));
-  }
   return Isolate.run(() => pbkdf2HmacSha256(
         password: password,
         salt: salt,

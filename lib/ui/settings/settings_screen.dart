@@ -9,9 +9,9 @@
 /// sharing and Privacy & security, unchanged from its pre-#226 spot).
 ///
 /// What each section holds: Your data is export/import (Issues #222/#140,
-/// `YourDataSection`, which hosts its own `SettingsSection` so it keeps
-/// self-hiding on web); Reminders holds the per-profile reminder
-/// configuration (#136) *and* the caregiver alert preferences promoted out
+/// `YourDataSection`, which hosts its own `SettingsSection`); Reminders
+/// holds the per-profile reminder configuration (#136) *and* the
+/// caregiver alert preferences promoted out
 /// of Manage Guardians (#226's core fix — one tap from here instead of
 /// four levels through a profile's caregiver screen; the old Manage
 /// Guardians entry stays); Calendar holds the week-start and date-format
@@ -35,7 +35,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, kIsWeb;
+    show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
@@ -158,8 +158,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final hasFeedback =
         Provider.of<FeedbackService?>(context) != null && signedIn;
     // Issues #153/#458: dormant until a HealthKit/Health Connect adapter
-    // exists (AppConfig.hasHealthSync) and never on web — see that flag's
-    // doc comment. Since #193 the write flow behind it is real on iOS, and
+    // exists (AppConfig.hasHealthSync) — see that flag's doc comment.
+    // Since #193 the write flow behind it is real on iOS, and
     // since #458 the read path is real on Android too (the write adapter
     // #345/#374 had landed earlier), so the tile renders on both wired OS
     // stores. Also needs the repository wiring a fully unconfigured build
@@ -170,7 +170,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     final hasHealthSync =
         AppConfig.hasHealthSync &&
-        !kIsWeb &&
         (defaultTargetPlatform == TargetPlatform.iOS ||
             defaultTargetPlatform == TargetPlatform.android) &&
         profilesRepository != null &&
@@ -191,8 +190,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: ListView(
         children: [
           // 1. Your data (Issue #222/#140) — self-hosts its SettingsSection
-          // so it can keep self-hiding as a unit (web builds render none
-          // of it).
+          // so it can self-hide as a unit.
           YourDataSection(
             profileErasureService:
                 Provider.of<ProfileErasureService?>(context, listen: false),
@@ -213,7 +211,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           // 2b. Home-screen widget (Issue #141): which profile the widget
           // shows, plus the privacy disclosure. Self-hosts its
-          // SettingsSection so it self-hides as a unit (web/desktop render
+          // SettingsSection so it self-hides as a unit (desktop renders
           // none of it).
           const HomeWidgetSection(),
           // 3. Reminders: the per-profile local reminder configuration
@@ -526,9 +524,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// R23: shown instead of the feedback form on an unconfigured build, a
-  /// signed-out session, or a web build without `LUNARLOG_WEB_SYNC=true`
-  /// (R24 hides the feedback tile entirely in exactly those cases, matching
+  /// R23: shown instead of the feedback form on an unconfigured build or a
+  /// signed-out session (R24 hides the feedback tile entirely in exactly
+  /// those cases, matching
   /// the account-section gating idiom above). `SelectableText` avoids
   /// adding `url_launcher` for a single `mailto:` link.
   void _showContactSupport(BuildContext context) {

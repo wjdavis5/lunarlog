@@ -3,9 +3,9 @@
 /// engine's lifecycle.
 ///
 /// * Device reset (KTD16): [LunarLogRootState.resetDevice] is the one
-///   destructive path — sign-out, "sign out everywhere", the mismatch
-///   screen's "remove this device's data" and the web wipe all call it
-///   through the [DeviceResetCallback] provided to the tree.
+///   destructive path — sign-out, "sign out everywhere" and the mismatch
+///   screen's "remove this device's data" all call it through the
+///   [DeviceResetCallback] provided to the tree.
 ///
 /// Split out of `lib/app_lifecycle.dart` (issue #433): this file owns the
 /// [LunarLogRoot] widget plus [LunarLogRootState], [GateShell],
@@ -100,7 +100,7 @@ SyncEngine defaultSyncEngineBuilder({
 /// remove this device's push registration while the session is still
 /// authenticated, before calling the auth service's own signOut(). Always
 /// best-effort (never throws) and a no-op when push was never started
-/// (unconfigured build, web, or no session yet). Null in harnesses that
+/// (unconfigured build, or no session yet). Null in harnesses that
 /// mount `LunarLogApp` directly without passing one, exactly like
 /// [DeviceResetCallback].
 ///
@@ -229,7 +229,6 @@ class LunarLogRoot extends StatefulWidget {
     this.initialInviteKind,
     this.syncEngineBuilder = defaultSyncEngineBuilder,
     this.deleteLocalDatabase = startup.deleteLocalDatabase,
-    this.isWeb = kIsWeb,
     this.inactivityTimeout = kDefaultInactivityTimeout,
     this.inactivityTimerFactory = defaultInactivityTimerFactory,
     this.dateTicker,
@@ -242,7 +241,7 @@ class LunarLogRoot extends StatefulWidget {
   /// entirely (a plain device-credential gate, unchanged from before this
   /// issue) — `main.dart` passes the real store on every platform since
   /// constructing it does no I/O, and the gate never consults it while
-  /// `gate.requiresUnlock` is false (web).
+  /// `gate.requiresUnlock` is false.
   final PinCredentialService? pinService;
 
   /// Opens (and never quarantines silently — throws U2's typed errors).
@@ -357,12 +356,9 @@ class LunarLogRoot extends StatefulWidget {
   @visibleForTesting
   final SyncEngineBuilder syncEngineBuilder;
 
-  /// Device-reset primitive (KTD16), injectable for tests. On native the
-  /// default deletes this install's database file and siblings; on web
-  /// ([isWeb]) it does not run and the database is wiped table by table
-  /// instead.
+  /// Device-reset primitive (KTD16), injectable for tests. The default
+  /// deletes this install's database file and siblings.
   final Future<void> Function() deleteLocalDatabase;
-  final bool isWeb;
 
   final Duration inactivityTimeout;
   final InactivityTimerFactory inactivityTimerFactory;
@@ -442,7 +438,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
     }
     unawaited(applyPlatformPrivacyProtections());
     if (_gate.unlocked) {
-      // Un-gated platform (web): open straight away.
+      // Already unlocked (a gate that needs no unlock): open straight away.
       unawaited(_openDatabase());
     } else {
       // Cold start presents the credential automatically (F3); every later
@@ -541,10 +537,10 @@ class LunarLogRootState extends State<LunarLogRoot> {
         coordinator.start();
 
         // Issue #5, U7/U8: push registration and the Notifications screen.
-        // Gated by AppConfig.hasPush (R17, R18) — an unconfigured or web
-        // build never constructs any of this, so it never touches
+        // Gated by AppConfig.hasPush (R17, R18) — an unconfigured build
+        // never constructs any of this, so it never touches
         // firebase_messaging and Manage guardians shows no Notifications tile.
-        if (AppConfig.hasPush && !widget.isWeb) {
+        if (AppConfig.hasPush) {
           unawaited(_startPushRegistration(db, authService, client));
         }
       }
@@ -571,9 +567,9 @@ class LunarLogRootState extends State<LunarLogRoot> {
       // same source `LunarLogApp`'s own fallback bundle uses.
       currentUserIdProvider: () => authService?.currentUserId,
       scheduler: widget.scheduler,
-      // R17/R18: push-backed services exist only when push is configured and
-      // this is not web — the same gate `_startPushRegistration` uses below.
-      pushEnabled: AppConfig.hasPush && !widget.isWeb,
+      // R17/R18: push-backed services exist only when push is configured —
+      // the same gate `_startPushRegistration` uses.
+      pushEnabled: AppConfig.hasPush,
       // The shell owns the platform default scheduler; build it here, with
       // the settings store, rather than constructing a throwaway in main.
       buildDefaultScheduler: widget.buildDefaultScheduler,
@@ -694,10 +690,10 @@ class LunarLogRootState extends State<LunarLogRoot> {
   /// disposal; drop the database from the tree and await a frame so
   /// [LunarLogApp] (its coordinator, controllers, repository streams and
   /// the gate's settings watch) has unmounted and nothing can query the
-  /// closing database; await that subtree's asynchronous teardown; wipe
-  /// (web) and close the database; on native delete the file and its
-  /// siblings *then* the key, so a crash in between can never leave a keyed
-  /// file that would quarantine the next open; sign the session out locally
+  /// closing database; await that subtree's asynchronous teardown; close
+  /// the database; delete the file and its siblings *then* the key, so a
+  /// crash in between can never leave a keyed file that would quarantine
+  /// the next open; sign the session out locally
   /// and on the server — best effort, so its failure never skips a local
   /// step (the local session is removed by the service regardless of the
   /// server's answer) — *before* the reopen, so the fresh database's first
@@ -750,19 +746,14 @@ class LunarLogRootState extends State<LunarLogRoot> {
     await WidgetsBinding.instance.endOfFrame;
   }
 
-  /// Wipes (web) and closes [db], then on native deletes the database file
-  /// and its siblings. Returns whether the step succeeded; on failure it
-  /// records `_error` (fail-closed) and the caller must stop [resetDevice]
-  /// before sign-out and reopen.
+  /// Closes [db], then deletes the database file and its siblings. Returns
+  /// whether the step succeeded; on failure it records `_error`
+  /// (fail-closed) and the caller must stop [resetDevice] before sign-out
+  /// and reopen.
   Future<bool> _deleteDatabase(LunarLogDatabase? db) async {
     try {
-      if (db != null) {
-        if (widget.isWeb) await db.wipeAllData();
-        await db.close();
-      }
-      if (!widget.isWeb) {
-        await widget.deleteLocalDatabase();
-      }
+      if (db != null) await db.close();
+      await widget.deleteLocalDatabase();
       return true;
     } catch (error, stackTrace) {
       // U7 (KTD12): the message can embed a database path or SQL — the

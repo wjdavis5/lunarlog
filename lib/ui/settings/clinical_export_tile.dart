@@ -21,7 +21,6 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -154,12 +153,6 @@ class _ClinicalExportTileState extends State<ClinicalExportTile>
 
   @override
   Widget build(BuildContext context) {
-    // Explicit gate (#157 review fix), not inherited from the parent
-    // `YourDataSection`'s own `kIsWeb` check — this tile is meant to stand
-    // on its own (it already owns its state independently, per this file's
-    // doc comment), so it must not depend on being hosted behind another
-    // widget's web gate to stay off web.
-    if (kIsWeb) return const SizedBox.shrink();
     final profiles = _profiles;
     if (profiles == null) return const SizedBox.shrink();
     final liveProfiles = _liveProfiles(profiles);

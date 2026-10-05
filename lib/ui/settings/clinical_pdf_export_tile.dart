@@ -18,7 +18,6 @@ library;
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -141,9 +140,6 @@ class _ClinicalPdfExportTileState extends State<ClinicalPdfExportTile>
 
   @override
   Widget build(BuildContext context) {
-    // Explicit gate: this tile stands on its own (see its doc comment), so
-    // it must not depend on a parent's web gate.
-    if (kIsWeb) return const SizedBox.shrink();
     final profiles = _profiles;
     if (profiles == null) return const SizedBox.shrink();
     final liveProfiles = _liveProfiles(profiles);

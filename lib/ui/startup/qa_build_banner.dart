@@ -8,8 +8,7 @@
 /// Also owns the shared QA copy constants (named consts, not inline
 /// literals, so `hardcoded_ui_strings_test.dart`'s scanner — which flags
 /// first-positional `Text('...')` literals — sees nothing to allowlist;
-/// QA copy is operator-facing English by design, like `WebDevBanner`'s,
-/// and never ships).
+/// QA copy is operator-facing English by design and never ships).
 library;
 
 import 'package:flutter/material.dart';
@@ -32,8 +31,8 @@ const String kQaBuildRelockNote =
 const String kQaBuildVersionSuffix = ' (QA build)';
 
 /// Persistent, non-dismissible strip shown at the top of every QA-build
-/// screen. Mirrors `WebDevBanner`'s shape (a colored `Material` above the
-/// app content) but has no actions — it is a marker, not a guardrail.
+/// screen: a colored `Material` above the app content with no actions —
+/// it is a marker, not a guardrail.
 class QaBuildBanner extends StatelessWidget {
   const QaBuildBanner({super.key});
 
@@ -45,10 +44,9 @@ class QaBuildBanner extends StatelessWidget {
     final theme = Theme.of(context);
     return Material(
       key: bannerKey,
-      // Deliberately a different container role from WebDevBanner's
-      // errorContainer and the invite banner's primaryContainer, so the
-      // two banners are visually distinct on a web QA build where both
-      // render.
+      // Deliberately a different container role from the invite banner's
+      // primaryContainer, so the two banners are visually distinct when
+      // both render.
       color: theme.colorScheme.tertiaryContainer,
       child: SafeArea(
         bottom: false,

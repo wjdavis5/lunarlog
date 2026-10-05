@@ -21,8 +21,8 @@
 /// is pixel-identical to before. The widget mounts in
 /// `MaterialApp.builder` (`lib/app.dart`, and the lock screen's own
 /// MaterialApp) so every route, pushed screen, and modal presents inside
-/// the frame; full-width banner strips (web guardrails, QA build, pending
-/// invite) sit above it and stay chrome.
+/// the frame; full-width banner strips (QA build, pending invite) sit
+/// above it and stay chrome.
 library;
 
 import 'package:flutter/material.dart';

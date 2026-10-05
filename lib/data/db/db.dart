@@ -1,9 +1,9 @@
 /// The drift database for lunarlog: one class, one schema version, and a
 /// migration framework ready for step-by-step upgrades.
 ///
-/// Platform differences (a plain file on mobile, WASM/IndexedDB on web)
-/// live entirely in the [QueryExecutor] handed to the constructor — see
-/// `db_factory.dart`, `native_db.dart` and `web_db.dart`.
+/// Where the data lives (a plain file on mobile) is decided entirely by
+/// the [QueryExecutor] handed to the constructor — see
+/// `db_factory.dart` and `native_db.dart`.
 library;
 
 import 'package:drift/drift.dart';
@@ -1049,10 +1049,10 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     });
   }
 
-  /// Hard-deletes every row in every table, the `sync_state` row included —
-  /// the web build's wipe-local-data action and the web half of device
-  /// reset (KTD16). This is a wipe, not a sync-domain soft delete:
-  /// tombstones go too. Native device reset deletes the file instead.
+  /// Hard-deletes every row in every table, the `sync_state` row included.
+  /// This is a wipe, not a sync-domain soft delete: tombstones go too.
+  /// Device reset (KTD16) does not call it — it deletes the database file
+  /// instead.
   Future<void> wipeAllData() async {
     await transaction(() async {
       // observations references day_entries(id) and profiles(id); the two
