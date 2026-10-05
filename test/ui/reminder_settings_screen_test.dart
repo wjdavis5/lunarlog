@@ -8,13 +8,16 @@
 /// scrolls the target into view.
 library;
 
-import 'dart:async' show unawaited;
+import 'dart:async' show Completer, unawaited;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/app_lifecycle.dart'
+    show RequestNotificationPermissionCallback;
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/notifications/reminder_config.dart';
 import 'package:lunarlog/domain/notifications/scheduling.dart'
     show kReminderBody, kReminderTitle;
@@ -24,6 +27,7 @@ import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/components/list_section_header.dart';
+import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/settings/reminder_settings_screen.dart';
 import 'package:provider/provider.dart';
@@ -82,10 +86,22 @@ Future<void> _pump(
   FakeSettingsStore store, {
   ReminderTimePicker? timePicker,
   ProfileLifecycleMode? modeRow,
+  NotificationPermissionState? permission,
+  Future<void> Function()? requestPermission,
 }) async {
   await tester.pumpWidget(
     MultiProvider(
       providers: [
+        // What the app root provides above every route: whether the phone
+        // lets the app show notifications, and the seam that asks.
+        if (permission != null)
+          ChangeNotifierProvider<NotificationPermissionState>.value(
+            value: permission,
+          ),
+        if (requestPermission != null)
+          Provider<RequestNotificationPermissionCallback>.value(
+            value: RequestNotificationPermissionCallback(requestPermission),
+          ),
         Provider<ProfilesRepository>.value(
           value: _FakeProfilesRepository(profiles),
         ),
@@ -200,6 +216,145 @@ List<String> _optionKeys(ReminderKind kind) => [
 ];
 
 void main() {
+  group('the screen says when the phone will not show any of it', () {
+    const banner = ValueKey('reminders-notifications-off');
+    const action = ValueKey('reminders-notifications-off-action');
+
+    testWidgets('notifications off for the app: a banner says what '
+        'reminders need, and its button asks for it', (tester) async {
+      final permission = NotificationPermissionState(
+        NotificationAvailability.denied,
+      );
+      addTearDown(permission.dispose);
+      var asked = 0;
+      await _pump(
+        tester,
+        [_profile('p1', 'Alice')],
+        FakeSettingsStore(),
+        permission: permission,
+        requestPermission: () async {
+          asked++;
+          // The scheduler reports the new answer through the same state.
+          permission.update(NotificationAvailability.available);
+        },
+      );
+
+      expect(find.byKey(banner), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(banner),
+          matching: find.text('Reminders need notifications turned on'),
+        ),
+        findsOneWidget,
+      );
+      // Period due reads as on beneath it: the banner is what says the
+      // phone will not show it.
+      expect(_switchOf(tester, 'reminder-upcoming-switch').value, isTrue);
+
+      await tester.tap(find.byKey(action));
+      await tester.pumpAndSettle();
+
+      expect(asked, 1);
+      expect(
+        find.byKey(banner),
+        findsNothing,
+        reason: 'allowed now, so there is nothing left to say',
+      );
+    });
+
+    testWidgets('the banner stays put while the list scrolls', (tester) async {
+      final permission = NotificationPermissionState(
+        NotificationAvailability.denied,
+      );
+      addTearDown(permission.dispose);
+      await _pump(
+        tester,
+        [_profile('p1', 'Alice')],
+        FakeSettingsStore(),
+        permission: permission,
+        requestPermission: () async {},
+      );
+
+      final before = tester.getTopLeft(find.byKey(banner));
+      await _scrollTo(tester, const ValueKey('reminder-quiet-switch'));
+      expect(find.byKey(banner), findsOneWidget);
+      expect(tester.getTopLeft(find.byKey(banner)), before);
+    });
+
+    testWidgets('a second tap while the phone is still asking does not ask '
+        'twice', (tester) async {
+      final permission = NotificationPermissionState(
+        NotificationAvailability.denied,
+      );
+      addTearDown(permission.dispose);
+      final answered = Completer<void>();
+      var asked = 0;
+      await _pump(
+        tester,
+        [_profile('p1', 'Alice')],
+        FakeSettingsStore(),
+        permission: permission,
+        requestPermission: () {
+          asked++;
+          return answered.future;
+        },
+      );
+
+      await tester.tap(find.byKey(action));
+      await tester.pump();
+      await tester.tap(find.byKey(action), warnIfMissed: false);
+      await tester.pump();
+      expect(asked, 1);
+
+      answered.complete();
+      await tester.pumpAndSettle();
+      // Still off (she said no): the banner and its button are back.
+      expect(find.byKey(banner), findsOneWidget);
+      expect(
+        tester.widget<TextButton>(find.byKey(action)).onPressed,
+        isNotNull,
+      );
+    });
+
+    testWidgets('notifications allowed: no banner', (tester) async {
+      final permission = NotificationPermissionState(
+        NotificationAvailability.available,
+      );
+      addTearDown(permission.dispose);
+      await _pump(
+        tester,
+        [_profile('p1', 'Alice')],
+        FakeSettingsStore(),
+        permission: permission,
+        requestPermission: () async {},
+      );
+      expect(find.byKey(banner), findsNothing);
+    });
+
+    testWidgets('off, with nothing that can ask: the banner says so and '
+        'offers no button', (tester) async {
+      final permission = NotificationPermissionState(
+        NotificationAvailability.denied,
+      );
+      addTearDown(permission.dispose);
+      await _pump(
+        tester,
+        [_profile('p1', 'Alice')],
+        FakeSettingsStore(),
+        permission: permission,
+      );
+      expect(find.byKey(banner), findsOneWidget);
+      expect(find.byKey(action), findsNothing);
+    });
+
+    testWidgets('where the answer is not known at all, no banner', (
+      tester,
+    ) async {
+      await _pump(tester, [_profile('p1', 'Alice')], FakeSettingsStore());
+      expect(find.byKey(banner), findsNothing);
+    });
+  });
+
   group('a reminder shows its options only while it is on', () {
     testWidgets('by default the two that ship on show theirs, and the five '
         'that ship off are a switch and nothing else', (tester) async {
