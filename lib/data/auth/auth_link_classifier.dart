@@ -9,9 +9,10 @@
 /// an error and are never handed to the provider.
 library;
 
-/// Custom-scheme callback for confirmation and reset emails on native
-/// (KTD8). Registered in `AndroidManifest.xml` and `Info.plist`. A link on
-/// this scheme is honoured only on [kAuthCallbackHost].
+/// Custom-scheme callback for confirmation and reset emails (KTD8).
+/// Registered in `AndroidManifest.xml` and `Info.plist`. It is the only
+/// sign-in callback the app has: a link is honoured only on this scheme
+/// and on [kAuthCallbackHost].
 const String kAuthCallbackScheme = 'lunarlog';
 const String kAuthCallbackHost = 'auth-callback';
 const String kAuthCallbackUrl = '$kAuthCallbackScheme://$kAuthCallbackHost';
@@ -71,10 +72,18 @@ final class AuthLinkCallback extends AuthLink {
 }
 
 AuthLink classifyAuthLink(Uri uri) {
-  // On the custom scheme only the registered host is this app's callback;
-  // any other host is not ours. (A link on any other scheme, such as
-  // https, is classified on its parameters alone.)
-  if (uri.scheme == kAuthCallbackScheme && uri.host != kAuthCallbackHost) {
+  // Only `lunarlog://auth-callback` is this app's sign-in callback. Any
+  // other link is not ours to exchange, whatever parameters it carries.
+  //
+  // The app receives other links too, and every incoming link is offered
+  // here. An invitation is one of them: `lunarlog://invite?code=...`, and
+  // `https://<link domain>/invite?code=...` on a build with universal links
+  // on. An invitation's `code` is its own token, not a sign-in code. An
+  // https link used to be classified on its parameters alone (the retired
+  // Flutter web build landed its callbacks on the page's own origin), so
+  // opening an https invitation also sent its token to the sign-in
+  // exchange, which failed and reported an expired sign-in link.
+  if (uri.scheme != kAuthCallbackScheme || uri.host != kAuthCallbackHost) {
     return const AuthLinkIgnored();
   }
   final params = <String, String>{
