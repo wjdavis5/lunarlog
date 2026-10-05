@@ -791,6 +791,51 @@ void main() {
       await db.close();
     });
 
+    // Issue #1455: the same shape one section down. The spotting marker is
+    // a heading over a value, and both are "Spotting".
+    testWidgets('the read-only sheet announces the spotting marker once',
+        (tester) async {
+      final handle = tester.ensureSemantics();
+      final db = await pumpDaySheet(
+        tester,
+        readOnly: true,
+        buildExisting: (entries, observations, profileId) async {
+          final saved = await entries.save(
+            DayEntry(
+              id: '',
+              profileId: profileId,
+              localDate: LocalDate(2026, 8, 29),
+              tz: 'America/Chicago',
+              flow: FlowLevel.none,
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+          await observations.save(
+            Observation(
+              id: '',
+              dayEntryId: saved.id,
+              profileId: profileId,
+              localDate: saved.localDate,
+              tz: saved.tz,
+              category: ObservationCategory.spotting,
+              code: 'spotting',
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+          return saved;
+        },
+      );
+
+      expect(find.text('Spotting'), findsNWidgets(2),
+          reason: 'the heading and its value both stay on screen');
+      expect(find.semantics.byLabel(RegExp('Spotting')), findsOne,
+          reason: 'a screen reader hears it once, not twice in a row');
+      handle.dispose();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+    });
+
     testWidgets('the sheet headings are flagged as semantic headers',
         (tester) async {
       final handle = tester.ensureSemantics();
