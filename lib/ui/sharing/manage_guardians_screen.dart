@@ -1453,6 +1453,36 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     }
   }
 
+  /// What a guardian's row says (issue #1427): its title, whether the
+  /// "(you)" suffix follows it, and whether the role goes beneath.
+  ///
+  /// A guardian only has a display name when the invitation they accepted
+  /// supplied one, so whoever created the profile never does. The row used
+  /// to fall back to the role for its title and print the role again as
+  /// the subtitle — "Primary Guardian (you)" over "Primary Guardian". Now
+  /// the role appears once: beneath "You" on the reader's own row, and as
+  /// the title of anyone else's. A row with a name is unchanged.
+  ({String title, bool youSuffix, bool roleBeneath}) _guardianRowLabels(
+    ProfileGuardian guardian, {
+    required bool isMe,
+    required String roleLabel,
+  }) {
+    final name = guardian.displayName;
+    if (name != null && name.isNotEmpty) {
+      return (title: name, youSuffix: isMe, roleBeneath: true);
+    }
+    if (isMe) {
+      // The same stand-in for the reader's name the day sheet's guardian
+      // notes use.
+      return (
+        title: AppLocalizations.of(context).guardianNotesYou,
+        youSuffix: false,
+        roleBeneath: true,
+      );
+    }
+    return (title: roleLabel, youSuffix: false, roleBeneath: false);
+  }
+
   Widget _guardianTile(
     BuildContext context,
     ProfileGuardian guardian,
@@ -1466,6 +1496,11 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     );
     final isMe =
         widget.currentUserId != null && guardian.userId == widget.currentUserId;
+    final labels = _guardianRowLabels(
+      guardian,
+      isMe: isMe,
+      roleLabel: roleLabel,
+    );
 
     return ListTile(
       leading: CircleAvatar(
@@ -1487,14 +1522,12 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
         spacing: 6,
         children: [
           Text(
-            guardian.displayName?.isNotEmpty == true
-                ? guardian.displayName!
-                : roleLabel,
+            labels.title,
             style: theme.textTheme.bodyLarge?.copyWith(
               fontWeight: FontWeight.w600,
             ),
           ),
-          if (isMe)
+          if (labels.youSuffix)
             Text(
               AppLocalizations.of(context).sharingManageGuardiansYouSuffix,
               style: theme.textTheme.bodySmall?.copyWith(
@@ -1514,7 +1547,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
             ),
         ],
       ),
-      subtitle: Text(roleLabel),
+      subtitle: labels.roleBeneath ? Text(roleLabel) : null,
       trailing: _guardianTrailing(
         context,
         guardian,
