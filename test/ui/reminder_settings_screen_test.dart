@@ -23,6 +23,7 @@ import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/components/list_section_header.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/settings/reminder_settings_screen.dart';
 import 'package:provider/provider.dart';
@@ -180,7 +181,173 @@ String _textTileSubtitle(WidgetTester tester, ReminderKind kind) {
   return (row.subtitle as Text).data!;
 }
 
+/// Makes the test surface tall enough that the whole list is built, so
+/// "this row is not there" means it is not in the list, not that it is
+/// below the fold of a lazy ListView.
+void _useTallSurface(WidgetTester tester) {
+  tester.view.physicalSize = const Size(800, 9000);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
+/// The option rows a reminder type can carry under its switch.
+List<String> _optionKeys(ReminderKind kind) => [
+  'reminder-${kind.name}-lead',
+  'reminder-${kind.name}-cadence',
+  'reminder-time-${kind.name}',
+  'reminder-text-${kind.name}',
+];
+
 void main() {
+  group('a reminder shows its options only while it is on', () {
+    testWidgets('by default the two that ship on show theirs, and the five '
+        'that ship off are a switch and nothing else', (tester) async {
+      _useTallSurface(tester);
+      await _pump(tester, [_profile('p1', 'Alice')], FakeSettingsStore());
+
+      Finder row(String key) => find.byKey(ValueKey(key));
+      for (final key in [
+        'reminder-upcoming-lead',
+        'reminder-time-upcoming',
+        'reminder-text-upcoming',
+        'reminder-time-late',
+        'reminder-text-late',
+      ]) {
+        expect(row(key), findsOneWidget, reason: '$key: its reminder is on');
+      }
+      for (final kind in [
+        ReminderKind.periodStartingSoon,
+        ReminderKind.pms,
+        ReminderKind.fertileWindowSoon,
+        ReminderKind.cycleStatisticChange,
+        ReminderKind.log,
+      ]) {
+        expect(row('reminder-${kind.name}-switch'), findsOneWidget);
+        for (final key in _optionKeys(kind)) {
+          expect(row(key), findsNothing, reason: '$key: its reminder is off');
+        }
+      }
+      // The three groups are headed by the shared section title, the one
+      // Settings and Care notes use, not a style of this screen's own.
+      expect(find.byType(ListSectionHeader), findsNWidgets(3));
+      for (final title in ['Your cycle', 'Your birth control', 'Other reminders']) {
+        expect(
+          find.widgetWithText(ListSectionHeader, title),
+          findsOneWidget,
+        );
+      }
+    });
+
+    testWidgets('turning one on brings its options, turning it off takes '
+        'them away, and what was chosen is still there when it comes back', (
+      tester,
+    ) async {
+      _useTallSurface(tester);
+      final store = FakeSettingsStore();
+      await _pump(
+        tester,
+        [_profile('p1', 'Alice')],
+        store,
+        timePicker: (context, initial) async =>
+            const TimeOfDay(hour: 7, minute: 30),
+      );
+      const pmsSwitch = ValueKey('reminder-pms-switch');
+      const pmsRows = [
+        ValueKey('reminder-pms-lead'),
+        ValueKey('reminder-time-pms'),
+        ValueKey('reminder-text-pms'),
+      ];
+
+      for (final key in pmsRows) {
+        expect(find.byKey(key), findsNothing);
+      }
+
+      await tester.tap(find.byKey(pmsSwitch));
+      await tester.pumpAndSettle();
+      for (final key in pmsRows) {
+        expect(find.byKey(key), findsOneWidget);
+      }
+      expect(_timeLabel(tester, ReminderKind.pms), '09:00');
+
+      await tester.tap(find.byKey(const ValueKey('reminder-time-pms')));
+      await tester.pumpAndSettle();
+      expect(_timeLabel(tester, ReminderKind.pms), '07:30');
+
+      await tester.tap(find.byKey(pmsSwitch));
+      await tester.pumpAndSettle();
+      for (final key in pmsRows) {
+        expect(find.byKey(key), findsNothing);
+      }
+
+      await tester.tap(find.byKey(pmsSwitch));
+      await tester.pumpAndSettle();
+      expect(
+        _timeLabel(tester, ReminderKind.pms),
+        '07:30',
+        reason: 'turning a reminder off does not forget its time',
+      );
+    });
+
+    testWidgets('the daily log nudge shows how often and when only once it '
+        'is on', (tester) async {
+      _useTallSurface(tester);
+      await _pump(tester, [_profile('p1', 'Alice')], FakeSettingsStore());
+
+      expect(find.byKey(const ValueKey('reminder-log-cadence')), findsNothing);
+      expect(find.byKey(const ValueKey('reminder-time-log')), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('reminder-log-switch')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('reminder-log-cadence')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('reminder-time-log')), findsOneWidget);
+      expect(find.byKey(const ValueKey('reminder-text-log')), findsOneWidget);
+    });
+
+    testWidgets('each type says what its days are counted before, and the '
+        'statistic note has no days to count', (tester) async {
+      _useTallSurface(tester);
+      await _pump(tester, [_profile('p1', 'Alice')], FakeSettingsStore());
+
+      for (final kind in [
+        ReminderKind.periodStartingSoon,
+        ReminderKind.pms,
+        ReminderKind.fertileWindowSoon,
+        ReminderKind.cycleStatisticChange,
+      ]) {
+        await tester.tap(find.byKey(ValueKey('reminder-${kind.name}-switch')));
+        await tester.pumpAndSettle();
+      }
+
+      expect(
+        find.text('Days before estimated fertile window'),
+        findsOneWidget,
+      );
+      expect(find.text('Days before estimated PMS window'), findsOneWidget);
+      expect(
+        find.text('Days before estimated start'),
+        findsNWidgets(2),
+        reason: 'Period due and Period starting soon',
+      );
+      // Event-driven: nothing to lead, but it still has a time and a text.
+      expect(
+        find.byKey(const ValueKey('reminder-cycleStatisticChange-lead')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('reminder-time-cycleStatisticChange')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('reminder-text-cycleStatisticChange')),
+        findsOneWidget,
+      );
+    });
+  });
+
   testWidgets('renders every reminder type with its defaults', (tester) async {
     final store = FakeSettingsStore();
     await _pump(tester, [_profile('p1', 'Alice')], store);
@@ -211,7 +378,11 @@ void main() {
         enabled,
         reason: '${kind.name} ships ${enabled ? 'on' : 'off'}',
       );
-      expect(_timeLabel(tester, kind), '09:00');
+      // Only a type that is on shows its time row.
+      if (enabled) {
+        await _scrollTo(tester, ValueKey('reminder-time-${kind.name}'));
+        expect(_timeLabel(tester, kind), '09:00');
+      }
     }
   });
 
@@ -224,10 +395,14 @@ void main() {
     await _pump(tester, [_profile('p1', 'Alice')], store);
 
     expect(find.text('Your cycle'), findsOneWidget);
-    // The cycle group lists its kinds; the fertile-window kind carries a
-    // lead row (it is window-anchored), the statistic kind does not.
-    await _scrollTo(tester, const ValueKey('reminder-fertileWindowSoon-lead'));
-    expect(find.text('Days before estimated fertile window'), findsOneWidget);
+    // The cycle group lists its kinds. (Which of them carry a lead row is
+    // pinned with the option rows, in the group above: a type that is off
+    // shows none.)
+    await _scrollTo(
+      tester,
+      const ValueKey('reminder-fertileWindowSoon-switch'),
+    );
+    expect(find.text('Fertile window soon'), findsOneWidget);
 
     // No birth-control method recorded: the group renders its explainer
     // row, not a toggle for a reminder that could never plan.
@@ -383,7 +558,8 @@ void main() {
   });
 
   testWidgets('#183: the pill row is toggleable and carries its time row '
-      '(the daily cadence needs no start date)', (tester) async {
+      'once it is on (the daily cadence needs no start date)', (tester) async {
+    _useTallSurface(tester);
     final store = FakeSettingsStore();
     final service = ReminderConfigService(store);
     await _pump(
@@ -411,7 +587,8 @@ void main() {
     );
     expect(
       find.byKey(const ValueKey('reminder-time-birthControlPill')),
-      findsOneWidget,
+      findsNothing,
+      reason: 'off, the pill reminder is its switch and nothing else',
     );
 
     await tester.tap(
@@ -419,6 +596,14 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect((await service.load('p1'))!.birthControlPill.enabled, isTrue);
+    expect(
+      find.byKey(const ValueKey('reminder-time-birthControlPill')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('reminder-text-birthControlPill')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('the #178 toggles persist per profile like the #136 ones', (
@@ -810,15 +995,16 @@ void main() {
 
       await _scrollTo(tester, const ValueKey('reminder-log-switch'));
       expect(find.text('Other reminders'), findsOneWidget);
+
+      // Switch log nudge on: its cadence row comes with it.
+      await tester.tap(find.byKey(const ValueKey('reminder-log-switch')));
+      await tester.pumpAndSettle();
+      await _scrollTo(tester, const ValueKey('reminder-log-cadence'));
       expect(
         find.byKey(const ValueKey('reminder-log-cadence')),
         findsOneWidget,
       );
       expect(find.text('Cadence'), findsOneWidget);
-
-      // Switch log nudge on
-      await tester.tap(find.byKey(const ValueKey('reminder-log-switch')));
-      await tester.pumpAndSettle();
 
       var stored = await service.load('p1');
       expect(stored!.log.enabled, isTrue);
