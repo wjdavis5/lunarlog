@@ -316,7 +316,7 @@ void main() {
           reason: 'transferring instead is treated as cancelling the delete',
         );
         expect(find.byType(TransferOwnershipScreen), findsOneWidget);
-        expect(find.text("Transfer Maya's Profile"), findsOneWidget);
+        expect(find.text("Transfer Maya's profile"), findsOneWidget);
       },
     );
   });

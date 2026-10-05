@@ -484,7 +484,7 @@ describe('ManageGuardiansPage (issue #1255)', () => {
         element?.className === 'link-display' && content.includes('/invite?code=T0KEN123'),
     );
     expect(link.textContent).toContain('kind=claim');
-    // The invite panel shares the "Copy Link" string, but it never entered
+    // The invite panel shares the "Copy link" string, but it never entered
     // its created state in this test — exactly one copy button is up.
     expect(
       screen.getAllByText(messages['sharingTransferOwnershipCopyLink'] ?? ''),

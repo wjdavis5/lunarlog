@@ -259,11 +259,11 @@ void main() {
       await pumpTransferScreen(tester);
 
       final button = tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, 'Transfer Ownership'),
+        find.widgetWithText(FilledButton, 'Transfer ownership'),
       );
       expect(button.onPressed, isNull);
 
-      await tester.tap(find.widgetWithText(FilledButton, 'Transfer Ownership'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Transfer ownership'));
       await tester.pumpAndSettle();
 
       expect(transferService.lastCreatedProfileId, isNull);
@@ -276,7 +276,7 @@ void main() {
 
       await tester.tap(find.text(ParentPostTransferRole.coManager.label));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Transfer Ownership'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Transfer ownership'));
       await tester.pumpAndSettle();
 
       expect(find.widgetWithText(AlertDialog, 'Transfer ownership?'),
@@ -312,20 +312,20 @@ void main() {
 
       await tester.tap(find.text(ParentPostTransferRole.viewer.label));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Transfer Ownership'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Transfer ownership'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Transfer'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Transfer Ready'), findsOneWidget);
+      expect(find.text('Transfer ready'), findsOneWidget);
 
       await tester.tap(find.text('Cancel transfer'));
       await tester.pumpAndSettle();
 
       expect(transferService.lastCancelledTransferId, 'transfer-1');
-      expect(find.text('Transfer Ready'), findsNothing);
+      expect(find.text('Transfer ready'), findsNothing);
       expect(find.text('What changes'), findsOneWidget);
-      expect(find.widgetWithText(FilledButton, 'Transfer Ownership'),
+      expect(find.widgetWithText(FilledButton, 'Transfer ownership'),
           findsOneWidget);
 
       await tester.pumpWidget(const SizedBox.shrink());
@@ -340,12 +340,12 @@ void main() {
 
       await tester.tap(find.text(ParentPostTransferRole.viewer.label));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Transfer Ownership'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Transfer ownership'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Transfer'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Transfer Ready'), findsOneWidget);
+      expect(find.text('Transfer ready'), findsOneWidget);
 
       transferService.scriptedCancelError = const TransferFailure.network();
       await tester.tap(find.text('Cancel transfer'));
@@ -357,7 +357,7 @@ void main() {
       );
       // The live transfer is untouched: cancellation failed server-side, so
       // the screen must not have silently discarded the claim link.
-      expect(find.text('Transfer Ready'), findsOneWidget);
+      expect(find.text('Transfer ready'), findsOneWidget);
       final cancelButton = tester.widget<TextButton>(
         find.widgetWithText(TextButton, 'Cancel transfer'),
       );
@@ -374,7 +374,7 @@ void main() {
 
       await tester.tap(find.text(ParentPostTransferRole.coManager.label));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Transfer Ownership'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Transfer ownership'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Transfer'));
       await tester.pumpAndSettle();
@@ -385,7 +385,7 @@ void main() {
 
       expect(find.text('Something went wrong. Please try again.'),
           findsOneWidget);
-      expect(find.text('Transfer Ready'), findsOneWidget);
+      expect(find.text('Transfer ready'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
@@ -401,7 +401,7 @@ void main() {
 
       await tester.tap(find.text(ParentPostTransferRole.coManager.label));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Transfer Ownership'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Transfer ownership'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Transfer'));
       await tester.pumpAndSettle();
@@ -413,10 +413,10 @@ void main() {
       // Still armable: the confirm button is visible and enabled again
       // (not stuck loading), and no claim link is shown.
       final button = tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, 'Transfer Ownership'),
+        find.widgetWithText(FilledButton, 'Transfer ownership'),
       );
       expect(button.onPressed, isNotNull);
-      expect(find.text('Transfer Ready'), findsNothing);
+      expect(find.text('Transfer ready'), findsNothing);
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
@@ -436,7 +436,7 @@ void main() {
       await pumpTransferScreen(tester, service: withActive);
 
       expect(withActive.lastGetActiveTransferProfileId, testProfile.id);
-      expect(find.text('A Transfer Is Already Pending'), findsOneWidget);
+      expect(find.text('A transfer is already pending'), findsOneWidget);
       expect(find.text('What changes'), findsNothing);
       expect(
         find.textContaining(formatTransferExpiry(
@@ -446,11 +446,11 @@ void main() {
         findsOneWidget,
       );
 
-      await tester.tap(find.text('Cancel Pending Transfer'));
+      await tester.tap(find.text('Cancel pending transfer'));
       await tester.pumpAndSettle();
 
       expect(withActive.lastCancelledTransferId, 'orphaned-1');
-      expect(find.text('A Transfer Is Already Pending'), findsNothing);
+      expect(find.text('A transfer is already pending'), findsNothing);
       expect(find.text('What changes'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox.shrink());
@@ -480,12 +480,12 @@ void main() {
 
       await tester.tap(find.text(ParentPostTransferRole.coManager.label));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Transfer Ownership'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Transfer ownership'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Transfer'));
       await tester.pumpAndSettle();
 
-      expect(find.text('A Transfer Is Already Pending'), findsOneWidget);
+      expect(find.text('A transfer is already pending'), findsOneWidget);
       expect(
         find.textContaining(formatTransferExpiry(
           tester.element(find.byType(TransferOwnershipScreen)),
@@ -509,7 +509,7 @@ void main() {
 
       await tester.tap(find.text(ParentPostTransferRole.coManager.label));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Transfer Ownership'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Transfer ownership'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Transfer'));
       await tester.pumpAndSettle();
@@ -520,7 +520,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.text('A Transfer Is Already Pending'), findsNothing);
+      expect(find.text('A transfer is already pending'), findsNothing);
       expect(find.text('What changes'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox.shrink());
@@ -538,7 +538,7 @@ void main() {
 
       await tester.tap(find.text(ParentPostTransferRole.coManager.label));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Transfer Ownership'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Transfer ownership'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Transfer'));
       await tester.pumpAndSettle();
@@ -547,7 +547,7 @@ void main() {
         find.text('Network error. Please check your connection.'),
         findsOneWidget,
       );
-      expect(find.text('A Transfer Is Already Pending'), findsNothing);
+      expect(find.text('A transfer is already pending'), findsNothing);
       expect(find.text('What changes'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox.shrink());
@@ -566,7 +566,7 @@ void main() {
 
       await tester.tap(find.text(ParentPostTransferRole.coManager.label));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Transfer Ownership'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Transfer ownership'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Transfer'));
       await tester.pumpAndSettle();
@@ -577,7 +577,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.text('A Transfer Is Already Pending'), findsNothing);
+      expect(find.text('A transfer is already pending'), findsNothing);
       expect(find.text('What changes'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox.shrink());
@@ -598,16 +598,16 @@ void main() {
         ..scriptedCancelError = const TransferFailure.network();
 
       await pumpTransferScreen(tester, service: withActive);
-      expect(find.text('A Transfer Is Already Pending'), findsOneWidget);
+      expect(find.text('A transfer is already pending'), findsOneWidget);
 
-      await tester.tap(find.text('Cancel Pending Transfer'));
+      await tester.tap(find.text('Cancel pending transfer'));
       await tester.pumpAndSettle();
 
       expect(
         find.text('Network error. Please check your connection.'),
         findsOneWidget,
       );
-      expect(find.text('A Transfer Is Already Pending'), findsOneWidget);
+      expect(find.text('A transfer is already pending'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
@@ -626,13 +626,13 @@ void main() {
         ..scriptedCancelError = StateError('boom');
 
       await pumpTransferScreen(tester, service: withActive);
-      expect(find.text('A Transfer Is Already Pending'), findsOneWidget);
+      expect(find.text('A transfer is already pending'), findsOneWidget);
 
-      await tester.tap(find.text('Cancel Pending Transfer'));
+      await tester.tap(find.text('Cancel pending transfer'));
       await tester.pumpAndSettle();
 
       expect(find.text('Something went wrong. Please try again.'), findsOneWidget);
-      expect(find.text('A Transfer Is Already Pending'), findsOneWidget);
+      expect(find.text('A transfer is already pending'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
@@ -645,7 +645,7 @@ void main() {
 
       await tester.tap(find.text(ParentPostTransferRole.coManager.label));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Transfer Ownership'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Transfer ownership'));
       await tester.pumpAndSettle();
 
       expect(find.widgetWithText(AlertDialog, 'Transfer ownership?'),
@@ -654,7 +654,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(transferService.lastCreatedProfileId, isNull);
-      expect(find.text('Transfer Ready'), findsNothing);
+      expect(find.text('Transfer ready'), findsNothing);
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
@@ -685,7 +685,7 @@ void main() {
         await tester.tap(find.text(ParentPostTransferRole.coManager.label));
         await tester.pumpAndSettle();
         await tester
-            .tap(find.widgetWithText(FilledButton, 'Transfer Ownership'));
+            .tap(find.widgetWithText(FilledButton, 'Transfer ownership'));
         await tester.pumpAndSettle();
         await tester.tap(find.widgetWithText(FilledButton, 'Transfer'));
         await tester.pumpAndSettle();

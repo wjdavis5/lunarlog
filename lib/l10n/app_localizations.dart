@@ -4377,7 +4377,7 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 1): accept-invite sheet title.
   ///
   /// In en, this message translates to:
-  /// **'Join Shared Profile'**
+  /// **'Join shared profile'**
   String get sharingAcceptInviteTitle;
 
   /// Issue #1004 (tranche 1): accept-invite sheet decline button.
@@ -4389,7 +4389,7 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 1): accept-invite sheet accept button.
   ///
   /// In en, this message translates to:
-  /// **'Accept & Sync'**
+  /// **'Accept & sync'**
   String get sharingAcceptInviteAccept;
 
   /// Issue #1004 (tranche 1): accept-invite sheet display-name field label.
@@ -4431,7 +4431,7 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 1): claim-profile sheet title.
   ///
   /// In en, this message translates to:
-  /// **'Become the Owner'**
+  /// **'Become the owner'**
   String get sharingClaimProfileTitle;
 
   /// Issue #1004 (tranche 1): claim-profile sheet decline button.
@@ -4473,31 +4473,31 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 1): invite-guardian dialog preset picker label.
   ///
   /// In en, this message translates to:
-  /// **'Role:'**
+  /// **'Role'**
   String get sharingInviteGuardianRoleLabel;
 
   /// Issue #1004 (tranche 1): invite-guardian dialog co-parent preset choice.
   ///
   /// In en, this message translates to:
-  /// **'Co-Parent (Can log, edit profile & invite)'**
+  /// **'Co-Parent (can log, edit profile & invite)'**
   String get sharingInviteGuardianPresetCoParent;
 
   /// Issue #1004 (tranche 1): invite-guardian dialog caregiver preset choice.
   ///
   /// In en, this message translates to:
-  /// **'Caregiver (Can log symptoms & periods)'**
+  /// **'Caregiver (can log symptoms & periods)'**
   String get sharingInviteGuardianPresetCaregiver;
 
   /// Issue #1004 (tranche 1): invite-guardian dialog viewer preset choice.
   ///
   /// In en, this message translates to:
-  /// **'Viewer (Read-only access)'**
+  /// **'Viewer (read-only access)'**
   String get sharingInviteGuardianPresetViewer;
 
   /// Issue #1004 (tranche 1): invite-guardian dialog generated-state title.
   ///
   /// In en, this message translates to:
-  /// **'Invitation Created'**
+  /// **'Invitation created'**
   String get sharingInviteGuardianCreatedTitle;
 
   /// Issue #1004 (tranche 1): invite-guardian dialog generated-state expiry note.
@@ -4521,7 +4521,7 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 1): invite-guardian dialog copy-link button.
   ///
   /// In en, this message translates to:
-  /// **'Copy Link'**
+  /// **'Copy link'**
   String get sharingInviteGuardianCopyLink;
 
   /// Issue #1004 (tranche 1): invite-guardian dialog share button.
@@ -4539,7 +4539,7 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 1): invite-guardian dialog nickname field label.
   ///
   /// In en, this message translates to:
-  /// **'Nickname / Label (Optional)'**
+  /// **'Nickname or label (optional)'**
   String get sharingInviteGuardianNicknameLabel;
 
   /// Issue #1004 (tranche 1): invite-guardian dialog nickname field hint.
@@ -4563,7 +4563,7 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 1): invite-guardian dialog create-link button.
   ///
   /// In en, this message translates to:
-  /// **'Create Link'**
+  /// **'Create link'**
   String get sharingInviteGuardianCreateLink;
 
   /// Issue #1004 (tranche 1): manage-guardians screen generic cancel action.
@@ -4713,13 +4713,13 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 1): decline action for the cancel-invitation dialog.
   ///
   /// In en, this message translates to:
-  /// **'Keep Invitation'**
+  /// **'Keep invitation'**
   String get sharingManageGuardiansKeepInvitation;
 
   /// Issue #1004 (tranche 1): destructive confirm action for cancelling an invitation.
   ///
   /// In en, this message translates to:
-  /// **'Cancel Invitation'**
+  /// **'Cancel invitation'**
   String get sharingManageGuardiansCancelInvitation;
 
   /// Issue #1004 (tranche 1): snackbar when cancelling an invitation fails.
@@ -5323,7 +5323,7 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 1): share-predictions dialog nickname field label.
   ///
   /// In en, this message translates to:
-  /// **'Nickname / Label (Optional)'**
+  /// **'Nickname or label (optional)'**
   String get sharingSharePredictionsNicknameLabel;
 
   /// Issue #1004 (tranche 1): share-predictions dialog nickname field hint.
@@ -5341,13 +5341,13 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 1): share-predictions dialog create-link action.
   ///
   /// In en, this message translates to:
-  /// **'Create Link'**
+  /// **'Create link'**
   String get sharingSharePredictionsCreateLink;
 
   /// Issue #1004 (tranche 1): transfer-ownership app-bar title.
   ///
   /// In en, this message translates to:
-  /// **'Transfer {profileName}\'s Profile'**
+  /// **'Transfer {profileName}\'s profile'**
   String sharingTransferOwnershipScreenTitle(String profileName);
 
   /// Issue #1004 (tranche 1): confirm dialog title before arming a transfer.
@@ -5437,13 +5437,13 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 1): arm-transfer action.
   ///
   /// In en, this message translates to:
-  /// **'Transfer Ownership'**
+  /// **'Transfer ownership'**
   String get sharingTransferOwnershipAction;
 
   /// Issue #1004 (tranche 1): orphaned-transfer state title.
   ///
   /// In en, this message translates to:
-  /// **'A Transfer Is Already Pending'**
+  /// **'A transfer is already pending'**
   String get sharingTransferOwnershipPendingTitle;
 
   /// Issue #1004 (tranche 1): orphaned-transfer state body.
@@ -5461,13 +5461,13 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 1): cancel an orphaned transfer action.
   ///
   /// In en, this message translates to:
-  /// **'Cancel Pending Transfer'**
+  /// **'Cancel pending transfer'**
   String get sharingTransferOwnershipCancelPending;
 
   /// Issue #1004 (tranche 1): generated-transfer state title.
   ///
   /// In en, this message translates to:
-  /// **'Transfer Ready'**
+  /// **'Transfer ready'**
   String get sharingTransferOwnershipReadyTitle;
 
   /// Issue #1004 (tranche 1): generated-transfer state share line.
@@ -5479,7 +5479,7 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 1): copy-transfer-link action.
   ///
   /// In en, this message translates to:
-  /// **'Copy Link'**
+  /// **'Copy link'**
   String get sharingTransferOwnershipCopyLink;
 
   /// Issue #1004 (tranche 1): share-transfer-link action.
@@ -7229,7 +7229,7 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 4b): provenance block heading on a cycle literacy article sheet.
   ///
   /// In en, this message translates to:
-  /// **'Sources & Review'**
+  /// **'Sources & review'**
   String get cycleLiteracySourceHeading;
 
   /// Issue #1103: one cited source without a document identifier on a cycle literacy article sheet.
@@ -7263,7 +7263,7 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 4b): app-bar title of the standalone cycle literacy library.
   ///
   /// In en, this message translates to:
-  /// **'Cycle Literacy Library'**
+  /// **'Cycle literacy library'**
   String get cycleLiteracyLibraryTitle;
 
   /// Issue #1004 (tranche 4b): intro paragraph atop the cycle literacy library.
@@ -7275,7 +7275,7 @@ abstract class AppLocalizations {
   /// Issue #854: title of the Cycle Literacy Library tile in Settings Help section.
   ///
   /// In en, this message translates to:
-  /// **'Cycle Literacy'**
+  /// **'Cycle literacy'**
   String get settingsCycleLiteracyTitle;
 
   /// Issue #854: subtitle of the Cycle Literacy Library tile in Settings Help section.
@@ -7791,13 +7791,13 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 4a): heading of the symptom-trends section.
   ///
   /// In en, this message translates to:
-  /// **'Symptom Trends & Patterns'**
+  /// **'Symptom trends & patterns'**
   String get symptomTrendsTitle;
 
   /// Issue #1004 (tranche 4a): title of the recurring-symptoms card.
   ///
   /// In en, this message translates to:
-  /// **'Recurring Symptoms'**
+  /// **'Recurring symptoms'**
   String get symptomTrendsRecurring;
 
   /// Issue #1004 (tranche 4a): empty state of the recurring-symptoms card.
@@ -7815,7 +7815,7 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 4a): title of the flow-distribution summary.
   ///
   /// In en, this message translates to:
-  /// **'Typical Bleed Rhythm'**
+  /// **'Typical bleed rhythm'**
   String get symptomTrendsFlowTitle;
 
   /// Issue #1004 (tranche 4a): flow summary subtitle naming the typical peak cycle day and flow level.
@@ -7827,7 +7827,7 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 4a): title of the cycle-literacy library call to action.
   ///
   /// In en, this message translates to:
-  /// **'Cycle Literacy Library'**
+  /// **'Cycle literacy library'**
   String get symptomTrendsLibraryTitle;
 
   /// Issue #1004 (tranche 4a): subtitle of the cycle-literacy library call to action.
@@ -7839,7 +7839,7 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 4a): title of the cramp-prediction card.
   ///
   /// In en, this message translates to:
-  /// **'Anticipated Cramp Window'**
+  /// **'Anticipated cramp window'**
   String get crampPredictionTitle;
 
   /// Issue #1004 (tranche 4a): cramp-prediction line naming the predicted dates.

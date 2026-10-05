@@ -327,13 +327,13 @@ void main() {
       );
 
       expect(find.text('Invite guardian to Luna'), findsOneWidget);
-      expect(find.text('Create Link'), findsOneWidget);
+      expect(find.text('Create link'), findsOneWidget);
 
-      await tester.tap(find.text('Create Link'));
+      await tester.tap(find.text('Create link'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Invitation Created'), findsOneWidget);
-      expect(find.text('Copy Link'), findsOneWidget);
+      expect(find.text('Invitation created'), findsOneWidget);
+      expect(find.text('Copy link'), findsOneWidget);
       expect(sharingService.lastCreatedRole, 'co_parent');
     });
 
@@ -363,10 +363,10 @@ void main() {
       // Not offered before a link exists.
       expect(find.text('Share'), findsNothing);
 
-      await tester.tap(find.text('Create Link'));
+      await tester.tap(find.text('Create link'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Copy Link'), findsOneWidget);
+      expect(find.text('Copy link'), findsOneWidget);
       expect(find.text('Share'), findsOneWidget);
       expect(find.byIcon(Icons.share), findsOneWidget);
     });
@@ -399,7 +399,7 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('Create Link'));
+      await tester.tap(find.text('Create link'));
       await tester.pumpAndSettle();
 
       expect(
@@ -416,7 +416,7 @@ void main() {
       // A network failure gets its own distinct copy too, not the same
       // unauthorized text and not the generic collapse either.
       failing.failure = const SharingFailure.network();
-      await tester.tap(find.text('Create Link'));
+      await tester.tap(find.text('Create link'));
       await tester.pumpAndSettle();
 
       expect(
@@ -431,7 +431,7 @@ void main() {
       // A refusal with no line of its own is not described as a failure
       // to accept an invitation: this person was making one.
       failing.failure = const SharingFailure.other();
-      await tester.tap(find.text('Create Link'));
+      await tester.tap(find.text('Create link'));
       await tester.pumpAndSettle();
 
       expect(
@@ -465,10 +465,10 @@ void main() {
         ),
       );
 
-      expect(find.text('Join Shared Profile'), findsOneWidget);
+      expect(find.text('Join shared profile'), findsOneWidget);
 
       await tester.enterText(find.byType(TextField), 'Dad');
-      await tester.tap(find.text('Accept & Sync'));
+      await tester.tap(find.text('Accept & sync'));
       await tester.pumpAndSettle();
 
       expect(result, isNotNull);
@@ -493,7 +493,7 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('Accept & Sync'));
+      await tester.tap(find.text('Accept & sync'));
       await tester.pumpAndSettle();
 
       expect(find.text('This invitation has expired.'), findsOneWidget);
@@ -519,7 +519,7 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('Accept & Sync'));
+      await tester.tap(find.text('Accept & sync'));
       await tester.pumpAndSettle();
 
       expect(
@@ -551,7 +551,7 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('Accept & Sync'));
+      await tester.tap(find.text('Accept & sync'));
       await tester.pumpAndSettle();
 
       expect(find.text('An unexpected error occurred.'), findsOneWidget);
@@ -691,7 +691,7 @@ void main() {
           expect(previewKey('accept-invite-preview-error'), findsNothing);
           expect(previewKey('accept-invite-preview-ready'), findsNothing);
 
-          await tester.tap(find.text('Accept & Sync'));
+          await tester.tap(find.text('Accept & sync'));
           await tester.pumpAndSettle();
           expect(service.previewCalls, ['dead-token']);
           expect(accepted, isNotNull,
@@ -726,7 +726,7 @@ void main() {
           expect(previewKey('accept-invite-preview-unavailable'), findsNothing);
           expect(previewKey('accept-invite-preview-ready'), findsNothing);
 
-          await tester.tap(find.text('Accept & Sync'));
+          await tester.tap(find.text('Accept & sync'));
           await tester.pumpAndSettle();
           expect(accepted, isNotNull,
               reason: 'accept still succeeds despite the preview failure');
@@ -1123,7 +1123,7 @@ void main() {
 
     testWidgets(
       'issue #558: once the single-use link is generated, a stray tap '
-      'outside the dialog cannot dismiss it, "Copy Link" shows its '
+      'outside the dialog cannot dismiss it, "Copy link" shows its '
       'confirmation inside the dialog, and Done closes it',
       (tester) async {
         await storage.applyRemoteRows([
@@ -1146,16 +1146,16 @@ void main() {
 
         await tester.tap(find.byIcon(Icons.person_add));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Create Link'));
+        await tester.tap(find.text('Create link'));
         await tester.pumpAndSettle();
-        expect(find.text('Invitation Created'), findsOneWidget);
+        expect(find.text('Invitation created'), findsOneWidget);
 
         // A tap on the scrim (the barrier), well away from the dialog card
         // itself, must not dismiss it now that the link exists.
         await tester.tapAt(const Offset(5, 5));
         await tester.pumpAndSettle();
         expect(
-          find.text('Invitation Created'),
+          find.text('Invitation created'),
           findsOneWidget,
           reason:
               'barrierDismissible: false -- the server never stores '
@@ -1167,7 +1167,7 @@ void main() {
           find.byKey(const ValueKey('invite-copied-confirmation')),
           findsNothing,
         );
-        await tester.tap(find.widgetWithText(FilledButton, 'Copy Link'));
+        await tester.tap(find.widgetWithText(FilledButton, 'Copy link'));
         await tester.pump();
         expect(
           find.text('Copied to clipboard'),
@@ -1179,7 +1179,7 @@ void main() {
 
         await tester.tap(find.widgetWithText(TextButton, 'Done'));
         await tester.pumpAndSettle();
-        expect(find.text('Invitation Created'), findsNothing);
+        expect(find.text('Invitation created'), findsNothing);
 
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump(const Duration(milliseconds: 100));
@@ -2337,7 +2337,7 @@ void main() {
           await tester.pumpAndSettle();
 
           expect(find.text('Cancel invitation for Sitter?'), findsOneWidget);
-          await tester.tap(find.widgetWithText(TextButton, 'Keep Invitation'));
+          await tester.tap(find.widgetWithText(TextButton, 'Keep invitation'));
           await tester.pumpAndSettle();
 
           expect(sharingService.lastCancelledInvitationId, isNull);
@@ -2381,7 +2381,7 @@ void main() {
           await tester.tap(find.byIcon(Icons.cancel_outlined));
           await tester.pumpAndSettle();
           await tester.tap(
-            find.widgetWithText(FilledButton, 'Cancel Invitation'),
+            find.widgetWithText(FilledButton, 'Cancel invitation'),
           );
           await tester.pumpAndSettle();
 
@@ -2465,7 +2465,7 @@ void main() {
           await tester.tap(find.byIcon(Icons.cancel_outlined));
           await tester.pumpAndSettle();
           await tester.tap(
-            find.widgetWithText(FilledButton, 'Cancel Invitation'),
+            find.widgetWithText(FilledButton, 'Cancel invitation'),
           );
           await tester.pumpAndSettle();
 
@@ -2821,7 +2821,7 @@ void main() {
         ),
       );
 
-      expect(find.text('Join Shared Profile'), findsOneWidget);
+      expect(find.text('Join shared profile'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
     });
@@ -2834,7 +2834,7 @@ void main() {
 
       await pumpAppWithInvite(tester, auth, initialInviteCode: 'cold-token');
 
-      expect(find.text('Join Shared Profile'), findsNothing);
+      expect(find.text('Join shared profile'), findsNothing);
 
       auth.emit(
         AuthSessionState.signedIn,
@@ -2842,7 +2842,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Join Shared Profile'), findsOneWidget);
+      expect(find.text('Join shared profile'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
     });
@@ -2880,7 +2880,7 @@ void main() {
             find.byKey(const Key('pending-invite-sign-in-banner')),
             findsNothing,
           );
-          expect(find.text('Join Shared Profile'), findsOneWidget);
+          expect(find.text('Join shared profile'), findsOneWidget);
 
           await tester.pumpWidget(const SizedBox.shrink());
           await tester.pump(const Duration(milliseconds: 100));
@@ -2953,7 +2953,7 @@ void main() {
             reason: 'the sign-in screen must be the one popped',
           );
           expect(
-            find.text('Join Shared Profile'),
+            find.text('Join shared profile'),
             findsOneWidget,
             reason: 'the invite sheet must still be showing',
           );
@@ -3192,7 +3192,7 @@ void main() {
         inviteLinks: Stream.value(Uri.parse('lunarlog://other')),
       );
 
-      expect(find.text('Join Shared Profile'), findsNothing);
+      expect(find.text('Join shared profile'), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
     });
@@ -3216,7 +3216,7 @@ void main() {
         ),
       );
 
-      expect(find.text('Join Shared Profile'), findsNothing);
+      expect(find.text('Join shared profile'), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
     });
@@ -3246,8 +3246,8 @@ void main() {
 
         expect(find.byType(ClaimProfileSheet), findsOneWidget);
         expect(find.byType(AcceptInviteSheet), findsNothing);
-        expect(find.text('Become the Owner'), findsOneWidget);
-        expect(find.text('Join Shared Profile'), findsNothing);
+        expect(find.text('Become the owner'), findsOneWidget);
+        expect(find.text('Join shared profile'), findsNothing);
         // Issue #182: the claim sheet is pushed as a named route, visible to
         // the Sentry route observer.
         final claimRoute = ModalRoute.of(
@@ -3282,7 +3282,7 @@ void main() {
 
         expect(find.byType(AcceptInviteSheet), findsOneWidget);
         expect(find.byType(ClaimProfileSheet), findsNothing);
-        expect(find.text('Join Shared Profile'), findsOneWidget);
+        expect(find.text('Join shared profile'), findsOneWidget);
         // Issue #182: the accept sheet is pushed as a named route too.
         final acceptRoute = ModalRoute.of(
           tester.element(find.byType(AcceptInviteSheet)),

@@ -285,7 +285,7 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.byType(BottomSheet), findsOneWidget);
       expect(find.text('Invite guardian to Alex'), findsOneWidget);
-      expect(find.text('Create Link'), findsOneWidget);
+      expect(find.text('Create link'), findsOneWidget);
       expect(find.text('Cancel'), findsOneWidget);
     });
   });

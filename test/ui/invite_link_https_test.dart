@@ -206,7 +206,7 @@ void main() {
       );
 
       expect(find.byType(AcceptInviteSheet), findsOneWidget);
-      expect(find.text('Join Shared Profile'), findsOneWidget);
+      expect(find.text('Join shared profile'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
     });
@@ -252,7 +252,7 @@ void main() {
       );
 
       expect(find.byType(AcceptInviteSheet), findsOneWidget);
-      expect(find.text('Join Shared Profile'), findsOneWidget);
+      expect(find.text('Join shared profile'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
     });

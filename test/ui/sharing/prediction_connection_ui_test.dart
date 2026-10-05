@@ -1255,7 +1255,7 @@ void main() {
       connectionService.createFailure =
           const PredictionConnectionFailure.pregnancyMode();
       await tester.enterText(find.byType(TextField), 'Partner');
-      await tester.tap(find.widgetWithText(FilledButton, 'Create Link'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Create link'));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('Pregnancy mode'), findsOneWidget);
@@ -1270,7 +1270,7 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('share-predictions')));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Create Link'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Create link'));
       await tester.pumpAndSettle();
 
       expect(find.text('Connection created'), findsOneWidget);
@@ -1285,7 +1285,7 @@ void main() {
 
     testWidgets(
       'issue #558: once the single-use code is generated, a stray tap '
-      'outside the dialog cannot dismiss it, and "Copy Link" shows its '
+      'outside the dialog cannot dismiss it, and "Copy link" shows its '
       'confirmation inside the dialog',
       (tester) async {
         connectionService.getActiveConnectionResult = null;
@@ -1293,7 +1293,7 @@ void main() {
 
         await tester.tap(find.byKey(const ValueKey('share-predictions')));
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Create Link'));
+        await tester.tap(find.widgetWithText(FilledButton, 'Create link'));
         await tester.pumpAndSettle();
         expect(find.text('Connection created'), findsOneWidget);
 

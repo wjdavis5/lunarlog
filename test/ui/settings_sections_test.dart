@@ -406,7 +406,7 @@ void main() {
     await pumpSettings(tester, profiles: [_profile('p1', 'Alice')]);
 
     expect(find.byKey(const ValueKey('settings-cycle-literacy-tile')), findsOneWidget);
-    expect(find.text('Cycle Literacy'), findsOneWidget);
+    expect(find.text('Cycle literacy'), findsOneWidget);
     expect(
       find.text(
         'Guides to cycles, hormones, and body changes, sourced from ACOG, '
