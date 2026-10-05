@@ -121,6 +121,156 @@ Deno.test("/invite: proxies to env.ASSETS when available", async () => {
   assertEquals(body, "<html><body>Custom Asset Invite</body></html>");
 });
 
+// --- The invitation page's own security headers --------------------------
+//
+// `_headers` does not reach a response the Worker produces, so until this
+// was added the invitation page -- the one page whose address carries a
+// redeemable code -- was the one page on the site with no
+// Content-Security-Policy, no frame protection and no HSTS. Cloudflare's
+// proxy was injecting its Web Analytics script into it, and with nothing to
+// refuse it, that third-party script ran there.
+
+/** `'sha256-...'` of [text], the way a browser computes a CSP hash source. */
+async function hashSource(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return `'sha256-${btoa(String.fromCharCode(...new Uint8Array(digest)))}'`;
+}
+
+/** The value of one directive of a Content-Security-Policy header. */
+function directive(csp: string, name: string): string {
+  for (const part of csp.split(";")) {
+    const trimmed = part.trim();
+    if (trimmed === name) return "";
+    if (trimmed.startsWith(`${name} `)) return trimmed.slice(name.length + 1);
+  }
+  throw new Error(`no ${name} directive in: ${csp}`);
+}
+
+const assetInvite = "<!DOCTYPE html><html><head><style>\nbody { margin: 0; }\n</style></head>" +
+  '<body><a id="open-in-app" href="lunarlog://invite">Open</a>' +
+  "<script>\n(function () { var a = 1; })();\n</script></body></html>";
+
+const inviteAssets: Fetcher = {
+  fetch: async (r: Request | string) => {
+    const url = typeof r === "string" ? r : r.url;
+    if (url.includes("/invite.html")) {
+      return new Response(assetInvite, { status: 200, headers: { "Content-Type": "text/html" } });
+    }
+    return new Response("Not found in assets", { status: 404 });
+  },
+};
+
+for (
+  const [name, env] of [
+    ["the built page", { ASSETS: inviteAssets }],
+    ["the fallback page", {}],
+  ] as const
+) {
+  Deno.test(`/invite (${name}): only this page's own inline script and style may run`, async () => {
+    const res = await worker.fetch(
+      new Request("https://lunarlog.app/invite?code=secret123"),
+      env,
+    );
+    assertEquals(res.status, 200);
+    const csp = res.headers.get("content-security-policy") ?? "";
+    const body = await res.text();
+
+    // Nothing is allowed that the page does not carry itself.
+    assertEquals(directive(csp, "default-src"), "'none'");
+    assertEquals(directive(csp, "base-uri"), "'none'");
+    assertEquals(directive(csp, "form-action"), "'none'");
+    assertEquals(directive(csp, "frame-ancestors"), "'none'");
+
+    // The page's one inline script and one inline style, by hash, and
+    // nothing else: no host, no scheme, no 'unsafe-inline'. An injected
+    // <script src="https://static.cloudflareinsights.com/..."> has no hash
+    // here, so the browser refuses it.
+    const script = /<script>([\s\S]*?)<\/script>/.exec(body)![1];
+    const style = /<style>([\s\S]*?)<\/style>/.exec(body)![1];
+    assertEquals(directive(csp, "script-src"), await hashSource(script));
+    assertEquals(directive(csp, "style-src"), await hashSource(style));
+    assertNotMatch(csp, /unsafe-inline|unsafe-eval|https?:|\*/);
+  });
+
+  Deno.test(`/invite (${name}): the headers the rest of the site carries, and no-transform`, async () => {
+    for (const method of ["GET", "HEAD"]) {
+      const res = await worker.fetch(
+        new Request("https://lunarlog.app/invite?code=secret123", { method }),
+        env,
+      );
+      assertEquals(res.status, 200);
+      assertEquals(res.headers.get("content-type"), "text/html; charset=utf-8");
+      assertEquals(res.headers.get("referrer-policy"), "no-referrer");
+      assertEquals(res.headers.get("x-content-type-options"), "nosniff");
+      assertEquals(res.headers.get("x-frame-options"), "DENY");
+      assertEquals(
+        res.headers.get("strict-transport-security"),
+        "max-age=63072000; includeSubDomains; preload",
+      );
+      assertStringIncludes(res.headers.get("permissions-policy") ?? "", "camera=()");
+      // no-transform: Cloudflare's proxy may not rewrite the page, which is
+      // how its analytics script got into it.
+      assertEquals(res.headers.get("cache-control"), "public, max-age=300, no-transform");
+      // HEAD carries the same policy as GET, hashes included, and no body.
+      assertStringIncludes(res.headers.get("content-security-policy") ?? "", "script-src 'sha256-");
+      if (method === "HEAD") assertEquals(await res.text(), "");
+    }
+  });
+}
+
+Deno.test("/invite: a HEAD for the built page still reads it, so its policy has the hashes", async () => {
+  const methods: string[] = [];
+  const recording: Fetcher = {
+    fetch: async (r: Request | string) => {
+      methods.push(typeof r === "string" ? "GET" : r.method);
+      return new Response(assetInvite, { status: 200 });
+    },
+  };
+  const head = await worker.fetch(
+    new Request("https://lunarlog.app/invite?code=x", { method: "HEAD" }),
+    { ASSETS: recording },
+  );
+  const get = await worker.fetch(
+    new Request("https://lunarlog.app/invite?code=x"),
+    { ASSETS: recording },
+  );
+  assertEquals(methods, ["GET", "GET"]);
+  assertEquals(
+    head.headers.get("content-security-policy"),
+    get.headers.get("content-security-policy"),
+  );
+});
+
+Deno.test("/invite: a page with no inline script or style gets 'none', not an empty directive", async () => {
+  const bare: Fetcher = {
+    fetch: async () => new Response("<html><body>Plain</body></html>", { status: 200 }),
+  };
+  const res = await worker.fetch(new Request("https://lunarlog.app/invite?code=x"), {
+    ASSETS: bare,
+  });
+  const csp = res.headers.get("content-security-policy") ?? "";
+  assertEquals(directive(csp, "script-src"), "'none'");
+  assertEquals(directive(csp, "style-src"), "'none'");
+});
+
+Deno.test("/invite: a script tag with attributes is not one the policy admits", async () => {
+  // What the proxy's injection looks like. The Worker never sees it (it is
+  // added after the Worker answers), and if one were ever in the page the
+  // Worker serves, it would get no hash: only the bare inline blocks do.
+  const withInjected = assetInvite.replace(
+    "</body>",
+    '<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js"></script></body>',
+  );
+  const assets: Fetcher = { fetch: async () => new Response(withInjected, { status: 200 }) };
+  const res = await worker.fetch(new Request("https://lunarlog.app/invite?code=x"), {
+    ASSETS: assets,
+  });
+  const csp = res.headers.get("content-security-policy") ?? "";
+  const own = /<script>([\s\S]*?)<\/script>/.exec(assetInvite)![1];
+  assertEquals(directive(csp, "script-src"), await hashSource(own));
+  assertNotMatch(csp, /cloudflareinsights/);
+});
+
 Deno.test("unknown path returns 404 without ASSETS", async () => {
   const req = new Request("https://lunarlog.app/unknown");
   const res = await worker.fetch(req, {});

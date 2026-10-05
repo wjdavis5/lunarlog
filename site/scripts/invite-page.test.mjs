@@ -52,3 +52,23 @@ test("no web-app button until #1258 serves /invite on app.lunarlog.app", () => {
   assert.doesNotMatch(landing, /app\.lunarlog\.app/);
   assert.doesNotMatch(landing, /web app/);
 });
+
+test("the page's script and style are ones the Worker's policy covers", () => {
+  // site/worker/index.ts sends this page a Content-Security-Policy that
+  // allows nothing and then admits the page's own inline script and style
+  // by hash. It finds them as bare `<script>` and `<style>` blocks. A tag
+  // with an attribute, a second block of either kind, or any resource the
+  // page would have to fetch is one the policy would refuse on the live
+  // page, so each has to be a deliberate change there too.
+  const withoutComments = landing.replace(/<!--[\s\S]*?-->/g, "");
+  const tags = (name) => [
+    ...withoutComments.matchAll(new RegExp(`<${name}\\b[^>]*>`, "gi")),
+  ].map((match) => match[0]);
+  assert.deepEqual(tags("script"), ["<script>"]);
+  assert.deepEqual(tags("style"), ["<style>"]);
+  for (const name of ["link", "img", "iframe", "object", "embed", "form"]) {
+    assert.deepEqual(tags(name), [], `the page has no <${name}>`);
+  }
+  // Nothing in the style reaches for a file either.
+  assert.doesNotMatch(withoutComments, /url\(|@import/);
+});

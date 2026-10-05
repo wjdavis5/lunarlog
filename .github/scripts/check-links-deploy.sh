@@ -414,16 +414,33 @@ check_once() {
   problems="${problems}$(expect_header_prefix "$aasa" content-type application/json "$AASA_URL")"
   problems="${problems}$(expect_header_exact "$aasa" x-content-type-options nosniff "$AASA_URL")"
 
-  # /invite* must go through the Worker, which puts its own headers on the
-  # asset (index.ts's invite branch): text/html, no-referrer, nosniff, and a
-  # short cache. Its body's beacon assertion lives in the route enumeration
-  # below (issue #1184) -- the enumerated /invite (from public/invite.html)
+  # /invite* must go through the Worker, which writes this page's headers
+  # itself (index.ts's invite branch): `_headers` does not reach a response
+  # the Worker produces. So the Worker has to send what `_headers` sends
+  # everywhere else, and this is where that is checked: text/html,
+  # no-referrer, nosniff, the frame and transport policies, a short cache
+  # the proxy may not transform, and a Content-Security-Policy that allows
+  # nothing but the page's own inline script and style, by hash.
+  #
+  # Until these were asserted the page had no Content-Security-Policy at
+  # all. Issue #1139's beacon is "inert" only where a policy refuses it, and
+  # on this page, the one whose address carries a redeemable code, nothing
+  # did: the injected script ran. `no-transform` asks the proxy not to
+  # inject here in the first place; the policy is what holds if it does.
+  #
+  # Its body's beacon assertion still lives in the route enumeration below
+  # (issue #1184) -- the enumerated /invite (from public/invite.html)
   # reaches the same Worker branch as this query-carrying URL.
   problems="${problems}$(expect_status "$invite" 200 "$INVITE_URL")"
   problems="${problems}$(expect_header_prefix "$invite" content-type text/html "$INVITE_URL")"
   problems="${problems}$(expect_header_exact "$invite" referrer-policy no-referrer "$INVITE_URL")"
   problems="${problems}$(expect_header_exact "$invite" x-content-type-options nosniff "$INVITE_URL")"
-  problems="${problems}$(expect_header_exact "$invite" cache-control "public, max-age=300" "$INVITE_URL")"
+  problems="${problems}$(expect_header_exact "$invite" cache-control "public, max-age=300, no-transform" "$INVITE_URL")"
+  problems="${problems}$(expect_header_contains "$invite" content-security-policy "default-src 'none'" "$INVITE_URL")"
+  problems="${problems}$(expect_header_contains "$invite" content-security-policy "frame-ancestors 'none'" "$INVITE_URL")"
+  problems="${problems}$(expect_header_contains "$invite" content-security-policy "script-src 'sha256-" "$INVITE_URL")"
+  problems="${problems}$(expect_header_prefix "$invite" strict-transport-security "max-age=" "$INVITE_URL")"
+  problems="${problems}$(expect_header_exact "$invite" x-frame-options DENY "$INVITE_URL")"
 
   # Issue #1157: the store privacy-policy URL must resolve. `/privacy` (the
   # exact URL both stores list) redirects to `/privacy/`, which serves the
