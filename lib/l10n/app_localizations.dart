@@ -1548,10 +1548,10 @@ abstract class AppLocalizations {
   /// **'Importing… {samples, plural, =1{1 sample} other{{samples} samples}} read so far.'**
   String healthSyncImportProgress(int samples);
 
-  /// Health sync screen scope note (Issues #992/#993): reads are full-history, and after the first import the same import keeps itself current in the background — prompt-free, never a write.
+  /// Health sync screen scope note (Issues #992/#993): reads are full-history, and after the first import the same import keeps itself current in the background — prompt-free, never a write. Issue #1491: the promise is conditional, and this string says so without naming the permissions, because it is shown on both stores (and quoted on the marketing site) and the two differ: on Android the reads the import performs plus Health Connect's background access, on iPhone the write permissions, since the Health app never tells an app whether it may read. The paragraph above it on the screen names them for the store in use (healthSyncWriteForwardOnly, healthSyncWriteForwardOnlyHealthConnect). Must name neither store.
   ///
   /// In en, this message translates to:
-  /// **'Imports everything the health store makes available, not a recent window — and keeps itself current in the background once you have run it once.'**
+  /// **'Imports everything the health store makes available, not a recent window — and, once you have run it once, keeps itself current in the background as long as it still has the permissions it needs for that.'**
   String get healthSyncFullHistoryNote;
 
   /// Health import summary (Issue #992): the pass hit the page cap or saw a repeated cursor, so it stopped rather than spin. Days read so far were still merged; re-running continues safely.
@@ -8232,10 +8232,10 @@ abstract class AppLocalizations {
   /// **'Choose the one profile this phone may import health data into. Every other profile stays out of Health Connect entirely.'**
   String get healthSyncImportIntro;
 
-  /// Issue #1004 (tranche 5): forward-only write explanation plus the read-direction disclosure (iOS). Issue #1215 aligned the read half with the enforced gate: the first import is the person's to start, and only after it does the import keep itself current in the background.
+  /// Issue #1004 (tranche 5): forward-only write explanation plus the read-direction disclosure (iOS). Issue #1215 aligned the read half with the enforced gate: the first import is the person's to start, and only after it does the import keep itself current in the background. Issue #1491 added the condition the gate has always had on iPhone: the Health app never tells an app whether it may read, so the background import goes by the write permissions, and it needs all of them (one switched off reads as denied). Someone who allows reading and not writing imports by tap only, and the screen must say so rather than promise a background import.
   ///
   /// In en, this message translates to:
-  /// **'Only days logged after sync is turned on are written — nothing already in the app is sent on its own. Separately, you can import menstrual flow from the Health app — you start the first import yourself, and after it lunarlog keeps the import current in the background.'**
+  /// **'Only days logged after sync is turned on are written — nothing already in the app is sent on its own. Separately, you can import menstrual flow from the Health app — you start the first import yourself, and after it lunarlog keeps the import current in the background, as long as all of lunarlog\'s write permissions in the Health app are on.'**
   String get healthSyncWriteForwardOnly;
 
   /// Issue #1004 (tranche 5): symptom and mood write disclosure (iOS, #238/#918).
@@ -8244,10 +8244,10 @@ abstract class AppLocalizations {
   /// **'Symptoms you tag — cramps, headache, bloating, and mood — are written to the Health app as symptom entries. Mood tags are written as \'Mood Changes\' without saying which mood.'**
   String get healthSyncWriteSymptoms;
 
-  /// Issue #1004 (tranche 5): import-only explanation for a platform where lunarlog reads from the health store and writes nothing to it (#458). Issue #1215 aligned it with the enforced gate: the first import is the person's to start, and only after it does the import keep itself current in the background. Since issue #1478 no shipping platform is import-only (Android writes too), so this is shown only if a platform is taken out of AppConfig.healthSyncWritePlatforms.
+  /// Issue #1004 (tranche 5): import-only explanation for a platform where lunarlog reads from the health store and writes nothing to it (#458). Issue #1215 aligned it with the enforced gate: the first import is the person's to start, and only after it does the import keep itself current in the background. Since issue #1478 no shipping platform is import-only (Android writes too), so this is shown only if a platform is taken out of AppConfig.healthSyncWritePlatforms. Issue #1491: the promise is conditional. This string is shown for whichever store is import-only, so it does not name the permissions: on Android they are the reads the import performs plus Health Connect's background access; on iPhone they are the write permissions. If an iPhone is ever made import-only, give it a string of its own that says so, because nothing else on that screen would.
   ///
   /// In en, this message translates to:
-  /// **'Only menstrual flow and spotting written by other apps appear here — nothing is written automatically. You start the first import yourself; after it, lunarlog keeps the import current in the background.'**
+  /// **'Only menstrual flow and spotting written by other apps appear here — nothing is written automatically. You start the first import yourself; after it, lunarlog keeps the import current in the background as long as it still has the permissions it needs for that.'**
   String get healthSyncImportOnly;
 
   /// Issue #1478: bind-screen intro on Android, where lunarlog writes to Health Connect. The Health Connect counterpart of healthSyncWriteIntro, which names the iPhone Health app.
@@ -8256,10 +8256,10 @@ abstract class AppLocalizations {
   /// **'Choose the one profile whose data this phone may ever write to Health Connect. Every other profile stays out of Health Connect entirely.'**
   String get healthSyncWriteIntroHealthConnect;
 
-  /// Issue #1478: forward-only write explanation plus the read-direction disclosure on Android (Health Connect). The counterpart of healthSyncWriteForwardOnly. It says 'after you allow lunarlog to write' rather than 'after sync is turned on' because the forward-only clock starts when the write permissions are actually granted: choosing a profile and then allowing only the read permissions starts nothing. The import half keeps issue #1215's wording (the first import is the person's to start).
+  /// Issue #1478: forward-only write explanation plus the read-direction disclosure on Android (Health Connect). The counterpart of healthSyncWriteForwardOnly. It says 'after you allow lunarlog to write' rather than 'after sync is turned on' because the forward-only clock starts when the write permissions are actually granted: choosing a profile and then allowing only the read permissions starts nothing. The import half keeps issue #1215's wording (the first import is the person's to start). Issue #1491: the background import is gated on the two reads it performs, which Health Connect lists under 'Allowed to read' as Menstruation and Spotting, and the worker that wakes it needs Health Connect's 'Access data in the background' (under Additional access). The string names both in Health Connect's own words and deliberately does not mention writing: the background import no longer needs any write permission.
   ///
   /// In en, this message translates to:
-  /// **'Only days logged after you allow lunarlog to write to Health Connect are written — nothing already in the app is sent on its own. Separately, you can import menstrual flow and spotting from Health Connect — you start the first import yourself, and after it lunarlog keeps the import current in the background.'**
+  /// **'Only days logged after you allow lunarlog to write to Health Connect are written — nothing already in the app is sent on its own. Separately, you can import menstrual flow and spotting from Health Connect — you start the first import yourself, and after it lunarlog keeps the import current in the background, as long as Health Connect allows it to read Menstruation and Spotting and to access data in the background.'**
   String get healthSyncWriteForwardOnlyHealthConnect;
 
   /// Issue #1478: what a Health Connect period record covers, in plain words. The one way anything logged before write access can reach Health Connect: a period that began earlier is written with its true first day, because a period clipped to start on the first written day would be a wrong period. Also states that an imported day is never written back and never starts, extends or reshapes a written period.

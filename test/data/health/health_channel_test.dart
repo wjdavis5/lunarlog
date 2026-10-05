@@ -812,4 +812,113 @@ void main() {
       expect(calls, isEmpty, reason: 'no channel exists to call');
     });
   });
+
+  // Issue #1491: the read-side probe the background import is gated on.
+  // Health Connect says which reads are granted, so on Android the
+  // question crosses the channel under its own name. HealthKit never says,
+  // so on iOS it is answered from the write probe and the read-side name
+  // is never sent to a Swift handler that does not exist.
+  group('read-side permission state (Issue #1491)', () {
+    MethodChannelHealthPlatform makeUndisclosed() => MethodChannelHealthPlatform(
+          binding: HealthSyncBinding(FakeSettingsStore()),
+          minorBindingAllowed: true,
+          readAccessDisclosed: false,
+        );
+
+    HealthPlatformStore build(TargetPlatform platform) => createHealthPlatform(
+          platform,
+          binding: HealthSyncBinding(FakeSettingsStore()),
+          minorBindingAllowed: true,
+        );
+
+    test('importPermissionStatus sends its own pinned method name, with no '
+        'arguments, and decodes every wire value', () async {
+      for (final status in HealthPermissionStatus.values) {
+        calls.clear();
+        nextResult = status.toWire();
+        expect(await makePlatform().importPermissionStatus(), status);
+        expect(calls.single.method, 'importPermissionStatus');
+        expect(calls.single.arguments, isNull);
+      }
+    });
+
+    test('an unknown string, a platform error or a missing handler is '
+        'unavailable — which stops a background pass, never lets it read',
+        () async {
+      nextResult = 'readDenied';
+      expect(
+        await makePlatform().importPermissionStatus(),
+        HealthPermissionStatus.unavailable,
+      );
+      nextResult = 'granted';
+      nextError = PlatformException(code: 'anything');
+      expect(
+        await makePlatform().importPermissionStatus(),
+        HealthPermissionStatus.unavailable,
+      );
+      nextError = MissingPluginException();
+      expect(
+        await makePlatform().importPermissionStatus(),
+        HealthPermissionStatus.unavailable,
+      );
+    });
+
+    test('where the store does not disclose read access, the answer is the '
+        'write probe\'s and the read-side method is never sent', () async {
+      for (final status in HealthPermissionStatus.values) {
+        calls.clear();
+        nextResult = status.toWire();
+        expect(await makeUndisclosed().importPermissionStatus(), status);
+        expect(calls.single.method, 'permissionStatus');
+      }
+    });
+
+    test('the write probe is the same call whichever way the read-side '
+        'question is answered', () async {
+      nextResult = 'denied';
+      expect(
+        await makeUndisclosed().permissionStatus(),
+        HealthPermissionStatus.denied,
+      );
+      expect(
+        await makePlatform().permissionStatus(),
+        HealthPermissionStatus.denied,
+      );
+      expect(
+        calls.map((call) => call.method),
+        everyElement('permissionStatus'),
+      );
+    });
+
+    test('the iOS adapter asks Swift only for the write probe; the Android '
+        'adapter asks Kotlin for the read-side one', () async {
+      nextResult = 'granted';
+
+      final ios = build(TargetPlatform.iOS);
+      expect((ios as MethodChannelHealthPlatform).readAccessDisclosed, isFalse);
+      expect(await ios.importPermissionStatus(), HealthPermissionStatus.granted);
+      expect(calls.single.method, 'permissionStatus');
+
+      calls.clear();
+      final android = build(TargetPlatform.android);
+      expect(
+        (android as MethodChannelHealthPlatform).readAccessDisclosed,
+        isTrue,
+      );
+      expect(
+        await android.importPermissionStatus(),
+        HealthPermissionStatus.granted,
+      );
+      expect(calls.single.method, 'importPermissionStatus');
+    });
+
+    test('the unsupported platform reports unavailable', () async {
+      const platform = UnsupportedHealthPlatform();
+      expect(
+        await platform.importPermissionStatus(),
+        HealthPermissionStatus.unavailable,
+      );
+      expect(calls, isEmpty, reason: 'no channel exists to call');
+    });
+  });
 }

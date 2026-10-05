@@ -26,7 +26,8 @@ import kotlinx.coroutines.withTimeoutOrNull
  *
  * **The worker never touches health data.** It reads no Health Connect
  * record and performs no merge — the changes-API pull, the #153
- * device-binding guard, the #959 permission probe, and the
+ * device-binding guard, the read-side permission probe (#1491; it was the
+ * #959 write-side one before), and the
  * never-overwrite merge all live in the Dart pipeline, unchanged. The
  * worker's whole decision surface is: is a profile bound (the same
  * SharedPreferences mirror `HealthConnectAdapter` stores), is the
@@ -68,8 +69,9 @@ class HealthBackgroundImportWorker(
         // this trigger could wake — so the tick ends here, before Dart is
         // woken for a pass that cannot read. Every can't-tell case (feature
         // absent, SDK gone, query failure) answers false inside the helper
-        // and the tick runs on: the Dart side's #959 probe still gates each
-        // pass on the OS permission it can see.
+        // and the tick runs on: the Dart side's own probe still gates each
+        // pass on the read permissions it needs (issue #1491 — the record
+        // reads, where this check is the background-read permission).
         if (HealthConnectAdapter.backgroundReadRefused(applicationContext)) {
             return Result.success()
         }

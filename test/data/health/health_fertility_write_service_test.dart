@@ -102,6 +102,12 @@ class _FakePlatform implements HealthPlatformStore {
   Future<HealthPermissionStatus> permissionStatus() async =>
       HealthPermissionStatus.granted;
 
+  // Issue #1491: the read-side probe is the background import's alone. A
+  // write pass that read it would be gating writes on a read permission.
+  @override
+  Future<HealthPermissionStatus> importPermissionStatus() =>
+      throw StateError('a write pass must never read the import probe');
+
   @override
   Future<void> openPermissionSettings() async {}
 

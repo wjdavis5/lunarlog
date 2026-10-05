@@ -32,9 +32,18 @@ import 'health_channel.dart';
 /// See `health_channel.dart`'s library doc for the guard-ordering
 /// contract; `health_platform.dart`'s for the (a)-vs-(b) first-party
 /// channel decision this file is half of.
+///
+/// `readAccessDisclosed: false` (Issue #1491): HealthKit never tells an app
+/// whether it may read a type, so the read-side permission probe has no
+/// Swift handler to ask — the shared engine answers it from the write types
+/// instead. The decision and its test live in `health_channel.dart`; this
+/// file only states the platform fact.
 class IOSHealthChannel extends MethodChannelHealthPlatform {
   IOSHealthChannel({
     required super.binding,
     required super.minorBindingAllowed,
-  }) : super(channel: const MethodChannel(kHealthChannelName));
+  }) : super(
+         channel: const MethodChannel(kHealthChannelName),
+         readAccessDisclosed: false,
+       );
 }

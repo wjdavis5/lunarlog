@@ -65,12 +65,19 @@ class _FakePlatform implements HealthPlatformStore {
   int bindCalls = 0;
   int authCalls = 0;
 
-  /// Issue #993: the OS-permission probe the background pass consults
-  /// instead of prompting. Defaults to granted, like an install that
-  /// already completed its first user-initiated pass.
+  /// Issue #959: the WRITE-side OS-permission probe. The write pass reads
+  /// it; since Issue #1491 the import never does, so the default is
+  /// granted and the tests below count its calls to prove that.
   HealthPermissionStatus permissionStatusResult =
       HealthPermissionStatus.granted;
   int permissionStatusCalls = 0;
+
+  /// Issue #1491: the READ-side probe the background pass consults instead
+  /// of prompting (Issue #993). Defaults to granted, like an install that
+  /// already completed its first user-initiated pass.
+  HealthPermissionStatus importPermissionStatusResult =
+      HealthPermissionStatus.granted;
+  int importPermissionStatusCalls = 0;
 
   @override
   Future<HealthPlatformResult> bindProfile(HealthGuardFacts facts) async {
@@ -90,6 +97,12 @@ class _FakePlatform implements HealthPlatformStore {
   Future<HealthPermissionStatus> permissionStatus() async {
     permissionStatusCalls++;
     return permissionStatusResult;
+  }
+
+  @override
+  Future<HealthPermissionStatus> importPermissionStatus() async {
+    importPermissionStatusCalls++;
+    return importPermissionStatusResult;
   }
 
   @override
@@ -1218,10 +1231,11 @@ void main() {
 
       final summary = await build().importInBackground();
 
-      // The consent gate, not the OS probe: the pass ends before the
-      // permission is even consulted, and nothing is read or written.
+      // The consent gate, not the OS probe: the pass ends before either
+      // permission probe is consulted, and nothing is read or written.
       expect(summary.firstImportNotStarted, isTrue);
       expect(summary.blocked, isNull);
+      expect(platform.importPermissionStatusCalls, 0);
       expect(platform.permissionStatusCalls, 0);
       expect(source.calls, 0);
       expect(dayEntries.saved, isEmpty);
@@ -1236,7 +1250,7 @@ void main() {
 
       await build().importInBackground();
       expect(
-        platform.permissionStatusCalls,
+        platform.importPermissionStatusCalls,
         1,
         reason: 'the gate opened past the consent check, all the way to '
             'the probe',
@@ -1301,9 +1315,11 @@ void main() {
       expect(entry.source, DayEntrySource.healthkit);
       expect(entry.sourceId, 'bg-1');
 
-      // The background-specific property: the OS permission was probed,
+      // The background-specific property: the OS permission was probed —
+      // the read-side probe, once, and never the write one (Issue #1491) —
       // and nothing prompt-shaped ever ran.
-      expect(platform.permissionStatusCalls, 1);
+      expect(platform.importPermissionStatusCalls, 1);
+      expect(platform.permissionStatusCalls, 0);
       expect(platform.bindCalls, 0);
       expect(platform.authCalls, 0);
     });
@@ -1312,7 +1328,7 @@ void main() {
         () async {
       await bind();
       await completeFirstImport();
-      platform.permissionStatusResult = HealthPermissionStatus.notAsked;
+      platform.importPermissionStatusResult = HealthPermissionStatus.notAsked;
 
       final summary = await build().importInBackground();
 
@@ -1327,12 +1343,108 @@ void main() {
     test('a revoked OS permission stops the next background pass', () async {
       await bind();
       await completeFirstImport();
-      platform.permissionStatusResult = HealthPermissionStatus.denied;
+      platform.importPermissionStatusResult = HealthPermissionStatus.denied;
 
       final summary = await build().importInBackground();
 
       expect(summary.blocked, isA<HealthPlatformPermissionDenied>());
       expect(source.calls, 0);
+    });
+
+    // Issue #1491. The background pass used to stop unless the WRITE
+    // probe read granted, so someone who let lunarlog read from Health
+    // Connect but not write to it got a working Import button and a
+    // background import that never ran. It is gated on the read-side
+    // probe now; the write probe is the write path's alone.
+    test('reads on, writes off: a background pass imports (issue #1491)',
+        () async {
+      await bind();
+      await completeFirstImport();
+      platform.importPermissionStatusResult = HealthPermissionStatus.granted;
+      platform.permissionStatusResult = HealthPermissionStatus.denied;
+      source.result = HealthReadResult.samples([
+        _offsetSample(
+          id: 'bg-reads-only',
+          flow: HealthFlowValue.medium,
+          startIso: '2026-09-12T12:00:00Z',
+        ),
+      ]);
+
+      final summary = await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importInBackground();
+
+      expect(summary.blocked, isNull);
+      expect(summary.daysWritten, 1);
+      expect(dayEntries.saved.single.sourceId, 'bg-reads-only');
+      expect(dayEntries.saved.single.source, DayEntrySource.healthConnect);
+      // Still prompt-free.
+      expect(platform.bindCalls, 0);
+      expect(platform.authCalls, 0);
+    });
+
+    test('the read-side probe decides, whatever the write probe says: '
+        'anything but granted stops before any read (issue #1491)',
+        () async {
+      await bind();
+      await completeFirstImport();
+      source.result = HealthReadResult.samples([
+        _sample(
+          id: 'bg-never-read',
+          flow: HealthFlowValue.medium,
+          startIso: '2026-09-10T12:00:00Z',
+        ),
+      ]);
+      // Every write permission is on; the reads are not.
+      platform.permissionStatusResult = HealthPermissionStatus.granted;
+
+      for (final notGranted in [
+        HealthPermissionStatus.notAsked,
+        HealthPermissionStatus.denied,
+        HealthPermissionStatus.unavailable,
+      ]) {
+        platform.importPermissionStatusResult = notGranted;
+
+        final summary = await build().importInBackground();
+
+        expect(
+          summary.blocked,
+          isA<HealthPlatformPermissionDenied>(),
+          reason: '$notGranted must stop the pass',
+        );
+      }
+      expect(source.calls, 0);
+      expect(dayEntries.saved, isEmpty);
+      expect(platform.bindCalls, 0);
+      expect(platform.authCalls, 0);
+      expect(
+        platform.permissionStatusCalls,
+        0,
+        reason: 'the write probe is not the import\'s to read',
+      );
+    });
+
+    test('the tap import consults neither probe: it asks through the one '
+        'authorization request, as before (issue #1491)', () async {
+      await bind();
+      // Whatever either probe would say, a tap is the person asking.
+      platform.importPermissionStatusResult = HealthPermissionStatus.denied;
+      platform.permissionStatusResult = HealthPermissionStatus.denied;
+      source.result = HealthReadResult.samples([
+        _sample(
+          id: 'tap-1',
+          flow: HealthFlowValue.light,
+          startIso: '2026-09-10T12:00:00Z',
+        ),
+      ]);
+
+      final summary = await build().importNow();
+
+      expect(summary.daysWritten, 1);
+      expect(platform.bindCalls, 1);
+      expect(platform.authCalls, 1);
+      expect(platform.importPermissionStatusCalls, 0);
+      expect(platform.permissionStatusCalls, 0);
     });
 
     test('the guard runs before the probe: a refused binding touches no '
@@ -1353,6 +1465,7 @@ void main() {
         (blocked! as HealthPlatformRefused).check,
         HealthSyncCheck.profileNotBound,
       );
+      expect(platform.importPermissionStatusCalls, 0);
       expect(platform.permissionStatusCalls, 0);
       expect(source.calls, 0);
       expect(dayEntries.saved, isEmpty);
@@ -1362,6 +1475,7 @@ void main() {
       final summary = await build().importInBackground();
 
       expect(summary.bound, isFalse);
+      expect(platform.importPermissionStatusCalls, 0);
       expect(platform.permissionStatusCalls, 0);
       expect(source.calls, 0);
       expect(dayEntries.saved, isEmpty);

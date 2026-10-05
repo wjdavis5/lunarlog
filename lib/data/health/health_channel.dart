@@ -86,11 +86,23 @@ class MethodChannelHealthPlatform
     this.channel = const MethodChannel(kHealthChannelName),
     required this.binding,
     required this.minorBindingAllowed,
+    this.readAccessDisclosed = true,
   });
 
   final MethodChannel channel;
   final HealthSyncBinding binding;
   final bool minorBindingAllowed;
+
+  /// Whether this platform's health store tells an app which READ
+  /// permissions it holds (Issue #1491) — the one platform fact
+  /// [importPermissionStatus] turns on. Health Connect does
+  /// (`getGrantedPermissions`), so `AndroidHealthChannel` leaves this true
+  /// and the question crosses the channel. HealthKit does not — a denied
+  /// read is indistinguishable from "no data" by Apple's design — so
+  /// `IOSHealthChannel` passes false and the question is answered here in
+  /// Dart from the write types, never sent to a Swift handler that could
+  /// only guess.
+  final bool readAccessDisclosed;
 
   /// The Dart-side guard every guarded method runs before any channel
   /// invocation. Kept as one helper so the ordering cannot drift between
@@ -204,10 +216,29 @@ class MethodChannelHealthPlatform
   /// handler or a platform error degrades to
   /// [HealthPermissionStatus.unavailable] rather than guessing.
   @override
-  Future<HealthPermissionStatus> permissionStatus() async {
+  Future<HealthPermissionStatus> permissionStatus() =>
+      _probePermission(HealthChannelMethods.permissionStatus);
+
+  /// The OS permission state for what the import reads (Issue #1491) —
+  /// the background pass's gate. Unguarded and data-free like
+  /// [permissionStatus], and like it a missing handler or a platform error
+  /// degrades to [HealthPermissionStatus.unavailable], which stops a
+  /// background pass rather than letting it read on a guess.
+  ///
+  /// Where the store does not disclose read access ([readAccessDisclosed]
+  /// false — iOS) there is nothing native to ask, so this is the write-side
+  /// answer: exactly the gate the background pass had on iOS before this
+  /// method existed.
+  @override
+  Future<HealthPermissionStatus> importPermissionStatus() => readAccessDisclosed
+      ? _probePermission(HealthChannelMethods.importPermissionStatus)
+      : permissionStatus();
+
+  /// One unguarded permission-probe round trip, shared by the write-side
+  /// and read-side probes so the two cannot drift on error handling.
+  Future<HealthPermissionStatus> _probePermission(String method) async {
     try {
-      final raw = await channel
-          .invokeMethod<Object?>(HealthChannelMethods.permissionStatus);
+      final raw = await channel.invokeMethod<Object?>(method);
       return decodeHealthPermissionStatus(raw);
     } on PlatformException {
       return HealthPermissionStatus.unavailable;
@@ -493,6 +524,10 @@ class UnsupportedHealthPlatform
 
   @override
   Future<HealthPermissionStatus> permissionStatus() async =>
+      HealthPermissionStatus.unavailable;
+
+  @override
+  Future<HealthPermissionStatus> importPermissionStatus() async =>
       HealthPermissionStatus.unavailable;
 
   @override

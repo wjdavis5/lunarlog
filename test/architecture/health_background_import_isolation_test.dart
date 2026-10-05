@@ -26,9 +26,11 @@ import 'package:flutter_test/flutter_test.dart';
 /// The guarded [HealthPlatformStore] methods a background import must
 /// never call — every write, the authorization prompt, the deletion
 /// propagation, and the native-mirror binding writes. Deliberately
-/// NOT forbidden: `isAvailable`, `permissionStatus`, and
-/// `openPermissionSettings` (the unguarded, no-user-data probes — the
-/// background pass is contractually required to call `permissionStatus`).
+/// NOT forbidden: `isAvailable`, `permissionStatus`,
+/// `importPermissionStatus`, and `openPermissionSettings` (the unguarded,
+/// no-user-data probes — the background pass is contractually required to
+/// call `importPermissionStatus`, the read-side one; see the Issue #1491
+/// group below for which probe belongs to which pass).
 const List<String> _forbiddenWriteSurface = [
   'writeMenstrualFlow',
   'writeIntermenstrualBleeding',
@@ -149,8 +151,8 @@ void main() {
         reason:
             'importInBackground calls ${match?.group(0)} — a background '
             'pass must never prompt or re-write the binding mirror; the '
-            'Issue #959 permissionStatus probe is the only platform call '
-            'it may make before the read.',
+            'read-side importPermissionStatus probe (Issue #1491) is the '
+            'only platform call it may make before the read.',
       );
     });
 
@@ -211,6 +213,65 @@ void main() {
               'scans keep covering it.',
         );
       }
+    });
+  });
+
+  // Issue #1491. There are two OS-permission probes and each belongs to one
+  // direction: `permissionStatus` answers for the writes and gates the
+  // write pass; `importPermissionStatus` answers for the reads the import
+  // performs and gates the background import. The background import used
+  // to read the write one, so it never ran for someone who allowed reading
+  // only. A future edit that crosses the two fails here.
+  group('Issue #1491: each pass is gated on its own direction\'s probe', () {
+    test('importInBackground reads the read-side probe and never the '
+        'write-side one', () {
+      final source = _stripComments(
+        _read('lib/data/health/health_import_service.dart'),
+      );
+      final body = _block(
+        source,
+        RegExp(r'Future<HealthImportSummary> importInBackground\('),
+      );
+
+      expect(body, contains('.importPermissionStatus()'));
+      expect(
+        body,
+        isNot(contains('.permissionStatus()')),
+        reason: 'the write permissions are not the background import\'s '
+            'to wait on',
+      );
+    });
+
+    test('nothing else in the import service reads the write-side probe',
+        () {
+      final source = _stripComments(
+        _read('lib/data/health/health_import_service.dart'),
+      );
+
+      expect(source, isNot(contains('.permissionStatus()')));
+      expect('.importPermissionStatus()'.allMatches(source), hasLength(1));
+    });
+
+    test('the write direction never reads the read-side probe', () {
+      for (final path in [
+        'lib/data/health/health_flow_write_service.dart',
+        'lib/data/health/health_flow_write_coordinator.dart',
+        'lib/data/health/health_sync_deletion_service.dart',
+        'lib/data/health/health_sync_tombstone_coordinator.dart',
+      ]) {
+        expect(
+          _stripComments(_read(path)),
+          isNot(contains('importPermissionStatus')),
+          reason: '$path gates writes; a read permission must not stop one',
+        );
+      }
+      // And the write pass still has its own gate.
+      expect(
+        _stripComments(
+          _read('lib/data/health/health_flow_write_service.dart'),
+        ),
+        contains('.permissionStatus()'),
+      );
     });
   });
 
