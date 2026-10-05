@@ -1154,6 +1154,7 @@ class _OverviewPanelState extends State<OverviewPanel>
               cycleLengthDays: prediction.meanCycleLengthDays.round(),
               periodLengthDays: prediction.meanPeriodLengthDays.round(),
               daysUntilNextPeriod: prediction.daysUntilNextPeriod,
+              rangeDaysAhead: estimateRangeDaysAhead(prediction),
               irregularFraming: irregularFramingInEffect(
                 mode: widget.mode,
                 stored: widget.irregularFraming,

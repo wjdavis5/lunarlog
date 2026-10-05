@@ -1074,7 +1074,10 @@ void main() {
           find.byKey(const ValueKey('overview-days-until')),
           findsOneWidget,
         );
-        expect(find.text('5'), findsOneWidget);
+        // Issue #1517: a provisional estimate is shown as a range, and the
+        // ring shows that range, not a count to the middle of it (it read
+        // "5").
+        expect(find.text('1–9'), findsOneWidget);
         expect(find.text('days'), findsOneWidget);
         expect(
           find.text('Provisional'),
@@ -1157,15 +1160,19 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Before logging: Today counts from the onboarding answer.
+        // Before logging: Today counts from the onboarding answer. Issue
+        // #1517: today is inside the range shown beneath the ring, so the
+        // ring says so. It used to read "2 days past estimate" here, above
+        // a range that still included today.
         expect(find.text('Cycle day 31'), findsOneWidget);
         expect(
           tester
               .widget<Text>(find.byKey(const ValueKey('overview-days-until')))
               .data,
-          '2',
+          'Any day',
         );
-        expect(find.text('days past estimate'), findsOneWidget);
+        expect(find.text('now'), findsOneWidget);
+        expect(find.text('days past estimate'), findsNothing);
         expect(
           find.text(
             'Next period estimate: August 24, 2026 – September 1, 2026',
@@ -1500,7 +1507,9 @@ void main() {
         );
         expect(find.text('7 days late'), findsNothing);
         expect(find.text('days past estimate'), findsNothing);
-        expect(heroCount(), '21', reason: 'Aug 30 to Sep 20');
+        // Issue #1517: the range beneath, as distances (it read "21", the
+        // distance to Sep 20, the middle of it).
+        expect(heroCount(), '17–25', reason: 'Aug 30 to Sep 16 – Sep 24');
         expect(
           find.text(
             'Next period estimate: September 16, 2026 – September 24, 2026',

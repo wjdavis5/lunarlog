@@ -86,3 +86,29 @@ String estimateDateText(ActivePrediction prediction, String locale) {
   }
   return '${format(rangeStart)} – ${format(rangeEnd)}';
 }
+
+/// The days from today to each end of the range [estimateDateText] shows
+/// for [prediction] (issue #1517), or null when the Today ring should keep
+/// its single count.
+///
+/// The ring used to count down to the middle of the range whatever the
+/// line beneath it said: "1 day" above "September 27 – October 1" on a day
+/// already inside that range, then "1 day past estimate" for the second
+/// half of it. When this is non-null the ring shows the range instead:
+/// both distances before it opens (`start` above zero), and no count at
+/// all once today is inside it (`start` at or below zero).
+///
+/// Null when the estimate is one date (high confidence, or a range that
+/// rounds to a single day), once the estimate has rolled past its date
+/// ([ActivePrediction.daysLate], whose "days past estimate" wording is
+/// then true), and once today is past the range's own end.
+({int start, int end})? estimateRangeDaysAhead(ActivePrediction prediction) {
+  if (prediction.tier == CycleConfidence.high) return null;
+  if (prediction.daysLate != null) return null;
+  final rangeStart = prediction.estimatedRangeStart;
+  final rangeEnd = prediction.estimatedRangeEnd;
+  if (rangeStart == rangeEnd) return null;
+  final end = rangeEnd.difference(prediction.today);
+  if (end < 0) return null;
+  return (start: rangeStart.difference(prediction.today), end: end);
+}
