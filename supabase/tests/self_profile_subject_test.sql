@@ -5,7 +5,7 @@
 -- primary_guardian membership carries profile_guardians.is_subject (#802).
 -- This file pins, through the real RPCs wherever a client would use one:
 --
---   1. Catalog: the four triggers, their SECURITY DEFINER / search_path /
+--   1. Catalog: the seven triggers, their SECURITY DEFINER / search_path /
 --      EXECUTE posture, and that the marker is still unwritable by a client.
 --   2. Creation: a 'self' profile makes its creator the subject; a profile
 --      created with another relationship (or none) does not.
@@ -18,17 +18,22 @@
 --      or not she was already a member.
 --   5. One subject per profile, and whoever holds the marker keeps it: a
 --      subject invitation is refused while the profile has an accepted
---      subject (for a co-parent and for the owner alike), a subject
---      invitation created earlier and accepted later joins its invitee
---      without the marker, and the route by which a co-parent could read
+--      subject (for a co-parent and for the owner alike); pending subject
+--      invitations are revoked the moment someone becomes the subject, so
+--      none goes stale; one that survives all the same joins its invitee
+--      without the marker; and the route by which a co-parent could read
 --      the owner's private note through a second account is closed.
 --   6. Private-note masking (#849) now protects the self-owner's private
 --      note from another guardian, and she can still edit it herself.
---   7. Whose relationship edit moves the marker: only the owner's own
---      (the caller is the profile's accepted primary guardian), through
---      sync_push as each role and with no auth.uid() at all; and the
---      owner's own edit away from 'self' never clears while a live day
---      entry carries a private note.
+--   7. Only the primary guardian can change the relationship: a co-parent's
+--      value is put back while the rest of her push lands (through
+--      sync_push and through a direct table update), a caregiver and a
+--      viewer are refused as before, the owner's own change still moves
+--      the column and the marker, and a statement with no auth.uid() may
+--      change the column and moves no marker. The reviewer's sequence (a
+--      co-parent flips it away and back, the owner then pushes) no longer
+--      costs the owner her marker. And the owner's own change away from
+--      'self' never clears while a live day entry carries a private note.
 --   8. A primary_guardian row that becomes accepted is stamped by the same
 --      rule, and not beside an invited subject.
 --   9. The backfill (simulate-then-reconcile, the caregiver_mode_backfill
@@ -43,7 +48,7 @@
 -- was given, and every stamped or cleared row -- the backfilled ones
 -- included -- must come back from sync_pull past that cursor.
 begin;
-select plan(95);
+select plan(122);
 
 -- ---------------------------------------------------------------------------
 -- Helpers
@@ -158,6 +163,91 @@ returns boolean language sql as $$
   select pg_temp.pulled_note(p_entry) = '<masked>'
 $$;
 
+-- One profile row as display_name / relationship, read past RLS.
+create function pg_temp.profile_state(p_profile text)
+returns text language sql security definer set search_path = '' as $$
+  select p.display_name || ' / ' || coalesce(p.relationship, '<null>')
+    from public.profiles p
+   where p.id = p_profile
+$$;
+
+-- A direct table update of the relationship (the PostgREST shape), as the
+-- current caller: how many rows the statement touched.
+create function pg_temp.direct_relationship_update(p_profile text, p_value text)
+returns bigint language plpgsql as $$
+declare
+  v_rows bigint;
+begin
+  update public.profiles set relationship = p_value where id = p_profile;
+  get diagnostics v_rows = row_count;
+  return v_rows;
+end;
+$$;
+
+-- One invitation's state by its token, read past the column grants.
+create function pg_temp.invitation_state(p_token text)
+returns text language sql security definer set search_path = '' as $$
+  select coalesce(
+    (select case
+              when i.accepted_at is not null and i.revoked_at is not null then 'accepted and revoked'
+              when i.accepted_at is not null then 'accepted'
+              when i.revoked_at is not null then 'revoked'
+              else 'pending'
+            end
+       from public.guardian_invitations i
+      where i.token_hash = p_token),
+    'missing')
+$$;
+
+-- Accepts an invitation as the current caller if it is still pending. The
+-- two backstop cases below re-open an invitation the schema has revoked;
+-- on a schema that never revoked it, the step before has already accepted
+-- it, and this lets the file run on to the end there too.
+create function pg_temp.accept_if_pending(p_token text, p_name text)
+returns void language plpgsql as $$
+begin
+  if pg_temp.invitation_state(p_token) = 'pending' then
+    perform public.accept_guardian_invitation(p_token, p_name);
+  end if;
+end;
+$$;
+
+-- The relationship the current caller's own full pull shows for a profile:
+-- what her device holds once it has synced.
+create function pg_temp.pulled_relationship(p_profile text)
+returns text language sql as $$
+  select coalesce(
+    (select coalesce(p ->> 'relationship', '<null>')
+       from jsonb_array_elements(public.sync_pull('{}'::jsonb) -> 'profiles') p
+      where p ->> 'id' = p_profile),
+    'absent')
+$$;
+
+-- The same for an incremental pull past a remembered profiles cursor.
+create function pg_temp.remember_profile_cursor(p_name text)
+returns void language sql as $$
+  insert into cur (name, v)
+  select 'profiles:' || p_name, coalesce(max((p ->> 'server_version')::bigint), 0)
+    from jsonb_array_elements(public.sync_pull('{}'::jsonb) -> 'profiles') p
+  on conflict (name) do update set v = excluded.v
+$$;
+
+create function pg_temp.pulled_relationship_since(p_name text, p_profile text)
+returns text language sql as $$
+  select coalesce(
+    (select coalesce(p ->> 'relationship', '<null>')
+       from jsonb_array_elements(
+              public.sync_pull(
+                jsonb_build_object('profiles', (select v from cur where name = 'profiles:' || p_name)))
+              -> 'profiles') p
+      where p ->> 'id' = p_profile),
+    'absent')
+$$;
+
+-- What a device holds between two steps of a test.
+create temp table held (name text primary key, v text);
+grant all on table held to authenticated;
+
 select tests.create_supabase_user('ana');
 select tests.create_supabase_user('bea');
 select tests.create_supabase_user('mom');
@@ -167,6 +257,7 @@ select tests.create_supabase_user('tess');
 select tests.create_supabase_user('riley');
 select tests.create_supabase_user('eve');
 select tests.create_supabase_user('gus');
+select tests.create_supabase_user('cy_early');
 
 -- ---------------------------------------------------------------------------
 -- 1. Catalog: the triggers exist; their functions are SECURITY DEFINER with
@@ -179,22 +270,27 @@ select is(
       and (t.tgrelid, t.tgname) in (
         ('public.profile_guardians'::regclass, 'profile_guardians_stamp_self_subject'),
         ('public.profile_guardians'::regclass, 'profile_guardians_unmark_second_subject'),
+        ('public.profile_guardians'::regclass, 'profile_guardians_after_subject_revoke_invitations'),
+        ('public.profiles'::regclass, 'profiles_relationship_primary_guardian_only'),
         ('public.profiles'::regclass, 'profiles_after_relationship_self_subject'),
-        ('public.guardian_invitations'::regclass, 'guardian_invitations_refuse_second_subject'))),
-  4::bigint,
-  'catalog: the four issue #1499 triggers exist on their tables'
+        ('public.guardian_invitations'::regclass, 'guardian_invitations_refuse_second_subject'),
+        ('public.guardian_invitations'::regclass, 'guardian_invitations_after_accept_revoke_subject_invitations'))),
+  7::bigint,
+  'catalog: the seven issue #1499 triggers exist on their tables'
 );
 select is(
   (select count(*) from pg_catalog.pg_proc p
     where p.pronamespace = 'public'::regnamespace
       and p.proname in ('stamp_self_profile_subject_membership',
+                        'keep_relationship_for_primary_guardian',
                         'sync_self_profile_subject_marker',
                         'unmark_second_profile_subject',
-                        'refuse_second_subject_invitation')
+                        'refuse_second_subject_invitation',
+                        'revoke_pending_subject_invitations')
       and p.prosecdef
       and p.proconfig = array['search_path=""']::text[]),
-  4::bigint,
-  'catalog: the four trigger functions are SECURITY DEFINER with an empty search_path'
+  6::bigint,
+  'catalog: the six trigger functions are SECURITY DEFINER with an empty search_path'
 );
 -- Counted over pg_proc (rather than naming each signature) so the
 -- assertion fails, instead of raising, where a function is missing. A
@@ -203,13 +299,15 @@ select is(
   (select count(*) from pg_catalog.pg_proc p
     where p.pronamespace = 'public'::regnamespace
       and p.proname in ('stamp_self_profile_subject_membership',
+                        'keep_relationship_for_primary_guardian',
                         'sync_self_profile_subject_marker',
                         'unmark_second_profile_subject',
-                        'refuse_second_subject_invitation')
+                        'refuse_second_subject_invitation',
+                        'revoke_pending_subject_invitations')
       and not has_function_privilege('anon', p.oid, 'execute')
       and not has_function_privilege('authenticated', p.oid, 'execute')),
-  4::bigint,
-  'catalog: none of the four functions is executable by anon or authenticated'
+  6::bigint,
+  'catalog: none of the six functions is executable by anon or authenticated'
 );
 -- Nothing takes the marker from its holder when an invitation is accepted:
 -- the function that used to do that is gone.
@@ -462,12 +560,33 @@ select is(
 select tests.authenticate_as('mom');
 select pg_temp.push_profile(tests.ulid(9107), '{"display_name":"Riley","relationship":"daughter","is_minor":true}');
 select public.create_guardian_invitation(tests.ulid(9107), 'caregiver', 'Riley', pg_temp.token(51), 48, true);
+-- (A second subject invitation and an ordinary one, both created while the
+-- profile has no subject, for the revocation below.)
+select public.create_guardian_invitation(tests.ulid(9107), 'caregiver', 'Riley again', pg_temp.token(68), 48, true);
+select public.create_guardian_invitation(tests.ulid(9107), 'caregiver', 'Sitter', pg_temp.token(69), 48);
 select tests.authenticate_as('riley');
 select public.accept_guardian_invitation(pg_temp.token(51), 'Riley');
 select is(
   pg_temp.marker(tests.ulid(9107), 'mom') || ' / ' || pg_temp.marker(tests.ulid(9107), 'riley'),
   'primary_guardian:accepted:null / caregiver:accepted:true',
   'one subject: on a profile with no subject, a subject invitation is created and accepted as before'
+);
+
+-- No stale subject invitations: when she becomes the subject, the profile's
+-- other pending subject invitation is revoked in that same statement, the
+-- way every other revocation is (revoked_at), and the ordinary invitation is
+-- left alone. A revoked invitation cannot be accepted.
+select is(
+  pg_temp.invitation_state(pg_temp.token(51)) || ' / ' || pg_temp.invitation_state(pg_temp.token(68))
+    || ' / ' || pg_temp.invitation_state(pg_temp.token(69)),
+  'accepted / revoked / pending',
+  'no stale invitations: accepting a subject invitation revokes the profile''s other pending subject invitation and leaves an ordinary one pending'
+);
+select tests.authenticate_as('cy_early');
+select throws_ok(
+  format($$select public.accept_guardian_invitation(%L, 'Late')$$, pg_temp.token(68)),
+  '55000', null,
+  'no stale invitations: the revoked subject invitation cannot then be accepted'
 );
 
 -- A second subject invitation on that profile is then refused. The code
@@ -593,20 +712,45 @@ select is(
 );
 
 -- 5d. The stale invitation. A subject invitation is created while the
---     profile has no subject (Sam's, 9122, not yet called self). Sam then
---     becomes its subject and writes a private note. Only then is the old
---     invitation accepted: Tia joins with the role she was invited to, and
---     without the marker.
+--     profile has no subject (Sam's, 9122, not yet called self), beside an
+--     ordinary invitation. Sam then says the profile is her own and writes a
+--     private note. Her becoming the subject revokes the pending subject
+--     invitation in that same statement; the ordinary one is untouched.
 select tests.create_supabase_user('sam');
 select tests.create_supabase_user('tia');
 select tests.authenticate_as('sam');
 select pg_temp.push_profile(tests.ulid(9122), '{"display_name":"Sam","relationship":"other"}');
 select public.create_guardian_invitation(tests.ulid(9122), 'caregiver', 'Tia', pg_temp.token(58), 48, true);
+select public.create_guardian_invitation(tests.ulid(9122), 'caregiver', 'Helper', pg_temp.token(70), 48);
 select pg_temp.push_profile(tests.ulid(9122), '{"display_name":"Sam","relationship":"self"}');
 select pg_temp.push_private_note(tests.ulid(9152), tests.ulid(9122), 'only for Sam');
 select pg_temp.remember_cursor('sam');
+select is(
+  pg_temp.invitation_state(pg_temp.token(58)) || ' / ' || pg_temp.invitation_state(pg_temp.token(70)),
+  'revoked / pending',
+  'no stale invitations: the owner becoming the subject by her own relationship edit revokes the pending subject invitation, and not the ordinary one'
+);
 select tests.authenticate_as('tia');
-select public.accept_guardian_invitation(pg_temp.token(58), 'Tia');
+select throws_ok(
+  format($$select public.accept_guardian_invitation(%L, 'Tia')$$, pg_temp.token(58)),
+  '55000', null,
+  'no stale invitations: that invitation cannot then be accepted'
+);
+select is(
+  pg_temp.pulled_note(tests.ulid(9152)),
+  'absent',
+  'no stale invitations: and its invitee reads nothing of the profile'
+);
+
+-- The backstop. Should a subject invitation survive to be accepted while
+-- the profile has a subject (it was mid-accept as the marker was stamped,
+-- or was created in the same instant), its invitee still joins without the
+-- marker. The test role re-opens the revoked invitation to stand in for one
+-- that survived.
+select tests.clear_authentication();
+update public.guardian_invitations set revoked_at = null where token_hash = pg_temp.token(58);
+select tests.authenticate_as('tia');
+select pg_temp.accept_if_pending(pg_temp.token(58), 'Tia');
 select is(
   pg_temp.marker(tests.ulid(9122), 'tia'),
   'caregiver:accepted:false',
@@ -667,8 +811,17 @@ select is(
   'primary_guardian:accepted:true / caregiver:revoked:true',
   'one subject: a revoked invited subject does not stop the owner being stamped when the profile becomes self'
 );
+-- Her becoming the subject revoked that invitation too; the test role
+-- re-opens it, as in 5d, to reach the backstop on this branch.
+select tests.clear_authentication();
+select is(
+  pg_temp.invitation_state(pg_temp.token(63)),
+  'revoked',
+  'no stale invitations: the same revocation when the invitee is a former member'
+);
+update public.guardian_invitations set revoked_at = null where token_hash = pg_temp.token(63);
 select tests.authenticate_as('ivy');
-select public.accept_guardian_invitation(pg_temp.token(63), 'Ivy');
+select pg_temp.accept_if_pending(pg_temp.token(63), 'Ivy');
 select is(
   pg_temp.marker(tests.ulid(9109), 'hana') || ' / ' || pg_temp.marker(tests.ulid(9109), 'ivy'),
   'primary_guardian:accepted:true / caregiver:accepted:false',
@@ -797,111 +950,366 @@ select is(
 );
 
 -- ---------------------------------------------------------------------------
--- 7. Whose relationship edit moves the marker, and what a private note
---    holds in place.
+-- 7. Who may change the relationship, whose change moves the marker, and
+--    what a private note holds in place.
 --
---    A relationship edit moves the marker only when it is the owner's own
---    statement about her own profile: the caller is the profile's accepted
---    primary guardian. Anyone else's edit -- a co-parent's, or one made with
---    no auth.uid() at all -- leaves every marker as it was, in both
---    directions. And the owner's own edit away from self does not clear her
---    marker while a live day entry of the profile carries a private note,
---    so changing a description field can never unmask one.
+--    Only the profile's primary guardian can change `relationship`: it is
+--    her statement of who the profile is for. sync_push writes the whole
+--    profile row and both apps send the relationship with every profile
+--    edit, so anyone else's value is put back rather than refused (a
+--    refusal would fail a co-parent's whole push over a field she did not
+--    mean to change) and the rest of her edit lands. A statement with no
+--    auth.uid() -- the service role, a migration -- may change the column,
+--    and moves no marker. The owner's own change moves the marker, and her
+--    change away from self does not clear it while a live day entry of the
+--    profile carries a private note.
 --
 --    Every edit by a person below goes through sync_push as that person.
---    That is also the proof that the SECURITY DEFINER trigger function
---    still reads the caller's id when it fires from inside the SECURITY
---    DEFINER RPC: the owner's push moves the marker and the co-parent's
---    identical push does not.
+--    That is also the proof that the SECURITY DEFINER trigger functions
+--    still read the caller's id when they fire from inside the SECURITY
+--    DEFINER RPC: the owner's push changes the column and the marker, and
+--    the co-parent's identical push changes neither.
 -- ---------------------------------------------------------------------------
--- 7a. Nora's self profile (9120) with Omar as co-parent. No private notes,
---     so nothing but the caller decides what happens here.
+-- 7a. Nora's self profile (9120): Omar is a co-parent, Kay a caregiver, Vic
+--     a viewer. No private notes.
 select tests.create_supabase_user('nora');
 select tests.create_supabase_user('omar');
+select tests.create_supabase_user('kay');
+select tests.create_supabase_user('vic');
 select tests.authenticate_as('nora');
 select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora","relationship":"self"}');
 select public.create_guardian_invitation(tests.ulid(9120), 'co_parent', 'Omar', pg_temp.token(81), 48);
+select public.create_guardian_invitation(tests.ulid(9120), 'caregiver', 'Kay', pg_temp.token(82), 48);
+select public.create_guardian_invitation(tests.ulid(9120), 'viewer', 'Vic', pg_temp.token(83), 48);
 select tests.authenticate_as('omar');
 select public.accept_guardian_invitation(pg_temp.token(81), 'Omar');
+select tests.authenticate_as('kay');
+select public.accept_guardian_invitation(pg_temp.token(82), 'Kay');
+select tests.authenticate_as('vic');
+select public.accept_guardian_invitation(pg_temp.token(83), 'Vic');
 select tests.authenticate_as('nora');
 select pg_temp.remember_cursor('nora');
 
--- A co-parent changes self to another relationship.
+-- A co-parent's push carries a new name and a different relationship. The
+-- push is applied (push_profile raises on a rejected or declined row).
 select tests.authenticate_as('omar');
-select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora","relationship":"partner"}');
+select pg_temp.remember_profile_cursor('omar');
+select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora B","relationship":"partner"}');
 select is(
-  (select relationship from public.profiles where id = tests.ulid(9120)),
-  'partner',
-  'who: setup -- a co-parent''s relationship edit is itself applied to the profile'
+  pg_temp.profile_state(tests.ulid(9120)),
+  'Nora B / self',
+  'relationship guard: a co-parent''s push carrying a different relationship leaves the column as it was, and her other edit in the same push lands'
+);
+select is(
+  pg_temp.pulled_relationship_since('omar', tests.ulid(9120)),
+  'self',
+  'relationship guard: her own next pull hands the kept value back to her device'
 );
 select is(
   pg_temp.marker(tests.ulid(9120), 'nora'),
   'primary_guardian:accepted:true',
-  'who: a co-parent changing self to another relationship leaves the owner''s marker'
+  'relationship guard: the owner''s marker is untouched by a co-parent''s push'
 );
 select tests.authenticate_as('nora');
 select is(
   pg_temp.pulled_marker('nora', tests.ulid(9120), 'nora'),
   'absent',
-  'who: and writes nothing to the owner''s membership row'
+  'relationship guard: and nothing is written to the owner''s membership row'
 );
 
--- The owner makes the same kind of edit herself (back to self, then away):
--- hers is the edit that counts.
-select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora","relationship":"self"}');
-select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora","relationship":"other"}');
-select is(
-  pg_temp.marker(tests.ulid(9120), 'nora'),
-  'primary_guardian:accepted:false',
-  'who: the owner changing self to another relationship herself, with no private note, clears her marker'
-);
-
--- A co-parent changes another relationship to self.
+-- The direct table path (the grants and the update policy let a co-parent
+-- update the row) meets the same trigger.
 select tests.authenticate_as('omar');
-select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora","relationship":"self"}');
 select is(
-  pg_temp.marker(tests.ulid(9120), 'nora') || ' / ' || pg_temp.marker(tests.ulid(9120), 'omar'),
-  'primary_guardian:accepted:false / co_parent:accepted:false',
-  'who: a co-parent changing a relationship to self stamps nobody'
+  pg_temp.direct_relationship_update(tests.ulid(9120), 'partner'),
+  1::bigint,
+  'relationship guard: setup -- a co-parent''s direct table update of the row is still permitted'
+);
+select is(
+  pg_temp.profile_state(tests.ulid(9120)),
+  'Nora B / self',
+  'relationship guard: a co-parent''s direct table update of the relationship is put back too'
 );
 
--- 7b. No auth.uid() at all (the service role): neither direction. The
---     profile stands at self with its owner unmarked; away and back to self
---     must not stamp her.
+-- A caregiver and a viewer could never edit a profile, and still cannot.
+select tests.authenticate_as('kay');
+select is(
+  public.sync_push(
+    jsonb_build_array(jsonb_build_object(
+      'id', tests.ulid(9120), 'display_name', 'Kay was here', 'relationship', 'other',
+      'updated_at', clock_timestamp())),
+    '[]'::jsonb) -> 'rejected' -> 0 ->> 'id',
+  tests.ulid(9120),
+  'unchanged: a caregiver''s profile push is refused, as before'
+);
+select is(
+  pg_temp.direct_relationship_update(tests.ulid(9120), 'other'),
+  0::bigint,
+  'unchanged: a caregiver''s direct table update touches no row, as before'
+);
+select tests.authenticate_as('vic');
+select is(
+  public.sync_push(
+    jsonb_build_array(jsonb_build_object(
+      'id', tests.ulid(9120), 'display_name', 'Vic was here', 'relationship', 'other',
+      'updated_at', clock_timestamp())),
+    '[]'::jsonb) -> 'rejected' -> 0 ->> 'id',
+  tests.ulid(9120),
+  'unchanged: a viewer''s profile push is refused, as before'
+);
+select is(
+  pg_temp.direct_relationship_update(tests.ulid(9120), 'other'),
+  0::bigint,
+  'unchanged: a viewer''s direct table update touches no row, as before'
+);
+select is(
+  pg_temp.profile_state(tests.ulid(9120)),
+  'Nora B / self',
+  'unchanged: neither of them left a trace on the profile'
+);
+
+-- The owner's own push still changes the relationship, and her marker
+-- follows it as before.
+select tests.authenticate_as('nora');
+select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora B","relationship":"other"}');
+select is(
+  pg_temp.profile_state(tests.ulid(9120)) || ' / ' || pg_temp.marker(tests.ulid(9120), 'nora'),
+  'Nora B / other / primary_guardian:accepted:false',
+  'owner: her own push changes the relationship, and with no private note her marker is cleared'
+);
+select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora B","relationship":"self"}');
+select is(
+  pg_temp.profile_state(tests.ulid(9120)) || ' / ' || pg_temp.marker(tests.ulid(9120), 'nora'),
+  'Nora B / self / primary_guardian:accepted:true',
+  'owner: her own push back to self changes the relationship and stamps her'
+);
+
+-- No auth.uid() at all (the service role): it may change the column, and
+-- no marker moves in either direction.
 select set_config('request.jwt.claims', '', true);
 select set_config('role', 'service_role', true);
 update public.profiles set relationship = 'other' where id = tests.ulid(9120);
+select tests.clear_authentication();
+select is(
+  pg_temp.profile_state(tests.ulid(9120)) || ' / ' || pg_temp.marker(tests.ulid(9120), 'nora'),
+  'Nora B / other / primary_guardian:accepted:true',
+  'no auth.uid(): the service role changes the column, and the owner''s marker is left alone'
+);
+-- (The owner clears her marker herself: other -> self -> other.)
+select tests.authenticate_as('nora');
+select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora B","relationship":"self"}');
+select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora B","relationship":"other"}');
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
 update public.profiles set relationship = 'self' where id = tests.ulid(9120);
 select tests.clear_authentication();
 select is(
-  pg_temp.marker(tests.ulid(9120), 'nora'),
-  'primary_guardian:accepted:false',
-  'who: a change to self made with no auth.uid() (the service role) stamps nobody'
+  pg_temp.profile_state(tests.ulid(9120)) || ' / ' || pg_temp.marker(tests.ulid(9120), 'nora'),
+  'Nora B / self / primary_guardian:accepted:false',
+  'no auth.uid(): the service role setting the column to self stamps nobody'
 );
 
--- The owner says it herself (away, then to self): stamped.
-select tests.authenticate_as('nora');
-select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora","relationship":"other"}');
-select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora","relationship":"self"}');
+-- 7b. The reviewer's sequence, on Lea's self profile (9126) with Max as her
+--     co-parent. Max flips the relationship away; Lea's device syncs; Max
+--     flips it back; and Lea, before syncing again, renames the profile and
+--     writes a private note in ONE sync_push call. Her profile row carries
+--     whatever relationship her device holds -- read here from her own
+--     pull, as her device would have it. Before the relationship guard her
+--     device held 'partner', so her own push was a change away from self:
+--     it cleared her marker, and the note in the same push (stored after
+--     the profile row) was readable by Max.
+select tests.create_supabase_user('lea');
+select tests.create_supabase_user('max');
+select tests.authenticate_as('lea');
+select pg_temp.push_profile(tests.ulid(9126), '{"display_name":"Lea","relationship":"self"}');
+select public.create_guardian_invitation(tests.ulid(9126), 'co_parent', 'Max', pg_temp.token(84), 48);
+select tests.authenticate_as('max');
+select public.accept_guardian_invitation(pg_temp.token(84), 'Max');
+select pg_temp.push_profile(tests.ulid(9126), '{"display_name":"Lea","relationship":"partner"}');
+select tests.authenticate_as('lea');
+insert into held values ('lea', pg_temp.pulled_relationship(tests.ulid(9126)));
+select tests.authenticate_as('max');
+select pg_temp.push_profile(tests.ulid(9126), '{"display_name":"Lea","relationship":"self"}');
+select tests.authenticate_as('lea');
 select is(
-  pg_temp.marker(tests.ulid(9120), 'nora'),
-  'primary_guardian:accepted:true',
-  'who: the owner changing another relationship to self herself stamps her'
+  public.sync_push(
+    jsonb_build_array(jsonb_build_object(
+      'id', tests.ulid(9126), 'updated_at', clock_timestamp(),
+      'display_name', 'Lea renamed',
+      'relationship', (select v from held where name = 'lea'))),
+    jsonb_build_array(jsonb_build_object(
+      'id', tests.ulid(9153), 'profile_id', tests.ulid(9126), 'local_date', '2026-09-01',
+      'tz', 'UTC', 'flow', 'light', 'note', 'only for Lea', 'note_private', true,
+      'updated_at', '2026-09-01T10:00:00Z'))
+  ) -> 'rejected',
+  '[]'::jsonb,
+  'reviewer''s sequence: setup -- the owner''s one push (a rename carrying the relationship her device holds, and a new private note) is accepted'
+);
+select is(
+  pg_temp.marker(tests.ulid(9126), 'lea') || ' / ' || pg_temp.profile_state(tests.ulid(9126)),
+  'primary_guardian:accepted:true / Lea renamed / self',
+  'reviewer''s sequence: the owner keeps her marker -- the co-parent''s flips never landed, so her device never held anything but self'
+);
+select tests.authenticate_as('max');
+select is(
+  pg_temp.pulled_note(tests.ulid(9153)),
+  '<masked>',
+  'reviewer''s sequence: and the co-parent''s pull of the note she wrote in that push is masked'
 );
 
+-- 7c. The same owner push when the divergence comes from a write the guard
+--     lets through. Only a statement with no auth.uid() can do that (the
+--     service role); no client can.
+--
+--     What these two cases show: it is the guard, and nothing else, that
+--     protects the owner. What they do not show: that the server can tell
+--     her device's stale echo from her own decision. It cannot. A push by
+--     her that carries a different relationship IS her change.
+--
+--     (i) The service role plants a different value on Ona's self profile
+--     (9127, Pat co-parent) and her device has not synced. Her push carries
+--     self and puts it back; her marker never moved.
+select tests.create_supabase_user('ona');
+select tests.create_supabase_user('pat');
+select tests.authenticate_as('ona');
+select pg_temp.push_profile(tests.ulid(9127), '{"display_name":"Ona","relationship":"self"}');
+select public.create_guardian_invitation(tests.ulid(9127), 'co_parent', 'Pat', pg_temp.token(85), 48);
+select tests.authenticate_as('pat');
+select public.accept_guardian_invitation(pg_temp.token(85), 'Pat');
 select set_config('request.jwt.claims', '', true);
 select set_config('role', 'service_role', true);
-update public.profiles set relationship = 'other' where id = tests.ulid(9120);
-select tests.clear_authentication();
+update public.profiles set relationship = 'partner' where id = tests.ulid(9127);
+select tests.authenticate_as('ona');
+select public.sync_push(
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(9127), 'updated_at', clock_timestamp(),
+    'display_name', 'Ona renamed', 'relationship', 'self')),
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(9154), 'profile_id', tests.ulid(9127), 'local_date', '2026-09-01',
+    'tz', 'UTC', 'flow', 'light', 'note', 'only for Ona', 'note_private', true,
+    'updated_at', '2026-09-01T10:00:00Z'))
+) -> 'rejected';
 select is(
-  pg_temp.marker(tests.ulid(9120), 'nora'),
-  'primary_guardian:accepted:true',
-  'who: a change away from self made with no auth.uid() (the service role) leaves the marker'
+  pg_temp.marker(tests.ulid(9127), 'ona') || ' / ' || pg_temp.profile_state(tests.ulid(9127)),
+  'primary_guardian:accepted:true / Ona renamed / self',
+  'planted value: the owner''s stale push puts her own value back and she keeps her marker'
+);
+select tests.authenticate_as('pat');
+select is(
+  pg_temp.pulled_note(tests.ulid(9154)),
+  '<masked>',
+  'planted value: and the co-parent''s pull of the note in that push is masked'
 );
 
--- 7c. Private notes, on Bea's profile (9104): she is its subject, Gus is a
+--     (ii) The other direction, which the guard does NOT cover and nothing
+--     else does. The service role plants 'partner' on Rae's self profile
+--     (9128, Sol co-parent), her device syncs, and the service role plants
+--     'self' back. Rae's next push carries 'partner': a change away from
+--     self by the owner, so her marker is cleared -- and a private note
+--     sent in that same push is stored after the profile row, so it does
+--     not hold the marker and the co-parent reads it. Pinned as the
+--     residue of the rule, not as a wanted outcome; it needs a service-role
+--     write to set up.
+select tests.create_supabase_user('rae');
+select tests.create_supabase_user('sol');
+select tests.authenticate_as('rae');
+select pg_temp.push_profile(tests.ulid(9128), '{"display_name":"Rae","relationship":"self"}');
+select public.create_guardian_invitation(tests.ulid(9128), 'co_parent', 'Sol', pg_temp.token(86), 48);
+select tests.authenticate_as('sol');
+select public.accept_guardian_invitation(pg_temp.token(86), 'Sol');
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
+update public.profiles set relationship = 'partner' where id = tests.ulid(9128);
+select tests.authenticate_as('rae');
+insert into held values ('rae', pg_temp.pulled_relationship(tests.ulid(9128)));
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
+update public.profiles set relationship = 'self' where id = tests.ulid(9128);
+select tests.authenticate_as('rae');
+select public.sync_push(
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(9128), 'updated_at', clock_timestamp(),
+    'display_name', 'Rae renamed',
+    'relationship', (select v from held where name = 'rae'))),
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(9155), 'profile_id', tests.ulid(9128), 'local_date', '2026-09-01',
+    'tz', 'UTC', 'flow', 'light', 'note', 'only for Rae', 'note_private', true,
+    'updated_at', '2026-09-01T10:00:00Z'))
+) -> 'rejected';
+select is(
+  pg_temp.marker(tests.ulid(9128), 'rae') || ' / ' || pg_temp.profile_state(tests.ulid(9128)),
+  'primary_guardian:accepted:false / Rae renamed / partner',
+  'planted value, residue: with the planted value on her device, the owner''s own push is a change away from self and clears her marker'
+);
+select tests.authenticate_as('sol');
+select is(
+  pg_temp.pulled_note(tests.ulid(9155)),
+  'only for Rae',
+  'planted value, residue: and the private note sent in that same push is readable by the co-parent (it needs a service-role write; no client can plant the value)'
+);
+
+-- 7d. Defence in depth: the marker trigger's own rule. With the
+--     relationship guard switched off for this part of the test, a
+--     co-parent's change does reach the column -- and still moves no
+--     marker, in either direction, because the caller is not the profile's
+--     primary guardian. (The DO block lets this file run where the guard
+--     does not exist yet.)
+select tests.clear_authentication();
+do $$
+begin
+  if exists (select 1 from pg_catalog.pg_trigger
+              where tgname = 'profiles_relationship_primary_guardian_only') then
+    alter table public.profiles disable trigger profiles_relationship_primary_guardian_only;
+  end if;
+end
+$$;
+select tests.authenticate_as('nora');
+select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora B","relationship":"other"}');
+select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora B","relationship":"self"}');
+select pg_temp.remember_cursor('nora');
+select tests.authenticate_as('omar');
+select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora B","relationship":"partner"}');
+select is(
+  pg_temp.profile_state(tests.ulid(9120)) || ' / ' || pg_temp.marker(tests.ulid(9120), 'nora'),
+  'Nora B / partner / primary_guardian:accepted:true',
+  'marker rule alone: a co-parent''s change away from self, had it reached the column, leaves the owner''s marker'
+);
+select tests.authenticate_as('nora');
+select is(
+  pg_temp.pulled_marker('nora', tests.ulid(9120), 'nora'),
+  'absent',
+  'marker rule alone: and writes nothing to her membership row'
+);
+-- (The owner clears her marker herself: partner -> self -> other.)
+select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora B","relationship":"self"}');
+select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora B","relationship":"other"}');
+select tests.authenticate_as('omar');
+select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora B","relationship":"self"}');
+select is(
+  pg_temp.profile_state(tests.ulid(9120)) || ' / ' || pg_temp.marker(tests.ulid(9120), 'nora')
+    || ' / ' || pg_temp.marker(tests.ulid(9120), 'omar'),
+  'Nora B / self / primary_guardian:accepted:false / co_parent:accepted:false',
+  'marker rule alone: a co-parent''s change to self, had it reached the column, stamps nobody'
+);
+select tests.clear_authentication();
+do $$
+begin
+  if exists (select 1 from pg_catalog.pg_trigger
+              where tgname = 'profiles_relationship_primary_guardian_only') then
+    alter table public.profiles enable trigger profiles_relationship_primary_guardian_only;
+  end if;
+end
+$$;
+-- (That left a profile called self whose owner is unmarked, which only the
+-- switched-off guard could produce. Nora calls it something else, so the
+-- table-wide backfill of section 9 finds nothing here.)
+select tests.authenticate_as('nora');
+select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora B","relationship":"other"}');
+
+-- 7e. Private notes, on Bea's profile (9104): she is its subject, Gus is a
 --     co-parent, and entry 9150 is a live day entry with a private note.
---     First the co-parent's edit away from self.
+--     First the co-parent's attempt to change the relationship, which is
+--     put back.
 select tests.authenticate_as('gus');
 select pg_temp.push_profile(tests.ulid(9104), '{"display_name":"Bea","relationship":"partner"}');
 select is(
@@ -976,6 +1384,28 @@ select is(
   'primary_guardian:pending:null',
   'accepted: setup -- a pending primary guardian row carries no marker'
 );
+-- (A pending subject invitation and an ordinary one on that profile. No
+-- invitation can exist before its profile does, so this path -- the
+-- membership write itself making the owner the subject -- is the nearest
+-- thing to "at creation" that can have one.)
+insert into public.guardian_invitations
+  (profile_id, invited_by, token_hash, role, recipient_label, expires_at, is_subject)
+values
+  (tests.ulid(9108), tests.get_supabase_uid('eve'), pg_temp.token(73), 'caregiver', 'Stale',
+   now() + interval '48 hours', true),
+  (tests.ulid(9108), tests.get_supabase_uid('eve'), pg_temp.token(76), 'caregiver', 'Helper',
+   now() + interval '48 hours', false);
+-- While her membership is not accepted she is not "the profile's accepted
+-- primary guardian", so the relationship guard of section 7 puts her change
+-- back too (the profiles update policy still admits her, as the row's
+-- user_id).
+select tests.authenticate_as('eve');
+select is(
+  pg_temp.direct_relationship_update(tests.ulid(9108), 'other')::text || ' / ' || pg_temp.profile_state(tests.ulid(9108)),
+  '1 / Eve / self',
+  'relationship guard: a primary guardian whose membership is not accepted cannot change the relationship either'
+);
+select tests.clear_authentication();
 update public.profile_guardians
    set status = 'accepted'
  where profile_id = tests.ulid(9108) and user_id = tests.get_supabase_uid('eve');
@@ -983,6 +1413,11 @@ select is(
   pg_temp.marker(tests.ulid(9108), 'eve'),
   'primary_guardian:accepted:true',
   'accepted: a primary guardian row that becomes accepted on a self profile is stamped'
+);
+select is(
+  pg_temp.invitation_state(pg_temp.token(73)) || ' / ' || pg_temp.invitation_state(pg_temp.token(76)),
+  'revoked / pending',
+  'no stale invitations: the membership write that makes the owner the subject revokes the pending subject invitation, and not the ordinary one'
 );
 -- The same transition on a profile that is not self stamps nothing.
 update public.profile_guardians
@@ -1084,6 +1519,13 @@ select is(
   'backfill: setup -- self-profile owners with no marker, as before the migration'
 );
 
+-- A subject invitation and an ordinary one left pending on Zoe's profile
+-- from before the migration (created now that her marker is stripped).
+select tests.authenticate_as('zoe');
+select public.create_guardian_invitation(tests.ulid(9110), 'caregiver', 'Old subject invite', pg_temp.token(74), 48, true);
+select public.create_guardian_invitation(tests.ulid(9110), 'caregiver', 'Old helper invite', pg_temp.token(75), 48);
+select tests.clear_authentication();
+
 -- Zoe's and Yan's devices have both already synced.
 select tests.authenticate_as('zoe');
 select pg_temp.remember_cursor('zoe');
@@ -1149,6 +1591,18 @@ select is(
   pg_temp.marker(tests.ulid(9115), 'uma'),
   'primary_guardian:accepted:null',
   'backfill: the owner of a profile with no relationship is untouched'
+);
+
+select is(
+  pg_temp.invitation_state(pg_temp.token(74)) || ' / ' || pg_temp.invitation_state(pg_temp.token(75)),
+  'revoked / pending',
+  'backfill: stamping the owner revokes a subject invitation left pending from before, and not an ordinary one'
+);
+select tests.authenticate_as('yan');
+select throws_ok(
+  format($$select public.accept_guardian_invitation(%L, 'Late')$$, pg_temp.token(74)),
+  '55000', null,
+  'backfill: that invitation cannot then be accepted'
 );
 
 select tests.authenticate_as('zoe');

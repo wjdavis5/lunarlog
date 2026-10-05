@@ -98,8 +98,12 @@ permission: a viewer still cannot write.
 > to `self`. It clears that marker again when she herself changes the
 > relationship away from `self`, unless the profile was transferred to her
 > (the marker is then the transfer's) or has a live private note, which the
-> change would otherwise unmask. A relationship edit by anyone else, a
-> co-parent included, moves no marker.
+> change would otherwise unmask. Only the primary guardian can change the
+> relationship at all: the server puts back a value sent by anyone else, a
+> co-parent included, and lets the rest of that edit through. A profile has
+> one subject, and whoever holds the marker keeps it: a "this is your
+> profile" invitation cannot be created while the profile has a subject,
+> and pending ones are revoked when someone becomes it.
 > Second, `relationship == self` therefore *is* consulted: by the server,
 > when it stamps the marker, and still never by the client resolver. So a
 > primary guardian who created the profile for herself resolves to the

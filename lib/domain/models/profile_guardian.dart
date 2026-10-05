@@ -92,9 +92,10 @@ class ProfileGuardian {
   /// the two never derive from each other). Stamped only by the server: by
   /// the subject invitation path, by `accept_ownership_transfer`, and
   /// (issue #1499) on the owner of a profile she created for herself or
-  /// marked as her own (relationship `self`; a co-parent's edit of the
-  /// relationship moves no marker). Synced with the row; false covers both
-  /// a helper membership and a pre-#802 server row (the pull decodes a
+  /// marked as her own (relationship `self`, which only the primary
+  /// guardian can change: the server puts back anyone else's value). A
+  /// profile has one subject. Synced with the row; false covers both a
+  /// helper membership and a pre-#802 server row (the pull decodes a
   /// missing/null `is_subject` as false).
   final bool isSubject;
 

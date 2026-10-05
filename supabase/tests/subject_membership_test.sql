@@ -108,15 +108,30 @@ select is(
   'The invitation row records the subject preset'
 );
 
--- A second subject invitation, for section 4's preview. It has to be
--- created now, while the profile has no subject: issue #1499 refuses a
--- subject invitation once one is accepted (self_profile_subject_test.sql).
-select tests.authenticate_as('mom');
-select public.create_guardian_invitation(
-  tests.ulid(950), 'caregiver', 'Riley again', pg_temp.token(12), 48, true
+-- ---------------------------------------------------------------------------
+-- 4. Preview carries the marker (so the accept sheet can say "this is
+--    your profile" before the recipient commits). The live subject invite
+--    previews is_subject true; the result carries exactly four keys.
+--
+--    This runs before Riley accepts, on the invitation she is about to
+--    accept. It used to preview a second subject invitation created after
+--    the first was accepted; issue #1499 allows a profile one subject, so
+--    such an invitation is now refused, and one created beforehand is
+--    revoked when the first is accepted (self_profile_subject_test.sql).
+-- ---------------------------------------------------------------------------
+select tests.authenticate_as('daughter');
+select is(
+  (select public.preview_guardian_invitation(pg_temp.token(11)) ->> 'is_subject'),
+  'true',
+  'preview_guardian_invitation reports is_subject for a live subject invite'
+);
+select is(
+  (select array_agg(k order by k) from jsonb_object_keys(public.preview_guardian_invitation(pg_temp.token(11))) as k),
+  array['expires_at', 'is_subject', 'profile_display_name', 'role'],
+  'The preview object carries exactly four keys - nothing about other guardians'
 );
 
-select tests.authenticate_as('daughter');
+-- Section 3, concluded: she accepts it.
 select is(
   (select public.accept_guardian_invitation(pg_temp.token(11), 'Riley')
      ->> 'is_subject'),
@@ -129,24 +144,6 @@ select is(
     where profile_id = tests.ulid(950) and user_id = tests.get_supabase_uid('daughter')),
   'caregiver:accepted:true',
   'Accepting a subject invite yields an accepted caregiver membership stamped is_subject'
-);
-
--- ---------------------------------------------------------------------------
--- 4. Preview carries the marker (so the accept sheet can say "this is
---    your profile" before the recipient commits). The second live subject
---    invite (created in section 3) previews is_subject true; the result
---    carries exactly four keys.
--- ---------------------------------------------------------------------------
-select tests.authenticate_as('daughter');
-select is(
-  (select public.preview_guardian_invitation(pg_temp.token(12)) ->> 'is_subject'),
-  'true',
-  'preview_guardian_invitation reports is_subject for a live subject invite'
-);
-select is(
-  (select array_agg(k order by k) from jsonb_object_keys(public.preview_guardian_invitation(pg_temp.token(12))) as k),
-  array['expires_at', 'is_subject', 'profile_display_name', 'role'],
-  'The preview object carries exactly four keys - nothing about other guardians'
 );
 
 -- ---------------------------------------------------------------------------
