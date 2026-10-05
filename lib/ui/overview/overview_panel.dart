@@ -44,6 +44,13 @@
 /// onboarding answers has no history on Insights, so the link would lead
 /// to an empty place. That check watches the history view for one bool
 /// (`_SeeHistoryLink`); it does not bring the section back.
+///
+/// Issue #1489: under the estimate card, in whichever of its states is
+/// showing, the subject's page carries a [TodayLogCard] saying what is
+/// logged for today. Until then nothing on this panel read today's entry,
+/// so a day with symptoms logged looked the same as an empty one. The
+/// guardian lens does not get the card: its front page shows counts, never
+/// content (#850).
 library;
 
 import 'dart:async';
@@ -57,11 +64,14 @@ import 'package:lunarlog/domain/conceive.dart'
     show currentConceptionEstimate;
 import 'package:lunarlog/domain/episodes/episodes.dart' show bleedDatesOf;
 import 'package:lunarlog/domain/health/health_deviation.dart';
+import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
 import 'package:lunarlog/domain/logging/quick_log.dart';
+import 'package:lunarlog/domain/logging/today_log.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
 import 'package:lunarlog/domain/perimenopause.dart' show isPerimenopauseMode;
@@ -78,8 +88,10 @@ import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/repositories/tag_registry_repository.dart';
 import 'package:lunarlog/domain/content/cycle_literacy_library.dart'
     show CycleLiteracyAudience;
 import 'package:lunarlog/domain/sharing/guardian_lens.dart';
@@ -98,12 +110,14 @@ import 'package:lunarlog/ui/components/postpartum_card.dart';
 import 'package:lunarlog/ui/components/pregnancy_card.dart';
 import 'package:lunarlog/ui/components/perimenopause_card.dart';
 import 'package:lunarlog/ui/components/today_card.dart';
+import 'package:lunarlog/ui/components/today_log_card.dart';
 import 'package:lunarlog/ui/care/care_notes_screen.dart';
 import 'package:lunarlog/ui/help/help_card_view.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/l10n/lens_copy.dart';
 import 'package:lunarlog/ui/l10n/tiers.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
+import 'package:lunarlog/ui/logging/today_log_watch.dart';
 import 'package:lunarlog/ui/overview/estimate_copy.dart';
 import 'package:lunarlog/ui/overview/guardian_overview_card.dart';
 import 'package:lunarlog/ui/overview/health_deviation_card.dart';
@@ -222,7 +236,7 @@ class OverviewPanel extends StatefulWidget {
 }
 
 class _OverviewPanelState extends State<OverviewPanel>
-    with GuardianWatchMixin<OverviewPanel> {
+    with GuardianWatchMixin<OverviewPanel>, TodayLogWatchMixin<OverviewPanel> {
   late CyclePredictionService _service;
   late Stream<CyclePrediction> _predictions;
 
@@ -280,6 +294,23 @@ class _OverviewPanelState extends State<OverviewPanel>
   late final OnboardingCycleAnswersRecorder? _cycleAnswersRecorder =
       Provider.of<OnboardingCycleAnswersRecorder?>(context, listen: false);
 
+  /// Issue #1489: what is logged for today, kept live by
+  /// [TodayLogWatchMixin]. Null until the first read lands, and for good
+  /// on a tree with no entries repository; the log card is not built then.
+  TodayLog? _todayLog;
+
+  /// Issue #1489: the seams the log card's words come from. Spotting and
+  /// the temperature and weight readings are observations, not entry
+  /// fields, and a custom tag's name is in the profile's tag registry.
+  /// Both are optional: a tree without them still gets the card, saying
+  /// what the entry itself holds, with a custom tag shown by its code.
+  late final ObservationsRepository? _observations =
+      Provider.of<ObservationsRepository?>(context, listen: false);
+  late final TagRegistryRepository? _tagRegistry =
+      Provider.of<TagRegistryRepository?>(context, listen: false);
+  StreamSubscription<List<CustomTag>>? _customTagsSub;
+  List<CustomTag> _customTags = const [];
+
   StreamSubscription<String?>? _suggestionDismissedSub;
   bool _irregularSuggestionDismissed = false;
   bool _aboutEstimateExpanded = false;
@@ -326,7 +357,46 @@ class _OverviewPanelState extends State<OverviewPanel>
     _watchGuardians();
     _watchSuggestionDismissed();
     _watchModeRow();
+    _watchTodayLog();
+    _watchCustomTags();
     unawaited(_loadDeviationSnapshot());
+  }
+
+  /// Issue #1489: (re)subscribes [_todayLog] to this profile's log for
+  /// today. `todayProvider` is read through the widget on every read, so
+  /// the day is never one captured at subscription time.
+  ///
+  /// The estimate stream doubles as the day-change signal: the prediction
+  /// service re-runs it at the date rollover, which is when a log read for
+  /// yesterday has to stop being shown as today's. It is the same shared
+  /// pipeline [_predictions] listens to (#839), so this opens nothing new.
+  void _watchTodayLog() {
+    watchTodayLog(
+      entries: _dayEntries,
+      observations: _observations,
+      profileId: widget.profileId,
+      todayProvider: () => widget.todayProvider(),
+      onLog: (log) => setState(() => _todayLog = log),
+      dayTicks: _service.watch(widget.profileId, today: widget.todayProvider),
+    );
+  }
+
+  /// Issue #1489: (re)subscribes [_customTags] to the profile's tag
+  /// registry, so a custom tag on the log card reads by the name the day
+  /// sheet shows for it. Reset at once on a profile switch, as the
+  /// guardians watch is. A failing registry stream is recorded and dropped
+  /// ([watchCustomTagsSafely]); the card keeps the names it last had.
+  void _watchCustomTags() {
+    unawaited(_customTagsSub?.cancel());
+    _customTagsSub = null;
+    _customTags = const [];
+    final registry = _tagRegistry;
+    if (registry == null) return;
+    _customTagsSub =
+        watchCustomTagsSafely(registry, widget.profileId).listen((tags) {
+      if (!mounted) return;
+      setState(() => _customTags = tags);
+    });
   }
 
   /// Issue #799: loads the persisted deviation snapshot for this profile —
@@ -480,6 +550,8 @@ class _OverviewPanelState extends State<OverviewPanel>
       _watchGuardians();
       _watchSuggestionDismissed();
       _watchModeRow();
+      _watchTodayLog();
+      _watchCustomTags();
       return;
     }
     // Issue #574: same profile, but `guardiansRepository`/`todayProvider`
@@ -493,12 +565,17 @@ class _OverviewPanelState extends State<OverviewPanel>
         widget.profileId,
         today: widget.todayProvider,
       );
+      // Issue #1489: a different "today" is a different day's log.
+      _watchTodayLog();
     }
   }
 
   @override
   void dispose() {
     disposeGuardianWatch();
+    disposeTodayLogWatch();
+    unawaited(_customTagsSub?.cancel());
+    _customTagsSub = null;
     unawaited(_suggestionDismissedSub?.cancel());
     _suggestionDismissedSub = null;
     unawaited(_modeRowSub?.cancel());
@@ -581,9 +658,34 @@ class _OverviewPanelState extends State<OverviewPanel>
         timezoneProvider: widget.timezoneProvider,
         currentUserId: _currentUserId,
         guardians: _guardians,
+        // Issue #1489: the log card's Edit makes this the everyday way
+        // back into today's sheet, so it has to open in the profile's own
+        // units, as the floating button's sheet does. Without them a
+        // Fahrenheit reading opened as Celsius.
+        bbtUnit: widget.profile?.bbtUnit ?? BbtUnit.celsius,
+        weightUnit: widget.profile?.weightUnit ?? WeightUnit.kg,
       ),
     );
   }
+
+  /// Issue #1489: the card under the estimate that says what is logged for
+  /// today. It shows the summary to everyone on the subject's page and the
+  /// Edit action only to someone who may log ([_effectiveReadOnly]); Edit
+  /// opens the same sheet [_logItToday] opens for the late resolver.
+  Widget _todayLogCard(BuildContext context, TodayLog log) => Padding(
+        padding: const EdgeInsets.only(top: LLSpace.space2),
+        child: TodayLogCard(
+          summary: todayLogSummaryOf(
+            log,
+            l10n: AppLocalizations.of(context),
+            customTags: _customTags,
+            bbtUnit: widget.profile?.bbtUnit ?? BbtUnit.celsius,
+            weightUnit: widget.profile?.weightUnit ?? WeightUnit.kg,
+          ),
+          canEdit: !_effectiveReadOnly,
+          onEdit: () => unawaited(_logItToday()),
+        ),
+      );
 
   /// [TodayCard]'s primary "Period started today" action (issue #209 item
   /// 4c): an upsert through the same [DayEntriesRepository] the day sheet
@@ -810,6 +912,10 @@ class _OverviewPanelState extends State<OverviewPanel>
             ),
           },
         ),
+        // Issue #1489: what is logged for today, under the estimate in
+        // whichever of its four states is showing. Absent only until the
+        // first read of today's entry lands.
+        if (_todayLog case final log?) _todayLogCard(context, log),
         _seeHistoryLink(context),
         if (_deviationSnapshot case final snapshot?)
           HealthDeviationCard(

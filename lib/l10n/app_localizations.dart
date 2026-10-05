@@ -1088,6 +1088,48 @@ abstract class AppLocalizations {
   /// **'See cycle history'**
   String get overviewSeeHistory;
 
+  /// Issue #1489: title of the Today screen's card that says what is logged for today. Shown once today has something logged.
+  ///
+  /// In en, this message translates to:
+  /// **'Logged today'**
+  String get todayLogTitle;
+
+  /// Issue #1489: the one line the Today screen's log card shows when nothing is logged for today. The card has no action of its own in this state: the floating Log today button is the action.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing logged today yet'**
+  String get todayLogEmpty;
+
+  /// Issue #1489: the Today log card's line for a day that has a note. It says only that a note exists. The note's text is never shown on the Today screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Note added'**
+  String get todayLogNoteAdded;
+
+  /// Issue #1489: follows the first six tag labels on the Today log card when the day has more tags than that, as in 'Cramps, Headache, Fatigue, Bloating, Nausea, Acne and 3 more'.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{and 1 more} other{and {count} more}}'**
+  String todayLogMoreTags(int count);
+
+  /// Issue #1489: the Today log card's action. Opens today's day sheet, the same sheet the floating button opens. Hidden for someone who cannot log (a viewer, or an archived profile).
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get todayLogEdit;
+
+  /// Issue #1489: the floating button's label on Today and Calendar once today has something logged. It reads householdLogToday ('Log today') until then.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit today'**
+  String get todayLogFabEdit;
+
+  /// Issue #1489: the screen-reader label for the Today log card's summary, read as one sentence. details is the card's lines, each ended with a full stop, as in 'Medium flow. Cramps, Headache. Note added.' It never contains the note's text.
+  ///
+  /// In en, this message translates to:
+  /// **'Logged today: {details}'**
+  String todayLogSemantics(String details);
+
   /// InlineError message (announced as a screen-reader live region) when OverviewPanel's prediction stream errors. Issue #602.
   ///
   /// In en, this message translates to:

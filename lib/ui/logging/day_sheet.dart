@@ -604,14 +604,10 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
   /// rows keep rendering by name), else the raw code (#237's
   /// unknown-never-drop rule: a code not yet synced to this device's
   /// registry copy renders as text, never dropped).
-  String _displayOf(String code) {
-    final curated = tagByCode(code);
-    if (curated != null) return curated.display;
-    for (final tag in _registry) {
-      if (tag.code == code) return tag.displayName;
-    }
-    return code;
-  }
+  ///
+  /// The rule itself is [tagDisplayLabel], shared with the Today screen's
+  /// log card (issue #1489) so a tag reads the same in both places.
+  String _displayOf(String code) => tagDisplayLabel(code, _registry);
 
   /// The mode's headings and surfacing order (Issue #131).
   ///
@@ -1376,19 +1372,13 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
       listen: false,
     ).listForDayEntry(dayEntryId);
     if (!mounted) return;
-    Observation? manualRowOf(ObservationCategory category) {
-      for (final o in observations) {
-        if (o.category == category &&
-            o.source == ObservationSource.manual &&
-            o.valueNum != null) {
-          return o;
-        }
-      }
-      return null;
-    }
-
-    final bbtRow = manualRowOf(ObservationCategory.bbt);
-    final weightRow = manualRowOf(ObservationCategory.weight);
+    // The pick itself is shared with the Today screen's log card (issue
+    // #1489), which names the same reading this field opens on.
+    final bbtRow = manualMeasurementIn(observations, ObservationCategory.bbt);
+    final weightRow = manualMeasurementIn(
+      observations,
+      ObservationCategory.weight,
+    );
     if (bbtRow == null && weightRow == null) return;
     setState(() {
       _seedingMeasurements = true;

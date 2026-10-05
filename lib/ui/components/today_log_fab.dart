@@ -11,23 +11,34 @@
 /// `_effectiveReadOnly`, duplicated here in miniature since neither widget
 /// exposes it publicly and this button lives one layer up, in the shell
 /// rather than either tab.
+///
+/// Issue #1489: the label reads "Edit today" once today has something
+/// logged, and "Log today" until then. The button used to learn about
+/// today's entry only when tapped; it now watches it through
+/// [TodayLogWatchMixin] — the same watch, and the same
+/// [TodayLog.hasContent] rule, the Today log card under the estimate uses —
+/// so the label is right before the tap and changes as the entry does.
 library;
 
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/domain/logging/today_log.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
+import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
+import 'package:lunarlog/ui/logging/today_log_watch.dart';
 import 'package:lunarlog/ui/sharing/guardian_watch_mixin.dart';
 import 'package:lunarlog/ui/theme/haptics.dart';
 import 'package:provider/provider.dart';
@@ -88,10 +99,15 @@ class TodayLogFab extends StatefulWidget {
 }
 
 class _TodayLogFabState extends State<TodayLogFab>
-    with GuardianWatchMixin<TodayLogFab> {
+    with GuardianWatchMixin<TodayLogFab>, TodayLogWatchMixin<TodayLogFab> {
   AuthController? _auth;
   String? _currentUserId;
   List<ProfileGuardian> _guardians = const [];
+
+  /// Issue #1489: what is logged for today, kept live. Null until the first
+  /// read lands (and on a tree with no entries repository), which reads as
+  /// "Log today".
+  TodayLog? _todayLog;
 
   @override
   void initState() {
@@ -103,6 +119,30 @@ class _TodayLogFabState extends State<TodayLogFab>
       _auth = auth;
     }
     _watchGuardians();
+    _watchTodayLog();
+  }
+
+  /// Issue #1489: (re)subscribes [_todayLog] to this profile's log for
+  /// today. `todayProvider` is read through the widget on every read, never
+  /// cached, as every other read of it here is.
+  ///
+  /// The estimate stream is the day-change signal, as it is for the Today
+  /// log card: the prediction service re-runs it at the date rollover. With
+  /// the shell's own `todayProvider` this is the pipeline the Today tab
+  /// already listens to (#839); a tree with no prediction service simply
+  /// has no such signal, and the label still follows every write and every
+  /// return to the foreground.
+  void _watchTodayLog() {
+    watchTodayLog(
+      entries: context.read<DayEntriesRepository?>(),
+      observations: context.read<ObservationsRepository?>(),
+      profileId: widget.profileId,
+      todayProvider: () => widget.todayProvider(),
+      onLog: (log) => setState(() => _todayLog = log),
+      dayTicks: context
+          .read<CyclePredictionService?>()
+          ?.watch(widget.profileId, today: widget.todayProvider),
+    );
   }
 
   void _onAuthChanged() {
@@ -126,11 +166,19 @@ class _TodayLogFabState extends State<TodayLogFab>
         oldWidget.guardiansRepository != widget.guardiansRepository) {
       _watchGuardians();
     }
+    // Issue #1489: another profile, or another "today", is another day's
+    // log. Unlike the tap, the label is held between emissions, so a
+    // changed `todayProvider` does need a fresh read here.
+    if (oldWidget.profileId != widget.profileId ||
+        oldWidget.todayProvider != widget.todayProvider) {
+      _watchTodayLog();
+    }
   }
 
   @override
   void dispose() {
     disposeGuardianWatch();
+    disposeTodayLogWatch();
     _auth?.removeListener(_onAuthChanged);
     super.dispose();
   }
@@ -175,11 +223,17 @@ class _TodayLogFabState extends State<TodayLogFab>
   @override
   Widget build(BuildContext context) {
     if (!_canLog) return const SizedBox.shrink();
+    final l10n = AppLocalizations.of(context);
     return FloatingActionButton.extended(
       key: const ValueKey('today-log-fab'),
       onPressed: _openTodaySheet,
       icon: const Icon(Icons.edit_calendar_outlined),
-      label: Text(AppLocalizations.of(context).householdLogToday),
+      // Issue #1489: "Edit today" once today has something logged.
+      label: Text(
+        _todayLog?.hasContent ?? false
+            ? l10n.todayLogFabEdit
+            : l10n.householdLogToday,
+      ),
     );
   }
 }

@@ -581,6 +581,37 @@ class AppLocalizationsEn extends AppLocalizations {
   String get overviewSeeHistory => 'See cycle history';
 
   @override
+  String get todayLogTitle => 'Logged today';
+
+  @override
+  String get todayLogEmpty => 'Nothing logged today yet';
+
+  @override
+  String get todayLogNoteAdded => 'Note added';
+
+  @override
+  String todayLogMoreTags(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'and $count more',
+      one: 'and 1 more',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get todayLogEdit => 'Edit';
+
+  @override
+  String get todayLogFabEdit => 'Edit today';
+
+  @override
+  String todayLogSemantics(String details) {
+    return 'Logged today: $details';
+  }
+
+  @override
   String get overviewEstimateLoadError => 'Could not load your cycle estimate.';
 
   @override

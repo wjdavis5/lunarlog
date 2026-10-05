@@ -116,4 +116,43 @@ void main() {
       expect(dead.renders, isFalse);
     });
   });
+
+  // Issue #1489: the one tag-code-to-label rule the day sheet and the Today
+  // screen's log card both read through.
+  group('tagDisplayLabel', () {
+    test('a curated code reads by the taxonomy label', () {
+      expect(tagDisplayLabel('cramps', const []), 'Cramps');
+      expect(tagDisplayLabel('breast_tenderness', const []),
+          'Breast tenderness');
+    });
+
+    test('a registry code reads by the name it was given', () {
+      final registry = [tag('back_cracking', displayName: 'Back cracking')];
+      expect(tagDisplayLabel('back_cracking', registry), 'Back cracking');
+    });
+
+    test('a retired registry entry still names its rows', () {
+      final registry = [
+        tag(
+          'back_cracking',
+          displayName: 'Back cracking',
+          hiddenAt: DateTime.utc(2026, 9, 2),
+        ),
+      ];
+      expect(tagDisplayLabel('back_cracking', registry), 'Back cracking');
+    });
+
+    test('the taxonomy wins over a registry entry with the same code', () {
+      final registry = [tag('cramps', displayName: 'Mine')];
+      expect(tagDisplayLabel('cramps', registry), 'Cramps');
+    });
+
+    test('a code in neither is shown as itself, never dropped', () {
+      expect(tagDisplayLabel('not_synced_yet', const []), 'not_synced_yet');
+      expect(
+        tagDisplayLabel('not_synced_yet', [tag('other', displayName: 'Other')]),
+        'not_synced_yet',
+      );
+    });
+  });
 }

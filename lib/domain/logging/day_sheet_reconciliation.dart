@@ -184,6 +184,29 @@ ObservationMutations computePainMutations({
   return ObservationMutations(toUpsert: toUpsert, toDelete: toDelete);
 }
 
+/// The reading the day sheet shows in its BBT or weight field: the first of
+/// [observations] in [category] that was entered by hand and carries a
+/// number, or null when the day has none. Readings another source wrote (a
+/// wearable, an import, a health platform) are never the field's value, for
+/// the reason [computeMeasurementMutations] gives.
+///
+/// One definition for the day sheet's own load and for the Today screen's
+/// log card (issue #1489), so the card names exactly the reading the sheet
+/// would open on.
+Observation? manualMeasurementIn(
+  Iterable<Observation> observations,
+  ObservationCategory category,
+) {
+  for (final observation in observations) {
+    if (observation.category == category &&
+        observation.source == ObservationSource.manual &&
+        observation.valueNum != null) {
+      return observation;
+    }
+  }
+  return null;
+}
+
 /// One numeric measurement row's upsert/delete/no-op (Issue #457's day-sheet
 /// entry for the `bbt`/`weight` categories #240/#255 already store): unlike
 /// [computeSpottingMutations] (existence-only) or [computePainMutations]
