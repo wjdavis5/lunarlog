@@ -74,8 +74,90 @@ a:hover {
 
 .site-header__inner {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.75rem;
+  justify-content: space-between;
+  gap: 0.125rem 1.5rem;
+}
+
+/* Keyboard users land here first and can jump the header. Off-screen until
+ * focused, so it costs sighted mouse users nothing. */
+.skip-link {
+  position: absolute;
+  top: -4rem;
+  left: 1.5rem;
+  z-index: 1;
+  padding: 0.5rem 0.875rem;
+  border-radius: 0.5rem;
+  background: var(--brand-purple);
+  color: #ffffff;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  top: 0.75rem;
+  color: #ffffff;
+}
+
+/* The header's four links. On a phone they drop to their own row under the
+ * brand and still fit on one line, so there is no menu to open. */
+.site-nav ul,
+.site-map ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.site-nav ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.25rem;
+}
+
+.site-nav a {
+  display: inline-block;
+  padding: 0.5rem 0;
+  color: var(--ink);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.site-nav a:hover,
+.site-nav a[aria-current] {
+  color: var(--brand-purple);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.375rem;
+}
+
+/* Where you are: the current page (or the section a guide sits in) keeps
+ * the underline, in the teal the rest of the site uses for links. */
+.site-nav a[aria-current] {
+  text-decoration-color: var(--brand-teal);
+}
+
+/* On a phone the links take the row under the brand and spread across it,
+ * edge to edge with the text below. */
+@media (max-width: 30rem) {
+  .site-nav {
+    flex-basis: 100%;
+  }
+
+  .site-nav ul {
+    justify-content: space-between;
+    gap: 0 0.75rem;
+  }
+}
+
+/* The narrowest phones cannot hold four links on a line; two rows of two
+ * reads as a choice, where three and a stray one reads as a mistake. */
+@media (max-width: 21.5rem) {
+  .site-nav ul {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 .brand {
@@ -256,17 +338,46 @@ main {
 }
 
 .site-footer__inner {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 1.5rem;
-  align-items: center;
-  justify-content: space-between;
+  padding-top: 2rem;
+  padding-bottom: 1.5rem;
   font-size: 0.9375rem;
   color: var(--muted);
 }
 
 .site-footer a {
   color: var(--brand-teal);
+}
+
+/* The footer is the site's whole map: three groups side by side, folding
+ * to two columns and then one as the screen narrows. */
+.site-map {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 1.5rem;
+}
+
+.site-map h2 {
+  margin: 0 0 0.375rem;
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.site-map a {
+  display: inline-block;
+  padding: 0.25rem 0;
+}
+
+.site-map a[aria-current] {
+  color: var(--brand-purple);
+  font-weight: 500;
+}
+
+.site-footer__legal {
+  margin: 1.75rem 0 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
 }
 
 @media (prefers-reduced-motion: reduce) {
