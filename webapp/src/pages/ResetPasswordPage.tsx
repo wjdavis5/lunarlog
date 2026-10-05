@@ -39,8 +39,8 @@ export function ResetPasswordPage() {
   };
 
   return (
-    <main className="page">
-      <h1 className="headline">{t('accountPasswordRecoveryTitle')}</h1>
+    <main className="page page-auth">
+      <h1 className="display">{t('accountPasswordRecoveryTitle')}</h1>
       <p className="body">{t('accountPasswordRecoveryIntro')}</p>
       {saved ? (
         <div className="auth-info">
@@ -57,10 +57,11 @@ export function ResetPasswordPage() {
               id="new-password"
               type="password"
               autoComplete="new-password"
+              aria-describedby="new-password-hint"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />
-            <p className="body">
+            <p className="auth-hint" id="new-password-hint">
               {t('accountPasswordRecoveryLengthHelper', { length: kMinPasswordLength })}
             </p>
           </div>

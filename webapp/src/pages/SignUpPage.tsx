@@ -82,8 +82,8 @@ export function SignUpPage() {
   };
 
   return (
-    <main className="page">
-      <h1 className="headline">{t('accountSignInTitleCreate')}</h1>
+    <main className="page page-auth">
+      <h1 className="display">{t('accountSignInTitleCreate')}</h1>
       {confirmationSent ? (
         <div className="auth-info">
           <p className="body">{t('accountSignInConfirmEmailInfo')}</p>
@@ -112,10 +112,11 @@ export function SignUpPage() {
               id="sign-up-password"
               type="password"
               autoComplete="new-password"
+              aria-describedby="sign-up-password-hint"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />
-            <p className="body">
+            <p className="auth-hint" id="sign-up-password-hint">
               {t('accountSignInPasswordLengthHelper', { length: kMinPasswordLength })}
             </p>
             {passwordError !== null ? <p className="auth-error">{passwordError}</p> : null}

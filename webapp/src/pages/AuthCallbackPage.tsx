@@ -76,8 +76,8 @@ export function AuthCallbackPage() {
   }, [code, providerError, queryClient]);
 
   return (
-    <main className="page">
-      <h1 className="headline">{t('accountSignInTitle')}</h1>
+    <main className="page page-auth">
+      <h1 className="display">{t('accountSignInTitle')}</h1>
       {state.kind === 'signedIn' ? (
         <>
           <p className="body">
