@@ -664,6 +664,8 @@ describe('DayPage (issue #1254)', () => {
     }
     expect(screen.queryByText('Tests')).not.toBeInTheDocument();
     // The rest of the symptom picker is untouched by the `tests` disable.
+    // Its categories start closed on a day with nothing logged in them.
+    fireEvent.click(screen.getByRole('button', { name: 'Pain' }));
     expect(screen.getByRole('button', { name: 'Cramps' })).toBeInTheDocument();
   });
 });

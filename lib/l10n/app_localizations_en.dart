@@ -5661,6 +5661,12 @@ class AppLocalizationsEn extends AppLocalizations {
       'Saving failed — your changes are still here, nothing was lost. Try again.';
 
   @override
+  String get webDayTagSearchNoMatches => 'No symptoms match that search.';
+
+  @override
+  String get webDayNoSymptomsLogged => 'No symptoms logged for this day.';
+
+  @override
   String get webDayRejectedField =>
       'The server rejected this field — check it and try again.';
 

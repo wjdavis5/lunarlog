@@ -1458,6 +1458,8 @@ export const MESSAGE_IDS = [
   "webDaySaving",
   "webDaySaved",
   "webDaySaveFailed",
+  "webDayTagSearchNoMatches",
+  "webDayNoSymptomsLogged",
   "webDayRejectedField",
   "webDayErrorFuture",
   "webDayErrorBirthYear",

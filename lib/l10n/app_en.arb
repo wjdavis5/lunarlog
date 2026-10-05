@@ -7286,6 +7286,14 @@
   "@webDaySaveFailed": {
     "description": "Issue #1254: the retry banner when the sync_push call itself fails. The day editor never drops a failed save."
   },
+  "webDayTagSearchNoMatches": "No symptoms match that search.",
+  "@webDayTagSearchNoMatches": {
+    "description": "The web day editor's symptom search, when no tag in any category matches what was typed."
+  },
+  "webDayNoSymptomsLogged": "No symptoms logged for this day.",
+  "@webDayNoSymptomsLogged": {
+    "description": "The web day editor's symptoms section for someone who can read the day but not write it, when the day has no symptom tags. They are shown what was logged rather than every category as disabled chips."
+  },
   "webDayRejectedField": "The server rejected this field — check it and try again.",
   "@webDayRejectedField": {
     "description": "Issue #1254: the inline error beside a field group whose row the server rejected (rejections are opaque: id plus a flag, never a reason)."

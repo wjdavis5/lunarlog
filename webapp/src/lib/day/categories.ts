@@ -12,7 +12,7 @@
  */
 
 import taxonomyJson from '../taxonomy/taxonomy.generated.json';
-import type { ProfileRow } from '../schemas';
+import type { DayEntryRow, ProfileRow } from '../schemas';
 
 interface TaxonomyTag {
   code: string;
@@ -137,4 +137,48 @@ export function symptomPickerCategories(
     .filter((category) => category.name !== 'tests')
     .map((category) => ({ category, tags: grouped.get(category.name) ?? [] }))
     .filter((entry) => entry.tags.length > 0);
+}
+
+/** How many recent tags the picker offers: the app's `kTagRecentsCap`. */
+export const RECENT_TAGS_CAP = 8;
+
+/**
+ * The profile's most recently logged tag codes, newest first, with no
+ * repeats: the web's "Recent" row.
+ *
+ * The app keeps this shortlist on the device, adding a tag each time it is
+ * tapped (lib/domain/logging/tag_recents.dart). This client stores nothing
+ * in the browser, so the shortlist is read off the entries themselves: the
+ * latest days first, each day's tags in the order they were logged. Codes
+ * that are not in the taxonomy (a profile's own tags, anything unknown)
+ * are skipped; they have no chip in a category to stand for.
+ */
+export function recentTagCodes(
+  entries: Pick<DayEntryRow, 'profile_id' | 'local_date' | 'tags' | 'deleted_at'>[],
+  profileId: string,
+  cap: number = RECENT_TAGS_CAP,
+): string[] {
+  const known = new Set(taxonomy.tags.map((tag) => tag.code));
+  const days = entries
+    .filter((entry) => entry.profile_id === profileId && entry.deleted_at === null)
+    .sort((a, b) => b.local_date.localeCompare(a.local_date));
+  const codes: string[] = [];
+  for (const day of days) {
+    for (const code of day.tags) {
+      if (codes.length >= cap) return codes;
+      if (!known.has(code) || codes.includes(code)) continue;
+      codes.push(code);
+    }
+  }
+  return codes;
+}
+
+/**
+ * The picker's search: does the chip's label contain what was typed,
+ * ignoring case and surrounding spaces. The app's `_matches`
+ * (lib/ui/components/category_picker.dart). An empty search matches all.
+ */
+export function tagMatchesQuery(display: string, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  return needle === '' || display.toLowerCase().includes(needle);
 }

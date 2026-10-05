@@ -8883,6 +8883,18 @@ abstract class AppLocalizations {
   /// **'Saving failed — your changes are still here, nothing was lost. Try again.'**
   String get webDaySaveFailed;
 
+  /// The web day editor's symptom search, when no tag in any category matches what was typed.
+  ///
+  /// In en, this message translates to:
+  /// **'No symptoms match that search.'**
+  String get webDayTagSearchNoMatches;
+
+  /// The web day editor's symptoms section for someone who can read the day but not write it, when the day has no symptom tags. They are shown what was logged rather than every category as disabled chips.
+  ///
+  /// In en, this message translates to:
+  /// **'No symptoms logged for this day.'**
+  String get webDayNoSymptomsLogged;
+
   /// Issue #1254: the inline error beside a field group whose row the server rejected (rejections are opaque: id plus a flag, never a reason).
   ///
   /// In en, this message translates to:
