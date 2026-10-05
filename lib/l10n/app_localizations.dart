@@ -4590,7 +4590,7 @@ abstract class AppLocalizations {
   /// **'Failed to remove guardian. Check connection.'**
   String get sharingManageGuardiansRemoveFailed;
 
-  /// Issue #1004 (tranche 1): confirm dialog title for revoking a guardian or leaving.
+  /// Issue #1004 (tranche 1): confirm dialog title for revoking a guardian or leaving. {name} is the guardian's display name, or sharingManageGuardiansNoNameMidSentence when they have none (Issue #1455).
   ///
   /// In en, this message translates to:
   /// **'Remove {name}?'**
@@ -4614,7 +4614,7 @@ abstract class AppLocalizations {
   /// **'Remove'**
   String get sharingManageGuardiansRemove;
 
-  /// Issue #1004 (tranche 1): snackbar after a guardian is removed.
+  /// Issue #1004 (tranche 1): snackbar after a guardian is removed. {name} is the guardian's display name, or sharingManageGuardiansNoNameMidSentence when they have none (Issue #1455).
   ///
   /// In en, this message translates to:
   /// **'Removed {name}'**
@@ -4806,7 +4806,7 @@ abstract class AppLocalizations {
   /// **'Change role to {newRoleLabel}?'**
   String sharingManageGuardiansChangeRoleTitle(String newRoleLabel);
 
-  /// Issue #1004 (tranche 1): confirm dialog body for a role change. The consequence sentence is supplied by roleChangeConsequence.
+  /// Issue #1004 (tranche 1): confirm dialog body for a role change. The consequence sentence is supplied by roleChangeConsequence. {name} opens the sentence: the guardian's display name, or sharingManageGuardiansNoNameSentenceStart when they have none (Issue #1455).
   ///
   /// In en, this message translates to:
   /// **'{name} currently has {currentRoleLabel} access. {consequence} No new invitation is needed — the new role applies on their next sync.'**
@@ -4833,6 +4833,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'(you)'**
   String get sharingManageGuardiansYouSuffix;
+
+  /// Issue #1455: stands in for the display name of a guardian who has none, where it opens a sentence (sharingManageGuardiansChangeRoleBody: 'This guardian currently has Co-Parent access.'). Deliberately not the role label, which that sentence already states.
+  ///
+  /// In en, this message translates to:
+  /// **'This guardian'**
+  String get sharingManageGuardiansNoNameSentenceStart;
+
+  /// Issue #1455: the mid-sentence form of sharingManageGuardiansNoNameSentenceStart (sharingManageGuardiansRemoveTitle: 'Remove this guardian?'; sharingManageGuardiansRemoved: 'Removed this guardian').
+  ///
+  /// In en, this message translates to:
+  /// **'this guardian'**
+  String get sharingManageGuardiansNoNameMidSentence;
 
   /// Issue #1004 (tranche 1): notification-preferences app-bar title.
   ///

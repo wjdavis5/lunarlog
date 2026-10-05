@@ -789,6 +789,8 @@ export const MESSAGE_IDS = [
   "sharingManageGuardiansChangeRoleAction",
   "sharingManageGuardiansRoleUpdated",
   "sharingManageGuardiansYouSuffix",
+  "sharingManageGuardiansNoNameSentenceStart",
+  "sharingManageGuardiansNoNameMidSentence",
   "sharingNotificationPreferencesTitle",
   "sharingNotificationPreferencesSaveWithoutTzTitle",
   "sharingNotificationPreferencesSaveWithoutTzBody",

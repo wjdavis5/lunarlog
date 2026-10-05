@@ -3446,10 +3446,17 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
       if (_spotting) ...[
         const SizedBox(height: LLSpace.space3),
         Text(l10n.daySheetSpottingGroup, style: theme.textTheme.labelMedium),
-        Text(
-          l10n.flowLevelSpotting,
-          key: const ValueKey('day-sheet-spotting-value'),
-          style: theme.textTheme.titleSmall,
+        // Issue #1455: the PMS marker's shape again (#1426) — the heading
+        // and the value are the same word ("Spotting"), so the value line
+        // stays on screen and is announced only when it says something
+        // the heading did not.
+        ExcludeSemantics(
+          excluding: l10n.flowLevelSpotting == l10n.daySheetSpottingGroup,
+          child: Text(
+            l10n.flowLevelSpotting,
+            key: const ValueKey('day-sheet-spotting-value'),
+            style: theme.textTheme.titleSmall,
+          ),
         ),
       ],
       if (gradedPain.isNotEmpty) ...[

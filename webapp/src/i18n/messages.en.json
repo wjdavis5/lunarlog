@@ -786,6 +786,8 @@
   "sharingManageGuardiansChangeRoleAction": "Change role",
   "sharingManageGuardiansRoleUpdated": "Role updated to {newRoleLabel}",
   "sharingManageGuardiansYouSuffix": "(you)",
+  "sharingManageGuardiansNoNameSentenceStart": "This guardian",
+  "sharingManageGuardiansNoNameMidSentence": "this guardian",
   "sharingNotificationPreferencesTitle": "Notifications",
   "sharingNotificationPreferencesSaveWithoutTzTitle": "Save without time zone?",
   "sharingNotificationPreferencesSaveWithoutTzBody": "Your quiet hours will not adjust for your local time zone until this is resolved. Continue anyway?",
