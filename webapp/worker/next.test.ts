@@ -242,35 +242,38 @@ Deno.test('OAuth start honours a return path only from the app itself', async ()
   }
 });
 
-Deno.test('a return path that would not fit is dropped, and the sign-in still starts', async () => {
-  // 58 characters in, 514 out once percent-encoded: over the limit, so it
-  // never reaches the cookie. It used to be written and then refused on the
-  // way back. A few hundred of them made a cookie the browser threw away,
-  // verifier and all, and the sign-in failed.
-  for (const length of [57, 334, 335, 511]) {
+Deno.test(
+  'a return path that would not fit is dropped, and the sign-in still starts',
+  async () => {
+    // 58 characters in, 514 out once percent-encoded: over the limit, so it
+    // never reaches the cookie. It used to be written and then refused on the
+    // way back. A few hundred of them made a cookie the browser threw away,
+    // verifier and all, and the sign-in failed.
+    for (const length of [57, 334, 335, 511]) {
+      const { deps } = fakeDeps();
+      const long = `/${'\u4e2d'.repeat(length)}`;
+      const response = await handleAuthRequest(
+        get(`/auth/oauth/start?provider=google&next=${encodeURIComponent(long)}`),
+        ENV,
+        deps,
+      );
+      assertEquals(response?.status, 302, String(length));
+      assertEquals(pkceValueOf(response), 'verifier-abc', String(length));
+    }
+    // The longest path the app could ask for still fits a cookie with room to
+    // spare: the value stays far under the 4096 bytes a browser keeps.
     const { deps } = fakeDeps();
-    const long = `/${'\u4e2d'.repeat(length)}`;
+    const longest = `/invite?code=${'A'.repeat(512 - '/invite?code='.length)}`;
     const response = await handleAuthRequest(
-      get(`/auth/oauth/start?provider=google&next=${encodeURIComponent(long)}`),
+      get(`/auth/oauth/start?provider=google&next=${encodeURIComponent(longest)}`),
       ENV,
       deps,
     );
-    assertEquals(response?.status, 302, String(length));
-    assertEquals(pkceValueOf(response), 'verifier-abc', String(length));
-  }
-  // The longest path the app could ask for still fits a cookie with room to
-  // spare: the value stays far under the 4096 bytes a browser keeps.
-  const { deps } = fakeDeps();
-  const longest = `/invite?code=${'A'.repeat(512 - '/invite?code='.length)}`;
-  const response = await handleAuthRequest(
-    get(`/auth/oauth/start?provider=google&next=${encodeURIComponent(longest)}`),
-    ENV,
-    deps,
-  );
-  const value = pkceValueOf(response);
-  assertEquals(parsePkceValue(value)?.next, longest);
-  assertEquals(value.length < 1024, true);
-});
+    const value = pkceValueOf(response);
+    assertEquals(parsePkceValue(value)?.next, longest);
+    assertEquals(value.length < 1024, true);
+  },
+);
 
 Deno.test('the emailed link carries the return path in the verifier cookie', async () => {
   const { deps, paths } = fakeDeps(emailSent);

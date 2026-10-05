@@ -530,9 +530,7 @@ async function handleOAuthStart(request: Request, deps: AuthDeps): Promise<Respo
   // a path on this origin is ignored, and so is any `next` on a navigation
   // that did not begin on one of the app's own pages. Either way the
   // sign-in still starts, and lands on the home page as before.
-  const next = navigatedFromThisApp(request)
-    ? requestedNext(parameters.get('next'))
-    : null;
+  const next = navigatedFromThisApp(request) ? requestedNext(parameters.get('next')) : null;
   const verifier = deps.randomVerifier();
   const challenge = await deps.codeChallenge(verifier);
   const target = new URL(`${deps.supabaseUrl}/auth/v1/authorize`);
