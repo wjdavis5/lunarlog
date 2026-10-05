@@ -145,7 +145,6 @@ export function SignUpPage() {
       )}
       <div className="auth-links">
         <Link to="/sign-in">{t('accountSignInToggleHaveAccount')}</Link>
-        <Link to="/">{t('calendarTodayTooltip')}</Link>
       </div>
     </main>
   );

@@ -81,7 +81,6 @@ export function ForgotPasswordPage() {
       )}
       <div className="auth-links">
         <Link to="/sign-in">{t('accountSignInTitle')}</Link>
-        <Link to="/">{t('calendarTodayTooltip')}</Link>
       </div>
     </main>
   );

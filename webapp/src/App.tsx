@@ -32,11 +32,18 @@ function Shell() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <span className="brand">{t('gateLockScreenAppTitle')}</span>
+        {/* The name is the way home, signed in or out. */}
+        <Link className="brand" to="/">
+          {t('gateLockScreenAppTitle')}
+        </Link>
         <nav>
-          <Link className="nav-link" to="/">
-            {t('calendarTodayTooltip')}
-          </Link>
+          {/* "Today" names the signed-in home. Signed out, `/` is the
+              welcome, so the link would promise a page that is not there. */}
+          {session.data?.signedIn === true ? (
+            <Link className="nav-link" to="/">
+              {t('calendarTodayTooltip')}
+            </Link>
+          ) : null}
           {/* Issue #1256: the account and "Your data" settings. */}
           {session.data?.signedIn === true ? (
             <Link className="nav-link" to="/account">

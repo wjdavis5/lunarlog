@@ -50,6 +50,14 @@ body {
   display: inline-flex;
   align-items: center;
   gap: var(--ll-space-2);
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--ll-r-sm);
+}
+
+.brand:focus-visible {
+  outline: 2px solid var(--ll-primary);
+  outline-offset: 2px;
 }
 
 /* The mark is decoration: the name beside it is the accessible text, so it
