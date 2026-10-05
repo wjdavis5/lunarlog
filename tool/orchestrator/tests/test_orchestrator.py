@@ -118,6 +118,51 @@ class CiWatchTests(unittest.TestCase):
             ci_watch.labels_for("Supabase Realtime reconciliation"), ["P1", "bug", "ops"]
         )
 
+    def test_recovery_comment_leads_with_its_marker_and_names_the_run(self):
+        body = ci_watch.recovery_comment("abcdef1234567890", "https://run", "CI")
+        self.assertTrue(body.startswith(ci_watch.RECOVERY_MARKER))
+        self.assertIn("`CI` passed on `main` at `abcdef1234567890`", body)
+        self.assertIn("https://run", body)
+        # It informs; it never claims the cause is known.
+        self.assertIn("may be a flake", body)
+        self.assertTrue(ci_watch.is_recovery_note(body))
+
+    def test_a_failure_comment_is_not_a_recovery_note(self):
+        self.assertFalse(
+            ci_watch.is_recovery_note(
+                ci_watch.failure_comment("abc", "https://run", after_recovery=False)
+            )
+        )
+        self.assertFalse(ci_watch.is_recovery_note(""))
+        self.assertFalse(ci_watch.is_recovery_note(None))
+
+    def test_recovery_is_noted_once_not_on_every_green_run(self):
+        """Every success on main runs the watch; only the first after a
+        failure may comment."""
+        note = {"body": ci_watch.recovery_comment("abc", "https://run")}
+        failing = {"body": ci_watch.failure_comment("abc", "https://run", False)}
+        self.assertFalse(ci_watch.recovery_noted([]))
+        self.assertFalse(ci_watch.recovery_noted([failing]))
+        self.assertTrue(ci_watch.recovery_noted([failing, note]))
+        # A human reply after the note still counts as "newest is not a note":
+        # the next green run notes it again rather than guessing intent.
+        self.assertFalse(ci_watch.recovery_noted([note, {"body": "looking"}]))
+
+    def test_a_failure_after_a_recovery_makes_the_next_success_worth_noting(self):
+        note = {"body": ci_watch.recovery_comment("abc", "https://run")}
+        again = {"body": ci_watch.failure_comment("def", "https://run2", True)}
+        self.assertFalse(ci_watch.recovery_noted([note, again]))
+
+    def test_failure_comment_says_again_only_after_a_recovery(self):
+        self.assertTrue(
+            ci_watch.failure_comment("abc", "https://run", after_recovery=False)
+            .startswith("Still failing at `abc`.")
+        )
+        self.assertTrue(
+            ci_watch.failure_comment("abc", "https://run", after_recovery=True)
+            .startswith("Failing again at `abc`.")
+        )
+
     def test_find_existing_reuses_the_open_issue_across_shas(self):
         """A new failing SHA on the same workflow comments on the existing
         open issue instead of opening a duplicate per merge."""
@@ -159,6 +204,72 @@ class CiWatchTests(unittest.TestCase):
         calls = [c.args[0] for c in run_mock.call_args_list]
         self.assertIn(["issue", "comment", "7", "--body", "Still failing at `deadbeef00000000`.\n\nhttps://run"], calls)
         self.assertFalse(any(c[:2] == ["issue", "create"] for c in calls))
+
+    def _run_main(self, conclusion, comments, has_issue=True):
+        """Drives main() for the CI workflow against a faked `gh`, with an
+        open rolling issue #7 (unless told otherwise) carrying [comments]."""
+        env = {
+            "RUN_ID": "1",
+            "HEAD_SHA": "deadbeef00000000",
+            "RUN_URL": "https://run",
+            "GITHUB_REPOSITORY": "wjdavis5/lunarlog",
+            "HEAD_REPOSITORY": "wjdavis5/lunarlog",
+            "HEAD_BRANCH": "main",
+            "WORKFLOW_NAME": "CI",
+            "RUN_CONCLUSION": conclusion,
+        }
+        existing = [{
+            "number": 7,
+            "body": f"{ci_watch.MARKER}\n{ci_watch.workflow_marker('CI')}\nfailed",
+        }] if has_issue else []
+
+        def fake_run(args, input_text=None):
+            if args[0] == "api":
+                return '{"jobs": []}'
+            if args[:2] == ["issue", "list"]:
+                return json.dumps(existing)
+            if args[:2] == ["issue", "view"]:
+                return json.dumps({"comments": comments})
+            return ""
+
+        with mock.patch.dict(os.environ, env, clear=True):
+            with mock.patch.object(ci_watch, "_run", side_effect=fake_run) as run_mock:
+                self.assertEqual(ci_watch.main(), 0)
+        return [c.args[0] for c in run_mock.call_args_list]
+
+    def test_main_notes_a_recovery_on_the_open_issue(self):
+        calls = self._run_main("success", comments=[
+            {"body": "Still failing at `abc`.\n\nhttps://old"},
+        ])
+        comments = [c for c in calls if c[:2] == ["issue", "comment"]]
+        self.assertEqual(len(comments), 1)
+        self.assertEqual(comments[0][2], "7")
+        self.assertTrue(ci_watch.is_recovery_note(comments[0][4]))
+        self.assertIn("deadbeef00000000", comments[0][4])
+        # A pass never files, closes, or reads the jobs API.
+        self.assertFalse(any(c[:2] == ["issue", "create"] for c in calls))
+        self.assertFalse(any(c[:2] == ["issue", "close"] for c in calls))
+        self.assertFalse(any(c[0] == "api" for c in calls))
+
+    def test_main_does_not_repeat_a_recovery_note(self):
+        calls = self._run_main("success", comments=[
+            {"body": ci_watch.recovery_comment("abc", "https://old")},
+        ])
+        self.assertFalse(any(c[:2] == ["issue", "comment"] for c in calls))
+
+    def test_main_does_nothing_on_a_pass_with_no_open_issue(self):
+        calls = self._run_main("success", comments=[], has_issue=False)
+        self.assertEqual([c[:2] for c in calls], [["issue", "list"]])
+
+    def test_main_says_failing_again_after_a_noted_recovery(self):
+        calls = self._run_main("failure", comments=[
+            {"body": ci_watch.recovery_comment("abc", "https://old")},
+        ])
+        self.assertIn(
+            ["issue", "comment", "7", "--body",
+             "Failing again at `deadbeef00000000`.\n\nhttps://run"],
+            calls,
+        )
 
     def test_is_trusted_source_accepts_the_repos_own_main(self):
         self.assertTrue(
