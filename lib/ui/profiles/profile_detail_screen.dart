@@ -4,7 +4,8 @@
 /// simple in-place toggle. Both are scoped to exactly one profile (R3).
 /// Archived profiles open in read-only mode (view-only day sheets, no
 /// logging affordances, and the overview's resolver and history omit
-/// actions hidden) with an unarchive action.
+/// actions hidden) with an unarchive action for the primary guardian
+/// (issue #1411).
 ///
 /// Issue #314 follow-up: [OverviewPanel] stopped mounting
 /// [CycleHistorySection] once the Analysis tab became its sole home, but
@@ -84,6 +85,14 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen>
   /// same lens the surrounding screen renders with. Presentation only —
   /// fail open, so an unwired or local-only tree keeps the subject lens.
   GuardianLens get _lens => guardianLensFor(_guardians, _currentUserId);
+
+  /// Issue #1411: whether this operator may unarchive the profile. The
+  /// server lets only the primary guardian change the archive state, so the
+  /// action follows the same rule as the picker's Archive item, resolved
+  /// from the guardian rows this screen already watches. An unknown role
+  /// (rows not synced yet, signed out, local-only) fails open (#531).
+  bool get _canUnarchive => canChangeArchiveState(
+      acceptedGuardianFor(_guardians, _currentUserId)?.role);
 
   /// Issue #820: minor status derives from birth year when present (falling
   /// back to the stored flag), evaluated against the injected today seam.
@@ -184,16 +193,18 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen>
               guardiansRepository: guardiansRepository,
               readOnly: widget.readOnly,
             ),
-          if (widget.readOnly)
-            TextButton(
-              onPressed: _unarchive,
-              child: Text(l10n.profileDetailUnarchive),
-            )
-          else
+          // Issue #1411: an archived profile stays viewable by every role,
+          // but only one that may change the archive state gets Unarchive.
+          if (!widget.readOnly)
             IconButton(
               tooltip: AppLocalizations.of(context).profileDetailSwitchProfileTooltip,
               icon: const Icon(Icons.swap_horiz),
               onPressed: context.read<ProfileController>().openPicker,
+            )
+          else if (_canUnarchive)
+            TextButton(
+              onPressed: _unarchive,
+              child: Text(l10n.profileDetailUnarchive),
             ),
         ],
       ),

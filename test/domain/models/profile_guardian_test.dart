@@ -158,4 +158,21 @@ void main() {
       expect(acceptedGuardianFor([g], 'u1'), g);
     });
   });
+
+  // Issue #1411: the server lets only the primary guardian change
+  // `archived_at`, in either direction — one rule for Archive and unarchive.
+  group('canChangeArchiveState', () {
+    test('only the primary guardian among the resolved roles may', () {
+      expect(canChangeArchiveState(GuardianRole.primaryGuardian), isTrue);
+      for (final role in GuardianRole.values
+          .where((r) => r != GuardianRole.primaryGuardian)) {
+        expect(canChangeArchiveState(role), isFalse,
+            reason: '${role.name} cannot change the archive state');
+      }
+    });
+
+    test('an unknown role fails open (#531)', () {
+      expect(canChangeArchiveState(null), isTrue);
+    });
+  });
 }

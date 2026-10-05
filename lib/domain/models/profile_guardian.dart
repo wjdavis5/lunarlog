@@ -192,3 +192,17 @@ ProfileGuardian? acceptedGuardianFor(
   }
   return null;
 }
+
+/// Whether a caller holding [role] may change a profile's archive state -
+/// archive **or** unarchive (issue #1411). The server lets only the primary
+/// guardian change `archived_at` in either direction, so every archive and
+/// unarchive control shares this one rule: gating Archive alone left a
+/// co-parent able to unarchive locally a profile whose push the server
+/// then rejected forever.
+///
+/// A null [role] (the guardian rows haven't synced, or the profile is
+/// local-only) fails open, exactly as [acceptedGuardianFor] requires of its
+/// callers (issue #531): only a known, resolved role that is actually
+/// insufficient withholds the control.
+bool canChangeArchiveState(GuardianRole? role) =>
+    role == null || role.canDeleteProfile;

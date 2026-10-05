@@ -2,7 +2,8 @@
 /// owned-vs-shared grouping + role label, the co-managed indicator without
 /// opening a menu, the outstanding-invitation badge outside Manage
 /// Guardians (and cleared on cancel), offline badge-free rendering, and
-/// viewer read-only surfaces.
+/// viewer read-only surfaces. Also the role gates on the picker's row menu
+/// (issue #531) and on both unarchive controls (issue #1411).
 library;
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -1370,6 +1371,210 @@ void main() {
         await tester.pumpAndSettle();
         await expectRowMenu(tester, profile.id,
             canEdit: true, canDelete: true);
+      } finally {
+        await _disposeApp(tester, db);
+      }
+    });
+  });
+
+  group('unarchive follows guardian role (issue #1411)', () {
+    /// Seeds one archived profile, Kid: Mom is its primary guardian and
+    /// `user-member` holds [memberRole]. Returns Kid's id.
+    Future<String> seedArchivedKid(
+      LunarLogDatabase db, {
+      required String memberRole,
+    }) async {
+      final profiles = DriftProfilesRepository(db.storage);
+      final kid = await profiles.create(displayName: 'Kid', isMinor: true);
+      await db.storage.applyRemoteRows([
+        _row(kid.id, 0, 'user-mom', 'primary_guardian', 'Mom'),
+        _row(kid.id, 1, 'user-member', memberRole, 'Member'),
+      ]);
+      await profiles.setArchived(kid.id, true);
+      return kid.id;
+    }
+
+    Future<void> expandArchived(WidgetTester tester, int count) async {
+      await tester.tap(find.text('Archived ($count)'));
+      await tester.pumpAndSettle();
+    }
+
+    Future<bool> isArchived(LunarLogDatabase db, String profileId) async {
+      final profile =
+          await DriftProfilesRepository(db.storage).findById(profileId);
+      return profile!.archivedAt != null;
+    }
+
+    // The server rejects a change to `archived_at`, in either direction,
+    // from every role but the primary guardian — so each of the other
+    // three resolved roles loses both unarchive controls. One test per
+    // control, so neither gate can regress behind the other.
+    for (final role in const ['co_parent', 'caregiver', 'viewer']) {
+      testWidgets(
+          '$role keeps the archived picker row but gets no unarchive '
+          'control on it', (tester) async {
+        final auth = _signedInAs('user-member');
+        addTearDown(auth.dispose);
+        final db =
+            await _pumpApp(tester, auth: auth, sharing: FakeSharing126());
+        try {
+          final kidId = await seedArchivedKid(db, memberRole: role);
+          await tester.pumpAndSettle();
+          await expandArchived(tester, 1);
+
+          // The row itself stays for every role: name and created date.
+          final row = find.widgetWithText(ListTile, 'Kid');
+          expect(row, findsOneWidget);
+          expect(
+              find.descendant(
+                  of: row, matching: find.textContaining('Created')),
+              findsOneWidget);
+          // Only the unarchive control goes.
+          expect(find.byTooltip('Unarchive'), findsNothing);
+          expect(find.byIcon(Icons.unarchive), findsNothing);
+          expect(await isArchived(db, kidId), isTrue);
+        } finally {
+          await _disposeApp(tester, db);
+        }
+      });
+
+      testWidgets(
+          '$role still opens the archived read-only detail screen but gets '
+          'no Unarchive action on it', (tester) async {
+        final auth = _signedInAs('user-member');
+        addTearDown(auth.dispose);
+        final db =
+            await _pumpApp(tester, auth: auth, sharing: FakeSharing126());
+        try {
+          final kidId = await seedArchivedKid(db, memberRole: role);
+          await tester.pumpAndSettle();
+          await expandArchived(tester, 1);
+
+          // The row's tap-through is untouched by the role.
+          await tester.tap(find.text('Kid'));
+          await tester.pumpAndSettle();
+          expect(find.text('Kid (archived)'), findsOneWidget);
+          expect(find.text('Unarchive'), findsNothing);
+          expect(await isArchived(db, kidId), isTrue);
+        } finally {
+          await _disposeApp(tester, db);
+        }
+      });
+    }
+
+    testWidgets(
+        'primary_guardian keeps the picker unarchive control, and it '
+        'restores the profile', (tester) async {
+      final auth = _signedInAs('user-mom');
+      addTearDown(auth.dispose);
+      final db = await _pumpApp(tester, auth: auth, sharing: FakeSharing126());
+      try {
+        final kidId = await seedArchivedKid(db, memberRole: 'co_parent');
+        await tester.pumpAndSettle();
+        await expandArchived(tester, 1);
+
+        expect(find.byTooltip('Unarchive'), findsOneWidget);
+        await tester.tap(find.byTooltip('Unarchive'));
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('Archived'), findsNothing,
+            reason: 'nothing archived left');
+        expect(find.byKey(ValueKey('profile-row-$kidId')), findsOneWidget,
+            reason: 'back among the active profiles');
+        expect(await isArchived(db, kidId), isFalse);
+      } finally {
+        await _disposeApp(tester, db);
+      }
+    });
+
+    testWidgets(
+        'primary_guardian keeps the detail screen Unarchive action, and it '
+        'restores the profile', (tester) async {
+      final auth = _signedInAs('user-mom');
+      addTearDown(auth.dispose);
+      final db = await _pumpApp(tester, auth: auth, sharing: FakeSharing126());
+      try {
+        final kidId = await seedArchivedKid(db, memberRole: 'co_parent');
+        await tester.pumpAndSettle();
+        await expandArchived(tester, 1);
+        await tester.tap(find.text('Kid'));
+        await tester.pumpAndSettle();
+        expect(find.text('Kid (archived)'), findsOneWidget);
+
+        expect(find.widgetWithText(TextButton, 'Unarchive'), findsOneWidget);
+        await tester.tap(find.widgetWithText(TextButton, 'Unarchive'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Profiles'), findsOneWidget, reason: 'back on picker');
+        expect(find.byKey(ValueKey('profile-row-$kidId')), findsOneWidget,
+            reason: 'back among the active profiles');
+        expect(await isArchived(db, kidId), isFalse);
+      } finally {
+        await _disposeApp(tester, db);
+      }
+    });
+
+    testWidgets(
+        'the gate is per archived row: one operator keeps unarchive where '
+        'they are primary guardian and loses it where they are not',
+        (tester) async {
+      final auth = _signedInAs('user-mom');
+      addTearDown(auth.dispose);
+      final db = await _pumpApp(tester, auth: auth, sharing: FakeSharing126());
+      try {
+        // Alice: Mom is primary_guardian. Zoe: Mom is viewer.
+        final ids = await _seedFamily(db);
+        final profiles = DriftProfilesRepository(db.storage);
+        await profiles.setArchived(ids.alice, true);
+        await profiles.setArchived(ids.zoe, true);
+        await tester.pumpAndSettle();
+        await expandArchived(tester, 2);
+
+        expect(
+            find.descendant(
+                of: find.widgetWithText(ListTile, 'Alice'),
+                matching: find.byTooltip('Unarchive')),
+            findsOneWidget);
+        expect(
+            find.descendant(
+                of: find.widgetWithText(ListTile, 'Zoe'),
+                matching: find.byTooltip('Unarchive')),
+            findsNothing);
+      } finally {
+        await _disposeApp(tester, db);
+      }
+    });
+
+    testWidgets(
+        'unresolved/unknown role keeps both unarchive controls '
+        '(fails open per the null-vs-empty discipline)', (tester) async {
+      final auth = _signedInAs('user-solo');
+      addTearDown(auth.dispose);
+      final db = await _pumpApp(tester, auth: auth, sharing: FakeSharing126());
+      try {
+        // Solo: a local-only profile with no guardian rows at all. Kid:
+        // guardian rows synced for other people, none for this operator.
+        // Either way `myRole` never resolves, which reads as "not known to
+        // be anything in particular", never as "known to be insufficient".
+        final profiles = DriftProfilesRepository(db.storage);
+        final solo = await profiles.create(displayName: 'Solo', isMinor: false);
+        await profiles.setArchived(solo.id, true);
+        await seedArchivedKid(db, memberRole: 'co_parent');
+        await tester.pumpAndSettle();
+        await expandArchived(tester, 2);
+
+        expect(find.byTooltip('Unarchive'), findsNWidgets(2));
+
+        await tester.tap(find.text('Solo'));
+        await tester.pumpAndSettle();
+        expect(find.text('Solo (archived)'), findsOneWidget);
+        expect(find.widgetWithText(TextButton, 'Unarchive'), findsOneWidget);
+        await tester.tap(find.widgetWithText(TextButton, 'Unarchive'));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(ValueKey('profile-row-${solo.id}')), findsOneWidget,
+            reason: 'back among the active profiles');
+        expect(await isArchived(db, solo.id), isFalse);
       } finally {
         await _disposeApp(tester, db);
       }
