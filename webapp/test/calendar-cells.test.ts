@@ -12,6 +12,7 @@ import {
   forecastCellForMode,
   leadingBlanksFor,
   monthHasContent,
+  setupPeriodMarkCanAppear,
   monthDayIsos,
   rankTagUsage,
   shiftMonth,
@@ -336,6 +337,31 @@ describe('dayCellView', () => {
         setupPeriodMarkIso: null,
       }),
     ).toBe(true);
+  });
+
+  it('keys the setup mark in the legend only while a cell can draw it', () => {
+    const none = new Map<string, DayEntryRow>();
+    expect(setupPeriodMarkCanAppear({ entryByIso: none, setupPeriodMarkIso: null })).toBe(
+      false,
+    );
+    expect(
+      setupPeriodMarkCanAppear({ entryByIso: none, setupPeriodMarkIso: '2026-10-01' }),
+    ).toBe(true);
+    // An entry on another day changes nothing.
+    expect(
+      setupPeriodMarkCanAppear({
+        entryByIso: new Map([['2026-10-02', entryRow()]]),
+        setupPeriodMarkIso: '2026-10-01',
+      }),
+    ).toBe(true);
+    // Any entry on the marked day, a bleed or not: the cell shows what was
+    // logged, so no cell draws the mark and the legend does not list it.
+    expect(
+      setupPeriodMarkCanAppear({
+        entryByIso: new Map([['2026-10-01', entryRow({ flow: 'none' })]]),
+        setupPeriodMarkIso: '2026-10-01',
+      }),
+    ).toBe(false);
   });
 
   it('keeps the past factual: no forecast cell before today', () => {

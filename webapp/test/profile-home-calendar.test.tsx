@@ -244,6 +244,8 @@ describe('ProfileHomeCalendar', () => {
       expect(logged.cell).not.toHaveClass('cal-setup-period');
       expect(logged.cell).toHaveClass('cal-flow', 'cal-flow-medium');
       expect(logged.link).toHaveAccessibleName('Thursday, October 1, 2026');
+      // No cell can draw the mark now, so the legend does not list it.
+      expect(screen.queryByTestId('legend-setup-period')).toBeNull();
     });
 
     it('sits inside the ring for today when the two fall on the same day', () => {
