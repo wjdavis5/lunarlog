@@ -372,10 +372,15 @@ Part of the home lab; the canonical inventory lives in the lab root's
   impossible to unlock at all (issue #65). Content stays covered for the
   whole window; a departure the window absorbed is answered fail-closed
   the moment the system UI comes down, and a window left open locks after
-  two minutes regardless of the inactivity toggle. The first-run
-  notification-permission prompt is covered by this too, on both
-  platforms (issue #168) — the automatic startup request and the overview
-  hint's "Turn on reminders" re-request both run inside the same window.
+  two minutes regardless of the inactivity toggle. The reminder
+  scheduler's notification-permission prompt is covered by this too, on
+  both platforms (issue #168): it is raised by the overview hint's "Turn
+  on reminders" action, which runs inside the same window. The scheduler
+  never asks at startup — iOS since issue #863, Android since issue #1425
+  — so starting reminders at launch opens no window and covers nothing.
+  A push-configured build does still ask at launch, from push
+  registration; that ask opens the window around its own request, and
+  only when the system dialog can actually appear.
 - iOS: the database file now lives under `getApplicationSupportDirectory()`,
   not `Documents/` (issue #244 — `Documents/` is included in iCloud/device
   backup by default, and so **is** `Application Support`: only `tmp/` and

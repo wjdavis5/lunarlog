@@ -43,9 +43,12 @@ void main() {
         return true;
       }
 
-      // Fired together, exactly as `_startPushRegistration` (app_root.dart)
-      // and `_scheduleReminderStart` (app.dart) do -- two independent
-      // widgets, no `await` between them.
+      // Fired together, with no `await` between them -- as
+      // `_startPushRegistration` (app_root.dart) and
+      // `_scheduleReminderStart` (app.dart) did at database open when
+      // issue #287 was found. The scheduler no longer asks at startup
+      // (issues #863, #1425); the overlap that remains is a "Turn on
+      // reminders" tap landing while the push request is still pending.
       final firebaseResult = gate.guard(fakeFirebaseRequestPermission);
       final androidResult =
           gate.guard(fakeAndroidRequestNotificationsPermission);

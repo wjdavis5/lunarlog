@@ -31,6 +31,7 @@ import 'package:lunarlog/domain/import/clue/clue_import_run.dart'
     show ClueImportRunner;
 import 'package:lunarlog/domain/import/import_file_reader.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
+import 'package:lunarlog/domain/notifications/push_permission_plan.dart';
 import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
 import 'package:lunarlog/domain/notifications/reminder_window_remote.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
@@ -175,6 +176,39 @@ void main() {
     final deps = buildAppDependencies(db: db, scheduler: original);
 
     expect(identical(deps.scheduler, original), isTrue);
+  });
+
+  test('issue #1425: buildPushTokenSource gives the token source the '
+      'system-UI window and the settings store its refusal count is kept '
+      'in', () async {
+    var windows = 0;
+    Future<T> window<T>(Future<T> Function() action) {
+      windows++;
+      return action();
+    }
+
+    final settings = buildCompositionSettingsStore(db);
+    final source = buildPushTokenSource(
+      settings: settings,
+      duringSystemUi: window,
+    );
+
+    // The launch-time ask, with fakes for the two plugin calls only: a
+    // never-asked Android permission, refused.
+    await source.askPermission(
+      isAndroid: true,
+      currentState: () async => PushPermissionState.undetermined,
+      request: () async => PushPermissionState.refused,
+    );
+
+    expect(windows, 1,
+        reason: 'the request ran inside the window the factory was given');
+    expect(
+      await settings.get(SettingsKeys.androidNotificationDeniedAttempts),
+      '1',
+      reason: 'and its refusal landed in the store the scheduler built by '
+          'buildAppDependencies reads the same count from',
+    );
   });
 
   test('R16: buildAppDependencies wires currentUserIdProvider into the import '

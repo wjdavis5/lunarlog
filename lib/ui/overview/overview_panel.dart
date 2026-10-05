@@ -1568,11 +1568,15 @@ class _SeeHistoryLinkState extends State<_SeeHistoryLink> {
 /// Issue #168: was a passive line ("Reminders unavailable — notifications
 /// are off"); now an actionable "Turn on reminders" affordance. Tapping it
 /// always runs the same [RequestNotificationPermissionCallback] — whether
-/// that re-requests the OS permission or opens the platform's
+/// that requests the OS permission or opens the platform's
 /// notification-settings screen instead (once Android has permanently
 /// denied it) is a decision the scheduler makes, not this widget (see
-/// `nextNotificationPermissionAction`). Absent that seam (no reminder
-/// coordinator ever started), the hint falls back to the old passive line.
+/// `nextNotificationPermissionAction`). This tap is where the reminder
+/// scheduler's system permission dialog comes from: the scheduler does
+/// not ask at startup (issues #863, #1425), so a never-asked install
+/// lands here with the permission simply off. Absent that seam (no
+/// reminder coordinator ever started), the hint falls back to the old
+/// passive line.
 class _ReminderHint extends StatefulWidget {
   const _ReminderHint();
 

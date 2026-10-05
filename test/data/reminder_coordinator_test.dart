@@ -513,10 +513,12 @@ void main() {
   });
 
   test('a resume during initialize is ignored, and a replan lands once start() completes', () async {
-    // app.dart fires `unawaited(_startReminders())` from initState, so a
-    // lifecycle resume can land while `_scheduler.initialize(...)` is still
-    // pending (unbounded on iOS/macOS first launch, where it waits on the
-    // system permission dialog).
+    // app.dart fires `unawaited(_startReminders())` right after the first
+    // frame, so a lifecycle resume can land while
+    // `_scheduler.initialize(...)` is still pending. (It no longer waits on
+    // a system permission dialog on any platform -- issues #863 and #1425
+    // -- but it is still a chain of platform-channel calls with no upper
+    // bound of its own.)
     //
     // `didChangeAppLifecycleState` guards on `_started`, which is set only
     // at the end of `start()`, so that resume is dropped rather than
@@ -737,6 +739,41 @@ void main() {
         reason: 'a zone that turns out to have actually changed must '
             'still trigger its own correcting replan, even though the '
             'first pass already fired under the old zone');
+  });
+
+  test('start() never requests the permission itself (issue #1425): a '
+      'not-enabled state is published as denied for the overview hint, and '
+      'only requestPermission() -- the "Turn on reminders" tap -- asks',
+      () async {
+    final scheduler = FakeReminderScheduler(
+        initialAvailability: NotificationAvailability.denied)
+      ..requestPermissionResult = NotificationAvailability.denied;
+    final sink = _RecordingSink();
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: sink,
+      activeProfiles: const Stream.empty(),
+      predictionFor: (_) => const Stream.empty(),
+      replanDebounce: Duration.zero,
+    );
+    await coordinator.start();
+    addTearDown(coordinator.dispose);
+
+    expect(scheduler.initializeCalls, 1);
+    expect(scheduler.requestPermissionCalls, 0,
+        reason: 'startup reads availability; it must not spend a system '
+            'dialog before the operator has seen what a reminder is');
+    expect(sink.updates, [NotificationAvailability.denied],
+        reason: 'the hint is driven by this, with no request made');
+
+    // A resume re-probes; it does not ask either.
+    coordinator.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    await pumpEventQueue();
+    expect(scheduler.availabilityChecks, 1);
+    expect(scheduler.requestPermissionCalls, 0);
+
+    await coordinator.requestPermission();
+    expect(scheduler.requestPermissionCalls, 1);
   });
 
   test('requestPermission (issue #168, "Turn on reminders") re-requests '

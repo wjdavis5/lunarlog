@@ -564,11 +564,17 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// callback. Extracted out of [_buildReminderCoordinator] (issue #168
   /// CRAP gate) so this branching doesn't count against that method's
   /// complexity.
+  ///
+  /// The deferral dates from when `start()` ran inside a
+  /// `GateController.duringSystemUi` window, which could not be opened
+  /// from `initState` (it notifies listeners synchronously, mid-build).
+  /// Issue #1425 removed that window — see [_startReminders] — and the
+  /// deferral stays only because nothing needs the scheduler's platform
+  /// calls before the first frame is up.
   void _scheduleReminderStart(ReminderCoordinator coordinator) {
-    final gate = context.read<GateController?>();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      unawaited(_startReminders(coordinator, gate));
+      unawaited(_startReminders(coordinator));
     });
   }
 
@@ -1163,28 +1169,34 @@ class _LunarLogAppState extends State<LunarLogApp>
     );
   }
 
-  /// Issue #168: runs the coordinator's automatic startup permission
-  /// request (`coordinator.start()`, which now requests the Android
-  /// permission unconditionally, same as Darwin already did) inside the
-  /// same system-UI window as the explicit, user-triggered re-request in
-  /// [_requestNotificationPermission]. Called from a post-frame callback
-  /// scheduled in `initState` — never directly from `initState` itself,
-  /// because opening a `duringSystemUi` window notifies listeners
-  /// synchronously, and `LunarLogRootState` (still mid-build at that point,
-  /// since this widget builds inside it) reacts to gate changes with a
-  /// bare `setState(() {})`, which throws ("setState() or
-  /// markNeedsBuild() called during build"). Deferring past the frame's
-  /// build phase avoids that crash while still covering the automatic
-  /// prompt the same way as the manual one.
-  Future<void> _startReminders(
-    ReminderCoordinator coordinator,
-    GateController? gate,
-  ) {
-    Future<void> run() => coordinator.start(
-          onLaunchFromNotification: _handleReminderLaunch,
-        );
-    return gate != null ? gate.duringSystemUi(run) : run();
-  }
+  /// Starts the reminder coordinator: initializes the scheduler (channel,
+  /// current availability, a cold-start notification launch) and
+  /// subscribes it to the profile and prediction streams.
+  ///
+  /// Issue #1425: deliberately **not** wrapped in
+  /// `GateController.duringSystemUi`. Issue #168 wrapped it because
+  /// `coordinator.start()` then made an automatic permission request on
+  /// both platforms; that request is gone (Darwin in issue #863, Android
+  /// in issue #1425 — `FlutterLocalNotificationsScheduler.initialize` now
+  /// only creates the channel and reads `areNotificationsEnabled()` /
+  /// `checkPermissions()`), so nothing in here presents system UI any
+  /// more. An open window sets `GateController.obscured`, which hides the
+  /// whole app behind the opaque privacy cover — the black first screen
+  /// issue #1425 reported — so wrapping a call that shows no dialog only
+  /// blanks the launch. The one place the scheduler's dialog really does
+  /// appear is the user-triggered [_requestNotificationPermission], which
+  /// keeps its window.
+  ///
+  /// One launch-time dialog remains, and it is not this method's to
+  /// cover: on a push-configured build `FirebasePushTokenSource` still
+  /// makes its own permission ask at database open
+  /// (`LunarLogRootState._startPushRegistration`) — a separate call path.
+  /// The old window here overlapped it only by accident of timing, when
+  /// `initialize()` happened to queue behind it in the shared
+  /// `NotificationPermissionGate`; that ask now opens the gate's window
+  /// itself, around its own request, whenever the dialog can appear.
+  Future<void> _startReminders(ReminderCoordinator coordinator) =>
+      coordinator.start(onLaunchFromNotification: _handleReminderLaunch);
 
   /// Issue #136: routes a notification tap. A plain tap keeps the
   /// pre-existing seam — the firing profile's overview opens after the

@@ -1000,10 +1000,25 @@ household member's.
       duplicate consent or mismatch screen. The app's content is covered
       (not visible) in the app switcher throughout, and no black cover is
       left behind once the ceremony ends.
-      *Known exception, not a regression:* on a **fresh install**, iOS
-      raises its notification-permission alert immediately after the first
-      unlock and that still re-locks the app. It is the deferred follow-up
-      recorded in `docs/plans/2026-09-03-003-fix-gate-discards-granted-unlock-plan.md`.
+      *Known exception, narrowed:* the plan
+      (`docs/plans/2026-09-03-003-fix-gate-discards-granted-unlock-plan.md`)
+      recorded that on a **fresh install** the notification-permission
+      alert appeared immediately after the first unlock and re-locked the
+      app. The reminder scheduler was the cause it named, and it no longer
+      asks at launch on either platform (iOS since issue #863, Android
+      since issue #1425): its prompt now comes from Today's "Turn on
+      reminders" action, inside the system-UI window. What remains is a
+      **push-configured** build, where push registration still asks at
+      database open
+      (`lib/data/notifications/firebase_push_token_source.dart`), so the
+      alert still appears right after the first unlock there. That ask now
+      runs inside the system-UI window too (issue #1425), so it should no
+      longer re-lock: answer the alert slowly (more than three seconds)
+      and confirm that once it is answered the app is unlocked, with no
+      lock screen and no black cover left. (While the alert is up the
+      content is covered, as for every system-UI window.) The window is
+      covered by tests against the real gate controller; the alert itself
+      has not been re-checked on a device.
 - [ ] **The lock suppression is bounded — check both halves.**
       *(a) Leave and come back after the prompt closes.* Start a Google
       sign-in, leave the app while the picker is up, let the picker
@@ -1305,15 +1320,24 @@ build), always with a throwaway account and fabricated profiles only.
       while signed in, force-quit and relaunch; the session restores
       without re-prompting sign-in.
 - [ ] **`lib/data/notifications/notification_scheduler.dart` — the
-      flutter_local_notifications wrapper.** Turn on reminders for a
-      fabricated profile with a reminder a few minutes out: the local
-      notification arrives at the configured local time. (The fire-time
+      flutter_local_notifications wrapper.** On a fresh install of a build
+      without push configured, no notification prompt appears at launch on
+      either platform and the app is not blanked behind a black cover
+      while it starts (issues #863, #1425); with notifications off, Today
+      shows "Reminders unavailable — notifications are off" with a "Turn on
+      reminders" action. (A push-configured build can still prompt at
+      launch from push registration — see the known exception under "No
+      lock screen during the Google picker or the Apple sheet" above.)
+      Turn on reminders for a fabricated profile with a reminder a few
+      minutes out: the local notification arrives at the configured local
+      time. (The fire-time
       computation and the permission-answer→availability mapping are
       unit-tested in `lib/domain/notifications/reminder_fire_time.dart` and
       `notification_availability.dart`; this item proves the plugin-bound
-      scheduling half.) Deny the OS prompt twice on Android, then tap "Turn
-      on reminders": OS notification settings open (not a dead button); on
-      iOS deny once and tap it: Settings opens the same way. A
+      scheduling half.) On Android tap "Turn on reminders" and deny the OS
+      prompt, twice, then tap it a third time: OS notification settings
+      open (not a dead button); on iOS deny once and tap it again: Settings
+      opens the same way. A
       period-anchored reminder presents its Started / Spotting / Not yet
       action buttons on both platforms, and a plain tap opens the app
       through the device-credential gate (cross-ref "Tap routing through
@@ -1344,7 +1368,16 @@ build), always with a throwaway account and fabricated profiles only.
       message streams. Issue #174's
       `setForegroundNotificationPresentationOptions` call is proven by the
       "Foreground alert shows a banner (issue #174, iOS)" item above.
-      Running those sections satisfies this entry.
+      Running those sections satisfies this entry, apart from the
+      launch-time permission ask (issue #1425), which needs a fresh install
+      of a push-configured build: the alert appears once after the first
+      unlock and answering it slowly does not re-lock the app (see the
+      known exception under "No lock screen during the Google picker or
+      the Apple sheet"). On Android 13+, refuse it on two launches running:
+      the third launch shows no alert and no black flash, and the first
+      tap on Today's "Turn on reminders" opens OS notification settings
+      rather than doing nothing. With the permission already granted, a
+      launch shows no alert and no cover.
 - [ ] **`lib/data/health/ios_health_channel.dart` — the Swift HKHealthStore
       MethodChannel pin.** Inert in every current build
       (`AppConfig.hasHealthSync` is false): confirm a normal build shows no

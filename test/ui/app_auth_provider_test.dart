@@ -12,12 +12,20 @@ import 'dart:async';
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show MethodCall, MethodChannel;
+import 'package:flutter_local_notifications/flutter_local_notifications.dart'
+    show AndroidFlutterLocalNotificationsPlugin;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/app.dart';
 import 'package:lunarlog/app_lifecycle.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/import/account_importer.dart';
+import 'package:lunarlog/data/notifications/notification_permission_gate.dart';
+import 'package:lunarlog/data/notifications/notification_scheduler.dart'
+    show FlutterLocalNotificationsScheduler;
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
@@ -436,20 +444,21 @@ void main() {
     await disposeApp(tester, db);
   });
 
-  group('reminder permission requests run inside the system-UI window '
-      '(issue #168)', () {
-    // The automatic startup request (initState -> post-frame callback ->
-    // _startReminders -> coordinator.start()) now runs inside the same
-    // `duringSystemUi` window as the explicit re-request below. It cannot
-    // be wrapped directly from `initState` -- opening the window's
-    // synchronous `notifyListeners()` would hit `LunarLogRootState` calling
-    // `setState()` mid-build -- so `_LunarLogAppState` constructs the
-    // coordinator synchronously in `initState` but defers only the
-    // `start()` call to a post-frame callback, which runs safely after the
-    // ancestor's build phase has finished.
+  group('reminder permission requests and the system-UI window '
+      '(issues #168, #1425)', () {
+    // Issue #168 ran the coordinator's startup (initState -> post-frame
+    // callback -> _startReminders -> coordinator.start()) inside a
+    // `duringSystemUi` window, because `start()` then made an automatic
+    // permission request. Issue #1425 removed that request -- it put the
+    // system dialog over a black screen at first launch -- and the window
+    // with it: an open window sets `GateController.obscured`, which hides
+    // the whole app behind the privacy cover, so wrapping a startup that
+    // shows no dialog only blanks the launch. The explicit "Turn on
+    // reminders" request below, where a dialog really does appear, is the
+    // one that still opens a window.
     testWidgets(
-        'the automatic startup request also runs inside the system-UI '
-        'window', (tester) async {
+        'startup opens no system-UI window -- the app is not covered while '
+        'the scheduler initializes', (tester) async {
       final db = LunarLogDatabase(NativeDatabase.memory());
       final initializeGate = Completer<void>();
       final scheduler = FakeReminderScheduler(initializeGate: initializeGate);
@@ -463,40 +472,139 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      // Not `homeContext` (`find.byType(ProfileHomeGate)`): the automatic
-      // startup request's system-UI window is already open by this point
-      // (it opens as part of the very first settle, unlike the manual tap
-      // below, which only opens one after the harness has already
-      // captured its context) and `GateController.obscured` — content
-      // must stay covered while the app's own system UI is up — makes
-      // `GateShell` mark `ProfileHomeGate` offstage for the duration,
-      // which the default `skipOffstage: true` finder would miss.
-      // `GateShell` itself sits above that offstage wrapper and is never
-      // hidden, so it is a safe, always-present anchor for the context.
+      // `GateShell` sits above the wrapper that hides the content, so it
+      // is an anchor for the context that is present whether or not the
+      // content is covered.
       final gateController =
           tester.element(find.byType(GateShell)).read<GateController>();
 
-      expect(gateController.systemUiActive, isTrue,
-          reason: 'the automatic startup permission request is system UI '
-              'too');
-      gateController.didChangeAppLifecycleState(AppLifecycleState.inactive);
-      expect(gateController.locked, isFalse,
-          reason: 'this is the app\'s own startup request, not a real '
-              'departure');
+      expect(scheduler.initializeCalls, 1,
+          reason: 'start() is in flight, parked inside initialize() -- so '
+              'what follows is the state while the scheduler initializes, '
+              'not the state before it began');
+      expect(gateController.systemUiActive, isFalse,
+          reason: 'startup presents no system UI, so it opens no window');
+      expect(gateController.obscured, isFalse);
+      expect(find.byKey(const ValueKey('privacy-cover')), findsNothing,
+          reason: 'the pre-fix black first screen: the app sat behind the '
+              'opaque cover for as long as initialize() took');
+      expect(find.byType(ProfileHomeGate), findsOneWidget,
+          reason: 'the content is onstage (the default finder skips '
+              'offstage widgets)');
+      expect(scheduler.requestPermissionCalls, 0);
 
       initializeGate.complete();
       await tester.pumpAndSettle();
 
-      // Not `systemUiActive` here: closing a window starts a settling
-      // tail (bounded by `settleTimeout`) during which it deliberately
-      // stays reported as active — see `GateController._closeSystemUiWindow`.
-      expect(scheduler.initializeCalls, 1);
+      expect(gateController.systemUiActive, isFalse,
+          reason: 'and no settling tail is left behind either -- a window '
+              'that had opened would still be reported active here');
+      expect(find.byKey(const ValueKey('privacy-cover')), findsNothing);
+      expect(scheduler.requestPermissionCalls, 0);
 
       await disposeApp(tester, db);
     });
 
     testWidgets(
-        'the "Turn on reminders" re-request is wrapped the same way',
+        'on Android with notifications not enabled, startup asks nothing '
+        'and covers nothing; Today shows the "Turn on reminders" hint, and '
+        'tapping it is what makes the request (issue #1425)', (tester) async {
+      // Tall enough that Today's list builds the hint without scrolling.
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      // The real scheduler over a mocked platform channel, not
+      // `FakeReminderScheduler`: the fake's `initialize()` could not show
+      // whether the real one asks. flutter_test reports Android as the
+      // platform, which is what the scheduler resolves its implementation
+      // from.
+      expect(defaultTargetPlatform, TargetPlatform.android);
+      AndroidFlutterLocalNotificationsPlugin.registerWith();
+      const channel =
+          MethodChannel('dexterous.com/flutter/local_notifications');
+      final calls = <String>[];
+      // A fresh install on API 33+: POST_NOTIFICATIONS is off until asked.
+      var notificationsEnabled = false;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel,
+          (MethodCall call) async {
+        calls.add(call.method);
+        switch (call.method) {
+          case 'initialize':
+            return true;
+          case 'areNotificationsEnabled':
+            return notificationsEnabled;
+          case 'requestNotificationsPermission':
+            // The system dialog, answered "Allow".
+            notificationsEnabled = true;
+            return true;
+          default:
+            return null;
+        }
+      });
+      addTearDown(() => tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null));
+
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final profile = await DriftProfilesRepository(db.storage)
+          .create(displayName: 'Alice', isMinor: false);
+      final settings = DriftSettingsStore(db.storage);
+      await settings.set(SettingsKeys.lastActiveProfile, profile.id);
+      final scheduler = FlutterLocalNotificationsScheduler(
+        settingsStore: settings,
+        localTimeZoneProvider: () async => 'UTC',
+        permissionGate: NotificationPermissionGate(),
+      );
+
+      await tester.pumpWidget(LunarLogRoot(
+        gate: FakeGate(requiresUnlock: false),
+        dbOpener: () async => db,
+        scheduler: scheduler,
+        inactivityTimerFactory: FakeInactivityTimers().factory,
+      ));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      final gateController =
+          tester.element(find.byType(GateShell)).read<GateController>();
+      int requests() =>
+          calls.where((m) => m == 'requestNotificationsPermission').length;
+
+      expect(calls, contains('areNotificationsEnabled'),
+          reason: 'initialize() ran through to its availability probe');
+      expect(requests(), 0,
+          reason: 'the pre-fix bug: the system dialog fired here, at '
+              'launch, before the operator had seen a single screen');
+      expect(gateController.systemUiActive, isFalse);
+      expect(find.byKey(const ValueKey('privacy-cover')), findsNothing);
+
+      // Never asked, so not enabled -- and Today says so, with the action.
+      expect(find.byKey(const ValueKey('reminder-hint')), findsOneWidget,
+          reason: 'the hint is how a never-asked install finds the '
+              'permission, now that startup no longer asks');
+      final action = find.byKey(const ValueKey('reminder-hint-action'));
+      expect(action, findsOneWidget);
+      expect(find.text('Turn on reminders'), findsOneWidget);
+
+      await tester.tap(action);
+      await tester.pumpAndSettle();
+
+      expect(requests(), 1,
+          reason: 'the in-context tap is the one and only request');
+      expect(gateController.systemUiActive, isTrue,
+          reason: 'this request does present a dialog, so it does run '
+              'inside a window (still reported through its settling tail)');
+      expect(find.byKey(const ValueKey('privacy-cover')), findsNothing,
+          reason: 'and the cover came down with the dialog');
+      expect(find.byKey(const ValueKey('reminder-hint')), findsNothing,
+          reason: 'granted: the hint retires without waiting for a resume');
+
+      await disposeApp(tester, db);
+    });
+
+    testWidgets(
+        'the "Turn on reminders" request runs inside the system-UI window',
         (tester) async {
       final db = LunarLogDatabase(NativeDatabase.memory());
       final requestGate = Completer<void>();
@@ -517,6 +625,9 @@ void main() {
       final gateController = homeContext(tester).read<GateController>();
       final requestPermission =
           homeContext(tester).read<RequestNotificationPermissionCallback>();
+      expect(gateController.systemUiActive, isFalse,
+          reason: 'startup left no window (or settling tail) open, so the '
+              'one asserted below is this request\'s own');
 
       final pending = requestPermission();
       await tester.pump();

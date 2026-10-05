@@ -610,8 +610,8 @@ class LunarLogRootState extends State<LunarLogRoot> {
     // AC2: the settings store and the coordinator are built in
     // `lib/composition/`; this method only resolves the device id and
     // starts the returned instance.
-    final deviceId = await resolvePushDeviceId(
-        buildCompositionSettingsStore(db));
+    final settings = buildCompositionSettingsStore(db);
+    final deviceId = await resolvePushDeviceId(settings);
     if (!mounted) return;
 
     final coordinator = buildPushRegistrationCoordinator(
@@ -621,6 +621,13 @@ class LunarLogRootState extends State<LunarLogRoot> {
       authStates: authService.states,
       currentAuthState: () => authService.state,
       onTap: _gate.setPendingLaunchProfileId,
+      // Issue #1425: push registration asks for notification permission at
+      // launch. It gets the gate's system-UI window to open around that
+      // ask (so the dialog does not re-lock the app behind it) and the
+      // store the Android refusal count lives in (so a refusal there is
+      // one the "Turn on reminders" tap knows about).
+      settings: settings,
+      duringSystemUi: _gate.duringSystemUi,
     );
     _pushCoordinator = coordinator;
     await coordinator.start();

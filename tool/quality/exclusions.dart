@@ -164,7 +164,15 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'this file has, is now a directly unit-tested top-level function '
         'despite living in this excluded file. PushRegistrationCoordinator '
         '(the ordering/lifecycle logic) is covered directly against a fake '
-        'PushTokenSource.',
+        'PushTokenSource. Issue #1425: the launch-time permission ask adds '
+        'one more plugin call here (getNotificationSettings) and nothing '
+        'else -- whether to ask, the system-UI window around the ask, and '
+        'the Android refusal count are lib/data/notifications/'
+        'push_permission_ask.dart, lib/domain/notifications/'
+        'push_permission_plan.dart and android_notification_denials.dart, '
+        'none of them excluded; pushPermissionStateOf() and '
+        'FirebasePushTokenSource.askPermission() are unit-tested here with '
+        'fakes for the two plugin calls.',
   ),
   // Issue #173: the health-channel platform pins. The constructor is the
   // entire executable surface of each file -- everything real they bind
