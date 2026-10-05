@@ -7,6 +7,7 @@ import { webAuth } from '../auth';
 import { sessionUserId } from '../sharing';
 import type { AppSupabaseClient } from '../supabase';
 import { DaySaveError, dayViewFromSyncedData, saveDay, type SaveDayResult } from './day-data';
+import { recentTagCodes } from './categories';
 import type { DayEdit, LoadedDayView } from './payloads';
 
 /**
@@ -91,7 +92,14 @@ export function useDayView(
     }
   }, [query.data, uid, notFound, profileId, dateIso]);
 
+  // The symptom picker's "Recent" row, read off the profile's own entries.
+  const recentTags = useMemo(
+    () => (query.data === undefined ? [] : recentTagCodes(query.data.day_entries, profileId)),
+    [query.data, profileId],
+  );
+
   return {
+    recentTags,
     isPending: query.isPending || uid === null,
     signedOut: client !== null && uid === '',
     isError: query.isError || notFound,
