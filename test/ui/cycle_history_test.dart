@@ -30,6 +30,7 @@ import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
+import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -37,11 +38,13 @@ import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart' show NotEnoughHistory;
+import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/overview/cycle_history_section.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../support/erroring_day_entries_repository.dart';
+import '../support/fake_auth_service.dart';
 
 const String kDisclaimer = 'Estimates only — not medical advice.';
 const String kSyncNote = 'Omissions sync across your devices.';
@@ -124,9 +127,16 @@ class Harness {
   /// doc comment for why this is no longer through `OverviewPanel`/
   /// `ProfileDetailScreen`). [notEnough] (issue #816) is the caller's live
   /// not-enough-history state, when it has one.
-  Widget appFor({bool readOnly = false, NotEnoughHistory? notEnough}) {
+  Widget appFor({
+    bool readOnly = false,
+    NotEnoughHistory? notEnough,
+    AuthController? auth,
+  }) {
     return MultiProvider(
       providers: [
+        // What the app root provides when the build has an account at all.
+        if (auth != null)
+          ChangeNotifierProvider<AuthController>.value(value: auth),
         Provider<CycleHistoryService>.value(
           value: CycleHistoryService(entries, settings: settings),
         ),
@@ -159,6 +169,7 @@ Future<Harness> pumpHistory(
   bool readOnly = false,
   int bleedDays = 4,
   NotEnoughHistory? notEnough,
+  bool signedIn = false,
 }) async {
   tester.view.physicalSize = const Size(800, 1600);
   tester.view.devicePixelRatio = 1.0;
@@ -188,8 +199,16 @@ Future<Harness> pumpHistory(
     }
   }
   final harness = Harness(db, profile, entries, settings)..today = today;
+  AuthController? auth;
+  if (signedIn) {
+    final service = FakeAuthService()
+      ..emit(AuthSessionState.signedIn, user: const AuthUser(id: 'user-1'));
+    auth = AuthController(authService: service);
+    addTearDown(auth.dispose);
+    addTearDown(service.dispose);
+  }
   await tester.pumpWidget(
-    harness.appFor(readOnly: readOnly, notEnough: notEnough),
+    harness.appFor(readOnly: readOnly, notEnough: notEnough, auth: auth),
   );
   await tester.pumpAndSettle();
   return harness;
@@ -386,10 +405,71 @@ void main() {
     });
   });
 
+  group('"Omissions sync across your devices" is said only when it is '
+      'true and about something', () {
+    testWidgets('signed in, with cycles that can be omitted: the line is '
+        'there', (tester) async {
+      final h = await pumpHistory(
+        tester,
+        today: aug30,
+        starts: kSteadyStarts,
+        signedIn: true,
+      );
+      expect(find.text('Omit'), findsWidgets);
+      expect(find.text(kSyncNote), findsOneWidget);
+      await disposeHistory(tester, h);
+    });
+
+    testWidgets('no account on this device: an omission goes nowhere, so '
+        'the line is not there', (tester) async {
+      final h = await pumpHistory(tester, today: aug30, starts: kSteadyStarts);
+      // The control itself is unchanged.
+      expect(find.text('Omit'), findsWidgets);
+      expect(find.text(kSyncNote), findsNothing);
+      await disposeHistory(tester, h);
+    });
+
+    testWidgets('signed in, but only the cycle in progress: there is '
+        'nothing to omit, so there are no omissions to speak of', (
+      tester,
+    ) async {
+      final h = await pumpHistory(
+        tester,
+        today: aug30,
+        starts: [LocalDate(2026, 8, 5)],
+        signedIn: true,
+      );
+      expect(find.byKey(const ValueKey('history-card')), findsOneWidget);
+      expect(find.byKey(const ValueKey('history-open-item')), findsOneWidget);
+      expect(find.text('Omit'), findsNothing);
+      expect(find.text(kSyncNote), findsNothing);
+      await disposeHistory(tester, h);
+    });
+
+    testWidgets('signed in, read-only: she cannot omit anything, so the '
+        'line is not there', (tester) async {
+      final h = await pumpHistory(
+        tester,
+        today: aug30,
+        starts: kSteadyStarts,
+        readOnly: true,
+        signedIn: true,
+      );
+      expect(find.text('Omit'), findsNothing);
+      expect(find.text(kSyncNote), findsNothing);
+      await disposeHistory(tester, h);
+    });
+  });
+
   group('AC4/AC5: confidence and statistics', () {
     testWidgets('steady 30-day history: high confidence, avg cycle 30, avg '
         'period 4, variation 0, disclaimer, sync note', (tester) async {
-      final h = await pumpHistory(tester, today: aug30, starts: kSteadyStarts);
+      final h = await pumpHistory(
+        tester,
+        today: aug30,
+        starts: kSteadyStarts,
+        signedIn: true,
+      );
 
       expect(
         find.descendant(
@@ -577,14 +657,11 @@ void main() {
       expect(find.byKey(const ValueKey('history-card')), findsOneWidget);
       expect(find.byKey(const ValueKey('history-stats')), findsNothing);
       expect(find.byKey(const ValueKey('history-disclaimer')), findsNothing);
-      // The rest of the card (item list, sync note) is unaffected.
+      // The rest of the card (title, item list with its Omit controls) is
+      // unaffected. The sync note has its own group below: it depends on
+      // an account, which this harness does not provide.
       expect(find.text('Cycle history'), findsOneWidget);
-      expect(
-        find.text(
-          'Omissions sync across your devices.',
-        ),
-        findsOneWidget,
-      );
+      expect(find.text('Omit'), findsWidgets);
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));

@@ -31,6 +31,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/care_modes.dart' show completedCycleProgress;
 import 'package:lunarlog/domain/insights/cycle_comparison.dart'
     show kMinCyclesToCompare;
@@ -40,6 +41,7 @@ import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart'
     show NotEnoughHistory, kMinCompletedValidCycles;
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/confidence_chip.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
@@ -281,14 +283,16 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
               ),
             const Divider(height: LLSpace.space5),
             for (final item in view.items) _itemRow(context, item),
-            const SizedBox(height: LLSpace.space1),
-            Text(
-              l10n.cycleHistorySyncNote,
-              key: const ValueKey('history-sync-note'),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+            if (_omissionsSync(context, view)) ...[
+              const SizedBox(height: LLSpace.space1),
+              Text(
+                l10n.cycleHistorySyncNote,
+                key: const ValueKey('history-sync-note'),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
-            ),
+            ],
             if (_comparing) ...[
               const SizedBox(height: LLSpace.space2),
               _comparisonFooter(context),
@@ -297,6 +301,23 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
         ),
       ),
     );
+  }
+
+  /// Whether "Omissions sync across your devices" is true here and about
+  /// something on the card.
+  ///
+  /// The line used to close every history card. It was there with no
+  /// account on the device, where an omission goes nowhere; and under a
+  /// card holding only the cycle in progress, where there is no Omit to
+  /// press and so no omission to speak of. It needs a row that offers
+  /// Omit or Include (a completed cycle that is not an automatic outlier,
+  /// for someone who may change it) and a signed-in account for the
+  /// choice to sync to.
+  bool _omissionsSync(BuildContext context, CycleHistoryView view) {
+    if (widget.readOnly) return false;
+    if (!view.items.any((item) => !item.isOpen && !item.outlier)) return false;
+    final auth = Provider.of<AuthController?>(context);
+    return auth?.state.hasUsableSession ?? false;
   }
 
   /// Issue #235: enters/exits selection mode. Only rendered when a caller
