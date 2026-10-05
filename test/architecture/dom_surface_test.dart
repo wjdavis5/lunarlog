@@ -1,37 +1,35 @@
-/// Epic #831 (slice 5) XSS surface review: pins the raw-DOM and URL-launch
-/// surface the review in `docs/web/xss-surface-review.md` concludes is safe.
+/// Pins the raw-DOM and URL-launch surface of `lib/`.
 ///
-/// Flutter renders user-authored text through its own text pipeline — a
-/// `Text` never interprets HTML — so the app's XSS risk is confined to the
-/// few places that deliberately leave that pipeline. This test is the
-/// tripwire for exactly those places:
+/// Written for epic #831 (slice 5), whose review is recorded in
+/// `docs/web/xss-surface-review.md`. The Flutter web build that review was
+/// about is gone (issue #1257); the scans stay because each still guards
+/// something:
 ///
-/// * **Direct browser-DOM imports.** Only an explicit allowlist of files may
-///   import `package:web`/`dart:html`/`dart:js_interop`/`dart:js`/
-///   `dart:js_util`/`dart:ui_web`. Today that is exactly one file, the web
-///   half of the URL cleaner, reached through a `dart.library.js_interop`
-///   conditional import so a native build never sees it.
+/// * **Direct browser-DOM imports.** No file in `lib/` may import
+///   `package:web`/`dart:html`/`dart:js_interop`/`dart:js`/`dart:js_util`/
+///   `dart:ui_web`. The app targets iOS and Android only, so such an import
+///   would be the first step of a browser build coming back by accident.
+///   (`tool/web_domain/`, which compiles the domain module for the React
+///   web client, lives outside `lib/` and is not scanned.)
 /// * **Raw-HTML sinks.** No `innerHTML`/`setInnerHtml`/`HtmlElementView`/
 ///   `dangerouslySetInnerHTML` string may appear in `lib/`.
 /// * **URL launching.** A bare `launchUrl(`/`launchUrlString(` call may live
 ///   only in the one scheme-gated helper, so a user-authored URL can never
-///   reach the platform launcher with an unvalidated scheme.
+///   reach the platform launcher with an unvalidated scheme. This one is
+///   not specific to any platform.
 ///
-/// Source-text scans, like `web_headers_test.dart`'s policy parse, cannot run
-/// a browser — they pin the shape. Each detector gets its own falsification
-/// coverage so a silently broken match cannot leave the guard vacuously
-/// green.
+/// Source-text scans pin the shape. Each detector gets its own
+/// falsification coverage so a silently broken match cannot leave the guard
+/// vacuously green.
 library;
 
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-/// Files permitted to import a browser-DOM library directly. Add here only
-/// with a matching entry in `docs/web/xss-surface-review.md`.
-const Set<String> kRawDomImportAllowlist = <String>{
-  'lib/data/auth/web_url_cleaner_web.dart',
-};
+/// Files permitted to import a browser-DOM library directly. Empty: the
+/// app has no browser build.
+const Set<String> kRawDomImportAllowlist = <String>{};
 
 /// Files permitted a bare `launchUrl(`/`launchUrlString(` call. The one
 /// scheme-gated helper; see `kDefaultLaunchSchemes` in it.
@@ -109,8 +107,8 @@ List<File> _dartFilesUnder(String root) => Directory(root)
 String _posix(File file) => file.path.replaceAll(r'\', '/');
 
 void main() {
-  group('raw browser-DOM imports are allowlisted', () {
-    test('only the reviewed allowlist imports package:web / dart:html / '
+  group('raw browser-DOM imports', () {
+    test('no file in lib/ imports package:web / dart:html / '
         'dart:js_interop', () {
       final files = _dartFilesUnder('lib');
       expect(files, isNotEmpty, reason: 'scanned zero files — check the path');
@@ -124,17 +122,9 @@ void main() {
       expect(
         offenders,
         isEmpty,
-        reason: 'a new direct browser-DOM import must be reviewed and added '
-            'to kRawDomImportAllowlist (and docs/web/xss-surface-review.md), '
-            'not smuggled in:\n${offenders.join('\n')}',
+        reason: 'lib/ has no browser build: a direct browser-DOM import '
+            'must not appear:\n${offenders.join('\n')}',
       );
-    });
-
-    test('the allowlist entry still imports package:web, so it cannot rot '
-        'into a stale exception', () {
-      final source =
-          File('lib/data/auth/web_url_cleaner_web.dart').readAsStringSync();
-      expect(importsRawDom(source), isTrue);
     });
 
     test('detector flags the direct forms and ignores the conditional '

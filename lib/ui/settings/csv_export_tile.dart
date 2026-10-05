@@ -7,7 +7,6 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -123,7 +122,6 @@ class _CsvExportTileState extends State<CsvExportTile>
 
   @override
   Widget build(BuildContext context) {
-    if (kIsWeb) return const SizedBox.shrink();
     final profiles = _profiles;
     if (profiles == null) return const SizedBox.shrink();
     final liveProfiles = _liveProfiles(profiles);

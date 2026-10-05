@@ -376,7 +376,6 @@ class DeletionHarness {
                 valueListenable: _sectionVisible,
                 builder: (context, visible, _) => visible
                     ? AccountSection(
-                        showExportAndDelete: true,
                         exportAccount: exportAccount,
                         appleAuthorizationCodeRequest: appleAuthorizationCodeRequest,
                         showAddApple: showAddApple,
@@ -1318,8 +1317,8 @@ void main() {
   group('Issue #222: "Export my data" is no longer a tile in this section',
       () {
     testWidgets(
-        'account-export never renders here, signed in or out, regardless '
-        'of showExportAndDelete - it moved to YourDataSection', (tester) async {
+        'account-export never renders here, signed in or out - it moved to '
+        'YourDataSection', (tester) async {
       final h = DeletionHarness();
       addTearDown(h.dispose);
       await h.pump(tester);
@@ -1331,42 +1330,13 @@ void main() {
     });
   });
 
-  group('R11: signed out / unconfigured / web absence (delete tile only - '
+  group('R11: signed-out absence (delete tile only - '
       '"Export my data" moved out of this section, Issue #222)', () {
     testWidgets('signed out: the delete tile does not render', (tester) async {
       final h = DeletionHarness();
       addTearDown(h.dispose);
       h.auth.emit(AuthSessionState.signedOut);
       await h.pump(tester);
-
-      expect(key('account-delete'), findsNothing);
-    });
-
-    testWidgets('showExportAndDelete: false (simulated web) hides the '
-        'delete tile', (tester) async {
-      final auth = FakeAuthService();
-      addTearDown(auth.dispose);
-      auth.emit(AuthSessionState.signedIn, user: const AuthUser(id: 'u1'));
-      final controller = AuthController(authService: auth);
-      addTearDown(controller.dispose);
-      final deletion = FakeAccountDeletionService();
-
-      await tester.pumpWidget(
-        MaterialApp(
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: MultiProvider(
-            providers: [
-              ChangeNotifierProvider<AuthController>.value(value: controller),
-              Provider<AccountDeletionService>.value(value: deletion),
-            ],
-            child: const Scaffold(
-              body: AccountSection(showExportAndDelete: false),
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
 
       expect(key('account-delete'), findsNothing);
     });

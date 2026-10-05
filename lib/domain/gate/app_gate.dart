@@ -1,10 +1,9 @@
 /// Domain-level credential gate (U7, R7): the single seam through which
 /// the app asks "may data be shown?".
 ///
-/// Implementations live under `lib/startup/gate/`:
-/// * `local_auth_gate.dart` (mobile/desktop via local_auth) — device
-///   credential, biometric with passcode fallback.
-/// * `web_gate.dart` — no-op returning true (the web dev banner is U8).
+/// The implementation lives under `lib/startup/gate/`:
+/// `local_auth_gate.dart` (mobile/desktop via local_auth) — device
+/// credential, biometric with passcode fallback.
 ///
 /// The gate is *advisory to nothing*: the shell (`lib/app_lifecycle.dart`)
 /// refuses to render profile data — and on gated platforms refuses to open
@@ -12,8 +11,7 @@
 library;
 
 abstract interface class AppGate {
-  /// Whether this gate actually blocks. True on mobile/desktop; false on
-  /// web, where no lock UI is shown in v1.
+  /// Whether this gate actually blocks. True for the local_auth gate.
   bool get requiresUnlock;
 
   /// Whether the device has any credential enrolled at all (biometric or

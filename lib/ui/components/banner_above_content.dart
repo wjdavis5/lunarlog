@@ -1,8 +1,8 @@
 /// A full-width strip stacked above the app content, in a shape a screen
 /// reader can still see (issue #1426).
 ///
-/// Three strips mount in `MaterialApp.builder`, above the Navigator: the web
-/// guardrails banner, the QA-build marker, and the pending-invite banner.
+/// Two strips mount in `MaterialApp.builder`, above the Navigator: the
+/// QA-build marker and the pending-invite banner.
 /// Each is a `Column` with the strip first and the Navigator in an
 /// `Expanded` beneath it. Built with nothing else, that shape hides the
 /// strip from assistive technology: every route's modal barrier is a

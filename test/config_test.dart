@@ -1,30 +1,13 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/config.dart';
 
 void main() {
-  group('parseWebSyncEnabled', () {
-    test('is true only for the literal "true"', () {
-      expect(parseWebSyncEnabled('true'), isTrue);
-    });
-
-    test('is false for empty, "false", and "TRUE"', () {
-      expect(parseWebSyncEnabled(''), isFalse);
-      expect(parseWebSyncEnabled('false'), isFalse);
-      expect(parseWebSyncEnabled('TRUE'), isFalse);
-      expect(parseWebSyncEnabled(' true'), isFalse);
-      expect(parseWebSyncEnabled('1'), isFalse);
-    });
-  });
-
-  group('computeHasSupabase (native)', () {
+  group('computeHasSupabase', () {
     test('is false when the URL is empty', () {
       expect(
         computeHasSupabase(
           url: '',
           publishableKey: 'sb_publishable_x',
-          isWeb: false,
-          webSyncEnabled: false,
         ),
         isFalse,
       );
@@ -35,8 +18,6 @@ void main() {
         computeHasSupabase(
           url: 'https://example.supabase.co',
           publishableKey: '',
-          isWeb: false,
-          webSyncEnabled: false,
         ),
         isFalse,
       );
@@ -47,8 +28,6 @@ void main() {
         computeHasSupabase(
           url: '',
           publishableKey: '',
-          isWeb: false,
-          webSyncEnabled: false,
         ),
         isFalse,
       );
@@ -59,48 +38,8 @@ void main() {
         computeHasSupabase(
           url: 'https://example.supabase.co',
           publishableKey: 'sb_publishable_x',
-          isWeb: false,
-          webSyncEnabled: false,
         ),
         isTrue,
-      );
-    });
-  });
-
-  group('computeHasSupabase (web)', () {
-    test('is false on web unless webSyncEnabled, even when both are set', () {
-      expect(
-        computeHasSupabase(
-          url: 'https://example.supabase.co',
-          publishableKey: 'sb_publishable_x',
-          isWeb: true,
-          webSyncEnabled: false,
-        ),
-        isFalse,
-      );
-    });
-
-    test('is true on web when webSyncEnabled and both are set', () {
-      expect(
-        computeHasSupabase(
-          url: 'https://example.supabase.co',
-          publishableKey: 'sb_publishable_x',
-          isWeb: true,
-          webSyncEnabled: true,
-        ),
-        isTrue,
-      );
-    });
-
-    test('webSyncEnabled alone does not configure Supabase on web', () {
-      expect(
-        computeHasSupabase(
-          url: '',
-          publishableKey: '',
-          isWeb: true,
-          webSyncEnabled: true,
-        ),
-        isFalse,
       );
     });
   });
@@ -156,7 +95,6 @@ void main() {
       expect(
         computeHasGoogle(
           hasSupabase: true,
-          isWeb: false,
           iosClientId: '',
           webClientId: 'web-id.apps.googleusercontent.com',
         ),
@@ -168,21 +106,8 @@ void main() {
       expect(
         computeHasGoogle(
           hasSupabase: true,
-          isWeb: false,
           iosClientId: 'ios-id.apps.googleusercontent.com',
           webClientId: '',
-        ),
-        isFalse,
-      );
-    });
-
-    test('is false on web even when both ids are set', () {
-      expect(
-        computeHasGoogle(
-          hasSupabase: true,
-          isWeb: true,
-          iosClientId: 'ios-id.apps.googleusercontent.com',
-          webClientId: 'web-id.apps.googleusercontent.com',
         ),
         isFalse,
       );
@@ -192,7 +117,6 @@ void main() {
       expect(
         computeHasGoogle(
           hasSupabase: false,
-          isWeb: false,
           iosClientId: 'ios-id.apps.googleusercontent.com',
           webClientId: 'web-id.apps.googleusercontent.com',
         ),
@@ -200,11 +124,10 @@ void main() {
       );
     });
 
-    test('is true natively when Supabase and both ids are set', () {
+    test('is true when Supabase and both ids are set', () {
       expect(
         computeHasGoogle(
           hasSupabase: true,
-          isWeb: false,
           iosClientId: 'ios-id.apps.googleusercontent.com',
           webClientId: 'web-id.apps.googleusercontent.com',
         ),
@@ -218,7 +141,6 @@ void main() {
       expect(
         computeHasPasskeys(
           hasSupabase: true,
-          isWeb: false,
           relyingPartyId: '',
         ),
         isFalse,
@@ -229,55 +151,18 @@ void main() {
       expect(
         computeHasPasskeys(
           hasSupabase: false,
-          isWeb: false,
           relyingPartyId: 'example.com',
         ),
         isFalse,
       );
     });
 
-    test('is false on web even when the id is set', () {
+    test('is true when Supabase is configured and the id is set', () {
       expect(
         computeHasPasskeys(
           hasSupabase: true,
-          isWeb: true,
           relyingPartyId: 'example.com',
         ),
-        isFalse,
-      );
-    });
-
-    test('is true when Supabase is configured, not web, and id is set', () {
-      expect(
-        computeHasPasskeys(
-          hasSupabase: true,
-          isWeb: false,
-          relyingPartyId: 'example.com',
-        ),
-        isTrue,
-      );
-    });
-  });
-
-  group('computeAppleSignInAvailable (epic #831 slice 2)', () {
-    test('is false on web even on iOS', () {
-      expect(
-        computeAppleSignInAvailable(isWeb: true, isIos: true),
-        isFalse,
-        reason: 'a browser has no native Sign in with Apple ceremony',
-      );
-    });
-
-    test('is false on a non-iOS native platform', () {
-      expect(
-        computeAppleSignInAvailable(isWeb: false, isIos: false),
-        isFalse,
-      );
-    });
-
-    test('is true only natively on iOS', () {
-      expect(
-        computeAppleSignInAvailable(isWeb: false, isIos: true),
         isTrue,
       );
     });
@@ -303,10 +188,9 @@ void main() {
           'iosAppId': '1:1234567890:ios:abc',
         };
 
-    bool call(Map<String, String> fields, {bool hasSupabase = true, bool isWeb = false}) =>
+    bool call(Map<String, String> fields, {bool hasSupabase = true}) =>
         computeHasPush(
           hasSupabase: hasSupabase,
-          isWeb: isWeb,
           projectId: fields['projectId']!,
           senderId: fields['senderId']!,
           androidApiKey: fields['androidApiKey']!,
@@ -322,15 +206,11 @@ void main() {
       }
     });
 
-    test('is false on web even with every define set', () {
-      expect(call(fullSet(), isWeb: true), isFalse);
-    });
-
     test('is false without hasSupabase', () {
       expect(call(fullSet(), hasSupabase: false), isFalse);
     });
 
-    test('is true only with the full set, natively, with Supabase configured', () {
+    test('is true only with the full set, with Supabase configured', () {
       expect(call(fullSet()), isTrue);
     });
   });
@@ -341,7 +221,6 @@ void main() {
       expect(AppConfig.supabaseUrl, isEmpty);
       expect(AppConfig.supabasePublishableKey, isEmpty);
       expect(AppConfig.sentryDsn, isEmpty);
-      expect(AppConfig.webSyncEnabled, isFalse);
       expect(AppConfig.hasSupabase, isFalse);
       expect(AppConfig.hasSentry, isFalse);
       expect(AppConfig.googleIosClientId, isEmpty);
@@ -378,36 +257,32 @@ void main() {
       expect(AppConfig.mfaEnabled, isFalse);
     });
 
-    test('hasSupabase agrees with the pure function for this platform', () {
+    test('hasSupabase agrees with the pure function', () {
       expect(
         AppConfig.hasSupabase,
         computeHasSupabase(
           url: AppConfig.supabaseUrl,
           publishableKey: AppConfig.supabasePublishableKey,
-          isWeb: kIsWeb,
-          webSyncEnabled: AppConfig.webSyncEnabled,
         ),
       );
     });
 
-    test('hasGoogle agrees with the pure function for this platform', () {
+    test('hasGoogle agrees with the pure function', () {
       expect(
         AppConfig.hasGoogle,
         computeHasGoogle(
           hasSupabase: AppConfig.hasSupabase,
-          isWeb: kIsWeb,
           iosClientId: AppConfig.googleIosClientId,
           webClientId: AppConfig.googleWebClientId,
         ),
       );
     });
 
-    test('hasPasskeys agrees with the pure function for this platform', () {
+    test('hasPasskeys agrees with the pure function', () {
       expect(
         AppConfig.hasPasskeys,
         computeHasPasskeys(
           hasSupabase: AppConfig.hasSupabase,
-          isWeb: kIsWeb,
           relyingPartyId: AppConfig.passkeyRelyingPartyId,
         ),
       );
@@ -420,12 +295,11 @@ void main() {
       expect(AppConfig.sentryTracesSampleRate, computeTracesSampleRate(''));
     });
 
-    test('hasPush agrees with the pure function for this platform', () {
+    test('hasPush agrees with the pure function', () {
       expect(
         AppConfig.hasPush,
         computeHasPush(
           hasSupabase: AppConfig.hasSupabase,
-          isWeb: kIsWeb,
           projectId: AppConfig.fcmProjectId,
           senderId: AppConfig.fcmSenderId,
           androidApiKey: AppConfig.fcmAndroidApiKey,

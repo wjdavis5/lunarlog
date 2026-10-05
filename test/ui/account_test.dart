@@ -366,8 +366,8 @@ void main() {
     });
   });
 
-  group('web sign-in shape (epic #831 slice 2: providers hidden, email works)', () {
-    testWidgets('with Apple, Google, and passkeys hidden (the web shape), the '
+  group('sign-in with every provider button hidden: email still works', () {
+    testWidgets('with Apple, Google, and passkeys hidden, the '
         'email + password form signs in', (tester) async {
       final s = await pumpStandalone(
         tester,
@@ -381,94 +381,44 @@ void main() {
       expect(
         key('auth-magic-link'),
         findsOneWidget,
-        reason: 'passwordless email has no build-config gate and is the web '
+        reason: 'passwordless email has no build-config gate and is the '
             'fallback alongside the password form',
       );
 
-      await tester.enterText(key('auth-email'), 'web@b.c');
+      await tester.enterText(key('auth-email'), 'a@b.c');
       await tester.enterText(key('auth-password'), 'correct horse');
       await tester.tap(key('auth-sign-in'));
       await tester.pumpAndSettle();
-      expect(s.auth.signInCalls.single.email, 'web@b.c');
+      expect(s.auth.signInCalls.single.email, 'a@b.c');
       expect(key('auth-error'), findsNothing);
     });
 
     testWidgets('with the native providers hidden, the passwordless email '
-        'send and the 8-digit code path still work on web', (tester) async {
+        'send and the 8-digit code path still work', (tester) async {
       final s = await pumpStandalone(
         tester,
         showApple: false,
         showGoogle: false,
         showPasskeys: false,
       );
-      await tester.enterText(key('auth-email'), 'web@b.c');
+      await tester.enterText(key('auth-email'), 'a@b.c');
       await tester.tap(key('auth-magic-link'));
       await tester.pumpAndSettle();
-      expect(s.auth.magicLinkCalls.single.email, 'web@b.c');
+      expect(s.auth.magicLinkCalls.single.email, 'a@b.c');
       expect(key('auth-code'), findsOneWidget);
 
       await tester.enterText(key('auth-code'), '12345678');
       await tester.pumpAndSettle();
       await tester.tap(key('auth-verify-code'));
       await tester.pumpAndSettle();
-      expect(s.auth.codeCalls.single.email, 'web@b.c');
+      expect(s.auth.codeCalls.single.email, 'a@b.c');
       expect(s.auth.codeCalls.single.code, '12345678');
     });
   });
 
-  group('web provider hint (issue #1096: Google- and Apple-created accounts '
-      'on web)', () {
-    final hintCopy = AppLocalizationsEn().accountSignInWebProviderHint;
-
-    Future<void> pumpWebShape(WidgetTester tester,
-            {bool? showWebProviderHint = true}) =>
-        pumpStandalone(
-          tester,
-          showApple: false,
-          showGoogle: false,
-          showPasskeys: false,
-          showWebProviderHint: showWebProviderHint,
-        );
-
-    testWidgets('on web (injected true): the hint renders under the '
-        'sign-in options, below the passwordless entry', (tester) async {
-      await pumpWebShape(tester);
-      expect(key('auth-web-provider-hint'), findsOneWidget);
-      expect(find.text(hintCopy), findsOneWidget);
-      expect(
-        tester.getTopLeft(key('auth-web-provider-hint')).dy,
-        greaterThan(tester.getTopLeft(key('auth-magic-link')).dy),
-        reason: 'the hint sits under the sign-in options, not above them',
-      );
-    });
-
-    testWidgets('on native (injected false): no hint', (tester) async {
-      await pumpStandalone(tester, showWebProviderHint: false);
-      expect(key('auth-web-provider-hint'), findsNothing);
-    });
-
-    testWidgets('the null default follows kIsWeb — false under the host '
-        'test runner, so a native build never shows it without the '
-        'override', (tester) async {
-      expect(kIsWeb, isFalse,
-          reason: 'this pin only means something on a non-web runner');
-      await pumpStandalone(tester);
-      expect(key('auth-web-provider-hint'), findsNothing);
-    });
-
-    testWidgets('persists across the create-account toggle: the steer away '
-        'from minting a second account matters most after that flip',
-        (tester) async {
-      await pumpWebShape(tester);
-      await tester.tap(key('auth-mode-toggle'));
-      await tester.pumpAndSettle();
-      expect(key('auth-web-provider-hint'), findsOneWidget);
-    });
-  });
-
   group('provider buttons and passwordless entry (#2 U4; AE2, AE8, R12)', () {
-    testWidgets('showGoogle: false and the null default (empty config on a '
-        'non-web platform) render no Google button; true renders it (AE8)', (
+    testWidgets('showGoogle: false and the null default (empty config) '
+        'render no Google button; true renders it (AE8)', (
       tester,
     ) async {
       await pumpStandalone(tester, showGoogle: false);
@@ -2332,29 +2282,12 @@ void main() {
       String copy({
         SyncSnapshot? snapshot,
         AuthSessionState? authState,
-        bool webSyncOff = false,
       }) => syncStatusCopy(
         _l10n,
         snapshot: snapshot,
         authState: authState,
         now: now,
-        webSyncOff: webSyncOff,
       );
-
-      test('webSyncOff wins over every other tier, including an awaiting '
-          'confirmation email', () {
-        expect(
-          syncStatusCopy(
-            _l10n,
-            snapshot: null,
-            authState: null,
-            awaitingConfirmationEmail: 'a@b.c',
-            now: now,
-            webSyncOff: true,
-          ),
-          _l10n.accountSyncStatusWebSyncOff,
-        );
-      });
 
       test('a null snapshot (sync unconfigured for this build) shows its '
           'own copy', () {
@@ -2969,7 +2902,6 @@ Future<StandaloneSignIn> pumpStandalone(
   bool? showApple,
   bool? showGoogle,
   bool? showPasskeys,
-  bool? showWebProviderHint,
   bool embedded = false,
   VoidCallback? onSignedIn,
   Map<String, String>? seed,
@@ -2995,7 +2927,6 @@ Future<StandaloneSignIn> pumpStandalone(
           showApple: showApple,
           showGoogle: showGoogle,
           showPasskeys: showPasskeys,
-          showWebProviderHint: showWebProviderHint,
           embedded: embedded,
           onSignedIn: onSignedIn,
         ),

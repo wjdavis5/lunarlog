@@ -16,14 +16,6 @@ const String kAuthCallbackScheme = 'lunarlog';
 const String kAuthCallbackHost = 'auth-callback';
 const String kAuthCallbackUrl = '$kAuthCallbackScheme://$kAuthCallbackHost';
 
-/// Web callback path (epic #831 slice 2). A browser cannot open the custom
-/// scheme, so a web build sends its confirmation, passwordless, and reset
-/// emails to this path on the page's own origin (`<origin>/auth/callback`)
-/// and reads the returned `?code=` off the initial `Uri.base`. The deployed
-/// origin's callback must be added to the Supabase dashboard redirect
-/// allow-list — an owner step documented in `docs/web/security-posture.md`.
-const String kWebAuthCallbackPath = '/auth/callback';
-
 sealed class AuthLink {
   const AuthLink();
 }
@@ -80,8 +72,8 @@ final class AuthLinkCallback extends AuthLink {
 
 AuthLink classifyAuthLink(Uri uri) {
   // On the custom scheme only the registered host is this app's callback;
-  // any other host is not ours. (Web callbacks arrive on the page origin,
-  // so an https link is classified on its parameters alone.)
+  // any other host is not ours. (A link on any other scheme, such as
+  // https, is classified on its parameters alone.)
   if (uri.scheme == kAuthCallbackScheme && uri.host != kAuthCallbackHost) {
     return const AuthLinkIgnored();
   }

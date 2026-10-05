@@ -7,7 +7,6 @@
 /// [httpClient] is the seam for U7's `SentryHttpClient`.
 library;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/data/auth/auth_gateway.dart';
@@ -23,7 +22,7 @@ Future<AuthService?> bootstrapSupabase({http.Client? httpClient}) async {
     url: AppConfig.supabaseUrl,
     publishableKey: AppConfig.supabasePublishableKey,
     httpClient: httpClient,
-    authOptions: buildAuthClientOptions(isWeb: kIsWeb),
+    authOptions: buildAuthClientOptions(),
     // Every PostgREST call (the `sync_push` RPC and the pull selects) gets
     // a per-attempt timeout, so a stalled connection cannot hang a sync
     // cycle forever. The resulting `TimeoutException` is mapped by
@@ -42,31 +41,22 @@ Future<AuthService?> bootstrapSupabase({http.Client? httpClient}) async {
   return service;
 }
 
-/// The Supabase auth client options for this platform (U4; KTD8; epic #831
-/// slice 2).
+/// The Supabase auth client options (U4; KTD8).
 ///
 /// PKCE only, never implicit: a hijacked custom-scheme code is useless
 /// without the verifier in the same storage (KTD8). `detectSessionInUri` is
-/// off on both platforms: `supabase_flutter` would otherwise exchange a code
-/// during initialization, before anything can subscribe, and a cold-start
-/// recovery event would be lost. `SupabaseAuthService` handles the callback
-/// itself — natively from an app link, on web from the initial `Uri.base`.
+/// off: `supabase_flutter` would otherwise exchange a code during
+/// initialization, before anything can subscribe, and a cold-start recovery
+/// event would be lost. `SupabaseAuthService` handles the callback itself,
+/// from an app link.
 ///
-/// Native passes [SecureLocalStorage] for both the session and the PKCE
-/// verifier (Keychain/Keystore, KTD7). Web passes neither, so gotrue keeps
-/// its own browser storage (`localStorage`) — which its own `signOut`
-/// clears together with the session. Exposed for `web_auth_seam_test.dart`
-/// rather than inlined into `Supabase.initialize`.
+/// [SecureLocalStorage] holds both the session and the PKCE verifier
+/// (Keychain/Keystore, KTD7). Exposed for
+/// `test/architecture/auth_client_options_test.dart` rather than inlined
+/// into `Supabase.initialize`.
 FlutterAuthClientOptions buildAuthClientOptions({
-  required bool isWeb,
   SecureLocalStorage? nativeStorage,
 }) {
-  if (isWeb) {
-    return const FlutterAuthClientOptions(
-      authFlowType: AuthFlowType.pkce,
-      detectSessionInUri: false,
-    );
-  }
   final storage = nativeStorage ?? SecureLocalStorage();
   return FlutterAuthClientOptions(
     authFlowType: AuthFlowType.pkce,

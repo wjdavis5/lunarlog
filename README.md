@@ -25,8 +25,9 @@ back-calculation only, with the same confidence tiering as the period
 estimate and no new user input; fertility-signal logging (BBT, cervical
 mucus, ovulation tests, issue #144) that would refine it further does not
 exist yet.
-Targets iOS (iPhone first-class), Android, and
-an installable web PWA used for iteration only. The app holds sensitive health
+Targets iOS (iPhone first-class) and Android. The web client is a separate
+React app in [`webapp/`](webapp/README.md); the Flutter app itself no longer
+builds for the web. The app holds sensitive health
 data, including minors'; this repository is public, open source, and fully auditable,
 and must never contain real personal or health data.
 
@@ -51,10 +52,8 @@ Then, from the repo root:
 flutter pub get
 flutter analyze                 # lints (flutter_lints)
 flutter test                    # unit + widget tests
-flutter run -d chrome           # web, for iteration (no account, no sync)
 flutter run --dart-define-from-file=dart_defines.json   # with Supabase/Sentry configured
 flutter build apk --debug       # Android debug APK
-flutter build web --release     # installable web build
 flutter build ios --release --no-codesign   # unsigned; requires macOS
 ```
 
@@ -140,7 +139,7 @@ Apple), so any signing profile — local or CI — must be generated with that
 capability enabled on the `com.wjdavis5.lunarlog` App ID.
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs analyze +
-test + a release web build on ubuntu, the pgTAP database tests against a
+test on ubuntu, the pgTAP database tests against a
 local Supabase stack (`db-tests` job), a debug APK on ubuntu, and an unsigned
 iOS build on macOS, for pushes and PRs to `main`. Every build passes the
 Supabase, Sentry, and Google `--dart-define`s from repository secrets; on
@@ -172,9 +171,7 @@ device that already holds data, explicitly consents — but it is not an
 afterthought; it is the product's core loop. Sign-in methods:
 email/password, Google (iOS and Android, native picker), Apple (iOS), and
 passwordless email — a sign-in link opened on the requesting device or the
-code from the same email typed into the app. Web builds have no Google
-button (`google_sign_in_web` cannot supply an ID token), and accounts are
-off on web anyway unless `LUNARLOG_WEB_SYNC=true`. A signed-in operator can
+code from the same email typed into the app. A signed-in operator can
 see which methods the account has in the account section, add Google (or
 Apple on iOS) to it after a fresh device-credential check, and remove
 Google or Apple the same way once the account holds another method —
@@ -242,8 +239,8 @@ another:
 
 - **App (client-side, build time):** `lib/config.dart` (`AppConfig`) reads
   `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SENTRY_DSN`,
-  `SENTRY_TRACES_SAMPLE_RATE`, `GOOGLE_IOS_CLIENT_ID`,
-  `GOOGLE_WEB_CLIENT_ID`, and `LUNARLOG_WEB_SYNC` via `--dart-define`. Empty
+  `SENTRY_TRACES_SAMPLE_RATE`, `GOOGLE_IOS_CLIENT_ID`, and
+  `GOOGLE_WEB_CLIENT_ID` via `--dart-define`. Empty
   means unconfigured — `SENTRY_TRACES_SAMPLE_RATE` stays empty in every
   workflow (opt-in only, after issue #19). For local runs copy
   `dart_defines.example.json` to `dart_defines.json` (gitignored;
@@ -316,12 +313,6 @@ Part of the home lab; the canonical inventory lives in the lab root's
 
 ## Known limitations (accepted)
 
-- Web build is iteration-only — browser storage does not provide the
-  encryption-at-rest guarantee; do not treat the PWA as a secure data store.
-  Account sign-in and sync are **off** on web unless the build is compiled
-  with `LUNARLOG_WEB_SYNC=true` (a signed-in browser would hold the account's
-  bearer token and rows unencrypted; the dev banner says so when it is on).
-  Never set it in CI.
 - Backup is account-based: a device signed in to an account keeps a copy of
   its data in that account and can restore it on another device. A device
   that never signed in has no backup — losing it loses the data. "Export my

@@ -242,9 +242,7 @@ before that — and calls `AccountExportWriter` through the injectable
 unconditionally (even with zero profiles — restoring a device that has none
 yet is the point) and just pushes `settings/import_screen.dart`'s
 `ImportScreen` via `kRouteImportScreen`; the screen owns the whole
-pick/parse/preview/confirm/apply flow itself. Both tiles share the same
-`showExport`/`showImport` "not web" default, independently overridable for
-tests.
+pick/parse/preview/confirm/apply flow itself.
 
 `ImportScreen` never touches Drift or `file_picker` directly in a test: file
 bytes come from an injectable `ImportFileReader` (default
@@ -277,7 +275,7 @@ delivery — see `docs/clinical/fhir-export.md`.
 
 To keep UI components predictable, touch-friendly, and accessible across dynamic type scales (up to 2.5×):
 
-- **Dialog (`AlertDialog`)**: Reserved for a single, reversible or confirmative binary decision without text inputs (e.g. discard changes, confirm delete, confirm archive, erase web dev database). Dialog content must always be wrapped in a `SingleChildScrollView` so tall text or large accessibility scales do not trigger RenderFlex overflows.
+- **Dialog (`AlertDialog`)**: Reserved for a single, reversible or confirmative binary decision without text inputs (e.g. discard changes, confirm delete, confirm archive). Dialog content must always be wrapped in a `SingleChildScrollView` so tall text or large accessibility scales do not trigger RenderFlex overflows.
 - **Modal bottom sheet (`showModalBottomSheet`)**: Reserved for short, context-anchored forms and pickers (e.g. editing a profile name/metadata, inviting a guardian, the day logging sheet). Must be invoked with `isScrollControlled: true` and structured with `SafeArea`, a `Flexible(child: SingleChildScrollView(child: Form(...)))` body, and pinned actions inside an `OverflowBar` (with `alignment: MainAxisAlignment.end` and `spacing`/`overflowSpacing`). This prevents the actions from scrolling off-screen and ensures buttons wrap gracefully without horizontal RenderFlex overflow under 2.5× text scale.
 - **Full screen (`Scaffold`)**: Required for multi-input flows, long-form reading (e.g. `PrivacyPolicyScreen`), independent navigation hierarchies, and full-screen error states that stop the app cold (e.g. `RestoreErrorScreen`). Any full-screen error state must provide actionable escape paths (such as "Continue without syncing" and "Sign out" on restore error) to prevent stranding the operator, and must announce its message to assistive technology via `Semantics(liveRegion: true)`.
 

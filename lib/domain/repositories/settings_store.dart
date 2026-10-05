@@ -1,6 +1,6 @@
 /// Device-local key-value settings (interface). Backs later units'
-/// last-active profile, relock toggle and web-modal acknowledgment; small
-/// by design — values are plain strings.
+/// last-active profile and relock toggle; small by design — values are
+/// plain strings.
 library;
 
 abstract interface class SettingsStore {
@@ -55,7 +55,6 @@ abstract final class SettingsKeys {
   /// disabled). Device-local; absent reads as never asked.
   static const String darwinNotificationPermissionRequested =
       'darwin_notification_permission_requested';
-  static const String webModalAcknowledged = 'web_modal_acknowledged';
   static const String firstRunNoticeShown = 'first_run_notice_shown';
 
   /// Whether the user has acknowledged the minimum-age statement (13+ policy,

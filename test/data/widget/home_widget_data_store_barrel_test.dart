@@ -37,9 +37,9 @@ void main() {
   });
 
   test('the barrel surfaces the same constants on every branch', () {
-    // On the VM test host the conditional selects the IO twin; this pin
-    // plus the web build's own compile of the stub keeps the two branches
-    // honest (the values are also pinned natively by
+    // On the VM test host the conditional selects the IO twin, which is
+    // the only branch any build compiles now that the Flutter web target
+    // is gone (the values are also pinned natively by
     // test/release/home_widget_boundary_test.dart).
     expect(kLunarLogAppGroup, 'group.com.wjdavis5.lunarlog.widgets');
     expect(kLunarLogWidgetName, 'LunarLogWidget');

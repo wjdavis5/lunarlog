@@ -63,13 +63,13 @@ JWT are CLI defaults) and says nothing about the cloud project.
       (issue #18/#972). Both the confirmation and the
       reset email link through it (`ios/Runner/Info.plist` `CFBundleURLSchemes`
       and the Android `VIEW` intent filter register the scheme).
-- [ ] Web auth callback added to the redirect allow-list (epic #831 slice 2):
+- [ ] Web auth callback added to the redirect allow-list:
       `https://app.lunarlog.app/auth/callback`. A browser cannot open the
-      `lunarlog://auth-callback` custom scheme, so a `LUNARLOG_WEB_SYNC=true`
-      web build sends its confirmation, passwordless, and reset mail here and
-      exchanges the returned `?code=` from the initial `Uri.base`. See
-      `docs/web/security-posture.md` §4. Any other origin the web build is
-      served from needs its own `/auth/callback` entry too.
+      `lunarlog://auth-callback` custom scheme, so the web client (the React
+      app in `webapp/`) has its emailed links and its Google/Apple redirects
+      land on this path, where its auth Worker exchanges the returned code.
+      See `webapp/README.md`. Any other origin the web client is served from
+      needs its own `/auth/callback` entry too.
 - [ ] TOTP multi-factor authentication enabled (issue #268): Authentication →
       Providers → Multi-Factor Authentication → "Authenticator App (TOTP)" on.
       `supabase/config.toml`'s `[auth.mfa.totp]` stays `enroll_enabled = false`/
@@ -82,38 +82,24 @@ JWT are CLI defaults) and says nothing about the cloud project.
       from the client's perspective, and the "Set up two-factor
       authentication" tile in the Account section simply won't complete.
 
-### Web hosting (epic #831, slice 3)
+### Web hosting
 
-The first-class web client's deploy path is in code
-(`.github/workflows/web-deploy.yml`) **and live**. On push to `main` (or a
-manual dispatch) it builds the sync-enabled web release, verifies the output
-carries the CSP `_headers` and the SPA `_redirects`, ensures the Cloudflare
-Pages project `lunarlog-app` exists (idempotently — issue #1092), publishes
-to Cloudflare Pages, and smoke-checks the live origin's headers, SPA
-fallback, and local CanvasKit before the run can go green. The project, the
-`app.lunarlog.app` custom domain, and its proxied CNAME were provisioned on
-2026-09-26. Rationale and the deferred PWA/offline decision:
-`docs/web/security-posture.md` section 8.
+The web client is the React app in `webapp/`.
+`.github/workflows/webapp-deploy.yml` deploys it to a Cloudflare Worker with
+`app.lunarlog.app` attached as the Worker's custom domain; `webapp/README.md`
+("Staging deploy") is the source of truth for the deploy path, the response
+headers, and the post-deploy checks. The Flutter web build that used to be
+published at that hostname (the `lunarlog-app` Cloudflare Pages project) was
+taken offline by issue #1248 and its code was removed by issue #1257, so the
+app no longer builds for the web at all.
 
-- [x] Cloudflare Pages project `lunarlog-app` created (Workers & Pages →
-      Create → Pages → **Direct Upload**; no Git connection needed — CI
-      uploads the build). `web-deploy.yml` also creates it idempotently, so
-      a deleted project no longer breaks deploys and this is no longer a
-      blocking owner step.
-- [x] Repository secrets `CLOUDFLARE_API_TOKEN` (account-scoped, with
-      **Cloudflare Pages: Edit**) and `CLOUDFLARE_ACCOUNT_ID` set. The
-      credentialed steps are gated on both; missing either makes the workflow
-      print a `::warning::` and skip them, never fail.
-- [x] `app.lunarlog.app` pointed at the Pages project (Custom domains →
-      Set up a custom domain) with its proxied CNAME. The apex stays for the
-      marketing site (#830).
+- [x] Repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`
+      set. `webapp-deploy.yml`'s credentialed steps are gated on both;
+      missing either makes it print a `::warning::` and skip them.
 - [ ] `https://app.lunarlog.app/auth/callback` added to the Auth redirect
       allow-list (Authentication → URL Configuration) — the same step
-      recorded under "Supabase Auth" above, repeated here so the web deploy
-      checklist is complete. **This is the one remaining owner step
-      (#1093).** A browser cannot open the `lunarlog://auth-callback` custom
-      scheme, so the slice-2 email links land here and `web/_redirects`
-      serves the app for that path.
+      recorded under "Supabase Auth" above, repeated here so the web
+      checklist is complete (#1093).
 
 ### Social logins and passwordless (issue #2)
 
@@ -1295,7 +1281,7 @@ entry rather than duplicating its on-device steps; running the overlapping
 entry satisfies this one too.
 
 Run on an iPhone build **and** an Android build unless an item names its own
-target (the web items run in Chrome; the inert-build items run on any
+target (the inert-build items run on any
 build), always with a throwaway account and fabricated profiles only.
 
 - [ ] **`lib/startup/startup_native.dart` — iOS-only file protection plus
@@ -1389,28 +1375,17 @@ build), always with a throwaway account and fabricated profiles only.
       every current build (no Health section); in a health-sync build,
       verify the Health Connect permissions flow and one fabricated
       observation round-trip.
-- [ ] **`lib/data/db/factory_unsupported.dart` — the neither-native-nor-web
+- [ ] **`lib/data/db/factory_unsupported.dart` — the not-native
       conditional-export branch.** Structural: this branch cannot load on
-      any real target. Any successful launch above (device or Chrome)
+      any real target. Any successful launch above
       proves it never executed — no `UnsupportedError`, app boots.
-- [ ] **`lib/data/db/web_db.dart` — the web drift (WASM/IndexedDB)
-      branch.** `flutter run -d chrome` on a configured build: the app
-      boots, a profile and an entry survive a page reload (IndexedDB
-      persistence), and accounts/sync stay off unless
-      `LUNARLOG_WEB_SYNC=true` is set.
 - [ ] **`lib/startup/gate/gate_unsupported.dart` — the
-      neither-native-nor-web gate branch.** Same structural check as
+      not-native gate branch.** Same structural check as
       `factory_unsupported.dart`: any successful launch above proves this
       branch never executed.
-- [ ] **`lib/startup/gate/web_gate.dart` — the web no-op gate.** On the
-      same Chrome run as `web_db.dart`: the app is usable with no
-      device-credential gate presented.
-- [ ] **`lib/startup/startup_unsupported.dart` — the neither-native-nor-web
+- [ ] **`lib/startup/startup_unsupported.dart` — the not-native
       startup branch.** Same structural check: any successful launch above
       proves it never executed.
-- [ ] **`lib/startup/startup_web.dart` — the web startup branch.** On the
-      same Chrome run as `web_db.dart`: bootstrap completes and the app
-      reaches the profile picker or first-run, matching the native flow.
 - [ ] **`lib/main.dart` — the app entry point.** Cold-launch the installed
       app from the home screen: splash → device-credential gate → profiles,
       with no errors. A cold start by tapping a delivered notification
@@ -1439,9 +1414,10 @@ build), always with a throwaway account and fabricated profiles only.
       of the conditional barrel (issue #141).** Never loaded on the test
       VM (the barrel's `if (dart.library.io)` branch selects the IO
       twin), so there is no on-device behavior of its own to verify: its
-      whole surface is a throwing constructor. Verified instead by the
-      web build compiling the stub branch cleanly (the `Verify` job) and
-      by `hasHomeWidgetSurface`'s own unit test.
+      whole surface is a throwing constructor. No supported target
+      selects this branch since the Flutter web target was removed (issue
+      #1257); it is covered by `flutter analyze` and by
+      `hasHomeWidgetSurface`'s own unit test.
 ## Not yet run
 
 Verification-contract steps that could not be executed in the Windows
@@ -1566,8 +1542,9 @@ pgTAP tests.
   PKCE verifier in `flutter_secure_storage` (iOS Keychain
   `first_unlock_this_device`, non-synchronizable; Android encrypted
   preferences under `allowBackup="false"`), so they never travel in a
-  backup. Web keeps the SDK default (browser storage) and only when
-  `LUNARLOG_WEB_SYNC=true`.
+  backup. The React web client holds its access token in page memory
+  only and its refresh token in an HttpOnly cookie; see
+  `webapp/README.md`.
 - **Deferred follow-ups** (from the plan's Scope Boundaries): Realtime
   "pull now" hint; Apple Sign-In on Android/web; client-side syncing of
   `settings`; `birth_year` / `color` profile attributes; client-side

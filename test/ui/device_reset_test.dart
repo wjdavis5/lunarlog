@@ -56,14 +56,6 @@ class RecordingDatabase extends LunarLogDatabase {
     onClose();
     return super.close();
   }
-
-  @override
-  Future<void> wipeAllData() {
-    onWipe?.call();
-    return super.wipeAllData();
-  }
-
-  void Function()? onWipe;
 }
 
 class RecordingAuth extends FakeAuthService {
@@ -93,10 +85,9 @@ class RecordingEngine extends FakeSyncEngine {
 }
 
 class ResetHarness {
-  ResetHarness(this.tester, {this.isWeb = false});
+  ResetHarness(this.tester);
 
   final WidgetTester tester;
-  final bool isWeb;
   final List<String> log = [];
   final List<RecordingDatabase> dbs = [];
   final List<RecordingEngine> engines = [];
@@ -113,8 +104,7 @@ class ResetHarness {
     final db = RecordingDatabase(() {
       final appMounted = find.byType(LunarLogApp).evaluate().isNotEmpty;
       log.add(appMounted ? 'close:APP STILL MOUNTED' : 'close');
-    }, NativeDatabase.memory())
-      ..onWipe = () => log.add('wipe');
+    }, NativeDatabase.memory());
     dbs.add(db);
     log.add('open');
     return db;
@@ -144,7 +134,6 @@ class ResetHarness {
         }
         log.add('delete-file');
       },
-      isWeb: isWeb,
     ));
     await tester.pump();
     await tester.pumpAndSettle();
@@ -237,33 +226,6 @@ void main() {
     await h.dispose();
   });
 
-  testWidgets('web reset wipes every table instead of deleting a file or key',
-      (tester) async {
-    final h = ResetHarness(tester, isWeb: true);
-    await h.pump();
-    await DriftProfilesRepository(h.dbs.single.storage)
-        .create(displayName: 'Alice', isMinor: false);
-    await drainIsolateTraffic(tester);
-    h.log.clear();
-
-    final done = h.reset();
-    await drainIsolateTraffic(tester);
-    await done;
-    await drainIsolateTraffic(tester);
-
-    expect(h.log, [
-      'engine.dispose:start',
-      'engine.dispose:done',
-      'wipe',
-      'close',
-      'signOut',
-      'open',
-    ], reason: 'wipeAllData runs on the old database before it closes');
-    // #216: first-run now opens on the introduction's first card.
-    expect(find.text('A private cycle log for your family'), findsOneWidget);
-    await h.dispose();
-  });
-
   testWidgets('a reset clears the process-global breadcrumb log so a support '
       'ticket filed after the next sign-in never carries the previous '
       'account\'s entries', (tester) async {
@@ -348,9 +310,9 @@ void main() {
     await h.dispose();
   });
 
-  testWidgets('a web close failure after the wipe fails closed the same '
-      'way and logs the type only', (tester) async {
-    final h = ResetHarness(tester, isWeb: true);
+  testWidgets('a close failure fails closed the same way and logs the type '
+      'only', (tester) async {
+    final h = ResetHarness(tester);
     await h.pump();
     final captured = captureDebugPrint();
     h.log.clear();
@@ -367,8 +329,7 @@ void main() {
     expect(h.log, [
       'engine.dispose:start',
       'engine.dispose:done',
-      'wipe',
-    ], reason: 'close threw after the wipe, before sign-out or reopen');
+    ], reason: 'close threw before the file delete, sign-out or reopen');
     expect(find.byType(FailClosedScreen), findsOneWidget);
     expect(tester.takeException(), isNull);
     await h.dispose();

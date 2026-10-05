@@ -3,7 +3,7 @@
 #
 # Analyzes changed files in this monorepo to determine which CI job suites
 # need to execute:
-#   - app_flutter: Flutter app, mobile builds (Android/iOS), web client, Flutter tests
+#   - app_flutter: Flutter app, mobile builds (Android/iOS), Flutter tests
 #   - database: Supabase migrations, RLS, pgTAP tests, schema types
 #   - edge_functions: Supabase Edge Functions & Cloudflare Workers (web/links, web/email)
 #   - release_guards: CI scripts, workflows, and release gate checks
@@ -326,8 +326,8 @@ while IFS= read -r file; do
       release_guards=true
       ;;
 
-    # Core Flutter application: Dart code, tests, integration tests, assets, Flutter web client, native Android & iOS
-    lib/*|test/*|integration_test/*|android/*|ios/*|assets/*|pubspec.*|analysis_options.yaml|l10n.yaml|dart_defines*|web/*|tool/web_smoke/*|tool/quality/*|tool/quality_gate.dart)
+    # Core Flutter application: Dart code, tests, integration tests, assets, native Android & iOS
+    lib/*|test/*|integration_test/*|android/*|ios/*|assets/*|pubspec.*|analysis_options.yaml|l10n.yaml|dart_defines*|tool/quality/*|tool/quality_gate.dart)
       app_flutter=true
       ;;
 

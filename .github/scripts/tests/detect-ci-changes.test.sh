@@ -80,14 +80,6 @@ assert_contains "Flutter app sets database=false" "$flutter_output" "database=fa
 assert_contains "Flutter app sets edge_functions=false" "$flutter_output" "edge_functions=false"
 
 # ---------------------------------------------------------------------------
-# Case 6: Flutter web client files (root web/, not workers)
-# ---------------------------------------------------------------------------
-web_client_output="$(run_detect "web/index.html
-web/_headers")"
-assert_contains "Web client sets app_flutter=true" "$web_client_output" "app_flutter=true"
-assert_contains "Web client sets edge_functions=false" "$web_client_output" "edge_functions=false"
-
-# ---------------------------------------------------------------------------
 # Case 7: Release guard scripts changes
 # ---------------------------------------------------------------------------
 guards_output="$(run_detect ".github/scripts/check-ci-gate.sh")"

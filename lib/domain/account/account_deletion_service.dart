@@ -252,7 +252,7 @@ final class AccountDeletionMfaRequiredFailure extends AccountDeletionFailure {
 /// The account-deletion seam (#17 KTD8). Built alongside the production
 /// sharing service in `lib/app_lifecycle.dart` when a `SupabaseClient`
 /// exists; provided down the tree as `null` otherwise (an unconfigured
-/// build, or web unless `LUNARLOG_WEB_SYNC=true`), in which case
+/// build), in which case
 /// `lib/ui/account/account_section.dart` renders no delete tile (R11).
 abstract interface class AccountDeletionService {
   /// Deletes the caller's account: every server row the plan's

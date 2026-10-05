@@ -2,11 +2,10 @@
 ///
 /// [LunarLogDbFactory] is platform-agnostic: it owns the
 /// quarantine-on-failed-open policy. Platform wiring is injected:
+/// `native_db.dart` (mobile/desktop) supplies a [QueryExecutor] over a
+/// file.
 ///
-/// * `native_db.dart` (mobile/desktop): a [QueryExecutor] over a file.
-/// * `web_db.dart` (web): a [QueryExecutor] over WASM/IndexedDB.
-///
-/// Neither platform encrypts the database file itself at the app layer —
+/// The app does not encrypt the database file itself at the app layer —
 /// at-rest protection is the OS's (iOS Data Protection / Android's platform
 /// encryption); see docs/ops/ios-export-compliance.md. The device-credential
 /// gate (`lib/startup/gate/`) is a separate, independent control: it blocks the
@@ -39,8 +38,7 @@ class LunarLogDbFactory {
   /// Whether the database file already exists before this open. When an
   /// existing file fails to open/migrate, the failure becomes a typed
   /// [DatabaseQuarantineError] (fail-closed: never wiped or recreated).
-  /// Null means "cannot tell / not file-backed" (web), treated as
-  /// first-run.
+  /// Null means "cannot tell / not file-backed", treated as first-run.
   final Future<bool> Function()? existingFileCheck;
 
   /// Opens the database. Throws [DatabaseQuarantineError] if an existing

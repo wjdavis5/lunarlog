@@ -1,8 +1,8 @@
 /// App composition root: consumes the [AppDependencies] bundle — built by
 /// the composition module (`lib/composition/app_dependencies.dart`) and
 /// passed by `LunarLogRoot` — and provides those contracts plus the profile
-/// controller (KTD4), the reminder coordinator (KTD7/U8) and the web
-/// guardrails (KTD9). Issue #418 (AC1): this widget takes exactly one
+/// controller (KTD4) and the reminder coordinator (KTD7/U8). Issue #418
+/// (AC1): this widget takes exactly one
 /// injection idiom — the bundle, always supplied by the production path.
 /// Tests build the bundle explicitly via `buildAppDependencies` (see
 /// `test/composition/app_dependencies_test.dart`); there is no implicit
@@ -12,8 +12,6 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart'
-    show kIsWeb, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart';
 import 'package:lunarlog/composition/app_dependencies.dart';
@@ -99,7 +97,6 @@ import 'package:lunarlog/ui/sharing/claim_profile_sheet.dart';
 import 'package:lunarlog/ui/sharing/prediction_connection_calendar_screen.dart';
 import 'package:lunarlog/ui/theme/app_theme.dart';
 import 'package:lunarlog/ui/theme/appearance.dart';
-import 'package:lunarlog/ui/web/dev_banner.dart';
 import 'package:provider/provider.dart';
 
 class LunarLogApp extends StatefulWidget {
@@ -115,7 +112,6 @@ class LunarLogApp extends StatefulWidget {
     this.resetDevice,
     this.removePushRegistration,
     this.removeAllPushRegistrations,
-    this.showWebBanner = kIsWeb,
     this.mfaEnabled,
     this.showQaBanner,
   });
@@ -160,7 +156,6 @@ class LunarLogApp extends StatefulWidget {
     DeviceResetCallback? resetDevice,
     RemovePushRegistrationCallback? removePushRegistration,
     RemoveAllPushRegistrationsCallback? removeAllPushRegistrations,
-    bool showWebBanner = kIsWeb,
     bool? mfaEnabled,
     bool? showQaBanner,
   }) =>
@@ -184,7 +179,7 @@ class LunarLogApp extends StatefulWidget {
           scheduler: scheduler,
           widgetDataStore: widgetDataStore,
           currentUserIdProvider: () => authService?.currentUserId,
-          pushEnabled: AppConfig.hasPush && !kIsWeb,
+          pushEnabled: AppConfig.hasPush,
           buildDefaultScheduler: false,
         ),
         inviteLinks: inviteLinks,
@@ -195,7 +190,6 @@ class LunarLogApp extends StatefulWidget {
         resetDevice: resetDevice,
         removePushRegistration: removePushRegistration,
         removeAllPushRegistrations: removeAllPushRegistrations,
-        showWebBanner: showWebBanner,
         mfaEnabled: mfaEnabled,
         // Passed through unresolved (null stays null): the State's
         // `_showQaBanner` is the single resolution point.
@@ -227,8 +221,7 @@ class LunarLogApp extends StatefulWidget {
 
   /// The device reset (KTD16). `LunarLogRoot` provides it above this
   /// widget, so it is normally read from the context; an explicit value
-  /// (tests) takes precedence. When neither exists the web wipe falls back
-  /// to [LunarLogDatabase.wipeAllData] alone.
+  /// (tests) takes precedence.
   final DeviceResetCallback? resetDevice;
 
   /// Explicit push-device-registration removal (#1 review fix). Same
@@ -245,9 +238,6 @@ class LunarLogApp extends StatefulWidget {
   /// signed-out flow that has neither simply skips it.
   final RemoveAllPushRegistrationsCallback? removeAllPushRegistrations;
 
-  /// KTD9 web guardrail flag; injectable for tests.
-  final bool showWebBanner;
-
   /// Issue #738: forwarded to the [AuthController] this widget constructs
   /// (`_initAuthController`), whose `mfaEnabled` — and with it the whole
   /// MFA client surface (tile group, enrolment screen, AAL2 step-up) —
@@ -258,9 +248,9 @@ class LunarLogApp extends StatefulWidget {
 
   /// Issue #739: whether this is a QA build (`LUNARLOG_QA_BUILD=true`),
   /// resolved once through [AppConfig.qaBuild] — the `mfaEnabled`
-  /// null-means-AppConfig idiom (the `showWebBanner = kIsWeb` shape
-  /// cannot express "not injected", which the root's own pass-through
-  /// needs). While true the persistent [QaBuildBanner] renders above
+  /// null-means-AppConfig idiom (a plain defaulted `bool` cannot express
+  /// "not injected", which the root's own pass-through needs). While true
+  /// the persistent [QaBuildBanner] renders above
   /// every screen and the task-switcher title carries the QA suffix (see
   /// [_appTitle]). The gate/relock/re-auth halves of the flag live in
   /// [GateController] and `ensureAal2`, not here.
@@ -462,7 +452,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     _initReminderWindowPublisher();
     // Issue #373: started on its own, never nested inside the push-gated
     // reminder publisher above - the prediction service is constructed on
-    // every build with a Supabase client (web and no-push included), so
+    // every build with a Supabase client (no-push builds included), so
     // its publisher must start on every one of them too.
     _startPredictionProjectionPublisher();
     _initWidgetCoordinator();
@@ -502,7 +492,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     if (scheduler == null) return;
     // Issue #136: the per-profile reminder configuration service and the
     // action executor live exactly as long as the coordinator does — no
-    // scheduler (widget-test harnesses, web) means neither is built and
+    // scheduler (widget-test harnesses) means neither is built and
     // no provider is registered. AC2: construction lives in
     // `lib/composition/`; this method only wires the gate callbacks.
     final configService = buildReminderConfigService(_settings);
@@ -607,7 +597,7 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// has nothing to publish to and never constructs the publisher, the
   /// same zero-conditional gating the reminder publisher uses. Issue #373:
   /// that is the ONLY gate - it is deliberately not tied to the
-  /// `AppConfig.hasPush`/web gate the reminder publisher sits behind,
+  /// `AppConfig.hasPush` gate the reminder publisher sits behind,
   /// because the service (and so the whole sharing UI) exists without push.
   void _startPredictionProjectionPublisher() {
     // AC2: construction lives in `lib/composition/`; this method only
@@ -624,7 +614,7 @@ class _LunarLogAppState extends State<LunarLogApp>
   }
 
   /// Issue #141: the home-screen widget's runtime. A null store (every
-  /// test, web, desktop) means none of it is touched at all — the same
+  /// test, desktop) means none of it is touched at all — the same
   /// zero-conditional posture the reminder machinery follows without a
   /// scheduler. Extracted
   /// out of [initState] (the issue #168 CRAP-gate discipline the
@@ -765,7 +755,7 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// Issue #193: the one-way, opt-in, forward-only menstrual-flow write
   /// path. AC2: construction lives in `lib/composition/` (which owns the
   /// iOS-only gating too); this method only starts the returned instance.
-  /// Widget-test harnesses and web never get one.
+  /// Widget-test harnesses never get one.
   void _initHealthFlowWriter() {
     final coordinator = buildHealthFlowWriteCoordinator(
       settings: _settings,
@@ -889,9 +879,9 @@ class _LunarLogAppState extends State<LunarLogApp>
 
   /// Wraps [child] with the "Sign in to accept your invite" banner (Issue
   /// #535 (b)) whenever [_showPendingInviteSignInBanner] holds. Placed in
-  /// `MaterialApp.builder` (see [build]) — above the Navigator, alongside
-  /// [WebGuardrails] — so it renders over whatever the signed-out flow
-  /// already shows, rather than only inside one screen.
+  /// `MaterialApp.builder` (see [build]) — above the Navigator — so it
+  /// renders over whatever the signed-out flow already shows, rather than
+  /// only inside one screen.
   ///
   /// Issue #1022: the banner's own [SafeArea] consumes the status-bar inset
   /// exactly once for the whole strip, so [child] (the Navigator, and every
@@ -933,8 +923,8 @@ class _LunarLogAppState extends State<LunarLogApp>
 
   /// Issue #739: wraps [child] with the persistent [QaBuildBanner] on a
   /// QA build; a no-op (the child, unchanged) on every store build. Same
-  /// `MaterialApp.builder` placement — above the Navigator — as the web
-  /// banner beside it, so the marker renders over whatever screen is
+  /// `MaterialApp.builder` placement — above the Navigator — as the invite
+  /// banner it wraps, so the marker renders over whatever screen is
   /// showing.
   ///
   /// Issue #1022: like the invite banner it wraps, the QA marker's own
@@ -1518,25 +1508,19 @@ class _LunarLogAppState extends State<LunarLogApp>
         // (via AppLocalizations.supportedLocales).
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        // KTD16: the web wipe is the device reset when one is provided.
-        builder: (context, child) => WebGuardrails(
-          showBanner: widget.showWebBanner,
-          onWipe: resetDevice ?? widget.db.wipeAllData,
-          navigatorKey: _navigatorKey,
-          // Issue #739: the QA banner wraps outside the invite banner so
-          // it stays the topmost strip on every screen — a persistent
-          // marker, never dismissed by an auth change like the invite
-          // banner below it can be.
-          child: _wrapWithQaBanner(
-            _wrapWithPendingInviteBanner(
-              // Issue #1162: the browser-width presentation wraps the
-              // Navigator itself (innermost in this builder chain), so
-              // every route presents inside the centred app-frame at
-              // desktop-browser widths; the banner strips around it stay
-              // full-width chrome. A no-op at phone widths (and the
-              // 800x600 test-binding default).
-              AppFrame(child: child ?? const SizedBox.shrink()),
-            ),
+        // Issue #739: the QA banner wraps outside the invite banner so it
+        // stays the topmost strip on every screen — a persistent marker,
+        // never dismissed by an auth change like the invite banner below
+        // it can be.
+        builder: (context, child) => _wrapWithQaBanner(
+          _wrapWithPendingInviteBanner(
+            // Issue #1162: the browser-width presentation wraps the
+            // Navigator itself (innermost in this builder chain), so
+            // every route presents inside the centred app-frame at
+            // desktop-browser widths; the banner strips around it stay
+            // full-width chrome. A no-op at phone widths (and the
+            // 800x600 test-binding default).
+            AppFrame(child: child ?? const SizedBox.shrink()),
           ),
         ),
         // U2 Approach 3: `home:` cannot carry a RouteSettings name (it is
@@ -1562,9 +1546,9 @@ class _LunarLogAppState extends State<LunarLogApp>
 }
 
 /// Issue #535 (b): persistent banner surfacing a latched invite code while
-/// the recipient is signed out — mirrors [WebDevBanner]'s shape (a colored
-/// [Material] strip above the app content) but stays mounted for as long as
-/// the invite is waiting rather than for the whole build, and clears itself
+/// the recipient is signed out — a colored [Material] strip above the app
+/// content that stays mounted for as long as the invite is waiting, and
+/// clears itself
 /// the moment [_LunarLogAppState._onAuthChanged] consumes the code on
 /// sign-in. Issue #1022: a quiet close control also lets the recipient
 /// dismiss it for the session without signing in.

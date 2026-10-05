@@ -1056,7 +1056,7 @@ FirebasePushTokenSource buildPushTokenSource({
 
 /// Constructs the foreground push presenter (Issue #174). The caller starts
 /// it next to the push-registration coordinator (the same
-/// `AppConfig.hasPush && !isWeb` gate in `lib/app_root.dart`) and disposes
+/// `AppConfig.hasPush` gate in `lib/app_root.dart`) and disposes
 /// it with the coordinator — foreground caregiver alerts are presented only
 /// for a device that is registered to receive them at all.
 PushForegroundPresenter buildPushForegroundPresenter() =>

@@ -4,7 +4,7 @@
 ///
 /// The section self-hosts its `SettingsSection` (the
 /// `FamilySharingSection` shape) so it can hide as a unit where there is no
-/// widget surface: web and desktop builds render none of it, and a build
+/// widget surface: desktop builds render none of it, and a build
 /// without the profile repositories (bare test harnesses) does too.
 ///
 /// Profile choice persists through `SettingsKeys.widgetProfileId` — the
@@ -19,7 +19,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, kIsWeb;
+    show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:lunarlog/domain/models/profile.dart';
@@ -38,9 +38,8 @@ class HomeWidgetSection extends StatelessWidget {
   /// renders at all). Same gate the composition root applies to the
   /// runtime: iOS/Android only.
   static bool get isSupported =>
-      !kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.iOS ||
-          defaultTargetPlatform == TargetPlatform.android);
+      defaultTargetPlatform == TargetPlatform.iOS ||
+      defaultTargetPlatform == TargetPlatform.android;
 
   @override
   Widget build(BuildContext context) {

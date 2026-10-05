@@ -1,7 +1,5 @@
 /// Supabase session + PKCE verifier storage over flutter_secure_storage
-/// (U4; KTD7, R5). Native only: the bootstrap passes this to
-/// `Supabase.initialize` on iOS/Android and leaves the package default on
-/// web.
+/// (U4; KTD7, R5): the bootstrap passes this to `Supabase.initialize`.
 ///
 /// iOS: `first_unlock_this_device` — the Keychain items are usable once the
 /// device has been unlocked after boot and never migrate in a backup or

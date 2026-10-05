@@ -258,7 +258,6 @@ Future<void> _pump(
   FakeDayEntriesRepository? dayEntries,
   FakeObservationsRepository? observations,
   FakeCareContentRepository? careContent,
-  bool? showExport,
   ExportAccountCollaborator? exportAccount,
   AuthController? auth,
   ProfileErasureService? profileErasureService,
@@ -295,7 +294,6 @@ Future<void> _pump(
         ],
         child: Scaffold(
           body: YourDataSection(
-            showExport: showExport,
             exportAccount: exportAccount,
             profileErasureService: profileErasureService,
             platform: platform,
@@ -401,13 +399,6 @@ void main() {
     testWidgets('no profiles: the tile is absent', (tester) async {
       final profiles = FakeProfilesRepository(const []);
       await _pump(tester, profiles: profiles);
-      expect(key('your-data-export'), findsNothing);
-    });
-
-    testWidgets('web (showExport: false): the tile is absent even with a '
-        'profile', (tester) async {
-      final profiles = FakeProfilesRepository([_profile('p1')]);
-      await _pump(tester, profiles: profiles, showExport: false);
       expect(key('your-data-export'), findsNothing);
     });
 
@@ -548,35 +539,6 @@ void main() {
       final profiles = FakeProfilesRepository([_profile('p1')]);
       await _pump(tester, profiles: profiles);
       expect(key('your-data-import'), findsOneWidget);
-      expect(key('your-data-export'), findsOneWidget);
-    });
-
-    testWidgets('showImport: false hides only the import tile',
-        (tester) async {
-      final profiles = FakeProfilesRepository([_profile('p1')]);
-      await tester.pumpWidget(
-        MaterialApp(
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: MultiProvider(
-            providers: [
-              Provider<ProfilesRepository>.value(value: profiles),
-              Provider<DayEntriesRepository>.value(value: FakeDayEntriesRepository()),
-              Provider<ObservationsRepository>.value(value: FakeObservationsRepository()),
-              Provider<AccountExportSnapshotRepository>.value(
-                value: _FakeExportSnapshotRepository(
-                    FakeDayEntriesRepository(), FakeObservationsRepository()),
-              ),
-            ],
-            child: const Scaffold(
-              body: YourDataSection(showImport: false),
-            ),
-          ),
-        ),
-      );
-      addTearDown(profiles.dispose);
-      await tester.pumpAndSettle();
-      expect(key('your-data-import'), findsNothing);
       expect(key('your-data-export'), findsOneWidget);
     });
 

@@ -935,7 +935,7 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     if (_gate.requiresUnlock && !_qaBuild) {
       _locked = true;
     } else {
-      // Un-gated (web, or a QA build per issue #739): there is no lock
+      // Un-gated (a QA build per issue #739): there is no lock
       // screen to dismiss a cover with, so only cover when the app is
       // actually away.
       _obscured = !_resumed;

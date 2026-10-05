@@ -1,9 +1,9 @@
 /// First-run flow (F1, AS1 + Issue #216's onboarding rework + Issue #804's
 /// household setup): with zero profiles the gate forces this flow before
 /// anything else. Steps, each a boolean that falls through to the next:
-/// the web development acknowledgment (KTD9, web only) → the three-card
-/// introduction (identity/value, profiles-and-guardians, the data/sync
-/// notice — #216; gated by the same [SettingsKeys.firstRunNoticeShown]
+/// the three-card introduction (identity/value, profiles-and-guardians,
+/// the data/sync notice — #216; gated by the same
+/// [SettingsKeys.firstRunNoticeShown]
 /// flag the single-notice step used) → the account step ("Sign in or
 /// create account", with "Not now"; only when the build has an
 /// [AuthController] and no session yet) → the name form ("Continue") →
@@ -45,7 +45,6 @@ library;
 
 import 'dart:async' show unawaited;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
 import 'package:lunarlog/domain/auth/auth_service.dart';
@@ -83,7 +82,6 @@ import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
 import 'package:lunarlog/ui/routes.dart' show pushNamedScreen;
 import 'package:lunarlog/ui/sharing/invite_guardian_dialog.dart';
 import 'package:lunarlog/ui/theme/tokens.dart';
-import 'package:lunarlog/ui/web/dev_banner.dart';
 import 'package:provider/provider.dart';
 
 /// The app's wordmark as rendered on the identity card. A proper noun,
@@ -144,14 +142,10 @@ bool _isChildRelationship(ProfileRelationship relationship) =>
 class FirstRunScreen extends StatefulWidget {
   const FirstRunScreen({
     super.key,
-    this.isWebBuild = kIsWeb,
     this.todayProvider = LocalDate.today,
     this.pickDate = _showMaterialDatePicker,
     this.onOpenImport,
   });
-
-  /// KTD9 web guardrail; injectable so host tests can exercise it.
-  final bool isWebBuild;
 
   /// "Today" as the device-local civil date; injectable for tests.
   final LocalDate Function() todayProvider;
@@ -184,7 +178,6 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   int _introIndex = 0;
   bool _noticePending = true;
   bool _accountPending = false;
-  bool _webAckPending = false;
   bool _isMinor = false;
   bool _ageAcknowledged = false;
   bool _ageAckError = false;
@@ -271,9 +264,6 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
         context.read<SyncStatusController?>() != null) {
       _awaitingRestore = true;
     }
-    if (widget.isWebBuild) {
-      unawaited(_checkWebAcknowledgment());
-    }
     unawaited(_checkAgeAcknowledgment());
   }
 
@@ -308,33 +298,6 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
       _ageAckPreviouslyRecorded = current;
       _ageAcknowledged = current;
     });
-  }
-
-  Future<void> _checkWebAcknowledgment() async {
-    final store = context.read<SettingsStore>();
-    final acknowledged =
-        await store.get(SettingsKeys.webModalAcknowledged) == 'true';
-    if (!mounted) return;
-    if (acknowledged) return;
-    setState(() => _webAckPending = true);
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _showWebAcknowledgmentDialog(store),
-    );
-  }
-
-  /// The blocking dialog itself, split out of [_checkWebAcknowledgment] so
-  /// each half stays small: shown post-frame (over the data-free scaffold
-  /// [build] renders while [_webAckPending]), then clears that flag once
-  /// dismissed.
-  Future<void> _showWebAcknowledgmentDialog(SettingsStore store) async {
-    if (!mounted) return;
-    await showWebFirstRunAcknowledgment(
-      context,
-      alreadyAcknowledged: false,
-      onAcknowledged: () =>
-          store.set(SettingsKeys.webModalAcknowledged, 'true'),
-    );
-    if (mounted) setState(() => _webAckPending = false);
   }
 
   @override
@@ -747,11 +710,6 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthController?>(context);
     final sync = Provider.of<SyncStatusController?>(context);
-    if (_webAckPending) {
-      // The blocking acknowledgment dialog is up; keep a data-free scaffold
-      // underneath it.
-      return const Scaffold(body: SizedBox.expand());
-    }
     if (_noticePending) {
       return _introScreen();
     }
@@ -770,18 +728,18 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
         return const RestoringScreen();
       }
     }
-    return _creationStepScreen(auth, sync);
+    return _creationStepScreen(auth);
   }
 
   /// The creation-half step decision (issue #804 added the wrap-up and
   /// invite steps behind the cycle questions). An if-chain, not nested
   /// ternaries: each step is one line to scan.
-  Widget _creationStepScreen(AuthController? auth, SyncStatusController? sync) {
+  Widget _creationStepScreen(AuthController? auth) {
     if (_inviteStepPending) return _inviteStepScreen(auth);
     if (_wrapUpPending) return _wrapUpScreen();
     if (_cycleQuestionsPending) return _cycleQuestionsScreen();
     if (_cycleShortPending) return _shortCycleScreen();
-    return _nameFormScreen(auth, sync);
+    return _nameFormScreen(auth);
   }
 
   /// The three-card introduction (#216): value, profiles/guardians, the
@@ -918,7 +876,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   /// accompanied-by-an-explanation AC). Issue #804 adds the who-choice
   /// above the name field (first card only) and the relationship dropdown
   /// on cared-for cards.
-  Widget _nameFormScreen(AuthController? auth, SyncStatusController? sync) {
+  Widget _nameFormScreen(AuthController? auth) {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(title: Text(l10n.firstRunCreateTitle)),
@@ -939,11 +897,9 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
               if (auth != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: SyncStatusTile(
-                    webSyncOff: widget.isWebBuild && sync == null,
-                  ),
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 8),
+                  child: SyncStatusTile(),
                 ),
               // Issue #804: the who-choice lives on the first card only —
               // add-another-loop cards are, by construction, for someone
