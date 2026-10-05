@@ -122,7 +122,8 @@ enum HealthFlowValue {
 /// device's health store, as reported by the `lunarlog/health` channel
 /// (Issue #959). This is the *OS* consent — distinct from the app's own
 /// one-profile-per-device binding ([HealthSyncBinding]) — and it is what the
-/// Health sync screen renders and what the write pass re-checks before each
+/// Health sync screen's status line is built from (`health_access_state.dart`)
+/// and what the write pass re-checks before each
 /// pass so a revocation in OS settings stops the next write.
 ///
 /// The same four values also answer the read-side question
@@ -138,7 +139,9 @@ enum HealthFlowValue {
 ///   opaque by Apple's design — a denied read is indistinguishable from "no
 ///   data" — so there is deliberately no read dimension here and no state
 ///   that could report a read denial as [denied]. The status line must
-///   never claim to know read access.
+///   never claim to know read access there, and since Issue #1515 — when
+///   the Android line began to tell the two directions apart — it is kept
+///   from doing so by [HealthPermissionProbe.readAccessDisclosed].
 /// * **Android** derives it from `PermissionController.getGrantedPermissions()`
 ///   over the *write* permissions only (Issue #1478 — before it, every
 ///   requested permission but the background read counted, so declining an
@@ -147,10 +150,13 @@ enum HealthFlowValue {
 ///   SDK is [unavailable], never [denied]). Android's runtime permission
 ///   model cannot distinguish "never asked" from "denied" from the granted
 ///   set alone, so the native side remembers whether this install has ever
-///   launched the permission request and reports [notAsked] until it has
+///   launched the permission request that carries the writes and reports
+///   [notAsked] until it has
 ///   (Issue #1478). Reporting [denied] there was not only wrong on the
 ///   status line: the write pass stops on [denied] before its own
 ///   authorization request, so the Android write path could never ask.
+///   For the same reason the import's own request, which asks for the reads
+///   alone, never counts as having asked for the writes (Issue #1515).
 enum HealthPermissionStatus {
   /// The write types are authorized.
   granted,
@@ -221,6 +227,18 @@ abstract interface class HealthPermissionProbe {
   ///   an iPhone that may read but not write still runs no background
   ///   import. The Health sync screen states that condition in words.
   Future<HealthPermissionStatus> importPermissionStatus();
+
+  /// Whether this device's health store tells an app which READ access it
+  /// holds — the platform fact [importPermissionStatus] turns on. Health
+  /// Connect does (true). HealthKit never does (false), and a platform
+  /// with no health store has nothing to disclose (false).
+  ///
+  /// The Health sync screen reads this before it says anything about read
+  /// access (Issue #1515): where it is false the screen never asks
+  /// [importPermissionStatus] at all, because there the answer is only the
+  /// write answer under another name, and showing it as "reading is on"
+  /// would claim a thing the store does not disclose.
+  bool get readAccessDisclosed;
 
   /// Opens this platform's settings screen where the operator can change
   /// the health permission: the iOS Settings app for this app, or Health
@@ -659,10 +677,11 @@ abstract interface class HealthPlatformStore implements HealthPermissionProbe {
   /// Health Connect installed and available). Never touches user data.
   Future<bool> isAvailable();
 
-  // [permissionStatus], [importPermissionStatus] and
+  // [permissionStatus], [importPermissionStatus], [readAccessDisclosed] and
   // [openPermissionSettings] are declared by [HealthPermissionProbe]
-  // (Issues #959/#1491): the OS consent state for the writes, the one for
-  // the import's reads, and the platform settings deep link. They are
+  // (Issues #959/#1491/#1515): the OS consent state for the writes, the one
+  // for the import's reads, whether the store discloses read access at all,
+  // and the platform settings deep link. They are
   // deliberately unguarded like [isAvailable] — they read no health content
   // and the Settings screen needs them before any binding exists. The write
   // pass re-checks [permissionStatus] before each pass; the background
@@ -688,6 +707,40 @@ abstract interface class HealthPlatformStore implements HealthPermissionProbe {
   /// means "the prompt completed"; a denied permission surfaces on the
   /// first actual write as `permissionDenied`.
   Future<HealthPlatformResult> requestWriteAuthorization(
+    HealthGuardFacts facts,
+  );
+
+  /// Prompts for what the user-initiated **import** needs (Issue #1515),
+  /// behind the same guard. This is the import's own request, so tapping
+  /// Import never asks for something the import does not use.
+  ///
+  /// * **Android** asks Health Connect for the two record reads the import
+  ///   performs and the two optional read extras ("access past data" and
+  ///   background access) — and for no write permission. Before this
+  ///   method existed the import asked through
+  ///   [requestWriteAuthorization], so someone who had allowed reading and
+  ///   declined writing was shown the write permissions again on every tap
+  ///   of Import. It asks only when the import cannot read: with both
+  ///   record reads already granted nothing is raised at all, so an
+  ///   optional extra she left off is not put in front of her again on
+  ///   every tap either. It also leaves the write side's "not yet asked"
+  ///   alone: being asked for the reads is not being asked for the writes,
+  ///   so [HealthPermissionProbe.permissionStatus] does not turn to
+  ///   [HealthPermissionStatus.denied] because of it and the write pass can
+  ///   still make its own request.
+  /// * **iOS** is unchanged: it is the same single HealthKit sheet as
+  ///   [requestWriteAuthorization] (write and read types together). HealthKit
+  ///   asks about each type once, ever, so it never re-asks for a declined
+  ///   write; and with read access undisclosed
+  ///   ([HealthPermissionProbe.readAccessDisclosed] false) the background
+  ///   import waits on the write types there, so the import has a real
+  ///   interest in their having been asked.
+  ///
+  /// As with [requestWriteAuthorization], [HealthPlatformResult.allowed]
+  /// does not say what was granted: iOS answers it when the sheet
+  /// completes, Android when at least one permission it asked for is
+  /// granted. A read that is still not allowed surfaces on the read itself.
+  Future<HealthPlatformResult> requestImportAuthorization(
     HealthGuardFacts facts,
   );
 

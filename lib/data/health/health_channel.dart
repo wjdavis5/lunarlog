@@ -102,6 +102,14 @@ class MethodChannelHealthPlatform
   /// `IOSHealthChannel` passes false and the question is answered here in
   /// Dart from the write types, never sent to a Swift handler that could
   /// only guess.
+  ///
+  /// The same fact decides two more things (Issue #1515). The Health sync
+  /// screen reads it through [HealthPermissionProbe] and says "reading is
+  /// on, writing is off" only where it is true. And
+  /// [requestImportAuthorization] has a request of its own only where it is
+  /// true: where the read side cannot be told apart from the write side,
+  /// the import keeps asking through the one sheet it always used.
+  @override
   final bool readAccessDisclosed;
 
   /// The Dart-side guard every guarded method runs before any channel
@@ -267,6 +275,24 @@ class MethodChannelHealthPlatform
     HealthGuardFacts facts,
   ) =>
       _invokeGuarded(HealthChannelMethods.requestWriteAuthorization, facts);
+
+  /// The import's permission request (Issue #1515), guarded like every
+  /// other health-API touch. Where the store discloses read access
+  /// ([readAccessDisclosed] — Android) it is a request of its own, for the
+  /// reads alone. Where it does not (iOS) it is the very call
+  /// [requestWriteAuthorization] makes, exactly as before this method
+  /// existed, and the read-only name is never sent to a Swift handler that
+  /// does not exist.
+  @override
+  Future<HealthPlatformResult> requestImportAuthorization(
+    HealthGuardFacts facts,
+  ) =>
+      _invokeGuarded(
+        readAccessDisclosed
+            ? HealthChannelMethods.requestImportAuthorization
+            : HealthChannelMethods.requestWriteAuthorization,
+        facts,
+      );
 
   @override
   Future<HealthPlatformResult> writeMenstrualFlow(
@@ -530,6 +556,10 @@ class UnsupportedHealthPlatform
   Future<HealthPermissionStatus> importPermissionStatus() async =>
       HealthPermissionStatus.unavailable;
 
+  /// No health store, so nothing discloses anything.
+  @override
+  bool get readAccessDisclosed => false;
+
   @override
   Future<void> openPermissionSettings() async {}
 
@@ -542,6 +572,12 @@ class UnsupportedHealthPlatform
 
   @override
   Future<HealthPlatformResult> requestWriteAuthorization(
+    HealthGuardFacts facts,
+  ) async =>
+      const HealthPlatformResult.unavailable();
+
+  @override
+  Future<HealthPlatformResult> requestImportAuthorization(
     HealthGuardFacts facts,
   ) async =>
       const HealthPlatformResult.unavailable();

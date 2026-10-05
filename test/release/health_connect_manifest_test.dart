@@ -194,7 +194,8 @@ void main() {
       expect(adapter, contains('readPermissions = setOf('));
       expect(adapter, contains('getReadPermission('));
       expect(adapter, contains('PERMISSION_READ_HEALTH_DATA_HISTORY'));
-      // The single authorization sheet carries write + read together.
+      // The write path's authorization sheet carries write + read together
+      // (the import's own asks for the reads alone, issue #1515).
       expect(adapter, contains('allPermissions'));
     });
 
@@ -241,7 +242,9 @@ void main() {
               .hasMatch(adapter),
           isTrue,
         );
-        expect(adapter, contains('required = statusPermissions'));
+        // (Named `writes` since issue #1515 moved the write status to its
+        // own function, HealthPermissionState.writeStatusFor.)
+        expect(adapter, contains('writes = statusPermissions'));
       }
     });
 

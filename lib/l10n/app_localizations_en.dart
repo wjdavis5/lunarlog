@@ -863,6 +863,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String healthSyncPermissionReadingOnly(String source) {
+    return '$source access: reading only, so lunarlog can import but can\'t write — open Settings to change';
+  }
+
+  @override
+  String healthSyncPermissionWritingOnly(String source) {
+    return '$source access: writing only, so lunarlog can write but can\'t import — open Settings to change';
+  }
+
+  @override
   String healthSyncPermissionUnavailable(String source) {
     return '$source access is not available on this device.';
   }

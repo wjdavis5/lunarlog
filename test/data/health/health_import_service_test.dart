@@ -63,7 +63,15 @@ class _FakePlatform implements HealthPlatformStore {
   HealthPlatformResult bindResult = const HealthPlatformAllowed();
   HealthPlatformResult authResult = const HealthPlatformAllowed();
   int bindCalls = 0;
-  int authCalls = 0;
+
+  /// Issue #1515: there are two permission requests now. The import's own
+  /// ([requestImportAuthorization]) and the write path's
+  /// ([requestWriteAuthorization]) are counted apart, so a test can prove
+  /// which one a tap of Import raises; [authCalls] is both together, for
+  /// the tests that only care that nothing prompted.
+  int importAuthCalls = 0;
+  int writeAuthCalls = 0;
+  int get authCalls => importAuthCalls + writeAuthCalls;
 
   /// Issue #959: the WRITE-side OS-permission probe. The write pass reads
   /// it; since Issue #1491 the import never does, so the default is
@@ -89,7 +97,15 @@ class _FakePlatform implements HealthPlatformStore {
   Future<HealthPlatformResult> requestWriteAuthorization(
     HealthGuardFacts facts,
   ) async {
-    authCalls++;
+    writeAuthCalls++;
+    return authResult;
+  }
+
+  @override
+  Future<HealthPlatformResult> requestImportAuthorization(
+    HealthGuardFacts facts,
+  ) async {
+    importAuthCalls++;
     return authResult;
   }
 
@@ -396,6 +412,72 @@ void main() {
       expect(source.calls, 1);
     },
   );
+
+  // Issue #1515. The tap import used to ask through the write path's
+  // request, which on Android carries every permission — so someone who had
+  // allowed reading and declined writing was shown the write permissions
+  // again on each tap of Import. It asks through a request of its own now.
+  group('Issue #1515 the import asks through its own request', () {
+    test('a tap of Import raises the import\'s request, once, and never '
+        'the write path\'s', () async {
+      await bind();
+      source.result = const HealthReadResult.samples([]);
+
+      await build().importNow();
+
+      expect(platform.importAuthCalls, 1);
+      expect(
+        platform.writeAuthCalls,
+        0,
+        reason: 'the Import button has no reason to ask for write access',
+      );
+    });
+
+    test('every tap asks the same way: a second import raises the import\'s '
+        'request again and still not the write path\'s', () async {
+      await bind();
+      source.result = const HealthReadResult.samples([]);
+      final service = build();
+
+      await service.importNow();
+      await service.importNow();
+
+      expect(platform.importAuthCalls, 2);
+      expect(platform.writeAuthCalls, 0);
+    });
+
+    test('a refused request ends the pass before any read, as before',
+        () async {
+      await bind();
+      platform.authResult = const HealthPlatformPermissionDenied();
+
+      final summary = await build().importNow();
+
+      expect(summary.blocked, isA<HealthPlatformPermissionDenied>());
+      expect(platform.importAuthCalls, 1);
+      expect(platform.writeAuthCalls, 0);
+      expect(source.calls, 0);
+    });
+
+    test('a guard refusal raises neither request', () async {
+      settings.setSilently(SettingsKeys.healthStoreProfileId, 'someone-else');
+
+      await build().importNow();
+
+      expect(platform.authCalls, 0);
+    });
+
+    test('a failed bind re-write raises neither request', () async {
+      await bind();
+      platform.bindResult = const HealthPlatformUnavailable();
+
+      final summary = await build().importNow();
+
+      expect(summary.blocked, isA<HealthPlatformUnavailable>());
+      expect(platform.authCalls, 0);
+      expect(source.calls, 0);
+    });
+  });
 
   test(
     'issue #1212: a background pass fired while an importNow pass runs '
@@ -1424,8 +1506,8 @@ void main() {
       );
     });
 
-    test('the tap import consults neither probe: it asks through the one '
-        'authorization request, as before (issue #1491)', () async {
+    test('the tap import consults neither probe: it asks through its own '
+        'authorization request (issues #1491, #1515)', () async {
       await bind();
       // Whatever either probe would say, a tap is the person asking.
       platform.importPermissionStatusResult = HealthPermissionStatus.denied;
@@ -1442,7 +1524,8 @@ void main() {
 
       expect(summary.daysWritten, 1);
       expect(platform.bindCalls, 1);
-      expect(platform.authCalls, 1);
+      expect(platform.importAuthCalls, 1);
+      expect(platform.writeAuthCalls, 0);
       expect(platform.importPermissionStatusCalls, 0);
       expect(platform.permissionStatusCalls, 0);
     });

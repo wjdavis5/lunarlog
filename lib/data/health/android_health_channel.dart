@@ -36,7 +36,10 @@ import 'health_channel.dart';
 /// `readAccessDisclosed: true` (Issue #1491): Health Connect's
 /// `getGrantedPermissions` says which reads are granted, so the read-side
 /// permission probe crosses the channel to the Kotlin
-/// `importPermissionStatus` handler.
+/// `importPermissionStatus` handler. For the same reason (Issue #1515) the
+/// import's permission request crosses to its own Kotlin handler,
+/// `requestImportAuthorization`, which asks for the reads and no write
+/// permission, and the Health sync screen may say "reading only".
 class AndroidHealthChannel extends MethodChannelHealthPlatform {
   AndroidHealthChannel({
     required super.binding,

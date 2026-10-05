@@ -36,8 +36,12 @@ import 'health_channel.dart';
 /// `readAccessDisclosed: false` (Issue #1491): HealthKit never tells an app
 /// whether it may read a type, so the read-side permission probe has no
 /// Swift handler to ask — the shared engine answers it from the write types
-/// instead. The decision and its test live in `health_channel.dart`; this
-/// file only states the platform fact.
+/// instead. For the same reason (Issue #1515) the import's permission
+/// request stays the one HealthKit sheet `requestWriteAuthorization` raises
+/// (no `requestImportAuthorization` reaches Swift), and the Health sync
+/// screen never asks the read-side question here, so it can never say
+/// "reading only" on an iPhone. The decision and its test live in
+/// `health_channel.dart`; this file only states the platform fact.
 class IOSHealthChannel extends MethodChannelHealthPlatform {
   IOSHealthChannel({
     required super.binding,

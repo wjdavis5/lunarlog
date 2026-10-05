@@ -98,6 +98,13 @@ class _FakePlatform implements HealthPlatformStore {
   Future<HealthPermissionStatus> importPermissionStatus() =>
       throw StateError('a write pass must never read the import probe');
 
+  // Issue #1515: what the store discloses about reads is the status line's
+  // question, and the import's request is the import's. A write pass that
+  // touched either would be deciding a write on the read side.
+  @override
+  bool get readAccessDisclosed =>
+      throw StateError('a write pass must never ask about read access');
+
   @override
   Future<void> openPermissionSettings() async {}
 
@@ -112,6 +119,12 @@ class _FakePlatform implements HealthPlatformStore {
   Future<HealthPlatformResult> requestWriteAuthorization(
     HealthGuardFacts facts,
   ) async => const HealthPlatformAllowed();
+
+  @override
+  Future<HealthPlatformResult> requestImportAuthorization(
+    HealthGuardFacts facts,
+  ) =>
+      throw StateError('a write pass must never raise the import\'s request');
 
   @override
   Future<HealthPlatformResult> writeMenstrualFlow(

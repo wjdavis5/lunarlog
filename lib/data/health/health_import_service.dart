@@ -12,10 +12,13 @@
 ///    ends the pass with a [HealthImportSummary.blocked], touching no
 ///    health API.
 /// 2. Re-asserts the native binding mirror and requests authorization
-///    through [HealthPlatformStore] — iOS asks for both the write types and
-///    the menstrual-flow read type in the one system sheet, Android's
-///    Health Connect sheet carries the write and read permission sets, so a
-///    user who has only ever imported (never exported) is still prompted.
+///    through [HealthPlatformStore.requestImportAuthorization] — iOS asks
+///    for both the write types and the menstrual-flow read type in the one
+///    system sheet; Android asks Health Connect for the reads the import
+///    performs and its two optional read extras, and for no write
+///    permission (Issue #1515), so a user who has only ever imported
+///    (never exported) is still prompted, and one who declined the writes
+///    is not asked for them again by tapping Import.
 /// 3. Reads menstrual-flow and intermenstrual-bleeding samples over the
 ///    **whole history** (Issue #992 — from [kHealthImportEarliestYear] to
 ///    tomorrow, ±1 day of slack so a sample in any zone is returned), one
@@ -404,12 +407,15 @@ class LocalHealthImportService
       );
     }
 
-    // Keep the native-side binding mirror in step and prompt through the one
-    // authorization path (which now requests the read types too) — a user
-    // who has never enabled the write direction still gets the system sheet.
+    // Keep the native-side binding mirror in step, then prompt through the
+    // import's own request (Issue #1515): what the import reads, and on
+    // Android no write permission. It used to prompt through the write
+    // path's request, which carries everything, so someone who had allowed
+    // reading and declined writing was asked for the writes again on every
+    // tap of Import. On iOS it is still that one sheet (see the port's doc).
     final blocked =
         _notAllowed(await _platform.bindProfile(bound.facts)) ??
-        _notAllowed(await _platform.requestWriteAuthorization(bound.facts));
+        _notAllowed(await _platform.requestImportAuthorization(bound.facts));
     if (blocked != null) return HealthImportSummary(blocked: blocked);
 
     final summary = await _runPass(bound, onProgress);
@@ -454,9 +460,9 @@ class LocalHealthImportService
 
     // Issue #993: a background pass probes the OS permission and stops
     // before any read unless it is granted. It must never prompt — no
-    // `bindProfile` re-write, no `requestWriteAuthorization` — so a trigger
-    // on a device that never granted the reads (`notAsked`) or that had
-    // them removed (`denied`) is a silent no-op.
+    // `bindProfile` re-write, no authorization request of either kind — so
+    // a trigger on a device that never granted the reads (`notAsked`) or
+    // that had them removed (`denied`) is a silent no-op.
     //
     // Issue #1491: the probe is the READ-side one. This used to be the
     // write-side `permissionStatus`, so someone who let lunarlog read from

@@ -37,6 +37,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../config.dart';
+import '../../domain/health/health_access_state.dart';
 import '../../domain/health/health_deviation.dart';
 import '../../domain/health/health_import.dart';
 import '../../domain/health/health_platform.dart';
@@ -198,8 +199,10 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// when no probe is wired (nothing is rendered then). Re-read on every
   /// load and after each user-initiated import, so a revocation made in OS
   /// settings while the app was backgrounded is reflected when this screen
-  /// is (re-)opened or used.
-  HealthPermissionStatus? _permissionStatus;
+  /// is (re-)opened or used. Since Issue #1515 it is the state of both
+  /// directions where the store discloses read access, and the write state
+  /// alone where it does not (see [_readAccessState]).
+  HealthAccessState? _accessState;
 
   /// The store this screen is about — drives every store name and the
   /// write copy below. See [HealthSyncScreen.storePlatform] for the order.
@@ -238,9 +241,9 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
 
   Future<void> _refreshPermissionStatus() async {
     if (_loading) return;
-    final status = await _readPermissionStatus();
-    if (!mounted || status == _permissionStatus) return;
-    setState(() => _permissionStatus = status);
+    final state = await _readAccessState();
+    if (!mounted || state == _accessState) return;
+    setState(() => _accessState = state);
   }
 
   /// Loads the bound profile id, every non-archived profile, and each
@@ -271,13 +274,13 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       final guardians = await widget.guardiansForProfile(profile.id);
       owners[profile.id] = ownerUserIdFor(guardians);
     }
-    final permissionStatus = await _readPermissionStatus();
+    final accessState = await _readAccessState();
     if (!mounted) return;
     setState(() {
       _boundProfileId = bound;
       _profiles = profiles;
       _ownerUserIdByProfile = owners;
-      _permissionStatus = permissionStatus;
+      _accessState = accessState;
       _loading = false;
       _loadFailed = false;
     });
@@ -286,12 +289,37 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// Issue #959: reads the OS permission state through the probe, best
   /// effort — a probe that throws (or is absent) must not fail the load or
   /// crash the screen. Absent is null (render nothing); a throw is
-  /// [HealthPermissionStatus.unavailable] (we genuinely cannot tell).
-  Future<HealthPermissionStatus?> _readPermissionStatus() async {
+  /// [HealthAccessState.unavailable] (we genuinely cannot tell).
+  ///
+  /// Issue #1515: the write answer and, where the store discloses it, the
+  /// read answer, folded into the one state the line shows by
+  /// [healthAccessState].
+  Future<HealthAccessState?> _readAccessState() async {
     final probe = widget.permissionProbe;
     if (probe == null) return null;
     try {
-      return await probe.permissionStatus();
+      return healthAccessState(
+        write: await probe.permissionStatus(),
+        read: await _readSideStatus(probe),
+      );
+    } catch (_) {
+      return HealthAccessState.unavailable;
+    }
+  }
+
+  /// The read-side answer, or null where the store does not disclose read
+  /// access (Issue #1515). Decided on the platform fact
+  /// [HealthPermissionProbe.readAccessDisclosed], never by comparing the two
+  /// answers: on an iPhone the question is not asked at all, so nothing the
+  /// probe could answer there can put "reading only" on the line. A read
+  /// probe that throws is "cannot tell", which leaves the line as the write
+  /// answer alone.
+  Future<HealthPermissionStatus?> _readSideStatus(
+    HealthPermissionProbe probe,
+  ) async {
+    if (!probe.readAccessDisclosed) return null;
+    try {
+      return await probe.importPermissionStatus();
     } catch (_) {
       return HealthPermissionStatus.unavailable;
     }
@@ -300,44 +328,48 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// Issue #959: the status line copy. The source name is the store this
   /// platform actually uses, in its sentence-initial form ([_sourceTitle]) —
   /// every status string opens with it, so the mid-sentence [_sourceName]
-  /// would leave iOS reading "the Health app access: …" (Issue #1053). Note
-  /// there is deliberately no read dimension: HealthKit's read authorization
-  /// is opaque, so the line never claims to know (or denies) read access —
-  /// it reports the write/access state only.
-  String _permissionStatusText(
-    AppLocalizations l10n,
-    HealthPermissionStatus status,
-  ) {
+  /// would leave iOS reading "the Health app access: …" (Issue #1053).
+  ///
+  /// On an iPhone there is deliberately no read dimension: HealthKit's read
+  /// authorization is opaque, so the line never claims to know (or denies)
+  /// read access — it reports the write state only. On Android, Health
+  /// Connect says which reads are granted, so the line tells the two
+  /// directions apart (Issue #1515): someone who allowed reading and not
+  /// writing is told exactly that, not "denied".
+  String _permissionStatusText(AppLocalizations l10n, HealthAccessState state) {
     final source = _sourceTitle(l10n, _importPlatform);
-    return switch (status) {
-      HealthPermissionStatus.granted =>
-        l10n.healthSyncPermissionGranted(source),
-      HealthPermissionStatus.notAsked =>
-        l10n.healthSyncPermissionNotAsked(source),
-      HealthPermissionStatus.denied =>
-        l10n.healthSyncPermissionDenied(source),
-      HealthPermissionStatus.unavailable =>
+    return switch (state) {
+      HealthAccessState.granted => l10n.healthSyncPermissionGranted(source),
+      HealthAccessState.notAsked => l10n.healthSyncPermissionNotAsked(source),
+      HealthAccessState.denied => l10n.healthSyncPermissionDenied(source),
+      HealthAccessState.unavailable =>
         l10n.healthSyncPermissionUnavailable(source),
+      HealthAccessState.readingOnly =>
+        l10n.healthSyncPermissionReadingOnly(source),
+      HealthAccessState.writingOnly =>
+        l10n.healthSyncPermissionWritingOnly(source),
     };
   }
 
-  /// The status line plus — only in the denied state — the platform
-  /// settings deep link (Issue #959). Null when no probe is wired, so an
-  /// unconfigured build shows exactly what it showed before.
+  /// The status line plus — in the states the platform's settings screen is
+  /// the way out of — the settings deep link (Issue #959). Null when no
+  /// probe is wired, so an unconfigured build shows exactly what it showed
+  /// before.
   Widget? _permissionStatusSection(AppLocalizations l10n) {
-    final status = _permissionStatus;
-    if (status == null) return null;
+    final state = _accessState;
+    if (state == null) return null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           key: const ValueKey('health-sync-permission-status'),
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(_permissionStatusText(l10n, status)),
+          child: Text(_permissionStatusText(l10n, state)),
         ),
         // The settings link is offered only when it is actionable: a denied
-        // permission is the one state the operator can fix in OS settings.
-        if (status == HealthPermissionStatus.denied)
+        // permission, or (Issue #1515) one direction left off, is what the
+        // operator can change in the health store's own settings.
+        if (state.changedInSettings)
           ListTile(
             key: const ValueKey('health-sync-open-settings'),
             leading: const Icon(Icons.settings_outlined),
@@ -553,7 +585,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       } catch (_) {
         // Ignored: the snapshot is a display cache, not part of the import.
       }
-      final permissionStatus = await _readPermissionStatus();
+      final accessState = await _readAccessState();
       if (!mounted) return;
       setState(() {
         _importing = false;
@@ -562,7 +594,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
         // Issue #959: re-read the OS permission after the pass, so an
         // import that hit a revoked permission updates the status line
         // (and offers the settings link) without leaving the screen.
-        _permissionStatus = permissionStatus;
+        _accessState = accessState;
       });
       _announceResult(summary);
     } catch (_) {

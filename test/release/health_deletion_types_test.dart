@@ -36,6 +36,17 @@ String _stripLineComments(String text) => text
     })
     .join('\n');
 
+/// The slice of [source] from [start] up to [end] — one `when` branch of
+/// the Kotlin channel handler, taken between its own label and the next
+/// branch's.
+String _between(String source, String start, String end) {
+  final from = source.indexOf(start);
+  expect(from, isNonNegative, reason: '$start was not found');
+  final to = source.indexOf(end, from + start.length);
+  expect(to, greaterThan(from), reason: '$end does not follow $start');
+  return source.substring(from, to);
+}
+
 /// The `.caseName` members of a Swift array literal assigned to
 /// [declaration]. Assumes no nested brackets inside the literal (true here).
 Set<String> _swiftArrayCases(String source, String declaration) {
@@ -289,11 +300,16 @@ void main() {
         isTrue,
         reason: 'permissionStatus must be decided on the write permissions',
       );
-      expect(kotlin, contains('required = statusPermissions'));
+      expect(kotlin, contains('writes = statusPermissions'));
       expect(kotlin, isNot(contains('foregroundStatusPermissions')));
-      // The request sheet still carries writes and reads together.
-      expect(kotlin, contains('requested = allPermissions'));
-      expect(kotlin, contains('launcher.launch(allPermissions)'));
+      // The write path's request sheet still carries writes and reads
+      // together (issue #1515 gave the import a request of its own; the
+      // #1515 group below pins which request asks for what).
+      expect(
+        kotlin,
+        contains('private val allPermissions = writePermissions + readPermissions'),
+      );
+      expect(kotlin, contains('permissions = allPermissions'));
     });
 
     test('"never asked" is told apart from "denied" by remembering the '
@@ -304,16 +320,29 @@ void main() {
       // path could never ask. The adapter remembers that it launched the
       // request, sets that BEFORE launching (an interrupted sheet has still
       // been shown), and decides through the pure HealthPermissionState.
+      //
+      // Issue #1515: the launch is shared with the import's own request,
+      // so the remembering lives in the shared launcher and each request
+      // names the marker it sets. The write path's is this one.
       expect(kotlin, contains('PERMISSION_REQUESTED_KEY'));
-      final remembered = kotlin.indexOf(
-          'prefs.edit().putLong(PERMISSION_REQUESTED_KEY, installStamp)');
-      final launched = kotlin.indexOf('launcher.launch(allPermissions)');
+      final remembered =
+          kotlin.indexOf('prefs.edit().putLong(askedMarker, installStamp)');
+      final launched = kotlin.indexOf('launcher.launch(permissions)');
       expect(remembered, isNonNegative);
       expect(launched, isNonNegative);
       expect(remembered, lessThan(launched),
           reason: 'the request is remembered before the sheet is launched');
-      expect(kotlin, contains('HealthPermissionState.statusFor('));
-      expect(kotlin, contains('everRequested = permissionEverRequested()'));
+      expect('launcher.launch('.allMatches(kotlin), hasLength(1),
+          reason: 'one launcher: no request can skip the remembering');
+      final writeRequest = _between(
+        kotlin,
+        '"requestWriteAuthorization" ->',
+        '"requestImportAuthorization" ->',
+      );
+      expect(writeRequest, contains('launchPermissionRequest('));
+      expect(writeRequest, contains('askedMarker = PERMISSION_REQUESTED_KEY'));
+      expect(kotlin, contains('HealthPermissionState.writeStatusFor('));
+      expect(kotlin, contains('writesEverRequested = writesEverRequested()'));
       // The marker counts only for the install that made it: these prefs
       // can reach a new phone through Android's device-to-device transfer,
       // where no Health Connect permission is granted and nothing has been
@@ -322,9 +351,15 @@ void main() {
       expect(kotlin, contains('.firstInstallTime'));
       expect(
         kotlin,
-        contains('prefs.getLong(PERMISSION_REQUESTED_KEY, 0L) == installStamp'),
+        contains('prefs.contains(key) && prefs.getLong(key, 0L) == installStamp'),
       );
-      expect(kotlin, isNot(contains('putBoolean(PERMISSION_REQUESTED_KEY')));
+      expect(
+        RegExp(r'private fun writesEverRequested\(\): Boolean =\s*'
+                r'markerSetByThisInstall\(PERMISSION_REQUESTED_KEY\)')
+            .hasMatch(kotlin),
+        isTrue,
+      );
+      expect(kotlin, isNot(contains('putBoolean(')));
       // The decision itself, in the order that matters: granted first,
       // then asked-and-not-granted, and only then not-asked.
       final decision = RegExp(
@@ -361,15 +396,21 @@ void main() {
       expect(nextHandler, greaterThan(handler));
       final body = kotlin.substring(handler, nextHandler);
 
+      // Issue #1515: the grant that counts is a WRITE grant. A read can be
+      // granted on the import's own sheet, which never shows the writes, so
+      // a granted read no longer says the person was asked for them.
       final seen = body.indexOf(
-          'HealthPermissionState.provesAsked(granted, allPermissions)');
+          'HealthPermissionState.provesAsked(granted, writePermissions)');
       final remembered = RegExp(
         r'prefs\.edit\(\)\s*\.putLong\(PERMISSION_REQUESTED_KEY, installStamp\)'
         r'\s*\.apply\(\)',
       ).firstMatch(body);
-      final answered = body.indexOf('HealthPermissionState.statusFor(');
+      final answered = body.indexOf('HealthPermissionState.writeStatusFor(');
+      expect(body, isNot(contains('provesAsked(granted, allPermissions)')),
+          reason: 'a read granted by the import\'s request must not mark the '
+              'writes as asked: the write pass would stop before asking');
       expect(seen, isNonNegative,
-          reason: 'permissionStatus must look for a grant of any requested '
+          reason: 'permissionStatus must look for a grant of a write '
               'permission');
       expect(remembered, isNotNull,
           reason: 'and set the marker when it finds one');
@@ -491,6 +532,238 @@ void main() {
         isTrue,
         reason: 'HealthPermissionState.importStatusFor changed shape — '
             'update HealthImportPermissionStateTest.kt and this guard together',
+      );
+    });
+  });
+
+  // Issue #1515: the import asks through a request of its own. Someone who
+  // let lunarlog read from Health Connect and not write to it used to be
+  // shown the write permissions again on every tap of Import, because the
+  // import asked through the one request that carried everything. These
+  // guards keep the import's request on the reads, keep it from marking the
+  // WRITES as asked (which would stop the write pass before its own
+  // request), and keep the request off the Swift side, where the import
+  // still asks through HealthKit's one sheet.
+  group('Android: the import asks only for what it reads (#1515)', () {
+    late String kotlin;
+    late String importRequest;
+    late String writeRequest;
+    late String writeStatus;
+
+    setUpAll(() {
+      kotlin = _stripLineComments(readRepoFile(_adapterPath));
+      writeRequest = _between(
+        kotlin,
+        '"requestWriteAuthorization" ->',
+        '"requestImportAuthorization" ->',
+      );
+      importRequest = _between(
+        kotlin,
+        '"requestImportAuthorization" ->',
+        '"importPermissionStatus" ->',
+      );
+      writeStatus = _between(
+        kotlin,
+        '"permissionStatus" ->',
+        '"openPermissionSettings" ->',
+      );
+    });
+
+    test('the import\'s request asks for the read set and no write '
+        'permission', () {
+      expect(importRequest, contains('launchPermissionRequest('));
+      expect(importRequest, contains('permissions = readPermissions'));
+      expect(importRequest, isNot(contains('allPermissions')));
+      expect(importRequest, isNot(contains('writePermissions')));
+      // And the read set is what it says: "access past data", the two
+      // record reads, the background read where it is offered — built
+      // from no write permission. (The #1491 group pins the two record
+      // reads themselves.)
+      expect(
+        RegExp(r'private\s+val\s+readPermissions\s*=\s*setOf\(\s*'
+                r'HealthPermission\.PERMISSION_READ_HEALTH_DATA_HISTORY,\s*\)'
+                r'\s*\+\s*importReadPermissions\s*\+\s*backgroundReadPermissions\(\)'
+                r'\s*\n')
+            .hasMatch(kotlin),
+        isTrue,
+        reason: 'readPermissions changed shape — if a write permission can '
+            'reach it, tapping Import asks for write access again',
+      );
+      final backgroundReads = _between(
+        kotlin,
+        'private fun backgroundReadPermissions(): Set<String>',
+        'private class GuardArgs',
+      );
+      expect(backgroundReads, isNot(contains('getWritePermission')));
+      expect(backgroundReads, isNot(contains('writePermissions')));
+    });
+
+    test('the write path\'s request is unchanged: everything, on one sheet',
+        () {
+      expect(writeRequest, contains('launchPermissionRequest('));
+      expect(writeRequest, contains('permissions = allPermissions'));
+      expect(writeRequest, isNot(contains('permissions = readPermissions')));
+    });
+
+    test('each request sets its own asked-marker, and the import\'s is '
+        'never the write one', () {
+      expect(
+        importRequest,
+        contains('askedMarker = IMPORT_REQUEST_LAUNCHED_KEY'),
+      );
+      expect(importRequest, isNot(contains('PERMISSION_REQUESTED_KEY')));
+      expect(writeRequest, contains('askedMarker = PERMISSION_REQUESTED_KEY'));
+      expect(writeRequest, isNot(contains('IMPORT_REQUEST_LAUNCHED_KEY')));
+      // Two different stored names, so one can never be read as the other.
+      expect(
+        kotlin,
+        contains('const val PERMISSION_REQUESTED_KEY = '
+            '"lunarlog.health.permissionRequested"'),
+      );
+      expect(
+        kotlin,
+        contains('const val IMPORT_REQUEST_LAUNCHED_KEY = '
+            '"lunarlog.health.importRequestLaunched"'),
+      );
+    });
+
+    test('both requests pass the one guard before the one launcher', () {
+      // The #153 guard and the availability check come before the sheet,
+      // for the import's request exactly as for the write path's.
+      const guardCall =
+          'if (!requestGuardAllows(call.method, args, result)) return';
+      for (final request in [writeRequest, importRequest]) {
+        final guarded = request.indexOf(guardCall);
+        final launched = request.indexOf('launchPermissionRequest(');
+        expect(guarded, isNonNegative);
+        expect(launched, greaterThan(guarded));
+      }
+      final guard = _between(
+        kotlin,
+        'private fun requestGuardAllows(',
+        'private fun launchPermissionRequest(',
+      );
+      final decided = guard.indexOf('guardDecision(storedBoundProfileId, g)');
+      final available = guard.indexOf('if (!isAvailable())');
+      expect(decided, isNonNegative);
+      expect(available, greaterThan(decided));
+      final launcher = _between(
+        kotlin,
+        'private fun launchPermissionRequest(',
+        'private fun insert(',
+      );
+      expect(
+        launcher,
+        contains('prefs.edit().putLong(askedMarker, installStamp).apply()'),
+      );
+      expect(launcher, contains('launcher.launch(permissions)'));
+      expect(
+        'launchPermissionRequest('.allMatches(kotlin),
+        hasLength(3),
+        reason: 'the declaration and the two requests: nothing else raises '
+            'a Health Connect sheet',
+      );
+    });
+
+    // With both record reads granted the import needs nothing, so a tap of
+    // Import raises no sheet at all. Asking regardless put Health Connect's
+    // "Allow lunarlog to access past data?" sheet in front of someone who
+    // had declined that one optional extra, on every tap (seen on an
+    // Android 15 emulator, 2026-10-05).
+    test('the import asks only when it cannot read', () {
+      final looked =
+          importRequest.indexOf('permissionController.getGrantedPermissions()');
+      final decided = importRequest.indexOf(
+          'HealthPermissionState.importMustAsk(granted, importReadPermissions)');
+      final answered = importRequest.indexOf('result.success("allowed")');
+      final launched = importRequest.indexOf('launchPermissionRequest(');
+      expect(looked, isNonNegative);
+      expect(decided, greaterThan(looked));
+      expect(answered, greaterThan(decided),
+          reason: 'nothing to ask: the import goes straight on to its read');
+      expect(launched, greaterThan(answered));
+      expect(
+        RegExp(r'fun importMustAsk\(granted: Set<String>, '
+                r'importReads: Set<String>\): Boolean =\s*'
+                r'!granted\.containsAll\(importReads\)')
+            .hasMatch(kotlin),
+        isTrue,
+        reason: 'HealthPermissionState.importMustAsk changed shape — update '
+            'HealthImportPermissionStateTest.kt and this guard together',
+      );
+      // The write path's request is not conditional on the reads.
+      expect(writeRequest, isNot(contains('importMustAsk')));
+    });
+
+    test('the write status is decided on the writes alone: the import\'s '
+        'marker and a granted read say nothing about them', () {
+      // What "asked" means for the writes: the write request's marker.
+      expect(writeStatus, contains('writesEverRequested = writesEverRequested()'));
+      expect(writeStatus, isNot(contains('permissionEverRequested()')));
+      expect(writeStatus, isNot(contains('IMPORT_REQUEST_LAUNCHED_KEY')));
+      expect(writeStatus, isNot(contains('allPermissions')));
+      expect(writeStatus, isNot(contains('readPermissions')));
+      expect(
+        RegExp(
+          r'fun writeStatusFor\(\s*granted: Set<String>,\s*'
+          r'writes: Set<String>,\s*writesEverRequested: Boolean,\s*\)'
+          r': String = statusFor\(\s*granted = granted,\s*'
+          r'required = writes,\s*requested = writes,\s*'
+          r'everRequested = writesEverRequested,\s*\)',
+        ).hasMatch(kotlin),
+        isTrue,
+        reason: 'HealthPermissionState.writeStatusFor changed shape — '
+            'update HealthPermissionStateTest.kt and this guard together',
+      );
+    });
+
+    test('the read status counts either request as having asked for the '
+        'reads', () {
+      // Both requests carry the reads, so either marker is "asked" for the
+      // read side — and only for the read side.
+      expect(
+        RegExp(r'private fun permissionEverRequested\(\): Boolean =\s*'
+                r'writesEverRequested\(\)\s*\|\|\s*'
+                r'markerSetByThisInstall\(IMPORT_REQUEST_LAUNCHED_KEY\)')
+            .hasMatch(kotlin),
+        isTrue,
+      );
+      expect(
+        'markerSetByThisInstall(IMPORT_REQUEST_LAUNCHED_KEY)'.allMatches(kotlin),
+        hasLength(1),
+        reason: 'the import\'s marker is read in one place: the read side\'s '
+            '"asked"',
+      );
+    });
+  });
+
+  group('iOS: the import still asks through the one HealthKit sheet (#1515)',
+      () {
+    test('Swift has no requestImportAuthorization handler', () {
+      final swift = _stripLineComments(readRepoFile(_appDelegatePath));
+      expect(swift, isNot(contains('requestImportAuthorization')));
+      // The sheet the import raises there is the write path's: write and
+      // read types together, as before.
+      expect(swift, contains('case "requestWriteAuthorization":'));
+      expect(
+        swift,
+        contains(RegExp(r'store\.requestAuthorization\(\s*toShare: toShare, '
+            r'read: toRead\)')),
+      );
+    });
+
+    test('the Dart adapter picks the request by the platform fact', () {
+      final channel = _stripLineComments(
+        readRepoFile('lib/data/health/health_channel.dart'),
+      );
+      expect(
+        RegExp(r'readAccessDisclosed\s*'
+                r'\?\s*HealthChannelMethods\.requestImportAuthorization\s*'
+                r':\s*HealthChannelMethods\.requestWriteAuthorization')
+            .hasMatch(channel),
+        isTrue,
+        reason: 'where read access is not disclosed (iOS) the import must '
+            'keep sending requestWriteAuthorization',
       );
     });
   });

@@ -6,17 +6,23 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Issue #1478: pins the `permissionStatus` decision the Android adapter
- * reports to Dart.
+ * Issues #1478 and #1515: pins the `permissionStatus` decision the Android
+ * adapter reports to Dart — may lunarlog write?
  *
- * Two things were wrong before it. A fresh install answered "denied" before
- * the person had been asked anything, because Android cannot tell "never
- * asked" from "denied" by looking at what is granted — and since the Dart
- * write pass stops on "denied" before its own authorization request, the
- * Android write path could never ask. And the status required every
+ * Two things were wrong before #1478. A fresh install answered "denied"
+ * before the person had been asked anything, because Android cannot tell
+ * "never asked" from "denied" by looking at what is granted — and since the
+ * Dart write pass stops on "denied" before its own authorization request,
+ * the Android write path could never ask. And the status required every
  * requested permission but the background read, so declining an optional
  * READ permission (Health Connect's "Access past data") reported "denied"
  * and blocked every write.
+ *
+ * #1515 gave the import a permission request of its own, for the reads
+ * alone. So "asked" has to mean asked for the WRITES: a read granted on the
+ * import's sheet is no evidence that a write permission was ever shown, and
+ * answering "denied" for it would put the write path back in the trap
+ * above.
  */
 class HealthPermissionStateTest {
 
@@ -24,55 +30,59 @@ class HealthPermissionStateTest {
     private val writeSpotting =
         "android.permission.health.WRITE_INTERMENSTRUAL_BLEEDING"
     private val readMenstruation = "android.permission.health.READ_MENSTRUATION"
+    private val readSpotting =
+        "android.permission.health.READ_INTERMENSTRUAL_BLEEDING"
     private val readHistory = "android.permission.health.READ_HEALTH_DATA_HISTORY"
     private val readBackground =
         "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"
 
-    /** What `permissionStatus` requires: the write permissions only. */
-    private val required = setOf(writeMenstruation, writeSpotting)
+    /** What `permissionStatus` is decided on: the write permissions only. */
+    private val writes = setOf(writeMenstruation, writeSpotting)
 
-    /** What the request sheet asks for: writes and reads together. */
-    private val requested =
-        required + setOf(readMenstruation, readHistory, readBackground)
+    /** What the import's own request asks for: the reads, and no write. */
+    private val importRequest =
+        setOf(readMenstruation, readSpotting, readHistory, readBackground)
 
-    private fun status(granted: Set<String>, everRequested: Boolean): String =
-        HealthPermissionState.statusFor(
+    /** What the write path's request asks for: writes and reads together. */
+    private val writeRequest = writes + importRequest
+
+    private fun status(granted: Set<String>, writesEverRequested: Boolean): String =
+        HealthPermissionState.writeStatusFor(
             granted = granted,
-            required = required,
-            requested = requested,
-            everRequested = everRequested,
+            writes = writes,
+            writesEverRequested = writesEverRequested,
         )
 
     @Test
     fun `a fresh install is not asked yet, never denied`() {
-        assertEquals("notAsked", status(emptySet(), everRequested = false))
+        assertEquals("notAsked", status(emptySet(), writesEverRequested = false))
     }
 
     @Test
-    fun `once the request has been launched, nothing granted is denied`() {
-        assertEquals("denied", status(emptySet(), everRequested = true))
+    fun `once the write request has been launched, nothing granted is denied`() {
+        assertEquals("denied", status(emptySet(), writesEverRequested = true))
     }
 
     @Test
     fun `every write permission granted is granted`() {
-        assertEquals("granted", status(required, everRequested = true))
+        assertEquals("granted", status(writes, writesEverRequested = true))
     }
 
     @Test
     fun `granted does not depend on the remembered flag`() {
         // Granted in Health Connect's own settings, or by a build that asked
         // before the flag existed.
-        assertEquals("granted", status(required, everRequested = false))
+        assertEquals("granted", status(writes, writesEverRequested = false))
     }
 
     @Test
     fun `declining the read permissions does not deny the writes`() {
         // The person allowed every write and left "Access past data", the
         // background read, and the reads themselves off.
-        assertEquals("granted", status(required, everRequested = true))
+        assertEquals("granted", status(writes, writesEverRequested = true))
         assertEquals(
             "granted",
-            status(required + readMenstruation, everRequested = true),
+            status(writes + readMenstruation, writesEverRequested = true),
         )
     }
 
@@ -80,21 +90,45 @@ class HealthPermissionStateTest {
     fun `a missing write permission is denied even with every read granted`() {
         assertEquals(
             "denied",
-            status(
-                setOf(writeMenstruation, readMenstruation, readHistory, readBackground),
-                everRequested = true,
-            ),
+            status(setOf(writeMenstruation) + importRequest, writesEverRequested = true),
         )
     }
 
     @Test
-    fun `a read-only grant proves the person was asked, so it is denied not unasked`() {
-        // An install that answered the sheet before the flag existed, or a
-        // permission switched on in Health Connect's settings: something is
-        // granted, so a decision was made.
+    fun `one write granted proves she was asked for the writes, flag or no flag`() {
+        // A write switched on in Health Connect's settings, or on the sheet
+        // of a build older than the flag: a decision about the writes was
+        // made, so the missing one is a denial.
         assertEquals(
             "denied",
-            status(setOf(readMenstruation), everRequested = false),
+            status(setOf(writeMenstruation), writesEverRequested = false),
+        )
+    }
+
+    // Issue #1515. Before it, any granted permission proved "asked", which
+    // was true while one request carried everything. The import's request
+    // carries the reads alone.
+    @Test
+    fun `reads allowed on the import sheet do not prove she was asked for the writes`() {
+        // She tapped Import and allowed everything it asked for. No write
+        // permission has ever been shown to her.
+        assertEquals("notAsked", status(importRequest, writesEverRequested = false))
+        assertEquals(
+            "notAsked",
+            status(setOf(readMenstruation, readSpotting), writesEverRequested = false),
+        )
+        assertEquals("notAsked", status(setOf(readHistory), writesEverRequested = false))
+        assertEquals("notAsked", status(setOf(readBackground), writesEverRequested = false))
+    }
+
+    @Test
+    fun `reads on, and the writes asked for and declined, is denied`() {
+        // The person the issue is about: the write path's sheet was shown,
+        // she allowed the reads on it and not the writes.
+        assertEquals("denied", status(importRequest, writesEverRequested = true))
+        assertEquals(
+            "denied",
+            status(setOf(readMenstruation, readSpotting), writesEverRequested = true),
         )
     }
 
@@ -102,7 +136,10 @@ class HealthPermissionStateTest {
     fun `a permission the app does not request proves nothing`() {
         assertEquals(
             "notAsked",
-            status(setOf("android.permission.health.READ_STEPS"), everRequested = false),
+            status(
+                setOf("android.permission.health.READ_STEPS"),
+                writesEverRequested = false,
+            ),
         )
     }
 
@@ -111,33 +148,72 @@ class HealthPermissionStateTest {
     // removed altogether must read "denied", not "not yet asked" — with a
     // forward-only cursor in place the write pass never asks again, so
     // "not yet asked" would leave every write failing with no Settings
-    // link. The adapter sets its marker whenever provesAsked is true, which
-    // turns the later revocation into everRequested = true.
+    // link. The adapter sets the write marker whenever provesAsked is true
+    // over the WRITE permissions, which turns the later revocation into
+    // writesEverRequested = true.
     @Test
-    fun `a grant of anything the app requests proves the person was asked`() {
-        assertTrue(HealthPermissionState.provesAsked(required, requested))
-        assertTrue(HealthPermissionState.provesAsked(setOf(readMenstruation), requested))
-        assertTrue(HealthPermissionState.provesAsked(setOf(readBackground), requested))
+    fun `a write grant is what the adapter remembers as asked for the writes`() {
+        assertTrue(HealthPermissionState.provesAsked(writes, writes))
+        assertTrue(HealthPermissionState.provesAsked(setOf(writeSpotting), writes))
+        assertTrue(
+            HealthPermissionState.provesAsked(setOf(writeSpotting) + importRequest, writes),
+        )
+    }
+
+    @Test
+    fun `a read grant is not remembered as asked for the writes`() {
+        // Issue #1515: remembering it would make the write status read
+        // "denied" for someone who has only ever tapped Import, and the
+        // write pass would stop before its own request.
+        assertFalse(HealthPermissionState.provesAsked(importRequest, writes))
+        assertFalse(HealthPermissionState.provesAsked(setOf(readMenstruation), writes))
+        assertFalse(HealthPermissionState.provesAsked(setOf(readBackground), writes))
     }
 
     @Test
     fun `nothing granted, or only something the app never requests, proves nothing`() {
-        assertFalse(HealthPermissionState.provesAsked(emptySet(), requested))
+        assertFalse(HealthPermissionState.provesAsked(emptySet(), writes))
+        assertFalse(HealthPermissionState.provesAsked(emptySet(), writeRequest))
         assertFalse(
             HealthPermissionState.provesAsked(
                 setOf("android.permission.health.READ_STEPS"),
-                requested,
+                writeRequest,
             ),
         )
     }
 
     @Test
-    fun `access seen granted and then removed altogether reads denied`() {
+    fun `write access seen granted and then removed altogether reads denied`() {
         // While granted, the adapter sees provesAsked and sets the marker...
-        assertTrue(HealthPermissionState.provesAsked(required, requested))
-        assertEquals("granted", status(required, everRequested = false))
+        assertTrue(HealthPermissionState.provesAsked(writes, writes))
+        assertEquals("granted", status(writes, writesEverRequested = false))
         // ...so once everything is revoked the marker answers for it.
-        assertEquals("denied", status(emptySet(), everRequested = true))
+        assertEquals("denied", status(emptySet(), writesEverRequested = true))
+    }
+
+    @Test
+    fun `the write status is the one decision over the writes alone`() {
+        // writeStatusFor is statusFor with the writes as both what is
+        // required and what counts as proof of having been asked.
+        for (writesEverRequested in listOf(false, true)) {
+            for (granted in listOf(
+                emptySet(),
+                writes,
+                setOf(writeMenstruation),
+                importRequest,
+                writeRequest,
+            )) {
+                assertEquals(
+                    HealthPermissionState.statusFor(
+                        granted = granted,
+                        required = writes,
+                        requested = writes,
+                        everRequested = writesEverRequested,
+                    ),
+                    status(granted, writesEverRequested),
+                )
+            }
+        }
     }
 
     @Test

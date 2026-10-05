@@ -205,6 +205,44 @@ class _FakeImporter implements HealthImportRunner {
   }
 }
 
+/// A scripted [HealthPermissionProbe] for the Issue #1515 status line: each
+/// direction's answer is set by hand and each probe is counted, so a test
+/// can prove which questions the screen asked — in particular that it never
+/// asks the read-side one of a store that does not disclose read access.
+class _ScriptedProbe implements HealthPermissionProbe {
+  _ScriptedProbe({
+    required this.readAccessDisclosed,
+    required this.write,
+    this.read = HealthPermissionStatus.unavailable,
+    this.readThrows = false,
+  });
+
+  @override
+  final bool readAccessDisclosed;
+
+  HealthPermissionStatus write;
+  HealthPermissionStatus read;
+  final bool readThrows;
+  int writeProbes = 0;
+  int readProbes = 0;
+
+  @override
+  Future<HealthPermissionStatus> permissionStatus() async {
+    writeProbes++;
+    return write;
+  }
+
+  @override
+  Future<HealthPermissionStatus> importPermissionStatus() async {
+    readProbes++;
+    if (readThrows) throw StateError('boom');
+    return read;
+  }
+
+  @override
+  Future<void> openPermissionSettings() async {}
+}
+
 /// A runner that throws, for the unexpected-failure line.
 class _ThrowingImporter implements HealthImportRunner {
   @override
@@ -249,13 +287,22 @@ void main() {
   const healthChannel = MethodChannel('lunarlog/health');
   final permissionCalls = <MethodCall>[];
   Object? permissionResult;
+  // Issue #1515: what the fake native side answers for the READ-side probe
+  // (`importPermissionStatus`, Android only). Null — a native half with no
+  // such handler — decodes to "cannot tell", which leaves the status line
+  // as the write answer alone, so every older test here reads as it did.
+  Object? importPermissionResult;
   setUp(() {
     permissionCalls.clear();
     permissionResult = 'granted';
+    importPermissionResult = null;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(healthChannel, (call) async {
       permissionCalls.add(call);
       if (call.method == 'permissionStatus') return permissionResult;
+      if (call.method == 'importPermissionStatus') {
+        return importPermissionResult;
+      }
       return null;
     });
   });
@@ -1866,6 +1913,351 @@ void main() {
       expect(
         find.byKey(const ValueKey('health-sync-open-settings')),
         findsOneWidget,
+      );
+    });
+  });
+
+  // Issue #1515. The status line was the write answer alone, so on Android
+  // someone who let lunarlog read from Health Connect and not write to it
+  // was told "access: denied" while her import was working. Health Connect
+  // says which reads are granted, so there the line tells the two
+  // directions apart. Apple Health does not, so on an iPhone the line stays
+  // exactly what it was.
+  group('Issue #1515 the status line tells reading from writing', () {
+    const readingOnly = 'Health Connect access: reading only, so lunarlog '
+        "can import but can't write — open Settings to change";
+    const writingOnly = 'Health Connect access: writing only, so lunarlog '
+        "can write but can't import — open Settings to change";
+    const statusKey = ValueKey('health-sync-permission-status');
+    const settingsKey = ValueKey('health-sync-open-settings');
+
+    Future<HealthSyncBinding> boundBinding() async {
+      final binding = HealthSyncBinding(FakeSettingsStore());
+      await binding.bind(
+        profile: profiles.firstWhere((p) => p.id == 'eligible'),
+        signedInUserId: 'u1',
+        ownerUserId: 'u1',
+        minorBindingAllowed: false,
+      );
+      return binding;
+    }
+
+    Future<void> pumpAndroid(
+      WidgetTester tester, {
+      required HealthSyncBinding binding,
+      required HealthPermissionProbe permissionProbe,
+      HealthImportRunner? importer,
+    }) =>
+        pumpScreen(
+          tester,
+          binding: binding,
+          importer: importer ??
+              _FakeImporter(
+                const HealthImportSummary(),
+                platform: HealthImportPlatform.healthConnect,
+              ),
+          permissionProbe: permissionProbe,
+          writeEnabled: true,
+          storePlatform: HealthImportPlatform.healthConnect,
+          viewport: const Size(800, 2400),
+        );
+
+    Future<void> pumpIphone(
+      WidgetTester tester, {
+      required HealthPermissionProbe permissionProbe,
+    }) =>
+        pumpScreen(
+          tester,
+          binding: HealthSyncBinding(FakeSettingsStore()),
+          permissionProbe: permissionProbe,
+          writeEnabled: true,
+          storePlatform: HealthImportPlatform.appleHealth,
+        );
+
+    String statusLine(WidgetTester tester) => tester
+        .widget<Text>(
+          find.descendant(
+            of: find.byKey(statusKey),
+            matching: find.byType(Text),
+          ),
+        )
+        .data!;
+
+    // The case the issue is about, through the real channel adapter and the
+    // method names the Kotlin half answers. Before #1515 this read "Health
+    // Connect access: denied — open Settings to change".
+    testWidgets('reads on, writes off: the line does not say denied — it '
+        'says reading is on and writing is off, and keeps the way into '
+        'Settings', (tester) async {
+      // Health Connect holds the two reads and no write permission.
+      permissionResult = 'denied';
+      importPermissionResult = 'granted';
+      await pumpAndroid(
+        tester,
+        binding: await boundBinding(),
+        permissionProbe: buildPermissionProbe(),
+      );
+
+      expect(statusLine(tester), isNot(contains('denied')));
+      expect(statusLine(tester), readingOnly);
+      expect(find.byKey(settingsKey), findsOneWidget);
+
+      await tester.tap(find.byKey(settingsKey));
+      await tester.pumpAndSettle();
+      expect(
+        permissionCalls.map((call) => call.method),
+        contains('openPermissionSettings'),
+      );
+    });
+
+    testWidgets('Android: every case of the two answers, and which of them '
+        'offer the settings link', (tester) async {
+      final binding = await boundBinding();
+      for (final (write, read, expected, settingsLink) in [
+        // Writes granted: unchanged while reading is on too.
+        ('granted', 'granted', 'Health Connect access: granted', false),
+        // Writes not granted, reads granted: the new state — whether she
+        // declined the writes or has not been asked for them yet.
+        ('denied', 'granted', readingOnly, true),
+        ('notAsked', 'granted', readingOnly, true),
+        // Neither granted, never asked: unchanged.
+        (
+          'notAsked',
+          'notAsked',
+          'Health Connect access: not yet asked',
+          false,
+        ),
+        // Neither granted, asked: unchanged.
+        (
+          'denied',
+          'denied',
+          'Health Connect access: denied — open Settings to change',
+          true,
+        ),
+        // Asked for the reads by Import and declined them, not yet asked
+        // for the writes: the write path will still ask, so not "denied".
+        (
+          'notAsked',
+          'denied',
+          'Health Connect access: not yet asked',
+          false,
+        ),
+        // Writes granted, reads not: writing works and the import does not,
+        // so a bare "granted" would mislead.
+        ('granted', 'denied', writingOnly, true),
+        // A read side that cannot answer leaves the write answer alone.
+        ('granted', 'unavailable', 'Health Connect access: granted', false),
+        (
+          'denied',
+          'unavailable',
+          'Health Connect access: denied — open Settings to change',
+          true,
+        ),
+        // No write answer at all: nothing is claimed about either side.
+        (
+          'unavailable',
+          'granted',
+          'Health Connect access is not available on this device.',
+          false,
+        ),
+      ]) {
+        permissionResult = write;
+        importPermissionResult = read;
+        await tester.pumpWidget(const SizedBox.shrink());
+        await pumpAndroid(
+          tester,
+          binding: binding,
+          permissionProbe: buildPermissionProbe(),
+        );
+
+        expect(statusLine(tester), expected, reason: 'write=$write read=$read');
+        expect(
+          find.byKey(settingsKey),
+          settingsLink ? findsOneWidget : findsNothing,
+          reason: 'write=$write read=$read',
+        );
+      }
+    });
+
+    testWidgets('Android: the line follows an answer given on Health '
+        'Connect\'s own screens when the app comes back', (tester) async {
+      permissionResult = 'denied';
+      importPermissionResult = 'denied';
+      await pumpAndroid(
+        tester,
+        binding: await boundBinding(),
+        permissionProbe: buildPermissionProbe(),
+      );
+      expect(
+        statusLine(tester),
+        'Health Connect access: denied — open Settings to change',
+      );
+
+      // She turns the two reads on in Health Connect and comes back.
+      importPermissionResult = 'granted';
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(statusLine(tester), readingOnly);
+
+      // Then the writes too.
+      permissionResult = 'granted';
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(statusLine(tester), 'Health Connect access: granted');
+      expect(find.byKey(settingsKey), findsNothing);
+    });
+
+    testWidgets('Android: allowing the reads on the import\'s own sheet '
+        'moves the line from denied to reading only, without leaving the '
+        'screen', (tester) async {
+      permissionResult = 'denied';
+      importPermissionResult = 'denied';
+      await pumpAndroid(
+        tester,
+        binding: await boundBinding(),
+        permissionProbe: buildPermissionProbe(),
+        importer: _FakeImporter(
+          const HealthImportSummary(samplesRead: 1, daysWritten: 1),
+          platform: HealthImportPlatform.healthConnect,
+        ),
+      );
+      expect(
+        statusLine(tester),
+        'Health Connect access: denied — open Settings to change',
+      );
+
+      // The import asks for the reads and she allows them; the pass then
+      // re-reads both answers.
+      importPermissionResult = 'granted';
+      await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
+      await tester.pumpAndSettle();
+
+      expect(statusLine(tester), readingOnly);
+      expect(find.byKey(settingsKey), findsOneWidget);
+    });
+
+    testWidgets('Android: a read-side probe that throws leaves the write '
+        'answer on the line', (tester) async {
+      final probe = _ScriptedProbe(
+        readAccessDisclosed: true,
+        write: HealthPermissionStatus.denied,
+        readThrows: true,
+      );
+      await pumpAndroid(
+        tester,
+        binding: await boundBinding(),
+        permissionProbe: probe,
+      );
+
+      expect(probe.readProbes, 1);
+      expect(
+        statusLine(tester),
+        'Health Connect access: denied — open Settings to change',
+      );
+    });
+
+    // iPhone. HealthKit does not disclose read access, so there the
+    // read-side probe is only the write answer under another name. The
+    // screen decides on the platform fact (`readAccessDisclosed`), not on
+    // what the two answers happen to be: it never asks the read-side
+    // question at all.
+    testWidgets('iPhone: the read-side question is never asked, so nothing '
+        'it could answer can put "reading only" on the line',
+        (tester) async {
+      for (final write in HealthPermissionStatus.values) {
+        // A probe that would claim reading is on, whatever the writes are —
+        // exactly the pair of answers that reads "reading only" on Android.
+        final probe = _ScriptedProbe(
+          readAccessDisclosed: false,
+          write: write,
+          read: HealthPermissionStatus.granted,
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
+        await pumpIphone(tester, permissionProbe: probe);
+
+        expect(probe.writeProbes, 1, reason: 'write=$write');
+        expect(probe.readProbes, 0, reason: 'write=$write');
+        expect(statusLine(tester), isNot(contains('reading only')));
+        expect(statusLine(tester), isNot(contains('writing only')));
+        expect(
+          statusLine(tester),
+          switch (write) {
+            HealthPermissionStatus.granted => 'Health app access: granted',
+            HealthPermissionStatus.notAsked =>
+              'Health app access: not yet asked',
+            HealthPermissionStatus.denied =>
+              'Health app access: denied — open Settings to change',
+            HealthPermissionStatus.unavailable =>
+              'Health app access is not available on this device.',
+          },
+        );
+        expect(
+          find.byKey(settingsKey),
+          write == HealthPermissionStatus.denied
+              ? findsOneWidget
+              : findsNothing,
+        );
+      }
+    });
+
+    testWidgets('iPhone: the real adapter sends Swift the write probe once '
+        'per reading and nothing else', (tester) async {
+      final HealthPermissionProbe ios = createHealthPlatform(
+        TargetPlatform.iOS,
+        binding: HealthSyncBinding(FakeSettingsStore()),
+        minorBindingAllowed: true,
+      );
+      expect((ios as MethodChannelHealthPlatform).readAccessDisclosed, isFalse);
+
+      for (final (wire, expected) in [
+        ('granted', 'Health app access: granted'),
+        ('notAsked', 'Health app access: not yet asked'),
+        ('denied', 'Health app access: denied — open Settings to change'),
+      ]) {
+        permissionCalls.clear();
+        permissionResult = wire;
+        // What a Kotlin half would answer; an iPhone never hears the
+        // question, so this must not matter.
+        importPermissionResult = 'granted';
+        await tester.pumpWidget(const SizedBox.shrink());
+        await pumpIphone(tester, permissionProbe: ios);
+
+        expect(statusLine(tester), expected);
+        expect(
+          permissionCalls.map((call) => call.method),
+          ['permissionStatus'],
+          reason: 'one write probe; the read-side answer on iOS would be a '
+              'second one',
+        );
+      }
+    });
+
+    testWidgets('Android: the real adapter asks Kotlin both questions',
+        (tester) async {
+      final HealthPermissionProbe android = createHealthPlatform(
+        TargetPlatform.android,
+        binding: HealthSyncBinding(FakeSettingsStore()),
+        minorBindingAllowed: true,
+      );
+      expect(
+        (android as MethodChannelHealthPlatform).readAccessDisclosed,
+        isTrue,
+      );
+
+      permissionResult = 'denied';
+      importPermissionResult = 'granted';
+      await pumpAndroid(
+        tester,
+        binding: await boundBinding(),
+        permissionProbe: android,
+      );
+
+      expect(statusLine(tester), readingOnly);
+      expect(
+        permissionCalls.map((call) => call.method),
+        ['permissionStatus', 'importPermissionStatus'],
       );
     });
   });
