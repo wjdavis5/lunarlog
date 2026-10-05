@@ -14,6 +14,7 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/widget/home_widget_data_store.dart';
 import 'package:lunarlog/domain/widget/widget_cycle_state.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
 
 import 'repo_text_helpers.dart';
 
@@ -120,6 +121,63 @@ void main() {
           reason: 'the Android body must open the app plainly');
       expect(quickLogShape.hasMatch(swift), isTrue);
       expect(openShape.hasMatch(swift), isTrue);
+    });
+
+    test('what Settings says a tap does is what each platform does', () {
+      final l10n = AppLocalizationsEn();
+      final android = l10n.settingsHomeWidgetDisclosureAndroid;
+      final iphone = l10n.settingsHomeWidgetDisclosure;
+
+      // Android: two tap targets. The button carries the quick-log intent
+      // and the body opens the app, in both branches of the render.
+      expect(
+        RegExp(
+          r'setOnClickPendingIntent\(\s*R\.id\.widget_quick_log,\s*'
+          r'launchPendingIntent\(context, quickLogUri\(',
+        ).hasMatch(kotlin),
+        isTrue,
+        reason: 'only the Log button records the period on Android',
+      );
+      expect(
+        'setOnClickPendingIntent(R.id.widget_root, '
+                'launchPendingIntent(context, openUri()))'
+            .allMatches(kotlin)
+            .length,
+        2,
+        reason: 'the rest of the widget opens the app, with or without the '
+            'button',
+      );
+      expect(
+        RegExp(r'R\.id\.widget_root,\s*launchPendingIntent\(context, '
+                r'quickLogUri')
+            .hasMatch(kotlin),
+        isFalse,
+      );
+      // So the Android note names the button, by its own label, and says
+      // what a tap elsewhere does.
+      expect(
+        readRepoFile('android/app/src/main/res/values/widget_strings.xml'),
+        contains('<string name="widget_quick_log_label">Log</string>'),
+      );
+      expect(android, contains('it has a Log button'));
+      expect(android, contains('Tapping anywhere else on the widget opens '
+          'the app.'));
+
+      // iPhone: one tap target, the whole widget, carrying the quick-log
+      // URL whenever the profile can be logged for. No Link gives the pill
+      // a target of its own.
+      expect(swift, contains('.widgetURL(tapUrl)'));
+      expect(swift, isNot(contains('Link(')));
+      expect(
+        RegExp(
+          r'private var tapUrl: URL\? \{\s*if entry\.render\.canQuickLog,',
+        ).hasMatch(swift),
+        isTrue,
+      );
+      // So the iPhone note says a tap on the widget itself records it. If
+      // the pill ever gets its own target, this note has to change with it.
+      expect(iphone, contains('tapping it records a period started today'));
+      expect(iphone, isNot(contains('Log button')));
     });
 
     test('the iOS widget kind and app group match the Dart store', () {

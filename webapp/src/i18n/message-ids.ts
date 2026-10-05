@@ -277,6 +277,7 @@ export const MESSAGE_IDS = [
   "settingsHomeWidgetProfileTitle",
   "settingsHomeWidgetFollowActive",
   "settingsHomeWidgetDisclosure",
+  "settingsHomeWidgetDisclosureAndroid",
   "settingsSectionFamilySharing",
   "settingsSectionPrivacySecurity",
   "settingsSectionHelp",

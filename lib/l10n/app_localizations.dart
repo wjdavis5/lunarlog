@@ -1762,11 +1762,17 @@ abstract class AppLocalizations {
   /// **'Follow the app\'s current profile'**
   String get settingsHomeWidgetFollowActive;
 
-  /// Privacy disclosure under the picker (Issue #141): the discreet default render, the gated quick-log behavior, and the viewer-role exclusion.
+  /// Privacy disclosure under the picker (Issue #141): the discreet default render, the gated quick-log behavior, and the viewer-role exclusion. This is the iPhone wording: there the whole widget is one tap target, so "tapping it" is exact. Android has settingsHomeWidgetDisclosureAndroid.
   ///
   /// In en, this message translates to:
   /// **'The widget shows only a discreet state: a cycle-day count, never a name, a date, or flow details. When the profile is one you can log for, tapping it records a period started today — the entry applies only after you unlock the app, and logging it twice changes nothing. Profiles you can only view are not offered here.'**
   String get settingsHomeWidgetDisclosure;
+
+  /// The Android wording of settingsHomeWidgetDisclosure. On Android only the widget's Log button (widget_quick_log_label) records the period; a tap on the rest of the widget opens the app. "Log" is that button's own label.
+  ///
+  /// In en, this message translates to:
+  /// **'The widget shows only a discreet state: a cycle-day count, never a name, a date, or flow details. When the profile is one you can log for, it has a Log button: tapping that records a period started today — the entry applies only after you unlock the app, and logging it twice changes nothing. Tapping anywhere else on the widget opens the app. Profiles you can only view are not offered here.'**
+  String get settingsHomeWidgetDisclosureAndroid;
 
   /// Header of the Settings 'Family & sharing' section (Issue #226/#126): one row per profile, routing to Manage Guardians.
   ///
