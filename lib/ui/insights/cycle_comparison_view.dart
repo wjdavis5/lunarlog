@@ -36,6 +36,7 @@ import '../../domain/tags.dart';
 import '../components/empty_state.dart';
 import '../l10n/dates.dart' as dates;
 import '../l10n/lens_copy.dart';
+import '../logging/day_sheet.dart' show localizedFlowLabel;
 import '../overview/cycle_history_section.dart' show formatDays;
 import '../theme/lunarlog_colors.dart';
 import '../theme/tokens.dart';
@@ -255,8 +256,11 @@ class CycleComparisonView extends StatelessWidget {
       );
     }
     final flow = row.flow;
-    final flowText =
-        flow == null ? l10n.cycleComparisonNoEntryLabel : flowLabel(flow);
+    // The day sheet's own wording, so a day logged without a flow reads
+    // "Not logged" here as it does there (it read "None").
+    final flowText = flow == null
+        ? l10n.cycleComparisonNoEntryLabel
+        : localizedFlowLabel(flow, l10n);
     final label = _dayCellSemanticLabel(l10n, row, flowText);
     return Semantics(
       label: label,

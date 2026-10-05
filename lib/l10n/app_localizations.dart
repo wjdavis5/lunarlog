@@ -562,10 +562,10 @@ abstract class AppLocalizations {
   /// **'Estimate confidence: {tier}.'**
   String futureExplainerConfidence(String tier);
 
-  /// Day sheet flow chip label for no flow.
+  /// Day sheet flow chip label for a day with no flow recorded either way: the state before anything is chosen, and the chip that clears a choice. It read "None", which sat beside "Not bleeding" (flowLevelNotBleeding, a recorded answer) and looked like the same thing. "Not logged" is the calendar's phrase for the same state (calendarCellNotLogged).
   ///
   /// In en, this message translates to:
-  /// **'None'**
+  /// **'Not logged'**
   String get flowLevelNone;
 
   /// Day sheet flow chip label for spotting.

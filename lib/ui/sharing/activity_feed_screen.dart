@@ -22,7 +22,7 @@ import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/activity/activity_feed.dart';
 import 'package:lunarlog/domain/activity/activity_feed_snapshot.dart';
-import 'package:lunarlog/domain/models/flow_level.dart' show flowLabel;
+import 'package:lunarlog/domain/models/flow_level.dart' show FlowLevel;
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
@@ -318,7 +318,10 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
               ) ??
               l10n.activityActorGuardianFallback,
         ),
-      if (item.flow != null) flowLabel(item.flow!),
+      // A day logged without a flow says nothing about flow here: "None"
+      // in this list read as a value, and it is the absence of one.
+      if (item.flow != null && item.flow != FlowLevel.none)
+        localizedFlowLabel(item.flow!, l10n),
       if (item.tagCount > 0)
         l10n.sharingActivityFeedTagCount(item.tagCount),
       if (item.hasNote) l10n.sharingActivityFeedNote,

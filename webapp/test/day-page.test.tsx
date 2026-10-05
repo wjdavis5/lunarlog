@@ -263,7 +263,7 @@ describe('DayPage (issue #1254)', () => {
     const { client } = fakeClient();
     renderDay(client);
     expect(await screen.findByText(HEADING)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'None' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Not logged' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Heavy' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
   });

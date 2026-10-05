@@ -295,7 +295,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get flowLevelNone => 'None';
+  String get flowLevelNone => 'Not logged';
 
   @override
   String get flowLevelSpotting => 'Spotting';

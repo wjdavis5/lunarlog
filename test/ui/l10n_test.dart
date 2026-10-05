@@ -181,7 +181,7 @@ void main() {
 
     testWidgets('day sheet', (tester) async {
       final l10n = await pumpL10n(tester);
-      expect(l10n.flowLevelNone, 'None');
+      expect(l10n.flowLevelNone, 'Not logged');
       expect(l10n.flowLevelSpotting, 'Spotting');
       expect(l10n.flowLevelLight, 'Light');
       expect(l10n.flowLevelMedium, 'Medium');
