@@ -2630,6 +2630,14 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String householdTimingExpectedBetween(int from, int to) {
+    return 'Period expected in $from–$to days';
+  }
+
+  @override
+  String get householdTimingExpectedAnyDay => 'Period expected any day now';
+
+  @override
   String householdTimingPastEstimate(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,

@@ -679,6 +679,8 @@ export const MESSAGE_IDS = [
   "householdLogTodayFor",
   "householdTimingExpectedToday",
   "householdTimingExpectedIn",
+  "householdTimingExpectedBetween",
+  "householdTimingExpectedAnyDay",
   "householdTimingPastEstimate",
   "householdTimingLastLogged",
   "householdSilence",

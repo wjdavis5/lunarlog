@@ -3358,6 +3358,22 @@
       }
     }
   },
+  "householdTimingExpectedBetween": "Period expected in {from}–{to} days",
+  "@householdTimingExpectedBetween": {
+    "description": "Issue #1518: a household row's timing line when the profile's estimate is a date range that opens within the next week: the days until the range's first and last day, with an en dash. The range counterpart of householdTimingExpectedIn, which gave one number (the middle of the range).",
+    "placeholders": {
+      "from": {
+        "type": "int"
+      },
+      "to": {
+        "type": "int"
+      }
+    }
+  },
+  "householdTimingExpectedAnyDay": "Period expected any day now",
+  "@householdTimingExpectedAnyDay": {
+    "description": "Issue #1518: a household row's timing line when today is inside the profile's estimated date range. No count; matches the Today ring's \"Any day now\" (cycleWheelRangeNowHero)."
+  },
   "householdTimingPastEstimate": "{count, plural, =1{1 day past the estimate} other{{count} days past the estimate}}",
   "@householdTimingPastEstimate": {
     "description": "Issue #803, #1000: household member's cycle is past the predicted start date (e.g. '1 day past the estimate', '3 days past the estimate'). Count is pluralized through the shared ICU daysCount shape.",

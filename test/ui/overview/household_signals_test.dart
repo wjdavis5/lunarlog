@@ -13,6 +13,7 @@ library;
 import 'package:flutter/material.dart' show Locale;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/activity/activity_feed.dart';
+import 'package:lunarlog/domain/episodes/episodes.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
@@ -135,6 +136,87 @@ void main() {
       );
       expect(signal, isA<HouseholdTimingExpected>());
       expect(signal!.days, 0);
+    });
+
+    // Issue #1518: an estimate the profile's own Today shows as a range.
+    // Fabricated, uneven cycles (26, 33, 27 and 34 days); with the last
+    // period starting 2026-08-29 the range is September 24 – October 2.
+    group('an estimate shown as a range', () {
+      ActivePrediction rangeOn(LocalDate today) {
+        final starts = [
+          LocalDate(2026, 5, 1),
+          LocalDate(2026, 5, 27),
+          LocalDate(2026, 6, 29),
+          LocalDate(2026, 7, 26),
+          LocalDate(2026, 8, 29),
+        ];
+        return computePrediction(
+          episodes: [for (final s in starts) Episode(s, s.addDays(3))],
+          today: today,
+        ) as ActivePrediction;
+      }
+
+      test('opening within the week: both distances, not the middle', () {
+        final signal = householdTimingSignal(
+          prediction: rangeOn(LocalDate(2026, 9, 20)),
+          irregularFraming: false,
+        );
+        expect(signal, isA<HouseholdTimingExpectedBetween>());
+        expect(signal!.days, 4);
+        expect((signal as HouseholdTimingExpectedBetween).end, 12);
+        expect(
+          householdTimingCopy(signal, _l10n),
+          'Period expected in 4–12 days',
+        );
+      });
+
+      test('today inside the range: any day now, on every such day, '
+          'including the two the single count called past the estimate', () {
+        for (var day = 24; day <= 30; day++) {
+          final signal = householdTimingSignal(
+            prediction: rangeOn(LocalDate(2026, 9, day)),
+            irregularFraming: false,
+          );
+          expect(
+            signal,
+            isA<HouseholdTimingExpectedAnyDay>(),
+            reason: 'September $day',
+          );
+          expect(
+            householdTimingCopy(signal!, _l10n),
+            'Period expected any day now',
+          );
+        }
+      });
+
+      test('opening beyond the window: no line yet', () {
+        expect(
+          householdTimingSignal(
+            prediction: rangeOn(LocalDate(2026, 9, 10)),
+            irregularFraming: false,
+          ),
+          isNull,
+        );
+      });
+
+      test('under the irregular framing: still no upcoming line', () {
+        expect(
+          householdTimingSignal(
+            prediction: rangeOn(LocalDate(2026, 9, 26)),
+            irregularFraming: true,
+          ),
+          isNull,
+        );
+      });
+
+      test('once the estimate has rolled, the past-estimate line stands',
+          () {
+        final signal = householdTimingSignal(
+          prediction: rangeOn(LocalDate(2026, 10, 1)),
+          irregularFraming: false,
+        );
+        expect(signal, isA<HouseholdTimingLate>());
+      });
     });
 
     test('an estimate outside the window carries no timing line', () {

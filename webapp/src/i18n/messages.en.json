@@ -676,6 +676,8 @@
   "householdLogTodayFor": "Log today for {name}",
   "householdTimingExpectedToday": "Period expected today",
   "householdTimingExpectedIn": "Period expected in {count, plural, =1{1 day} other{{count} days}}",
+  "householdTimingExpectedBetween": "Period expected in {from}–{to} days",
+  "householdTimingExpectedAnyDay": "Period expected any day now",
   "householdTimingPastEstimate": "{count, plural, =1{1 day past the estimate} other{{count} days past the estimate}}",
   "householdTimingLastLogged": "Last period {count, plural, =1{1 day ago} other{{count} days ago}}",
   "householdSilence": "Nothing logged for {count, plural, =1{1 day} other{{count} days}}",
