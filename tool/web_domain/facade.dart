@@ -191,7 +191,13 @@ CyclePrediction _resolvePrediction({
   if (birthControl == null &&
       computed is NotEnoughHistory &&
       (facts?.canSeed ?? false)) {
-    return seedProvisionalPrediction(facts: facts!, today: today);
+    // Issue #1392: the same entries-aware seed the service uses, so a
+    // period logged since onboarding re-anchors the web estimate too.
+    return seedProvisionalPredictionFromEntries(
+      facts: facts!,
+      entries: entries,
+      today: today,
+    );
   }
   return computed;
 }

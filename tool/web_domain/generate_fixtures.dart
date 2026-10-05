@@ -336,7 +336,10 @@ List<Map<String, Object?>> _predictCases() {
   );
 
   // Provisional seeding from onboarding facts (issue #218): no usable
-  // history, but a last period and a typical length.
+  // history, but a last period and a typical length. The one logged
+  // episode (today-10) post-dates the supplied start (today-12), so it is
+  // where the current cycle begins (issue #1392): the supplied cycle
+  // length is kept, the supplied start is not.
   cases.add(
     _case('predict.provisional-seed', 'predict', {
       'today': today,
@@ -344,6 +347,23 @@ List<Map<String, Object?>> _predictCases() {
       'entries': thin,
       'facts': {
         'lastPeriodStart': _addDays(today, -12),
+        'typicalCycleLengthDays': 30,
+        'typicalPeriodLengthDays': 5,
+      },
+    }),
+  );
+
+  // The other side of issue #1392: the supplied start (today-3) is later
+  // than the one logged episode (today-10..today-7), which is therefore an
+  // earlier period — the onboarding answer stays the anchor and the
+  // estimate never moves backwards.
+  cases.add(
+    _case('predict.provisional-seed-after-logged-period', 'predict', {
+      'today': today,
+      'tz': 'UTC',
+      'entries': thin,
+      'facts': {
+        'lastPeriodStart': _addDays(today, -3),
         'typicalCycleLengthDays': 30,
         'typicalPeriodLengthDays': 5,
       },

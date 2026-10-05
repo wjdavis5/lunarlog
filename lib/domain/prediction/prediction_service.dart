@@ -18,7 +18,11 @@
 /// [kMinCompletedValidCycles] real cycles exist the onboarding numbers
 /// never blend into the estimate and `provisional` is never returned again
 /// for that profile. A null repository (tests, unconfigured wiring) keeps
-/// the exact pre-#218 behavior.
+/// the exact pre-#218 behavior. Issue #1392: below that threshold the
+/// logged entries still decide where the current cycle *starts* — the
+/// seeded estimate re-anchors on a period logged on or after the supplied
+/// start (see `seedProvisionalPrediction`), so it cannot disagree with
+/// cycle history about the cycle the profile is in.
 ///
 /// Issue #197 (performance): [watch] intentionally keeps reading the
 /// profile's *full* history — predictions need the whole cycle record, not
@@ -767,6 +771,12 @@ class CyclePredictionService {
   /// result unchanged — including its counts, so an all-skipped onboarding
   /// reads bit-identically to a pre-#218 profile.
   ///
+  /// Issue #1392: step (2) anchors the seeded estimate on the logged
+  /// entries too ([seedProvisionalPredictionFromEntries]). The supplied
+  /// cycle length still stands in for the mean and the tier stays
+  /// `provisional`, but a period logged on or after the supplied start is
+  /// where the current cycle begins.
+  ///
   /// Issue #233: a tracked method in effect ([birthControl]) short-circuits
   /// before both — [computePredictionFromEntries] returns
   /// [PredictionsSuppressed] (continuous) or a pack-driven
@@ -804,7 +814,14 @@ class CyclePredictionService {
     if (birthControl == null &&
         computed is NotEnoughHistory &&
         facts.canSeed) {
-      return seedProvisionalPrediction(facts: facts, today: today);
+      // Issue #1392: the entries go in too, so a period logged since
+      // onboarding re-anchors the provisional estimate instead of being
+      // ignored until three whole cycles exist.
+      return seedProvisionalPredictionFromEntries(
+        facts: facts,
+        entries: entries,
+        today: today,
+      );
     }
     return computed;
   }

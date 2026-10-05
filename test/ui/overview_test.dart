@@ -1021,6 +1021,115 @@ void main() {
         await db.close();
       });
 
+      testWidgets('issue #1392: logging a period on a still-provisional '
+          'profile re-anchors Today on the logged start — day 1 of the new '
+          'cycle, no longer counting from the onboarding date', (
+        tester,
+      ) async {
+        tester.view.physicalSize = const Size(800, 1400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final db = LunarLogDatabase(NativeDatabase.memory());
+        final profiles = DriftProfilesRepository(db.storage);
+        final settings = DriftSettingsStore(db.storage);
+        final entries = DriftDayEntriesRepository(db.storage);
+        // The issue's repro: the onboarding answer is 30 days before today
+        // with a 28-day typical cycle, so the seeded estimate (2026-08-28)
+        // is 2 days past.
+        final profile = await profiles.create(
+          displayName: 'Alice',
+          isMinor: false,
+          lastPeriodStart: LocalDate(2026, 7, 31),
+          typicalCycleLengthDays: 28,
+          typicalPeriodLengthDays: 5,
+        );
+
+        await tester.pumpWidget(
+          MultiProvider(
+            providers: [
+              Provider<DayEntriesRepository>.value(value: entries),
+              Provider<SettingsStore>.value(value: settings),
+              Provider<CyclePredictionService>.value(
+                value: CyclePredictionService(
+                  entries,
+                  settings: settings,
+                  profiles: profiles,
+                ),
+              ),
+              Provider<CycleExclusionList>.value(
+                value: CycleExclusionList(settings),
+              ),
+              ChangeNotifierProvider<NotificationPermissionState>.value(
+                value: NotificationPermissionState(
+                  NotificationAvailability.available,
+                ),
+              ),
+            ],
+            child: MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: Scaffold(
+                body: OverviewPanel(
+                  profileId: profile.id,
+                  todayProvider: () => kToday,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Before logging: Today counts from the onboarding answer.
+        expect(find.text('Cycle day 31'), findsOneWidget);
+        expect(
+          tester
+              .widget<Text>(find.byKey(const ValueKey('overview-days-until')))
+              .data,
+          '2',
+        );
+        expect(find.text('days past estimate'), findsOneWidget);
+        expect(
+          find.text(
+            'Next period estimate: August 24, 2026 – September 1, 2026',
+          ),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.byKey(const ValueKey('today-card-log-action')));
+        await tester.pumpAndSettle();
+        expect(await entries.find(profile.id, kToday), isNotNull);
+
+        // After: the logged start is the current cycle. The wheel reads
+        // day 1 of the period, and the estimate is the logged start plus
+        // the supplied 28-day cycle (2026-09-27 ± kProvisionalSpreadDays).
+        expect(find.text('Day 1'), findsOneWidget);
+        expect(find.text('of period'), findsOneWidget);
+        expect(find.text('Cycle day 31'), findsNothing);
+        expect(find.text('days past estimate'), findsNothing);
+        expect(
+          find.byKey(const ValueKey('overview-days-until')),
+          findsNothing,
+        );
+        expect(
+          find.text(
+            'Next period estimate: September 23, 2026 – October 1, 2026',
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.text('Provisional'),
+          findsOneWidget,
+          reason: 'one logged period completes no cycle: still provisional',
+        );
+        expect(find.byKey(const ValueKey('overview-not-enough')), findsNothing);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+        await db.close();
+      });
+
       testWidgets('a continuous birth-control method surfaces the explicit '
           'suppressed state, never the not-enough card (issue #233)', (
         tester,
