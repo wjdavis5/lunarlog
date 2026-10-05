@@ -2581,7 +2581,7 @@ abstract class AppLocalizations {
   /// The birth-control reminders explainer row subtitle (Issue #183): no adherence reminder applies because no tracked method is in effect (none recorded, a non-tracked answer, or an implant/IUD, which are not user-administered on a schedule).
   ///
   /// In en, this message translates to:
-  /// **'Follows the birth-control method recorded in this profile\'s settings.'**
+  /// **'Follows the birth-control method recorded in Edit profile.'**
   String get reminderBirthControlFollowsMethod;
 
   /// The daily pill adherence reminder's settings row title (Issue #183; Clue's 'Your Birth Control' catalogue).

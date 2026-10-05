@@ -409,7 +409,7 @@
   "reminderLeadDaysBeforePms": "Days before estimated PMS window",
   "reminderLeadDaysBeforeFertileWindow": "Days before estimated fertile window",
   "reminderBirthControlTitle": "Birth-control reminders",
-  "reminderBirthControlFollowsMethod": "Follows the birth-control method recorded in this profile's settings.",
+  "reminderBirthControlFollowsMethod": "Follows the birth-control method recorded in Edit profile.",
   "reminderKindBirthControlPill": "Pill reminder",
   "reminderKindBirthControlPillSubtitle": "Daily, at the chosen time",
   "reminderKindBirthControlPatch": "Patch reminder",

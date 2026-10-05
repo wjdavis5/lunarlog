@@ -568,11 +568,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Your birth control'), findsOneWidget);
     expect(find.text('Birth-control reminders'), findsOneWidget);
+    // "Edit profile" is what the app calls the place, here as everywhere
+    // else it sends someone there.
     expect(
-      find.text(
-        'Follows the birth-control method recorded in this profile\'s '
-        'settings.',
-      ),
+      find.text('Follows the birth-control method recorded in Edit profile.'),
       findsOneWidget,
     );
 

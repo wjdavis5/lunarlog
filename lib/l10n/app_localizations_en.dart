@@ -1606,7 +1606,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get reminderBirthControlFollowsMethod =>
-      'Follows the birth-control method recorded in this profile\'s settings.';
+      'Follows the birth-control method recorded in Edit profile.';
 
   @override
   String get reminderKindBirthControlPill => 'Pill reminder';
