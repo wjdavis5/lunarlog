@@ -15,7 +15,8 @@ import 'package:flutter/material.dart';
 
 /// Wraps [child] (typically a [FilterChip]/[ChoiceChip]) with one merged
 /// semantics node: `'<group>, <label>'`, [selected], and — when [onTap] is
-/// non-null — an accessible tap action. The visible chip's own semantics
+/// non-null — an accessible tap action. [enabled] says whether the chip can
+/// be used; it defaults to "has a tap action". The visible chip's own semantics
 /// are excluded and rebuilt here: a raw chip announces only its own text
 /// plus its selected flag, never which group of controls it belongs to.
 ///
@@ -27,11 +28,19 @@ Widget groupedChipSemantics({
   required bool selected,
   required Widget child,
   VoidCallback? onTap,
+  bool? enabled,
 }) {
+  // A chip with no tap action used to be reported as disabled. That is
+  // right for a chip that cannot be used, and wrong for the chosen chip of a
+  // single-choice row, which has no action only because choosing it again
+  // does nothing: a screen reader announced the value the person had picked
+  // as "disabled" (TalkBack) or "dimmed" (VoiceOver). Such a caller passes
+  // [enabled] itself.
+  final usable = enabled ?? onTap != null;
   return Semantics(
     label: group == label ? label : '$group, $label',
-    button: onTap != null,
-    enabled: onTap != null,
+    button: usable,
+    enabled: usable,
     selected: selected,
     onTap: onTap,
     excludeSemantics: true,

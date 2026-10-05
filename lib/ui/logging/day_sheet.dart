@@ -223,11 +223,19 @@ Widget groupedChipSemantics({
   required bool selected,
   required Widget child,
   VoidCallback? onTap,
+  bool? enabled,
 }) {
+  // A chip with no tap action used to be reported as disabled. That is
+  // right for a chip that cannot be used, and wrong for the chosen chip of a
+  // single-choice row, which has no action only because choosing it again
+  // does nothing: a screen reader announced the value the person had picked
+  // as "disabled" (TalkBack) or "dimmed" (VoiceOver). Such a caller passes
+  // [enabled] itself.
+  final usable = enabled ?? onTap != null;
   return Semantics(
     label: group == label ? label : '$group, $label',
-    button: onTap != null,
-    enabled: onTap != null,
+    button: usable,
+    enabled: usable,
     selected: selected,
     onTap: onTap,
     excludeSemantics: true,
@@ -2029,6 +2037,9 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
             group: group,
             label: localizedFlowLabel(level, l10n),
             selected: _flow == level,
+            // The chosen level has no action and is not disabled: only a
+            // save in progress disables the row.
+            enabled: !_busy,
             // Mirrors ChoiceChip's own gesture semantics: re-tapping the
             // already-selected chip is a no-op, not a re-selection.
             onTap: _busy || _flow == level ? null : () => _selectFlow(level),

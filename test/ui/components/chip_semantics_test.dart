@@ -6,6 +6,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsProperties;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/ui/components/chip_semantics.dart' as components;
 import 'package:lunarlog/ui/logging/day_sheet.dart' as day_sheet;
@@ -16,6 +17,7 @@ typedef _Wrapper = Widget Function({
   required bool selected,
   required Widget child,
   VoidCallback? onTap,
+  bool? enabled,
 });
 
 void main() {
@@ -47,6 +49,54 @@ void main() {
           'PMS',
           reason: 'the PMS toggle used to be announced as "PMS, PMS"',
         );
+      });
+
+      SemanticsProperties propertiesOf({
+        required bool selected,
+        VoidCallback? onTap,
+        bool? enabled,
+      }) =>
+          (wrap(
+            group: 'Flow',
+            label: 'Medium',
+            selected: selected,
+            onTap: onTap,
+            enabled: enabled,
+            child: const SizedBox.shrink(),
+          ) as Semantics)
+              .properties;
+
+      test('a chip with an action is a usable button', () {
+        final properties = propertiesOf(selected: false, onTap: () {});
+        expect(properties.enabled, isTrue);
+        expect(properties.button, isTrue);
+        expect(properties.onTap, isNotNull);
+      });
+
+      test('a chip with no action, and nothing said otherwise, is disabled',
+          () {
+        final properties = propertiesOf(selected: false);
+        expect(properties.enabled, isFalse);
+        expect(properties.button, isFalse);
+        expect(properties.onTap, isNull);
+      });
+
+      test('the chosen chip of a single-choice row has no action and is not '
+          'disabled', () {
+        // A screen reader announced the value the person had picked as
+        // "disabled" (TalkBack) or "dimmed" (VoiceOver), because choosing
+        // it again does nothing and "no action" was read as "disabled".
+        final properties = propertiesOf(selected: true, enabled: true);
+        expect(properties.selected, isTrue);
+        expect(properties.enabled, isTrue);
+        expect(properties.button, isTrue);
+        expect(properties.onTap, isNull);
+      });
+
+      test('a caller can still say a chip is disabled', () {
+        final properties = propertiesOf(selected: true, enabled: false);
+        expect(properties.enabled, isFalse);
+        expect(properties.button, isFalse);
       });
     });
   }

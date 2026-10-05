@@ -1,7 +1,10 @@
 /// Widget tests for the reusable graded-intensity control (Issue #234).
 library;
 
+import 'dart:ui' show SemanticsAction, Tristate;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsNode;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/ui/components/intensity_selector.dart';
@@ -38,6 +41,43 @@ void main() {
       expect(find.text('$level'), findsOneWidget);
     }
     expect(find.text('Clear'), findsOneWidget);
+  });
+
+  testWidgets('the chosen level is selected, not disabled; Clear is '
+      'disabled only when there is nothing to clear', (tester) async {
+    final handle = tester.ensureSemantics();
+    SemanticsNode node(String label) =>
+        tester.getSemantics(find.bySemanticsLabel(label));
+
+    await tester.pumpWidget(_harness(value: 3, onChanged: (_) {}));
+    final chosen = node('Intensity, 3');
+    expect(chosen.flagsCollection.isSelected, Tristate.isTrue);
+    expect(
+      chosen.flagsCollection.isEnabled,
+      Tristate.isTrue,
+      reason: 'the grade a person picked was announced as "disabled"',
+    );
+    expect(chosen.getSemanticsData().hasAction(SemanticsAction.tap), isFalse);
+    final other = node('Intensity, 4');
+    expect(other.flagsCollection.isEnabled, Tristate.isTrue);
+    expect(other.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+    expect(node('Intensity, Clear').flagsCollection.isEnabled, Tristate.isTrue);
+
+    // Nothing chosen: there is nothing to clear, so Clear really is disabled.
+    await tester.pumpWidget(_harness(value: null, onChanged: (_) {}));
+    expect(
+      node('Intensity, Clear').flagsCollection.isEnabled,
+      Tristate.isFalse,
+    );
+
+    // The whole control turned off: every chip is disabled, the chosen one
+    // included.
+    await tester.pumpWidget(
+      _harness(value: 3, onChanged: (_) {}, enabled: false),
+    );
+    expect(node('Intensity, 3').flagsCollection.isEnabled, Tristate.isFalse);
+    expect(node('Intensity, 4').flagsCollection.isEnabled, Tristate.isFalse);
+    handle.dispose();
   });
 
   test('kIntensitySelectorLevels matches the 1-5 observation range', () {

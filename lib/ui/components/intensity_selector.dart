@@ -83,6 +83,9 @@ class IntensitySelector extends StatelessWidget {
             group: groupLabel,
             label: _labelFor('$level'),
             selected: value == level,
+            // The chosen level has no action (choosing it again changes
+            // nothing) and is not disabled.
+            enabled: enabled,
             onTap: enabled && value != level ? () => onChanged(level) : null,
             child: ChoiceChip(
               key: _keyFor('$level'),

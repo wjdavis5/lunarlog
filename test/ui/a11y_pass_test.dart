@@ -26,7 +26,7 @@ library;
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
-import 'dart:ui' show Tristate;
+import 'dart:ui' show SemanticsAction, Tristate;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
@@ -691,6 +691,56 @@ void main() {
         find.bySemanticsLabel('Flow, Spotting'),
         findsOneWidget,
         reason: 'the standalone spotting toggle shares the flow group',
+      );
+      handle.dispose();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+    });
+
+    testWidgets('the chosen flow chip is selected, not disabled; the other '
+        'levels can be chosen', (tester) async {
+      final handle = tester.ensureSemantics();
+      final db = await pumpDaySheet(tester);
+
+      // The seeded entry carries no flow, so "Not logged" is the chosen chip.
+      final chosen =
+          tester.getSemantics(find.bySemanticsLabel('Flow, Not logged'));
+      expect(chosen.flagsCollection.isSelected, Tristate.isTrue);
+      expect(
+        chosen.flagsCollection.isEnabled,
+        Tristate.isTrue,
+        reason: 'the level a person picked was announced as "disabled": it '
+            'has no tap action only because picking it again does nothing',
+      );
+      expect(chosen.flagsCollection.isButton, isTrue);
+      expect(
+        chosen.getSemanticsData().hasAction(SemanticsAction.tap),
+        isFalse,
+      );
+
+      final other = tester.getSemantics(find.bySemanticsLabel('Flow, Medium'));
+      expect(other.flagsCollection.isEnabled, Tristate.isTrue);
+      expect(other.flagsCollection.isButton, isTrue);
+      expect(other.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+
+      // Choosing another level moves both: the new one is the selected,
+      // enabled chip with no action, and the old one can be chosen again.
+      await tester.tap(find.bySemanticsLabel('Flow, Medium'));
+      await tester.pump(const Duration(milliseconds: 700));
+      final medium = tester.getSemantics(find.bySemanticsLabel('Flow, Medium'));
+      expect(medium.flagsCollection.isSelected, Tristate.isTrue);
+      expect(medium.flagsCollection.isEnabled, Tristate.isTrue);
+      expect(
+        medium.getSemanticsData().hasAction(SemanticsAction.tap),
+        isFalse,
+      );
+      expect(
+        tester
+            .getSemantics(find.bySemanticsLabel('Flow, Not logged'))
+            .getSemanticsData()
+            .hasAction(SemanticsAction.tap),
+        isTrue,
       );
       handle.dispose();
       await tester.pumpWidget(const SizedBox.shrink());
