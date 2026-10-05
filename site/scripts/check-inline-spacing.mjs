@@ -43,17 +43,24 @@ const GLUED_BEFORE = new RegExp(
 // after a link ("</a>.", "</a>,") is ordinary and is not matched.
 const GLUED_AFTER = new RegExp(`</(?:${INLINE_TAGS})>[\\p{L}\\p{N}]`, "gu");
 
+// The parts of a page that are not prose: comments, and `<script>` /
+// `<style>` / `<pre>` elements (a code sample may legitimately hold `x<a`
+// as text).
+const NON_PROSE = /<!--[\s\S]*?-->|<(script|style|pre)\b[\s\S]*?<\/\1>/gi;
+
 /**
- * Remove the parts of a page that are not prose: comments, and the bodies
- * of `<script>` / `<style>` / `<pre>` (a code sample may legitimately hold
- * `x<a` as text).
+ * Where the non-prose parts of a page sit, as `[start, end)` offsets. The
+ * page is never rewritten: a finding is simply ignored when it falls inside
+ * one of these ranges, so every reported offset is an offset into the real
+ * file.
  * @param {string} html
- * @returns {string}
+ * @returns {Array<[number, number]>}
  */
-export function stripNonProse(html) {
-  return html
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<(script|style|pre)\b[\s\S]*?<\/\1>/gi, "");
+export function nonProseRanges(html) {
+  return [...html.matchAll(NON_PROSE)].map((match) => [
+    match.index,
+    match.index + match[0].length,
+  ]);
 }
 
 /**
@@ -63,15 +70,18 @@ export function stripNonProse(html) {
  * @returns {string[]} one context snippet per finding, in document order
  */
 export function findGluedInlineElements(html) {
-  const prose = stripNonProse(html);
+  const skipped = nonProseRanges(html);
+  const inProse = (index) =>
+    !skipped.some(([start, end]) => index >= start && index < end);
   const findings = [];
   for (const pattern of [GLUED_BEFORE, GLUED_AFTER]) {
-    for (const match of prose.matchAll(pattern)) {
+    for (const match of html.matchAll(pattern)) {
+      if (!inProse(match.index)) continue;
       const start = Math.max(0, match.index - 30);
-      const end = Math.min(prose.length, match.index + match[0].length + 40);
+      const end = Math.min(html.length, match.index + match[0].length + 40);
       findings.push({
         index: match.index,
-        snippet: prose.slice(start, end).replace(/\s+/g, " ").trim(),
+        snippet: html.slice(start, end).split(/\s+/).join(" ").trim(),
       });
     }
   }

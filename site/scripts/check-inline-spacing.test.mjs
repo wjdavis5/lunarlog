@@ -6,7 +6,7 @@ import { test } from "node:test";
 
 import {
   findGluedInlineElements,
-  stripNonProse,
+  nonProseRanges,
 } from "./check-inline-spacing.mjs";
 
 test("a word directly before a link is found", () => {
@@ -74,8 +74,25 @@ test("comments, scripts, styles and code samples are not prose", () => {
     "<style>.x::after{content:'w<a>'}</style>",
     '<pre><code>grep -o "what<a href" dist/index.html</code></pre>',
   ].join("\n");
-  assert.equal(stripNonProse(html).trim(), "");
+  // One range per line, each covering its whole line.
+  const lines = html.split("\n");
+  const ranges = nonProseRanges(html);
+  assert.equal(ranges.length, lines.length);
+  let offset = 0;
+  lines.forEach((line, i) => {
+    assert.deepEqual(ranges[i], [offset, offset + line.length]);
+    offset += line.length + 1;
+  });
   assert.deepEqual(findGluedInlineElements(html), []);
+});
+
+test("prose right beside a skipped region is still checked", () => {
+  const html =
+    '<!-- note --><p>sees what<a href="/x">their role</a></p><pre>a<a>b</a>c</pre><p>and<em>this</em></p>';
+  const found = findGluedInlineElements(html);
+  assert.equal(found.length, 2);
+  assert.match(found[0], /sees what<a href/);
+  assert.match(found[1], /and<em>/);
 });
 
 test("findings come back in document order with context", () => {
