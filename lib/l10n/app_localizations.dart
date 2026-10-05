@@ -8919,11 +8919,23 @@ abstract class AppLocalizations {
   /// **'Leave with unsaved changes?'**
   String get webDayUnsavedWarning;
 
-  /// Issue #1253: the web home's signed-out state (the sign-in itself is #1250).
+  /// Issue #1253: the web home's signed-out state (the sign-in itself is #1250). The one sentence under the welcome title: what signing in to the web client lets the reader do.
   ///
   /// In en, this message translates to:
-  /// **'Sign in to see your profiles.'**
+  /// **'Sign in to log a day, look back over the calendar, and manage guardians for the profiles you keep or share.'**
   String get webHomeNeedsSignIn;
+
+  /// The heading of the web client's signed-out home. The product name stays lowercase, sentence-initial included.
+  ///
+  /// In en, this message translates to:
+  /// **'lunarlog in your browser'**
+  String get webWelcomeTitle;
+
+  /// The note under the sign-in actions on the web client's signed-out home. It states the browser posture PRIVACY.md section 6 commits to (nothing at rest; the only stored credential is the HttpOnly refresh cookie), so it must change with that section.
+  ///
+  /// In en, this message translates to:
+  /// **'This browser keeps your sign-in and nothing else: profiles and entries are never saved here. On a shared computer, sign out when you\'re done.'**
+  String get webWelcomeStorageNote;
 
   /// Issue #1253: the visually-hidden label of the web home's profile switcher select.
   ///

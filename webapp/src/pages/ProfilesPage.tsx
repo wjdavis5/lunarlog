@@ -34,6 +34,7 @@ import type { ProfileRow } from '../lib/schemas';
 import type { GuardianRole } from '../lib/roles';
 import { emptySyncedData, type SyncedData } from '../lib/domain';
 import { getSupabaseClient } from '../lib/supabase';
+import { SignedOutHome } from './SignedOutHome';
 
 /**
  * The web profiles page (issue #1253): the profile picker's management
@@ -297,21 +298,7 @@ export function ProfilesPage() {
     },
   });
 
-  if (!signedIn) {
-    return (
-      <main className="page">
-        <h1 className="display">{t('profilePickerTitle')}</h1>
-        <section className="card">
-          <p className="card-body">{t('webHomeNeedsSignIn')}</p>
-          <p className="card-body">
-            <Link className="nav-link" to="/sign-in">
-              {t('accountSectionSignIn')}
-            </Link>
-          </p>
-        </section>
-      </main>
-    );
-  }
+  if (!signedIn) return <SignedOutHome />;
 
   const editing = editingId !== null ? findProfile(lists, editingId) : null;
   const showForm = creating || editing !== null;

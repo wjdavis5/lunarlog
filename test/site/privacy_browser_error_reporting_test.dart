@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -79,6 +80,47 @@ void main() {
       reason: 'no provider sign-in is native in a browser; both redirect',
     );
     expect(bullet, contains('through a redirect'));
+  });
+
+  // The web client's signed-out home tells the reader what the browser
+  // keeps (`webWelcomeStorageNote`). That is a promise, and this bullet is
+  // where the promise is made, so each half of the note is pinned to the
+  // sentence that backs it: if the policy stops saying one, the note has to
+  // change in the same PR.
+  test("the web welcome's storage note says no more than the browser "
+      'bullet does', () {
+    final arb = jsonDecode(File('lib/l10n/app_en.arb').readAsStringSync())
+        as Map<String, dynamic>;
+    final note = arb['webWelcomeStorageNote'] as String?;
+    expect(note, isNotNull,
+        reason: 'the signed-out home renders webWelcomeStorageNote');
+
+    expect(note, contains('keeps your sign-in and nothing else'));
+    expect(
+      bullet,
+      contains('nothing at rest in the browser'),
+      reason: '"nothing else" rests on this',
+    );
+    expect(
+      bullet,
+      contains('refresh token lives solely in an HttpOnly'),
+      reason: '"your sign-in" is this cookie and nothing more',
+    );
+
+    expect(note, contains('profiles and entries are never saved here'));
+    expect(
+      bullet,
+      contains('No copy of profiles or day entries is ever written to '
+          'browser storage'),
+    );
+
+    expect(note, contains('sign out when you'));
+    expect(
+      bullet,
+      contains('signing out clears it'),
+      reason: 'the advice for a shared computer only holds if signing out '
+          'removes the one thing the browser kept',
+    );
   });
 
   test('the deployed Worker CSP allows only the app and Supabase', () {

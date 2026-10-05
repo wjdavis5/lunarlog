@@ -46,6 +46,22 @@ body {
   font-weight: var(--ll-type-title-large-font-weight);
 }
 
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ll-space-2);
+}
+
+/* The mark is decoration: the name beside it is the accessible text, so it
+   is drawn here rather than as an image element needing an empty alt. */
+.brand::before {
+  content: '';
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--ll-r-sm);
+  background: url('/brand-mark.png') center / contain no-repeat;
+}
+
 .nav-link {
   color: var(--ll-primary);
   text-decoration: none;
@@ -85,6 +101,52 @@ body {
 .body {
   font-size: var(--ll-type-body-large-font-size);
   line-height: var(--ll-type-body-large-line-height);
+}
+
+/* The signed-out home. One welcome moment, so the title takes the display
+   face a step larger than a page heading; everything under it stays quiet. */
+
+.welcome {
+  padding-top: var(--ll-space-7);
+}
+
+.welcome-title {
+  margin: 0;
+  font-family: var(--ll-font-display);
+  font-size: var(--ll-type-display-small-font-size);
+  line-height: var(--ll-type-display-small-line-height);
+  font-weight: var(--ll-type-display-small-font-weight);
+  color: var(--ll-primary);
+}
+
+.welcome-lead {
+  margin: var(--ll-space-3) 0 0;
+  max-width: 34rem;
+  font-size: var(--ll-type-body-large-font-size);
+  line-height: var(--ll-type-body-large-line-height);
+}
+
+.welcome-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ll-space-2) var(--ll-space-3);
+  margin-top: var(--ll-space-5);
+}
+
+.welcome-actions .btn {
+  text-decoration: none;
+  border-radius: var(--ll-r-full);
+  padding: var(--ll-space-2) var(--ll-space-5);
+}
+
+/* An aside, not a step: set off by a rule, in the variant ink. */
+.welcome-note {
+  margin: var(--ll-space-6) 0 0;
+  padding-top: var(--ll-space-4);
+  max-width: 34rem;
+  border-top: 1px solid var(--ll-outline-variant);
+  color: var(--ll-on-surface-variant);
 }
 
 .card {
