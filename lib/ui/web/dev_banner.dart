@@ -24,6 +24,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/components/banner_above_content.dart';
 import 'package:lunarlog/ui/components/destructive_button.dart';
 import 'package:lunarlog/ui/theme/tokens.dart';
 
@@ -169,15 +170,16 @@ class WebGuardrails extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!showBanner) return child;
-    return Column(
-      children: [
-        WebDevBanner(
-          onWipe: onWipe,
-          webSyncEnabled: webSyncEnabled,
-          navigatorKey: navigatorKey,
-        ),
-        Expanded(child: child),
-      ],
+    // Issue #1426: [BannerAboveContent], not a bare `Column`, so the banner
+    // and its wipe action stay in the accessibility tree when this mounts
+    // above the Navigator.
+    return BannerAboveContent(
+      banner: WebDevBanner(
+        onWipe: onWipe,
+        webSyncEnabled: webSyncEnabled,
+        navigatorKey: navigatorKey,
+      ),
+      child: child,
     );
   }
 }

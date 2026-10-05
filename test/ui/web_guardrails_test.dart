@@ -69,6 +69,43 @@ void main() {
     await db.close();
   });
 
+  // Issue #1426: the tests in this file find the banner through the widget
+  // tree, and most mount [WebGuardrails] *below* a Navigator (`home:`). In
+  // the app it sits in `MaterialApp.builder`, painted before the Navigator
+  // in the same `Column` — where each route's modal barrier (a
+  // `BlockSemantics`) drops earlier-painted siblings up to the nearest
+  // semantics boundary. `find.semantics` walks the semantics tree from its
+  // root, the way a screen reader does.
+  testWidgets('the app shell keeps the banner and its wipe action in the '
+      'accessibility tree, above the Navigator', (tester) async {
+    final handle = tester.ensureSemantics();
+    final db = LunarLogDatabase(NativeDatabase.memory());
+    await tester.pumpWidget(LunarLogApp.withCollaborators(
+      db: db,
+      showWebBanner: true,
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.semantics.byLabel(kDevBannerCopy), findsOne);
+    final wipe = find.semantics.byLabel('Wipe local data');
+    expect(wipe, findsOne);
+    expect(
+      wipe.evaluate().single,
+      isSemantics(isButton: true, hasTapAction: true),
+    );
+
+    // Activated the way an assistive technology does it: the confirmation
+    // dialog opens.
+    tester.semantics.tap(wipe);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('web-wipe-confirm')), findsOneWidget);
+
+    handle.dispose();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 100));
+    await db.close();
+  });
+
   testWidgets('banner copy: sync off keeps the dev warning and offers no '
       'dismiss; sync on is an honest browser notice that never says "not for '
       'real data"', (tester) async {

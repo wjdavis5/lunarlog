@@ -788,6 +788,167 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     });
 
+    // Issue #1427: a display name is only supplied when an invitation is
+    // created, so whoever created the profile never has one. The row fell
+    // back to the role for its title and then printed the role again
+    // beneath it: "Primary Guardian (you)" over "Primary Guardian".
+    group('a guardian with no display name (issue #1427)', () {
+      Future<void> pumpScreen(
+        WidgetTester tester, {
+        double textScale = 1.0,
+      }) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(textScale)),
+              child: child!,
+            ),
+            home: ManageGuardiansScreen(
+              profile: testProfile,
+              guardiansRepository: DriftProfileGuardiansRepository(storage),
+              sharingService: sharingService,
+              currentUserId: 'user-mom',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      /// How many times [text] is on screen as a `Text` of its own.
+      int shown(String text) => find.text(text).evaluate().length;
+
+      testWidgets("the reader's own row is titled \"You\", with the role "
+          'beneath it once', (tester) async {
+        final handle = tester.ensureSemantics();
+        await storage.applyRemoteRows([
+          guardianRow('g-0', 'user-mom', 'primary_guardian', null),
+          guardianRow('g-1', 'user-dad', 'co_parent', 'Dad'),
+        ]);
+        await pumpScreen(tester);
+
+        final own = tester.widget<ListTile>(
+          find.widgetWithText(ListTile, 'You'),
+        );
+        expect((own.subtitle! as Text).data, 'Primary Guardian');
+        expect(shown('Primary Guardian'), 1,
+            reason: 'the role is printed once, not as title and subtitle');
+        expect(shown('(you)'), 0,
+            reason: '"You (you)" would say it twice the other way round');
+
+        // A screen reader hears the role once on the row too.
+        final announced = find.semantics
+            .byLabel(RegExp('Primary Guardian'))
+            .evaluate()
+            .map((node) => node.label)
+            .join('\n');
+        expect('Primary Guardian'.allMatches(announced), hasLength(1));
+        expect(announced, contains('You'));
+
+        handle.dispose();
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
+
+      testWidgets('an empty display name counts as none', (tester) async {
+        await storage.applyRemoteRows([
+          guardianRow('g-0', 'user-mom', 'primary_guardian', ''),
+        ]);
+        await pumpScreen(tester);
+
+        expect(find.widgetWithText(ListTile, 'You'), findsOneWidget);
+        expect(shown('Primary Guardian'), 1);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
+
+      testWidgets('someone else with no name shows their role once, as the '
+          'title, and a named row is unchanged', (tester) async {
+        await storage.applyRemoteRows([
+          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+          guardianRow('g-1', 'user-dad', 'co_parent', null),
+        ]);
+        await pumpScreen(tester);
+
+        final other = tester.widget<ListTile>(
+          find.widgetWithText(ListTile, 'Co-Parent'),
+        );
+        expect(other.subtitle, isNull,
+            reason: 'the role is already the title');
+        expect(shown('Co-Parent'), 1);
+        expect(shown('You'), 0,
+            reason: '"You" stands in for the reader only');
+
+        // A row with a name keeps its name, its "(you)" suffix, and the
+        // role beneath.
+        final named = find.widgetWithText(ListTile, 'Mom');
+        expect(
+          (tester.widget<ListTile>(named).subtitle! as Text).data,
+          'Primary Guardian',
+        );
+        expect(
+          find.descendant(of: named, matching: find.text('(you)')),
+          findsOneWidget,
+        );
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
+
+      // Issue #138 (AC4): the title is a Wrap so its parts flow to a second
+      // line at 200% text scale. That must hold for the new titles too.
+      testWidgets('the title still wraps instead of overflowing at 200% text '
+          'scale on a narrow phone', (tester) async {
+        tester.view.physicalSize = const Size(320, 568);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        await storage.applyRemoteRows([
+          RemoteProfileGuardianRow(
+            id: 'g-0',
+            profileId: testProfile.id,
+            userId: 'user-mom',
+            role: 'primary_guardian',
+            status: 'accepted',
+            createdAt: DateTime.utc(2026, 1, 1),
+            updatedAt: DateTime.utc(2026, 1, 1),
+            serverVersion: 1,
+            isSubject: true,
+          ),
+          guardianRow('g-1', 'user-dad', 'co_parent', null),
+        ]);
+        await pumpScreen(tester, textScale: 2.0);
+
+        expect(tester.takeException(), isNull);
+        final ownTitle = find.ancestor(
+          of: find.text('You'),
+          matching: find.byType(Wrap),
+        );
+        expect(ownTitle, findsOneWidget);
+        expect(
+          find.descendant(
+            of: ownTitle,
+            matching: find.byKey(
+              const ValueKey('guardian-subject-badge-user-mom'),
+            ),
+          ),
+          findsOneWidget,
+          reason: 'the subject badge still rides the same Wrap as the title',
+        );
+        expect(
+          find.ancestor(of: find.text('Co-Parent'), matching: find.byType(Wrap)),
+          findsOneWidget,
+        );
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
+    });
+
     testWidgets(
       'issue #558: once the single-use link is generated, a stray tap '
       'outside the dialog cannot dismiss it, "Copy Link" shows its '
@@ -2664,6 +2825,81 @@ void main() {
 
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump(const Duration(milliseconds: 100));
+      });
+
+      // Issue #1426: every test above finds the banner through the widget
+      // tree (`find.byKey`/`find.text`), which says nothing about what a
+      // screen reader is given. The banner is painted before the Navigator
+      // in the same `Column`, and each route's modal barrier is a
+      // `BlockSemantics`, which drops earlier-painted siblings up to the
+      // nearest semantics boundary — so a screen-reader user could not
+      // reach "Sign In" or the close control at all. `find.semantics` walks
+      // the semantics tree from its root, and `tester.semantics.tap`
+      // activates a node the way an assistive technology does.
+      group('in the accessibility tree (issue #1426)', () {
+        testWidgets('a screen reader reaches the title and can activate '
+            '"Sign In"', (tester) async {
+          final handle = tester.ensureSemantics();
+          final auth = FakeAuthService();
+          addTearDown(auth.dispose);
+
+          await pumpAppWithInvite(
+            tester,
+            auth,
+            initialInviteCode: 'cold-token',
+          );
+
+          expect(
+            find.semantics.byLabel('Sign in to accept your invite'),
+            findsOne,
+          );
+          final signIn = find.semantics.byLabel('Sign In');
+          expect(signIn, findsOne);
+          expect(
+            signIn.evaluate().single,
+            isSemantics(isButton: true, hasTapAction: true),
+          );
+
+          tester.semantics.tap(signIn);
+          await tester.pumpAndSettle();
+          expect(find.byType(SignInScreen), findsOneWidget);
+
+          handle.dispose();
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        });
+
+        testWidgets('a screen reader can activate the close control', (
+          tester,
+        ) async {
+          final handle = tester.ensureSemantics();
+          final auth = FakeAuthService();
+          addTearDown(auth.dispose);
+
+          await pumpAppWithInvite(
+            tester,
+            auth,
+            initialInviteCode: 'cold-token',
+          );
+
+          final close = find.semantics.byLabel('Close');
+          expect(close, findsOne);
+          expect(
+            close.evaluate().single,
+            isSemantics(isButton: true, hasTapAction: true),
+          );
+
+          tester.semantics.tap(close);
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const Key('pending-invite-sign-in-banner')),
+            findsNothing,
+          );
+
+          handle.dispose();
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        });
       });
     });
 

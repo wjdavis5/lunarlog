@@ -83,6 +83,7 @@ import 'package:lunarlog/domain/sync/local_row_counts.dart'
     show LocalRowCounter;
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/components/app_frame.dart';
+import 'package:lunarlog/ui/components/banner_above_content.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart'
     show confirmedHealthSyncUserId;
@@ -899,22 +900,22 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// padded for the status bar a second time, leaving a dead band between
   /// the banner and the content. One removal here covers every screen,
   /// current and future, rather than a per-screen fix.
+  ///
+  /// Issue #1426: laid out by [BannerAboveContent], which keeps the banner
+  /// (and its "Sign In" and close controls) in the accessibility tree — a
+  /// bare `Column` here let each route's modal barrier drop it.
   Widget _wrapWithPendingInviteBanner(Widget child) {
     if (!_showPendingInviteSignInBanner) return child;
-    return Column(
-      children: [
-        _PendingInviteSignInBanner(
-          onSignIn: _goToSignInForPendingInvite,
-          onDismiss: _dismissPendingInviteBanner,
-        ),
-        Expanded(
-          child: MediaQuery.removePadding(
-            context: context,
-            removeTop: true,
-            child: child,
-          ),
-        ),
-      ],
+    return BannerAboveContent(
+      banner: _PendingInviteSignInBanner(
+        onSignIn: _goToSignInForPendingInvite,
+        onDismiss: _dismissPendingInviteBanner,
+      ),
+      child: MediaQuery.removePadding(
+        context: context,
+        removeTop: true,
+        child: child,
+      ),
     );
   }
 
@@ -940,19 +941,18 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// [SafeArea] consumes the status-bar inset once, so [child] sees it
   /// removed — otherwise a pending invite below the QA marker would pad
   /// for the status bar a second time.
+  ///
+  /// Issue #1426: laid out by [BannerAboveContent] so the marker is in the
+  /// accessibility tree too, not only on screen.
   Widget _wrapWithQaBanner(Widget child) {
     if (!_showQaBanner) return child;
-    return Column(
-      children: [
-        const QaBuildBanner(),
-        Expanded(
-          child: MediaQuery.removePadding(
-            context: context,
-            removeTop: true,
-            child: child,
-          ),
-        ),
-      ],
+    return BannerAboveContent(
+      banner: const QaBuildBanner(),
+      child: MediaQuery.removePadding(
+        context: context,
+        removeTop: true,
+        child: child,
+      ),
     );
   }
 
