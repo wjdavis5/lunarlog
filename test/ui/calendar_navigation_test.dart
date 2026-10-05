@@ -771,6 +771,45 @@ void main() {
       await disposeCalendar(tester, h);
     });
 
+    testWidgets('the month title is announced as a button that opens the '
+        'month chooser', (tester) async {
+      final handle = tester.ensureSemantics();
+      final h = await pumpCalendar(tester);
+
+      // It was an InkWell around a text: "August 2026" with a tap action
+      // and no role, and nothing saying what a tap does.
+      final node = tester.getSemantics(
+        find.byKey(const ValueKey('month-year-label')),
+      );
+      expect(
+        node,
+        isSemantics(
+          isButton: true,
+          hasTapAction: true,
+          tooltip: 'Choose month and year',
+        ),
+      );
+      expect(node.label, 'August 2026');
+      // As tall as the buttons beside it: the title alone was a tap
+      // target 28 high, under both platforms' minimum.
+      expect(
+        tester
+            .getSize(find.byKey(const ValueKey('month-year-label')))
+            .height,
+        greaterThanOrEqualTo(kMinInteractiveDimension),
+      );
+
+      // And it still opens the chooser.
+      await tester.tap(find.byKey(const ValueKey('month-year-label')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('month-picker-next-year')),
+        findsOneWidget,
+      );
+      handle.dispose();
+      await disposeCalendar(tester, h);
+    });
+
     testWidgets('a fling past the forward limit stays pinned on the boundary '
         'month — the PageView itemCount bounds it at maxPageIndex + 1 '
         '(issue #312)', (tester) async {

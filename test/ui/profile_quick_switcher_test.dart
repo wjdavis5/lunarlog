@@ -130,6 +130,30 @@ void main() {
     await h.dispose();
   });
 
+  testWidgets('the switcher is announced as a button: the name of the '
+      'profile, what it does, and that it can be activated', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = Harness(tester);
+    await h.pump(activeProfile: 'alice');
+
+    // It was an InkWell around the name: a screen reader read "Alice" with
+    // a tap action and no role, so nothing said it opens the profile menu.
+    final node = tester.getSemantics(
+      find.byKey(const ValueKey('app-shell-profile-switcher')),
+    );
+    expect(
+      node,
+      isSemantics(
+        isButton: true,
+        hasTapAction: true,
+        tooltip: 'Switch profile',
+      ),
+    );
+    expect(node.label, contains('Alice'));
+    handle.dispose();
+    await h.dispose();
+  });
+
   testWidgets('the app bar shows the active profile avatar, and the '
       'switcher rows show each profile\'s cycle status (issue #811)',
       (tester) async {

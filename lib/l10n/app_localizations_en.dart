@@ -13,6 +13,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get calendarPreviousMonthTooltip => 'Previous month';
 
   @override
+  String get calendarChooseMonthTooltip => 'Choose month and year';
+
+  @override
   String get calendarTodayTooltip => 'Today';
 
   @override

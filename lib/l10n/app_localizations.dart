@@ -100,6 +100,12 @@ abstract class AppLocalizations {
   /// **'Previous month'**
   String get calendarPreviousMonthTooltip;
 
+  /// Tooltip, and what a screen reader says after the title, on the calendar's month title ('October 2026'), which opens the month and year chooser when tapped.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose month and year'**
+  String get calendarChooseMonthTooltip;
+
   /// Tooltip on the month calendar's jump-to-today button.
   ///
   /// In en, this message translates to:

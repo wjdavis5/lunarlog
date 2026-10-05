@@ -686,67 +686,73 @@ class _ProfileSwitcher extends StatelessWidget {
     final repository = guardiansRepository;
     return Tooltip(
       message: AppLocalizations.of(context).appShellProfileSwitcherTooltip,
-      child: InkWell(
-        key: const ValueKey('app-shell-profile-switcher'),
-        borderRadius: BorderRadius.circular(LLRadius.rMd),
-        onTap: () {
-          LLHaptics.selection();
-          unawaited(_showMenu(context));
-        },
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(
-            minWidth: kMinInteractiveDimension,
-            minHeight: kMinInteractiveDimension,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: LLSpace.space2,
-              vertical: LLSpace.space1,
+      // An InkWell around a name is announced as that name with a tap
+      // action and no role, so a screen reader gave no sign this opens
+      // anything. It opens the profile menu: say it is a button.
+      child: Semantics(
+        button: true,
+        child: InkWell(
+          key: const ValueKey('app-shell-profile-switcher'),
+          borderRadius: BorderRadius.circular(LLRadius.rMd),
+          onTap: () {
+            LLHaptics.selection();
+            unawaited(_showMenu(context));
+          },
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              minWidth: kMinInteractiveDimension,
+              minHeight: kMinInteractiveDimension,
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Issue #811: the active profile's avatar in the app bar,
-                // so it is identifiable on every tab without opening the
-                // switcher.
-                ProfileAvatar(
-                  profileId: profile.id,
-                  displayName: profile.displayName,
-                  radius: 12,
-                ),
-                const SizedBox(width: LLSpace.space2),
-                Flexible(
-                  // Issue #809: the title cross-fades and slides up 4dp when
-                  // the profile changes, so the app bar's own name keeps
-                  // pace with the body fade instead of swapping in place.
-                  // The offset is in logical pixels (not [SlideTransition]'s
-                  // child-size fraction) so it stays exactly 4dp whatever
-                  // the text scale.
-                  child: AnimatedSwitcher(
-                    duration: LLMotion.resolve(context, LLMotion.base),
-                    transitionBuilder: (child, animation) => FadeTransition(
-                      opacity: animation,
-                      child: Transform.translate(
-                        offset: Offset(
-                          0,
-                          LLSpace.space1 * (1 - animation.value),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: LLSpace.space2,
+                vertical: LLSpace.space1,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Issue #811: the active profile's avatar in the app bar,
+                  // so it is identifiable on every tab without opening the
+                  // switcher.
+                  ProfileAvatar(
+                    profileId: profile.id,
+                    displayName: profile.displayName,
+                    radius: 12,
+                  ),
+                  const SizedBox(width: LLSpace.space2),
+                  Flexible(
+                    // Issue #809: the title cross-fades and slides up 4dp when
+                    // the profile changes, so the app bar's own name keeps
+                    // pace with the body fade instead of swapping in place.
+                    // The offset is in logical pixels (not [SlideTransition]'s
+                    // child-size fraction) so it stays exactly 4dp whatever
+                    // the text scale.
+                    child: AnimatedSwitcher(
+                      duration: LLMotion.resolve(context, LLMotion.base),
+                      transitionBuilder: (child, animation) => FadeTransition(
+                        opacity: animation,
+                        child: Transform.translate(
+                          offset: Offset(
+                            0,
+                            LLSpace.space1 * (1 - animation.value),
+                          ),
+                          child: child,
                         ),
-                        child: child,
+                      ),
+                      child: Text(
+                        profile.displayName,
+                        key: ValueKey('app-shell-profile-title-${profile.id}'),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    child: Text(
-                      profile.displayName,
-                      key: ValueKey('app-shell-profile-title-${profile.id}'),
-                      overflow: TextOverflow.ellipsis,
-                    ),
                   ),
-                ),
-                if (repository != null)
-                  _SharedMark(
-                      repository: repository, profileId: profile.id),
-                const SizedBox(width: LLSpace.space1),
-                const Icon(Icons.expand_more, size: 20),
-              ],
+                  if (repository != null)
+                    _SharedMark(
+                        repository: repository, profileId: profile.id),
+                  const SizedBox(width: LLSpace.space1),
+                  const Icon(Icons.expand_more, size: 20),
+                ],
+              ),
             ),
           ),
         ),

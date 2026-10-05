@@ -3,6 +3,7 @@
 
 export const MESSAGE_IDS = [
   "calendarPreviousMonthTooltip",
+  "calendarChooseMonthTooltip",
   "calendarTodayTooltip",
   "calendarNextMonthTooltip",
   "calendarMonthYearLabel",
