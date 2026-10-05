@@ -4602,7 +4602,7 @@ abstract class AppLocalizations {
   /// **'Failed to remove guardian. Check connection.'**
   String get sharingManageGuardiansRemoveFailed;
 
-  /// Issue #1004 (tranche 1): confirm dialog title for revoking a guardian or leaving. {name} is the guardian's display name, or sharingManageGuardiansNoNameMidSentence when they have none (Issue #1455).
+  /// Issue #1004 (tranche 1): confirm dialog title for removing another guardian (leaving has its own title, manageGuardiansLeaveProfileDialogTitle). {name} is the guardian's display name, or sharingManageGuardiansNoNameMidSentence when they have none (Issue #1455).
   ///
   /// In en, this message translates to:
   /// **'Remove {name}?'**
@@ -4631,6 +4631,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Removed {name}'**
   String sharingManageGuardiansRemoved(String name);
+
+  /// Issue #1464: snackbar after the reader leaves a shared profile themselves. Written to the reader; it used to reuse sharingManageGuardiansRemoved and name them in the third person ("Removed Mom", shown to Mom). Echoes manageGuardiansLeaveProfileDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'You left {profile}\'s profile'**
+  String sharingManageGuardiansLeft(String profile);
 
   /// Issue #1004 (tranche 1): confirm dialog title for cancelling a pending invitation.
   ///
@@ -4715,6 +4721,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'expires in {minutes}m'**
   String sharingManageGuardiansExpiryMinutes(int minutes);
+
+  /// Issue #1465: expiry label in whole days, used from two days up. An invitation that lasts a week used to read "expires in 144h".
+  ///
+  /// In en, this message translates to:
+  /// **'{days, plural, =1{expires in 1 day} other{expires in {days} days}}'**
+  String sharingManageGuardiansExpiryDays(int days);
 
   /// Issue #1004 (tranche 1): manage-guardians app-bar title.
   ///

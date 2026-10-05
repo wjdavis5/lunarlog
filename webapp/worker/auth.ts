@@ -32,12 +32,14 @@ import {
   PKCE_COOKIE,
   REFRESH_COOKIE,
   buildAppleDeleteCookie,
+  parseAppleDeleteValue,
   buildClearedCookie,
   buildPkceCookie,
   buildRefreshCookie,
   parsePkceValue,
   readCookie,
 } from './cookies.ts';
+import { safeNextPath } from '../src/lib/next-path.ts';
 import { APPLE_WEB_SERVICES_ID, SUPABASE_URL } from './headers.ts';
 
 /** The subset of `Env` the auth routes need (see index.ts). */
@@ -275,6 +277,7 @@ async function startPkceEmailFlow(
   upstreamPath: string,
   body: Record<string, unknown>,
   recovery = false,
+  next: string | null = null,
 ): Promise<Response> {
   const verifier = deps.randomVerifier();
   body.code_challenge = await deps.codeChallenge(verifier);
@@ -289,8 +292,35 @@ async function startPkceEmailFlow(
   if (!response.ok) return upstreamError(response);
   return jsonResponse(
     { ok: true },
-    { 'cache-control': 'no-store', 'set-cookie': buildPkceCookie(verifier, recovery) },
+    {
+      'cache-control': 'no-store',
+      'set-cookie': buildPkceCookie(verifier, recovery, next),
+    },
   );
+}
+
+/**
+ * The return path a request asks for (issue #1456), or null. It comes from
+ * the address bar or a request body, so it is untrusted: only a path on
+ * this origin that is not itself a sign-in screen survives. The rules are
+ * the page's own (`safeNextPath`), shared so the two cannot disagree.
+ */
+function requestedNext(value: unknown): string | null {
+  return typeof value === 'string' ? safeNextPath(value) : null;
+}
+
+/**
+ * Whether a navigation to this Worker began on one of the app's own pages.
+ *
+ * Browsers say so in `Sec-Fetch-Site`, a header a page cannot set or
+ * remove: `same-origin` for the app's own sign-in button, `cross-site` or
+ * `same-site` for a link on another site, `none` for an address typed,
+ * pasted or opened from a message. A browser too old to send the header is
+ * taken at its word, as it was before the header existed.
+ */
+function navigatedFromThisApp(request: Request): boolean {
+  const site = request.headers.get('sec-fetch-site');
+  return site === null || site === 'same-origin';
 }
 
 /** The three grant shapes that return a fresh session (and rotate the cookie). */
@@ -357,17 +387,29 @@ async function handlePasswordSignUp(request: Request, deps: AuthDeps): Promise<R
   }
   return jsonResponse(
     { session: false, user: raw.user ?? null },
-    { 'cache-control': 'no-store', 'set-cookie': buildPkceCookie(verifier) },
+    {
+      'cache-control': 'no-store',
+      // The confirmation link comes back through /auth/callback: carry the
+      // return path with the verifier (issue #1456).
+      'set-cookie': buildPkceCookie(verifier, false, requestedNext(body.next)),
+    },
   );
 }
 
 async function handleOtpSend(request: Request, deps: AuthDeps): Promise<Response> {
   const body = await readJsonBody(request);
   if (typeof body.email !== 'string') return errorResponse(400, 'email_required');
-  return startPkceEmailFlow(request, deps, '/auth/v1/otp', {
-    email: body.email,
-    create_user: body.create_user === true,
-  });
+  return startPkceEmailFlow(
+    request,
+    deps,
+    '/auth/v1/otp',
+    {
+      email: body.email,
+      create_user: body.create_user === true,
+    },
+    false,
+    requestedNext(body.next),
+  );
 }
 
 /** The verify endpoint returns the session directly (no grant_type URL). */
@@ -446,7 +488,13 @@ async function handleCallback(request: Request, deps: AuthDeps): Promise<Respons
       auth_code: body.code,
       code_verifier: value.verifier,
     },
-    { recovery: value.recovery },
+    // The return path is checked again on the way out (issue #1456): it
+    // was validated before it went into the cookie, but a cookie is not a
+    // trusted store, and a recovery link goes to the new-password step.
+    {
+      recovery: value.recovery,
+      next: value.recovery ? null : requestedNext(value.next),
+    },
   );
   if (response.status === 200) {
     // The verifier is single-use: consumed on success, marker and all —
@@ -472,10 +520,18 @@ async function handleSession(request: Request, deps: AuthDeps): Promise<Response
 
 async function handleOAuthStart(request: Request, deps: AuthDeps): Promise<Response> {
   if (!csrfCheck(request, false)) return errorResponse(403, 'csrf_rejected');
-  const provider = new URL(request.url).searchParams.get('provider');
+  const parameters = new URL(request.url).searchParams;
+  const provider = parameters.get('provider');
   if (provider === null || !OAUTH_PROVIDERS.includes(provider as OAuthProvider)) {
     return errorResponse(400, 'unknown_provider');
   }
+  // Where the visitor was headed (issue #1456). This route is a plain
+  // navigation, so anyone can hand someone a link to it. Two rules keep
+  // such a link from choosing where the sign-in ends: a `next` that is not
+  // a path on this origin is ignored, and so is any `next` on a navigation
+  // that did not begin on one of the app's own pages. Either way the
+  // sign-in still starts, and lands on the home page as before.
+  const next = navigatedFromThisApp(request) ? requestedNext(parameters.get('next')) : null;
   const verifier = deps.randomVerifier();
   const challenge = await deps.codeChallenge(verifier);
   const target = new URL(`${deps.supabaseUrl}/auth/v1/authorize`);
@@ -488,7 +544,7 @@ async function handleOAuthStart(request: Request, deps: AuthDeps): Promise<Respo
     headers: {
       location: target.toString(),
       'cache-control': 'no-store',
-      'set-cookie': buildPkceCookie(verifier),
+      'set-cookie': buildPkceCookie(verifier, false, next),
     },
   });
 }
@@ -522,8 +578,19 @@ async function handleIdentities(request: Request, deps: AuthDeps): Promise<Respo
   });
   if (!response.ok) return upstreamError(response);
   const raw = (await response.json()) as Record<string, unknown>;
-  const identities = Array.isArray(raw.identities) ? raw.identities : [];
-  const providers = identities
+  return jsonResponse(
+    {
+      email: typeof raw.email === 'string' ? raw.email : null,
+      providers: identityProviders(raw),
+    },
+    { 'cache-control': 'no-store' },
+  );
+}
+
+/** The sign-in methods on a GoTrue user body: one provider per identity. */
+function identityProviders(user: Record<string, unknown>): string[] {
+  const identities = Array.isArray(user.identities) ? user.identities : [];
+  return identities
     .map((identity) =>
       typeof identity === 'object' &&
       identity !== null &&
@@ -532,10 +599,6 @@ async function handleIdentities(request: Request, deps: AuthDeps): Promise<Respo
         : null,
     )
     .filter((provider): provider is string => provider !== null);
-  return jsonResponse(
-    { email: typeof raw.email === 'string' ? raw.email : null, providers },
-    { 'cache-control': 'no-store' },
-  );
 }
 
 /**
@@ -632,6 +695,56 @@ async function handleIdentityUnlink(request: Request, deps: AuthDeps): Promise<R
   return jsonResponse({ ok: true }, { 'cache-control': 'no-store' });
 }
 
+/** The account a bearer belongs to, as GoTrue reports it. */
+interface CallerAccount {
+  id: string;
+  /** Its sign-in methods: `email`, `google`, `apple`. */
+  providers: string[];
+}
+
+/**
+ * The account [bearer] belongs to, or the response that says why it could
+ * not be read. GoTrue checks the token; the Worker never decodes one itself.
+ *
+ * It always answers. Supabase being unreachable, or answering with
+ * something that is not JSON, comes back as a 502 like any other refusal,
+ * so the caller can still clear what it has to clear.
+ */
+async function callerAccount(
+  request: Request,
+  deps: AuthDeps,
+  bearer: string,
+): Promise<CallerAccount | Response> {
+  let raw: unknown;
+  try {
+    const response = await deps.supabaseFetch('/auth/v1/user', {
+      method: 'GET',
+      headers: upstreamHeaders(request, deps.publishableKey, {
+        authorization: `Bearer ${bearer}`,
+      }),
+    });
+    if (!response.ok) return await upstreamError(response);
+    raw = await response.json();
+  } catch {
+    return errorResponse(502, 'upstream_unavailable');
+  }
+  if (typeof raw !== 'object' || raw === null) {
+    return errorResponse(502, 'upstream_user_shape');
+  }
+  const user = raw as Record<string, unknown>;
+  if (typeof user.id !== 'string' || user.id === '') {
+    return errorResponse(502, 'upstream_user_shape');
+  }
+  return { id: user.id, providers: identityProviders(user) };
+}
+
+/** [response] again, with one more cookie set. */
+function withCookie(response: Response, cookie: string): Response {
+  const headers = new Headers(response.headers);
+  headers.append('set-cookie', cookie);
+  return new Response(response.body, { status: response.status, headers });
+}
+
 /**
  * The Apple half of web account deletion (issue #1256): the delete-account
  * Edge Function refuses an Apple-linked account without a fresh
@@ -640,41 +753,65 @@ async function handleIdentityUnlink(request: Request, deps: AuthDeps): Promise<R
  * Services ID — GoTrue's own authorize consumes the code into a session
  * instead of exposing it.
  *
- * `GET /auth/apple/delete/start` is the top-level navigation out: a 302 to
- * Apple's authorize endpoint (no scope, so `response_mode=query` is Apple's
- * contract) with a random `state`, mirrored into the short-lived HttpOnly
- * cookie — the web app holds nothing at rest, so the Worker holds the
- * check. Apple redirects back to `/account?code=…&state=…` on top of this
- * same origin.
+ * `POST /auth/apple/delete/start` answers with the address of Apple's
+ * authorize endpoint (no scope, so `response_mode=query` is Apple's
+ * contract) carrying a random `state`, and mirrors that state, with the id
+ * of the account that asked, into the short-lived HttpOnly cookie — the web
+ * app holds nothing at rest, so the Worker holds the check. The page sends
+ * the browser to that address; Apple redirects back to
+ * `/account?code=…&state=…` on top of this same origin.
+ *
+ * It is a POST behind the CSRF gate, from a signed-in caller, on purpose.
+ * Landing back on the account page with a state that matches the cookie is
+ * what lets the deletion go ahead, so the cookie must only ever be set
+ * because the account's owner pressed the button on that page. This used to
+ * be a plain link (`GET`, a redirect straight out to Apple), and a link can
+ * be followed from anywhere: another site could send a signed-in reader
+ * through it, and one Apple sign-in later their account was gone.
  */
 async function handleAppleDeleteStart(request: Request, deps: AuthDeps): Promise<Response> {
+  const bearer = requireBearer(request);
+  if (bearer === null) return errorResponse(401, 'access_token_required');
+  const account = await callerAccount(request, deps, bearer);
+  if (account instanceof Response) return account;
+  // Only an account that has Sign in with Apple has an Apple step. The page
+  // asks for one only after the deletion itself answered
+  // `apple_code_required`, so this refuses nothing the page does. It means a
+  // ceremony is never armed for an account whose deletion would not look at
+  // the Apple code at all: for those, the state cookie would be the only
+  // thing between a landing and the deletion.
+  if (!account.providers.includes('apple')) {
+    return errorResponse(409, 'apple_identity_required');
+  }
   const state = deps.randomVerifier();
+  const cookie = buildAppleDeleteCookie(state, account.id);
+  if (cookie === null) return errorResponse(502, 'upstream_user_shape');
   const target = new URL('https://appleid.apple.com/auth/authorize');
   target.searchParams.set('response_type', 'code');
   target.searchParams.set('response_mode', 'query');
   target.searchParams.set('client_id', APPLE_WEB_SERVICES_ID);
   target.searchParams.set('redirect_uri', `${new URL(request.url).origin}/account`);
   target.searchParams.set('state', state);
-  return new Response(null, {
-    status: 302,
-    headers: {
-      location: target.toString(),
-      'cache-control': 'no-store',
-      'set-cookie': buildAppleDeleteCookie(state),
-    },
-  });
+  return jsonResponse(
+    { url: target.toString() },
+    { 'cache-control': 'no-store', 'set-cookie': cookie },
+  );
 }
 
 /**
  * Consumes the ceremony: the page POSTs the landed `code` and the `state`
- * Apple echoed; the Worker checks the state against its HttpOnly cookie
- * (constant-shape compare on a 64-char random value) and clears the cookie
- * on every settled outcome — the state is single-use. Success here only
- * means "this browser really asked for a delete ceremony"; the deletion
+ * Apple echoed, as the signed-in account. The Worker checks the state
+ * against its HttpOnly cookie (a 64-char random value) and the caller
+ * against the account the cookie names, and clears the cookie on every
+ * outcome once it has read it, an unreachable Supabase included — the
+ * state is single-use. Success here means "this
+ * account, in this browser, asked for a delete ceremony"; the deletion
  * itself stays the page's call to the Edge Function, carrying the code and
  * `appleCodeClient: "web"`.
+ *
+ * The state is checked first, so a wrong one costs no upstream call.
  */
-async function handleAppleDeleteComplete(request: Request, _deps: AuthDeps): Promise<Response> {
+async function handleAppleDeleteComplete(request: Request, deps: AuthDeps): Promise<Response> {
   const body = await readJsonBody(request);
   if (
     typeof body.code !== 'string' ||
@@ -684,12 +821,27 @@ async function handleAppleDeleteComplete(request: Request, _deps: AuthDeps): Pro
   ) {
     return errorResponse(400, 'code_and_state_required');
   }
-  const expected = readCookie(request, APPLE_DELETE_COOKIE);
-  if (expected === null) {
+  const stored = readCookie(request, APPLE_DELETE_COOKIE);
+  if (stored === null) {
     return errorResponse(401, 'state_missing');
   }
   const clearedCookie = buildClearedCookie(APPLE_DELETE_COOKIE);
-  if (expected !== body.state) {
+  const pending = parseAppleDeleteValue(stored);
+  if (pending === null) {
+    return errorResponse(401, 'state_missing', { 'set-cookie': clearedCookie });
+  }
+  if (pending.state !== body.state) {
+    return errorResponse(403, 'state_mismatch', { 'set-cookie': clearedCookie });
+  }
+  const bearer = requireBearer(request);
+  if (bearer === null) {
+    return errorResponse(401, 'access_token_required', { 'set-cookie': clearedCookie });
+  }
+  const account = await callerAccount(request, deps, bearer);
+  if (account instanceof Response) return withCookie(account, clearedCookie);
+  // Someone else is signed in now than when the ceremony began: it is not
+  // theirs to finish.
+  if (account.id !== pending.userId) {
     return errorResponse(403, 'state_mismatch', { 'set-cookie': clearedCookie });
   }
   return jsonResponse(
@@ -913,8 +1065,9 @@ export async function handleAuthRequest(
     case 'POST /auth/identities/unlink':
       if (!csrfCheck(request, true)) return errorResponse(403, 'csrf_rejected');
       return handleIdentityUnlink(request, authDeps);
-    case 'GET /auth/apple/delete/start':
-      if (!csrfCheck(request, false)) return errorResponse(403, 'csrf_rejected');
+    // A POST behind the full gate, never a GET: see handleAppleDeleteStart.
+    case 'POST /auth/apple/delete/start':
+      if (!csrfCheck(request, true)) return errorResponse(403, 'csrf_rejected');
       return handleAppleDeleteStart(request, authDeps);
     case 'POST /auth/apple/delete/complete':
       if (!csrfCheck(request, true)) return errorResponse(403, 'csrf_rejected');

@@ -21,6 +21,7 @@
 // connect-src already names it).
 
 import { supabasePublishableKey, supabaseUrl } from './config';
+import { safeNextPath, withNext } from './next-path';
 
 export type OAuthProvider = 'google' | 'apple';
 
@@ -88,6 +89,18 @@ export type AppleCodeClient = 'app' | 'web';
 const EXPIRY_SKEW_SECONDS = 30;
 
 const CSRF_HEADER = 'x-lunarlog-csrf';
+
+/** Where the Apple delete ceremony leaves for, and nowhere else. */
+const APPLE_AUTHORIZE_URL = 'https://appleid.apple.com/auth/authorize?';
+
+/** [body] with the return path added when there is one (issue #1456). */
+function withReturnPath(
+  body: Record<string, unknown>,
+  next: string | null,
+): Record<string, unknown> {
+  const safe = safeNextPath(next);
+  return safe === null ? body : { ...body, next: safe };
+}
 
 function csrfHeaders(): HeadersInit {
   return { 'content-type': 'application/json', [CSRF_HEADER]: '1' };
@@ -203,12 +216,13 @@ export class WebAuthClient {
   async signUp(
     email: string,
     password: string,
+    next: string | null = null,
   ): Promise<'signed_in' | 'confirmation_required'> {
     const response = await fetch('/auth/password/sign-up', {
       method: 'POST',
       headers: csrfHeaders(),
       credentials: 'same-origin',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify(withReturnPath({ email, password }, next)),
     });
     await raiseForError(response);
     const raw = (await response.json()) as Record<string, unknown>;
@@ -220,12 +234,12 @@ export class WebAuthClient {
   }
 
   /** Sends the email carrying the sign-in link and the 8-digit code. */
-  async sendOtp(email: string, createUser: boolean): Promise<void> {
+  async sendOtp(email: string, createUser: boolean, next: string | null = null): Promise<void> {
     const response = await fetch('/auth/otp/send', {
       method: 'POST',
       headers: csrfHeaders(),
       credentials: 'same-origin',
-      body: JSON.stringify({ email, create_user: createUser }),
+      body: JSON.stringify(withReturnPath({ email, create_user: createUser }, next)),
     });
     await raiseForError(response);
   }
@@ -280,7 +294,7 @@ export class WebAuthClient {
    * and echoes the marker here, because GoTrue's redirect back to the
    * callback carries only `?code=`, never `?type=recovery`.
    */
-  async exchangeCallback(code: string): Promise<{ recovery: boolean }> {
+  async exchangeCallback(code: string): Promise<{ recovery: boolean; next: string | null }> {
     const response = await fetch('/auth/callback', {
       method: 'POST',
       headers: csrfHeaders(),
@@ -290,7 +304,10 @@ export class WebAuthClient {
     await raiseForError(response);
     const raw = (await response.json()) as Record<string, unknown>;
     this.adoptSession(parseSessionBody(raw));
-    return { recovery: raw.recovery === true };
+    // The return path the Worker carried through the sign-in (issue #1456).
+    // It is checked here too: the page navigates to it, so the page decides.
+    const next = typeof raw.next === 'string' ? safeNextPath(raw.next) : null;
+    return { recovery: raw.recovery === true, next };
   }
 
   /**
@@ -372,26 +389,34 @@ export class WebAuthClient {
   }
 
   /**
-   * The Apple half of web account deletion (issue #1256): a top-level
-   * navigation out to Apple's authorize endpoint under the Services ID,
-   * with the Worker holding the ceremony's state in its HttpOnly cookie.
-   * Apple redirects back to /account?code=…&state=…, where
+   * Starts the Apple half of web account deletion (issue #1256): asks the
+   * Worker, as the signed-in account, for the address of Apple's authorize
+   * endpoint under the Services ID. The Worker keeps the ceremony's state
+   * in its HttpOnly cookie. Returns the address the caller sends the
+   * browser to; Apple redirects back to /account?code=…&state=…, where
    * `completeAppleDelete` consumes the check and the page calls
    * `deleteAccount` with the fresh code.
+   *
+   * A request the page makes, not a link: only this account, on this page,
+   * can begin a ceremony that ends in its deletion.
    */
-  startAppleDelete(): void {
-    window.location.assign('/auth/apple/delete/start');
+  async startAppleDelete(): Promise<string> {
+    const response = await this.authedFetch('/auth/apple/delete/start', 'POST', {});
+    await raiseForError(response);
+    const raw = (await response.json()) as Record<string, unknown>;
+    if (typeof raw.url !== 'string' || !raw.url.startsWith(APPLE_AUTHORIZE_URL)) {
+      throw new AuthError('upstream_authorize_shape', 502);
+    }
+    return raw.url;
   }
 
-  /** Consumes the Apple ceremony: proves to the Worker that this browser
-   * asked for it (the state cookie), before any deletion call carries the
-   * code. */
+  /** Consumes the Apple ceremony: proves to the Worker that this account
+   * asked for it in this browser (the state cookie), before any deletion
+   * call carries the code. */
   async completeAppleDelete(code: string, state: string): Promise<void> {
-    const response = await fetch('/auth/apple/delete/complete', {
-      method: 'POST',
-      headers: csrfHeaders(),
-      credentials: 'same-origin',
-      body: JSON.stringify({ code, state }),
+    const response = await this.authedFetch('/auth/apple/delete/complete', 'POST', {
+      code,
+      state,
     });
     await raiseForError(response);
   }
@@ -446,8 +471,9 @@ export class WebAuthClient {
   }
 
   /** Navigates the browser to the OAuth provider through the Worker. */
-  startOAuth(provider: OAuthProvider): void {
-    window.location.assign(`/auth/oauth/start?provider=${encodeURIComponent(provider)}`);
+  startOAuth(provider: OAuthProvider, next: string | null = null): void {
+    const start = `/auth/oauth/start?provider=${encodeURIComponent(provider)}`;
+    window.location.assign(withNext(start, safeNextPath(next)));
   }
 
   /** Drops the in-memory session (the cookie is the Worker's to clear). */

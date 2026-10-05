@@ -1529,6 +1529,49 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     });
 
+    // Issue #1464: leaving went through the same snackbar as removing
+    // someone, so the reader was told about themselves in the third person:
+    // "Removed Mom", shown to Mom.
+    testWidgets('leaving tells the reader they left, in the second person '
+        '(issue #1464)', (tester) async {
+      await storage.applyRemoteRows([
+        guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+        guardianRow('g-1', 'user-dad', 'primary_guardian', 'Dad'),
+      ]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ManageGuardiansScreen(
+            profile: testProfile,
+            guardiansRepository: DriftProfileGuardiansRepository(storage),
+            sharingService: sharingService,
+            currentUserId: 'user-mom',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.descendant(
+          of: find.widgetWithText(ListTile, 'Mom'),
+          matching: find.byIcon(Icons.remove_circle_outline),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Leave'));
+      await tester.pumpAndSettle();
+
+      expect(sharingService.lastRevokedUserId, 'user-mom');
+      final snackBar = tester.widget<SnackBar>(find.byType(SnackBar));
+      expect((snackBar.content as Text).data, "You left Luna's profile");
+      expect(find.textContaining('Removed'), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    });
+
     testWidgets(
       'a failed self-leave by a primary guardian reports the sole-primary '
       'reason instead of a generic connection error (#5)',

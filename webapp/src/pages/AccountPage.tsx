@@ -22,9 +22,9 @@ import {
   useIdentities,
   useLinkIdentity,
   useSignOut,
+  useStartAppleDelete,
   useUnlinkIdentity,
   useUpdatePassword,
-  startAppleDelete,
 } from '../lib/authQueries';
 import { downloadAccountExport } from '../lib/export';
 import { getSupabaseClient } from '../lib/supabase';
@@ -73,12 +73,15 @@ export function AccountPage() {
   const t = useT();
   const session = useAuthSession();
   const signedIn = session.data?.signedIn === true;
+  // True once the session question has an answer either way.
+  const sessionSettled = session.data !== undefined;
   const identities = useIdentities(signedIn);
   const link = useLinkIdentity();
   const unlink = useUnlinkIdentity();
   const signOut = useSignOut();
   const update = useUpdatePassword();
   const deleteAccount = useDeleteAccount();
+  const appleCeremony = useStartAppleDelete();
 
   // The remove confirmations inline into their row (the Manage-guardians
   // page's pattern): one at a time, named by provider.
@@ -107,6 +110,14 @@ export function AccountPage() {
     deleteAccount.error instanceof DeletionError ? deleteAccount.error : null;
   const deletionCopy =
     deletionError !== null && !awaitingAppleCeremony ? deletionCopyFor(deletionError) : null;
+  // The ceremony could not be started: the reader is still on this page,
+  // nothing was deleted, and the button is there to try again.
+  const ceremonyStartCopy =
+    appleCeremony.error instanceof AuthError
+      ? authCopyFor(appleCeremony.error)
+      : appleCeremony.isError
+        ? ({ id: 'commonSomethingWentWrong' } satisfies AuthCopy)
+        : null;
 
   // The Apple ceremony's landing: Apple redirects back here with
   // ?code=&state=. The session restores from the refresh cookie on the way
@@ -120,7 +131,14 @@ export function AccountPage() {
   useEffect(() => {
     if (appleCode === null || appleState === null) return;
     if (ceremonyStartedRef.current) return; // StrictMode/loop guard: one completion per landing.
-    if (!signedIn) return; // The session is still restoring from the cookie.
+    if (!signedIn) {
+      // Still restoring from the cookie: wait. Restored and signed out: this
+      // landing is nobody's to finish, so the code and state leave the
+      // address now. Left there, signing in and going Back within the
+      // ceremony's ten minutes would have finished it without another word.
+      if (sessionSettled) setSearchParameters({}, { replace: true });
+      return;
+    }
     ceremonyStartedRef.current = true;
     webAuth
       .completeAppleDelete(appleCode, appleState)
@@ -139,7 +157,7 @@ export function AccountPage() {
         // material, not something a refresh should re-offer.
         setSearchParameters({}, { replace: true });
       });
-  }, [appleCode, appleState, signedIn, deleteAccount, setSearchParameters]);
+  }, [appleCode, appleState, signedIn, sessionSettled, deleteAccount, setSearchParameters]);
 
   const startDeletion = () => {
     setConfirmingDelete(false);
@@ -245,8 +263,18 @@ export function AccountPage() {
             onDelete={startDeletion}
             deleting={deleteAccount.isPending}
             awaitingAppleCeremony={awaitingAppleCeremony}
-            onAppleCeremony={() => startAppleDelete()}
+            startingAppleCeremony={appleCeremony.isPending}
+            onAppleCeremony={() =>
+              // The page asks as the signed-in account and is handed
+              // Apple's address; it never follows a link to get there.
+              appleCeremony.mutate(undefined, {
+                onSuccess: (url) => window.location.assign(url),
+              })
+            }
           />
+          {ceremonyStartCopy !== null ? (
+            <p className="auth-error">{t(ceremonyStartCopy.id, ceremonyStartCopy.values)}</p>
+          ) : null}
           {deletionCopy !== null ? (
             <p className="auth-error">{t(deletionCopy.id, deletionCopy.values)}</p>
           ) : null}
@@ -491,6 +519,7 @@ function DeleteAccountCard(props: {
   onDelete: () => void;
   deleting: boolean;
   awaitingAppleCeremony: boolean;
+  startingAppleCeremony: boolean;
   onAppleCeremony: () => void;
 }) {
   const t = useT();
@@ -502,7 +531,12 @@ function DeleteAccountCard(props: {
           <>
             <p className="row-sub">{t('accountDeletionAppleCodeRequired')}</p>
             <div className="auth-actions">
-              <button type="button" className="button danger" onClick={props.onAppleCeremony}>
+              <button
+                type="button"
+                className="button danger"
+                disabled={props.startingAppleCeremony}
+                onClick={props.onAppleCeremony}
+              >
                 {t('webAuthContinueAction')}
               </button>
             </div>
