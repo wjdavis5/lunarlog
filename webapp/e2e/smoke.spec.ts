@@ -126,3 +126,67 @@ test('a signed-out visitor at an invitation is sent to sign in, and back', async
   const cspViolations = consoleErrors.filter((text) => CSP_PATTERN.test(text));
   expect(cspViolations, `CSP violations: ${cspViolations.join('\n')}`).toEqual([]);
 });
+
+// Issue #1456. A sign-in that leaves the site (Google, Apple, an emailed
+// link) comes back through /auth/callback. When the visitor was on the way
+// to an invitation, the Worker hands back the path it carried and the page
+// goes straight on to it. The Worker's answer is supplied here; its own
+// tests (worker/next.test.ts) cover how the path gets into that answer.
+test('the callback goes on to where the visitor was headed', async ({ page }) => {
+  const session = {
+    access_token: 'e2e-access-token',
+    expires_in: 3600,
+    expires_at: Math.floor(Date.now() / 1000) + 3600,
+    user: { id: '00000000-0000-4000-8000-0000000000a1', email: 'e2e@example.com' },
+  };
+  await page.route('**/rest/v1/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+  );
+  await page.route('**/auth/session', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(session),
+    }),
+  );
+  await page.route('**/auth/callback', (route) => {
+    // The page itself is a GET to the same path: only the exchange is answered.
+    if (route.request().method() !== 'POST') return route.continue();
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ ...session, recovery: false, next: '/invite?code=EXAMPLE' }),
+    });
+  });
+
+  await page.goto('/auth/callback?code=smoke');
+  await expect(page).toHaveURL(/\/invite\?code=EXAMPLE$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+    messages['sharingAcceptInviteTitle'] ?? 'missing',
+  );
+});
+
+test('the callback ignores a place to go that is not on this site', async ({ page }) => {
+  await page.route('**/auth/callback', (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        access_token: 'e2e-access-token',
+        expires_in: 3600,
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+        user: { id: '00000000-0000-4000-8000-0000000000a1', email: 'e2e@example.com' },
+        recovery: false,
+        next: '//evil.example/pwned',
+      }),
+    });
+  });
+
+  await page.goto('/auth/callback?code=smoke');
+  // It stays on the callback page, signed in, with the ordinary way on.
+  await expect(
+    page.getByRole('link', { name: messages['webAuthContinueAction'] ?? 'missing' }),
+  ).toHaveAttribute('href', '/');
+  await expect(page).toHaveURL(/\/auth\/callback\?code=smoke$/);
+});

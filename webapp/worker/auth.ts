@@ -38,6 +38,7 @@ import {
   parsePkceValue,
   readCookie,
 } from './cookies.ts';
+import { safeNextPath } from '../src/lib/next-path.ts';
 import { APPLE_WEB_SERVICES_ID, SUPABASE_URL } from './headers.ts';
 
 /** The subset of `Env` the auth routes need (see index.ts). */
@@ -275,6 +276,7 @@ async function startPkceEmailFlow(
   upstreamPath: string,
   body: Record<string, unknown>,
   recovery = false,
+  next: string | null = null,
 ): Promise<Response> {
   const verifier = deps.randomVerifier();
   body.code_challenge = await deps.codeChallenge(verifier);
@@ -289,8 +291,35 @@ async function startPkceEmailFlow(
   if (!response.ok) return upstreamError(response);
   return jsonResponse(
     { ok: true },
-    { 'cache-control': 'no-store', 'set-cookie': buildPkceCookie(verifier, recovery) },
+    {
+      'cache-control': 'no-store',
+      'set-cookie': buildPkceCookie(verifier, recovery, next),
+    },
   );
+}
+
+/**
+ * The return path a request asks for (issue #1456), or null. It comes from
+ * the address bar or a request body, so it is untrusted: only a path on
+ * this origin that is not itself a sign-in screen survives. The rules are
+ * the page's own (`safeNextPath`), shared so the two cannot disagree.
+ */
+function requestedNext(value: unknown): string | null {
+  return typeof value === 'string' ? safeNextPath(value) : null;
+}
+
+/**
+ * Whether a navigation to this Worker began on one of the app's own pages.
+ *
+ * Browsers say so in `Sec-Fetch-Site`, a header a page cannot set or
+ * remove: `same-origin` for the app's own sign-in button, `cross-site` or
+ * `same-site` for a link on another site, `none` for an address typed,
+ * pasted or opened from a message. A browser too old to send the header is
+ * taken at its word, as it was before the header existed.
+ */
+function navigatedFromThisApp(request: Request): boolean {
+  const site = request.headers.get('sec-fetch-site');
+  return site === null || site === 'same-origin';
 }
 
 /** The three grant shapes that return a fresh session (and rotate the cookie). */
@@ -357,17 +386,29 @@ async function handlePasswordSignUp(request: Request, deps: AuthDeps): Promise<R
   }
   return jsonResponse(
     { session: false, user: raw.user ?? null },
-    { 'cache-control': 'no-store', 'set-cookie': buildPkceCookie(verifier) },
+    {
+      'cache-control': 'no-store',
+      // The confirmation link comes back through /auth/callback: carry the
+      // return path with the verifier (issue #1456).
+      'set-cookie': buildPkceCookie(verifier, false, requestedNext(body.next)),
+    },
   );
 }
 
 async function handleOtpSend(request: Request, deps: AuthDeps): Promise<Response> {
   const body = await readJsonBody(request);
   if (typeof body.email !== 'string') return errorResponse(400, 'email_required');
-  return startPkceEmailFlow(request, deps, '/auth/v1/otp', {
-    email: body.email,
-    create_user: body.create_user === true,
-  });
+  return startPkceEmailFlow(
+    request,
+    deps,
+    '/auth/v1/otp',
+    {
+      email: body.email,
+      create_user: body.create_user === true,
+    },
+    false,
+    requestedNext(body.next),
+  );
 }
 
 /** The verify endpoint returns the session directly (no grant_type URL). */
@@ -446,7 +487,13 @@ async function handleCallback(request: Request, deps: AuthDeps): Promise<Respons
       auth_code: body.code,
       code_verifier: value.verifier,
     },
-    { recovery: value.recovery },
+    // The return path is checked again on the way out (issue #1456): it
+    // was validated before it went into the cookie, but a cookie is not a
+    // trusted store, and a recovery link goes to the new-password step.
+    {
+      recovery: value.recovery,
+      next: value.recovery ? null : requestedNext(value.next),
+    },
   );
   if (response.status === 200) {
     // The verifier is single-use: consumed on success, marker and all —
@@ -472,10 +519,18 @@ async function handleSession(request: Request, deps: AuthDeps): Promise<Response
 
 async function handleOAuthStart(request: Request, deps: AuthDeps): Promise<Response> {
   if (!csrfCheck(request, false)) return errorResponse(403, 'csrf_rejected');
-  const provider = new URL(request.url).searchParams.get('provider');
+  const parameters = new URL(request.url).searchParams;
+  const provider = parameters.get('provider');
   if (provider === null || !OAUTH_PROVIDERS.includes(provider as OAuthProvider)) {
     return errorResponse(400, 'unknown_provider');
   }
+  // Where the visitor was headed (issue #1456). This route is a plain
+  // navigation, so anyone can hand someone a link to it. Two rules keep
+  // such a link from choosing where the sign-in ends: a `next` that is not
+  // a path on this origin is ignored, and so is any `next` on a navigation
+  // that did not begin on one of the app's own pages. Either way the
+  // sign-in still starts, and lands on the home page as before.
+  const next = navigatedFromThisApp(request) ? requestedNext(parameters.get('next')) : null;
   const verifier = deps.randomVerifier();
   const challenge = await deps.codeChallenge(verifier);
   const target = new URL(`${deps.supabaseUrl}/auth/v1/authorize`);
@@ -488,7 +543,7 @@ async function handleOAuthStart(request: Request, deps: AuthDeps): Promise<Respo
     headers: {
       location: target.toString(),
       'cache-control': 'no-store',
-      'set-cookie': buildPkceCookie(verifier),
+      'set-cookie': buildPkceCookie(verifier, false, next),
     },
   });
 }

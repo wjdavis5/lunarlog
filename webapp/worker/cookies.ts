@@ -78,22 +78,67 @@ export function buildRefreshCookie(value: string): string {
  */
 export const PKCE_RECOVERY_PREFIX = 'recovery:';
 
+/**
+ * The return-path marker (issue #1456): `next~<base64url path>:` ahead of
+ * the verifier. A visitor who was headed somewhere when they were sent to
+ * sign in (an invitation, so far) gets back there after a sign-in that
+ * leaves the site and returns through /auth/callback: Google, Apple, an
+ * emailed link. The page keeps nothing at rest, so the path rides with the
+ * verifier, in the same short-lived HttpOnly cookie and for the same ten
+ * minutes at most.
+ *
+ * Neither `~` nor `:` is in the base64url alphabet, so the marker cannot be
+ * confused with a verifier or with the path it carries.
+ */
+export const PKCE_NEXT_PREFIX = 'next~';
+
 /** What the PKCE cookie's value decodes back into. */
 export interface PkceValue {
   /** The PKCE code verifier — exactly what the challenge was issued with. */
   verifier: string;
   /** True when the outstanding link was the password-recovery email. */
   recovery: boolean;
+  /**
+   * The path to return to after the sign-in, or null. Whatever is here was
+   * validated before it was written and must be validated again by whoever
+   * reads it: a cookie is not a trusted store.
+   */
+  next: string | null;
 }
 
-/** The PKCE verifier cookie: short-lived, SameSite=Lax, optionally marked. */
-export function buildPkceCookie(value: string, recovery = false): string {
-  return buildCookie(
-    PKCE_COOKIE,
-    recovery ? `${PKCE_RECOVERY_PREFIX}${value}` : value,
-    PKCE_MAX_AGE_SECONDS,
-    'Lax',
-  );
+function encodeBase64Url(text: string): string {
+  let binary = '';
+  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function decodeBase64Url(encoded: string): string | null {
+  if (!/^[A-Za-z0-9_-]*$/.test(encoded)) return null;
+  try {
+    const binary = atob(encoded.replace(/-/g, '+').replace(/_/g, '/'));
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The PKCE verifier cookie: short-lived, SameSite=Lax, optionally marked.
+ * A recovery link has its own destination (the new-password step), so it
+ * never carries a return path.
+ */
+export function buildPkceCookie(
+  value: string,
+  recovery = false,
+  next: string | null = null,
+): string {
+  const marker = recovery
+    ? PKCE_RECOVERY_PREFIX
+    : next === null || next === ''
+      ? ''
+      : `${PKCE_NEXT_PREFIX}${encodeBase64Url(next)}:`;
+  return buildCookie(PKCE_COOKIE, `${marker}${value}`, PKCE_MAX_AGE_SECONDS, 'Lax');
 }
 
 /** The Apple delete-ceremony state cookie: short-lived, SameSite=Lax (see
@@ -110,9 +155,19 @@ export function buildAppleDeleteCookie(value: string): string {
 export function parsePkceValue(value: string): PkceValue | null {
   if (value.startsWith(PKCE_RECOVERY_PREFIX)) {
     const verifier = value.slice(PKCE_RECOVERY_PREFIX.length);
-    return verifier === '' ? null : { verifier, recovery: true };
+    return verifier === '' ? null : { verifier, recovery: true, next: null };
   }
-  return value === '' ? null : { verifier: value, recovery: false };
+  if (value.startsWith(PKCE_NEXT_PREFIX)) {
+    const end = value.indexOf(':', PKCE_NEXT_PREFIX.length);
+    // A marker with no terminator is not a verifier either.
+    if (end === -1) return null;
+    const verifier = value.slice(end + 1);
+    if (verifier === '') return null;
+    // A path that does not decode is dropped; the sign-in still completes.
+    const next = decodeBase64Url(value.slice(PKCE_NEXT_PREFIX.length, end));
+    return { verifier, recovery: false, next: next === '' ? null : next };
+  }
+  return value === '' ? null : { verifier: value, recovery: false, next: null };
 }
 
 /** Expires one of this module's cookies (sign-out, consumed verifier, spent
