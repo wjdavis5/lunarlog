@@ -1694,17 +1694,25 @@ class _MonthCalendarState extends State<MonthCalendar>
                   child: InkWell(
                     key: const ValueKey('month-year-label'),
                     onTap: _openMonthYearPicker,
-                    child: Center(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          l10n.calendarMonthYearLabel(
-                            dates.monthNames(
-                              locale: locale,
-                            )[_displayedMonth - 1],
-                            _displayedYear,
+                    // As tall as the buttons beside it: the title alone
+                    // made a tap target 28 high, under both platforms'
+                    // minimum (44 on iOS, 48 on Android).
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        minHeight: kMinInteractiveDimension,
+                      ),
+                      child: Center(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            l10n.calendarMonthYearLabel(
+                              dates.monthNames(
+                                locale: locale,
+                              )[_displayedMonth - 1],
+                              _displayedYear,
+                            ),
+                            style: theme.textTheme.titleLarge,
                           ),
-                          style: theme.textTheme.titleLarge,
                         ),
                       ),
                     ),

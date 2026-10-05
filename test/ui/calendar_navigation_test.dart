@@ -790,6 +790,14 @@ void main() {
         ),
       );
       expect(node.label, 'August 2026');
+      // As tall as the buttons beside it: the title alone was a tap
+      // target 28 high, under both platforms' minimum.
+      expect(
+        tester
+            .getSize(find.byKey(const ValueKey('month-year-label')))
+            .height,
+        greaterThanOrEqualTo(kMinInteractiveDimension),
+      );
 
       // And it still opens the chooser.
       await tester.tap(find.byKey(const ValueKey('month-year-label')));
