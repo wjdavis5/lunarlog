@@ -339,8 +339,13 @@ class _CategoryPickerState extends State<CategoryPicker> {
 
   /// Builds one taxonomy chip. Issue #818: an option's leading icon
   /// ([tagOptionIcon]) rides the chip's own `avatar` slot — the Material
-  /// mechanism for a chip glyph — so the selected checkmark replaces it
-  /// (a second, non-colour selection cue) and the icon is excluded from
+  /// mechanism for a chip glyph — and the selected checkmark replaces it
+  /// (a second, non-colour selection cue). Replacing it is this method's
+  /// doing, not Material's: given an avatar and a selection together, a
+  /// `FilterChip` keeps the avatar, dims it under a grey disc and draws
+  /// the tick on top, which reads as a smudge. So a selected chip is given
+  /// no avatar, and shows the same plain tick a selected flow chip does.
+  /// The icon is excluded from
   /// semantics by [groupedChipSemantics]' `excludeSemantics: true`, which
   /// keeps the spoken label exactly `'<group>, <display>'` with no second
   /// announced element. An option with no entry in the icon table gets a
@@ -371,7 +376,7 @@ class _CategoryPickerState extends State<CategoryPicker> {
       child: FilterChip(
         key: ValueKey('$keyPrefix-${tag.code}'),
         materialTapTargetSize: MaterialTapTargetSize.padded,
-        avatar: icon == null ? null : Icon(icon, size: 18),
+        avatar: icon == null || isSelected ? null : Icon(icon, size: 18),
         label: Text(label),
         selected: isSelected,
         onSelected: widget.enabled ? (_) => widget.onToggle(tag.code) : null,

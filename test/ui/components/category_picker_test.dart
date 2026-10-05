@@ -454,6 +454,58 @@ void main() {
               'distinguishable without colour; an avatar must never suppress it');
     });
 
+    test('no option carries a tick for an icon: on a chip a tick means '
+        'selected', () {
+      // "Pain free" had a tick in a circle, so the unselected chip looked
+      // chosen.
+      const tickLike = [
+        Icons.check,
+        Icons.check_circle,
+        Icons.check_circle_outline,
+        Icons.check_box,
+        Icons.check_box_outlined,
+        Icons.done,
+        Icons.done_all,
+        Icons.task_alt,
+        Icons.verified,
+        Icons.verified_outlined,
+      ];
+      for (final tag in kTagTaxonomy) {
+        expect(
+          tickLike,
+          isNot(contains(tagOptionIcon(tag.code))),
+          reason: '${tag.code} must not look selected before it is',
+        );
+      }
+      expect(tagOptionIcon('pain_free'), isNull);
+    });
+
+    testWidgets('a selected option shows the tick in place of its icon, not '
+        'on top of it', (tester) async {
+      // Given an avatar and a selection together, a FilterChip dims the
+      // avatar under a grey disc and draws the tick over it. The tick is
+      // meant to take the icon's place.
+      await tester.pumpWidget(
+        _harness(selected: const {'cramps'}, onToggle: (_) {}),
+      );
+
+      final selected = find.byKey(const ValueKey('category-picker-tag-cramps'));
+      expect(tester.widget<FilterChip>(selected).avatar, isNull);
+      expect(
+        find.descendant(of: selected, matching: find.byIcon(Icons.bolt)),
+        findsNothing,
+      );
+      // Its unselected neighbour keeps its own icon.
+      expect(
+        tester
+            .widget<FilterChip>(
+              find.byKey(const ValueKey('category-picker-tag-headache')),
+            )
+            .avatar,
+        isNotNull,
+      );
+    });
+
     testWidgets('a Recent-row shortcut carries the same option icon',
         (tester) async {
       await tester.pumpWidget(
