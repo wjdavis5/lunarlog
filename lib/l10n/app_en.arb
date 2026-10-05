@@ -7310,9 +7310,17 @@
   "@webDayUnsavedWarning": {
     "description": "Issue #1254: the browser's beforeunload prompt text when the editor holds unsaved edits."
   },
-  "webHomeNeedsSignIn": "Sign in to see your profiles.",
+  "webHomeNeedsSignIn": "Sign in to log a day, look back over the calendar, and manage guardians for the profiles you keep or share.",
   "@webHomeNeedsSignIn": {
-    "description": "Issue #1253: the web home's signed-out state (the sign-in itself is #1250)."
+    "description": "Issue #1253: the web home's signed-out state (the sign-in itself is #1250). The one sentence under the welcome title: what signing in to the web client lets the reader do."
+  },
+  "webWelcomeTitle": "lunarlog in your browser",
+  "@webWelcomeTitle": {
+    "description": "The heading of the web client's signed-out home. The product name stays lowercase, sentence-initial included."
+  },
+  "webWelcomeStorageNote": "This browser keeps your sign-in and nothing else: profiles and entries are never saved here. On a shared computer, sign out when you're done.",
+  "@webWelcomeStorageNote": {
+    "description": "The note under the sign-in actions on the web client's signed-out home. It states the browser posture PRIVACY.md section 6 commits to (nothing at rest; the only stored credential is the HttpOnly refresh cookie), so it must change with that section."
   },
   "webHomeProfileSwitcherLabel": "Profile",
   "@webHomeProfileSwitcherLabel": {

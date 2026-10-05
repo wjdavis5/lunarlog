@@ -5687,7 +5687,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get webDayUnsavedWarning => 'Leave with unsaved changes?';
 
   @override
-  String get webHomeNeedsSignIn => 'Sign in to see your profiles.';
+  String get webHomeNeedsSignIn =>
+      'Sign in to log a day, look back over the calendar, and manage guardians for the profiles you keep or share.';
+
+  @override
+  String get webWelcomeTitle => 'lunarlog in your browser';
+
+  @override
+  String get webWelcomeStorageNote =>
+      'This browser keeps your sign-in and nothing else: profiles and entries are never saved here. On a shared computer, sign out when you\'re done.';
 
   @override
   String get webHomeProfileSwitcherLabel => 'Profile';

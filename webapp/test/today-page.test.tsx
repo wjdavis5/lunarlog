@@ -211,12 +211,12 @@ describe('TodayPage — the profile home (issue #1253)', () => {
     cleanup();
   });
 
-  it('asks for sign-in while signed out, under the Profiles heading', () => {
+  it('shows the welcome while signed out, not an empty Profiles page', () => {
     vi.mocked(useHasSyncSession).mockReturnValue(false);
     renderHome();
     expect(screen.getByText(messages['webHomeNeedsSignIn'] ?? 'missing')).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-      messages['profilePickerTitle'] ?? 'missing',
+      messages['webWelcomeTitle'] ?? 'missing',
     );
   });
 

@@ -24,6 +24,7 @@ import type { DayEntryRow } from '../lib/schemas';
 import { ProfileHomeCalendar } from './ProfileHomeCalendar';
 import { ProfileHomeComparison, ProfileHomeHistory } from './ProfileHomeHistory';
 import { ProfileHomeStatus } from './ProfileHomeStatus';
+import { SignedOutHome } from './SignedOutHome';
 
 /**
  * The profile home (issue #1253): pick a profile, see today's cycle day
@@ -73,21 +74,7 @@ export function TodayPage() {
     }
   }, [active, requested, setSearchParams]);
 
-  if (!signedIn) {
-    return (
-      <main className="page">
-        <h1 className="display">{t('profilePickerTitle')}</h1>
-        <section className="card">
-          <p className="card-body">{t('webHomeNeedsSignIn')}</p>
-          <p className="card-body">
-            <Link className="nav-link" to="/sign-in">
-              {t('accountSectionSignIn')}
-            </Link>
-          </p>
-        </section>
-      </main>
-    );
-  }
+  if (!signedIn) return <SignedOutHome />;
 
   if (synced.isError) {
     return (

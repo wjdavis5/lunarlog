@@ -31,12 +31,14 @@ test('the shell renders, is accessible, and violates nothing', async ({ page }) 
 
   await page.goto('/');
   await expect(page.getByRole('banner')).toBeVisible();
-  // Issue #1253: the home is the profile home now — signed out it shows
-  // the Profiles heading and the sign-in prompt, both catalogue copy.
+  // Issue #1253: the home is the profile home — signed out it is the
+  // welcome: its title, what signing in is for, and what this browser
+  // keeps, all catalogue copy.
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(
-    messages['profilePickerTitle'] ?? '',
+    messages['webWelcomeTitle'] ?? '',
   );
   await expect(page.getByText(messages['webHomeNeedsSignIn'] ?? '')).toBeVisible();
+  await expect(page.getByText(messages['webWelcomeStorageNote'] ?? '')).toBeVisible();
   await expect(
     page.getByRole('link', { name: messages['calendarTodayTooltip'] }),
   ).toBeVisible();
