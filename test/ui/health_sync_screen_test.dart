@@ -386,8 +386,8 @@ void main() {
     // of them — and the sentence that makes the promise says so.
     expect(
       find.textContaining(
-          'keeps the import current in the background, but only while every '
-          'one of its write permissions in the Health app is on.'),
+          'keeps the import current in the background, as long as all of '
+          "lunarlog's write permissions in the Health app are on."),
       findsOneWidget,
     );
     expect(
@@ -1655,8 +1655,8 @@ void main() {
       );
       expect(
         condition,
-        ', as long as Health Connect allows it to read both (Menstruation '
-        'and Spotting) and to access data in the background.',
+        ', as long as Health Connect allows it to read Menstruation and '
+        'Spotting and to access data in the background.',
       );
       expect(condition, isNot(contains('write')));
     });

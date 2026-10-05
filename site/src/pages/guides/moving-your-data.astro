@@ -114,8 +114,13 @@ import HelpCard from "../../components/HelpCard.astro";
           lunarlog when new data lands, and Android checks Health Connect
           on a schedule — under the same rules: it never prompts, never
           shows a screen, never writes, and it stops if you unbind the
-          profile or revoke the health permission.
-          <!-- cite: lib/data/health/health_import_service.dart (importInBackground, #993: prompt-free, #153 guard + #959 permission probe); PRIVACY.md#4-third-party-service-providers (the §4 background paragraph) -->
+          profile or revoke the health permission. The background part
+          needs its permissions to stay on. On iPhone that means all of
+          lunarlog's write permissions in the Health app, because Apple
+          does not tell an app whether it may read. On Android it means
+          reading Menstruation and Spotting, and access to data in the
+          background, in Health Connect; writing can stay off.
+          <!-- cite: lib/data/health/health_import_service.dart (importInBackground, #993: prompt-free, #153 guard + the #1491 read-side permission probe); lib/domain/health/health_platform.dart (importPermissionStatus: what each platform's answer is decided on); android/app/src/main/kotlin/com/wjdavis5/lunarlog/HealthBackgroundImportWorker.kt (the background-access check); PRIVACY.md#4-third-party-service-providers (the §4 background paragraph) -->
         </li>
         <li>
           One profile is bound to the phone's health connection at a time;
