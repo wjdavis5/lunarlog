@@ -192,6 +192,8 @@ describe('ManageGuardiansPage (issue #1255)', () => {
       'href',
       `/?profile=${ULID}`,
     );
+    // One link back is not a navigation landmark of its own.
+    expect(screen.queryByRole('navigation')).toBeNull();
   });
 
   it('renders the screen title and both guardian rows with role labels', async () => {

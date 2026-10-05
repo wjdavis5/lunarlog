@@ -365,14 +365,15 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
   return (
     <main className="page">
       <h1 className="display">{dateHeading}</h1>
-      <nav>
-        {/* Back to this profile's home. A bare "/" opens the first profile
-            in the list, which is someone else's whenever the day belongs
-            to any other. */}
+      {/* Back to this profile's home. A bare "/" opens the first profile
+          in the list, which is someone else's whenever the day belongs to
+          any other. One link is a paragraph, not a second navigation
+          landmark beside the header's. */}
+      <p className="page-back">
         <Link className="nav-link" to={profileHomePath(profileId)}>
           {t('webDayBackToToday')}
         </Link>
-      </nav>
+      </p>
 
       {day.isPending ? (
         <section className="card">

@@ -148,11 +148,11 @@ export function ManageGuardiansPage() {
           ? t('sharingManageGuardiansScreenTitle', { profileName: profile.display_name })
           : ''}
       </h1>
-      <nav>
+      <p className="page-back">
         <Link className="nav-link" to={profileHomePath(profileId)}>
           {t('webDayBackToToday')}
         </Link>
-      </nav>
+      </p>
 
       <ul className="row-list">
         {(guardians.data ?? [])

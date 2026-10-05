@@ -383,6 +383,22 @@ describe('ProfilesPage (issue #1253)', () => {
     expect(within(archived).queryAllByRole('button')).toEqual([]);
   });
 
+  // Delete only opens the confirmation, but it is the one destructive
+  // control in the row and used to look exactly like Edit and Archive.
+  it('marks Delete as destructive without making it the heaviest button', () => {
+    fakeClient();
+    renderPage();
+    const row = screen.getByText('Maya').closest('li') as HTMLElement;
+    const del = within(row).getByRole('button', {
+      name: messages['webProfilesDeleteAction'] ?? '',
+    });
+    expect(del).toHaveClass('btn-danger-quiet');
+    expect(del).not.toHaveClass('btn-danger');
+    expect(
+      within(row).getByRole('button', { name: messages['webProfilesEditAction'] ?? '' }),
+    ).not.toHaveClass('btn-danger-quiet');
+  });
+
   it('deletes through the two-step confirm on delete_profile_data', async () => {
     const { rpc } = fakeClient();
     renderPage();
