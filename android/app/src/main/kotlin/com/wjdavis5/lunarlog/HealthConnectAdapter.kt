@@ -136,8 +136,15 @@ class HealthConnectAdapter(context: Context) {
     // side: what `importPermissionStatus` tells "not yet asked" from
     // "denied" by.
     private fun permissionEverRequested(): Boolean =
-        writesEverRequested() ||
-            markerSetByThisInstall(IMPORT_REQUEST_LAUNCHED_KEY)
+        writesEverRequested() || importRequestLaunched()
+
+    // Whether this install has launched the import's own request, the one
+    // sheet that offers a read without the writes beside it. The read
+    // side's "asked" counts it (above); and `permissionStatus` needs it to
+    // know what a granted read proves about the writes (see
+    // [HealthPermissionState.remembersWritesAsked]).
+    private fun importRequestLaunched(): Boolean =
+        markerSetByThisInstall(IMPORT_REQUEST_LAUNCHED_KEY)
 
     init {
         // Issue #993: app start with a bound profile (re)arms the periodic
@@ -520,10 +527,13 @@ class HealthConnectAdapter(context: Context) {
                 //
                 // Issue #1515: "asked" here means asked for the WRITES. The
                 // import has a request of its own now, for the reads alone,
-                // so neither its marker nor a granted read says anything
-                // about the writes: someone who has only ever tapped Import
-                // and allowed the reads still reads "notAsked" here, and the
-                // write pass still asks her.
+                // so neither its marker nor a read granted on its sheet says
+                // anything about the writes: someone who has only ever
+                // tapped Import and allowed the reads still reads "notAsked"
+                // here, and the write pass still asks her. A read that was
+                // already granted before this install ever launched the
+                // import's request is different, and is remembered as asked
+                // (see [HealthPermissionState.remembersWritesAsked]).
                 // The client owns the PermissionController
                 // (`client.permissionController`); getGrantedPermissions is
                 // its suspend query, so it runs on a coroutine.
@@ -546,10 +556,23 @@ class HealthConnectAdapter(context: Context) {
                         // again, so every write would fail behind a screen
                         // that offers no way to Health Connect's settings.
                         // Remembered, the same revocation reads "denied".
-                        // Issue #1515: the grant that counts is a WRITE
-                        // grant. A read can now be granted on the import's
-                        // own sheet, which never showed the writes.
-                        if (HealthPermissionState.provesAsked(granted, writePermissions) &&
+                        // Issue #1515: a WRITE grant always counts. A read
+                        // grant counts only until this install has launched
+                        // the import's own request, the one sheet that
+                        // offers a read without showing the writes. Before
+                        // that, a granted read came from a sheet that showed
+                        // the writes beside it (an older build's single
+                        // request) or from Health Connect's own settings,
+                        // and it reads "denied" as it always has: otherwise
+                        // someone who allowed the reads and declined the
+                        // writes on an older build would be shown the write
+                        // sheet again, unprompted, at the next launch.
+                        if (HealthPermissionState.remembersWritesAsked(
+                                granted = granted,
+                                writes = writePermissions,
+                                requested = allPermissions,
+                                importRequestLaunched = importRequestLaunched(),
+                            ) &&
                             !writesEverRequested()) {
                             prefs.edit()
                                 .putLong(PERMISSION_REQUESTED_KEY, installStamp)
@@ -1612,6 +1635,35 @@ internal object HealthPermissionState {
         granted.any { it in requested }
 
     /**
+     * Whether what is granted is to be remembered as "asked for the writes"
+     * (Issue #1515). The adapter sets the write marker when this is true, so
+     * that the answer survives the grant being removed later.
+     *
+     * A write grant always is. Any other permission the app requests is
+     * too, as long as this install has never launched the import's own
+     * request (`importRequestLaunched` false). That request is the only
+     * sheet that offers a read without the writes beside it, so until it
+     * has been raised a granted read can only have come from a sheet that
+     * showed the writes as well (the single request older builds made for
+     * everything) or from Health Connect's own settings. Both read
+     * "denied" before there were two requests, and must go on doing so:
+     * answering "notAsked" would raise the write sheet, unprompted, for
+     * someone who had already declined the writes on it.
+     *
+     * Once the import's request has been launched a read grant proves
+     * nothing about the writes, which is the case the two markers exist
+     * for.
+     */
+    fun remembersWritesAsked(
+        granted: Set<String>,
+        writes: Set<String>,
+        requested: Set<String>,
+        importRequestLaunched: Boolean,
+    ): Boolean =
+        provesAsked(granted, writes) ||
+            (!importRequestLaunched && provesAsked(granted, requested))
+
+    /**
      * The `permissionStatus` decision: may lunarlog write?
      *
      * Everything about it is decided on the WRITE permissions (Issue #1515).
@@ -1626,6 +1678,10 @@ internal object HealthPermissionState {
      * shown a write permission. Answering `denied` for her would stop the
      * Dart write pass before its own request, so the write path could never
      * ask — the same trap `notAsked` was introduced to close.
+     *
+     * A read granted before the import had a request of its own is the
+     * exception, and it reaches this function as `writesEverRequested`: the
+     * adapter sets that marker for it ([remembersWritesAsked]).
      */
     fun writeStatusFor(
         granted: Set<String>,

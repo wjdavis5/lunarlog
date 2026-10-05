@@ -96,6 +96,7 @@ void main() {
       MethodChannelHealthPlatform(
         binding: HealthSyncBinding(FakeSettingsStore(seed)),
         minorBindingAllowed: minorBindingAllowed,
+        readAccessDisclosed: true,
       );
 
   const flowWriteRecordId = '01ARZ3NDEKTSV4RRFFQ69G5FAV';

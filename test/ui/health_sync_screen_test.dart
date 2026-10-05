@@ -314,6 +314,7 @@ void main() {
   HealthPermissionProbe buildPermissionProbe() => MethodChannelHealthPlatform(
         binding: HealthSyncBinding(FakeSettingsStore()),
         minorBindingAllowed: true,
+        readAccessDisclosed: true,
       );
 
   Future<void> pumpScreen(
@@ -2109,9 +2110,9 @@ void main() {
       expect(find.byKey(settingsKey), findsNothing);
     });
 
-    testWidgets('Android: allowing the reads on the import\'s own sheet '
-        'moves the line from denied to reading only, without leaving the '
-        'screen', (tester) async {
+    testWidgets('Android: the answers are read again after an import, so '
+        'reads allowed while it ran move the line from denied to reading '
+        'only without leaving the screen', (tester) async {
       permissionResult = 'denied';
       importPermissionResult = 'denied';
       await pumpAndroid(

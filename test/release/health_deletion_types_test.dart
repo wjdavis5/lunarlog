@@ -396,11 +396,24 @@ void main() {
       expect(nextHandler, greaterThan(handler));
       final body = kotlin.substring(handler, nextHandler);
 
-      // Issue #1515: the grant that counts is a WRITE grant. A read can be
-      // granted on the import's own sheet, which never shows the writes, so
-      // a granted read no longer says the person was asked for them.
-      final seen = body.indexOf(
-          'HealthPermissionState.provesAsked(granted, writePermissions)');
+      // Issue #1515: a WRITE grant always counts. A read can be granted on
+      // the import's own sheet, which never shows the writes, so a granted
+      // read says the person was asked for them only while that sheet has
+      // never been raised by this install: one rule, in
+      // HealthPermissionState.remembersWritesAsked.
+      final seen =
+          body.indexOf('HealthPermissionState.remembersWritesAsked(');
+      expect(
+        RegExp(
+          r'HealthPermissionState\.remembersWritesAsked\(\s*'
+          r'granted = granted,\s*writes = writePermissions,\s*'
+          r'requested = allPermissions,\s*'
+          r'importRequestLaunched = importRequestLaunched\(\),\s*\)',
+        ).hasMatch(body),
+        isTrue,
+        reason: 'the rule is asked about the writes, everything the app '
+            'requests, and whether the import\'s own sheet was ever raised',
+      );
       final remembered = RegExp(
         r'prefs\.edit\(\)\s*\.putLong\(PERMISSION_REQUESTED_KEY, installStamp\)'
         r'\s*\.apply\(\)',
@@ -410,8 +423,8 @@ void main() {
           reason: 'a read granted by the import\'s request must not mark the '
               'writes as asked: the write pass would stop before asking');
       expect(seen, isNonNegative,
-          reason: 'permissionStatus must look for a grant of a write '
-              'permission');
+          reason: 'permissionStatus must look for a grant that shows the '
+              'writes were asked for');
       expect(remembered, isNotNull,
           reason: 'and set the marker when it finds one');
       expect(remembered!.start, greaterThan(seen));
@@ -701,8 +714,34 @@ void main() {
       expect(writeStatus, contains('writesEverRequested = writesEverRequested()'));
       expect(writeStatus, isNot(contains('permissionEverRequested()')));
       expect(writeStatus, isNot(contains('IMPORT_REQUEST_LAUNCHED_KEY')));
-      expect(writeStatus, isNot(contains('allPermissions')));
       expect(writeStatus, isNot(contains('readPermissions')));
+      // The decision itself is taken over the write permissions and that
+      // marker, and nothing else.
+      expect(
+        RegExp(
+          r'HealthPermissionState\.writeStatusFor\(\s*granted = granted,\s*'
+          r'writes = statusPermissions,\s*'
+          r'writesEverRequested = writesEverRequested\(\),\s*\)',
+        ).hasMatch(writeStatus),
+        isTrue,
+      );
+      // Everything the app requests, and whether the import's own sheet was
+      // ever raised, appear once each: in the rule for what a grant already
+      // on the device proves (the review of #1515), never in the decision.
+      expect('allPermissions'.allMatches(writeStatus), hasLength(1));
+      expect('importRequestLaunched()'.allMatches(writeStatus), hasLength(1));
+      expect(
+        RegExp(
+          r'fun remembersWritesAsked\(\s*granted: Set<String>,\s*'
+          r'writes: Set<String>,\s*requested: Set<String>,\s*'
+          r'importRequestLaunched: Boolean,\s*\): Boolean =\s*'
+          r'provesAsked\(granted, writes\) \|\|\s*'
+          r'\(!importRequestLaunched && provesAsked\(granted, requested\)\)',
+        ).hasMatch(kotlin),
+        isTrue,
+        reason: 'HealthPermissionState.remembersWritesAsked changed shape — '
+            'update HealthPermissionStateTest.kt and this guard together',
+      );
       expect(
         RegExp(
           r'fun writeStatusFor\(\s*granted: Set<String>,\s*'
@@ -724,15 +763,21 @@ void main() {
       expect(
         RegExp(r'private fun permissionEverRequested\(\): Boolean =\s*'
                 r'writesEverRequested\(\)\s*\|\|\s*'
-                r'markerSetByThisInstall\(IMPORT_REQUEST_LAUNCHED_KEY\)')
+                r'importRequestLaunched\(\)')
             .hasMatch(kotlin),
         isTrue,
       );
       expect(
         'markerSetByThisInstall(IMPORT_REQUEST_LAUNCHED_KEY)'.allMatches(kotlin),
         hasLength(1),
-        reason: 'the import\'s marker is read in one place: the read side\'s '
-            '"asked"',
+        reason: 'the import\'s marker is read in one place',
+      );
+      // And that one reader has two callers: the read side's "asked", and
+      // the rule for what a granted read proves about the writes.
+      expect(
+        RegExp(r'[^.\w]importRequestLaunched\(\)').allMatches(kotlin),
+        hasLength(3),
+        reason: 'its definition and two calls',
       );
     });
   });

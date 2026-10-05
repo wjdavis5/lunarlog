@@ -86,7 +86,7 @@ class MethodChannelHealthPlatform
     this.channel = const MethodChannel(kHealthChannelName),
     required this.binding,
     required this.minorBindingAllowed,
-    this.readAccessDisclosed = true,
+    required this.readAccessDisclosed,
   });
 
   final MethodChannel channel;
@@ -96,8 +96,8 @@ class MethodChannelHealthPlatform
   /// Whether this platform's health store tells an app which READ
   /// permissions it holds (Issue #1491) — the one platform fact
   /// [importPermissionStatus] turns on. Health Connect does
-  /// (`getGrantedPermissions`), so `AndroidHealthChannel` leaves this true
-  /// and the question crosses the channel. HealthKit does not — a denied
+  /// (`getGrantedPermissions`), so `AndroidHealthChannel` passes true and
+  /// the question crosses the channel. HealthKit does not — a denied
   /// read is indistinguishable from "no data" by Apple's design — so
   /// `IOSHealthChannel` passes false and the question is answered here in
   /// Dart from the write types, never sent to a Swift handler that could
@@ -109,6 +109,9 @@ class MethodChannelHealthPlatform
   /// [requestImportAuthorization] has a request of its own only where it is
   /// true: where the read side cannot be told apart from the write side,
   /// the import keeps asking through the one sheet it always used.
+  ///
+  /// Required, with no default: an adapter that left it out would otherwise
+  /// claim a read-side answer its store may not give.
   @override
   final bool readAccessDisclosed;
 

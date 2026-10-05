@@ -80,6 +80,7 @@ void main() {
   }) => MethodChannelHealthPlatform(
     binding: HealthSyncBinding(FakeSettingsStore(seed)),
     minorBindingAllowed: true,
+    readAccessDisclosed: true,
   );
 
   test('a denied symptom write refuses without touching the channel', () async {

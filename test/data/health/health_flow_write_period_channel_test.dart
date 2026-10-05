@@ -147,6 +147,7 @@ void main() {
         channel: channel,
         binding: binding,
         minorBindingAllowed: false,
+        readAccessDisclosed: true,
       ),
       binding: binding,
       minorBindingAllowed: false,

@@ -160,14 +160,70 @@ class HealthPermissionStateTest {
         )
     }
 
+    private fun remembers(granted: Set<String>, importRequestLaunched: Boolean): Boolean =
+        HealthPermissionState.remembersWritesAsked(
+            granted = granted,
+            writes = writes,
+            requested = writeRequest,
+            importRequestLaunched = importRequestLaunched,
+        )
+
     @Test
-    fun `a read grant is not remembered as asked for the writes`() {
+    fun `a read granted on the import's own sheet is not remembered as asked for the writes`() {
         // Issue #1515: remembering it would make the write status read
         // "denied" for someone who has only ever tapped Import, and the
         // write pass would stop before its own request.
+        assertFalse(remembers(importRequest, importRequestLaunched = true))
+        assertFalse(remembers(setOf(readMenstruation), importRequestLaunched = true))
+        assertFalse(remembers(setOf(readBackground), importRequestLaunched = true))
+        // A read grant is still no write grant.
         assertFalse(HealthPermissionState.provesAsked(importRequest, writes))
-        assertFalse(HealthPermissionState.provesAsked(setOf(readMenstruation), writes))
-        assertFalse(HealthPermissionState.provesAsked(setOf(readBackground), writes))
+    }
+
+    @Test
+    fun `a read granted before the import had its own request is remembered as asked`() {
+        // The review of Issue #1515. An install from before the asked-marker
+        // existed has no marker. Someone who allowed the reads and declined
+        // the writes on that build's single sheet was asked for the writes,
+        // and the only evidence left is the granted read. Until this install
+        // launches the import's own request, no sheet can have offered a
+        // read without the writes beside it.
+        assertTrue(remembers(setOf(readMenstruation, readSpotting), importRequestLaunched = false))
+        assertTrue(remembers(setOf(readHistory), importRequestLaunched = false))
+        assertTrue(remembers(importRequest, importRequestLaunched = false))
+    }
+
+    @Test
+    fun `that upgrade reads denied, so the write sheet is not raised for her again`() {
+        // What the adapter does with it: it sets the write marker on the
+        // first look, and the status is then decided with the marker set.
+        val readsOnly = setOf(readMenstruation, readSpotting)
+        assertTrue(remembers(readsOnly, importRequestLaunched = false))
+        assertEquals("denied", status(readsOnly, writesEverRequested = true))
+        // Without the rule she would read "notAsked", and the write pass
+        // asks on "notAsked".
+        assertEquals("notAsked", status(readsOnly, writesEverRequested = false))
+    }
+
+    @Test
+    fun `a write grant is remembered whichever requests have been launched`() {
+        for (importRequestLaunched in listOf(false, true)) {
+            assertTrue(remembers(setOf(writeSpotting), importRequestLaunched))
+            assertTrue(remembers(writeRequest, importRequestLaunched))
+        }
+    }
+
+    @Test
+    fun `nothing granted, or something the app never requests, is never remembered`() {
+        for (importRequestLaunched in listOf(false, true)) {
+            assertFalse(remembers(emptySet(), importRequestLaunched))
+            assertFalse(
+                remembers(
+                    setOf("android.permission.health.READ_STEPS"),
+                    importRequestLaunched,
+                ),
+            )
+        }
     }
 
     @Test
