@@ -5,8 +5,13 @@
 > (scaffolded by issue #1249), not the Flutter web build described below.
 > The browser threat model in Section 2 still holds; the Flutter-web
 > specifics (IndexedDB-backed Drift, the `LUNARLOG_WEB_SYNC` gate, the
-> Flutter CSP exceptions) describe the retiring client (issue #1248). The
+> Flutter CSP exceptions) describe the retired client (issue #1248). The
 > React client's posture lives in `webapp/README.md`.
+> **Removed by issue #1257:** the Flutter web build's code is gone from the
+> repository — `web/`, `lib/data/db/web_db.dart`, the web dev banner, the
+> `LUNARLOG_WEB_SYNC` define, `tool/web_smoke/`, and the web-only tests this
+> record cites. The file paths below are kept as written, as history; they no
+> longer resolve.
 > On Sentry specifically: the React web client sends nothing to Sentry — no
 > third-party script loads on it at all; error reporting runs on the phone apps
 > only (issue #1258).

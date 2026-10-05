@@ -1,5 +1,13 @@
 # XSS surface review
 
+> **Historical (issue #1257).** This review was written for the Flutter web
+> build, which has since been removed from the repository along with
+> `web/` and `lib/data/auth/web_url_cleaner_web.dart`. The file paths below
+> are kept as written and several no longer resolve. The guard it names
+> lives on as `test/architecture/dom_surface_test.dart`: its browser-DOM
+> import allowlist is now empty, and its `launchUrl` scheme-gate pins still
+> apply to the phone apps.
+
 **Status:** decision record, slice 5 of epic #831. The owner's decision
 comment lists an "XSS surface review of every place the app renders
 user-authored text (notes, profile names, guardian nicknames, tag labels,
