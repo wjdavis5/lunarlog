@@ -202,6 +202,12 @@ abstract class AppLocalizations {
   /// **'Estimated day'**
   String get calendarLegendPredicted;
 
+  /// Issue #1469: legend entry for the dotted ring the calendar draws on the last-period date given at setup while the estimate still counts from it. The date is an answer, never a logged day, and the parenthetical says so. Shown only while the mark itself can appear.
+  ///
+  /// In en, this message translates to:
+  /// **'Last period start from setup (not logged)'**
+  String get calendarLegendSetupPeriodStart;
+
   /// Legend entry for the predicted premenstrual badge.
   ///
   /// In en, this message translates to:
@@ -291,6 +297,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'not logged'**
   String get calendarCellNotLogged;
+
+  /// Issue #1469: screen-reader fragment for the day carrying the calendar's setup mark, read between the date and 'not logged', e.g. 'Monday, August 31, last period start from setup, not logged'. Names where the mark came from; the day has no entry.
+  ///
+  /// In en, this message translates to:
+  /// **'last period start from setup'**
+  String get calendarCellSetupPeriodStart;
 
   /// Screen-reader fragment marking the calendar's today cell.
   ///

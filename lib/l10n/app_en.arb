@@ -80,6 +80,10 @@
   "@calendarLegendPredicted": {
     "description": "Legend entry for a predicted (hatched) day band."
   },
+  "calendarLegendSetupPeriodStart": "Last period start from setup (not logged)",
+  "@calendarLegendSetupPeriodStart": {
+    "description": "Issue #1469: legend entry for the dotted ring the calendar draws on the last-period date given at setup while the estimate still counts from it. The date is an answer, never a logged day, and the parenthetical says so. Shown only while the mark itself can appear."
+  },
   "calendarLegendPms": "PMS window",
   "@calendarLegendPms": {
     "description": "Legend entry for the predicted premenstrual badge."
@@ -160,6 +164,10 @@
   "calendarCellNotLogged": "not logged",
   "@calendarCellNotLogged": {
     "description": "Screen-reader fragment for a past or present day with no entry."
+  },
+  "calendarCellSetupPeriodStart": "last period start from setup",
+  "@calendarCellSetupPeriodStart": {
+    "description": "Issue #1469: screen-reader fragment for the day carrying the calendar's setup mark, read between the date and 'not logged', e.g. 'Monday, August 31, last period start from setup, not logged'. Names where the mark came from; the day has no entry."
   },
   "calendarCellToday": "today",
   "@calendarCellToday": {
