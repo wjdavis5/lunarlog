@@ -144,7 +144,6 @@ body {
 
 .welcome-actions .btn {
   text-decoration: none;
-  border-radius: var(--ll-r-full);
   padding: var(--ll-space-2) var(--ll-space-5);
 }
 
@@ -466,7 +465,6 @@ body {
 
 .page-auth .auth-button {
   min-height: 2.75rem;
-  border-radius: var(--ll-r-full);
 }
 
 .page-auth .auth-links {
@@ -546,7 +544,7 @@ body {
 .auth-button {
   padding: var(--ll-space-2) var(--ll-space-4);
   border: none;
-  border-radius: var(--ll-r-md);
+  border-radius: var(--ll-r-full);
   background: var(--ll-primary);
   color: var(--ll-on-primary);
   font: inherit;
@@ -596,11 +594,12 @@ body {
   border: 0;
 }
 
+/* Every button in the client is fully rounded, like the app theme's. */
 .btn {
   font: inherit;
   padding: var(--ll-space-2) var(--ll-space-4);
   border: 1px solid var(--ll-outline);
-  border-radius: var(--ll-r-md);
+  border-radius: var(--ll-r-full);
   background: var(--ll-surface-container-high);
   color: var(--ll-on-surface);
   cursor: pointer;
@@ -641,7 +640,6 @@ body {
 .home-log-today {
   margin-left: auto;
   text-decoration: none;
-  border-radius: var(--ll-r-full);
   padding: var(--ll-space-2) var(--ll-space-5);
 }
 
