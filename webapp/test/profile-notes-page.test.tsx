@@ -107,7 +107,7 @@ function noteRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function renderPage() {
+function renderPage(profileId: string = ULID) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -118,7 +118,7 @@ function renderPage() {
   return render(
     <AppIntlProvider>
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={[`/profile/${ULID}/notes`]}>
+        <MemoryRouter initialEntries={[`/profile/${profileId}/notes`]}>
           <Routes>
             <Route path="/profile/:profileId/notes" element={<ProfileNotesPage />} />
           </Routes>
@@ -166,6 +166,15 @@ describe('ProfileNotesPage (issue #1255)', () => {
   // Issue #1473: Chrome's year box takes more than four digits, so one
   // extra keystroke hands the page `20261-10-05`. Formatting that threw
   // during render and took the whole page, and any unsaved note, with it.
+  it('a profile this account cannot see is not called a missing invitation', () => {
+    // A stale bookmark, or a profile the person has since left.
+    renderPage('01ARZ3NDEKTSV4RRFFQ69G5FAX');
+    expect(screen.getByText(messages['webDayNoAccess'] ?? '')).toBeInTheDocument();
+    expect(
+      screen.queryByText(messages['sharingFailureNotFound'] ?? ''),
+    ).not.toBeInTheDocument();
+  });
+
   it('a date the field hands over with a five-digit year changes nothing', async () => {
     renderPage();
     const field = screen.getByLabelText(/^for \w+day, \w+ \d{1,2}, \d{4}$/) as HTMLInputElement;

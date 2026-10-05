@@ -139,7 +139,10 @@ export function ManageGuardiansPage() {
     return (
       <main className="page">
         <section className="card">
-          <p className="card-title">{t('sharingFailureNotFound')}</p>
+          {/* The line Today and the day page show for a profile this
+              account cannot see. It used to be the accept ladder's
+              "Invitation not found or invalid link." */}
+          <p className="card-title">{t('webDayNoAccess')}</p>
         </section>
       </main>
     );

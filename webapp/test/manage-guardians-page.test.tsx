@@ -145,7 +145,7 @@ function pendingRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function renderPage() {
+function renderPage(profileId: string = ULID) {
   // Retry-free: a rejected query settles on its first failure, so failure-
   // copy assertions do not wait out TanStack's exponential retry delay.
   const queryClient = new QueryClient({
@@ -158,7 +158,7 @@ function renderPage() {
   const view = render(
     <AppIntlProvider>
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={[`/profile/${ULID}/guardians`]}>
+        <MemoryRouter initialEntries={[`/profile/${profileId}/guardians`]}>
           <Routes>
             <Route path="/" element={<div>home</div>} />
             <Route path="/profile/:profileId/guardians" element={<ManageGuardiansPage />} />
@@ -472,6 +472,15 @@ describe('ManageGuardiansPage (issue #1255)', () => {
     expect(
       await screen.findByText(messages['sharingFailureNotSignedIn'] ?? ''),
     ).toBeInTheDocument();
+  });
+
+  it('a profile this account cannot see is not called a missing invitation', () => {
+    // A stale bookmark, or a profile the person has since left.
+    renderPage('01ARZ3NDEKTSV4RRFFQ69G5FAW');
+    expect(screen.getByText(messages['webDayNoAccess'] ?? '')).toBeInTheDocument();
+    expect(
+      screen.queryByText(messages['sharingFailureNotFound'] ?? ''),
+    ).not.toBeInTheDocument();
   });
 
   it('a list that fails to load says so, not that an invitation was not accepted', async () => {
