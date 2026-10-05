@@ -3475,7 +3475,7 @@ void main() {
       await tester.tap(find.text('Guardians'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Luna Guardians'), findsOneWidget);
+      expect(find.text('Guardians for Luna'), findsOneWidget);
 
       // U2 route naming: the pushed route is named ManageGuardiansScreen.
       final route = ModalRoute.of(

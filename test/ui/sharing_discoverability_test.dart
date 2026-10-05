@@ -954,7 +954,7 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('profile-shared-chip')));
         await tester.pumpAndSettle();
         expect(find.byType(ManageGuardiansScreen), findsOneWidget);
-        expect(find.text('Alice Guardians'), findsOneWidget);
+        expect(find.text('Guardians for Alice'), findsOneWidget);
       } finally {
         await _disposeApp(tester, db);
       }
@@ -984,7 +984,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Guardians'));
         await tester.pumpAndSettle();
-        expect(find.text('Alice Guardians'), findsOneWidget);
+        expect(find.text('Guardians for Alice'), findsOneWidget);
         expect(find.text('Sitter'), findsOneWidget);
 
         // Cancel the invitation and confirm.
@@ -1038,7 +1038,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Guardians'));
         await tester.pumpAndSettle();
-        expect(find.text('Alice Guardians'), findsOneWidget);
+        expect(find.text('Guardians for Alice'), findsOneWidget);
         expect(
             find.byKey(const ValueKey('pending-invite-inv-1')), findsOneWidget);
         expect(find.text('Sitter'), findsOneWidget);
@@ -1099,7 +1099,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Guardians'));
         await tester.pumpAndSettle();
-        expect(find.text('Alice Guardians'), findsOneWidget);
+        expect(find.text('Guardians for Alice'), findsOneWidget);
         expect(find.text('Sitter'), findsOneWidget);
         expect(find.text('Predictions-only sharing'), findsOneWidget);
         expect(find.byKey(const ValueKey('share-predictions')),
@@ -1205,7 +1205,7 @@ void main() {
         await tester.tap(find.text('Guardians'));
         await tester.pumpAndSettle();
 
-        expect(find.text('Zoe Guardians'), findsOneWidget);
+        expect(find.text('Guardians for Zoe'), findsOneWidget);
         expect(find.text('X'), findsOneWidget);
         // No invite action, no revocation of others, no pending section —
         // but the viewer's own self-leave control stays, matching Manage
@@ -1754,7 +1754,7 @@ void main() {
             .tap(find.byKey(ValueKey('family-sharing-row-${ids.zoe}')));
         await tester.pumpAndSettle();
         expect(find.byType(ManageGuardiansScreen), findsOneWidget);
-        expect(find.text('Zoe Guardians'), findsOneWidget);
+        expect(find.text('Guardians for Zoe'), findsOneWidget);
       } finally {
         await _disposeApp(tester, db);
       }

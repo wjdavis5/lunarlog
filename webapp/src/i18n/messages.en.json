@@ -779,7 +779,7 @@
   "sharingManageGuardiansExpiryHours": "expires in {hours}h",
   "sharingManageGuardiansExpiryMinutes": "expires in {minutes}m",
   "sharingManageGuardiansExpiryDays": "{days, plural, =1{expires in 1 day} other{expires in {days} days}}",
-  "sharingManageGuardiansScreenTitle": "{profileName} Guardians",
+  "sharingManageGuardiansScreenTitle": "Guardians for {profileName}",
   "sharingManageGuardiansInviteAction": "Invite guardian",
   "sharingManageGuardiansNoGuardiansTitle": "No guardians linked yet",
   "sharingManageGuardiansNoGuardiansBody": "Invite another guardian to sync and share tracking.",
