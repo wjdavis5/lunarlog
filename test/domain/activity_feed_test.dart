@@ -361,9 +361,16 @@ void main() {
           relativeActivityAge(
               now.subtract(const Duration(days: 2)), () => now),
           '2d ago');
+      // A week out there is no relative form: the screen shows a date,
+      // formatted for the person's locale, not a string built here.
+      expect(relativeActivityAge(DateTime.utc(2026, 8, 20), () => now), isNull);
       expect(
-          relativeActivityAge(DateTime.utc(2026, 8, 20), () => now),
-          isNot(contains('ago')));
+          relativeActivityAge(
+              now.subtract(const Duration(days: 6, hours: 23)), () => now),
+          '6d ago');
+      expect(
+          relativeActivityAge(now.subtract(const Duration(days: 7)), () => now),
+          isNull);
     });
 
     test('a future stamp (clock skew) reads as just now, never negative',
