@@ -14,9 +14,15 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Keys permitted to use the "prediction" stem in their user-facing values.
-/// Every permitted key belongs to the Issue #151 prediction-only sharing
-/// feature.
+/// Every permitted key either belongs to the Issue #151 prediction-only
+/// sharing feature or names that feature the way its own screens do. The
+/// two first-run keys are the second kind (#1382): the minor checkbox turns
+/// the feature off, and its explanation has to call it what Manage
+/// guardians calls it ("Prediction sharing is not available for a minor's
+/// profile.") for a reader to recognise it there.
 const Set<String> _predictionSharingAllowlist = {
+  'firstRunMinorExplainerBody',
+  'firstRunMinorHint',
   'predictionConnectionFailurePregnancyMode',
   'predictionConnectionFailureAlreadyConnected',
   'predictionConnectionFailureOneDirectional',

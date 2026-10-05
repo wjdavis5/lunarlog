@@ -1127,7 +1127,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get firstRunMinorExplainerBody =>
-      'It\'s a label used across the app to describe the profile. It doesn\'t restrict anything: health app sync is off for every profile by default and, when you turn it on, works the same way for any profile you choose — minors included. Wording and reminders come from the care mode picked on the next screen, not from this checkbox.';
+      'It marks the profile as a minor\'s. That turns prediction sharing off for the profile and starts the Sex life and Partying categories hidden, until a primary guardian turns them on. Health app sync is not affected. Wording and reminders come from the care mode picked on the next screen, not from this checkbox.';
 
   @override
   String get firstRunNoticeBody =>
@@ -1153,7 +1153,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get firstRunMinorHint =>
-      'A label used across the app — health sync works the same for every profile.';
+      'Turns off prediction sharing. Health sync is the same for every profile.';
 
   @override
   String get firstRunAgeAcknowledgementLabel =>
