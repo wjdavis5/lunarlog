@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// shared link show of the site. It used to be the bare name, "lunarlog",
 /// which says nothing to someone who has not heard of it. This pins that it
 /// names the product and says what it is, and that the other pages keep
-/// their "<page> — lunarlog" form.
+/// their `<page> — lunarlog` form.
 void main() {
   final layout = File('site/src/layouts/BaseLayout.astro').readAsStringSync();
   final home = File('site/src/pages/index.astro').readAsStringSync();
