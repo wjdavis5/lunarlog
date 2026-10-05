@@ -1,0 +1,20 @@
+---
+// A mention of the browser version's address in running text.
+//
+// While the address is serving the browser version this is a link to it.
+// When the deploy found it was not (see `src/lib/web-app.mjs`), it is the
+// address in plain text with a short note, so no page sends a reader to an
+// error screen. Every in-text link to the address goes through here; the
+// home page's button makes the same choice for itself.
+import { WEB_APP_HOST, WEB_APP_URL, webAppIsLive } from "../lib/web-app.mjs";
+
+const live = webAppIsLive();
+---
+
+{
+  live ? (
+    <a href={WEB_APP_URL} rel="noopener">{WEB_APP_HOST}</a>
+  ) : (
+    <span>{WEB_APP_HOST} (not available right now)</span>
+  )
+}

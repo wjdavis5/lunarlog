@@ -2,6 +2,7 @@
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import UiLabel from "../../components/UiLabel.astro";
 import HelpCard from "../../components/HelpCard.astro";
+import WebAppLink from "../../components/WebAppLink.astro";
 
 // Issue #1106, guide 1: getting started on iPhone, Android, and the
 // browser — the account, the first profile, and the lock gate. Every
@@ -38,10 +39,7 @@ import HelpCard from "../../components/HelpCard.astro";
       <ol class="doc__steps">
         <li>
           On a phone, install lunarlog from the App Store or Google Play.
-          In a browser, go to <a
-            href="https://app.lunarlog.app"
-            rel="noopener">app.lunarlog.app</a
-          >.
+          In a browser, go to <WebAppLink />.
         </li>
         <li>
           Open the app. On a phone, everything you log is protected by the
