@@ -106,7 +106,8 @@ export const INVITE_FALLBACK_HTML = `<!DOCTYPE html>
 
 /**
  * The deny-by-default Permissions-Policy the rest of the site sends
- * (`site/public/_headers`). Kept identical to it.
+ * (`site/public/_headers`). `site/scripts/invite-page.test.mjs` fails when
+ * the two differ.
  */
 export const INVITE_PERMISSIONS_POLICY =
   "accelerometer=(), autoplay=(), camera=(), display-capture=(), encrypted-media=(), " +
@@ -134,14 +135,23 @@ async function hashSource(block: string): Promise<string> {
  * The page loads nothing: it has one inline style and one inline script and
  * no other resource. So the policy allows nothing, then admits exactly those
  * inline blocks by their hashes, taken from the markup being served so they
- * cannot go stale. Anything added to the page after the Worker has answered
- * has no hash here and the browser refuses it.
+ * cannot go stale. A script, a style, an image, a frame, a form target or a
+ * `<base>` added to the page after the Worker has answered has no hash and
+ * no allowance here, and the browser refuses it. (A policy cannot refuse a
+ * plain link or a `<meta>` refresh; nothing adds those.)
  *
  * That matters because something does get added. Cloudflare's proxy injects
  * its Web Analytics script into HTML it serves for the zone. The site's
  * pages refuse it through `_headers`; this page is produced by the Worker,
- * which `_headers` does not reach, and until this policy existed the script
- * ran on the one page whose address carries a redeemable code.
+ * which `_headers` does not reach, so until this policy existed the tag was
+ * injected, and nothing stopped it running, on the one page whose address
+ * carries a redeemable code.
+ *
+ * The blocks are found with a pattern, not an HTML parser. A page that
+ * mentioned `<script>` or `<style>` anywhere else (in a comment, say) would
+ * have the wrong span hashed and its own block refused, so both pages are
+ * held to exactly one of each tag, counted on the raw text
+ * (`index.test.ts`, `site/scripts/invite-page.test.mjs`).
  */
 export async function inviteContentSecurityPolicy(html: string): Promise<string> {
   const scripts = await Promise.all(inlineBlocks(html, "script").map(hashSource));
@@ -161,9 +171,11 @@ export async function inviteContentSecurityPolicy(html: string): Promise<string>
  * The invitation page, with the headers `_headers` gives every other page
  * of the site and its own policy ([inviteContentSecurityPolicy]).
  *
- * `no-transform` tells the proxy not to rewrite the page at all, which is
- * how the analytics script reached it; the policy is what holds if that is
- * ever ignored. HEAD gets the same headers and no body.
+ * `no-transform` asks the proxy not to rewrite the page at all, which is
+ * how the analytics tag reached it. Cloudflare documents that for a
+ * response from an origin; whether it holds for one a Worker produces is
+ * not relied on. The policy is what is relied on. HEAD gets the same
+ * headers and no body.
  */
 async function inviteResponse(html: string, method: string): Promise<Response> {
   return new Response(method === "HEAD" ? null : html, {
@@ -188,8 +200,18 @@ async function inviteResponse(html: string, method: string): Promise<Response> {
  */
 async function builtInvitePage(assets: Fetcher, request: Request): Promise<string | null> {
   const url = new URL("/invite.html", request.url);
-  const response = await assets.fetch(new Request(url.toString(), { method: "GET" }));
-  return response.status === 200 ? await response.text() : null;
+  // `follow`, said out loud. The asset layer answers `/invite.html` with a
+  // redirect to its own address for that file (`/invite`), and the page is
+  // behind it. Left to `manual`, the redirect is all this ever saw and the
+  // built page was never served.
+  const response = await assets.fetch(
+    new Request(url.toString(), { method: "GET", redirect: "follow" }),
+  );
+  if (response.status !== 200) return null;
+  // A browser turns CRLF into LF before it hashes an inline block, so a
+  // page that reached the assets with CRLF would have its own script and
+  // style refused. Serve, and hash, the LF text.
+  return (await response.text()).replace(/\r\n?/g, "\n");
 }
 
 export function handleRequest(request: Request, env: Env): Promise<Response> | Response {
@@ -243,10 +265,14 @@ export function handleRequest(request: Request, env: Env): Promise<Response> | R
       return new Response("Method Not Allowed", { status: 405 });
     }
 
-    // The built page when the assets have it, the inline fallback otherwise.
+    // The built page when the assets have it, the inline fallback otherwise,
+    // and the fallback too when reading the assets throws: an invitation
+    // must not become an error page because a file could not be read.
     // Either way the Worker writes the headers: `_headers` does not reach a
     // response the Worker produces.
-    const built = env.ASSETS ? builtInvitePage(env.ASSETS, request) : Promise.resolve(null);
+    const built = env.ASSETS
+      ? builtInvitePage(env.ASSETS, request).catch(() => null)
+      : Promise.resolve(null);
     return built.then((html) => inviteResponse(html ?? INVITE_FALLBACK_HTML, request.method));
   }
 

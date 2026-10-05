@@ -71,4 +71,31 @@ test("the page's script and style are ones the Worker's policy covers", () => {
   }
   // Nothing in the style reaches for a file either.
   assert.doesNotMatch(withoutComments, /url\(|@import/);
+
+  // The Worker finds the two blocks with a pattern on the raw text,
+  // comments and all. A second mention of either tag anywhere, the page's
+  // long opening comment included, could make it hash the wrong span and
+  // have the page's own block refused. So: one of each, on the raw text.
+  for (const tag of ["<script", "</script", "<style", "</style"]) {
+    assert.equal(landing.split(tag).length - 1, 1, `exactly one ${tag}`);
+  }
+});
+
+test("the Worker sends this page the same Permissions-Policy as the rest of the site", async () => {
+  // `_headers` gives every other page its Permissions-Policy and does not
+  // reach this one, so the Worker carries a copy. This is what keeps the
+  // copy the same.
+  const headers = await readFile(path.join(siteDir, "public", "_headers"), "utf8");
+  const worker = await readFile(path.join(siteDir, "worker", "index.ts"), "utf8");
+
+  const sitePolicy = /^\s*Permissions-Policy:\s*(.+?)\s*$/m.exec(headers)?.[1];
+  assert.ok(sitePolicy, "_headers has a Permissions-Policy line");
+
+  const declaration = /export const INVITE_PERMISSIONS_POLICY =([\s\S]*?);/.exec(worker)?.[1];
+  assert.ok(declaration, "index.ts declares INVITE_PERMISSIONS_POLICY");
+  const workerPolicy = [...declaration.matchAll(/"([^"]*)"/g)]
+    .map((part) => part[1])
+    .join("");
+
+  assert.equal(workerPolicy, sitePolicy);
 });

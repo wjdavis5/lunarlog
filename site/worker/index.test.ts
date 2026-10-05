@@ -1,5 +1,10 @@
 import { assertEquals, assertNotMatch, assertStringIncludes } from "jsr:@std/assert";
-import worker, { AASA_CONTENT, Fetcher } from "./index.ts";
+import worker, {
+  AASA_CONTENT,
+  Fetcher,
+  INVITE_FALLBACK_HTML,
+  INVITE_PERMISSIONS_POLICY,
+} from "./index.ts";
 
 Deno.test("AASA: serves /.well-known/apple-app-site-association with 200 and application/json", async () => {
   const req = new Request("https://lunarlog.app/.well-known/apple-app-site-association");
@@ -127,8 +132,8 @@ Deno.test("/invite: proxies to env.ASSETS when available", async () => {
 // was added the invitation page -- the one page whose address carries a
 // redeemable code -- was the one page on the site with no
 // Content-Security-Policy, no frame protection and no HSTS. Cloudflare's
-// proxy was injecting its Web Analytics script into it, and with nothing to
-// refuse it, that third-party script ran there.
+// proxy was injecting its Web Analytics script tag into it, and nothing was
+// there to refuse that third-party script.
 
 /** `'sha256-...'` of [text], the way a browser computes a CSP hash source. */
 async function hashSource(text: string): Promise<string> {
@@ -207,7 +212,8 @@ for (
         res.headers.get("strict-transport-security"),
         "max-age=63072000; includeSubDomains; preload",
       );
-      assertStringIncludes(res.headers.get("permissions-policy") ?? "", "camera=()");
+      assertEquals(res.headers.get("permissions-policy"), INVITE_PERMISSIONS_POLICY);
+      assertStringIncludes(INVITE_PERMISSIONS_POLICY, "camera=()");
       // no-transform: Cloudflare's proxy may not rewrite the page, which is
       // how its analytics script got into it.
       assertEquals(res.headers.get("cache-control"), "public, max-age=300, no-transform");
@@ -269,6 +275,122 @@ Deno.test("/invite: a script tag with attributes is not one the policy admits", 
   const own = /<script>([\s\S]*?)<\/script>/.exec(assetInvite)![1];
   assertEquals(directive(csp, "script-src"), await hashSource(own));
   assertNotMatch(csp, /cloudflareinsights/);
+});
+
+/** The text between the first `open` and the next `close` in [html]. */
+function between(html: string, open: string, close: string): string {
+  const start = html.indexOf(open) + open.length;
+  return html.slice(start, html.indexOf(close, start));
+}
+
+/** How many times [needle] occurs in [haystack]. */
+function count(haystack: string, needle: string): number {
+  return haystack.split(needle).length - 1;
+}
+
+Deno.test("/invite: the whole policy, directive for directive", async () => {
+  // Pinned as one string, so an added directive (a `script-src-elem` that
+  // loosens the one above it, say) cannot pass unnoticed. The two hashes
+  // are worked out here by cutting the fallback page on its tags, not with
+  // the Worker's own pattern.
+  const res = await worker.fetch(new Request("https://lunarlog.app/invite?code=x"), {});
+  const script = await hashSource(between(INVITE_FALLBACK_HTML, "<script>", "</script>"));
+  const style = await hashSource(between(INVITE_FALLBACK_HTML, "<style>", "</style>"));
+  assertEquals(
+    res.headers.get("content-security-policy"),
+    "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; " +
+      `script-src ${script}; style-src ${style}; upgrade-insecure-requests`,
+  );
+});
+
+Deno.test("/invite: the fallback page has exactly one script and one style, counted on the raw text", () => {
+  // The Worker finds the blocks with a pattern. A second mention of either
+  // tag anywhere, a comment included, could make it hash the wrong span and
+  // have the page's own block refused.
+  for (const tag of ["<script", "</script", "<style", "</style"]) {
+    assertEquals(count(INVITE_FALLBACK_HTML, tag), 1, tag);
+  }
+});
+
+for (
+  const [name, assets] of [
+    ["answer with a redirect", {
+      fetch: async () => new Response(null, { status: 307, headers: { Location: "/invite" } }),
+    }],
+    ["answer 404", { fetch: async () => new Response("Not found", { status: 404 }) }],
+    ["throw", {
+      fetch: async () => {
+        throw new Error("assets unavailable");
+      },
+    }],
+    ["fail while the page is being read", {
+      fetch: async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new Error("stream broke"));
+            },
+          }),
+          { status: 200 },
+        ),
+    }],
+  ] as [string, Fetcher][]
+) {
+  Deno.test(`/invite: when the assets ${name}, the fallback page is served with its own hashes`, async () => {
+    const res = await worker.fetch(new Request("https://lunarlog.app/invite?code=x"), {
+      ASSETS: assets,
+    });
+    assertEquals(res.status, 200);
+    const csp = res.headers.get("content-security-policy") ?? "";
+    assertEquals(await res.text(), INVITE_FALLBACK_HTML);
+    assertEquals(
+      directive(csp, "script-src"),
+      await hashSource(between(INVITE_FALLBACK_HTML, "<script>", "</script>")),
+    );
+    assertEquals(
+      directive(csp, "style-src"),
+      await hashSource(between(INVITE_FALLBACK_HTML, "<style>", "</style>")),
+    );
+  });
+}
+
+Deno.test("/invite: the built page is asked for with redirects followed", async () => {
+  // The asset layer answers `/invite.html` with a redirect to its own
+  // address for the file. Left to `manual`, that redirect was all the
+  // Worker saw, and the built page was never served.
+  const modes: string[] = [];
+  const recording: Fetcher = {
+    fetch: async (r: Request | string) => {
+      modes.push(typeof r === "string" ? "(string)" : r.redirect);
+      return new Response(assetInvite, { status: 200 });
+    },
+  };
+  await worker.fetch(new Request("https://lunarlog.app/invite?code=x", { redirect: "manual" }), {
+    ASSETS: recording,
+  });
+  assertEquals(modes, ["follow"]);
+});
+
+Deno.test("/invite: a built page that arrives with CRLF is served, and hashed, with LF", async () => {
+  // A browser turns CRLF into LF before it hashes an inline block. Hashing
+  // the CRLF bytes would have the page's own script and style refused.
+  const crlf: Fetcher = {
+    fetch: async () => new Response(assetInvite.replaceAll("\n", "\r\n"), { status: 200 }),
+  };
+  const res = await worker.fetch(new Request("https://lunarlog.app/invite?code=x"), {
+    ASSETS: crlf,
+  });
+  const csp = res.headers.get("content-security-policy") ?? "";
+  const body = await res.text();
+  assertEquals(body, assetInvite);
+  assertEquals(
+    directive(csp, "script-src"),
+    await hashSource(between(assetInvite, "<script>", "</script>")),
+  );
+  assertEquals(
+    directive(csp, "style-src"),
+    await hashSource(between(assetInvite, "<style>", "</style>")),
+  );
 });
 
 Deno.test("unknown path returns 404 without ASSETS", async () => {

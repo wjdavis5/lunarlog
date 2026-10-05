@@ -346,6 +346,45 @@ expect_header_absent() {
   fi
 }
 
+# inline_block_hash BODY TAG -- the Content-Security-Policy hash source of
+# the one bare inline <TAG> block in BODY, worked out the way a browser
+# does it: over the block's text, with CRLF read as LF. The caller has
+# already made sure the block is there.
+inline_block_hash() {
+  printf "'sha256-%s'" "$(
+    printf '%s' "$1" |
+      BLOCK_TAG="$2" perl -0777 -ne '
+        s/\r\n?/\n/g;
+        my $tag = $ENV{BLOCK_TAG};
+        print $1 if /<$tag>(.*?)<\/$tag>/s;
+      ' |
+      openssl dgst -sha256 -binary |
+      openssl base64 -A
+  )"
+}
+
+# expect_csp_hash_of_body DUMP BODY TAG URL -- the policy admits the page's
+# own inline <TAG> by hash, so the hash in the header has to be the hash of
+# the block that was delivered. A missing policy is reported by the header
+# assertions, not here.
+expect_csp_hash_of_body() {
+  local dump="$1" body="$2" tag="$3" url="$4" csp want
+  csp="$(header_value "$dump" content-security-policy || true)"
+  [ -n "$csp" ] || return 0
+  case "$body" in
+    *"<$tag>"*"</$tag>"*) ;;
+    *)
+      printf '%s: the page delivered has no inline <%s> block to hold its policy to. ' "$url" "$tag"
+      return 0
+      ;;
+  esac
+  want="$(inline_block_hash "$body" "$tag")"
+  case "$csp" in
+    *"$tag-src $want"*) return 0 ;;
+    *) printf "%s: the %s-src hash in content-security-policy is not the hash of the <%s> delivered (%s), so a browser refuses the page's own %s. " "$url" "$tag" "$tag" "$want" "$tag" ;;
+  esac
+}
+
 # beacon_finding URL -- the finding text for an injected Web Analytics
 # beacon: the accumulated problem text when armed, the body of the
 # ::warning:: line when warn-only.
@@ -381,7 +420,7 @@ expect_body_without_cf_beacon() {
 # returns non-zero when any assertion failed.
 check_once() {
   local home aasa invite assetlinks notfound fhir privacy privacy_page support problems=""
-  local notfound_body
+  local notfound_body invite_body
   local routes route_url route route_body route_problems
 
   home="$(fetch "$HOME_URL" 2>/dev/null || true)"
@@ -394,6 +433,7 @@ check_once() {
   privacy_page="$(fetch "$PRIVACY_PAGE_URL" 2>/dev/null || true)"
   support="$(fetch "$SUPPORT_URL" 2>/dev/null || true)"
   notfound_body="$(fetch_body "$NOTFOUND_URL" 2>/dev/null || true)"
+  invite_body="$(fetch_body "$INVITE_URL" 2>/dev/null || true)"
 
   # The home page is served by the static-asset layer, so the strict header
   # set from `site/public/_headers` must be attached to it. Its body's
@@ -425,8 +465,9 @@ check_once() {
   # Until these were asserted the page had no Content-Security-Policy at
   # all. Issue #1139's beacon is "inert" only where a policy refuses it, and
   # on this page, the one whose address carries a redeemable code, nothing
-  # did: the injected script ran. `no-transform` asks the proxy not to
-  # inject here in the first place; the policy is what holds if it does.
+  # did: the tag was injected and nothing refused it. `no-transform` asks
+  # the proxy not to inject here in the first place; the policy is what
+  # holds if it does.
   #
   # Its body's beacon assertion still lives in the route enumeration below
   # (issue #1184) -- the enumerated /invite (from public/invite.html)
@@ -438,9 +479,20 @@ check_once() {
   problems="${problems}$(expect_header_exact "$invite" cache-control "public, max-age=300, no-transform" "$INVITE_URL")"
   problems="${problems}$(expect_header_contains "$invite" content-security-policy "default-src 'none'" "$INVITE_URL")"
   problems="${problems}$(expect_header_contains "$invite" content-security-policy "frame-ancestors 'none'" "$INVITE_URL")"
+  problems="${problems}$(expect_header_contains "$invite" content-security-policy "base-uri 'none'" "$INVITE_URL")"
+  problems="${problems}$(expect_header_contains "$invite" content-security-policy "form-action 'none'" "$INVITE_URL")"
   problems="${problems}$(expect_header_contains "$invite" content-security-policy "script-src 'sha256-" "$INVITE_URL")"
+  problems="${problems}$(expect_header_contains "$invite" content-security-policy "style-src 'sha256-" "$INVITE_URL")"
   problems="${problems}$(expect_header_prefix "$invite" strict-transport-security "max-age=" "$INVITE_URL")"
   problems="${problems}$(expect_header_exact "$invite" x-frame-options DENY "$INVITE_URL")"
+  problems="${problems}$(expect_header_contains "$invite" permissions-policy "camera=()" "$INVITE_URL")"
+  # The hashes have to be the hashes of what was delivered. The proxy has
+  # features that rewrite a page on its way out; one of them at work here
+  # would leave the header naming a script the browser no longer has, the
+  # browser would refuse the page's own, and the Open button would lose
+  # the code with every header above still in place.
+  problems="${problems}$(expect_csp_hash_of_body "$invite" "$invite_body" script "$INVITE_URL")"
+  problems="${problems}$(expect_csp_hash_of_body "$invite" "$invite_body" style "$INVITE_URL")"
 
   # Issue #1157: the store privacy-policy URL must resolve. `/privacy` (the
   # exact URL both stores list) redirects to `/privacy/`, which serves the
