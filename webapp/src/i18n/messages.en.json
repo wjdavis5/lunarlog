@@ -1,5 +1,6 @@
 {
   "calendarPreviousMonthTooltip": "Previous month",
+  "calendarChooseMonthTooltip": "Choose month and year",
   "calendarTodayTooltip": "Today",
   "calendarNextMonthTooltip": "Next month",
   "calendarMonthYearLabel": "{month} {year}",

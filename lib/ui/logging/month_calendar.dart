@@ -1683,18 +1683,30 @@ class _MonthCalendarState extends State<MonthCalendar>
               onPressed: () => _shiftMonth(-1),
             ),
             Expanded(
-              child: InkWell(
-                key: const ValueKey('month-year-label'),
-                onTap: _openMonthYearPicker,
-                child: Center(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      l10n.calendarMonthYearLabel(
-                        dates.monthNames(locale: locale)[_displayedMonth - 1],
-                        _displayedYear,
+              // The title opens the month and year chooser. As an InkWell
+              // around a text it was announced as "October 2026" with a tap
+              // action and no role, so a screen reader gave no sign it
+              // opens anything, and nothing said what a tap does.
+              child: Tooltip(
+                message: l10n.calendarChooseMonthTooltip,
+                child: Semantics(
+                  button: true,
+                  child: InkWell(
+                    key: const ValueKey('month-year-label'),
+                    onTap: _openMonthYearPicker,
+                    child: Center(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          l10n.calendarMonthYearLabel(
+                            dates.monthNames(
+                              locale: locale,
+                            )[_displayedMonth - 1],
+                            _displayedYear,
+                          ),
+                          style: theme.textTheme.titleLarge,
+                        ),
                       ),
-                      style: theme.textTheme.titleLarge,
                     ),
                   ),
                 ),
