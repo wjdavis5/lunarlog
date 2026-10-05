@@ -342,6 +342,36 @@ void main() {
       await db.close();
     });
 
+    // Issue #1426: `find.byKey`/`find.text` read the widget tree, so the
+    // test above passes even with the banner missing from the accessibility
+    // tree. The banner is painted before the Navigator in the same `Column`,
+    // and every route's modal barrier is a `BlockSemantics`, which drops
+    // earlier-painted siblings up to the nearest semantics boundary. Both
+    // finders below read semantics: `find.semantics` walks the tree from
+    // its root, the way a screen reader does.
+    testWidgets('the app shell keeps the banner in the accessibility tree, '
+        'above the Navigator', (tester) async {
+      final handle = tester.ensureSemantics();
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      await tester.pumpWidget(LunarLogApp.withCollaborators(
+        db: db,
+        showQaBanner: true,
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text(kQaBuildBannerCopy), findsOneWidget,
+          reason: 'the banner is mounted (the widget tree is not in doubt)');
+      expect(find.semantics.byLabel(kQaBuildBannerCopy), findsOne,
+          reason: 'a screen reader must be able to reach the QA marker');
+      expect(find.bySemanticsLabel(kQaBuildBannerCopy), findsOneWidget);
+
+      handle.dispose();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump();
+      await db.close();
+    });
+
     testWidgets('the default build shows neither banner nor suffix',
         (tester) async {
       final db = LunarLogDatabase(NativeDatabase.memory());

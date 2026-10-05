@@ -1455,6 +1455,8 @@
   "webDaySaving": "Saving…",
   "webDaySaved": "Saved",
   "webDaySaveFailed": "Saving failed — your changes are still here, nothing was lost. Try again.",
+  "webDayTagSearchNoMatches": "No symptoms match that search.",
+  "webDayNoSymptomsLogged": "No symptoms logged for this day.",
   "webDayRejectedField": "The server rejected this field — check it and try again.",
   "webDayErrorFuture": "You can't log a day more than one day ahead.",
   "webDayErrorBirthYear": "This day is before the profile's birth year.",

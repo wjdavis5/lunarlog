@@ -103,11 +103,11 @@ export function ProfileNotesPage() {
       <h1 className="display">
         {profile !== null ? t('webNotesTitle', { profileName: profile.display_name }) : ''}
       </h1>
-      <nav>
+      <p className="page-back">
         <Link className="nav-link" to={profileHomePath(profileId)}>
           {t('webDayBackToToday')}
         </Link>
-      </nav>
+      </p>
 
       <h2 className="section-title">{t('guardianNotesSectionTitle')}</h2>
       <div className="field">

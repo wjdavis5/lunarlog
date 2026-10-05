@@ -41,6 +41,8 @@ import {
   tagsByCategory,
 } from '../lib/day/categories';
 import { useDayView, useSaveDay } from '../lib/day/use-day';
+import { Chip } from './DayChip';
+import { DaySymptomPicker } from './DaySymptomPicker';
 import {
   DomainModuleMissingError,
   getDomainModule,
@@ -92,30 +94,6 @@ const LIFECYCLE_MODE_LABEL_IDS = {
   perimenopause: 'webDayModePerimenopause',
   postpartum: 'webDayModePostpartum',
 } as const;
-
-function Chip({
-  label,
-  selected,
-  onPress,
-  disabled,
-}: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-  disabled: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      className={selected ? 'chip chip-selected' : 'chip'}
-      aria-pressed={selected}
-      onClick={onPress}
-      disabled={disabled}
-    >
-      {label}
-    </button>
-  );
-}
 
 function editFromView(view: LoadedDayView | undefined): DayEdit {
   if (view === undefined) {
@@ -387,14 +365,15 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
   return (
     <main className="page">
       <h1 className="display">{dateHeading}</h1>
-      <nav>
-        {/* Back to this profile's home. A bare "/" opens the first profile
-            in the list, which is someone else's whenever the day belongs
-            to any other. */}
+      {/* Back to this profile's home. A bare "/" opens the first profile
+          in the list, which is someone else's whenever the day belongs to
+          any other. One link is a paragraph, not a second navigation
+          landmark beside the header's. */}
+      <p className="page-back">
         <Link className="nav-link" to={profileHomePath(profileId)}>
           {t('webDayBackToToday')}
         </Link>
-      </nav>
+      </p>
 
       {day.isPending ? (
         <section className="card">
@@ -491,40 +470,17 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
 
           <fieldset className="card day-group" disabled={readOnly}>
             <legend className="card-title">{t('webDaySymptomsSection')}</legend>
-            {symptomCategories.map(({ category, tags: codes }) => {
-              return (
-                <div key={category.name} className="tag-category">
-                  <p className="card-title">{category.label}</p>
-                  <div className="chip-row" role="group" aria-label={category.label}>
-                    {codes.map((tag) => (
-                      <Chip
-                        key={tag.code}
-                        label={tag.display}
-                        selected={edit.tags.includes(tag.code)}
-                        onPress={() => toggleTag(tag.code, category.name)}
-                        disabled={readOnly}
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-            {view.customTags.length > 0 ? (
-              <div className="tag-category">
-                <p className="card-title">{t('webDaySymptomsSection')}</p>
-                <div className="chip-row" role="group" aria-label={t('webDaySymptomsSection')}>
-                  {view.customTags.map((tag) => (
-                    <Chip
-                      key={tag.id}
-                      label={tag.display_name}
-                      selected={edit.tags.includes(tag.code)}
-                      onPress={() => toggleTag(tag.code, null)}
-                      disabled={readOnly}
-                    />
-                  ))}
-                </div>
-              </div>
-            ) : null}
+            <DaySymptomPicker
+              categories={symptomCategories}
+              customTags={view.customTags.map((tag) => ({
+                code: tag.code,
+                display: tag.display_name,
+              }))}
+              selected={edit.tags}
+              recentCodes={day.recentTags}
+              readOnly={readOnly}
+              onToggle={toggleTag}
+            />
             {rejectedFields.has('tags') ? (
               <p className="field-error" role="alert">
                 {t('webDayRejectedField')}

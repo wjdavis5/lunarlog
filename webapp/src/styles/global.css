@@ -268,6 +268,98 @@ body {
   margin-top: var(--ll-space-3);
 }
 
+/* The label over a run of chips that does not open or close: the Recent
+   row, and a category as someone who can only read the day sees it. */
+.tag-category-label {
+  margin: 0;
+  font-size: var(--ll-type-label-large-font-size);
+  line-height: var(--ll-type-label-large-line-height);
+  font-weight: var(--ll-type-label-large-font-weight);
+  color: var(--ll-on-surface-variant);
+}
+
+.tag-search {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ll-space-2);
+  align-items: center;
+  margin-top: var(--ll-space-2);
+}
+
+.tag-search input {
+  flex: 1 1 12rem;
+  min-width: 0;
+  font: inherit;
+  padding: var(--ll-space-2) var(--ll-space-3);
+  border: 1px solid var(--ll-outline);
+  border-radius: var(--ll-r-full);
+  background: var(--ll-surface-container-lowest);
+  color: var(--ll-on-surface);
+}
+
+/* The categories, one row each, opened one at a time. A hairline between
+   rows is what makes twenty of them read as a list. */
+.tag-sections {
+  margin-top: var(--ll-space-3);
+}
+
+.tag-section {
+  border-top: 1px solid var(--ll-outline-variant);
+}
+
+.tag-section-heading {
+  margin: 0;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: var(--ll-type-label-large-font-weight);
+}
+
+.tag-section-toggle,
+.tag-section-static {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  font: inherit;
+  text-align: start;
+  color: var(--ll-on-surface);
+}
+
+.tag-section-toggle {
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+/* The chevron: down when the section is closed, up when it is open. */
+.tag-section-toggle::after {
+  content: '';
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-inline: var(--ll-space-2);
+  border-right: 2px solid var(--ll-on-surface-variant);
+  border-bottom: 2px solid var(--ll-on-surface-variant);
+  transform: translateY(-25%) rotate(45deg);
+}
+
+.tag-section-toggle[aria-expanded='true']::after {
+  transform: translateY(25%) rotate(-135deg);
+}
+
+.tag-section-toggle:focus-visible {
+  outline: 2px solid var(--ll-primary);
+  outline-offset: 2px;
+  border-radius: var(--ll-r-sm);
+}
+
+.tag-section-panel {
+  margin-top: 0;
+  padding-bottom: var(--ll-space-3);
+}
+
 .field-label {
   display: block;
   margin-top: var(--ll-space-3);
@@ -669,6 +761,20 @@ body {
   background: var(--ll-error);
   color: var(--ll-on-error);
   border-color: var(--ll-error);
+}
+
+/* The button that only opens a destructive confirmation: marked as such,
+   without the weight of the button that does the deed. It matches
+   `.button.danger` on the guardians and notes pages. */
+.btn-danger-quiet {
+  background: transparent;
+  border-color: var(--ll-error);
+  color: var(--ll-error);
+}
+
+/* A page's one link back to where it came from. */
+.page-back {
+  margin: 0;
 }
 
 .home-switcher {

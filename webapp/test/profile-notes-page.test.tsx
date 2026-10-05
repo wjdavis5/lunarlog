@@ -186,6 +186,8 @@ describe('ProfileNotesPage (issue #1255)', () => {
       'href',
       `/?profile=${ULID}`,
     );
+    // One link back is not a navigation landmark of its own.
+    expect(screen.queryByRole('navigation')).toBeNull();
   });
 
   it("prints the editor's label once", async () => {

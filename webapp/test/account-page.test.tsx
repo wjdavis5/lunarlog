@@ -145,6 +145,13 @@ describe('AccountPage (issue #1256)', () => {
     ).toBeDefined();
     // Apple is not linked: the add affordance instead.
     expect(screen.getByText(messages['accountSectionAddApple'])).toBeDefined();
+    // The line inviting another way to sign in sits under the one method
+    // that can still be added, not under Email or the linked Google.
+    const invitations = screen.getAllByText(messages['accountSectionLinkSubtitle']);
+    expect(invitations).toHaveLength(1);
+    expect(invitations[0]?.closest('li')).toHaveTextContent(
+      messages['accountProviderLabelApple'],
+    );
     // The email row carries no remove button at all.
     expect(
       screen.queryByText(

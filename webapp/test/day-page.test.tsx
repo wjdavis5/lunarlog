@@ -254,6 +254,9 @@ describe('DayPage (issue #1254)', () => {
       'href',
       `/?profile=${PROFILE_ID}`,
     );
+    // One link back is not a navigation landmark: the header has the
+    // page's only one, and two unnamed ones cannot be told apart.
+    expect(screen.queryByRole('navigation')).toBeNull();
   });
 
   it('renders the heading and the flow chips for a writer', async () => {
@@ -674,6 +677,8 @@ describe('DayPage (issue #1254)', () => {
     }
     expect(screen.queryByText('Tests')).not.toBeInTheDocument();
     // The rest of the symptom picker is untouched by the `tests` disable.
+    // Its categories start closed on a day with nothing logged in them.
+    fireEvent.click(screen.getByRole('button', { name: 'Pain' }));
     expect(screen.getByRole('button', { name: 'Cramps' })).toBeInTheDocument();
   });
 });
