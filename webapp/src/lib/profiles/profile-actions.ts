@@ -1,4 +1,11 @@
-import { getSyncedDataCache, newProfilePayload, nowSyncStamp, pushSyncBatch } from '../domain';
+import {
+  editedProfilePayload,
+  getSyncedDataCache,
+  newProfilePayload,
+  nowSyncStamp,
+  pushSyncBatch,
+  type StoredProfileCore,
+} from '../domain';
 import type { AppSupabaseClient } from '../supabase';
 import type { ProfileRow } from '../schemas';
 import { MINIMUM_AGE_POLICY_VERSION, recordMinimumAgeAcknowledgement } from '../sharing';
@@ -139,17 +146,18 @@ export async function createProfile(
 }
 
 /**
- * Updates a profile's editable fields. Only the fields the caller names
- * ride the payload — an omitted `irregularFraming` stays omitted, so the
- * server's containment guard preserves the stored tri-state.
+ * Updates a profile's editable fields. The stored row's full-row columns
+ * (sort order, archive stamp, creation date) ride along unchanged — the
+ * server would otherwise reset them (issue #1388) — and an omitted
+ * `irregularFraming` stays omitted, so the server's containment guard
+ * preserves the stored tri-state.
  */
 export async function updateProfile(
   client: AppSupabaseClient,
-  profile: Pick<ProfileRow, 'id'>,
+  profile: StoredProfileCore,
   fields: ProfileFields,
 ): Promise<void> {
-  const payload = newProfilePayload({
-    id: profile.id,
+  const payload = editedProfilePayload(profile, {
     display_name: fields.displayName.trim(),
     birth_year: fields.birthYear,
     relationship: fields.relationship,
@@ -164,14 +172,18 @@ export async function updateProfile(
   }
 }
 
-/** Archives (or un-archives) a profile by stamping `archived_at`. */
+/**
+ * Archives (or un-archives) a profile by stamping `archived_at`; the rest
+ * of the stored row rides along unchanged (issue #1388). Primary guardian
+ * only, in both directions: `enforce_profile_guardian_only_deletion`
+ * rejects anyone else's change to the stamp.
+ */
 export async function setProfileArchived(
   client: AppSupabaseClient,
-  profile: Pick<ProfileRow, 'id'>,
+  profile: StoredProfileCore,
   archived: boolean,
 ): Promise<void> {
-  const payload = newProfilePayload({
-    id: profile.id,
+  const payload = editedProfilePayload(profile, {
     archived_at: archived ? nowSyncStamp() : null,
   });
   const outcome = await pushSyncBatch(client, { profiles: [payload] });

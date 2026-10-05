@@ -14,6 +14,7 @@ import {
   newDayEntryPayload,
   newGuardianNotePayload,
   newProfileModePayload,
+  editedProfilePayload,
   newProfilePayload,
   nowSyncStamp,
   pullSyncedData,
@@ -430,23 +431,80 @@ describe('payload builders (issue #1252)', () => {
     expect(Number.isFinite(Date.parse(payload.updated_at))).toBe(true);
   });
 
-  it('profile payloads can carry the full seed shape including created_at and cycle facts', () => {
-    const payload = newProfilePayload({
-      display_name: 'Maya',
-      is_minor: false,
-      sort_order: 0,
-      created_at: '2026-09-14T12:00:00.000Z',
-      birth_year: 1988,
-      relationship: 'self',
-      mode: 'standard',
-      last_period_start: '2026-08-29',
-      typical_cycle_length_days: 28,
-      typical_period_length_days: 5,
-      bbt_unit: 'celsius',
-      weight_unit: 'kg',
-    });
+  it('a new profile payload carries the full seed shape, created now and un-archived', () => {
+    const clock = (): Date => new Date('2026-09-14T12:00:00.000Z');
+    const payload = newProfilePayload(
+      {
+        display_name: 'Maya',
+        is_minor: false,
+        sort_order: 0,
+        birth_year: 1988,
+        relationship: 'self',
+        mode: 'standard',
+        last_period_start: '2026-08-29',
+        typical_cycle_length_days: 28,
+        typical_period_length_days: 5,
+        bbt_unit: 'celsius',
+        weight_unit: 'kg',
+      },
+      clock,
+    );
     expect(payload.created_at).toBe('2026-09-14T12:00:00.000Z');
+    expect(payload.updated_at).toBe('2026-09-14T12:00:00.000Z');
+    expect(payload.archived_at).toBeNull();
     expect(payload.typical_cycle_length_days).toBe(28);
+  });
+
+  // Issue #1388: sync_push's profiles UPDATE writes display_name,
+  // sort_order, archived_at and created_at from the payload unconditionally,
+  // so an edit that omits one clears it for every guardian's device.
+  describe('editedProfilePayload', () => {
+    const stored = {
+      id: ULID_A,
+      created_at: '2026-08-01T09:30:00.123456+00:00',
+      display_name: 'Maya',
+      sort_order: 3,
+      archived_at: '2026-09-01T00:00:00+00:00',
+    };
+    const clock = (): Date => new Date('2026-09-14T12:00:00.000Z');
+
+    it('carries every full-row column forward when the change names none of them', () => {
+      const payload = editedProfilePayload(stored, { birth_year: 1990 }, clock);
+      expect(payload).toEqual({
+        ...stored,
+        birth_year: 1990,
+        updated_at: '2026-09-14T12:00:00.000Z',
+      });
+    });
+
+    it('applies a named change and keeps the rest of the stored row', () => {
+      const renamed = editedProfilePayload(stored, { display_name: 'Maya B' }, clock);
+      expect(renamed.display_name).toBe('Maya B');
+      expect(renamed.sort_order).toBe(3);
+      expect(renamed.archived_at).toBe(stored.archived_at);
+      expect(renamed.created_at).toBe(stored.created_at);
+
+      const unarchived = editedProfilePayload(stored, { archived_at: null }, clock);
+      expect(unarchived.archived_at).toBeNull();
+      expect(unarchived.display_name).toBe('Maya');
+    });
+
+    it('never serialises a partial row, even for an explicitly undefined change', () => {
+      const payload = editedProfilePayload(
+        stored,
+        { display_name: undefined, sort_order: undefined, archived_at: undefined },
+        clock,
+      );
+      const wire = JSON.parse(JSON.stringify(payload)) as Record<string, unknown>;
+      expect(wire).toMatchObject(stored);
+    });
+
+    it('leaves guarded columns off the wire unless changed (the server preserves those)', () => {
+      const payload = editedProfilePayload(stored, {}, clock);
+      expect(Object.keys(payload).sort()).toEqual(
+        ['archived_at', 'created_at', 'display_name', 'id', 'sort_order', 'updated_at'].sort(),
+      );
+    });
   });
 
   it('tombstones carry id, updated_at, deleted_at and nothing else', () => {

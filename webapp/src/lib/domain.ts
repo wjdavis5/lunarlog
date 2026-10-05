@@ -454,18 +454,27 @@ export async function pullSyncedData(
  * checked_* pair on visit_prep_items, the created_* pair on
  * profile_tag_registry); unknown keys are rejected server-side per row.
  * Ids are client-generated ULIDs; `updated_at` is client-generated ISO
- * UTC. An absent optional key is a preserve instruction (the server's `?`
- * containment guards never let a partial row clobber a stored value).
+ * UTC. An absent OPTIONAL key is a preserve instruction (the server's `?`
+ * containment guards keep the stored value). That does not hold for every
+ * column: `sync_push` writes each table's original columns from the payload
+ * unconditionally, so an absent one is a clear, not a preserve. Those are
+ * required on `ProfilePayload`, so a partial row does not compile (issue
+ * #1388).
  */
 export interface ProfilePayload {
   id: string;
   updated_at: string;
-  created_at?: string;
-  display_name?: string;
-  is_minor?: boolean;
-  sort_order?: number;
-  archived_at?: string | null;
+  // The full-row columns: sync_push's profiles UPDATE sets these four from
+  // the payload with no containment guard — an absent key lands as '' / 0 /
+  // null / `updated_at` — so every payload carries all of them.
+  created_at: string;
+  display_name: string;
+  sort_order: number;
+  archived_at: string | null;
+  // Unguarded too, but an absent key parses to null — "live" — which is
+  // what every web write means (deletion rides `delete_profile_data`).
   deleted_at?: string | null;
+  is_minor?: boolean;
   birth_year?: number | null;
   relationship?: string | null;
   mode?: string;
@@ -666,12 +675,44 @@ export function newSyncStamps(clock: () => Date = serverAdjustedNow): {
   return { id: newUlid(), updated_at: nowSyncStamp(clock) };
 }
 
-/** Builds a create-or-edit `profiles` payload (ULID id, live unless told otherwise). */
+/** Builds a brand-new `profiles` payload: a fresh ULID id, created now, live and un-archived. */
 export function newProfilePayload(
-  fields: Omit<ProfilePayload, 'id' | 'updated_at'> & { id?: string },
+  fields: Omit<ProfilePayload, 'id' | 'updated_at' | 'created_at' | 'archived_at'>,
   clock: () => Date = serverAdjustedNow,
 ): ProfilePayload {
-  return { ...fields, id: fields.id ?? newUlid(), updated_at: nowSyncStamp(clock) };
+  const stamp = nowSyncStamp(clock);
+  return { ...fields, id: newUlid(), created_at: stamp, archived_at: null, updated_at: stamp };
+}
+
+/** The stored columns every profile edit carries forward (`ProfilePayload`'s full-row note). */
+export type StoredProfileCore = Pick<
+  ProfilePayload,
+  'id' | 'created_at' | 'display_name' | 'sort_order' | 'archived_at'
+>;
+
+/**
+ * Builds an edit of a stored `profiles` row (issue #1388). The stored
+ * full-row columns ride along unchanged unless `changes` names them, so an
+ * edit never blanks the name, resets the sort order, rewrites the creation
+ * date, or flips an archive stamp it did not mean to touch. Any other key
+ * stays absent unless changed — those the server preserves.
+ */
+export function editedProfilePayload(
+  stored: StoredProfileCore,
+  changes: Partial<Omit<ProfilePayload, 'id' | 'updated_at' | 'created_at'>>,
+  clock: () => Date = serverAdjustedNow,
+): ProfilePayload {
+  return {
+    ...changes,
+    id: stored.id,
+    created_at: stored.created_at,
+    // `??`/`=== undefined`, not a bare spread: an explicit `undefined` in
+    // `changes` would drop the key from the JSON and clear the column.
+    display_name: changes.display_name ?? stored.display_name,
+    sort_order: changes.sort_order ?? stored.sort_order,
+    archived_at: changes.archived_at === undefined ? stored.archived_at : changes.archived_at,
+    updated_at: nowSyncStamp(clock),
+  };
 }
 
 /** Builds a `day_entries` payload; tombstones carry only id + deleted_at. */

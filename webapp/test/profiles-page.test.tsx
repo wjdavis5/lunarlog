@@ -83,6 +83,14 @@ function guardianRow(profileId: string, role: string): ProfileGuardianRow {
   };
 }
 
+/** The caller's role per profile; a test reassigns it to see another role's page. */
+const kDefaultRoles: Record<string, string> = {
+  [MINE_ID]: 'primary_guardian',
+  [SHARED_ID]: 'viewer',
+  [ARCHIVED_ID]: 'primary_guardian',
+};
+let callerRoles = kDefaultRoles;
+
 const syncedFixture = (): SyncedData =>
   mergeSyncedData(emptySyncedData(), {
     profiles: [
@@ -107,11 +115,9 @@ const syncedFixture = (): SyncedData =>
     care_notes: [],
     visit_prep_items: [],
     profile_tag_registry: [],
-    profile_guardians: [
-      guardianRow(MINE_ID, 'primary_guardian'),
-      guardianRow(SHARED_ID, 'viewer'),
-      guardianRow(ARCHIVED_ID, 'primary_guardian'),
-    ],
+    profile_guardians: Object.entries(callerRoles).map(([profileId, role]) =>
+      guardianRow(profileId, role),
+    ),
     guardian_notes: [],
   });
 
@@ -161,6 +167,7 @@ describe('ProfilesPage (issue #1253)', () => {
   beforeEach(() => {
     vi.mocked(useHasSyncSession).mockReturnValue(true);
     vi.mocked(getSupabaseClient).mockReturnValue(null);
+    callerRoles = kDefaultRoles;
   });
 
   afterEach(cleanup);
@@ -314,6 +321,66 @@ describe('ProfilesPage (issue #1253)', () => {
     };
     expect(pushArg.p_profiles[0].id).toBe(MINE_ID);
     expect(pushArg.p_profiles[0].archived_at).not.toBeNull();
+    // Issue #1388: the rest of the stored row rides along — sync_push
+    // writes these columns from the payload unconditionally, so an archive
+    // that omitted them blanked the name for every guardian's device.
+    expect(pushArg.p_profiles[0]).toMatchObject({
+      display_name: 'Maya',
+      sort_order: 0,
+      created_at: '2026-01-05T00:00:00Z',
+    });
+  });
+
+  it('unarchives without touching the stored name, order, or creation date', async () => {
+    const { rpc } = fakeClient();
+    renderPage();
+    const row = screen.getByText('Old').closest('li') as HTMLElement;
+    const unarchive = { name: messages['profilePickerUnarchiveTooltip'] ?? '' };
+    fireEvent.click(within(row).getByRole('button', unarchive));
+    fireEvent.click(within(row).getByRole('button', unarchive));
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith('sync_push', expect.anything()));
+    const pushArg = rpc.mock.calls.find((call) => call[0] === 'sync_push')?.[1] as unknown as {
+      p_profiles: Record<string, unknown>[];
+    };
+    expect(pushArg.p_profiles[0]).toMatchObject({
+      id: ARCHIVED_ID,
+      display_name: 'Old',
+      sort_order: 2,
+      archived_at: null,
+      created_at: '2026-01-05T00:00:00Z',
+    });
+  });
+
+  it('keeps an archived profile read-only: no edit until it is unarchived', () => {
+    renderPage();
+    const row = screen.getByText('Old').closest('li') as HTMLElement;
+    expect(
+      within(row).queryByRole('button', { name: messages['webProfilesEditAction'] ?? '' }),
+    ).toBeNull();
+    expect(
+      within(row).queryByRole('button', {
+        name: messages['profilePickerUnarchiveTooltip'] ?? '',
+      }),
+    ).not.toBeNull();
+  });
+
+  it('offers a co-parent edit, but never archive, unarchive or delete', () => {
+    callerRoles = { ...kDefaultRoles, [MINE_ID]: 'co_parent', [ARCHIVED_ID]: 'co_parent' };
+    renderPage();
+    const mine = screen.getByText('Maya').closest('li') as HTMLElement;
+    expect(
+      within(mine).queryByRole('button', { name: messages['webProfilesEditAction'] ?? '' }),
+    ).not.toBeNull();
+    // The server takes a change to the archive stamp, in either direction,
+    // from the primary guardian only.
+    expect(
+      within(mine).queryByRole('button', { name: messages['profileArchive'] ?? '' }),
+    ).toBeNull();
+    expect(
+      within(mine).queryByRole('button', { name: messages['webProfilesDeleteAction'] ?? '' }),
+    ).toBeNull();
+    const archived = screen.getByText('Old').closest('li') as HTMLElement;
+    expect(within(archived).queryAllByRole('button')).toEqual([]);
   });
 
   it('deletes through the two-step confirm on delete_profile_data', async () => {
@@ -365,6 +432,13 @@ describe('ProfilesPage (issue #1253)', () => {
       p_profiles: Record<string, unknown>[];
     };
     expect(pushArg.p_profiles[0]).toMatchObject({ id: MINE_ID, display_name: 'Maya B' });
+    // Issue #1388: an edit keeps the stored order, archive state and
+    // creation date instead of letting the server reset them.
+    expect(pushArg.p_profiles[0]).toMatchObject({
+      sort_order: 0,
+      archived_at: null,
+      created_at: '2026-01-05T00:00:00Z',
+    });
     // The untouched framing control preserves the stored tri-state: the
     // payload omits the key entirely (the server's containment guard).
     expect('irregular_framing' in pushArg.p_profiles[0]).toBe(false);

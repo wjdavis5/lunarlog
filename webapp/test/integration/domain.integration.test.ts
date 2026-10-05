@@ -15,6 +15,8 @@ import {
   pullSyncedData,
   pushSyncBatch,
 } from '../../src/lib/domain';
+import { setProfileArchived, updateProfile } from '../../src/lib/profiles/profile-actions';
+import type { ProfileRow } from '../../src/lib/schemas';
 
 /**
  * Issue #1252's integration suite: the web data layer against the real
@@ -186,8 +188,16 @@ suite('web data layer against the live local stack (issue #1252)', () => {
     const guardian = await signInAs((await newUser('guardian')).email);
     const outsider = await signInAs((await newUser('outsider')).email);
 
-    const shared = newProfilePayload({ display_name: 'Shared', is_minor: false });
-    const privateOne = newProfilePayload({ display_name: 'Private', is_minor: false });
+    const shared = newProfilePayload({
+      display_name: 'Shared',
+      is_minor: false,
+      sort_order: 0,
+    });
+    const privateOne = newProfilePayload({
+      display_name: 'Private',
+      is_minor: false,
+      sort_order: 1,
+    });
     const pushed = await pushSyncBatch(owner, { profiles: [shared, privateOne] });
     expect(pushed.rejected).toEqual([]);
     createdProfileIds.push(shared.id, privateOne.id);
@@ -208,11 +218,76 @@ suite('web data layer against the live local stack (issue #1252)', () => {
     );
   }, 30_000);
 
+  // Issue #1388: sync_push's profiles UPDATE writes display_name,
+  // sort_order, archived_at and created_at from the payload unconditionally.
+  // The web's archive and edit used to push partial rows, which blanked the
+  // name and reset the rest for every guardian — only the real RPC shows it.
+  it('a web archive and edit keep the stored name, order, creation date and archive state', async () => {
+    const owner = await signInAs((await newUser('owner')).email);
+    const coParent = await signInAs((await newUser('coparent')).email);
+
+    const created = newProfilePayload({ display_name: 'Maya', is_minor: false, sort_order: 4 });
+    expect((await pushSyncBatch(owner, { profiles: [created] })).rejected).toEqual([]);
+    createdProfileIds.push(created.id);
+    await inviteAndAccept(owner, coParent, created.id, 'co_parent');
+
+    const read = async (client: AppSupabaseClient): Promise<ProfileRow> => {
+      const row = (await pullSyncedData(client)).data.profiles.find(
+        (profile) => profile.id === created.id,
+      );
+      if (row === undefined) throw new Error('the profile is missing from the pull');
+      return row;
+    };
+    const stored = await read(owner);
+    const expectUntouched = (row: ProfileRow, name: string): void => {
+      expect(row.display_name).toBe(name);
+      expect(row.sort_order).toBe(4);
+      expect(Date.parse(row.created_at)).toBe(Date.parse(stored.created_at));
+    };
+
+    await setProfileArchived(owner, stored, true);
+    const archived = await read(owner);
+    expect(archived.archived_at).not.toBeNull();
+    expectUntouched(archived, 'Maya');
+
+    // The primary guardian's edit of an archived profile leaves it archived.
+    const fields = { birthYear: 1990, relationship: 'daughter', mode: 'standard' };
+    await updateProfile(owner, archived, { ...fields, displayName: 'Maya B' });
+    const editedWhileArchived = await read(owner);
+    expect(editedWhileArchived.archived_at).not.toBeNull();
+    expectUntouched(editedWhileArchived, 'Maya B');
+
+    // A co-parent cannot change the archive stamp in either direction (the
+    // enforce_profile_guardian_only_deletion trigger): the push is rejected
+    // and the row stays exactly as it was.
+    await expect(setProfileArchived(coParent, await read(coParent), false)).rejects.toThrow(
+      'rejected by sync_push',
+    );
+    expectUntouched(await read(owner), 'Maya B');
+    expect((await read(owner)).archived_at).not.toBeNull();
+
+    await setProfileArchived(owner, await read(owner), false);
+    const live = await read(owner);
+    expect(live.archived_at).toBeNull();
+    expectUntouched(live, 'Maya B');
+
+    // A co-parent's edit resets nothing the edit did not name.
+    await updateProfile(coParent, await read(coParent), { ...fields, displayName: 'Maya C' });
+    const edited = await read(owner);
+    expect(edited.archived_at).toBeNull();
+    expect(edited.birth_year).toBe(1990);
+    expectUntouched(edited, 'Maya C');
+  }, 30_000);
+
   it('a viewer’s write is rejected — through sync_push and through the revoked direct grant', async () => {
     const owner = await signInAs((await newUser('owner')).email);
     const viewer = await signInAs((await newUser('viewer')).email);
 
-    const profile = newProfilePayload({ display_name: 'Watched', is_minor: false });
+    const profile = newProfilePayload({
+      display_name: 'Watched',
+      is_minor: false,
+      sort_order: 0,
+    });
     expect((await pushSyncBatch(owner, { profiles: [profile] })).rejected).toEqual([]);
     createdProfileIds.push(profile.id);
     await inviteAndAccept(owner, viewer, profile.id, 'viewer');
@@ -422,7 +497,7 @@ suite('web data layer against the live local stack (issue #1252)', () => {
     const subjectUser = await signInAs((await newUser('subject')).email);
     const coGuardian = await signInAs((await newUser('coguardian')).email);
 
-    const profile = newProfilePayload({ display_name: 'Diary', is_minor: true });
+    const profile = newProfilePayload({ display_name: 'Diary', is_minor: true, sort_order: 0 });
     expect((await pushSyncBatch(owner, { profiles: [profile] })).rejected).toEqual([]);
     createdProfileIds.push(profile.id);
     await inviteAndAccept(owner, subjectUser, profile.id, 'caregiver', true);

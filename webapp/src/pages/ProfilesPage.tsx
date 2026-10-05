@@ -46,8 +46,10 @@ import { getSupabaseClient } from '../lib/supabase';
  * shows, and the write is best-effort after the creation succeeds.
  *
  * What the UI offers keys on the caller's guardian role (edit: primary/
- * co-parent; delete: primary only) — the server re-authorises every
- * change, exactly as the app's client-side mirror does.
+ * co-parent; archive, unarchive and delete: primary only) — the server
+ * re-authorises every change, exactly as the app's client-side mirror
+ * does. An archived profile is read-only until it is unarchived, as it is
+ * in the app.
  */
 
 const kLocale = 'en';
@@ -577,10 +579,13 @@ interface SectionProps {
 }
 
 /**
- * One list section. Actions key on the caller's role: edit/archive for
- * primary and co-parent (`roleCanEditProfile`, the server's own rule for
- * profile metadata), delete for the accepted primary guardian only
- * (`delete_profile_data`'s authority rule, 20260910110000).
+ * One list section. Actions key on the caller's role: edit for primary and
+ * co-parent (`roleCanEditProfile`, the server's own rule for profile
+ * metadata); archive, unarchive and delete for the accepted primary
+ * guardian only (the `enforce_profile_guardian_only_deletion` trigger
+ * rejects anyone else's change to the archive stamp, and
+ * `delete_profile_data`'s authority rule, 20260910110000). An archived
+ * profile offers no edit: the app shows it read-only too.
  */
 function ProfileSection(props: SectionProps & { title: string; profiles: ProfileRow[] }) {
   const t = useT();
@@ -612,11 +617,13 @@ function ProfileSection(props: SectionProps & { title: string; profiles: Profile
                 <Link className="nav-link" to={`/?profile=${profile.id}`}>
                   {t('webProfilesOpenAction')}
                 </Link>
-                {canEdit ? (
+                {canEdit && !isArchived ? (
+                  <button type="button" className="btn" onClick={() => props.onEdit(profile)}>
+                    {t('webProfilesEditAction')}
+                  </button>
+                ) : null}
+                {canDelete ? (
                   <>
-                    <button type="button" className="btn" onClick={() => props.onEdit(profile)}>
-                      {t('webProfilesEditAction')}
-                    </button>
                     {confirmingArchive ? (
                       <span
                         className="confirm-inline"
