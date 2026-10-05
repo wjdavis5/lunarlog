@@ -1463,6 +1463,7 @@
   "webDayMergedNotice": "A device that saved this day earlier was merged into this entry — its symptoms were kept.",
   "webDayDeclinedNotice": "A newer save from another device won this day — your changes were not applied.",
   "webDayUnsavedWarning": "Leave with unsaved changes?",
+  "webInviteSignedOutBody": "You've been invited to a shared profile in lunarlog. Sign in, or create an account, to see the invitation and accept it.",
   "webHomeNeedsSignIn": "Sign in to log a day, look back over the calendar, and manage guardians for the profiles you keep or share.",
   "webWelcomeTitle": "lunarlog in your browser",
   "webWelcomeStorageNote": "This browser keeps your sign-in and nothing else: profiles and entries are never saved here. On a shared computer, sign out when you're done.",

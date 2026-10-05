@@ -78,3 +78,51 @@ test('the reserved /auth/* route lands in the app (Worker entry for #1250)', asy
   const cspViolations = consoleErrors.filter((text) => CSP_PATTERN.test(text));
   expect(cspViolations, `CSP violations: ${cspViolations.join('\n')}`).toEqual([]);
 });
+
+// An invited guardian is often new to lunarlog and arrives signed out. The
+// invitation page has to say so and bring them back after signing in.
+test('a signed-out visitor at an invitation is sent to sign in, and back', async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') consoleErrors.push(msg.text());
+  });
+  page.on('pageerror', (error) => consoleErrors.push(String(error)));
+
+  await page.goto('/invite?code=EXAMPLE123');
+  // A fork's build has no Supabase configuration, so there is no account to
+  // sign in to and the page shows its own "not available" copy instead.
+  // This repo's CI always builds configured.
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  test.skip(
+    await page
+      .getByText(messages['sharingAcceptInviteNeutralIntro'] ?? 'missing')
+      .isVisible()
+      .catch(() => false),
+    'unconfigured build (fork); runs in CI',
+  );
+  await expect(page.getByText(messages['webInviteSignedOutBody'] ?? 'missing')).toBeVisible();
+  const signIn = page
+    .getByRole('main')
+    .getByRole('link', { name: messages['accountSectionSignIn'] ?? 'missing' });
+  await expect(signIn).toHaveAttribute(
+    'href',
+    `/sign-in?next=${encodeURIComponent('/invite?code=EXAMPLE123')}`,
+  );
+  // The accept form is not offered to someone who cannot use it.
+  await expect(
+    page.getByRole('button', { name: messages['sharingAcceptInviteAccept'] ?? 'missing' }),
+  ).toHaveCount(0);
+
+  // Following the link keeps the way back in the address bar.
+  await signIn.click();
+  await expect(page).toHaveURL(/\/sign-in\?next=%2Finvite%3Fcode%3DEXAMPLE123$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+    messages['accountSignInTitle'] ?? '',
+  );
+
+  const axeResults = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(axeResults.violations).toEqual([]);
+
+  const cspViolations = consoleErrors.filter((text) => CSP_PATTERN.test(text));
+  expect(cspViolations, `CSP violations: ${cspViolations.join('\n')}`).toEqual([]);
+});

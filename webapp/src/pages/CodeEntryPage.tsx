@@ -2,6 +2,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router';
 import { useState, type FormEvent } from 'react';
 
 import { useT } from '../i18n/t';
+import { safeNextPath, withNext } from '../lib/next-path';
 import { AuthError } from '../lib/auth';
 import { authCopyFor } from '../lib/authCopy';
 import { useVerifyOtp } from '../lib/authQueries';
@@ -18,6 +19,8 @@ export function CodeEntryPage() {
   const navigate = useNavigate();
   const [searchParameters] = useSearchParams();
   const email = searchParameters.get('email') ?? '';
+  // The return path carried over from the sign-in or sign-up page; validated.
+  const next = safeNextPath(searchParameters.get('next'));
   const recovery = searchParameters.get('mode') === 'recovery';
   const verify = useVerifyOtp();
 
@@ -46,7 +49,7 @@ export function CodeEntryPage() {
           if (recovery) {
             setResetDone(true);
           } else {
-            navigate('/');
+            navigate(next ?? '/');
           }
         },
       },
@@ -94,7 +97,7 @@ export function CodeEntryPage() {
         </form>
       )}
       <div className="auth-links">
-        <Link to="/sign-in">{t('accountSignInTitle')}</Link>
+        <Link to={withNext('/sign-in', next)}>{t('accountSignInTitle')}</Link>
       </div>
     </main>
   );

@@ -1,7 +1,8 @@
-import { Link, useNavigate } from 'react-router';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
 import { useState, type FormEvent } from 'react';
 
 import { useT } from '../i18n/t';
+import { safeNextPath, withNext } from '../lib/next-path';
 import { AuthError, type SignOutScope } from '../lib/auth';
 import { authCopyFor } from '../lib/authCopy';
 import {
@@ -23,6 +24,11 @@ const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export function SignInPage() {
   const t = useT();
   const navigate = useNavigate();
+  const [searchParameters] = useSearchParams();
+  // Where the visitor was headed before being asked to sign in (the
+  // invitation page sends them here with it). Validated: only a path on
+  // this site is honoured.
+  const next = safeNextPath(searchParameters.get('next'));
   const session = useAuthSession();
   const signIn = useSignIn();
   const sendOtp = useSendOtp();
@@ -95,10 +101,17 @@ export function SignInPage() {
     sendOtp.mutate(
       { email: email.trim(), createUser: false },
       {
-        onSuccess: () => navigate(`/sign-in/code?email=${encodeURIComponent(email.trim())}`),
+        onSuccess: () =>
+          navigate(withNext(`/sign-in/code?email=${encodeURIComponent(email.trim())}`, next)),
       },
     );
   };
+
+  // Signed in with somewhere to go back to: go there. Without a return
+  // path this page shows the signed-in state and its sign-out choices.
+  if (session.data?.signedIn === true && next !== null) {
+    return <Navigate replace to={next} />;
+  }
 
   if (session.data?.signedIn === true) {
     return (
@@ -206,7 +219,7 @@ export function SignInPage() {
       </div>
       <div className="auth-links">
         <Link to="/forgot-password">{t('accountSignInForgotPasswordAction')}</Link>
-        <Link to="/sign-up">{t('accountSignInToggleCreateInstead')}</Link>
+        <Link to={withNext('/sign-up', next)}>{t('accountSignInToggleCreateInstead')}</Link>
       </div>
     </main>
   );
