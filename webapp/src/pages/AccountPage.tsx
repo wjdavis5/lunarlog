@@ -173,7 +173,7 @@ export function AccountPage() {
 
   return (
     <main className="page">
-      <h1 className="headline">{t('accountSectionTitle')}</h1>
+      <h1 className="display">{t('accountSectionTitle')}</h1>
       {signedIn ? (
         <>
           <p className="body">
@@ -212,7 +212,7 @@ export function AccountPage() {
             <p className="auth-error">{t(updateCopy.id, updateCopy.values)}</p>
           ) : null}
           <section className="card">
-            <h2 className="card-title">{t('accountSectionSignOutTitle')}</h2>
+            <h2 className="card-title">{t('accountSectionSignOut')}</h2>
             <div className="card-body">
               <div className="auth-actions">
                 <button
@@ -414,10 +414,11 @@ function ChangePasswordCard(props: {
               id="account-new-password"
               type="password"
               autoComplete="new-password"
+              aria-describedby="account-new-password-hint"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />
-            <p className="body">
+            <p className="auth-hint" id="account-new-password-hint">
               {t('accountPasswordRecoveryLengthHelper', { length: kMinPasswordLength })}
             </p>
           </div>
