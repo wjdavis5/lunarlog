@@ -195,8 +195,9 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   HealthImportProgress? _importProgress;
 
   /// Issue #1017: marks the result block so a finished pass can scroll it
-  /// into view — the import tile sits at the bottom of the page, so the
-  /// result otherwise renders below the fold and the tap looks like a no-op.
+  /// into view when it is not already showing — on a short screen, or with
+  /// many profiles above it, the result can render below the fold and the
+  /// tap looks like a no-op.
   final GlobalKey _resultKey = GlobalKey();
 
   /// Issue #959: the OS permission state read from [permissionProbe] — null
@@ -724,7 +725,11 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
         Scrollable.ensureVisible(
           resultContext,
           duration: const Duration(milliseconds: 300),
-          alignment: 0.5,
+          // Issue #1521: the result now sits directly under Import, so it
+          // is usually on screen already. Bring it up only as far as it
+          // takes to show it, and leave the page alone when it is showing;
+          // centring it moved the controls on every import.
+          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
         ),
       );
     });
@@ -861,20 +866,24 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
           l10n.settingsHealthSyncTitle(_sourceTitle(l10n, _importPlatform)),
         ),
       ),
-      // Issue #1521: what a person can do comes first, and what the screen
-      // explains comes after it. The explanations used to stand above the
-      // profile rows, so the only controls on the screen sat under six or
-      // more paragraphs (below the fold on Android).
+      // Issue #1521: what a person can do comes before the reference
+      // detail. Every explanation used to stand above the profile rows, so
+      // the only controls on the screen sat under six or more paragraphs
+      // (below the fold on Android). Two paragraphs still come first: the
+      // intro, and the one that says what is sent and when and that the
+      // import goes on in the background ([_howItWorks]), so nobody chooses
+      // a profile or taps Import without having passed them.
       body: ListView(
         children: [
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
             child: Text(
               widget.writeEnabled
                   ? _writeIntro(l10n)
                   : l10n.healthSyncImportIntro,
             ),
           ),
+          _howItWorks(l10n),
           for (final profile in _profiles) _profileTile(profile),
           // Issue #959: the OS permission state, shown per platform, with
           // the settings deep link only when it is denied.
@@ -917,34 +926,41 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
         onTap: _runImport,
       );
 
-  /// Everything the screen explains, under headings, below the controls
-  /// (Issue #1521).
+  /// The paragraph that stays above the choice (Issue #1521): what is sent
+  /// and when, that importing is separate and the person starts it, and
+  /// that it then goes on in the background. It is one string covering both
+  /// directions and is never split.
+  ///
+  /// Issue #458: a platform that wires only the import direction gets its
+  /// own paragraph here in place of the write copy, rather than a promise
+  /// of writes that never happen. Issue #1478: nothing else rides along —
+  /// the symptom line that used to follow said "days logged with symptoms
+  /// still sync their flow and spotting", two lines under "nothing is
+  /// written automatically".
+  Widget _howItWorks(AppLocalizations l10n) {
+    if (!widget.writeEnabled) {
+      return _detail('health-sync-import-only-copy', l10n.healthSyncImportOnly);
+    }
+    return _detail(
+      'health-sync-forward-only-copy',
+      _isHealthConnect
+          ? l10n.healthSyncWriteForwardOnlyHealthConnect
+          : l10n.healthSyncWriteForwardOnly,
+    );
+  }
+
+  /// The reference detail, under headings, below the controls (Issue
+  /// #1521).
   ///
   /// This is a disclosure surface (`docs/ops/play-health-declaration.md`),
   /// so the rule for it is strict: every sentence that was on the screen is
   /// still on it, unedited and in plain view. Nothing is collapsed, shortened
   /// or moved to another screen; only the order changed, and each group got
-  /// a heading. A string is never split to fit a heading, which is why the
-  /// first group is "How it works": its one paragraph covers both
-  /// directions.
+  /// a heading. The headings name a subject and promise no complete list:
+  /// the iPhone's paragraphs under "Writing" are about how values are
+  /// written, not everything that is.
   List<Widget> _details(AppLocalizations l10n) => [
         const Divider(height: 32),
-        _detailHeading(l10n.healthSyncSectionHowItWorks),
-        if (widget.writeEnabled)
-          _detail(
-            'health-sync-forward-only-copy',
-            _isHealthConnect
-                ? l10n.healthSyncWriteForwardOnlyHealthConnect
-                : l10n.healthSyncWriteForwardOnly,
-          )
-        else
-          // Issue #458: a platform that wires only the import direction
-          // gets this in place of the write copy, rather than a promise
-          // of writes that never happen. Issue #1478: nothing else rides
-          // along — the symptom line that used to follow said "days
-          // logged with symptoms still sync their flow and spotting",
-          // two lines under "nothing is written automatically".
-          _detail('health-sync-import-only-copy', l10n.healthSyncImportOnly),
         if (widget.writeEnabled) ...[
           _detailHeading(l10n.healthSyncSectionWritten),
           ..._writtenCopy(l10n),
@@ -997,13 +1013,13 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       ? l10n.healthSyncWriteIntroHealthConnect
       : l10n.healthSyncWriteIntro;
 
-  /// What is written, for the store this platform writes to: the "What is
-  /// written" group of [_details].
+  /// The "Writing" group of [_details], for the store this platform
+  /// writes to.
   ///
   /// Issue #193: document the write surface the way Clue documents its own
-  /// — one-way, forward-only (the forward-only paragraph is the "How it
-  /// works" group), and the lossy mappings (superHeavy collapses to
-  /// `heavy`; spotting follows the A3-4 in/outside-episode rule).
+  /// — one-way, forward-only (that paragraph is [_howItWorks], above the
+  /// choice), and the lossy mappings (superHeavy collapses to `heavy`;
+  /// spotting follows the A3-4 in/outside-episode rule).
   ///
   /// Issue #1478: Health Connect gets its own strings. It is written a
   /// different set of things (listed in full, in Health Connect's own

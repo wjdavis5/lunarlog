@@ -8290,22 +8290,16 @@ abstract class AppLocalizations {
   /// **'Nothing new in {source} since the last import.'**
   String healthSyncImportNothingSinceLast(String source);
 
-  /// Issue #1521: heading on the health sync screen over the paragraph that says only days logged after access is given are written and that importing is separate (healthSyncWriteForwardOnly and its Health Connect twin, or healthSyncImportOnly). The explanations sit below the profile choice and the Import action.
+  /// Issue #1521: heading on the health sync screen, below the profile choice and the Import action, over the paragraphs about what lunarlog writes to the health store and how values are mapped. A subject, not a promise of a complete list: on an iPhone the paragraphs under it describe how values are written, not every type that is.
   ///
   /// In en, this message translates to:
-  /// **'How it works'**
-  String get healthSyncSectionHowItWorks;
-
-  /// Issue #1521: heading on the health sync screen over the paragraphs listing what lunarlog writes to the health store and how values are mapped.
-  ///
-  /// In en, this message translates to:
-  /// **'What is written'**
+  /// **'Writing'**
   String get healthSyncSectionWritten;
 
-  /// Issue #1521: heading on the health sync screen over the paragraph about the scope of the import (healthSyncFullHistoryNote).
+  /// Issue #1521: heading on the health sync screen over the paragraph about how far back the import reads and that it keeps itself current (healthSyncFullHistoryNote). A subject, not a list of what is imported.
   ///
   /// In en, this message translates to:
-  /// **'What is imported'**
+  /// **'Importing'**
   String get healthSyncSectionImported;
 
   /// Issue #1521: heading on the health sync screen over the paragraph saying that turning sync off or removing access leaves what was already written in place.

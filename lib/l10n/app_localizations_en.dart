@@ -5230,13 +5230,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get healthSyncSectionHowItWorks => 'How it works';
+  String get healthSyncSectionWritten => 'Writing';
 
   @override
-  String get healthSyncSectionWritten => 'What is written';
-
-  @override
-  String get healthSyncSectionImported => 'What is imported';
+  String get healthSyncSectionImported => 'Importing';
 
   @override
   String get healthSyncSectionTurningOff => 'Turning sync off';

@@ -1362,7 +1362,6 @@ export const MESSAGE_IDS = [
   "healthSyncImportEmptyHealthConnect",
   "healthSyncImportEmptyHealthConnectReadable",
   "healthSyncImportNothingSinceLast",
-  "healthSyncSectionHowItWorks",
   "healthSyncSectionWritten",
   "healthSyncSectionImported",
   "healthSyncSectionTurningOff",
