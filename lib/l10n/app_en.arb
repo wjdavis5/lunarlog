@@ -1440,9 +1440,9 @@
   "@firstRunMinorExplainerTitle": {
     "description": "Heading of the minor-checkbox explanation inside the second onboarding card."
   },
-  "firstRunMinorExplainerBody": "It marks the profile as a minor's. That turns prediction sharing off for the profile and starts the Sex life and Partying categories hidden, until a primary guardian turns them on. Health app sync is not affected. Wording and reminders come from the care mode picked on the next screen, not from this checkbox.",
+  "firstRunMinorExplainerBody": "It marks the profile as a minor's. That turns prediction sharing off for the profile and hides the Sex life and Partying categories. Health app sync is not affected. Wording and reminders come from the care mode picked on the next screen, not from this checkbox.",
   "@firstRunMinorExplainerBody": {
-    "description": "The truthful explanation of what 'This profile is for a minor' changes (#131 made mode chosen-not-derived; #882 made health-sync apply to minors on the same terms as adults). It is not a label only (#1382): #379 turns prediction sharing off for a minor's profile, and kMinorDefaultHiddenTrackingCategories starts the Sex life and Partying categories hidden."
+    "description": "The truthful explanation of what 'This profile is for a minor' changes (#131 made mode chosen-not-derived; #882 made health-sync apply to minors on the same terms as adults). It is not a label only (#1382): #379 turns prediction sharing off for a minor's profile, and kMinorDefaultHiddenTrackingCategories hides the Sex life and Partying categories. The copy says 'hides', not 'starts hidden until someone turns them on' (#1436): the data model lets a primary guardian or co-parent store an override, but no screen in either client writes one, so the text must not send a parent looking for a setting. Put that promise back, with both roles, in the change that ships the editor."
   },
   "firstRunNoticeBody": "Signing in syncs this profile across your devices and lets you share it with other guardians. Until then, everything you log stays on this device.",
   "@firstRunNoticeBody": {

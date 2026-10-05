@@ -494,14 +494,21 @@ void main() {
       // Issue #882: the checkbox no longer excludes a profile from health
       // app sync — the copy must not claim it does. Issue #1382: nor may
       // it claim the checkbox restricts nothing: it turns prediction
-      // sharing off (#379) and starts two categories hidden.
+      // sharing off (#379) and hides two categories.
       expect(
         l10n.firstRunMinorExplainerBody,
         "It marks the profile as a minor's. That turns prediction sharing "
-        'off for the profile and starts the Sex life and Partying '
-        'categories hidden, until a primary guardian turns them on. Health '
-        'app sync is not affected. Wording and reminders come from the '
-        'care mode picked on the next screen, not from this checkbox.',
+        'off for the profile and hides the Sex life and Partying '
+        'categories. Health app sync is not affected. Wording and '
+        'reminders come from the care mode picked on the next screen, not '
+        'from this checkbox.',
+      );
+      // Issue #1436: no screen in either client can show those categories
+      // again for a minor's profile, so the copy must not say a guardian
+      // can turn them on.
+      expect(
+        l10n.firstRunMinorExplainerBody,
+        isNot(contains('turns them on')),
       );
       expect(
         l10n.firstRunMinorExplainerBody,
