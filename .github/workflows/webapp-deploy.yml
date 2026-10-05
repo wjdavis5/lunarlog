@@ -1,12 +1,12 @@
 name: Web app staging deploy (Cloudflare Workers)
 
-# Epic #831 / issue #1249: the React web client's staging deploy path. Builds
+# Epic #831 / issue #1249: the React web client's deploy path. Builds
 # `webapp/` (Vite + React + TypeScript strict) and deploys it to the
-# `lunarlog-app-staging` Cloudflare Worker — staging ONLY: the origin is the
-# Worker's workers.dev hostname, backed by the production Supabase project
-# and used only with the fabricated accounts from #710. Moving
-# `app.lunarlog.app` over is #1258; this workflow deliberately declares no
-# custom domain.
+# `lunarlog-app-staging` Cloudflare Worker, which serves two origins since
+# the #1258 cutover: its workers.dev hostname (the staging alias, used only
+# with the fabricated accounts from #710) and the production custom domain
+# `app.lunarlog.app` that webapp/wrangler.jsonc declares. Both are backed by
+# the production Supabase project.
 #
 # Mirrors site-deploy.yml's credential-gated posture: until the Cloudflare
 # secrets exist, the credential-gated steps (deploy, smoke check) warn and
@@ -121,8 +121,9 @@ jobs:
 
       - name: Resolve the staging workers.dev hostname
         # The workers.dev origin carries a per-account subdomain the repo
-        # cannot know (webapp/wrangler.jsonc declares `workers_dev: true` and
-        # no route). Read it from the Cloudflare API so the smoke check below
+        # cannot know (webapp/wrangler.jsonc declares `workers_dev: true`
+        # next to the app.lunarlog.app custom domain). Read it from the
+        # Cloudflare API so the smoke check below
         # tests the real origin. A failure here skips only the smoke check —
         # the deploy itself already succeeded.
         if: steps.cloudflare.outputs.configured == 'true'
@@ -141,6 +142,35 @@ jobs:
             echo "::warning::Could not resolve the account's workers.dev subdomain; skipping the staging smoke check."
           fi
 
+      - name: Check whether app.lunarlog.app already serves this Worker
+        # Issue #1405: the retirement step below is a one-shot cutover duty,
+        # but it deletes EVERY zone DNS record for the hostname — including,
+        # once the attach has succeeded, the record the custom domain itself
+        # depends on. So it must stop running the moment the cutover lands.
+        # This asks the live origin, which needs no credentials: an HTTP 200
+        # carrying the Worker's own CSP directive means the hostname is
+        # already attached. Anything else (the 1014 the stale records answer
+        # with, a timeout, a missing header) leaves done=false and the
+        # retirement runs exactly as before. The request is shaped like the
+        # smoke check's (check-webapp-staging.sh: a browser UA asking for
+        # HTML), so the two agree about what the origin serves.
+        if: steps.cloudflare.outputs.configured == 'true'
+        id: cutover
+        run: |
+          set -uo pipefail
+          browser_ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+          headers="$(curl -sS --max-time 20 -A "${browser_ua}" -H 'Accept: text/html' \
+            -o /dev/null -D - https://app.lunarlog.app/ 2>/dev/null || true)"
+          status="$(printf '%s\n' "${headers}" | awk 'NR == 1 { print $2 }')"
+          if [ "${status}" = "200" ] \
+            && printf '%s\n' "${headers}" | grep -qi "^content-security-policy:.*require-trusted-types-for"; then
+            echo "done=true" >> "$GITHUB_OUTPUT"
+            echo "app.lunarlog.app already serves the React Worker; the one-shot retirement is skipped."
+          else
+            echo "done=false" >> "$GITHUB_OUTPUT"
+            echo "app.lunarlog.app answered HTTP ${status:-nothing} without the Worker's headers; the retirement runs."
+          fi
+
       - name: Retire the Flutter Pages project that holds app.lunarlog.app
         # Issue #1248/#1258: the custom-domain attach in the deploy below
         # fails while the retired Flutter build's Cloudflare Pages project
@@ -148,7 +178,9 @@ jobs:
         # not-found project means a previous run already retired it). If the
         # token lacks Pages permissions the deploy's domain attach fails
         # loudly, which is #1093 step 4's one-dashboard-click fallback.
-        if: steps.cloudflare.outputs.configured == 'true'
+        # Skipped once the hostname serves this Worker (issue #1405, the
+        # step above); delete this step and that one after the cutover.
+        if: steps.cloudflare.outputs.configured == 'true' && steps.cutover.outputs.done != 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
