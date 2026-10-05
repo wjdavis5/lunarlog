@@ -61,6 +61,20 @@ void main() {
       expect(deleteAccountPage, contains('iPhone'));
       expect(deleteAccountPage, contains('Android'));
       expect(deleteAccountPage, contains('<strong>More</strong>'));
+      // The page a store links to for deletion must not promise a path the
+      // app refuses: an account with Sign in with Apple cannot finish on
+      // Android (issue 665), and the app says so itself. The page names
+      // the exception and the three ways that do work, for as long as the
+      // app carries that refusal.
+      final appStrings = File('lib/l10n/app_en.arb').readAsStringSync();
+      if (appStrings.contains('"accountDeletionAppleCeremonyUnavailable"')) {
+        expect(
+          deleteAccountPage,
+          contains('cannot finish deleting on Android'),
+        );
+        expect(deleteAccountPage, contains('<a href="#by-email">by email</a>'));
+        expect(deleteAccountPage, contains('<section id="by-email">'));
+      }
       expect(deleteAccountPage, contains('<strong>Settings</strong>'));
       expect(deleteAccountPage, contains('<strong>Account</strong>'));
       expect(deleteAccountPage, contains('<strong>Delete account</strong>'));

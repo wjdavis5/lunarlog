@@ -39,6 +39,15 @@ const privacyPolicyUrl =
         The steps are the same on iPhone and Android. The
         <a href="#browser">browser version</a> has its own, a little shorter.
       </p>
+      <!-- cite: lib/domain/account/account_deletion_service.dart (AccountDeletionFailure.appleNativeCeremonyUnavailable: no Sign in with Apple step on this platform); lib/ui/account/account_section.dart (the failure's copy is shown and nothing is deleted); lib/l10n/app_en.arb (accountDeletionAppleCeremonyUnavailable). The gap is tracked as issue 665. -->
+      <p>
+        One exception: an account that has Sign in with Apple linked cannot
+        finish deleting on Android, because Android has no Sign in with
+        Apple step for it to confirm with. The app says so and deletes
+        nothing. Delete that account from an iPhone or iPad, from the
+        <a href="#browser">browser version</a>, or
+        <a href="#by-email">by email</a>.
+      </p>
       <ol class="doc__steps">
         <li>Open lunarlog and sign in to the account you want to delete.</li>
         <li>
@@ -260,7 +269,7 @@ const privacyPolicyUrl =
       </ul>
     </section>
 
-    <section>
+    <section id="by-email">
       <h2>Without the app</h2>
       <!-- cite: PRIVACY.md §7 "Account & Cloud Deletion" ("You can still reach us at … for any deletion the in-app flow does not cover"); pending inputs are issue #1100's. -->
       <p>
