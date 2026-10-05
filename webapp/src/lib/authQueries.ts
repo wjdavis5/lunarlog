@@ -247,8 +247,10 @@ export function useDeleteAccount() {
   );
 }
 
-/** The Apple delete ceremony is a navigation out to Apple; exposed for the
- * tests' seam symmetry, like `startOAuth`. */
-export function startAppleDelete(): void {
-  webAuth.startAppleDelete();
+/** Starts the Apple delete ceremony; resolves to Apple's address, which the
+ * caller sends the browser to (the same shape as `useLinkIdentity`). */
+export function useStartAppleDelete() {
+  return useMutation<string, Error, void>({
+    mutationFn: () => webAuth.startAppleDelete(),
+  });
 }

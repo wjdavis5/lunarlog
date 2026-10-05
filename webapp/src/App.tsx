@@ -84,7 +84,7 @@ const router = createBrowserRouter([
       { path: 'reset-password', element: <ResetPasswordPage /> },
       // Issue #1256: the account and "Your data" settings — and the path
       // Apple's delete ceremony redirects back to (the Worker's
-      // /auth/apple/delete/start names this page as its return URL).
+      // POST /auth/apple/delete/start names this page as its return URL).
       { path: 'account', element: <AccountPage /> },
       { path: 'auth/callback', element: <AuthCallbackPage /> },
       // Issue #1254: the day editor, one profile at a time; the day itself

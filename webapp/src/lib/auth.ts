@@ -90,6 +90,9 @@ const EXPIRY_SKEW_SECONDS = 30;
 
 const CSRF_HEADER = 'x-lunarlog-csrf';
 
+/** Where the Apple delete ceremony leaves for, and nowhere else. */
+const APPLE_AUTHORIZE_URL = 'https://appleid.apple.com/auth/authorize?';
+
 /** [body] with the return path added when there is one (issue #1456). */
 function withReturnPath(
   body: Record<string, unknown>,
@@ -386,26 +389,34 @@ export class WebAuthClient {
   }
 
   /**
-   * The Apple half of web account deletion (issue #1256): a top-level
-   * navigation out to Apple's authorize endpoint under the Services ID,
-   * with the Worker holding the ceremony's state in its HttpOnly cookie.
-   * Apple redirects back to /account?code=…&state=…, where
+   * Starts the Apple half of web account deletion (issue #1256): asks the
+   * Worker, as the signed-in account, for the address of Apple's authorize
+   * endpoint under the Services ID. The Worker keeps the ceremony's state
+   * in its HttpOnly cookie. Returns the address the caller sends the
+   * browser to; Apple redirects back to /account?code=…&state=…, where
    * `completeAppleDelete` consumes the check and the page calls
    * `deleteAccount` with the fresh code.
+   *
+   * A request the page makes, not a link: only this account, on this page,
+   * can begin a ceremony that ends in its deletion.
    */
-  startAppleDelete(): void {
-    window.location.assign('/auth/apple/delete/start');
+  async startAppleDelete(): Promise<string> {
+    const response = await this.authedFetch('/auth/apple/delete/start', 'POST', {});
+    await raiseForError(response);
+    const raw = (await response.json()) as Record<string, unknown>;
+    if (typeof raw.url !== 'string' || !raw.url.startsWith(APPLE_AUTHORIZE_URL)) {
+      throw new AuthError('upstream_authorize_shape', 502);
+    }
+    return raw.url;
   }
 
-  /** Consumes the Apple ceremony: proves to the Worker that this browser
-   * asked for it (the state cookie), before any deletion call carries the
-   * code. */
+  /** Consumes the Apple ceremony: proves to the Worker that this account
+   * asked for it in this browser (the state cookie), before any deletion
+   * call carries the code. */
   async completeAppleDelete(code: string, state: string): Promise<void> {
-    const response = await fetch('/auth/apple/delete/complete', {
-      method: 'POST',
-      headers: csrfHeaders(),
-      credentials: 'same-origin',
-      body: JSON.stringify({ code, state }),
+    const response = await this.authedFetch('/auth/apple/delete/complete', 'POST', {
+      code,
+      state,
     });
     await raiseForError(response);
   }
