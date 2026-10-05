@@ -378,6 +378,9 @@ Part of the home lab; the canonical inventory lives in the lab root's
   on reminders" action, which runs inside the same window. The scheduler
   never asks at startup — iOS since issue #863, Android since issue #1425
   — so starting reminders at launch opens no window and covers nothing.
+  A push-configured build does still ask at launch, from push
+  registration; that ask opens the window around its own request, and
+  only when the system dialog can actually appear.
 - iOS: the database file now lives under `getApplicationSupportDirectory()`,
   not `Documents/` (issue #244 — `Documents/` is included in iCloud/device
   backup by default, and so **is** `Application Support`: only `tmp/` and

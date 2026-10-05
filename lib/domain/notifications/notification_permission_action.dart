@@ -22,10 +22,12 @@ enum NotificationPermissionAction {
 /// from then on the only path back to "on" runs through the app's
 /// notification-settings screen. [deniedAttempts] counts every OS ask this
 /// app has made so far that came back refused; a granted result resets it
-/// to zero. Since issue #1425 the only ask is the "Turn on reminders" tap
-/// (the scheduler's `initialize()` no longer asks at startup); a count
-/// carried over from a build that did ask at startup still stands, because
-/// those refusals used up the same two dialogs.
+/// to zero. Two things ask: the "Turn on reminders" tap, and — on a
+/// push-configured build — push registration's ask at launch, which
+/// decides on this same function whether there is still a dialog worth
+/// asking for (`planPushPermissionAsk`). The scheduler's `initialize()`
+/// does not ask (issue #1425); a count carried over from a build where it
+/// did still stands, because those refusals used up the same two dialogs.
 NotificationPermissionAction nextNotificationPermissionAction(
   int deniedAttempts,
 ) => deniedAttempts >= 2

@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:lunarlog/data/notifications/notification_permission_gate.dart';
+import 'package:lunarlog/domain/notifications/android_notification_denials.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/notifications/notification_permission_action.dart';
 import 'package:lunarlog/domain/notifications/reminder_fire_time.dart';
@@ -128,6 +129,7 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
         _localTimeZoneProvider =
             localTimeZoneProvider ?? defaultLocalTimeZoneProvider,
         _permissionGate = permissionGate ?? defaultNotificationPermissionGate,
+        _androidDenials = AndroidNotificationDenials(settingsStore),
         _nowProvider = nowProvider ?? tz.TZDateTime.now,
         _breadcrumbLog = breadcrumbLog ?? defaultBreadcrumbLog;
 
@@ -164,42 +166,22 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
   /// behavior this counter used to always have.
   final SettingsStore? settingsStore;
 
-  // Issue #168: how many OS asks have come back refused on Android. Since
-  // issue #1425 the only ask is [requestPermission] (the "Turn on
-  // reminders" tap) — [initialize] no longer asks, and so neither reads nor
-  // writes this count. Mirrors the persisted copy in [settingsStore] under
-  // [SettingsKeys.androidNotificationDeniedAttempts], which
-  // [requestPermission] re-reads on every tap; this field is what carries
-  // the count between taps when no store is attached. Feeds
-  // [nextNotificationPermissionAction] so a permanently-denied permission
-  // opens settings instead of re-prompting into silence.
-  //
-  // A count persisted by a pre-#1425 build (whose automatic startup ask
-  // also counted) is deliberately left as it is: those refusals really did
-  // spend Android's dialogs, so a user that build was refused twice still
-  // goes straight to settings on their first tap.
-  int _androidDeniedAttempts = 0;
-
-  /// Loads the persisted count ([SettingsKeys.androidNotificationDeniedAttempts])
-  /// so a fresh process (after a restart) picks up where the last one left
-  /// off instead of re-starting at zero. Falls back to the in-memory value
-  /// when no store is attached (e.g. a test that constructs this scheduler
-  /// directly) or the stored value is missing/unparsable.
-  Future<int> _loadAndroidDeniedAttempts() async {
-    final store = settingsStore;
-    if (store == null) return _androidDeniedAttempts;
-    final raw = await store.get(SettingsKeys.androidNotificationDeniedAttempts);
-    return int.tryParse(raw ?? '') ?? 0;
-  }
-
-  Future<void> _persistAndroidDeniedAttempts(int value) async {
-    final store = settingsStore;
-    if (store == null) return;
-    await store.set(
-      SettingsKeys.androidNotificationDeniedAttempts,
-      '$value',
-    );
-  }
+  /// Issue #168: how many OS asks have come back refused on Android, over
+  /// [settingsStore]. The count has one owner, [AndroidNotificationDenials]
+  /// (it used to be private state of this class): [requestPermission] — the
+  /// "Turn on reminders" tap — reads and records through it, and so does
+  /// push registration's launch-time ask on a push-configured build
+  /// (`FirebasePushTokenSource`, over the same store), because Android's two
+  /// dialogs are spent whoever asked. [initialize] does not ask (issue
+  /// #1425), and so neither reads nor writes it. Feeds
+  /// [nextNotificationPermissionAction] so a permanently-denied permission
+  /// opens settings instead of re-prompting into silence.
+  ///
+  /// A count persisted by a pre-#1425 build (whose automatic startup ask
+  /// also counted) is deliberately left as it is: those refusals really did
+  /// spend Android's dialogs, so a user that build was refused twice still
+  /// goes straight to settings on their first tap.
+  final AndroidNotificationDenials _androidDenials;
 
   /// Issue #863: whether this device has already made an explicit Darwin
   /// "Turn on reminders" ask, loaded from
@@ -326,7 +308,7 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
     // the overview shows the "Turn on reminders" hint.
     //
     // The persisted denial count is left alone here too (neither read nor
-    // written): see [_androidDeniedAttempts].
+    // written): see [_androidDenials].
     _initialized = true;
 
     // Cold start from a notification tap carries its payload (and, for an
@@ -388,18 +370,17 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
         AndroidFlutterLocalNotificationsPlugin>();
     if (androidPlugin != null) {
       // #1: read the persisted count fresh on every tap rather than
-      // trusting whatever is already in memory. Since issue #1425 this is
-      // the only place the count is read at all ([initialize] no longer
-      // touches it), so it is also what picks up a count an earlier
-      // process -- or a pre-#1425 build's startup asks -- left behind.
-      _androidDeniedAttempts = await _loadAndroidDeniedAttempts();
+      // trusting an in-memory copy ([AndroidNotificationDenials.load]
+      // always goes back to the store). [initialize] does not touch the
+      // count (issue #1425), so this read is what picks up whatever is on
+      // record: an earlier process's taps, a pre-#1425 build's startup
+      // asks, or a refusal of push registration's launch-time ask.
       final action =
-          nextNotificationPermissionAction(_androidDeniedAttempts);
+          nextNotificationPermissionAction(await _androidDenials.load());
       try {
         if (action == NotificationPermissionAction.openSettings) {
           await androidPlugin.openAppNotificationSettings();
         } else {
-          final previous = _androidDeniedAttempts;
           // Issue #287: guarded so this never runs concurrently with
           // FirebasePushTokenSource's own `requestPermission()` -- Android
           // drops a second `requestPermissions()` call while one is
@@ -413,14 +394,11 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
           // request (historically a concurrent
           // `FirebaseMessaging.requestPermission()` reporting
           // `PERMISSION_REQUEST_IN_PROGRESS`, which [_permissionGate] now
-          // closes): "unknown", not a refusal. Don't ratchet the count
-          // toward `openSettings` on an answer the OS never actually gave.
-          _androidDeniedAttempts = switch (granted) {
-            true => 0,
-            false => previous + 1,
-            null => previous,
-          };
-          await _persistAndroidDeniedAttempts(_androidDeniedAttempts);
+          // closes): "unknown", not a refusal. [AndroidNotificationDenials
+          // .record] leaves the count alone for it rather than ratchet
+          // toward `openSettings` on an answer the OS never actually gave;
+          // `true` clears the count and `false` adds one.
+          await _androidDenials.record(granted);
         }
       } catch (error) {
         // #3: tolerate a platform-call failure -- report through

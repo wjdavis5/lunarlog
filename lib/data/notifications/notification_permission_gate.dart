@@ -15,6 +15,9 @@
 /// "Turn on reminders" tap. [FirebasePushTokenSource]'s request still fires
 /// at database open on a `hasPush` build, so the two can still overlap (a
 /// tap while that request is pending) and both still go through this gate.
+/// That launch-time ask opens the app gate's system-UI window *inside* its
+/// turn on this queue, never around it, so the window is not held open
+/// while the ask is only waiting behind another request.
 ///
 /// **Decision (issue #287):** neither side is designated the sole owner —
 /// which of the two actually runs first is genuine start-up timing, not

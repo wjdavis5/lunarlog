@@ -1182,13 +1182,14 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// appear is the user-triggered [_requestNotificationPermission], which
   /// keeps its window.
   ///
-  /// One launch-time dialog remains, and it was never this method's to
+  /// One launch-time dialog remains, and it is not this method's to
   /// cover: on a push-configured build `FirebasePushTokenSource` still
-  /// makes its own permission request at database open
+  /// makes its own permission ask at database open
   /// (`LunarLogRootState._startPushRegistration`) — a separate call path.
-  /// The old window overlapped it only by accident of timing, when
+  /// The old window here overlapped it only by accident of timing, when
   /// `initialize()` happened to queue behind it in the shared
-  /// `NotificationPermissionGate`.
+  /// `NotificationPermissionGate`; that ask now opens the gate's window
+  /// itself, around its own request, whenever the dialog can appear.
   Future<void> _startReminders(ReminderCoordinator coordinator) =>
       coordinator.start(onLaunchFromNotification: _handleReminderLaunch);
 

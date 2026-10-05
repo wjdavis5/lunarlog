@@ -1008,12 +1008,17 @@ household member's.
       asks at launch on either platform (iOS since issue #863, Android
       since issue #1425): its prompt now comes from Today's "Turn on
       reminders" action, inside the system-UI window. What remains is a
-      **push-configured** build, where push registration still calls
-      `FirebaseMessaging.requestPermission()` at database open
-      (`lib/data/notifications/firebase_push_token_source.dart`), outside
-      that window — so the alert can still appear right after the first
-      unlock there, with nothing suppressing the re-lock while it is up.
-      That is read from the code, not re-checked on a device.
+      **push-configured** build, where push registration still asks at
+      database open
+      (`lib/data/notifications/firebase_push_token_source.dart`), so the
+      alert still appears right after the first unlock there. That ask now
+      runs inside the system-UI window too (issue #1425), so it should no
+      longer re-lock: answer the alert slowly (more than three seconds)
+      and confirm that once it is answered the app is unlocked, with no
+      lock screen and no black cover left. (While the alert is up the
+      content is covered, as for every system-UI window.) The window is
+      covered by tests against the real gate controller; the alert itself
+      has not been re-checked on a device.
 - [ ] **The lock suppression is bounded — check both halves.**
       *(a) Leave and come back after the prompt closes.* Start a Google
       sign-in, leave the app while the picker is up, let the picker
@@ -1363,7 +1368,16 @@ build), always with a throwaway account and fabricated profiles only.
       message streams. Issue #174's
       `setForegroundNotificationPresentationOptions` call is proven by the
       "Foreground alert shows a banner (issue #174, iOS)" item above.
-      Running those sections satisfies this entry.
+      Running those sections satisfies this entry, apart from the
+      launch-time permission ask (issue #1425), which needs a fresh install
+      of a push-configured build: the alert appears once after the first
+      unlock and answering it slowly does not re-lock the app (see the
+      known exception under "No lock screen during the Google picker or
+      the Apple sheet"). On Android 13+, refuse it on two launches running:
+      the third launch shows no alert and no black flash, and the first
+      tap on Today's "Turn on reminders" opens OS notification settings
+      rather than doing nothing. With the permission already granted, a
+      launch shows no alert and no cover.
 - [ ] **`lib/data/health/ios_health_channel.dart` — the Swift HKHealthStore
       MethodChannel pin.** Inert in every current build
       (`AppConfig.hasHealthSync` is false): confirm a normal build shows no

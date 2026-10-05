@@ -41,6 +41,8 @@ import 'package:lunarlog/data/import/clue_importer.dart';
 import 'package:lunarlog/data/import/import_file_picker.dart';
 import 'package:lunarlog/data/notifications/firebase_push_token_source.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
+import 'package:lunarlog/data/notifications/push_permission_ask.dart'
+    show SystemUiWindow;
 import 'package:lunarlog/data/notifications/push_presentation.dart';
 import 'package:lunarlog/data/notifications/push_registration_coordinator.dart';
 import 'package:lunarlog/data/notifications/reminder_action_executor.dart';
@@ -637,7 +639,8 @@ WidgetQuickLogExecutor buildWidgetQuickLogExecutor({
 );
 
 /// Constructs the reminder coordinator. The caller owns the deferred
-/// `start()` (post-frame, inside the gate's system-UI window).
+/// `start()` (post-frame; no system-UI window since issue #1425 — nothing
+/// in it presents system UI).
 ///
 /// Issue #850, D-6: [guardians] plus [currentUserId] feed the per-viewer
 /// lens source the coordinator gates local presets on. Passing neither (as
@@ -1007,6 +1010,9 @@ RealtimeSyncCoordinator buildRealtimeSyncCoordinator({
 /// Constructs the push-registration coordinator (AC2). The caller resolves
 /// [deviceId] (via [buildCompositionSettingsStore] +
 /// `resolvePushDeviceId`) and owns `start()`/`dispose()`.
+///
+/// Issue #1425: [settings] and [duringSystemUi] go to the token source —
+/// see [buildPushTokenSource].
 PushRegistrationCoordinator buildPushRegistrationCoordinator({
   required SupabaseClient client,
   required String deviceId,
@@ -1014,14 +1020,38 @@ PushRegistrationCoordinator buildPushRegistrationCoordinator({
   required Stream<AuthSessionState> authStates,
   required AuthSessionState Function() currentAuthState,
   required void Function(String profileId)? onTap,
+  required SettingsStore settings,
+  required SystemUiWindow? duringSystemUi,
 }) => PushRegistrationCoordinator(
-  tokenSource: FirebasePushTokenSource(),
+  tokenSource: buildPushTokenSource(
+    settings: settings,
+    duringSystemUi: duringSystemUi,
+  ),
   registry: SupabasePushDeviceRegistry(client: client),
   deviceId: deviceId,
   platform: platform,
   authStates: authStates,
   currentAuthState: currentAuthState,
   onTap: onTap,
+);
+
+/// Constructs the Firebase-backed push token source (issue #1425), split
+/// out of [buildPushRegistrationCoordinator] so its wiring is testable
+/// without a Supabase client.
+///
+/// The source makes its permission ask at launch. [duringSystemUi] is the
+/// app gate's system-UI window (`GateController.duringSystemUi`): the ask
+/// opens it around a request that can present the system dialog, so the
+/// gate does not re-lock the app behind that dialog. [settings] is where
+/// the Android refusal count lives — the same store the scheduler built by
+/// [buildAppDependencies] reads it from, so a refusal at launch is one the
+/// "Turn on reminders" tap knows about.
+FirebasePushTokenSource buildPushTokenSource({
+  required SettingsStore settings,
+  required SystemUiWindow? duringSystemUi,
+}) => FirebasePushTokenSource(
+  settingsStore: settings,
+  duringSystemUi: duringSystemUi,
 );
 
 /// Constructs the foreground push presenter (Issue #174). The caller starts
