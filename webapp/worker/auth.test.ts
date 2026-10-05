@@ -1327,10 +1327,7 @@ Deno.test(
     assertEquals(body.url.includes(APPLE_USER), false);
     // The account is read from GoTrue with the caller's own token.
     assertEquals(calls.length, 1);
-    assertEquals(
-      new Headers(calls[0].init.headers).get('authorization'),
-      'Bearer access-1',
-    );
+    assertEquals(new Headers(calls[0].init.headers).get('authorization'), 'Bearer access-1');
   },
 );
 
@@ -1377,54 +1374,57 @@ Deno.test('POST /auth/apple/delete/start is behind the whole CSRF gate', async (
   }
 });
 
-Deno.test('POST /auth/apple/delete/start needs a signed-in caller GoTrue vouches for', async () => {
-  const anonymous = fakeDeps(userIs(APPLE_USER));
-  const noBearer = await handleAuthRequest(
-    post('/auth/apple/delete/start', {}),
-    ENV,
-    anonymous.deps,
-  );
-  assertEquals(noBearer?.status, 401);
-  assertEquals(await errorOf(noBearer), 'access_token_required');
-  assertEquals(noBearer?.headers.get('set-cookie'), null);
-  assertEquals(anonymous.calls.length, 0);
+Deno.test(
+  'POST /auth/apple/delete/start needs a signed-in caller GoTrue vouches for',
+  async () => {
+    const anonymous = fakeDeps(userIs(APPLE_USER));
+    const noBearer = await handleAuthRequest(
+      post('/auth/apple/delete/start', {}),
+      ENV,
+      anonymous.deps,
+    );
+    assertEquals(noBearer?.status, 401);
+    assertEquals(await errorOf(noBearer), 'access_token_required');
+    assertEquals(noBearer?.headers.get('set-cookie'), null);
+    assertEquals(anonymous.calls.length, 0);
 
-  // A token GoTrue refuses starts nothing either.
-  const refused = fakeDeps(
-    () =>
-      new Response(JSON.stringify({ error_code: 'bad_jwt' }), {
-        status: 403,
-        headers: { 'content-type': 'application/json' },
-      }),
-  );
-  const badToken = await handleAuthRequest(
-    post('/auth/apple/delete/start', {}, { bearer: 'forged' }),
-    ENV,
-    refused.deps,
-  );
-  assertEquals(badToken?.status, 403);
-  assertEquals(await errorOf(badToken), 'bad_jwt');
-  assertEquals(badToken?.headers.get('set-cookie'), null);
-
-  // Nor does an answer with no usable account id in it.
-  for (const id of [undefined, '', 'not.a.uuid', 'a;b']) {
-    const odd = fakeDeps(
+    // A token GoTrue refuses starts nothing either.
+    const refused = fakeDeps(
       () =>
-        new Response(JSON.stringify({ id }), {
-          status: 200,
+        new Response(JSON.stringify({ error_code: 'bad_jwt' }), {
+          status: 403,
           headers: { 'content-type': 'application/json' },
         }),
     );
-    const response = await handleAuthRequest(
-      post('/auth/apple/delete/start', {}, { bearer: 'access-1' }),
+    const badToken = await handleAuthRequest(
+      post('/auth/apple/delete/start', {}, { bearer: 'forged' }),
       ENV,
-      odd.deps,
+      refused.deps,
     );
-    assertEquals(response?.status, 502, String(id));
-    assertEquals(await errorOf(response), 'upstream_user_shape');
-    assertEquals(response?.headers.get('set-cookie'), null);
-  }
-});
+    assertEquals(badToken?.status, 403);
+    assertEquals(await errorOf(badToken), 'bad_jwt');
+    assertEquals(badToken?.headers.get('set-cookie'), null);
+
+    // Nor does an answer with no usable account id in it.
+    for (const id of [undefined, '', 'not.a.uuid', 'a;b']) {
+      const odd = fakeDeps(
+        () =>
+          new Response(JSON.stringify({ id }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+      );
+      const response = await handleAuthRequest(
+        post('/auth/apple/delete/start', {}, { bearer: 'access-1' }),
+        ENV,
+        odd.deps,
+      );
+      assertEquals(response?.status, 502, String(id));
+      assertEquals(await errorOf(response), 'upstream_user_shape');
+      assertEquals(response?.headers.get('set-cookie'), null);
+    }
+  },
+);
 
 Deno.test(
   'POST /auth/apple/delete/complete accepts a matching state once and clears the cookie',
