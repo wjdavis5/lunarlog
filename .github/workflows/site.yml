@@ -133,6 +133,14 @@ jobs:
         working-directory: site
         run: npm run check:links
 
+      - name: Check that no word touches an inline link
+        # A link that starts its own source line used to lose the space
+        # before it in the build ("sees whattheir role allows"). Fails if
+        # any built page has a word glued to a link or other inline
+        # element; astro.config.mjs explains the cause.
+        working-directory: site
+        run: npm run check:spacing
+
       - name: Check the privacy page section anchors
         # Issue #1101: /privacy's section anchors are the deep-link contract
         # for the in-app privacy dialog. A silent PRIVACY.md heading rename
