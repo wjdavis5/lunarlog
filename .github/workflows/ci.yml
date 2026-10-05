@@ -442,11 +442,18 @@ jobs:
   check:
     # The former "Analyze, test, build web" job, minus the test suite: that
     # now runs as the sharded `test` matrix below with the gate in
-    # `quality-gate`, so the three independent halves (codegen/analyze/web
-    # build here, tests there, gates after) run on separate runners at the
+    # `quality-gate`, so the three independent halves (codegen/analyze
+    # here, tests there, gates after) run on separate runners at the
     # same time instead of serially in one 14-minute job — and the suite
     # runs once with coverage rather than once plain and once again for
     # coverage.
+    #
+    # The name is historical: issue #1257 removed the Flutter web target, so
+    # this job no longer builds anything for the web. DO NOT RENAME IT. The
+    # repository's merge rules and the release gate's REQUIRED_CHECKS
+    # (.github/scripts/check-ci-gate.sh) require a check with exactly this
+    # name; a rename would block every pull request and every store release
+    # until the owner edits those rules by hand.
     name: Verify (codegen, analyze, web build)
     needs: detect-changes
     runs-on: ubuntu-latest
@@ -533,58 +540,6 @@ jobs:
       - name: Analyze
         if: steps.check_run.outputs.run == 'true'
         run: flutter analyze
-
-      - name: Build web (release)
-        # The defines resolve to empty strings on forks and PRs without
-        # secrets; the app treats empty as "unconfigured", so the build
-        # must succeed either way. LUNARLOG_WEB_SYNC is never set in CI.
-        #
-        # Issue #572: secrets are passed through env: and referenced quoted
-        # rather than interpolated straight into the shell command. An
-        # unquoted `${{ secrets.* }}` splice is a word-splitting/glob hazard
-        # in general, and this is also where a version string containing a
-        # stray `#` (see extract-marketing-version.sh's hardening) would
-        # have silently commented out every flag after it in the release
-        # workflows that build `--build-name=`/`--build-number=` this way.
-        if: steps.check_run.outputs.run == 'true'
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-          GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
-          GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
-          FCM_PROJECT_ID: ${{ secrets.FCM_PROJECT_ID }}
-          FCM_SENDER_ID: ${{ secrets.FCM_SENDER_ID }}
-          FCM_ANDROID_API_KEY: ${{ secrets.FCM_ANDROID_API_KEY }}
-          FCM_ANDROID_APP_ID: ${{ secrets.FCM_ANDROID_APP_ID }}
-          FCM_IOS_API_KEY: ${{ secrets.FCM_IOS_API_KEY }}
-          FCM_IOS_APP_ID: ${{ secrets.FCM_IOS_APP_ID }}
-        run: |
-          flutter build web --release --no-web-resources-cdn \
-            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
-            --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY" \
-            --dart-define=SENTRY_DSN="$SENTRY_DSN" \
-            --dart-define=GOOGLE_IOS_CLIENT_ID="$GOOGLE_IOS_CLIENT_ID" \
-            --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" \
-            --dart-define=FCM_PROJECT_ID="$FCM_PROJECT_ID" \
-            --dart-define=FCM_SENDER_ID="$FCM_SENDER_ID" \
-            --dart-define=FCM_ANDROID_API_KEY="$FCM_ANDROID_API_KEY" \
-            --dart-define=FCM_ANDROID_APP_ID="$FCM_ANDROID_APP_ID" \
-            --dart-define=FCM_IOS_API_KEY="$FCM_IOS_API_KEY" \
-            --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID"
-
-      - name: Boot-check the web build under its CSP
-        # Issue #1091: a build that parses green can still never render.
-        # tool/web_smoke serves build/web with the real `_headers` policy and
-        # loads it in headless Chromium, failing on any CSP violation not on
-        # the script's explicit allowlist, or if Flutter never paints a first
-        # frame. This is the regression guard the issue asked for.
-        if: steps.check_run.outputs.run == 'true'
-        working-directory: tool/web_smoke
-        run: |
-          npm ci
-          npx playwright install --with-deps chromium
-          node boot_check.mjs
 
   test:
     # The unit/widget suite, sharded across runners. Each shard runs a
