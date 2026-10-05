@@ -4198,6 +4198,18 @@ abstract class AppLocalizations {
   /// **'Period expected in {count, plural, =1{1 day} other{{count} days}}'**
   String householdTimingExpectedIn(int count);
 
+  /// Issue #1518: a household row's timing line when the profile's estimate is a date range that opens within the next week: the days until the range's first and last day, with an en dash. The range counterpart of householdTimingExpectedIn, which gave one number (the middle of the range).
+  ///
+  /// In en, this message translates to:
+  /// **'Period expected in {from}–{to} days'**
+  String householdTimingExpectedBetween(int from, int to);
+
+  /// Issue #1518: a household row's timing line when today is inside the profile's estimated date range. No count; matches the Today ring's "Any day now" (cycleWheelRangeNowHero).
+  ///
+  /// In en, this message translates to:
+  /// **'Period expected any day now'**
+  String get householdTimingExpectedAnyDay;
+
   /// Issue #803, #1000: household member's cycle is past the predicted start date (e.g. '1 day past the estimate', '3 days past the estimate'). Count is pluralized through the shared ICU daysCount shape.
   ///
   /// In en, this message translates to:

@@ -59,6 +59,8 @@ import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/overview/estimate_copy.dart'
+    show estimateRangeDaysAhead;
 import 'package:lunarlog/ui/theme/tokens.dart';
 
 /// How far ahead an unframed profile's upcoming estimate earns a
@@ -91,6 +93,30 @@ class HouseholdTimingExpected extends HouseholdTimingSignal {
 
   @override
   final int days;
+}
+
+/// The next estimate is a range that opens [days] days ahead, inside the
+/// window, and closes [end] days ahead: "Period expected in 4–12 days"
+/// (issue #1518). The profile's own Today shows that range, so this row
+/// must not give one number for it.
+class HouseholdTimingExpectedBetween extends HouseholdTimingSignal {
+  const HouseholdTimingExpectedBetween(this.days, this.end);
+
+  /// Days until the range's first day.
+  @override
+  final int days;
+
+  /// Days until the range's last day.
+  final int end;
+}
+
+/// Today is inside the estimate's range: "Period expected any day now"
+/// (issue #1518). No count.
+class HouseholdTimingExpectedAnyDay extends HouseholdTimingSignal {
+  const HouseholdTimingExpectedAnyDay();
+
+  @override
+  int get days => 0;
 }
 
 /// The open cycle is [days] past its un-rolled estimate (issue #803, #1000:
@@ -153,11 +179,31 @@ HouseholdTimingSignal? _activeTiming(
   // Issue #853: under the framing a precise "expected in N days" is the
   // false precision the framing exists to avoid — no upcoming line at all.
   if (irregularFraming) return null;
+  return _upcomingTiming(active);
+}
+
+/// The upcoming line for an estimate that has not been passed.
+HouseholdTimingSignal? _upcomingTiming(ActivePrediction active) {
+  // Issue #1518: an estimate shown as a range is said as a range. The
+  // single count below is the distance to the middle of it.
+  final range = estimateRangeDaysAhead(active);
+  if (range != null) return _rangeTiming(range);
   final until = active.daysUntilNextPeriod;
   if (until >= 0 && until <= kHouseholdTimingWindowDays) {
     return HouseholdTimingExpected(until);
   }
   return null;
+}
+
+/// The line for an estimate shown as a range (issue #1518): nothing while
+/// the range opens beyond the upcoming window, both distances inside it,
+/// and no count once today is in the range.
+HouseholdTimingSignal? _rangeTiming(({int start, int end}) range) {
+  if (range.start > kHouseholdTimingWindowDays) return null;
+  if (range.start > 0) {
+    return HouseholdTimingExpectedBetween(range.start, range.end);
+  }
+  return const HouseholdTimingExpectedAnyDay();
 }
 
 /// The localized copy for [signal] (the count is pluralized through the
@@ -169,6 +215,9 @@ String householdTimingCopy(
   HouseholdTimingExpected(:final days) when days == 0 =>
     l10n.householdTimingExpectedToday,
   HouseholdTimingExpected(:final days) => l10n.householdTimingExpectedIn(days),
+  HouseholdTimingExpectedBetween(:final days, :final end) =>
+    l10n.householdTimingExpectedBetween(days, end),
+  HouseholdTimingExpectedAnyDay() => l10n.householdTimingExpectedAnyDay,
   HouseholdTimingLate(:final days) => l10n.householdTimingPastEstimate(days),
   HouseholdTimingOpen(:final days) => l10n.householdTimingLastLogged(days),
 };
