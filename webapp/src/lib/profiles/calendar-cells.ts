@@ -325,6 +325,21 @@ export function dayCellView(options: {
 }
 
 /**
+ * Whether any cell can draw the setup mark, which is when the legend keys
+ * it: the app's `_setupPeriodMarkCanAppear` (month_calendar.dart), never
+ * advertise a swatch that cannot appear. `dayCellView` draws the mark only
+ * on a day with no entry, so once the marked day has one, no cell shows it.
+ */
+export function setupPeriodMarkCanAppear(options: {
+  entryByIso: Map<string, DayEntryRow>;
+  setupPeriodMarkIso: string | null;
+}): boolean {
+  return (
+    options.setupPeriodMarkIso !== null && !options.entryByIso.has(options.setupPeriodMarkIso)
+  );
+}
+
+/**
  * Whether a month has anything to show: a logged day, or the setup mark
  * (issue #1476). A month whose only content is the mark is not empty, so it
  * does not get the "No entries this month" line.

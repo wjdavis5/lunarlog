@@ -204,11 +204,19 @@ are unchanged. The one-tap write itself goes through the same
 that keeps a second tap (or a day already logged heavier via the full day
 sheet) from ever downgrading an existing flow level — the upsert's own
 (profileId, date) identity is what keeps a second tap from ever creating a
-second entry. Every tap is answered at once: the confirmation
+second entry. Every tap is answered through `showQuickLogSnackBar`
 (`overview/quick_log_snackbar.dart`, shared with the home-screen widget's
-acknowledgement in `lib/app.dart`) is shown after
-`hideCurrentSnackBar()`, so a second tap's "already logged" reply replaces
-the first tap's snackbar instead of queueing behind it.
+acknowledgement in `lib/app.dart`), which follows three rules (issue
+#1472; do not go back to an unconditional `hideCurrentSnackBar()`):
+
+- It hides only its own earlier message, and only while that message is on
+  screen, so a second tap's reply does not queue unseen behind the first.
+- It never replaces its own Undo with the "already logged" reply, which has
+  none: a second tap on a day the first tap just logged leaves the first
+  message, and its Undo, where it is.
+- It never dismisses a snackbar another flow showed. A day-sheet delete or
+  a cycle-start change leaves an Undo on the same messenger, and the
+  quick-log reply waits its turn behind it.
 
 Issue #314: below the active/not-enough card, `OverviewPanel` renders a
 "See cycle history" `TextButton` (`ValueKey('overview-see-history-link')`)

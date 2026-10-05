@@ -13,6 +13,7 @@ import {
   flowFillClass,
   leadingBlanksFor,
   monthHasContent,
+  setupPeriodMarkCanAppear,
   monthDayIsos,
   shiftMonth,
   toggledLayers,
@@ -296,7 +297,7 @@ export function ProfileHomeCalendar(props: {
           <li>
             <LegendSwatch kind="predicted" /> {t('calendarLegendPredicted')}
           </li>
-          {setupPeriodMarkIso !== null ? (
+          {setupPeriodMarkCanAppear({ entryByIso: props.entryByIso, setupPeriodMarkIso }) ? (
             <li data-testid="legend-setup-period">
               <LegendSwatch kind="setup-period" /> {t('calendarLegendSetupPeriodStart')}
             </li>
