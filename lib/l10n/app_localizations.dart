@@ -1800,10 +1800,10 @@ abstract class AppLocalizations {
   /// **'About the minor checkbox'**
   String get firstRunMinorExplainerTitle;
 
-  /// The truthful explanation of what 'This profile is for a minor' changes (#131 made mode chosen-not-derived; #882 made health-sync apply to minors on the same terms as adults, so the checkbox is a label only).
+  /// The truthful explanation of what 'This profile is for a minor' changes (#131 made mode chosen-not-derived; #882 made health-sync apply to minors on the same terms as adults). It is not a label only (#1382): #379 turns prediction sharing off for a minor's profile, and kMinorDefaultHiddenTrackingCategories starts the Sex life and Partying categories hidden.
   ///
   /// In en, this message translates to:
-  /// **'It\'s a label used across the app to describe the profile. It doesn\'t restrict anything: health app sync is off for every profile by default and, when you turn it on, works the same way for any profile you choose — minors included. Wording and reminders come from the care mode picked on the next screen, not from this checkbox.'**
+  /// **'It marks the profile as a minor\'s. That turns prediction sharing off for the profile and starts the Sex life and Partying categories hidden, until a primary guardian turns them on. Health app sync is not affected. Wording and reminders come from the care mode picked on the next screen, not from this checkbox.'**
   String get firstRunMinorExplainerBody;
 
   /// The third onboarding card: today's data/sync notice, kept verbatim from the pre-#216 first run (the #334 repositioned copy).
@@ -1848,10 +1848,10 @@ abstract class AppLocalizations {
   /// **'This profile is for a minor'**
   String get firstRunMinorLabel;
 
-  /// One-line hint under the minor checkbox in the first-run form (#882: the checkbox no longer excludes a profile from health sync).
+  /// One-line hint under the minor checkbox in the first-run form and the web profile form (#882: the checkbox no longer excludes a profile from health sync; #1382: it does turn off prediction sharing; the explainer card also names the two categories it starts hidden).
   ///
   /// In en, this message translates to:
-  /// **'A label used across the app — health sync works the same for every profile.'**
+  /// **'Turns off prediction sharing. Health sync is the same for every profile.'**
   String get firstRunMinorHint;
 
   /// Checkbox label acknowledging the 13+ minimum-age statement on first-run profile creation.

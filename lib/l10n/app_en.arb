@@ -1436,9 +1436,9 @@
   "@firstRunMinorExplainerTitle": {
     "description": "Heading of the minor-checkbox explanation inside the second onboarding card."
   },
-  "firstRunMinorExplainerBody": "It's a label used across the app to describe the profile. It doesn't restrict anything: health app sync is off for every profile by default and, when you turn it on, works the same way for any profile you choose — minors included. Wording and reminders come from the care mode picked on the next screen, not from this checkbox.",
+  "firstRunMinorExplainerBody": "It marks the profile as a minor's. That turns prediction sharing off for the profile and starts the Sex life and Partying categories hidden, until a primary guardian turns them on. Health app sync is not affected. Wording and reminders come from the care mode picked on the next screen, not from this checkbox.",
   "@firstRunMinorExplainerBody": {
-    "description": "The truthful explanation of what 'This profile is for a minor' changes (#131 made mode chosen-not-derived; #882 made health-sync apply to minors on the same terms as adults, so the checkbox is a label only)."
+    "description": "The truthful explanation of what 'This profile is for a minor' changes (#131 made mode chosen-not-derived; #882 made health-sync apply to minors on the same terms as adults). It is not a label only (#1382): #379 turns prediction sharing off for a minor's profile, and kMinorDefaultHiddenTrackingCategories starts the Sex life and Partying categories hidden."
   },
   "firstRunNoticeBody": "Signing in syncs this profile across your devices and lets you share it with other guardians. Until then, everything you log stays on this device.",
   "@firstRunNoticeBody": {
@@ -1468,9 +1468,9 @@
   "@firstRunMinorLabel": {
     "description": "The minor checkbox label in the first-run form (kept from the pre-#216 form)."
   },
-  "firstRunMinorHint": "A label used across the app — health sync works the same for every profile.",
+  "firstRunMinorHint": "Turns off prediction sharing. Health sync is the same for every profile.",
   "@firstRunMinorHint": {
-    "description": "One-line hint under the minor checkbox in the first-run form (#882: the checkbox no longer excludes a profile from health sync)."
+    "description": "One-line hint under the minor checkbox in the first-run form and the web profile form (#882: the checkbox no longer excludes a profile from health sync; #1382: it does turn off prediction sharing; the explainer card also names the two categories it starts hidden)."
   },
   "firstRunAgeAcknowledgementLabel": "I am 13 or older, or a guardian managing a family profile",
   "@firstRunAgeAcknowledgementLabel": {

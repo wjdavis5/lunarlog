@@ -487,20 +487,25 @@ void main() {
       );
       expect(l10n.firstRunMinorExplainerTitle, 'About the minor checkbox');
       // Issue #882: the checkbox no longer excludes a profile from health
-      // app sync — the copy must not claim it does.
+      // app sync — the copy must not claim it does. Issue #1382: nor may
+      // it claim the checkbox restricts nothing: it turns prediction
+      // sharing off (#379) and starts two categories hidden.
       expect(
         l10n.firstRunMinorExplainerBody,
-        "It's a label used across the app to describe the profile. It "
-        "doesn't restrict anything: health app sync is off for every "
-        'profile by default and, when you turn it on, works the same way '
-        'for any profile you choose — minors included. Wording and '
-        'reminders come from the care mode picked on the next screen, not '
-        'from this checkbox.',
+        "It marks the profile as a minor's. That turns prediction sharing "
+        'off for the profile and starts the Sex life and Partying '
+        'categories hidden, until a primary guardian turns them on. Health '
+        'app sync is not affected. Wording and reminders come from the '
+        'care mode picked on the next screen, not from this checkbox.',
+      );
+      expect(
+        l10n.firstRunMinorExplainerBody,
+        isNot(contains("doesn't restrict anything")),
       );
       expect(
         l10n.firstRunMinorHint,
-        'A label used across the app — health sync works the same for '
-        'every profile.',
+        'Turns off prediction sharing. Health sync is the same for every '
+        'profile.',
       );
       expect(l10n.firstRunNext, 'Next');
       expect(l10n.firstRunSkip, 'Skip');
