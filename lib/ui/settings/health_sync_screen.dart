@@ -956,9 +956,9 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// so the rule for it is strict: every sentence that was on the screen is
   /// still on it, unedited and in plain view. Nothing is collapsed, shortened
   /// or moved to another screen; only the order changed, and each group got
-  /// a heading. The headings name a subject and promise no complete list:
-  /// the iPhone's paragraphs under "Writing" are about how values are
-  /// written, not everything that is.
+  /// a heading. The headings name a subject. Under "Writing" both stores
+  /// open with the list of what is written (the iPhone's since Issue
+  /// #1526), followed by how values are mapped.
   List<Widget> _details(AppLocalizations l10n) => [
         const Divider(height: 32),
         if (widget.writeEnabled) ...[
@@ -1030,18 +1030,22 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   List<Widget> _writtenCopy(AppLocalizations l10n) {
     final healthConnect = _isHealthConnect;
     return [
-      if (healthConnect) ...[
-        _detail(
-          'health-sync-written-types-copy',
-          l10n.healthSyncWrittenTypesHealthConnect,
-        ),
+      // Issue #1526: both stores get the list of what is written. The
+      // iPhone had none, so its screen never mentioned cervical mucus,
+      // ovulation tests or basal body temperature.
+      _detail(
+        'health-sync-written-types-copy',
+        healthConnect
+            ? l10n.healthSyncWrittenTypesHealthConnect
+            : l10n.healthSyncWrittenTypes,
+      ),
+      if (healthConnect)
         // The one way a day logged before write access reaches Health
         // Connect: as the first day of a period that has a written day.
         _detail(
           'health-sync-period-record-copy',
           l10n.healthSyncPeriodRecordNoteHealthConnect,
         ),
-      ],
       _detail(
         'health-sync-flow-collapse-copy',
         healthConnect

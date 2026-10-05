@@ -462,9 +462,34 @@ void main() {
       find.byKey(const ValueKey('health-sync-symptoms-copy')),
       findsOneWidget,
     );
+    // Issue #1526: the sentence names every tag that is written, not four
+    // of them, and the iPhone screen has the list of what is written that
+    // only the Android screen used to have.
     expect(
-      find.textContaining(
-          'Symptoms you tag — cramps, headache, bloating, and mood'),
+      find.textContaining('Cramps, Headache, Back pain, Breast tenderness, '
+          'Bloating, Acne, Nausea, Fatigue, Dizziness, Sleep trouble and '
+          'Other craving'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('Symptoms you tag — cramps, headache, bloating'),
+      findsNothing,
+    );
+    // The list itself, word for word (its items are tied to what is written
+    // in health_sync_written_types_test.dart).
+    expect(
+      find.text('What lunarlog writes to the Health app: flow, with the '
+          'first day of each period marked; spotting between periods; '
+          'discharge you tag as sticky, creamy or egg white (cervical '
+          'mucus); ovulation test results; basal body temperature, unless '
+          'you exclude the reading from charts; and the symptoms and moods '
+          'listed below.'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('An intensity you give Cramps, Headache, Back '
+          'pain or Breast tenderness is written with it, as mild, moderate '
+          'or severe.'),
       findsOneWidget,
     );
   });
@@ -1791,8 +1816,10 @@ void main() {
         isEmpty,
       );
 
-      // The same screen for the iPhone store: nothing of the above leaks
-      // over, and the symptom-write paragraph stays.
+      // The same screen for the iPhone store: none of the Android wording
+      // leaks over, and the symptom-write paragraph stays. Since Issue
+      // #1526 the iPhone has a list of what is written too, in its own
+      // words.
       await tester.pumpWidget(const SizedBox.shrink());
       await pumpScreen(
         tester,
@@ -1803,7 +1830,14 @@ void main() {
 
       expect(find.text('Health app sync'), findsOneWidget);
       expect(
-        find.byKey(const ValueKey('health-sync-written-types-copy')),
+        find.descendant(
+          of: find.byKey(const ValueKey('health-sync-written-types-copy')),
+          matching: find.text(AppLocalizationsEn().healthSyncWrittenTypes),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text(AppLocalizationsEn().healthSyncWrittenTypesHealthConnect),
         findsNothing,
       );
       expect(
@@ -2491,10 +2525,10 @@ void main() {
 
     /// The paragraphs of the "Writing" group, by key, in the order shown.
     List<String> writingKeys(HealthImportPlatform platform) => [
-          if (platform == HealthImportPlatform.healthConnect) ...[
-            'health-sync-written-types-copy',
+          // Issue #1526: both stores list what is written.
+          'health-sync-written-types-copy',
+          if (platform == HealthImportPlatform.healthConnect)
             'health-sync-period-record-copy',
-          ],
           'health-sync-flow-collapse-copy',
           if (platform == HealthImportPlatform.healthConnect)
             'health-sync-symptoms-android-limitation'
@@ -2509,7 +2543,8 @@ void main() {
           'health-sync-revocation-copy',
         ];
 
-    /// Every sentence the write screen showed before the reorder.
+    /// Every sentence the write screen shows: those from before the reorder,
+    /// and the iPhone's list of what is written (Issue #1526).
     List<String> disclosures(HealthImportPlatform platform) =>
         platform == HealthImportPlatform.healthConnect
             ? [
@@ -2525,6 +2560,7 @@ void main() {
             : [
                 l10n.healthSyncWriteIntro,
                 l10n.healthSyncWriteForwardOnly,
+                l10n.healthSyncWrittenTypes,
                 l10n.healthSyncFlowCollapseNote,
                 l10n.healthSyncWriteSymptoms,
                 l10n.healthSyncRevocationNote,
