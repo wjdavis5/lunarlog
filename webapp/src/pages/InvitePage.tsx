@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useSearchParams } from 'react-router';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 
 import pkg from '../../package.json';
 import { useT } from '../i18n/t';
+import { useAuthSession } from '../lib/authQueries';
+import { withNext } from '../lib/next-path';
 import { repullMembershipData } from '../lib/queries';
 import {
   acceptGuardianInvitation,
@@ -35,9 +37,57 @@ import { getSupabaseClient } from '../lib/supabase';
 const WEBAPP_VERSION: string = pkg.version;
 
 export function InvitePage() {
+  const t = useT();
   const [params] = useSearchParams();
+  const location = useLocation();
+  const session = useAuthSession();
+  const configured = getSupabaseClient() !== null;
   const rawToken = params.get('code') ?? '';
-  if ((params.get('kind') ?? '') === 'claim') {
+  const claim = (params.get('kind') ?? '') === 'claim';
+
+  // An invitation can only be read and accepted by an account. A visitor
+  // who is not signed in used to get the accept form anyway: the preview
+  // failed, Accept failed, and nothing on the page said to sign in or
+  // offered a way to. They are told so here, and the sign-in pages bring
+  // them back to this exact link.
+  if (configured && rawToken !== '') {
+    if (session.isPending) {
+      return (
+        <main className="page">
+          <h1 className="display">
+            {t(claim ? 'sharingClaimProfileTitle' : 'sharingAcceptInviteTitle')}
+          </h1>
+          <p className="body" aria-busy="true">
+            {t('sharingAcceptInvitePreviewLoading')}
+          </p>
+        </main>
+      );
+    }
+    // A session check that failed outright (offline, a server error) is
+    // treated as signed out: the visitor can still try to sign in, where a
+    // page stuck on "loading" would give them nothing to do.
+    if (session.data?.signedIn !== true) {
+      const here = `${location.pathname}${location.search}`;
+      return (
+        <main className="page welcome">
+          <h1 className="welcome-title">
+            {t(claim ? 'sharingClaimProfileTitle' : 'sharingAcceptInviteTitle')}
+          </h1>
+          <p className="welcome-lead">{t('webInviteSignedOutBody')}</p>
+          <div className="welcome-actions">
+            <Link className="btn btn-primary" to={withNext('/sign-in', here)}>
+              {t('accountSectionSignIn')}
+            </Link>
+            <Link className="nav-link" to={withNext('/sign-up', here)}>
+              {t('accountSignInToggleCreateInstead')}
+            </Link>
+          </div>
+        </main>
+      );
+    }
+  }
+
+  if (claim) {
     return <ClaimTransferForm rawToken={rawToken} />;
   }
   return <AcceptInviteForm rawToken={rawToken} />;

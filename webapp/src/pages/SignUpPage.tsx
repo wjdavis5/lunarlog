@@ -1,7 +1,8 @@
-import { Link, useNavigate } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { useState, type FormEvent } from 'react';
 
 import { useT } from '../i18n/t';
+import { safeNextPath, withNext } from '../lib/next-path';
 import { AuthError } from '../lib/auth';
 import { authCopyFor, kMinPasswordLength } from '../lib/authCopy';
 import { useSendOtp, useSignUpMutation } from '../lib/authQueries';
@@ -19,6 +20,9 @@ const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export function SignUpPage() {
   const t = useT();
   const navigate = useNavigate();
+  const [searchParameters] = useSearchParams();
+  // The return path a page handed over (see SignInPage); validated.
+  const next = safeNextPath(searchParameters.get('next'));
   const signUp = useSignUpMutation();
   const sendOtp = useSendOtp();
 
@@ -53,7 +57,14 @@ export function SignUpPage() {
     sendOtp.reset();
     signUp.mutate(
       { email: email.trim(), password },
-      { onSuccess: (result) => setConfirmationSent(result === 'confirmation_required') },
+      {
+        onSuccess: (result) => {
+          setConfirmationSent(result === 'confirmation_required');
+          // An account that needs no confirmation is signed in already:
+          // carry on to where the visitor was headed.
+          if (result === 'signed_in' && next !== null) navigate(next, { replace: true });
+        },
+      },
     );
   };
 
@@ -76,7 +87,12 @@ export function SignUpPage() {
       { email: email.trim(), createUser: true },
       {
         onSuccess: () =>
-          navigate(`/sign-in/code?email=${encodeURIComponent(email.trim())}&mode=signup`),
+          navigate(
+            withNext(
+              `/sign-in/code?email=${encodeURIComponent(email.trim())}&mode=signup`,
+              next,
+            ),
+          ),
       },
     );
   };
@@ -88,7 +104,12 @@ export function SignUpPage() {
         <div className="auth-info">
           <p className="body">{t('accountSignInConfirmEmailInfo')}</p>
           <div className="auth-links">
-            <Link to={`/sign-in/code?email=${encodeURIComponent(email.trim())}&mode=signup`}>
+            <Link
+              to={withNext(
+                `/sign-in/code?email=${encodeURIComponent(email.trim())}&mode=signup`,
+                next,
+              )}
+            >
               {t('accountSignInVerifyCodeAction')}
             </Link>
           </div>
@@ -144,7 +165,7 @@ export function SignUpPage() {
         </form>
       )}
       <div className="auth-links">
-        <Link to="/sign-in">{t('accountSignInToggleHaveAccount')}</Link>
+        <Link to={withNext('/sign-in', next)}>{t('accountSignInToggleHaveAccount')}</Link>
       </div>
     </main>
   );

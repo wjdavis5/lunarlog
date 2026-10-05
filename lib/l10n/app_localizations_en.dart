@@ -5694,6 +5694,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get webDayUnsavedWarning => 'Leave with unsaved changes?';
 
   @override
+  String get webInviteSignedOutBody =>
+      'You\'ve been invited to a shared profile in lunarlog. Sign in, or create an account, to see the invitation and accept it.';
+
+  @override
   String get webHomeNeedsSignIn =>
       'Sign in to log a day, look back over the calendar, and manage guardians for the profiles you keep or share.';
 

@@ -8931,6 +8931,12 @@ abstract class AppLocalizations {
   /// **'Leave with unsaved changes?'**
   String get webDayUnsavedWarning;
 
+  /// The web invitation page for a visitor who is not signed in. An invitation can only be read and accepted by an account, so the page says so and offers both ways in; the sign-in pages return here afterwards.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'ve been invited to a shared profile in lunarlog. Sign in, or create an account, to see the invitation and accept it.'**
+  String get webInviteSignedOutBody;
+
   /// Issue #1253: the web home's signed-out state (the sign-in itself is #1250). The one sentence under the welcome title: what signing in to the web client lets the reader do.
   ///
   /// In en, this message translates to:

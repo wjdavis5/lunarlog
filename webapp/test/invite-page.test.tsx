@@ -50,6 +50,27 @@ vi.mock('../src/lib/queries', async (importOriginal) => ({
   repullMembershipData: queriesMocks.repullMembershipData,
 }));
 
+// The page now asks whether anyone is signed in before it shows a form.
+// Signed in is the default here, as it was implicitly for every test below;
+// the signed-out cases flip it.
+const sessionState = vi.hoisted(() => ({
+  value: { data: { signedIn: true, email: 'a@b.co', userId: 'me' } } as {
+    data: { signedIn: boolean; email: string | null; userId: string | null } | undefined;
+    isError?: boolean;
+  },
+}));
+
+vi.mock('../src/lib/authQueries', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  // The slice of the query result the page reads: pending until there is
+  // an answer, unless the check itself failed.
+  useAuthSession: () => ({
+    data: sessionState.value.data,
+    isError: sessionState.value.isError === true,
+    isPending: sessionState.value.data === undefined && sessionState.value.isError !== true,
+  }),
+}));
+
 function renderAt(path: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -59,6 +80,7 @@ function renderAt(path: string) {
           <Routes>
             <Route path="/" element={<div>home</div>} />
             <Route path="/invite" element={<InvitePage />} />
+            <Route path="/sign-in" element={<div>sign-in page</div>} />
           </Routes>
         </MemoryRouter>
       </QueryClientProvider>
@@ -69,6 +91,78 @@ function renderAt(path: string) {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  sessionState.value = { data: { signedIn: true, email: 'a@b.co', userId: 'me' } };
+});
+
+// An invited guardian is often someone who has never used lunarlog. They
+// arrive at this page signed out. It used to show them the accept form
+// anyway: the preview failed, Accept failed, and nothing said to sign in.
+describe('InvitePage for a visitor who is not signed in', () => {
+  const next = (path: string) => `next=${encodeURIComponent(path)}`;
+
+  it('says to sign in, and offers both ways in with this invitation as the return path', () => {
+    sessionState.value = { data: { signedIn: false, email: null, userId: null } };
+    renderAt(`/invite?code=${ULID}`);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+      messages['sharingAcceptInviteTitle'],
+    );
+    expect(screen.getByText(messages['webInviteSignedOutBody'])).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: messages['accountSectionSignIn'] }),
+    ).toHaveAttribute('href', `/sign-in?${next(`/invite?code=${ULID}`)}`);
+    expect(
+      screen.getByRole('link', { name: messages['accountSignInToggleCreateInstead'] }),
+    ).toHaveAttribute('href', `/sign-up?${next(`/invite?code=${ULID}`)}`);
+  });
+
+  it('shows no accept form and makes no request', () => {
+    sessionState.value = { data: { signedIn: false, email: null, userId: null } };
+    renderAt(`/invite?code=${ULID}`);
+    expect(
+      screen.queryByRole('button', { name: messages['sharingAcceptInviteAccept'] }),
+    ).toBeNull();
+    expect(sharingMocks.previewGuardianInvitation).not.toHaveBeenCalled();
+    expect(sharingMocks.acceptGuardianInvitation).not.toHaveBeenCalled();
+  });
+
+  it('keeps the whole link in the return path for an ownership claim', () => {
+    sessionState.value = { data: { signedIn: false, email: null, userId: null } };
+    renderAt(`/invite?code=${ULID}&kind=claim`);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+      messages['sharingClaimProfileTitle'],
+    );
+    expect(
+      screen.getByRole('link', { name: messages['accountSectionSignIn'] }),
+    ).toHaveAttribute('href', `/sign-in?${next(`/invite?code=${ULID}&kind=claim`)}`);
+    expect(sharingMocks.acceptOwnershipTransfer).not.toHaveBeenCalled();
+  });
+
+  it('waits, without a form, while the session is still being worked out', () => {
+    sessionState.value = { data: undefined };
+    renderAt(`/invite?code=${ULID}`);
+    expect(screen.getByText(messages['sharingAcceptInvitePreviewLoading'])).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: messages['sharingAcceptInviteAccept'] }),
+    ).toBeNull();
+    expect(screen.queryByRole('link', { name: messages['accountSectionSignIn'] })).toBeNull();
+    expect(sharingMocks.previewGuardianInvitation).not.toHaveBeenCalled();
+  });
+
+  it('treats a session check that failed as signed out, not as loading for ever', () => {
+    sessionState.value = { data: undefined, isError: true };
+    renderAt(`/invite?code=${ULID}`);
+    expect(screen.getByText(messages['webInviteSignedOutBody'])).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: messages['accountSectionSignIn'] }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(messages['sharingAcceptInvitePreviewLoading'])).toBeNull();
+  });
+
+  it('still reports a link with no code as invalid, signed in or not', () => {
+    sessionState.value = { data: { signedIn: false, email: null, userId: null } };
+    renderAt('/invite');
+    expect(screen.getByText(messages['sharingFailureInvalidToken'])).toBeInTheDocument();
+  });
 });
 
 describe('AcceptInviteForm (issue #1255)', () => {
