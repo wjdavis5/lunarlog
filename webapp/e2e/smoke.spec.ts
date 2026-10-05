@@ -45,9 +45,14 @@ test('the shell renders, is accessible, and violates nothing', async ({ page }) 
   );
   await expect(page.getByText(messages['webHomeNeedsSignIn'] ?? '')).toBeVisible();
   await expect(page.getByText(messages['webWelcomeStorageNote'] ?? '')).toBeVisible();
+  // Signed out, the header offers the way home and the way in — and no
+  // "Today" link, which names the signed-in home.
   await expect(
-    page.getByRole('link', { name: messages['calendarTodayTooltip'] }),
-  ).toBeVisible();
+    page.getByRole('banner').getByRole('link', { name: messages['gateLockScreenAppTitle'] }),
+  ).toHaveAttribute('href', '/');
+  await expect(
+    page.getByRole('banner').getByRole('link', { name: messages['calendarTodayTooltip'] }),
+  ).toHaveCount(0);
 
   const axeResults = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
   expect(axeResults.violations).toEqual([]);

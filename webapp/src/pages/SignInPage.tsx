@@ -207,7 +207,6 @@ export function SignInPage() {
       <div className="auth-links">
         <Link to="/forgot-password">{t('accountSignInForgotPasswordAction')}</Link>
         <Link to="/sign-up">{t('accountSignInToggleCreateInstead')}</Link>
-        <Link to="/">{t('calendarTodayTooltip')}</Link>
       </div>
     </main>
   );
