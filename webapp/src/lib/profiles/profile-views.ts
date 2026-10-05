@@ -283,16 +283,35 @@ export function estimateDateText(options: {
 }
 
 /**
+ * Whether [iso] is a real civil date written `yyyy-MM-dd`: four-digit year,
+ * and a day that exists (no 31 February).
+ *
+ * A date field hands over more than that. Chrome's year box takes up to six
+ * digits, so one extra keystroke yields `20261-10-05`, which is not a date
+ * anything here can format, store or look up.
+ */
+export function isCivilDate(iso: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return false;
+  const time = Date.parse(`${iso}T00:00:00Z`);
+  return !Number.isNaN(time) && new Date(time).toISOString().slice(0, 10) === iso;
+}
+
+/**
  * A formatter for civil dates (`yyyy-MM-dd`: no time, no zone). The date is
  * read as UTC midnight, so it must be written in UTC too — in the browser's
  * own zone anyone west of UTC would read the day before (issue #1389).
+ *
+ * It never throws. A value that is not a civil date comes back as it was
+ * given: `Intl.DateTimeFormat` throws on an invalid date, and these
+ * formatters run while a page renders, where a throw takes the whole page
+ * down (issue #1473).
  */
 export function isoDateFormatter(
   locale: string,
   options: Omit<Intl.DateTimeFormatOptions, 'timeZone'>,
 ): (iso: string) => string {
   const format = new Intl.DateTimeFormat(locale, { ...options, timeZone: 'UTC' });
-  return (iso) => format.format(new Date(`${iso}T00:00:00Z`));
+  return (iso) => (isCivilDate(iso) ? format.format(new Date(`${iso}T00:00:00Z`)) : iso);
 }
 
 /** Civil-date arithmetic on `yyyy-MM-dd` strings (no time zones involved). */

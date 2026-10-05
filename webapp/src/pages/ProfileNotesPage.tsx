@@ -20,7 +20,7 @@ import {
   type CareNoteRow,
   type GuardianNoteRow,
 } from '../lib/sharing';
-import { isoDateFormatter, profileHomePath } from '../lib/profiles/profile-views';
+import { isCivilDate, isoDateFormatter, profileHomePath } from '../lib/profiles/profile-views';
 import { roleCanLog } from '../lib/roles';
 import { getSupabaseClient } from '../lib/supabase';
 
@@ -121,8 +121,12 @@ export function ProfileNotesPage() {
           id="notes-date"
           type="date"
           value={localDate}
+          // Four-digit years only. The field itself allows more, and the
+          // check below is what holds: a value that is not a real date
+          // never becomes the page's date (issue #1473).
+          max="9999-12-31"
           onChange={(event) => {
-            if (event.target.value !== '') setLocalDate(event.target.value);
+            if (isCivilDate(event.target.value)) setLocalDate(event.target.value);
           }}
         />
       </div>
