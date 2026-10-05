@@ -328,6 +328,11 @@ void main() {
       expect(iconFinder, findsOneWidget);
       final iconTop = tester.getTopLeft(iconFinder).dy;
       expect(iconTop, greaterThanOrEqualTo(59.0));
+      // The asset is a full-bleed square; it is shown with rounded corners.
+      expect(
+        find.ancestor(of: iconFinder, matching: find.byType(ClipRRect)),
+        findsOneWidget,
+      );
 
       // Advance to Card 2: heading must be >= 59 (not drawn through status bar / island)
       await tester.tap(find.byKey(const ValueKey('first-run-next')));
