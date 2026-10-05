@@ -27,38 +27,45 @@ const browserLive = webAppIsLive();
 ---
 
 <BaseLayout title="lunarlog" description={tagline}>
-  <section class="hero">
-    <h1 class="hero__title">Track a cycle, together.</h1>
-    <p class="hero__tagline">{tagline}</p>
-    {
-      browserLive ? (
-        <a class="button" href={browserUrl}>Use lunarlog in your browser</a>
-      ) : (
-        <>
-          <p class="hero__notice">
-            The browser version is not available right now. It will be
-            back at {WEB_APP_HOST}.
-          </p>
-          <a class="button" href="/guides/">Read the guides</a>
-        </>
-      )
-    }
-    <p class="hero__fineprint">Free for personal use.</p>
-  </section>
+  {
+    /* The words and the product open the page together: side by side on
+       a wide window, one above the other on a narrow one (global.css,
+       .hero-band). */
+  }
+  <div class="hero-band">
+    <section class="hero">
+      <h1 class="hero__title">Track a cycle, together.</h1>
+      <p class="hero__tagline">{tagline}</p>
+      {
+        browserLive ? (
+          <a class="button" href={browserUrl}>Use lunarlog in your browser</a>
+        ) : (
+          <>
+            <p class="hero__notice">
+              The browser version is not available right now. It will be
+              back at {WEB_APP_HOST}.
+            </p>
+            <a class="button" href="/guides/">Read the guides</a>
+          </>
+        )
+      }
+      <p class="hero__fineprint">Free for personal use.</p>
+    </section>
 
-  <figure class="screenshot-figure screenshot-figure--hero">
-    <Screenshot
-      screen="today"
-      device="iphone-67"
-      theme="light"
-      loading="eager"
-      alt="The lunarlog Today screen: cycle day, flow logged, and the estimate for the next period with its confidence tier."
-    />
-    <figcaption>
-      The Today screen. The estimate is computed on the device from the
-      history logged on its profile.
-    </figcaption>
-  </figure>
+    <figure class="screenshot-figure screenshot-figure--hero">
+      <Screenshot
+        screen="today"
+        device="iphone-67"
+        theme="light"
+        loading="eager"
+        alt="The lunarlog Today screen: cycle day, flow logged, and the estimate for the next period with its confidence tier."
+      />
+      <figcaption>
+        The Today screen. The estimate is computed on the device from the
+        history logged on its profile.
+      </figcaption>
+    </figure>
+  </div>
 
   <section class="home-section">
     <h2>Track a cycle together</h2>

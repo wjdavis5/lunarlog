@@ -444,6 +444,31 @@ main {
   margin-top: 2rem;
 }
 
+/* The home page's opening. On a wide window the Today screen stands beside
+ * the headline, so the first thing in view is the words and the product
+ * together. Stacked, the capture started below the button and a desktop
+ * visitor saw a half-empty window with the top of a phone at its foot.
+ * 48rem is past the content column's own width, so the two columns are the
+ * same size at every width that has them. Below it nothing changes. */
+@media (min-width: 48rem) {
+  .hero-band {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 14.5rem;
+    column-gap: 2.5rem;
+    align-items: start;
+  }
+
+  /* Two lines, broken where the comma already pauses it. */
+  .hero-band .hero__title {
+    text-wrap: balance;
+  }
+
+  /* Level with the headline's capitals, not the top of its line box. */
+  .hero-band .screenshot-figure--hero {
+    margin: 0.625rem 0 0;
+  }
+}
+
 /* A phone capture is more than twice as tall as it is wide. Filling the
  * text column it drew 640px wide and 1,385px tall on a desktop: more than a
  * full window of one screenshot, most of it the screen's empty lower half.
