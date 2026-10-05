@@ -631,21 +631,18 @@ class _OverviewPanelState extends State<OverviewPanel>
     final messenger = ScaffoldMessenger.of(context);
     await repository.save(entry);
     if (!mounted) return;
-    // A tap is answered at once: whatever is on screen (the first tap's
-    // "recorded" message, when this is a second tap) leaves first, so the
-    // reply never queues unseen behind it.
-    messenger.hideCurrentSnackBar();
-    // Issue #1412: the shared builder names what the tap did — a day
+    // Issue #1412: the shared reply names what the tap did — a day
     // already logged at this flow or heavier is reported as unchanged
-    // rather than as a freshly recorded medium-flow start.
-    messenger.showSnackBar(
-      quickLogSnackBar(
-        l10n: AppLocalizations.of(context),
-        previousFlow: previous?.flow,
-        contentKey: const ValueKey('today-card-logged-snackbar'),
-        onUndo: () => _undoLogToday(previous, today),
-        accessibleNavigation: MediaQuery.accessibleNavigationOf(context),
-      ),
+    // rather than as a freshly recorded medium-flow start. A second tap is
+    // answered at once, and no Undo this tap did not show is ever taken
+    // away (issue #1472): see [showQuickLogSnackBar].
+    showQuickLogSnackBar(
+      messenger,
+      l10n: AppLocalizations.of(context),
+      previousFlow: previous?.flow,
+      contentKey: const ValueKey('today-card-logged-snackbar'),
+      onUndo: () => _undoLogToday(previous, today),
+      accessibleNavigation: MediaQuery.accessibleNavigationOf(context),
     );
   }
 

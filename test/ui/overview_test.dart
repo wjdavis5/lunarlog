@@ -3035,9 +3035,11 @@ void main() {
       await disposeOverview(tester, h);
     });
 
-    testWidgets('a second tap straight after the first is answered at once: '
-        'the first tap creates the entry, and the "already logged" reply '
-        'replaces its snackbar instead of queueing behind it', (tester) async {
+    // Issue #1472. This case used to assert the opposite: that the second
+    // tap's "already logged" reply replaced the first tap's snackbar. That
+    // took away the only Undo for the write the first tap had just made.
+    testWidgets('a second tap straight after the first keeps the Undo for '
+        'the write the first tap made', (tester) async {
       final h = await pumpOverview(
         tester,
         seed: (entries, profileId) =>
@@ -3046,34 +3048,66 @@ void main() {
       expect(await h.entries.find(h.profile.id, kToday), isNull);
 
       // First tap: today had no entry, so this one creates it and offers
-      // Undo -- the snackbar the second tap's reply used to wait behind.
+      // Undo.
       await tester.tap(find.byKey(const ValueKey('today-card-log-action')));
       await tester.pumpAndSettle();
       expect(find.text(kRecordedSnackbar), findsOneWidget);
       expect(find.text('Undo'), findsOneWidget);
 
-      // Second tap, no waiting in between.
+      // Second tap, no waiting in between. It changes nothing.
       await tester.tap(find.byKey(const ValueKey('today-card-log-action')));
       await tester.pumpAndSettle();
 
       expect(
-        find.text(kAlreadyLoggedSnackbar),
+        find.text(kRecordedSnackbar),
         findsOneWidget,
-        reason:
-            'the reply to a tap shows at once, not after the first '
-            'snackbar has run out its time',
+        reason: 'the message on screen already says the day is recorded',
       );
-      expect(find.text(kRecordedSnackbar), findsNothing);
-      expect(
-        find.text('Undo'),
-        findsNothing,
-        reason: 'the second tap changed nothing, so it offers no Undo',
-      );
+      expect(find.text(kAlreadyLoggedSnackbar), findsNothing);
       final todays = (await h.entries.listForProfile(h.profile.id))
           .where((e) => e.localDate == kToday)
           .toList();
       expect(todays, hasLength(1));
       expect(todays.single.flow, FlowLevel.medium);
+
+      // The Undo is still there, and still takes back the first tap.
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(await h.entries.find(h.profile.id, kToday), isNull);
+      // No "already logged" was left waiting behind it.
+      expect(find.text(kAlreadyLoggedSnackbar), findsNothing);
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('a second tap on a day that was already logged is answered '
+        'at once, not queued behind the first reply', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        seed: (entries, profileId) async {
+          await seedEpisodes(entries, profileId, kActiveStarts);
+          await entries.save(
+            DayEntry(
+              id: '',
+              profileId: profileId,
+              localDate: kToday,
+              tz: 'America/Chicago',
+              flow: FlowLevel.heavy,
+              updatedAt: DateTime.now().toUtc(),
+            ),
+          );
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('today-card-log-action')));
+      await tester.pumpAndSettle();
+      expect(find.text(kAlreadyLoggedSnackbar), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('today-card-log-action')));
+      await tester.pumpAndSettle();
+      expect(find.text(kAlreadyLoggedSnackbar), findsOneWidget);
+      // One on screen and none waiting behind it.
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      expect(find.text(kAlreadyLoggedSnackbar), findsNothing);
       await disposeOverview(tester, h);
     });
   });

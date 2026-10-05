@@ -41,12 +41,14 @@ SnackBar actionSnackBar({
   required String actionLabel,
   required VoidCallback onAction,
   required bool accessibleNavigation,
+  VoidCallback? onVisible,
 }) {
   return SnackBar(
     key: key,
     content: content,
     duration: kActionSnackBarDuration,
     persist: accessibleNavigation,
+    onVisible: onVisible,
     action: SnackBarAction(label: actionLabel, onPressed: onAction),
   );
 }

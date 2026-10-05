@@ -269,9 +269,11 @@ void main() {
       await teardown(tester, db);
     });
 
-    testWidgets('a second widget tap straight after the first is answered '
-        'at once: its "already logged" reply replaces the first tap\'s '
-        'snackbar instead of queueing behind it', (tester) async {
+    // Issue #1472. This case used to assert the opposite: that the second
+    // tap's "already logged" reply replaced the first tap's snackbar, which
+    // took away the only Undo for the write the first tap had just made.
+    testWidgets('a second widget tap straight after the first keeps the Undo '
+        'for the write the first tap made', (tester) async {
       final store = _FakeWidgetStore();
       final (db, profileId) = await _pumpApp(tester, store);
 
@@ -284,26 +286,30 @@ void main() {
       );
       expect(find.byType(SnackBarAction), findsOneWidget);
 
-      // Second tap, no waiting in between.
+      // Second tap, no waiting in between. It changes nothing.
       store.emit(Uri.parse(widgetQuickLogUri(profileId)));
       await tester.pumpAndSettle();
 
       expect(snackbarContent(), findsOneWidget);
       expect(
         tester.widget<Text>(snackbarContent()).data,
-        "Today's flow was already logged, so it stays as it was.",
-        reason: 'the reply shows at once, not after the first snackbar '
-            'has run out its time',
+        'Recorded a medium-flow period start for today.',
+        reason: 'the message on screen already says the day is recorded',
       );
-      expect(
-        find.text('Recorded a medium-flow period start for today.'),
-        findsNothing,
-      );
-      expect(find.byType(SnackBarAction), findsNothing,
-          reason: 'the second tap changed nothing, so it offers no Undo');
       expect(
           (await _entriesOf(db).find(profileId, LocalDate.today()))!.flow,
           FlowLevel.medium);
+
+      // The Undo is still there, and still takes back the first tap.
+      await tester.tap(find.byType(SnackBarAction));
+      await tester.pumpAndSettle();
+      expect(await _entriesOf(db).find(profileId, LocalDate.today()), isNull,
+          reason: 'the Undo restores the empty prior day (a tombstone)');
+      // No "already logged" was left waiting behind it.
+      expect(
+        find.text("Today's flow was already logged, so it stays as it was."),
+        findsNothing,
+      );
       await teardown(tester, db);
     });
 
