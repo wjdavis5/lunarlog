@@ -337,7 +337,10 @@ void main() {
       );
 
       expect(
-        find.text("Export Riley's clinical summary."),
+        find.text(
+          "Riley's cycle and symptom history as a file for a health records "
+          'system.',
+        ),
         findsOneWidget,
         reason: 'the archived profile must not count toward "several"',
       );
@@ -363,7 +366,15 @@ void main() {
         };
       await _pump(tester, profiles: profiles, dayEntries: dayEntries);
 
-      expect(find.text("Export Riley's clinical summary."), findsOneWidget);
+      // What the file is and who it is for, not the title said again
+      // ("Export Riley's clinical summary.").
+      expect(
+        find.text(
+          "Riley's cycle and symptom history as a file for a health records "
+          'system.',
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets(
@@ -389,9 +400,19 @@ void main() {
       );
 
       // Generic subtitle, no single name, since the tile can't yet know
-      // which profile will be chosen.
-      expect(find.text("Export Riley's clinical summary."), findsNothing);
-      expect(find.text("Export Jamie's clinical summary."), findsNothing);
+      // which profile will be chosen. It says what the file is for in
+      // plain words: it used to read "Share an IPS-shaped FHIR R4
+      // document with your cycle data, coded and self-reported."
+      expect(
+        find.text(
+          "One profile's cycle and symptom history as a file for a health "
+          'records system.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Riley'), findsNothing);
+      expect(find.textContaining('Jamie'), findsNothing);
+      expect(find.textContaining('IPS'), findsNothing);
 
       await tester.tap(key('clinical-export-fhir'));
       await tester.pumpAndSettle();

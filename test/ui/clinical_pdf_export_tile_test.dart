@@ -178,7 +178,9 @@ void main() {
     final tile = tester.widget<ListTile>(key('clinical-pdf-export'));
     expect(tile.enabled, isTrue);
     expect(
-      find.text("Export Riley's clinical summary as a PDF."),
+      find.text(
+        "A summary of Riley's cycle and symptom history for an appointment.",
+      ),
       findsOneWidget,
     );
   });
@@ -197,6 +199,16 @@ void main() {
         _profile('p2', displayName: 'Alex'),
       ]),
       dayEntries: dayEntries,
+    );
+    // With several profiles the subtitle names none of them, and says what
+    // the summary is for (it used to read "Share an on-device PDF summary
+    // of logged cycle data.").
+    expect(
+      find.text(
+        "A summary of one profile's cycle and symptom history for an "
+        'appointment.',
+      ),
+      findsOneWidget,
     );
     await tester.tap(key('clinical-pdf-export'));
     await tester.pumpAndSettle();
