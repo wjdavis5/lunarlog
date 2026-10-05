@@ -313,6 +313,83 @@ void main() {
     await disposeActivity(tester, h);
   });
 
+  // The feed showed stored values where every other screen shows a date:
+  // "for 2026-08-19" for the day a row is about, and "2026-08-20" for a
+  // change more than a week old. The day sheet a row opens says
+  // "Wed Aug 19 2026" for the same day.
+  group('rows name days the way the rest of the app does', () {
+    Future<void> seedTwo(LunarLogDatabase db, String profileId) async {
+      await seedShared(db, profileId);
+      await db.storage.applyRemoteRows([
+        // Changed 11 days before kNow: past the relative ages.
+        entryRow(profileId, 'e-old', LocalDate(2026, 8, 18),
+            updatedAt: DateTime.utc(2026, 8, 20, 12),
+            loggedByUserId: 'user-mom'),
+        // Changed 2 days before kNow.
+        entryRow(profileId, 'e-new', LocalDate(2026, 8, 19),
+            updatedAt: DateTime.utc(2026, 8, 29, 12),
+            loggedByUserId: 'user-dad'),
+      ]);
+    }
+
+    String subtitleOf(WidgetTester tester, String id) => (tester
+            .widget<ListTile>(find.byKey(ValueKey('activity-item-entry:$id')))
+            .subtitle as Text)
+        .data!;
+
+    String stampOf(WidgetTester tester, String id) => tester
+        .widget<Text>(
+          find
+              .descendant(
+                of: find.byKey(ValueKey('activity-item-entry:$id')),
+                matching: find.byType(Text),
+              )
+              .last,
+        )
+        .data!;
+
+    testWidgets('the day a row is about is written as the day sheet writes '
+        'it, never as the stored yyyy-MM-dd', (tester) async {
+      final h = await pumpActivity(tester, seed: seedTwo);
+
+      expect(subtitleOf(tester, 'e-new'), startsWith('for Wed Aug 19 2026'));
+      expect(subtitleOf(tester, 'e-old'), startsWith('for Tue Aug 18 2026'));
+      expect(find.textContaining('2026-08'), findsNothing);
+      await disposeActivity(tester, h);
+    });
+
+    testWidgets('it follows the Date format setting, as the day sheet does',
+        (tester) async {
+      final h = await pumpActivity(
+        tester,
+        seed: (db, profileId) async {
+          await seedTwo(db, profileId);
+          await DriftSettingsStore(db.storage)
+              .set(SettingsKeys.dateFormat, 'day_month');
+        },
+      );
+
+      expect(subtitleOf(tester, 'e-new'), startsWith('for Wed 19 Aug 2026'));
+
+      // Changed while the screen is open: the rows follow.
+      await DriftSettingsStore(h.db.storage)
+          .set(SettingsKeys.dateFormat, 'month_day');
+      await tester.pumpAndSettle();
+      expect(subtitleOf(tester, 'e-new'), startsWith('for Wed Aug 19 2026'));
+      await disposeActivity(tester, h);
+    });
+
+    testWidgets('a change in the last week keeps its relative age; an older '
+        'one is stamped with a date in the reader\u2019s locale',
+        (tester) async {
+      final h = await pumpActivity(tester, seed: seedTwo);
+
+      expect(stampOf(tester, 'e-new'), '2d ago');
+      expect(stampOf(tester, 'e-old'), '8/20/2026');
+      await disposeActivity(tester, h);
+    });
+  });
+
   testWidgets('the current user\u2019s own rows read as "you" (AC2)',
       (tester) async {
     final auth = FakeAuthService()

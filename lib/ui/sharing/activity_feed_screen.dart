@@ -15,10 +15,11 @@
 /// anything from it).
 library;
 
-import 'dart:async' show unawaited;
+import 'dart:async' show StreamSubscription, unawaited;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/domain/calendar_preferences.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/activity/activity_feed.dart';
 import 'package:lunarlog/domain/activity/activity_feed_snapshot.dart';
@@ -27,11 +28,13 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/async_snapshot_view.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/l10n/activity_actor_copy.dart';
+import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:provider/provider.dart';
@@ -82,11 +85,22 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
   /// Guards the one-time stamping pass after the first snapshot.
   bool _seenStamped = false;
 
+  /// The Calendar → "Date format" preference (Issue #226), watched the way
+  /// the day sheet watches it, so a row names its day in the order the
+  /// sheet it opens does. `system` until the ambient [SettingsStore]
+  /// answers, and for a harness that provides none.
+  DateFormatPreference _dateFormat = DateFormatPreference.system;
+  StreamSubscription<String?>? _dateFormatSub;
+
   @override
   void initState() {
     super.initState();
     _feedStream = widget.repository.watch(widget.profile.id);
     _entriesRepository = context.read<DayEntriesRepository>();
+    _dateFormatSub = context
+        .read<SettingsStore?>()
+        ?.watch(SettingsKeys.dateFormat)
+        .listen(_onDateFormat);
     final auth = context.read<AuthController?>();
     if (auth != null) {
       _currentUserId = auth.currentUserId;
@@ -95,8 +109,14 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
     }
   }
 
+  void _onDateFormat(String? stored) {
+    if (!mounted) return;
+    setState(() => _dateFormat = DateFormatPreference.fromStored(stored));
+  }
+
   @override
   void dispose() {
+    unawaited(_dateFormatSub?.cancel());
     _auth?.removeListener(_onAuthChanged);
     _auth = null;
     super.dispose();
@@ -307,7 +327,7 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
     final l10n = AppLocalizations.of(context);
     final parts = <String>[
       if (item.localDateIso != null)
-        l10n.sharingActivityFeedForDate(item.localDateIso!),
+        l10n.sharingActivityFeedForDate(_dayLabel(item.localDateIso!)),
       if (item.kind == ActivityKind.updated && item.secondaryActorId != null)
         l10n.sharingActivityFeedLoggedBy(
           activityActorLabel(
@@ -328,6 +348,31 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
     ];
     return parts.join(' \u2022 ');
   }
+
+  /// The day a row is about, named as the day sheet it opens names a date
+  /// standing alone ("Wed Aug 19 2026", in the person's own day/month
+  /// order), never the stored `yyyy-MM-dd` string, which is what this row
+  /// showed. A value that is not a date is shown as it is rather than
+  /// dropped.
+  String _dayLabel(String localDateIso) {
+    final date = LocalDate.tryParseIso(localDateIso);
+    if (date == null) return localDateIso;
+    return dates.formatLocalDateWeekdayDayDateYear(
+      date,
+      locale: dates.calendarLocale(context),
+      preference: _dateFormat,
+    );
+  }
+
+  /// When the change was made: a relative age for the first week, then the
+  /// date in the person's locale ("8/20/2026"), the form the care notes
+  /// stamp theirs with. It was a `yyyy-MM-dd` string.
+  String _ageLabel(ActivityItem item) =>
+      relativeActivityAge(item.occurredAt, widget.nowProvider ?? DateTime.now) ??
+      dates.formatShortDate(
+        item.occurredAt.toLocal(),
+        locale: dates.calendarLocale(context),
+      );
 
   String _mergeSubtitle(ActivityItem item, ActivityFeedSnapshot data) {
     final l10n = AppLocalizations.of(context);
@@ -357,10 +402,7 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Text(
-          relativeActivityAge(
-            item.occurredAt,
-            widget.nowProvider ?? DateTime.now,
-          ),
+          _ageLabel(item),
           style: theme.textTheme.labelSmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),

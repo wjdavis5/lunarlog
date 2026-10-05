@@ -218,15 +218,15 @@ bool isActivityNew(ActivityItem item, DateTime? lastSeen) =>
     lastSeen != null && item.occurredAt.isAfter(lastSeen);
 
 /// Compact relative age for a change stamp: "just now", "5m ago", "3h ago",
-/// "2d ago", then an absolute local date once a week out. [now] is injected
-/// so tests are deterministic.
-String relativeActivityAge(DateTime at, DateTime Function() now) {
+/// "2d ago". Null once a week out: from there the stamp is shown as a date,
+/// and a date is the screen's to format (in the person's locale), so this
+/// no longer returns a `yyyy-MM-dd` string of its own. [now] is injected so
+/// tests are deterministic.
+String? relativeActivityAge(DateTime at, DateTime Function() now) {
   final age = now().toUtc().difference(at.toUtc());
   if (age.isNegative || age.inMinutes < 1) return 'just now';
   if (age.inHours < 1) return '${age.inMinutes}m ago';
   if (age.inDays < 1) return '${age.inHours}h ago';
   if (age.inDays < 7) return '${age.inDays}d ago';
-  final local = at.toLocal();
-  String two(int n) => n.toString().padLeft(2, '0');
-  return '${local.year}-${two(local.month)}-${two(local.day)}';
+  return null;
 }
