@@ -313,6 +313,11 @@ abstract interface class SharingService {
   /// server requires the role to be `caregiver` for it and stamps the
   /// accepted membership with the subject marker. False (the default) is
   /// the ordinary helper invitation, unchanged.
+  ///
+  /// Issue #1499: a profile has one subject. The server refuses a subject
+  /// invitation while the profile has an accepted subject (it surfaces as
+  /// [SharingFailure.other]), and one created earlier but accepted after
+  /// someone became the subject joins its invitee without the marker.
   Future<GeneratedInvite> createInvite({
     required String profileId,
     required GuardianRole role,

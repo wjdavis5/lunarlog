@@ -108,6 +108,14 @@ select is(
   'The invitation row records the subject preset'
 );
 
+-- A second subject invitation, for section 4's preview. It has to be
+-- created now, while the profile has no subject: issue #1499 refuses a
+-- subject invitation once one is accepted (self_profile_subject_test.sql).
+select tests.authenticate_as('mom');
+select public.create_guardian_invitation(
+  tests.ulid(950), 'caregiver', 'Riley again', pg_temp.token(12), 48, true
+);
+
 select tests.authenticate_as('daughter');
 select is(
   (select public.accept_guardian_invitation(pg_temp.token(11), 'Riley')
@@ -125,14 +133,10 @@ select is(
 
 -- ---------------------------------------------------------------------------
 -- 4. Preview carries the marker (so the accept sheet can say "this is
---    your profile" before the recipient commits). A second live subject
---    invite previews is_subject true; the result carries exactly four
---    keys.
+--    your profile" before the recipient commits). The second live subject
+--    invite (created in section 3) previews is_subject true; the result
+--    carries exactly four keys.
 -- ---------------------------------------------------------------------------
-select tests.authenticate_as('mom');
-select public.create_guardian_invitation(
-  tests.ulid(950), 'caregiver', 'Riley again', pg_temp.token(12), 48, true
-);
 select tests.authenticate_as('daughter');
 select is(
   (select public.preview_guardian_invitation(pg_temp.token(12)) ->> 'is_subject'),

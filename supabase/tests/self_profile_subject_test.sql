@@ -5,7 +5,7 @@
 -- primary_guardian membership carries profile_guardians.is_subject (#802).
 -- This file pins, through the real RPCs wherever a client would use one:
 --
---   1. Catalog: the three triggers, their SECURITY DEFINER / search_path /
+--   1. Catalog: the four triggers, their SECURITY DEFINER / search_path /
 --      EXECUTE posture, and that the marker is still unwritable by a client.
 --   2. Creation: a 'self' profile makes its creator the subject; a profile
 --      created with another relationship (or none) does not.
@@ -13,11 +13,15 @@
 --      'self' clears, and an edit that does not move the relationship
 --      across 'self' writes nothing to the membership row.
 --   4. Ownership transfer: a transferred profile keeps its subject whatever
---      the relationship then does, and transferring a self-stamped profile
---      ends with one subject.
---   5. One subject per profile: a profile that already has an invited
---      subject is left alone, and accepting a subject invitation on a
---      self-stamped profile ends with exactly one subject.
+--      the relationship then does, and transferring a profile whose owner
+--      is the subject ends with exactly one subject, the acceptor, whether
+--      or not she was already a member.
+--   5. One subject per profile, and whoever holds the marker keeps it: a
+--      subject invitation is refused while the profile has an accepted
+--      subject (for a co-parent and for the owner alike), a subject
+--      invitation created earlier and accepted later joins its invitee
+--      without the marker, and the route by which a co-parent could read
+--      the owner's private note through a second account is closed.
 --   6. Private-note masking (#849) now protects the self-owner's private
 --      note from another guardian, and she can still edit it herself.
 --   7. Whose relationship edit moves the marker: only the owner's own
@@ -39,7 +43,7 @@
 -- was given, and every stamped or cleared row -- the backfilled ones
 -- included -- must come back from sync_pull past that cursor.
 begin;
-select plan(75);
+select plan(95);
 
 -- ---------------------------------------------------------------------------
 -- Helpers
@@ -115,6 +119,45 @@ returns text language sql as $$
     'absent')
 $$;
 
+-- A private day note written through the real sync_push, as the current
+-- caller. Raises when the server rejects it.
+create function pg_temp.push_private_note(p_entry text, p_profile text, p_text text)
+returns void language plpgsql as $$
+declare
+  v_result jsonb;
+begin
+  v_result := public.sync_push(
+    '[]'::jsonb,
+    jsonb_build_array(jsonb_build_object(
+      'id', p_entry, 'profile_id', p_profile, 'local_date', '2026-09-01',
+      'tz', 'UTC', 'flow', 'light', 'note', p_text, 'note_private', true,
+      'updated_at', '2026-09-01T10:00:00Z')));
+  if v_result -> 'rejected' <> '[]'::jsonb then
+    raise exception 'fixture private note % was rejected: %', p_entry, v_result;
+  end if;
+end;
+$$;
+
+-- What the current caller's own full pull shows for one day entry's note:
+-- its text; '<masked>' when the entry arrives with note NULL and
+-- note_private true; or 'absent' when the entry is not in her pull at all.
+create function pg_temp.pulled_note(p_entry text)
+returns text language sql as $$
+  select coalesce(
+    (select case
+              when (e ->> 'note') is null and (e ->> 'note_private') = 'true' then '<masked>'
+              else coalesce(e ->> 'note', '<null>')
+            end
+       from jsonb_array_elements(public.sync_pull('{}'::jsonb) -> 'day_entries') e
+      where e ->> 'id' = p_entry),
+    'absent')
+$$;
+
+create function pg_temp.private_note_masked(p_entry text)
+returns boolean language sql as $$
+  select pg_temp.pulled_note(p_entry) = '<masked>'
+$$;
+
 select tests.create_supabase_user('ana');
 select tests.create_supabase_user('bea');
 select tests.create_supabase_user('mom');
@@ -122,7 +165,6 @@ select tests.create_supabase_user('dad');
 select tests.create_supabase_user('kid');
 select tests.create_supabase_user('tess');
 select tests.create_supabase_user('riley');
-select tests.create_supabase_user('cora');
 select tests.create_supabase_user('eve');
 select tests.create_supabase_user('gus');
 
@@ -136,21 +178,23 @@ select is(
     where not t.tgisinternal
       and (t.tgrelid, t.tgname) in (
         ('public.profile_guardians'::regclass, 'profile_guardians_stamp_self_subject'),
-        ('public.profile_guardians'::regclass, 'profile_guardians_after_subject_yield_self'),
-        ('public.profiles'::regclass, 'profiles_after_relationship_self_subject'))),
-  3::bigint,
-  'catalog: the three issue #1499 triggers exist on their tables'
+        ('public.profile_guardians'::regclass, 'profile_guardians_unmark_second_subject'),
+        ('public.profiles'::regclass, 'profiles_after_relationship_self_subject'),
+        ('public.guardian_invitations'::regclass, 'guardian_invitations_refuse_second_subject'))),
+  4::bigint,
+  'catalog: the four issue #1499 triggers exist on their tables'
 );
 select is(
   (select count(*) from pg_catalog.pg_proc p
     where p.pronamespace = 'public'::regnamespace
       and p.proname in ('stamp_self_profile_subject_membership',
                         'sync_self_profile_subject_marker',
-                        'yield_self_profile_subject_marker')
+                        'unmark_second_profile_subject',
+                        'refuse_second_subject_invitation')
       and p.prosecdef
       and p.proconfig = array['search_path=""']::text[]),
-  3::bigint,
-  'catalog: the three trigger functions are SECURITY DEFINER with an empty search_path'
+  4::bigint,
+  'catalog: the four trigger functions are SECURITY DEFINER with an empty search_path'
 );
 -- Counted over pg_proc (rather than naming each signature) so the
 -- assertion fails, instead of raising, where a function is missing. A
@@ -160,11 +204,23 @@ select is(
     where p.pronamespace = 'public'::regnamespace
       and p.proname in ('stamp_self_profile_subject_membership',
                         'sync_self_profile_subject_marker',
-                        'yield_self_profile_subject_marker')
+                        'unmark_second_profile_subject',
+                        'refuse_second_subject_invitation')
       and not has_function_privilege('anon', p.oid, 'execute')
       and not has_function_privilege('authenticated', p.oid, 'execute')),
-  3::bigint,
-  'catalog: none of the three functions is executable by anon or authenticated'
+  4::bigint,
+  'catalog: none of the four functions is executable by anon or authenticated'
+);
+-- Nothing takes the marker from its holder when an invitation is accepted:
+-- the function that used to do that is gone.
+select is(
+  (select count(*) from pg_catalog.pg_proc p
+    where p.pronamespace = 'public'::regnamespace
+      and p.proname = 'yield_self_profile_subject_marker')
+  + (select count(*) from pg_catalog.pg_trigger t
+      where t.tgname = 'profile_guardians_after_subject_yield_self'),
+  0::bigint,
+  'catalog: no function or trigger clears the holder''s marker when an invitation is accepted'
 );
 select ok(
   not has_column_privilege('authenticated', 'public.profile_guardians', 'is_subject', 'UPDATE')
@@ -364,15 +420,78 @@ select is(
   'transfer: the acceptor of a profile that was self keeps the marker when it leaves self'
 );
 
+-- 4c. The same when the acceptor is already a member, so the transfer's
+--     upsert UPDATEs her row instead of inserting it: Vera's self profile
+--     (9123), with Will already a caregiver on it. The transfer writes the
+--     primary_guardian role and the marker in one statement, so the row is
+--     the primary guardian's at the moment the marker lands and the
+--     second-subject rule of section 5 has nothing to strip.
+select tests.create_supabase_user('vera');
+select tests.create_supabase_user('will');
+select tests.authenticate_as('vera');
+select pg_temp.push_profile(tests.ulid(9123), '{"display_name":"Vera","relationship":"self"}');
+select public.create_guardian_invitation(tests.ulid(9123), 'caregiver', 'Will', pg_temp.token(43), 48);
+select tests.authenticate_as('will');
+select public.accept_guardian_invitation(pg_temp.token(43), 'Will');
+select tests.authenticate_as('vera');
+select public.create_ownership_transfer(tests.ulid(9123), 'co_parent', pg_temp.token(44));
+select tests.authenticate_as('will');
+select public.accept_ownership_transfer(pg_temp.token(44), 'Will', 'Vera');
+select is(
+  pg_temp.marker(tests.ulid(9123), 'will') || ' / ' || pg_temp.marker(tests.ulid(9123), 'vera'),
+  'primary_guardian:accepted:true / co_parent:accepted:false',
+  'transfer: an acceptor who was already a member ends as primary guardian and subject, the former owner unmarked'
+);
+select is(
+  pg_temp.subject_count(tests.ulid(9123)),
+  1::bigint,
+  'transfer: exactly one subject, the acceptor, after a transfer to an existing member'
+);
+
 -- ---------------------------------------------------------------------------
--- 5. One subject per profile.
+-- 5. One subject per profile, and whoever holds the marker keeps it.
+--
+--    An invitation never takes the marker from its holder. A subject
+--    invitation cannot be created while the profile has an accepted
+--    subject; and one that was created earlier, while there was none, and
+--    is accepted later joins its invitee with her role and without the
+--    marker.
 -- ---------------------------------------------------------------------------
--- 5a. A profile that already has an invited subject is left alone.
+-- 5a. A daughter's profile with no subject (Mom's, 9107): the subject
+--     invitation is created and accepted exactly as before.
 select tests.authenticate_as('mom');
 select pg_temp.push_profile(tests.ulid(9107), '{"display_name":"Riley","relationship":"daughter","is_minor":true}');
 select public.create_guardian_invitation(tests.ulid(9107), 'caregiver', 'Riley', pg_temp.token(51), 48, true);
 select tests.authenticate_as('riley');
 select public.accept_guardian_invitation(pg_temp.token(51), 'Riley');
+select is(
+  pg_temp.marker(tests.ulid(9107), 'mom') || ' / ' || pg_temp.marker(tests.ulid(9107), 'riley'),
+  'primary_guardian:accepted:null / caregiver:accepted:true',
+  'one subject: on a profile with no subject, a subject invitation is created and accepted as before'
+);
+
+-- A second subject invitation on that profile is then refused. The code
+-- and the wording are pinned exactly: both clients' error ladders are
+-- tested against this very message (the generic invitation failure), in
+-- test/data/sharing/supabase_sharing_service_test.dart and
+-- webapp/test/sharing.test.ts.
+select tests.authenticate_as('mom');
+select throws_ok(
+  format($$select public.create_guardian_invitation(%L, 'caregiver', 'Second', %L, 48, true)$$,
+         tests.ulid(9107), pg_temp.token(59)),
+  'P0001',
+  'this profile already has a subject; a subject invitation cannot be created for it',
+  'one subject: a second subject invitation is refused while the profile has an accepted subject'
+);
+select tests.clear_authentication();
+select is(
+  (select count(*) from public.guardian_invitations where token_hash = pg_temp.token(59)),
+  0::bigint,
+  'one subject: and the refused invitation leaves no row'
+);
+
+-- Mom calling the profile self does not make her a second subject, however
+-- often she says it.
 select tests.authenticate_as('mom');
 select pg_temp.push_profile(tests.ulid(9107), '{"display_name":"Riley","relationship":"self"}');
 select is(
@@ -385,38 +504,80 @@ select is(
   1::bigint,
   'one subject: the invited subject is still the only one'
 );
+select pg_temp.push_profile(tests.ulid(9107), '{"display_name":"Riley","relationship":"other"}');
+select pg_temp.push_profile(tests.ulid(9107), '{"display_name":"Riley","relationship":"self"}');
+select is(
+  pg_temp.marker(tests.ulid(9107), 'mom') || ' / ' || pg_temp.marker(tests.ulid(9107), 'riley'),
+  'primary_guardian:accepted:null / caregiver:accepted:true',
+  'one subject: the relationship returning to self does not stamp the owner beside an invited subject'
+);
 
--- 5b. Accepting a subject invitation on a self-stamped profile (Ana's,
---     9101) moves the marker in that same statement.
-select tests.authenticate_as('ana');
-select pg_temp.remember_cursor('ana');
-select public.create_guardian_invitation(tests.ulid(9101), 'caregiver', 'Cora', pg_temp.token(52), 48, true);
-select tests.authenticate_as('cora');
-select public.accept_guardian_invitation(pg_temp.token(52), 'Cora');
+-- 5b. A self profile whose owner is the subject (Pia's, 9121), with a
+--     co-parent (Quin) and a private note. Before this rule Quin could
+--     create a "this is your profile" invitation and have another account
+--     (Rex) accept it: Rex then read Pia's private note in full, and Pia
+--     lost the marker and, with it, her own note.
+select tests.create_supabase_user('pia');
+select tests.create_supabase_user('quin');
+select tests.create_supabase_user('rex');
+select tests.authenticate_as('pia');
+select pg_temp.push_profile(tests.ulid(9121), '{"display_name":"Pia","relationship":"self"}');
+select public.create_guardian_invitation(tests.ulid(9121), 'co_parent', 'Quin', pg_temp.token(60), 48);
+select tests.authenticate_as('quin');
+select public.accept_guardian_invitation(pg_temp.token(60), 'Quin');
+select tests.authenticate_as('pia');
+select pg_temp.push_private_note(tests.ulid(9151), tests.ulid(9121), 'only for Pia');
+
+select tests.authenticate_as('quin');
+select throws_ok(
+  format($$select public.create_guardian_invitation(%L, 'caregiver', 'Rex', %L, 48, true)$$,
+         tests.ulid(9121), pg_temp.token(57)),
+  'P0001', null,
+  'holder keeps it: a co-parent cannot create a subject invitation on a profile whose owner is the subject'
+);
+select tests.clear_authentication();
 select is(
-  pg_temp.marker(tests.ulid(9101), 'ana') || ' / ' || pg_temp.marker(tests.ulid(9101), 'cora'),
-  'primary_guardian:accepted:false / caregiver:accepted:true',
-  'one subject: accepting a subject invitation on a self-stamped profile clears the owner''s marker'
+  (select count(*) from public.guardian_invitations
+    where profile_id = tests.ulid(9121) and is_subject),
+  0::bigint,
+  'holder keeps it: no subject invitation exists for that profile'
+);
+select tests.authenticate_as('rex');
+select throws_ok(
+  format($$select public.accept_guardian_invitation(%L, 'Rex')$$, pg_temp.token(57)),
+  'P0002', null,
+  'holder keeps it: the account the co-parent meant to use has nothing to accept'
 );
 select is(
-  pg_temp.subject_count(tests.ulid(9101)),
-  1::bigint,
-  'one subject: exactly one subject after a subject invitation is accepted on a self-stamped profile'
+  pg_temp.pulled_note(tests.ulid(9151)),
+  'absent',
+  'holder keeps it: that account reads nothing of the profile'
 );
-select tests.authenticate_as('ana');
+select tests.authenticate_as('quin');
 select is(
-  pg_temp.pulled_marker('ana', tests.ulid(9101), 'ana') || ' / ' || pg_temp.pulled_marker('ana', tests.ulid(9101), 'cora'),
-  'false / true',
-  'pull: the owner''s already-synced device receives her cleared row together with the invited subject''s'
+  pg_temp.pulled_note(tests.ulid(9151)),
+  '<masked>',
+  'holder keeps it: the co-parent''s own pull of the private note is still masked'
 );
--- With an accepted invited subject in place, toggling the relationship does
--- not hand the marker back to the owner.
-select pg_temp.push_profile(tests.ulid(9101), '{"display_name":"Ana","relationship":"other"}');
-select pg_temp.push_profile(tests.ulid(9101), '{"display_name":"Ana","relationship":"self"}');
+select tests.authenticate_as('pia');
 select is(
-  pg_temp.marker(tests.ulid(9101), 'ana') || ' / ' || pg_temp.marker(tests.ulid(9101), 'cora'),
-  'primary_guardian:accepted:false / caregiver:accepted:true',
-  'one subject: the relationship returning to self does not re-stamp the owner beside an invited subject'
+  pg_temp.marker(tests.ulid(9121), 'pia') || ' / ' || pg_temp.pulled_note(tests.ulid(9151)),
+  'primary_guardian:accepted:true / only for Pia',
+  'holder keeps it: the owner is still the subject and still reads her own private note'
+);
+-- The owner herself is refused too: she holds the marker until she says
+-- the profile is not her own.
+select throws_ok(
+  format($$select public.create_guardian_invitation(%L, 'caregiver', 'Rex', %L, 48, true)$$,
+         tests.ulid(9121), pg_temp.token(61)),
+  'P0001', null,
+  'holder keeps it: the owner herself cannot create a subject invitation while she holds the marker'
+);
+-- A plain invitation on the same profile is not refused.
+select lives_ok(
+  format($$select public.create_guardian_invitation(%L, 'caregiver', 'Helper', %L, 48)$$,
+         tests.ulid(9121), pg_temp.token(62)),
+  'holder keeps it: a plain invitation is still created on that profile'
 );
 
 -- 5c. A plain (non-subject) invitation does not disturb a self-stamped
@@ -431,54 +592,150 @@ select is(
   'one subject: a plain invitation leaves the self-stamped owner the subject'
 );
 
--- 5d. A marker that came from a transfer is not this rule's to move: a
---     subject invitation accepted on a profile that was transferred to its
---     owner (Tess's, 9106) leaves her marker where it was before #1499.
-select tests.create_supabase_user('ines');
-select tests.authenticate_as('tess');
-select public.create_guardian_invitation(tests.ulid(9106), 'caregiver', 'Ines', pg_temp.token(54), 48, true);
-select tests.authenticate_as('ines');
-select public.accept_guardian_invitation(pg_temp.token(54), 'Ines');
+-- 5d. The stale invitation. A subject invitation is created while the
+--     profile has no subject (Sam's, 9122, not yet called self). Sam then
+--     becomes its subject and writes a private note. Only then is the old
+--     invitation accepted: Tia joins with the role she was invited to, and
+--     without the marker.
+select tests.create_supabase_user('sam');
+select tests.create_supabase_user('tia');
+select tests.authenticate_as('sam');
+select pg_temp.push_profile(tests.ulid(9122), '{"display_name":"Sam","relationship":"other"}');
+select public.create_guardian_invitation(tests.ulid(9122), 'caregiver', 'Tia', pg_temp.token(58), 48, true);
+select pg_temp.push_profile(tests.ulid(9122), '{"display_name":"Sam","relationship":"self"}');
+select pg_temp.push_private_note(tests.ulid(9152), tests.ulid(9122), 'only for Sam');
+select pg_temp.remember_cursor('sam');
+select tests.authenticate_as('tia');
+select public.accept_guardian_invitation(pg_temp.token(58), 'Tia');
 select is(
-  pg_temp.marker(tests.ulid(9106), 'tess'),
-  'primary_guardian:accepted:true',
-  'one subject: an owner whose marker came from a transfer keeps it when a subject invitation is accepted (unchanged)'
+  pg_temp.marker(tests.ulid(9122), 'tia'),
+  'caregiver:accepted:false',
+  'stale invitation: the invitee joins with her role and without the marker'
+);
+select is(
+  pg_temp.marker(tests.ulid(9122), 'sam') || ' / ' || pg_temp.subject_count(tests.ulid(9122))::text,
+  'primary_guardian:accepted:true / 1',
+  'stale invitation: the owner keeps the marker and is the only subject'
+);
+select is(
+  pg_temp.pulled_note(tests.ulid(9152)),
+  '<masked>',
+  'stale invitation: the invitee''s pull of the owner''s private note is masked'
+);
+select tests.authenticate_as('sam');
+select is(
+  pg_temp.pulled_note(tests.ulid(9152)),
+  'only for Sam',
+  'stale invitation: the owner still reads her own private note'
+);
+select is(
+  pg_temp.pulled_marker('sam', tests.ulid(9122), 'sam') || ' / ' || pg_temp.pulled_marker('sam', tests.ulid(9122), 'tia'),
+  'absent / false',
+  'pull: the owner''s synced device receives the new member''s row, and nothing was written to her own'
 );
 
--- 5e. The same rule on accept_guardian_invitation's other branch, where the
+-- 5e. The same on accept_guardian_invitation's other branch, where the
 --     invitee already has a (revoked) row and the accept UPDATEs it. Hana's
---     self profile (9109): Ivy is invited as its subject, removed, and
---     invited again.
+--     profile (9109), not yet called self; Ivy is a former member.
 select tests.create_supabase_user('hana');
 select tests.create_supabase_user('ivy');
 select tests.authenticate_as('hana');
-select pg_temp.push_profile(tests.ulid(9109), '{"display_name":"Hana","relationship":"self"}');
-select public.create_guardian_invitation(tests.ulid(9109), 'caregiver', 'Ivy', pg_temp.token(55), 48, true);
+select pg_temp.push_profile(tests.ulid(9109), '{"display_name":"Hana","relationship":"other"}');
+select public.create_guardian_invitation(tests.ulid(9109), 'caregiver', 'Ivy', pg_temp.token(55), 48);
 select tests.authenticate_as('ivy');
 select public.accept_guardian_invitation(pg_temp.token(55), 'Ivy');
 select tests.authenticate_as('hana');
 select public.revoke_guardian(tests.ulid(9109), tests.get_supabase_uid('ivy'));
--- With the invited subject removed, the profile becoming self again stamps
--- its owner: a revoked membership is not a subject.
-select pg_temp.push_profile(tests.ulid(9109), '{"display_name":"Hana","relationship":"other"}');
+-- With no subject on the profile, re-inviting her as its subject marks her.
+select public.create_guardian_invitation(tests.ulid(9109), 'caregiver', 'Ivy', pg_temp.token(56), 48, true);
+select tests.authenticate_as('ivy');
+select public.accept_guardian_invitation(pg_temp.token(56), 'Ivy');
+select is(
+  pg_temp.marker(tests.ulid(9109), 'ivy'),
+  'caregiver:accepted:true',
+  'stale invitation: a former member re-invited as the subject of a profile with none is marked (unchanged)'
+);
+-- She is removed again and invited again, while the profile has no accepted
+-- subject; then Hana says the profile is her own. A revoked membership is
+-- not a subject, so Hana is stamped.
+select tests.authenticate_as('hana');
+select public.revoke_guardian(tests.ulid(9109), tests.get_supabase_uid('ivy'));
+select public.create_guardian_invitation(tests.ulid(9109), 'caregiver', 'Ivy', pg_temp.token(63), 48, true);
 select pg_temp.push_profile(tests.ulid(9109), '{"display_name":"Hana","relationship":"self"}');
 select is(
   pg_temp.marker(tests.ulid(9109), 'hana') || ' / ' || pg_temp.marker(tests.ulid(9109), 'ivy'),
   'primary_guardian:accepted:true / caregiver:revoked:true',
   'one subject: a revoked invited subject does not stop the owner being stamped when the profile becomes self'
 );
-select public.create_guardian_invitation(tests.ulid(9109), 'caregiver', 'Ivy', pg_temp.token(56), 48, true);
 select tests.authenticate_as('ivy');
-select public.accept_guardian_invitation(pg_temp.token(56), 'Ivy');
+select public.accept_guardian_invitation(pg_temp.token(63), 'Ivy');
 select is(
   pg_temp.marker(tests.ulid(9109), 'hana') || ' / ' || pg_temp.marker(tests.ulid(9109), 'ivy'),
-  'primary_guardian:accepted:false / caregiver:accepted:true',
-  'one subject: re-accepting a subject invitation over a revoked row clears the self-stamped owner too'
+  'primary_guardian:accepted:true / caregiver:accepted:false',
+  'stale invitation: re-accepting over a revoked row does not take the marker from its holder either'
 );
 select is(
   pg_temp.subject_count(tests.ulid(9109)),
   1::bigint,
-  'one subject: exactly one subject after the re-accepted subject invitation'
+  'stale invitation: exactly one subject after the re-accepted invitation'
+);
+
+-- 5f. The holder may be an owner whose marker came from a transfer (Tess's
+--     profile, 9106): a subject invitation is refused there the same way.
+select tests.authenticate_as('tess');
+select throws_ok(
+  format($$select public.create_guardian_invitation(%L, 'caregiver', 'Ines', %L, 48, true)$$,
+         tests.ulid(9106), pg_temp.token(54)),
+  'P0001', null,
+  'holder keeps it: a subject invitation is refused on a transferred profile whose owner is the subject'
+);
+
+-- 5g. Only an ACCEPTED subject holds the marker. Once the invited subject
+--     has been removed, the profile has none: the next subject invitation
+--     is created, and whoever accepts it is marked (Abe's daughter profile,
+--     9125; Bo, then Cy).
+select tests.create_supabase_user('abe');
+select tests.create_supabase_user('bo');
+select tests.create_supabase_user('cy');
+select tests.authenticate_as('abe');
+select pg_temp.push_profile(tests.ulid(9125), '{"display_name":"Dee","relationship":"daughter","is_minor":true}');
+select public.create_guardian_invitation(tests.ulid(9125), 'caregiver', 'Bo', pg_temp.token(64), 48, true);
+select tests.authenticate_as('bo');
+select public.accept_guardian_invitation(pg_temp.token(64), 'Bo');
+select tests.authenticate_as('abe');
+select public.revoke_guardian(tests.ulid(9125), tests.get_supabase_uid('bo'));
+select public.create_guardian_invitation(tests.ulid(9125), 'caregiver', 'Cy', pg_temp.token(65), 48, true);
+select tests.authenticate_as('cy');
+select public.accept_guardian_invitation(pg_temp.token(65), 'Cy');
+select is(
+  pg_temp.marker(tests.ulid(9125), 'bo') || ' / ' || pg_temp.marker(tests.ulid(9125), 'cy'),
+  'caregiver:revoked:true / caregiver:accepted:true',
+  'one subject: a removed subject holds nothing -- the next subject invitation is created and its invitee is marked'
+);
+
+-- 5h. Unchanged, and NOT one subject: an ownership transfer writes its
+--     marker unconditionally, so a transfer to someone other than the
+--     invited subject leaves both marked, as it did before issue #1499
+--     (Xena's daughter profile, 9124: Yara is its invited subject, Zed
+--     accepts the transfer). Pinned so that the second-subject rule is
+--     seen not to reach the primary guardian's row.
+select tests.create_supabase_user('xena');
+select tests.create_supabase_user('yara');
+select tests.create_supabase_user('zed');
+select tests.authenticate_as('xena');
+select pg_temp.push_profile(tests.ulid(9124), '{"display_name":"Yara","relationship":"daughter","is_minor":true}');
+select public.create_guardian_invitation(tests.ulid(9124), 'caregiver', 'Yara', pg_temp.token(66), 48, true);
+select tests.authenticate_as('yara');
+select public.accept_guardian_invitation(pg_temp.token(66), 'Yara');
+select tests.authenticate_as('xena');
+select public.create_ownership_transfer(tests.ulid(9124), 'co_parent', pg_temp.token(67));
+select tests.authenticate_as('zed');
+select public.accept_ownership_transfer(pg_temp.token(67), 'Zed', 'Xena');
+select is(
+  pg_temp.marker(tests.ulid(9124), 'zed') || ' / ' || pg_temp.marker(tests.ulid(9124), 'yara')
+    || ' / ' || pg_temp.marker(tests.ulid(9124), 'xena'),
+  'primary_guardian:accepted:true / caregiver:accepted:true / co_parent:accepted:false',
+  'transfer: (unchanged) a transfer to someone other than the invited subject still marks the acceptor, leaving two subjects'
 );
 
 -- ---------------------------------------------------------------------------
@@ -557,13 +814,6 @@ select is(
 --    DEFINER RPC: the owner's push moves the marker and the co-parent's
 --    identical push does not.
 -- ---------------------------------------------------------------------------
-create function pg_temp.private_note_masked(p_entry text)
-returns boolean language sql as $$
-  select (e ->> 'note') is null and (e ->> 'note_private') = 'true'
-    from jsonb_array_elements(public.sync_pull('{}'::jsonb) -> 'day_entries') e
-   where e ->> 'id' = p_entry
-$$;
-
 -- 7a. Nora's self profile (9120) with Omar as co-parent. No private notes,
 --     so nothing but the caller decides what happens here.
 select tests.create_supabase_user('nora');
@@ -746,17 +996,28 @@ select is(
   'primary_guardian:accepted:false',
   'accepted: the same transition on a profile that is not self stamps nothing'
 );
--- Nor does it stamp the owner beside an invited subject (Ana's, 9101).
+-- Nor does it stamp the owner beside an invited subject (Mom's profile
+-- 9107: its relationship is self, and Riley is its subject).
 update public.profile_guardians
    set status = 'pending'
- where profile_id = tests.ulid(9101) and user_id = tests.get_supabase_uid('ana');
+ where profile_id = tests.ulid(9107) and user_id = tests.get_supabase_uid('mom');
 update public.profile_guardians
    set status = 'accepted'
- where profile_id = tests.ulid(9101) and user_id = tests.get_supabase_uid('ana');
+ where profile_id = tests.ulid(9107) and user_id = tests.get_supabase_uid('mom');
 select is(
-  pg_temp.marker(tests.ulid(9101), 'ana') || ' / ' || pg_temp.marker(tests.ulid(9101), 'cora'),
-  'primary_guardian:accepted:false / caregiver:accepted:true',
+  pg_temp.marker(tests.ulid(9107), 'mom') || ' / ' || pg_temp.marker(tests.ulid(9107), 'riley'),
+  'primary_guardian:accepted:null / caregiver:accepted:true',
   'accepted: a primary guardian row that becomes accepted beside an invited subject is not stamped'
+);
+-- And the holder's own row being written again is not "a second subject":
+-- Riley, the only subject of 9107, keeps the marker.
+update public.profile_guardians
+   set status = 'accepted', is_subject = true
+ where profile_id = tests.ulid(9107) and user_id = tests.get_supabase_uid('riley');
+select is(
+  pg_temp.marker(tests.ulid(9107), 'riley'),
+  'caregiver:accepted:true',
+  'accepted: writing the holder''s own row again does not unmark her'
 );
 
 -- ---------------------------------------------------------------------------
@@ -780,18 +1041,24 @@ select tests.authenticate_as('yan');
 select pg_temp.push_profile(tests.ulid(9111), '{"display_name":"Yan child","relationship":"daughter","is_minor":true}');
 select tests.authenticate_as('xia');
 select pg_temp.push_profile(tests.ulid(9112), '{"display_name":"Xia","relationship":"self"}');
+-- (A subject invitation can only be created while the profile has no
+-- subject, so Wen's and Val's profiles are called self after their guests
+-- have accepted.)
 select tests.authenticate_as('wen');
-select pg_temp.push_profile(tests.ulid(9113), '{"display_name":"Wen","relationship":"self"}');
+select pg_temp.push_profile(tests.ulid(9113), '{"display_name":"Wen","relationship":"other"}');
 select public.create_guardian_invitation(tests.ulid(9113), 'caregiver', 'Guest', pg_temp.token(71), 48, true);
 select tests.authenticate_as('wen_guest');
 select public.accept_guardian_invitation(pg_temp.token(71), 'Guest');
+select tests.authenticate_as('wen');
+select pg_temp.push_profile(tests.ulid(9113), '{"display_name":"Wen","relationship":"self"}');
 select tests.authenticate_as('val');
-select pg_temp.push_profile(tests.ulid(9114), '{"display_name":"Val","relationship":"self"}');
+select pg_temp.push_profile(tests.ulid(9114), '{"display_name":"Val","relationship":"other"}');
 select public.create_guardian_invitation(tests.ulid(9114), 'caregiver', 'Guest', pg_temp.token(72), 48, true);
 select tests.authenticate_as('val_guest');
 select public.accept_guardian_invitation(pg_temp.token(72), 'Guest');
 select tests.authenticate_as('val');
 select public.revoke_guardian(tests.ulid(9114), tests.get_supabase_uid('val_guest'));
+select pg_temp.push_profile(tests.ulid(9114), '{"display_name":"Val","relationship":"self"}');
 select tests.authenticate_as('uma');
 select pg_temp.push_profile(tests.ulid(9115), '{"display_name":"Uma child"}');
 -- A transferred profile that is self and whose owner already carries the

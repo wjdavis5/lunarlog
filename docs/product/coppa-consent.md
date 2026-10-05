@@ -41,7 +41,8 @@ advice — a formal compliance review remains the owner's call.
 - `public.profile_guardians.is_subject` (issue #802): the durable membership
   fact that the accepting account is the profile's subject, stamped by
   `accept_guardian_invitation` when the invitation was a "her own profile"
-  invitation. The marker on its own is not the consent record: the server
+  invitation and the profile had no subject yet (a profile has one; issue
+  #1499). The marker on its own is not the consent record: the server
   also sets it when an ownership transfer is accepted and, since issue
   #1499, on the owner of a profile she created for herself (relationship
   `self`). What marks the parent-invitation path is the accepted

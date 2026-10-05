@@ -40,28 +40,56 @@
 --      "Telling markers apart"), unless the profile has a live private note
 --      (see "Whose edit moves the marker"). Anyone else's edit moves
 --      nothing.
---   3. yield_self_profile_subject_marker() -- AFTER INSERT OR UPDATE OF
---      is_subject, status on profile_guardians. One subject per profile:
---      when a non-primary membership becomes the accepted subject (a subject
---      invitation was accepted), a self-stamped owner marker on the same
---      profile is cleared as part of that same statement.
---   4. A one-time backfill by the same rule.
+--   3. refuse_second_subject_invitation() -- BEFORE INSERT on
+--      guardian_invitations. A subject invitation cannot be created while
+--      the profile has an accepted subject.
+--   4. unmark_second_profile_subject() -- BEFORE INSERT OR UPDATE OF
+--      is_subject, status on profile_guardians. A non-primary membership
+--      that would be written as an accepted subject while a different
+--      accepted subject exists is written without the marker.
+--   5. A one-time backfill by the same rule.
 --
--- One subject per profile. Every stamp above is refused while the profile
--- has a different accepted subject. What the two existing writers do after
--- this change:
---   * accept_ownership_transfer writes is_subject = false on the demoted
---     initiator explicitly -- and the initiator is necessarily the accepted
---     primary_guardian, i.e. exactly the row this rule stamps -- so a
---     transfer cannot leave the self-stamped owner and the acceptor both
---     marked. Nothing to change there.
---   * accept_guardian_invitation stamps the invitee and looks at no other
---     row, so on a 'self' profile it WOULD have left two subjects (the
---     self-stamped owner plus the invited subject). Trigger 3 closes that.
---   Not created by this change and not changed by it: two different people
---   can each accept a subject invitation on one profile, and a transfer to
---   someone other than an already-invited subject leaves both marked.
---   Neither involves a self-stamped marker.
+-- One subject per profile, and whoever holds the marker keeps it. The
+-- marker decides who reads a private note in full (is_profile_subject) and
+-- whether the profile's private notes are masked at all
+-- (profile_has_subject), so it must not move as a side effect of someone
+-- else's action. Until now nothing held a profile to one subject: anyone
+-- who may invite (the primary guardian or a co_parent) could create a
+-- "this is your profile" invitation at any time, and whoever accepted it
+-- became a subject and read every private note. Three rules now hold it
+-- to one, and none of them takes the marker from its holder:
+--   * Stamping the owner (steps 1 and 2) is refused while the profile has a
+--     different accepted subject.
+--   * Creating a subject invitation is refused while the profile has an
+--     accepted subject (step 3), whoever asks: a co_parent, or the holder
+--     herself. create_guardian_invitation is not re-emitted -- the trigger
+--     raises inside its INSERT. The error is raise_exception (P0001) with
+--     a message chosen so that both clients' invitation-error ladders fall
+--     through to their generic failure: they read 42501 or "permission" as
+--     unauthorized, 22023 or "invalid" as a bad code, and any all-digit
+--     SQLSTATE of 500 or more (55000 included) as a network failure.
+--   * Accepting cannot take the marker either (step 4). A pending subject
+--     invitation can outlive the moment it was created in: it is created
+--     while the profile has no subject, the owner then becomes the subject,
+--     and only then is the old invitation accepted. The invitee still joins
+--     with the role she was invited to; her row is written is_subject =
+--     false. accept_guardian_invitation is not re-emitted either, so the
+--     object it returns still echoes the INVITATION's is_subject. The
+--     stored membership row -- what syncs, and what every reader and every
+--     masking function uses -- is the truth.
+--
+-- Ownership transfer is unchanged. accept_ownership_transfer first demotes
+-- the initiator (necessarily the accepted primary_guardian, i.e. exactly
+-- the row this migration stamps) with is_subject = false, and only then
+-- promotes the acceptor, writing role = 'primary_guardian' and is_subject =
+-- true in ONE statement on both branches of its upsert. So the acceptor's
+-- row is already the primary guardian's at the moment the marker is
+-- written: step 4, which looks only at non-primary rows, never sees it,
+-- and transferring a profile whose owner is the subject ends with exactly
+-- one subject, the acceptor.
+--   Not created by this migration and not changed by it: a transfer to
+--   someone other than an already-invited subject leaves both marked,
+--   because the transfer writes its marker unconditionally.
 --
 -- Telling markers apart (what "the marker this rule stamped" means). An
 -- accepted primary_guardian row can only ever be created by the profile-
@@ -77,7 +105,8 @@
 --     survives any relationship change;
 --   * otherwise the profile was never transferred to her, no invitation and
 --     no transfer can have marked the row, and a marker on it is this
---     rule's. That is the only marker steps 2 and 3 ever clear.
+--     rule's. That is the only marker this migration ever clears, and
+--     only step 2 clears it.
 --
 -- Whose edit moves the marker (step 2). relationship is ordinary profile
 -- metadata: a co_parent may edit it (sync_push's role check, and the
@@ -124,23 +153,30 @@
 -- updated_at is not older than the copy it holds, which an unchanged
 -- updated_at satisfies.
 --
--- Lock order. Step 2 runs inside the statement that already holds the
--- profiles row lock and then locks one profile_guardians row -- the same
--- profiles-then-profile_guardians order accept_ownership_transfer uses.
--- Step 3 locks the owner's row after the acceptor's, which is not the
--- ascending-user_id order update_guardian_role/revoke_guardian/
--- accept_ownership_transfer take a pair of rows in. Those functions only
--- wait on the acceptor's row once it is committed as accepted, with one
--- exception: the same account accepting a subject invitation and an
--- ownership transfer on one profile at the same instant after having been
--- revoked from it. Postgres resolves that as a deadlock error (40P01) for
--- one of the two calls, which the caller retries; no state is corrupted.
+-- Concurrency. The three writers that ask "does this profile already have
+-- a subject" before marking a row (steps 1, 2 and 4) take one
+-- transaction-scoped advisory lock per profile before they look, so two of
+-- them cannot each see no subject and both mark a row -- the owner calling
+-- her profile 'self' at the instant a stale subject invitation is
+-- accepted, or two stale subject invitations accepted at once. It cannot
+-- deadlock with the row locks around it: it is taken after any row lock
+-- the calling statement already holds, and its holder then waits for no
+-- lock another waiter can be holding (accept_guardian_invitation reads the
+-- profile without locking it; a relationship edit holds the profiles row,
+-- then this lock, then the owner's membership row, which is the
+-- profiles-then-profile_guardians order accept_ownership_transfer uses).
+-- accept_ownership_transfer does not take it: it writes its marker
+-- unconditionally.
 --
--- Nothing else changes: no policy, no grant, no role, no column grant.
--- is_subject stays unwritable by any client. The three functions are
--- trigger functions -- SECURITY DEFINER with an empty search_path (they
--- must write a column no client role may write, whichever role's statement
--- fires them), executable by no client role, and uncallable directly.
+-- No policy, grant, role or column grant changes, and is_subject stays
+-- unwritable by any client. Two existing RPCs behave differently in the
+-- cases above and in no other: create_guardian_invitation can now refuse a
+-- subject invitation, and accept_guardian_invitation can now write a
+-- subject invitee's row without the marker. The four functions are trigger
+-- functions -- SECURITY DEFINER with an empty search_path (they must read
+-- and write past row-level security, and write a column no client role
+-- may write, whichever role's statement fires them), executable by no
+-- client role, and uncallable directly.
 --
 -- Filename ordering (AGENTS.md Migration Flow item 7): sorts after
 -- 20260921150000_sync_pull_day_entries_masked_page.sql.
@@ -160,15 +196,23 @@ as $$
 begin
   -- The trigger's WHEN clause has already narrowed this to a row being
   -- written as an accepted primary_guardian that does not carry the marker.
-  if exists (
+  if not exists (
        select 1
          from public.profiles p
         where p.id = new.profile_id
           and p.relationship = 'self'
-     )
-     -- One subject per profile: an accepted invited subject keeps the
-     -- marker; the owner is not stamped beside her.
-     and not exists (
+     ) then
+    return new;
+  end if;
+
+  -- One subject per profile: look for another subject only once no other
+  -- writer can be deciding the same thing (the header's "Concurrency").
+  perform pg_advisory_xact_lock(
+    hashtextextended('lunarlog.profile_subject:' || new.profile_id, 0));
+
+  -- Whoever holds the marker keeps it: the owner is not stamped beside a
+  -- different accepted subject.
+  if not exists (
        select 1
          from public.profile_guardians o
         where o.profile_id = new.profile_id
@@ -184,7 +228,7 @@ end;
 $$;
 
 comment on function public.stamp_self_profile_subject_membership() is
-  'Issue #1499: BEFORE INSERT OR UPDATE OF role, status guard on profile_guardians. A row written as the accepted primary_guardian of a profile whose relationship is ''self'' is stamped is_subject = true in that same write, unless the profile already has a different accepted subject. This is the path that covers profile creation: on_profile_created_add_guardian() inserts the creator''s membership after the profile row exists. Trigger function only: EXECUTE revoked from public, anon, and authenticated.';
+  'Issue #1499: BEFORE INSERT OR UPDATE OF role, status guard on profile_guardians. A row written as the accepted primary_guardian of a profile whose relationship is ''self'' is stamped is_subject = true in that same write, unless the profile already has a different accepted subject (whoever holds the marker keeps it). This is the path that covers profile creation: on_profile_created_add_guardian() inserts the creator''s membership after the profile row exists. Trigger function only: EXECUTE revoked from public, anon, and authenticated.';
 
 create trigger profile_guardians_stamp_self_subject
   before insert or update of role, status on public.profile_guardians
@@ -224,6 +268,10 @@ begin
   end if;
 
   if new.relationship = 'self' then
+    -- One subject per profile: see step 1 and the header's "Concurrency".
+    perform pg_advisory_xact_lock(
+      hashtextextended('lunarlog.profile_subject:' || new.id, 0));
+
     update public.profile_guardians g
        set is_subject = true
      where g.profile_id = new.id
@@ -231,7 +279,7 @@ begin
        and g.status = 'accepted'
        and g.user_id = v_uid
        and g.is_subject is not true
-       -- One subject per profile (see step 1).
+       -- Whoever holds the marker keeps it (see step 1).
        and not exists (
          select 1
            from public.profile_guardians o
@@ -279,11 +327,50 @@ create trigger profiles_after_relationship_self_subject
   execute function public.sync_self_profile_subject_marker();
 
 -- ---------------------------------------------------------------------------
--- 3. One subject per profile: an invited subject displaces a self-stamped
---    owner marker, as part of the statement that accepts her
+-- 3. A subject invitation cannot be created while the profile has a subject
 -- ---------------------------------------------------------------------------
 
-create or replace function public.yield_self_profile_subject_marker()
+create or replace function public.refuse_second_subject_invitation()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  -- The trigger's WHEN clause has already narrowed this to a subject
+  -- invitation.
+  if exists (
+       select 1
+         from public.profile_guardians g
+        where g.profile_id = new.profile_id
+          and g.status = 'accepted'
+          and g.is_subject is true
+     ) then
+    -- raise_exception (P0001) and this wording on purpose: both clients map
+    -- them to their generic invitation failure (see the header).
+    raise exception 'this profile already has a subject; a subject invitation cannot be created for it'
+      using errcode = 'raise_exception';
+  end if;
+
+  return new;
+end;
+$$;
+
+comment on function public.refuse_second_subject_invitation() is
+  'Issue #1499: BEFORE INSERT guard on guardian_invitations. A subject invitation (is_subject) is refused, with raise_exception (P0001), while the profile has an accepted subject membership -- whoever asks, the holder included. A profile has one subject and an invitation never takes the marker from its holder; this is the creation half of that rule, raised inside create_guardian_invitation''s own INSERT. Trigger function only: EXECUTE revoked from public, anon, and authenticated.';
+
+create trigger guardian_invitations_refuse_second_subject
+  before insert on public.guardian_invitations
+  for each row
+  when (new.is_subject)
+  execute function public.refuse_second_subject_invitation();
+
+-- ---------------------------------------------------------------------------
+-- 4. Accepting cannot take the marker either: a second subject is written
+--    without it
+-- ---------------------------------------------------------------------------
+
+create or replace function public.unmark_second_profile_subject()
 returns trigger
 language plpgsql
 security definer
@@ -291,51 +378,61 @@ set search_path = ''
 as $$
 begin
   -- The trigger's WHEN clause has already narrowed this to a non-primary
-  -- membership that is now an accepted subject. Only a self-stamped marker
-  -- yields: the owner's row on a profile that was not transferred to her.
-  update public.profile_guardians g
-     set is_subject = false
-    from public.profiles p
-   where p.id = new.profile_id
-     and g.profile_id = new.profile_id
-     and g.id <> new.id
-     and g.role = 'primary_guardian'
-     and g.status = 'accepted'
-     and g.is_subject is true
-     and p.transferred_to_user_id is distinct from g.user_id;
+  -- membership being written as an accepted subject. (The primary
+  -- guardian's row is not this rule's: accept_ownership_transfer writes
+  -- role = 'primary_guardian' and the marker in one statement.)
+  --
+  -- One subject per profile: look only once no other writer can be
+  -- deciding the same thing (the header's "Concurrency").
+  perform pg_advisory_xact_lock(
+    hashtextextended('lunarlog.profile_subject:' || new.profile_id, 0));
 
-  return null;
+  -- Whoever holds the marker keeps it. The invitee still joins, with the
+  -- role she was invited to; she is just not marked.
+  if exists (
+       select 1
+         from public.profile_guardians o
+        where o.profile_id = new.profile_id
+          and o.id <> new.id
+          and o.status = 'accepted'
+          and o.is_subject is true
+     ) then
+    new.is_subject := false;
+  end if;
+
+  return new;
 end;
 $$;
 
-comment on function public.yield_self_profile_subject_marker() is
-  'Issue #1499: AFTER INSERT OR UPDATE OF is_subject, status on profile_guardians. When a non-primary membership becomes the profile''s accepted subject (accept_guardian_invitation on a subject invitation), a self-stamped marker on the owner''s row is cleared in the same statement, so the profile keeps exactly one subject. A marker that came from an ownership transfer is left alone. Trigger function only: EXECUTE revoked from public, anon, and authenticated.';
+comment on function public.unmark_second_profile_subject() is
+  'Issue #1499: BEFORE INSERT OR UPDATE OF is_subject, status guard on profile_guardians. A non-primary membership that would be written as an accepted subject while a DIFFERENT accepted subject exists on the profile is written with is_subject = false: the invitee joins with her role and without the marker, and the holder keeps it. This is the acceptance half of the one-subject rule (a subject invitation created while the profile had no subject, accepted after someone became it). It never touches a primary_guardian row, so an ownership transfer is unaffected. Trigger function only: EXECUTE revoked from public, anon, and authenticated.';
 
-create trigger profile_guardians_after_subject_yield_self
-  after insert or update of is_subject, status on public.profile_guardians
+create trigger profile_guardians_unmark_second_subject
+  before insert or update of is_subject, status on public.profile_guardians
   for each row
   when (new.is_subject is true
         and new.status = 'accepted'
         and new.role <> 'primary_guardian')
-  execute function public.yield_self_profile_subject_marker();
+  execute function public.unmark_second_profile_subject();
 
 -- ---------------------------------------------------------------------------
--- 4. Privileges: trigger functions, executable by no client role
+-- 5. Privileges: trigger functions, executable by no client role
 -- ---------------------------------------------------------------------------
 
 revoke all on function public.stamp_self_profile_subject_membership() from public, anon, authenticated;
 revoke all on function public.sync_self_profile_subject_marker() from public, anon, authenticated;
-revoke all on function public.yield_self_profile_subject_marker() from public, anon, authenticated;
+revoke all on function public.refuse_second_subject_invitation() from public, anon, authenticated;
+revoke all on function public.unmark_second_profile_subject() from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
--- 5. The column's own description
+-- 6. The column's own description
 -- ---------------------------------------------------------------------------
 
 comment on column public.profile_guardians.is_subject is
-  'Issue #802: this member is the person the profile is about (the subject), distinct from role. Nullable — null and false mean the same thing (a helper membership). Written only on the server: by accept_guardian_invitation (a subject invitation), by accept_ownership_transfer, and, since issue #1499, by the triggers that mark the owner (the accepted primary_guardian) of a profile whose relationship is ''self'': when she creates it, or when she herself sets the relationship to ''self''. That marker is cleared again when she herself changes the relationship away from ''self'' and the profile has no live private note, or when an invited subject is accepted; a relationship edit by anyone else moves no marker. No authenticated column grant exists, so a client cannot set or clear it. Server-visible and synced (sync_pull selects the whole row), unlike a client-side flag (#518''s lesson). Orthogonal to profiles.is_minor/birth_year (#295): membership identity vs profile fact.';
+  'Issue #802: this member is the person the profile is about (the subject), distinct from role. Nullable — null and false mean the same thing (a helper membership). Written only on the server: by accept_guardian_invitation (a subject invitation), by accept_ownership_transfer, and, since issue #1499, by the triggers that mark the owner (the accepted primary_guardian) of a profile whose relationship is ''self'': when she creates it, or when she herself sets the relationship to ''self''. That marker is cleared again only when she herself changes the relationship away from ''self'' and the profile has no live private note; a relationship edit by anyone else moves no marker. A profile has one subject and its holder keeps the marker: a subject invitation cannot be created while the profile has an accepted subject, and one created earlier and accepted later joins its invitee without the marker. No authenticated column grant exists, so a client cannot set or clear it. Server-visible and synced (sync_pull selects the whole row), unlike a client-side flag (#518''s lesson). Orthogonal to profiles.is_minor/birth_year (#295): membership identity vs profile fact.';
 
 -- ---------------------------------------------------------------------------
--- 6. Backfill, by the same rule
+-- 7. Backfill, by the same rule
 -- ---------------------------------------------------------------------------
 -- Live profiles whose relationship is 'self': their accepted
 -- primary_guardian row, only where the profile has no accepted subject.
