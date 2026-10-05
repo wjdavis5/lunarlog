@@ -11,17 +11,16 @@
   // answer 503 auth_not_configured until the secret exists).
 
   // Issue #1258 (owner go 2026-10-03): app.lunarlog.app is this Worker's
-  // production origin, bound as a Workers ROUTE on the hostname's existing
-  // proxied DNS records (the ones the retired Pages project left) rather
-  // than a custom domain — the custom-domain attach requires deleting those
-  // records first, and the deploy token has no Zone DNS edit to do it
-  // (runs 3-5: dns_records answers Authentication error 10000). A route
-  // binds to the proxied record as-is and needs only Workers Routes edit.
-  // Original custom-domain posture:
-  // production origin — the custom-domain attach happens in the deploy
-  // (webapp-deploy.yml deletes the retired Flutter Pages project that held
-  // the hostname first; the attach fails loudly if the deploy token lacks
-  // zone permissions, which is #1093 step 4's one dashboard fallback). The
+  // production origin, bound as a CUSTOM DOMAIN — Cloudflare manages the
+  // hostname's DNS once the attach succeeds. The attach refuses a hostname
+  // that still has zone DNS records (error 100117), and the retired Pages
+  // project left four behind (A + AAAA). webapp-deploy.yml clears them
+  // before the deploy when its token can; the token as issued cannot
+  // (dns_records answers Authentication error 10000), so the owner fix is
+  // one of: add Zone → DNS → Edit for lunarlog.app to the deploy token, or
+  // delete the four app.lunarlog.app records by hand (#1093 step 4).
+  // Workers Routes edit does not help: a route was tried (#1402, #1403) and
+  // the token lacks that permission too, so #1404 restored this form. The
   // workers.dev hostname stays on as the staging alias (#1249).
   "workers_dev": true,
   "routes": [{ "pattern": "app.lunarlog.app", "custom_domain": true }],

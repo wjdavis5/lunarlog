@@ -260,6 +260,10 @@ grep -q "^BEACON_MUST_BE_ABSENT=" "$SCRIPT" || {
 
 DEPLOY_WF="$(cat "$DEPLOY_WORKFLOW")"
 assert_contains "webapp-deploy.yml exists and runs the check" "$DEPLOY_WF" "check-webapp-staging.sh"
+# Issue #1405: the one-shot retirement deletes every zone DNS record for the
+# hostname, so it must stop running once the hostname serves the Worker.
+assert_contains "the retirement step is skipped once the cutover probe says done" "$DEPLOY_WF" "steps.cutover.outputs.done != 'true'"
+assert_contains "the cutover probe recognises the Worker by its own CSP directive" "$DEPLOY_WF" "require-trusted-types-for"
 assert_contains "the deploy passes the resolved staging URL" "$DEPLOY_WF" "WEBAPP_STAGING_BASE_URL"
 assert_contains "the deploy is gated on the Cloudflare credentials" "$DEPLOY_WF" "CLOUDFLARE_API_TOKEN"
 assert_contains "the deploy builds with the Supabase defines" "$DEPLOY_WF" "VITE_SUPABASE_URL"
@@ -284,8 +288,6 @@ assert_contains "the check probes /auth/session (issue #1280)" "$(cat "$SCRIPT")
 CI_GATE="$(cat "$CI_GATE_SCRIPT")"
 assert_contains "check-ci-gate.sh's REQUIRED_CHECKS carries the webapp job (promoted at the #1258 launch)" "$CI_GATE" "Web app (lint, typecheck, unit, build, e2e)"
 assert_contains "the ruleset rollup's needs carries webapp (#1258 launch promotion)" "$CI" "      - webapp"
-
-print_summary "check-webapp-staging.test.sh"
 
 # --- The #1258 cutover retirement duties ------------------------------------
 
@@ -325,3 +327,6 @@ rm "$WORK/retire-no-sw/flutter-sw.headers"
 WEBAPP_CHECK_RETIREMENT=1 run_case "$WORK/retire-no-sw"
 assert_exit "a missing retirement service worker refuses" 1
 
+# Last on purpose: print_summary is what turns a failed case into a non-zero
+# exit, so any case placed after it can never fail CI (issue #1394).
+print_summary "check-webapp-staging.test.sh"
