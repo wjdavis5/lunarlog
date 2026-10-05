@@ -662,6 +662,11 @@ void main() {
       expect(find.textContaining('days until next period'), findsNothing);
       expect(find.textContaining('Next period estimate'), findsNothing);
       expect(find.byKey(const ValueKey('late-resolver')), findsNothing);
+      // The disclaimer is read once on this screen, as it is beside a
+      // real estimate. The card used to repeat it a few rows above the
+      // panel's own.
+      expect(find.text(kEstimateDisclaimer), findsOneWidget);
+      expect(find.byKey(const ValueKey('overview-disclaimer')), findsOneWidget);
       // Issue #187: the not-enough state is now the shared EmptyState
       // component, not a bespoke card.
       expect(
@@ -1284,6 +1289,12 @@ void main() {
         );
         expect(
           find.byKey(const ValueKey('predictions-suppressed-body')),
+          findsOneWidget,
+        );
+        // Once per screen here too: the panel's own, not the card's.
+        expect(find.text(kEstimateDisclaimer), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('overview-disclaimer')),
           findsOneWidget,
         );
 
@@ -1995,13 +2006,10 @@ void main() {
       );
       expect(find.text('Your record is just getting started'), findsOneWidget);
       expect(find.text('Not enough history yet'), findsNothing);
-      expect(
-        find.descendant(
-          of: find.byKey(const ValueKey('overview-not-enough')),
-          matching: find.text(kDisclaimer),
-        ),
-        findsOneWidget,
-      );
+      // The disclaimer stays in every mode, once: the panel's own. The
+      // card no longer repeats it.
+      expect(find.text(kDisclaimer), findsOneWidget);
+      expect(find.byKey(const ValueKey('overview-disclaimer')), findsOneWidget);
       await disposeOverview(tester, notEnough);
 
       // Issue #221/A2-12: an open cycle past sixty days is no longer its

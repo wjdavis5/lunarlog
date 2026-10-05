@@ -35,6 +35,26 @@ void main() {
       );
     });
 
+    testWidgets('leaves the disclaimer out on a screen that has its own', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_wrap(
+        const PredictionsSuppressedCard(
+          method: BirthControlMethod.implant,
+          showDisclaimer: false,
+        ),
+      ));
+
+      expect(
+        find.byKey(const ValueKey('predictions-suppressed-body')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('predictions-suppressed-disclaimer')),
+        findsNothing,
+      );
+    });
+
     testWidgets('does not read as a not-enough-history state', (tester) async {
       // Issue #1118: a copper IUD no longer classifies as continuous, so
       // use a genuinely period-suppressing method here.

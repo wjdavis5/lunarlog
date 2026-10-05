@@ -12,8 +12,11 @@
 ///    apply to.
 ///
 /// Shared by the overview panel and the Analysis tab (both mount a card for
-/// every non-active [CyclePrediction]), so the copy and the fixed
-/// non-medical disclaimer render identically in both places (R17).
+/// every non-active [CyclePrediction]), so the copy renders identically in
+/// both places. The fixed non-medical disclaimer (R17) appears once per
+/// screen: the Analysis tab has no other, so the card carries it there; the
+/// overview panel ends with its own, so it mounts the card without one
+/// ([PredictionsSuppressedCard.showDisclaimer]).
 library;
 
 import 'package:flutter/material.dart';
@@ -31,8 +34,12 @@ import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
 /// + the choice-label map) so the copy names the exact recorded method; the
 /// lifecycle mode's label is [LifecycleMode.label].
 class PredictionsSuppressedCard extends StatelessWidget {
-  const PredictionsSuppressedCard({super.key, this.method, this.lifecycleMode})
-      : assert(
+  const PredictionsSuppressedCard({
+    super.key,
+    this.method,
+    this.lifecycleMode,
+    this.showDisclaimer = true,
+  }) : assert(
           (method == null) != (lifecycleMode == null),
           'PredictionsSuppressedCard needs exactly one reason: a '
           'birth-control method or a lifecycle mode',
@@ -40,6 +47,10 @@ class PredictionsSuppressedCard extends StatelessWidget {
 
   final BirthControlMethod? method;
   final LifecycleMode? lifecycleMode;
+
+  /// Whether the card ends with the estimate disclaimer. False on a screen
+  /// that already shows it, so the same sentence is not read twice.
+  final bool showDisclaimer;
 
   @override
   Widget build(BuildContext context) {
@@ -74,12 +85,14 @@ class PredictionsSuppressedCard extends StatelessWidget {
               key: const ValueKey('predictions-suppressed-body'),
               style: theme.textTheme.bodySmall,
             ),
-            const SizedBox(height: 8),
-            Text(
-              kEstimateDisclaimer,
-              key: const ValueKey('predictions-suppressed-disclaimer'),
-              style: theme.textTheme.bodySmall,
-            ),
+            if (showDisclaimer) ...[
+              const SizedBox(height: 8),
+              Text(
+                kEstimateDisclaimer,
+                key: const ValueKey('predictions-suppressed-disclaimer'),
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
           ],
         ),
       ),
