@@ -11,6 +11,11 @@ name: CI failure watch
 # the issue: a pass can be a flake going quiet, and that call is the
 # triager's.
 #
+# A green run counts as a recovery only when the jobs that failed ran again
+# and passed (#1437). CI on main path-filters: a docs-only merge is green
+# with the Flutter suites skipped, which says nothing about a Flutter break.
+# That case leaves no comment.
+#
 # Issue #537: this used to watch only "CI". supabase-migrate.yml,
 # supabase-reconcile.yml, ios-release.yml, and play-store-release.yml failing
 # on main produced no issue and no notification -- the direct cause of a

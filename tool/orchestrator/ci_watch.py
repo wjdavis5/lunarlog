@@ -111,6 +111,107 @@ def failing_jobs(jobs_payload: dict) -> list[str]:
     ]
 
 
+FAILING_JOBS_HEADING = "Failing jobs:"
+
+# Steps the runner adds to every job. They succeed whether or not the job's
+# own steps ran, so they say nothing about whether it did any work.
+_BOOKKEEPING_STEPS = ("Set up job", "Complete job")
+_BOOKKEEPING_PREFIXES = ("Post ", "Pre ")
+
+
+def failing_jobs_block(jobs: list[str]) -> list[str]:
+    """The lines that record which jobs failed. [named_failing_jobs] reads
+    them back, so the two must stay in step."""
+    return [FAILING_JOBS_HEADING] + [f"- `{name}`" for name in jobs]
+
+
+def named_failing_jobs(text: str) -> list[str]:
+    """The job names recorded under "Failing jobs:" in an issue body or a
+    failure comment, in order, without duplicates."""
+    names: list[str] = []
+    in_block = False
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if line == FAILING_JOBS_HEADING:
+            in_block = True
+            continue
+        if not in_block:
+            continue
+        if line.startswith("- `") and line.endswith("`") and len(line) > 4:
+            name = line[3:-1]
+            if name not in names:
+                names.append(name)
+        else:
+            in_block = False
+    return names
+
+
+def is_gate_step(step_name: str) -> bool:
+    """CI's path-filter gate: every gated job opens with a step named
+    "Check if <suite> should run"."""
+    name = step_name or ""
+    return name.startswith("Check if ") and name.endswith(" should run")
+
+
+def job_did_work(job: dict) -> bool:
+    """True when a job concluded `success` and actually ran its steps.
+
+    CI on a push to `main` path-filters: a suite whose paths did not change
+    still starts its job, runs its gate step ("Check if ... should run"),
+    skips every step after it, and concludes `success`. Such a job proves
+    nothing about the suite.
+
+    The gate step is what marks that case. A job with no gate is taken at
+    its conclusion, however many of its steps were skipped: "CI required
+    checks", for one, has a single real step and a failure-only step that
+    is skipped on every green run.
+    """
+    if (job.get("conclusion") or "").lower() != "success":
+        return False
+    steps = [
+        step for step in (job.get("steps") or [])
+        if (step.get("name") or "") not in _BOOKKEEPING_STEPS
+        and not (step.get("name") or "").startswith(_BOOKKEEPING_PREFIXES)
+    ]
+    gate = next(
+        (index for index, step in enumerate(steps) if is_gate_step(step.get("name") or "")),
+        None,
+    )
+    if gate is None:
+        return True
+    after = steps[gate + 1:]
+    if not after:
+        return True
+    return any((step.get("conclusion") or "").lower() != "skipped" for step in after)
+
+
+def recovery_verdict(failed_names: list[str], jobs_payload: dict) -> tuple[bool, str]:
+    """Whether a successful run is evidence that the failure is gone.
+
+    It is only when every job that failed ran again for real and passed.
+    When the failed jobs are not on record, every job in the run has to
+    have done real work. Anything short of that returns False with the
+    reason: a missed recovery note costs little, a false one invites
+    someone to close a live failure.
+    """
+    jobs = (jobs_payload or {}).get("jobs") or []
+    if not jobs:
+        return False, "the run's jobs could not be read"
+    by_name = {job.get("name"): job for job in jobs}
+    if failed_names:
+        for name in failed_names:
+            job = by_name.get(name)
+            if job is None:
+                return False, f"`{name}` was not part of this run"
+            if not job_did_work(job):
+                return False, f"`{name}` did not run its suite in this run"
+        return True, "every job that failed ran and passed"
+    for job in jobs:
+        if not job_did_work(job):
+            return False, f"`{job.get('name', 'unknown')}` did not run its suite in this run"
+    return True, "every job in the run did its work and passed"
+
+
 def issue_body(run_url: str, head_sha: str, jobs: list[str], workflow_name: str = "CI") -> str:
     lines = [
         MARKER,
@@ -121,8 +222,7 @@ def issue_body(run_url: str, head_sha: str, jobs: list[str], workflow_name: str 
         "",
     ]
     if jobs:
-        lines.append("Failing jobs:")
-        lines += [f"- `{name}`" for name in jobs]
+        lines += failing_jobs_block(jobs)
     else:
         lines.append("No failing job could be identified from the run's jobs API.")
     lines += [
@@ -182,20 +282,58 @@ def recovery_comment(head_sha: str, run_url: str, workflow_name: str = "CI") -> 
     ])
 
 
-def failure_comment(head_sha: str, run_url: str, after_recovery: bool) -> str:
-    """The comment a further failure leaves on the open rolling issue."""
+def failure_comment(
+    head_sha: str, run_url: str, after_recovery: bool, jobs: list[str] | None = None
+) -> str:
+    """The comment a further failure leaves on the open rolling issue.
+
+    It records which jobs failed this time. A later failure can be in a
+    different suite from the one that opened the issue, and the recovery
+    check reads these names back.
+    """
     lead = "Failing again" if after_recovery else "Still failing"
-    return f"{lead} at `{head_sha}`.\n\n{run_url}"
+    text = f"{lead} at `{head_sha}`.\n\n{run_url}"
+    if jobs:
+        text += "\n\n" + "\n".join(failing_jobs_block(jobs))
+    return text
 
 
-def _open_issue_number(workflow_name: str) -> int | None:
+def _open_issue(workflow_name: str) -> dict | None:
     existing = json.loads(
         _run([
             "issue", "list", "--state", "open", "--limit", "100",
             "--json", "number,body",
         ])
     )
-    return find_existing_number(existing, workflow_name)
+    number = find_existing_number(existing, workflow_name)
+    if not number:
+        return None
+    return next(issue for issue in existing if issue.get("number") == number)
+
+
+def _open_issue_number(workflow_name: str) -> int | None:
+    issue = _open_issue(workflow_name)
+    return issue.get("number") if issue else None
+
+
+def failed_jobs_on_record(issue_body_text: str, comments: list[dict]) -> list[str]:
+    """Every job the watch has recorded as failing since the last recovery
+    note: the issue body's list plus each later failure comment's."""
+    names = named_failing_jobs(issue_body_text)
+    last_recovery = max(
+        (index for index, comment in enumerate(comments)
+         if is_recovery_note(comment.get("body") or "")),
+        default=-1,
+    )
+    if last_recovery >= 0:
+        # A noted recovery closed the earlier incident; only what failed
+        # after it is still outstanding.
+        names = []
+    for comment in comments[last_recovery + 1:]:
+        for name in named_failing_jobs(comment.get("body") or ""):
+            if name not in names:
+                names.append(name)
+    return names
 
 
 def _comments(number: int) -> list[dict]:
@@ -207,13 +345,32 @@ def _comments(number: int) -> list[dict]:
     return json.loads(raw).get("comments") or []
 
 
-def note_recovery(head_sha: str, run_url: str, workflow_name: str) -> str:
-    """Handle a successful run: note it on the open rolling issue, once."""
-    number = _open_issue_number(workflow_name)
-    if not number:
+def note_recovery(
+    head_sha: str, run_url: str, workflow_name: str, repo: str, run_id: str
+) -> str:
+    """Handle a successful run: note it on the open rolling issue, once,
+    and only when the run re-tested what failed.
+
+    A green run is not always a recovery. CI on `main` skips every suite
+    the push did not touch, so a docs-only merge is green over a Flutter
+    break that was never re-run (issue #1437). Saying "passed" there would
+    invite someone to close a live failure, so that case says nothing.
+    """
+    issue = _open_issue(workflow_name)
+    if not issue:
         return f"no open issue for {workflow_name}; nothing to note"
-    if recovery_noted(_comments(number)):
+    number = issue.get("number")
+    comments = _comments(number)
+    if recovery_noted(comments):
         return f"issue #{number} already notes the recovery"
+    jobs_payload = json.loads(
+        _run(["api", f"repos/{repo}/actions/runs/{run_id}/jobs?per_page=100"]) or "{}"
+    )
+    recovered, reason = recovery_verdict(
+        failed_jobs_on_record(issue.get("body") or "", comments), jobs_payload
+    )
+    if not recovered:
+        return f"green, but not a recovery for issue #{number}: {reason}"
     _run([
         "issue", "comment", str(number),
         "--body", recovery_comment(head_sha, run_url, workflow_name),
@@ -252,7 +409,7 @@ def main() -> int:
 
     try:
         if conclusion == "success":
-            print(note_recovery(head_sha, run_url, workflow_name))
+            print(note_recovery(head_sha, run_url, workflow_name, repo, run_id))
             return 0
         jobs_payload = json.loads(
             _run(["api", f"repos/{repo}/actions/runs/{run_id}/jobs"])
@@ -262,7 +419,9 @@ def main() -> int:
         number = _open_issue_number(workflow_name)
         if number:
             comment = failure_comment(
-                head_sha, run_url, after_recovery=recovery_noted(_comments(number))
+                head_sha, run_url,
+                after_recovery=recovery_noted(_comments(number)),
+                jobs=jobs,
             )
             _run(["issue", "comment", str(number), "--body", comment])
             print(f"updated issue #{number}")
