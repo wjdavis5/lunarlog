@@ -1,5 +1,5 @@
 import { taxonomy } from '../day/categories';
-import type { DayEntryRow } from '../schemas';
+import type { DayEntryRow, ObservationRow } from '../schemas';
 import type { ForecastDayCell } from '../../domain/schemas';
 
 /**
@@ -117,9 +117,53 @@ export function flowMarkCount(flow: string): number {
   }
 }
 
-/** Whether a flow level renders as the single spotting-style ring. */
-export function flowIsSpottingStyle(flow: string): boolean {
-  return flow === 'none' || flow === 'spotting' || flow === 'not_bleeding';
+/** Whether a flow level is a bleed — the port of `isBleed` (lib/domain/models/flow_level.dart). */
+export function flowIsBleed(flow: string): boolean {
+  return flow === 'light' || flow === 'medium' || flow === 'heavy' || flow === 'super_heavy';
+}
+
+/**
+ * The dates that carry the spotting ring: every date with a live spotting
+ * observation, plus a legacy `flow = 'spotting'` row (the app synthesises
+ * the observation for those in `listForProfile`, issue #761).
+ */
+export function spottingIsosFor(
+  entries: Iterable<Pick<DayEntryRow, 'local_date' | 'flow'>>,
+  observations: Iterable<
+    Pick<ObservationRow, 'profile_id' | 'local_date' | 'category' | 'deleted_at'>
+  >,
+  profileId: string,
+): Set<string> {
+  const isos = new Set<string>();
+  for (const row of observations) {
+    if (row.profile_id !== profileId || row.deleted_at !== null) continue;
+    if (row.category === 'spotting') isos.add(row.local_date);
+  }
+  for (const entry of entries) {
+    if (entry.flow === 'spotting') isos.add(entry.local_date);
+  }
+  return isos;
+}
+
+/**
+ * The care-mode gate for one forecast cell — the port of `_cellForMode`
+ * (lib/ui/logging/month_calendar.dart, issue #143): when the fertile
+ * window is hidden its flag is stripped here, once, so no rendering can
+ * show or announce it; a cell with nothing else left is no forecast at
+ * all, exactly like any other plain future day.
+ */
+export function forecastCellForMode(
+  cell: ForecastDayCell | null,
+  showsFertileWindow: boolean,
+): ForecastDayCell | null {
+  if (cell === null || showsFertileWindow || !cell.fertileWindow) return cell;
+  const stripped = { ...cell, fertileWindow: false };
+  const hasAnyMarker =
+    stripped.predictedBleed ||
+    stripped.cycleDayNumber !== null ||
+    stripped.pmsBadge ||
+    stripped.crampsBadge;
+  return hasAnyMarker ? stripped : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -190,7 +234,9 @@ export interface DayCellView {
   isToday: boolean;
   /** The logged entry (live only) or null. */
   entry: DayEntryRow | null;
+  /** Bleed marks, 2 to 5 by level; 0 when the day logged no bleed. */
   flowMarkCount: number;
+  /** The spotting ring: a logged, non-bleed day with spotting recorded. */
   spottingStyle: boolean;
   /** The active symptom layers this day's tags hit, in palette order. */
   layerHits: string[];
@@ -202,19 +248,32 @@ export interface DayCellView {
  * Merges the logged row and the facade forecast cell for one rendered day.
  * A logged day suppresses its forecast decoration (the app's rule: the
  * past stays factual, and a logged "future" day shows what was logged).
+ *
+ * The flow mark is the port of `_bleedAndSpottingFor`: a bleed level draws
+ * its marks and nothing else; otherwise the spotting ring shows only when
+ * spotting was recorded for the date. A day logged as `none` or
+ * `not_bleeding` (a symptom-only day, say) carries no flow mark at all.
  */
 export function dayCellView(options: {
   iso: string;
   todayIso: string;
   entryByIso: Map<string, DayEntryRow>;
   forecastByIso: Map<string, ForecastDayCell>;
+  /** Dates with spotting recorded (`spottingIsosFor`). */
+  spottingIsos: ReadonlySet<string>;
+  /** Whether the profile's framing shows the fertile window (`showsFertileWindow`). */
+  showsFertileWindow: boolean;
   activeLayers: string[];
 }): DayCellView {
   const entry = options.entryByIso.get(options.iso) ?? null;
   const forecast =
     entry === null && options.iso > options.todayIso
-      ? (options.forecastByIso.get(options.iso) ?? null)
+      ? forecastCellForMode(
+          options.forecastByIso.get(options.iso) ?? null,
+          options.showsFertileWindow,
+        )
       : null;
+  const bleed = entry !== null && flowIsBleed(entry.flow);
   const layerHits = options.activeLayers.filter(
     (code) => entry !== null && entry.deleted_at === null && entry.tags.includes(code),
   );
@@ -223,8 +282,8 @@ export function dayCellView(options: {
     dayNumber: Number(options.iso.slice(8, 10)),
     isToday: options.iso === options.todayIso,
     entry,
-    flowMarkCount: entry !== null ? flowMarkCount(entry.flow) : 0,
-    spottingStyle: entry !== null && flowIsSpottingStyle(entry.flow),
+    flowMarkCount: entry !== null && bleed ? flowMarkCount(entry.flow) : 0,
+    spottingStyle: entry !== null && !bleed && options.spottingIsos.has(options.iso),
     layerHits,
     forecast,
   };

@@ -235,6 +235,32 @@ export function irregularFramingInEffect(options: {
 }
 
 /**
+ * Whether the fertile-window estimate renders at all — the port of the
+ * month calendar's `_showsFertileWindow` (lib/ui/logging/month_calendar.dart):
+ * the care mode's copy hides it for the retired `irregular` mode (#143) and
+ * whenever the irregular-cycles framing is in effect (#853 — which, for a
+ * teen with no stored choice, is until the estimate reaches `high`), and
+ * the Perimenopause life stage hides it on top (#196). A precise-looking
+ * ovulation window is false precision for all three.
+ */
+export function showsFertileWindow(options: {
+  profileMode: WebProfileMode;
+  storedIrregularFraming: boolean | null | undefined;
+  tier: CycleConfidence | null | undefined;
+  lifecycleMode: string | null | undefined;
+}): boolean {
+  if (options.lifecycleMode === 'perimenopause') return false;
+  // The legacy wire mode is its own full copy: a stored `false` framing
+  // never turns its fertile window back on (careModeCopyFor).
+  if (options.profileMode === 'irregular') return false;
+  return !irregularFramingInEffect({
+    mode: options.profileMode,
+    stored: options.storedIrregularFraming,
+    tier: options.tier,
+  });
+}
+
+/**
  * The estimate's date presentation (`estimateDateText`,
  * lib/ui/overview/estimate_copy.dart): `high` confidence shows the exact
  * date; any other tier shows the `estimatedNextStart ± round(spreadDays)`
@@ -254,6 +280,19 @@ export function estimateDateText(options: {
     startIso: shiftIsoDate(options.estimatedNextStart, -days),
     endIso: shiftIsoDate(options.estimatedNextStart, days),
   };
+}
+
+/**
+ * A formatter for civil dates (`yyyy-MM-dd`: no time, no zone). The date is
+ * read as UTC midnight, so it must be written in UTC too — in the browser's
+ * own zone anyone west of UTC would read the day before (issue #1389).
+ */
+export function isoDateFormatter(
+  locale: string,
+  options: Omit<Intl.DateTimeFormatOptions, 'timeZone'>,
+): (iso: string) => string {
+  const format = new Intl.DateTimeFormat(locale, { ...options, timeZone: 'UTC' });
+  return (iso) => format.format(new Date(`${iso}T00:00:00Z`));
 }
 
 /** Civil-date arithmetic on `yyyy-MM-dd` strings (no time zones involved). */
