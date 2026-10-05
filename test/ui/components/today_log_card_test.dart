@@ -228,6 +228,77 @@ void main() {
       );
     });
 
+    test('a tag whose word needs its heading carries it, as in the '
+        'export; a self-describing one does not', () {
+      expect(
+        summaryOf(
+          entry(
+            tags: const [
+              'sticky',
+              'normal',
+              'sweet',
+              '0_to_3_hours',
+              'pain',
+              'bloating',
+              'great_digestion',
+            ],
+          ),
+        )!
+            .tags,
+        [
+          'Vaginal discharge: Sticky',
+          'Stool: Normal',
+          'Craving: Sweet',
+          'Sleep duration: 0-3 hours',
+          'Took pain medication',
+          'Bloating',
+          'Great (digestion)',
+        ],
+      );
+    });
+
+    test('sex-life and test-result tags are counted and never named', () {
+      final summary = summaryOf(
+        entry(
+          tags: const [
+            'cramps',
+            'unprotected_sex',
+            'pregnancy_positive',
+            'withdrawal',
+          ],
+        ),
+      )!;
+      expect(summary.tags, ['Cramps']);
+      expect(summary.unnamedTagCount, 3);
+      final lines = todayLogLines(summary, kL10n);
+      expect(lines, ['Cramps and 3 more']);
+      for (final word in ['sex', 'Sex', 'Pregnancy', 'pregnancy', 'ithdrawal']) {
+        expect(lines.join(' '), isNot(contains(word)));
+      }
+    });
+
+    test('a day whose only tags are unnamed still counts as logged, and '
+        'says how many', () {
+      final one = summaryOf(entry(tags: const ['protected_sex']))!;
+      expect(todayLogLines(one, kL10n), ['1 other entry']);
+      final two = summaryOf(
+        entry(tags: const ['protected_sex', 'ovulation_positive']),
+      )!;
+      expect(todayLogLines(two, kL10n), ['2 other entries']);
+    });
+
+    test('a custom tag is named even when it shares a word with an unnamed '
+        'category', () {
+      expect(
+        summaryOf(
+          entry(tags: const ['sex_ed_class']),
+          customTags: [customTag('sex_ed_class', 'Sex ed class')],
+        )!
+            .tags,
+        ['Sex ed class'],
+      );
+    });
+
     test('a custom tag reads by the name it was given, and a code the '
         'registry does not hold reads as itself', () {
       final summary = summaryOf(

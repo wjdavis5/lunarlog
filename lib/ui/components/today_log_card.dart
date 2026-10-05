@@ -16,6 +16,12 @@
 /// through this widget — the visible lines or the screen-reader label — can
 /// show what the note says.
 ///
+/// **Two kinds of tag are counted and never named** ([kTodayLogUnnamedCategories]):
+/// sex life and test results. Today is the screen the app opens on, read at
+/// a glance and often with someone else in the room, and "Unprotected sex"
+/// or "Pregnancy · positive" does not belong there. They still count as
+/// logged, and the day sheet behind Edit names them as it always has.
+///
 /// For the person who logs only. A guardian's front page is
 /// `GuardianOverviewCard`, which shows counts and never content (#850).
 library;
@@ -26,6 +32,8 @@ import 'package:lunarlog/domain/logging/today_log.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
+import 'package:lunarlog/domain/tags.dart'
+    show TagCategory, contextualDisplayForTag, flatDisplayForTag, tagByCode;
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart'
     show formatMeasurementValue, localizedFlowLabel;
@@ -35,6 +43,13 @@ import '../theme/tokens.dart';
 /// The most tags the card names before it says "and N more".
 const int kTodayLogMaxTags = 6;
 
+/// The tag categories the card counts without naming (see the library
+/// comment). A custom tag has no category and is named like any other.
+const Set<TagCategory> kTodayLogUnnamedCategories = {
+  TagCategory.sexLife,
+  TagCategory.tests,
+};
+
 /// What the card says about a day that has something logged, already in
 /// the reader's words. Holds labels and facts only — never a tag code, and
 /// never the note's text.
@@ -42,6 +57,7 @@ class TodayLogSummary {
   const TodayLogSummary({
     this.flow,
     this.tags = const [],
+    this.unnamedTagCount = 0,
     this.details = const [],
     this.hasNote = false,
   });
@@ -50,9 +66,14 @@ class TodayLogSummary {
   /// when the day records no flow.
   final String? flow;
 
-  /// Every tag's label, in the order the entry stores them. The card shows
-  /// the first [kTodayLogMaxTags] and counts the rest.
+  /// The label of every tag the card may name, in the order the entry
+  /// stores them. The card shows the first [kTodayLogMaxTags] and counts
+  /// the rest.
   final List<String> tags;
+
+  /// How many of the day's tags the card counts without naming
+  /// ([kTodayLogUnnamedCategories]).
+  final int unnamedTagCount;
 
   /// The lines for what the day holds besides flow, tags and a note: the
   /// PMS marker and the temperature and weight readings.
@@ -81,7 +102,11 @@ TodayLogSummary? todayLogSummaryOf(
   if (entry == null || !log.hasContent) return null;
   return TodayLogSummary(
     flow: _flowLine(log, entry, l10n),
-    tags: [for (final code in entry.tags) tagDisplayLabel(code, customTags)],
+    tags: [
+      for (final code in entry.tags)
+        if (!_isUnnamedOnToday(code)) _todayTagLabel(code, customTags),
+    ],
+    unnamedTagCount: entry.tags.where(_isUnnamedOnToday).length,
     details: [
       if (entry.pms) l10n.daySheetPmsChip,
       if (log.bbt case final reading?)
@@ -121,6 +146,35 @@ String? _flowLine(TodayLog log, DayEntry entry, AppLocalizations l10n) {
   return flow == FlowLevel.none ? null : localizedFlowLabel(flow, l10n);
 }
 
+/// Whether [code] is a tag the card counts without naming.
+bool _isUnnamedOnToday(String code) {
+  final curated = tagByCode(code);
+  return curated != null &&
+      kTodayLogUnnamedCategories.contains(curated.category);
+}
+
+/// Categories whose options say what they are without their heading
+/// ("Bloating", "Nausea"), so the card does not prefix them the way the
+/// clinical export does ("Digestion: Bloating").
+const Set<TagCategory> _kSelfDescribingOnToday = {TagCategory.digestion};
+
+/// A tag's label for the card, which shows no category headings. A curated
+/// tag takes the label the app already uses where headings are absent
+/// ([contextualDisplayForTag]): "Sticky" becomes "Vaginal discharge:
+/// Sticky", "Normal" becomes "Stool: Normal" and the medication tag "Pain"
+/// becomes "Took pain medication", none of which the bare word says. A
+/// category in [_kSelfDescribingOnToday] keeps its own word, with only a
+/// true clash resolved ("Great (digestion)", [flatDisplayForTag]).
+/// Anything else, a custom tag included, reads as the day sheet shows it
+/// ([tagDisplayLabel]).
+String _todayTagLabel(String code, Iterable<CustomTag> customTags) {
+  final curated = tagByCode(code);
+  if (curated == null) return tagDisplayLabel(code, customTags);
+  return _kSelfDescribingOnToday.contains(curated.category)
+      ? flatDisplayForTag(curated)
+      : contextualDisplayForTag(curated);
+}
+
 /// A reading under the day sheet's own field label: "BBT (°C): 36.7".
 String _readingLine(String label, double value) =>
     '$label: ${formatMeasurementValue(value)}';
@@ -130,15 +184,20 @@ String _readingLine(String label, double value) =>
 /// things.
 List<String> todayLogLines(TodayLogSummary summary, AppLocalizations l10n) => [
       ?summary.flow,
-      if (summary.tags.isNotEmpty) _tagsLine(summary.tags, l10n),
+      if (summary.tags.isNotEmpty || summary.unnamedTagCount > 0)
+        _tagsLine(summary.tags, summary.unnamedTagCount, l10n),
       ...summary.details,
       if (summary.hasNote) l10n.todayLogNoteAdded,
     ];
 
-/// The first [kTodayLogMaxTags] labels, then "and N more".
-String _tagsLine(List<String> tags, AppLocalizations l10n) {
+/// The first [kTodayLogMaxTags] labels, then "and N more" for the rest
+/// and for the [unnamed] ones. A day whose only tags are unnamed reads
+/// "1 other entry".
+String _tagsLine(List<String> tags, int unnamed, AppLocalizations l10n) {
+  if (tags.isEmpty) return l10n.todayLogOtherEntries(unnamed);
   final shown = tags.take(kTodayLogMaxTags).join(', ');
-  final more = tags.length - kTodayLogMaxTags;
+  final overflow = tags.length - kTodayLogMaxTags;
+  final more = (overflow > 0 ? overflow : 0) + unnamed;
   return more > 0 ? '$shown ${l10n.todayLogMoreTags(more)}' : shown;
 }
 

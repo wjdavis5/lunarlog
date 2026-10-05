@@ -601,6 +601,17 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String todayLogOtherEntries(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count other entries',
+      one: '1 other entry',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get todayLogEdit => 'Edit';
 
   @override

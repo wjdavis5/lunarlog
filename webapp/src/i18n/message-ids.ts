@@ -171,6 +171,7 @@ export const MESSAGE_IDS = [
   "todayLogEmpty",
   "todayLogNoteAdded",
   "todayLogMoreTags",
+  "todayLogOtherEntries",
   "todayLogEdit",
   "todayLogFabEdit",
   "todayLogSemantics",
