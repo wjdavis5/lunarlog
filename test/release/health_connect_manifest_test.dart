@@ -230,12 +230,18 @@ void main() {
         expect(adapter, contains('FEATURE_READ_HEALTH_DATA_IN_BACKGROUND'));
         expect(adapter, contains('FEATURE_STATUS_AVAILABLE'));
         // ...and the permission stays OUT of what permissionStatus calls
-        // "granted": foregroundStatusPermissions subtracts it from
-        // allPermissions, so a user who declines background reads can
-        // still import by tap (the worker skips its own pass instead --
-        // pinned in the worker test below).
-        expect(adapter, contains('foregroundStatusPermissions'));
-        expect(adapter, contains('containsAll(foregroundStatusPermissions)'));
+        // "granted", so a user who declines background reads can still
+        // import by tap (the worker skips its own pass instead -- pinned in
+        // the worker test below). Since issue #1478 that holds for every
+        // read permission, not only this one: the status is decided on the
+        // write permissions alone (statusPermissions = writePermissions),
+        // so the background read cannot be in it.
+        expect(
+          RegExp(r'private\s+val\s+statusPermissions\s*=\s*writePermissions\b')
+              .hasMatch(adapter),
+          isTrue,
+        );
+        expect(adapter, contains('required = statusPermissions'));
       }
     });
 

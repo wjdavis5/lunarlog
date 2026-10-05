@@ -516,9 +516,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // permission surface, in which case the screen renders no line.
           permissionProbe:
               Provider.of<HealthPermissionProbe?>(context, listen: false),
-          // Issue #458: writes are still iOS-only; Android wires only the
-          // import runner, so the screen must not describe writes there.
-          writeEnabled: defaultTargetPlatform == TargetPlatform.iOS,
+          // Issue #1478: the write copy follows the same single answer
+          // the composition root wires the write coordinator from, so the
+          // screen can never describe a write direction the app does not
+          // run (or stay silent about one it does).
+          writeEnabled: AppConfig.healthSyncWritesOn(defaultTargetPlatform),
+          // The store this platform uses: whose name and whose write copy
+          // the screen shows (issue #1478).
+          storePlatform: defaultTargetPlatform == TargetPlatform.android
+              ? HealthImportPlatform.healthConnect
+              : HealthImportPlatform.appleHealth,
         ),
       ),
     );

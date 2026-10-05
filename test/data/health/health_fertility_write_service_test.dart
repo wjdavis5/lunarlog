@@ -317,8 +317,14 @@ void main() {
 
   test('a manual BBT observation writes its Celsius value', () async {
     await seedGranted();
+    // A reading for the clock's own day, entered after its 07:00 default
+    // (the service clock is 12:00 UTC = 08:00 in New York). The fixture
+    // used the *next* day, which no real entry can be for — and since Issue
+    // #1478 a reading whose default time has not happened yet is written at
+    // the present moment instead (Health Connect refuses a future time;
+    // `health_flow_write_service_test.dart` pins that rule).
     observations.observations = [
-      _bbt('2026-06-02', value: 36.7, updatedAt: grant.add(const Duration(hours: 1))),
+      _bbt('2026-06-01', value: 36.7, updatedAt: grant.add(const Duration(hours: 1))),
     ];
 
     final report = await buildService().syncNow();
@@ -327,7 +333,7 @@ void main() {
     final write = platform.bbtWrites.single;
     expect(write.celsius, closeTo(36.7, 1e-9));
     expect(write.healthConnectMeasurementLocation, 'MEASUREMENT_LOCATION_UNKNOWN');
-    expect(write.recordId, 'bbt-bbt-2026-06-02');
+    expect(write.recordId, 'bbt-bbt-2026-06-01');
     expect(write.observedAt, isNull);
   });
 

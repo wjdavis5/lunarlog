@@ -335,7 +335,9 @@ void main() {
     test('writeMenstrualPeriod sends guard args + the interval envelope '
         '(start/end instants and offsets from the entry tz, #202)', () async {
       // 2026-08-30..2026-09-01 America/New_York (EDT, UTC-4): start = 08-30
-      // 04:00Z; end = exclusive 09-02 04:00Z; both offsets -4h.
+      // 04:00Z; end = the last instant of 09-01, 09-02 03:59:59Z (issue
+      // #1478: on the last day, not the midnight after it); both offsets
+      // -4h.
       await makePlatform(minorBindingAllowed: false).writeMenstrualPeriod(
         HealthMenstrualPeriodWrite(
           facts: _facts(),
@@ -354,7 +356,10 @@ void main() {
       expect(args['profileId'], 'p1');
       expect(args['startMs'], DateTime.utc(2026, 8, 30, 4).millisecondsSinceEpoch);
       expect(args['startZoneOffsetMs'], -4 * 3600 * 1000);
-      expect(args['endMs'], DateTime.utc(2026, 9, 2, 4).millisecondsSinceEpoch);
+      expect(
+        args['endMs'],
+        DateTime.utc(2026, 9, 2, 3, 59, 59).millisecondsSinceEpoch,
+      );
       expect(args['endZoneOffsetMs'], -4 * 3600 * 1000);
       // #186 sync mechanics ride this write too.
       expect(args['recordId'], flowWriteRecordId);

@@ -134,12 +134,17 @@ enum HealthFlowValue {
 ///   that could report a read denial as [denied]. The status line must
 ///   never claim to know read access.
 /// * **Android** derives it from `PermissionController.getGrantedPermissions()`
-///   over the requested permission set, plus the Health Connect SDK-status
-///   check (an unavailable SDK is [unavailable], never [denied]). Android's
-///   runtime permission model cannot distinguish "never asked" from
-///   "denied" from the granted set alone, so a non-granted result is
-///   reported as [denied] (the actionable state that offers the settings
-///   deep link).
+///   over the *write* permissions only (Issue #1478 — before it, every
+///   requested permission but the background read counted, so declining an
+///   optional read such as "Access past data" reported [denied] and stopped
+///   every write), plus the Health Connect SDK-status check (an unavailable
+///   SDK is [unavailable], never [denied]). Android's runtime permission
+///   model cannot distinguish "never asked" from "denied" from the granted
+///   set alone, so the native side remembers whether this install has ever
+///   launched the permission request and reports [notAsked] until it has
+///   (Issue #1478). Reporting [denied] there was not only wrong on the
+///   status line: the write pass stops on [denied] before its own
+///   authorization request, so the Android write path could never ask.
 enum HealthPermissionStatus {
   /// The write types are authorized.
   granted,

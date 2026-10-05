@@ -144,11 +144,11 @@ void main() {
   });
 
   group('encodePeriodDayArgs (Issue #202 MenstruationPeriodRecord)', () {
-    test('a multi-day episode spans start midnight to the exclusive end '
-        'midnight, each with its own zone offset', () {
+    test('a multi-day episode spans start midnight to the last instant of '
+        'its last day, each with its own zone offset', () {
       // 2026-08-30..2026-09-01 in America/New_York (EDT, UTC-4 throughout —
-      // no DST transition inside): start = 08-30 04:00Z; end = exclusive
-      // 09-02 04:00Z; both offsets -4h.
+      // no DST transition inside): start = 08-30 04:00Z; end = 09-01
+      // 23:59:59 local = 09-02 03:59:59Z; both offsets -4h.
       final args = encodePeriodDayArgs(
         LocalDate(2026, 8, 30),
         LocalDate(2026, 9, 1),
@@ -156,15 +156,48 @@ void main() {
       );
       expect(args['startMs'], DateTime.utc(2026, 8, 30, 4).millisecondsSinceEpoch);
       expect(args['startZoneOffsetMs'], -4 * 3600 * 1000);
-      expect(args['endMs'], DateTime.utc(2026, 9, 2, 4).millisecondsSinceEpoch);
+      expect(
+        args['endMs'],
+        DateTime.utc(2026, 9, 2, 3, 59, 59).millisecondsSinceEpoch,
+      );
       expect(args['endZoneOffsetMs'], -4 * 3600 * 1000);
+    });
+
+    // Issue #1478: Health Connect counts a period's days from its start
+    // date to its end date inclusive (its own screen showed a one-day
+    // period ending at the next midnight as "Period day 1 of 2"), so the
+    // end must fall ON the last day, in the record's own zone.
+    test('the end falls on the last day, never on the day after (issue '
+        '#1478)', () {
+      for (final (start, end) in [
+        (LocalDate(2026, 10, 5), LocalDate(2026, 10, 5)),
+        (LocalDate(2026, 10, 2), LocalDate(2026, 10, 5)),
+        (LocalDate(2026, 11, 1), LocalDate(2026, 11, 1)), // fall back
+        (LocalDate(2026, 3, 8), LocalDate(2026, 3, 8)), // spring forward
+      ]) {
+        final args = encodePeriodDayArgs(start, end, 'America/New_York');
+        final endLocal = DateTime.fromMillisecondsSinceEpoch(
+          args['endMs']! as int,
+          isUtc: true,
+        ).add(Duration(milliseconds: args['endZoneOffsetMs']! as int));
+        expect(
+          LocalDate(endLocal.year, endLocal.month, endLocal.day),
+          end,
+          reason: 'period ${start.iso}..${end.iso}',
+        );
+        expect(
+          (endLocal.hour, endLocal.minute, endLocal.second),
+          (23, 59, 59),
+        );
+        expect(args['endMs']! as int, greaterThan(args['startMs']! as int));
+      }
     });
 
     test('an end day across a fall-back DST transition carries a different '
         'endZoneOffset than the start (#180 contract note)', () {
-      // 2026-11-01 America/New_York: DST ends 02:00 EDT. The episode's end
-      // exclusive is midnight of Nov 2 (EST, -5h) while its start is
-      // midnight of Nov 1 (EDT, -4h) — endZoneOffset must differ.
+      // 2026-11-01 America/New_York: DST ends 02:00 EDT. The episode ends
+      // at 23:59:59 on Nov 1 (EST, -5h) while its start is midnight of
+      // Nov 1 (EDT, -4h) — endZoneOffset must differ.
       final args = encodePeriodDayArgs(
         LocalDate(2026, 11, 1),
         LocalDate(2026, 11, 1),
@@ -180,8 +213,15 @@ void main() {
       final args = encodePeriodDayArgs(start, end, 'America/New_York');
       expect(args['startMs'], localDayInstant(start, 'America/New_York').millisecondsSinceEpoch);
       expect(args['startZoneOffsetMs'], zoneOffsetFor(start, 'America/New_York').inMilliseconds);
-      expect(args['endMs'], localDayEndExclusive(end, 'America/New_York').millisecondsSinceEpoch);
-      expect(args['endZoneOffsetMs'], endZoneOffsetFor(end, 'America/New_York').inMilliseconds);
+      final last = localDayLastInstant(end, 'America/New_York');
+      expect(args['endMs'], last.instant.millisecondsSinceEpoch);
+      expect(args['endZoneOffsetMs'], last.offset.inMilliseconds);
+      // One second short of the exclusive midnight #202 used to send.
+      expect(
+        args['endMs'],
+        localDayEndExclusive(end, 'America/New_York').millisecondsSinceEpoch -
+            1000,
+      );
     });
 
     test('throws TimeZoneResolutionException for an unknown zone', () {

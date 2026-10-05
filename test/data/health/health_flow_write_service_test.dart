@@ -170,7 +170,10 @@ class _FakePlatform implements HealthPlatformStore {
   /// Issue #959: the OS write-permission state the sync pass re-checks each
   /// pass. Granted by default so every pre-#959 test keeps passing; a test
   /// sets this to [HealthPermissionStatus.denied] to prove a revoked
-  /// permission stops the pass.
+  /// permission stops the pass. Since Issue #1478 a granted permission
+  /// means the pass has nothing to ask, so the tests about the request
+  /// itself set [HealthPermissionStatus.notAsked], the state a real first
+  /// pass meets.
   HealthPermissionStatus permission = HealthPermissionStatus.granted;
   int permissionStatusCalls = 0;
 
@@ -260,6 +263,20 @@ class _FakePlatform implements HealthPlatformStore {
   ) async {
     deleteCalls.add(List.of(recordIds));
     return deleteResult;
+  }
+}
+
+/// A [_FakePlatform] that also keeps the BBT writes it is handed (Issue
+/// #1478's future-time rule needs the instant the service chose).
+class _BbtRecordingPlatform extends _FakePlatform {
+  final List<HealthBasalBodyTemperatureWrite> bbtWrites = [];
+
+  @override
+  Future<HealthPlatformResult> writeBasalBodyTemperature(
+    HealthBasalBodyTemperatureWrite write,
+  ) async {
+    bbtWrites.add(write);
+    return const HealthPlatformResult.allowed();
   }
 }
 
@@ -468,6 +485,10 @@ void main() {
   });
 
   group('forward-only grant', () {
+    // The state a first pass meets: the OS has not been asked yet (Issue
+    // #1478 — an already-granted permission is not asked for again).
+    setUp(() => platform.permission = HealthPermissionStatus.notAsked);
+
     test('first pass requests authorization once and stamps the grant '
         'instant as the cursor', () async {
       await settings.set(_bindingKey, _profileId);
@@ -710,8 +731,11 @@ void main() {
 
       expect(secondReport.samplesWritten, 0);
       expect(secondReport.samplesReconciled, 1);
+      // The day's own sample, then (Issue #1478) the one-day period record
+      // the first pass wrote for it — that day was the whole episode.
       expect(platform.deleteCalls, [
-        ['entry-2026-06-02']
+        ['entry-2026-06-02'],
+        ['period-$_profileId-2026-06-02'],
       ]);
     });
 
@@ -887,6 +911,10 @@ void main() {
 
       await service.onUnbound();
       await settings.set(_bindingKey, _profileId);
+      // A re-bind on a device where the OS has yet to be asked (Issue
+      // #1478: with the permission already granted there is nothing to ask,
+      // and the fresh cursor is stamped without a request).
+      platform.permission = HealthPermissionStatus.notAsked;
 
       final report = await service.syncNow();
       expect(report.authorizationRequested, isTrue);
@@ -1078,6 +1106,414 @@ void main() {
       // The cursor does not advance (blocked), so the next pass retries.
       expect(await settings.get(_cursorKey),
           '${grant.millisecondsSinceEpoch}');
+    });
+  });
+
+  // Issue #1478: the interval record is the one export no single day entry
+  // owns, so the write path reconciles it itself. Before, the only thing
+  // that ever touched a period record was "an eligible bleed day re-writes
+  // its episode's record" — and on an Android emulator that left Health
+  // Connect holding a period for a day whose flow had been cleared, and two
+  // overlapping periods after an earlier day was logged.
+  group('issue #1478: period records follow the episode they describe', () {
+    final grant = DateTime.utc(2026, 6, 1, 12);
+
+    HealthExportLedgerEntry? periodRow(String recordId) {
+      for (final row in ledger.rows) {
+        if (row.recordId == recordId) return row;
+      }
+      return null;
+    }
+
+    test('clearing the only bleed day deletes the period record too',
+        () async {
+      await seedGranted(grant);
+      final service = buildService();
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1))),
+      ];
+      await service.syncNow();
+      expect(platform.periodWrites.single.recordId,
+          'period-$_profileId-2026-06-02');
+      expect(periodRow('period-$_profileId-2026-06-02')?.kind,
+          HealthExportLedgerKind.period);
+
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.none,
+            grant.add(const Duration(hours: 2))),
+      ];
+      final report = await service.syncNow();
+
+      expect(report.blocked, isNull);
+      expect(platform.deleteCalls,
+          contains(equals(['period-$_profileId-2026-06-02'])));
+      expect(platform.periodWrites, hasLength(1),
+          reason: 'a period that no longer exists is not written again');
+      expect(periodRow('period-$_profileId-2026-06-02'), isNull,
+          reason: 'the ledger row leaves with the store record');
+    });
+
+    test('a deleted (tombstoned) only bleed day deletes the period record',
+        () async {
+      await seedGranted(grant);
+      final service = buildService();
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1))),
+      ];
+      await service.syncNow();
+
+      // The repository lists live rows only, so a deleted day is simply
+      // absent — there is no eligible row at all on this pass.
+      dayEntries.entries = [];
+      final report = await service.syncNow();
+
+      expect(report.blocked, isNull);
+      expect(platform.deleteCalls, [
+        ['period-$_profileId-2026-06-02'],
+      ]);
+    });
+
+    test('logging an earlier day replaces the record rather than adding a '
+        'second, overlapping one', () async {
+      await seedGranted(grant);
+      final service = buildService();
+      dayEntries.entries = [
+        _entry('2026-06-05', FlowLevel.medium,
+            grant.add(const Duration(hours: 1))),
+      ];
+      await service.syncNow();
+      expect(platform.periodWrites.single.recordId,
+          'period-$_profileId-2026-06-05');
+
+      // The day before is logged: the episode now starts on 06-04, and the
+      // record id is derived from the first day.
+      dayEntries.entries = [
+        ...dayEntries.entries,
+        _entry('2026-06-04', FlowLevel.light,
+            grant.add(const Duration(hours: 2))),
+      ];
+      await service.syncNow();
+
+      expect(platform.periodWrites.last.recordId,
+          'period-$_profileId-2026-06-04');
+      expect(platform.periodWrites.last.end, LocalDate.fromIso('2026-06-05'));
+      expect(platform.deleteCalls,
+          contains(equals(['period-$_profileId-2026-06-05'])),
+          reason: 'the record keyed on the old first day must not survive');
+      expect(periodRow('period-$_profileId-2026-06-05'), isNull);
+      expect(periodRow('period-$_profileId-2026-06-04')?.sourceRowId,
+          '2026-06-04/2026-06-05');
+    });
+
+    test('removing the last day shortens the record: delete, then write the '
+        'shorter interval, although no bleed day in it is newly edited — and '
+        'only for a period this device exported', () async {
+      await seedGranted(grant);
+      final service = buildService();
+      // An older period, logged before sync was turned on: never exported
+      // (forward-only), so never this pass's to correct.
+      final before = [
+        _entry('2026-05-20', FlowLevel.heavy,
+            grant.subtract(const Duration(hours: 3))),
+        _entry('2026-05-21', FlowLevel.medium,
+            grant.subtract(const Duration(hours: 2))),
+      ];
+      final after = [
+        _entry('2026-06-02', FlowLevel.heavy,
+            grant.add(const Duration(hours: 1))),
+        _entry('2026-06-03', FlowLevel.medium,
+            grant.add(const Duration(hours: 2))),
+        _entry('2026-06-04', FlowLevel.light,
+            grant.add(const Duration(hours: 3))),
+      ];
+      dayEntries.entries = [...before, ...after];
+      await service.syncNow();
+      expect(platform.periodWrites.single.end, LocalDate.fromIso('2026-06-04'));
+
+      // The last day of each period is removed.
+      clock = grant.add(const Duration(hours: 5));
+      dayEntries.entries = [before.first, ...after.sublist(0, 2)];
+      final report = await service.syncNow();
+
+      expect(report.blocked, isNull);
+      expect(platform.deleteCalls, [
+        ['period-$_profileId-2026-06-02'],
+      ], reason: 'the exported period is replaced; the older one, which '
+          'this device never wrote, is not touched');
+      final rewrite = platform.periodWrites.last;
+      expect(platform.periodWrites, hasLength(2));
+      expect(rewrite.recordId, 'period-$_profileId-2026-06-02');
+      expect(rewrite.start, LocalDate.fromIso('2026-06-02'));
+      expect(rewrite.end, LocalDate.fromIso('2026-06-03'));
+      expect(rewrite.tzName, _tz);
+      expect(rewrite.recordVersionMs, clock.millisecondsSinceEpoch);
+      expect(periodRow('period-$_profileId-2026-06-02')?.sourceRowId,
+          '2026-06-02/2026-06-03');
+      expect(periodRow('period-$_profileId-2026-05-20'), isNull);
+
+      // Nothing changed since: the corrected record is left alone.
+      await service.syncNow();
+      expect(platform.periodWrites, hasLength(2));
+    });
+
+    test('a refused period delete blocks the pass, keeps the record '
+        'remembered, and is retried', () async {
+      await seedGranted(grant);
+      final service = buildService();
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1))),
+      ];
+      await service.syncNow();
+
+      dayEntries.entries = [];
+      platform.deleteResult = const HealthPlatformPermissionDenied();
+      final refused = await service.syncNow();
+      expect(refused.blocked, isA<HealthPlatformPermissionDenied>());
+      expect(periodRow('period-$_profileId-2026-06-02'), isNotNull);
+
+      platform.deleteResult = const HealthPlatformAllowed();
+      final retried = await service.syncNow();
+      expect(retried.blocked, isNull);
+      expect(platform.deleteCalls, hasLength(2));
+      expect(periodRow('period-$_profileId-2026-06-02'), isNull);
+    });
+
+    test('a shorter interval whose write fails stays owed: the next pass '
+        'writes it', () async {
+      await seedGranted(grant);
+      final service = buildService();
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.heavy,
+            grant.add(const Duration(hours: 1))),
+        _entry('2026-06-03', FlowLevel.medium,
+            grant.add(const Duration(hours: 2))),
+      ];
+      await service.syncNow();
+
+      dayEntries.entries = dayEntries.entries.sublist(0, 1);
+      platform.writeResults = [const HealthPlatformResult.failed('store busy')];
+      final failed = await service.syncNow();
+      expect(failed.blocked, isA<HealthPlatformFailed>());
+      expect(periodRow('period-$_profileId-2026-06-02')?.sourceRowId,
+          '2026-06-02/2026-06-03',
+          reason: 'still remembered with the interval the store last took');
+
+      platform.writeResults = [const HealthPlatformAllowed()];
+      final retried = await service.syncNow();
+      expect(retried.blocked, isNull);
+      expect(platform.periodWrites.last.end, LocalDate.fromIso('2026-06-02'));
+      expect(periodRow('period-$_profileId-2026-06-02')?.sourceRowId,
+          '2026-06-02/2026-06-02');
+    });
+
+    test('the record is still reconciled after a relaunch (the ledger is '
+        'what remembers it)', () async {
+      await seedGranted(grant);
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1))),
+      ];
+      await buildService().syncNow();
+
+      // A fresh service: nothing in memory, only the persisted ledger.
+      dayEntries.entries = [];
+      final report = await buildService().syncNow();
+
+      expect(report.blocked, isNull);
+      expect(platform.deleteCalls, [
+        ['period-$_profileId-2026-06-02'],
+      ]);
+    });
+
+    test('a mid-pass loss of authority stops the period correction with no '
+        'store call', () async {
+      await seedGranted(grant);
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1))),
+      ];
+      await buildService().syncNow();
+
+      dayEntries.entries = [];
+      // Authority is intact when the pass starts and gone by the time the
+      // correction is reached: the pass's first session lookup answers the
+      // owner, every later one somebody else.
+      var lookups = 0;
+      final drifting = LocalHealthFlowWriteService(
+        platform: platform,
+        binding: HealthSyncBinding(settings),
+        minorBindingAllowed: false,
+        profiles: profiles,
+        dayEntries: dayEntries,
+        observations: observations,
+        settings: settings,
+        ledger: ledger,
+        guardiansForProfile: (_) async => [_ownerRow()],
+        signedInUserId: () => lookups++ == 0 ? _ownerId : 'someone-else',
+        now: () => clock,
+      );
+      final report = await drifting.syncNow();
+
+      expect(report.blocked, isA<HealthPlatformRefused>());
+      expect(platform.deleteCalls, isEmpty,
+          reason: 'the #153 guard is re-checked before the correction');
+      expect(periodRow('period-$_profileId-2026-06-02'), isNotNull);
+    });
+
+    test('an episode longer than Health Connect accepts writes its daily '
+        'flow but no interval record', () async {
+      await seedGranted(grant);
+      final first = LocalDate.fromIso('2026-06-02');
+      dayEntries.entries = [
+        for (var day = 0; day <= kHealthPeriodRecordMaxDays; day++)
+          _entry(first.addDays(day).iso, FlowLevel.light,
+              grant.add(Duration(hours: 1, minutes: day))),
+      ];
+
+      final report = await buildService().syncNow();
+
+      expect(report.blocked, isNull);
+      expect(report.samplesWritten, kHealthPeriodRecordMaxDays + 1);
+      expect(platform.periodWrites, isEmpty);
+    });
+
+    test('an exported period that grows past the limit is removed rather '
+        'than left describing a shorter period', () async {
+      await seedGranted(grant);
+      final first = LocalDate.fromIso('2026-06-02');
+      final service = buildService();
+      dayEntries.entries = [
+        for (var day = 0; day < kHealthPeriodRecordMaxDays; day++)
+          _entry(first.addDays(day).iso, FlowLevel.light,
+              grant.add(Duration(hours: 1, minutes: day))),
+      ];
+      await service.syncNow();
+      expect(platform.periodWrites.single.end,
+          first.addDays(kHealthPeriodRecordMaxDays - 1));
+
+      dayEntries.entries = [
+        ...dayEntries.entries,
+        _entry(first.addDays(kHealthPeriodRecordMaxDays).iso, FlowLevel.light,
+            grant.add(const Duration(hours: 4))),
+      ];
+      final report = await service.syncNow();
+
+      expect(report.blocked, isNull);
+      expect(platform.periodWrites, hasLength(1));
+      expect(platform.deleteCalls,
+          contains(equals(['period-$_profileId-${first.iso}'])));
+    });
+
+    test('the correction belongs to one binding: it happens while bound, '
+        'and unbinding forgets the exported periods with the rest of the '
+        'ledger', () async {
+      await seedGranted(grant);
+      final service = buildService();
+      final days = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1))),
+        _entry('2026-06-03', FlowLevel.medium,
+            grant.add(const Duration(hours: 2))),
+      ];
+      dayEntries.entries = days;
+      await service.syncNow();
+
+      // While bound, a removed day is corrected in the store.
+      dayEntries.entries = [days.first];
+      await service.syncNow();
+      expect(platform.deleteCalls, [
+        ['period-$_profileId-2026-06-02'],
+      ]);
+      expect(platform.periodWrites.last.end, LocalDate.fromIso('2026-06-02'));
+
+      await service.onUnbound();
+      expect(ledger.rows, isEmpty);
+
+      // Re-bound, already granted, the remaining day now gone too: that
+      // record was written under the earlier binding, so it is left in
+      // place — what the screen says turning sync off does.
+      await seedGranted(grant.add(const Duration(hours: 4)));
+      dayEntries.entries = [];
+      final report = await service.syncNow();
+
+      expect(report.blocked, isNull);
+      expect(platform.deleteCalls, hasLength(1));
+      expect(platform.periodWrites, hasLength(2));
+    });
+  });
+
+  group('issue #1478: the write pass asks only when it has not asked', () {
+    test('a permission that is already granted stamps the cursor and asks '
+        'nothing', () async {
+      await settings.set(_bindingKey, _profileId);
+      platform.permission = HealthPermissionStatus.granted;
+
+      final report = await buildService().syncNow();
+
+      expect(platform.authCalls, 0,
+          reason: 'on Android the request carries the read permissions too, '
+              'so asking here could raise the sheet again for one the person '
+              'had just declined');
+      expect(report.authorizationRequested, isFalse);
+      expect(report.blocked, isNull);
+      expect(await settings.get(_cursorKey),
+          '${clock.millisecondsSinceEpoch}');
+    });
+
+    test('a day logged after that stamp is written', () async {
+      await settings.set(_bindingKey, _profileId);
+      platform.permission = HealthPermissionStatus.granted;
+      final service = buildService();
+      await service.syncNow();
+
+      dayEntries.entries = [
+        _entry('2026-06-01', FlowLevel.medium,
+            clock.add(const Duration(minutes: 5))),
+      ];
+      final report = await service.syncNow();
+
+      expect(report.samplesWritten, 1);
+      expect(platform.authCalls, 0);
+    });
+  });
+
+  group('issue #1478: a waking temperature is never dated in the future', () {
+    // 2026-06-01 is in daylight time in America/New_York (UTC-4), so the
+    // 07:00 default for that day is 11:00 UTC.
+    final sevenLocal = DateTime.utc(2026, 6, 1, 11);
+
+    test('entered before 07:00, with no recorded time: written at the '
+        'present moment, not at a 07:00 that has not happened; from 07:00 on '
+        'the default stands', () async {
+      final grant = DateTime.utc(2026, 6, 1, 8);
+      await seedGranted(grant);
+      clock = DateTime.utc(2026, 6, 1, 9, 30); // 05:30 local
+      expect(clock.isBefore(sevenLocal), isTrue);
+      final reading =
+          _bbt('2026-06-01', 36.6, grant.add(const Duration(minutes: 30)));
+      observations.observations = [reading];
+      final recorder = _BbtRecordingPlatform();
+      platform = recorder;
+      final service = buildService();
+
+      await service.syncNow();
+
+      expect(recorder.bbtWrites.single.observedAt, clock,
+          reason: 'Health Connect refuses a record dated in the future');
+
+      // The same reading, edited later that morning: the default is in the
+      // past now, so it is left to the port (null = 07:00 local).
+      clock = sevenLocal.add(const Duration(hours: 1));
+      observations.observations = [
+        _bbt('2026-06-01', 36.7, clock.subtract(const Duration(minutes: 1))),
+      ];
+      await service.syncNow();
+
+      expect(recorder.bbtWrites, hasLength(2));
+      expect(recorder.bbtWrites.last.observedAt, isNull);
     });
   });
 

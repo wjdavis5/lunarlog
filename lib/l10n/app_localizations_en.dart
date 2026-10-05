@@ -5144,6 +5144,26 @@ class AppLocalizationsEn extends AppLocalizations {
       'Only menstrual flow and spotting written by other apps appear here — nothing is written automatically. You start the first import yourself; after it, lunarlog keeps the import current in the background.';
 
   @override
+  String get healthSyncWriteIntroHealthConnect =>
+      'Choose the one profile whose data this phone may ever write to Health Connect. Every other profile stays out of Health Connect entirely.';
+
+  @override
+  String get healthSyncWriteForwardOnlyHealthConnect =>
+      'Only days logged after sync is turned on are written — nothing already in the app is sent on its own. Separately, you can import menstrual flow and spotting from Health Connect — you start the first import yourself, and after it lunarlog keeps the import current in the background.';
+
+  @override
+  String get healthSyncWrittenTypesHealthConnect =>
+      'What lunarlog writes to Health Connect: flow and the first and last day of each period (Menstruation), spotting between periods (Spotting), discharge you tag as sticky, creamy or egg white (Cervical mucus), ovulation test results, and basal body temperature.';
+
+  @override
+  String get healthSyncFlowCollapseNoteHealthConnect =>
+      'Super heavy days are written as Heavy flow. Spotting logged inside a period is written as Light flow. A peak ovulation test is written as Positive.';
+
+  @override
+  String get healthSyncRevocationNoteHealthConnect =>
+      'Turning sync off, or later removing lunarlog\'s access in Health Connect, leaves everything already written in Health Connect in place. To remove it, delete it in Health Connect itself.';
+
+  @override
   String get healthSyncDenyMinorOff =>
       'Minor profiles sync on the same terms as any other profile. This build has minor health sync turned off.';
 

@@ -246,6 +246,36 @@ Duration endZoneOffsetFor(LocalDate date, String tzName) {
       .timeZoneOffset;
 }
 
+/// The last instant of local calendar day [date] in [tzName], at this
+/// project's whole-second resolution — the next local midnight minus one
+/// second, i.e. [localDayInterval]'s inclusive `end` — together with the UTC
+/// offset in effect at that instant.
+///
+/// This is the end a Health Connect `MenstruationPeriodRecord` must carry
+/// (Issue #1478). Health Connect reads a period record's `endTime` as a
+/// moment *on* the period's last day: its own screens count the days from
+/// the start date to the end date inclusive. An end at the *next* local
+/// midnight ([localDayEndExclusive], which issue #202 used) therefore adds
+/// a day — seen on an Android 15 emulator, where a one-day period written
+/// that way was shown as "Period day 1 of 2" and a two-day period as
+/// "Period day 2 of 3". The offset is
+/// computed at this instant rather than taken from [endZoneOffsetFor]
+/// (the offset at the next midnight): the two differ on a day whose
+/// daylight-saving transition falls exactly at midnight.
+///
+/// Throws [TimeZoneResolutionException] if [tzName] cannot be resolved
+/// (see [localDayInterval]'s doc comment).
+({DateTime instant, Duration offset}) localDayLastInstant(
+  LocalDate date,
+  String tzName,
+) {
+  final location = _resolveLocation(tzName);
+  final nextDay = date.addDays(1);
+  final last = tz.TZDateTime(location, nextDay.year, nextDay.month, nextDay.day)
+      .subtract(const Duration(seconds: 1));
+  return (instant: last.toUtc(), offset: last.timeZoneOffset);
+}
+
 /// The default local waking hour for Basal Body Temperature measurements
 /// when no explicit time-of-day was recorded (07:00 local time, Issue #920).
 const int kBbtDefaultHour = 7;

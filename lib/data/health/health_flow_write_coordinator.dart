@@ -19,13 +19,18 @@
 ///   logged since the last cursor) and again on every write or tombstone,
 ///   each debounced into at most one pass per [debounce] window.
 ///
+/// And one trigger it is handed rather than subscribing to: [onAppResumed]
+/// (Issue #1478), the root's lifecycle hook, for a permission that changed
+/// while the app was behind the health store's own screens.
+///
 /// Best-effort, like every background upkeep here: a throwing pass is
 /// swallowed (the service surfaces its own expected failures as a
 /// [HealthFlowSyncReport]), never propagated into the subscription — the
 /// next genuine change re-arms it.
 ///
-/// Pure Dart (R14/R16). Wiring (iOS-only until #202) lives in `app.dart`,
-/// exactly where the other publishers are constructed and disposed.
+/// Pure Dart (R14/R16). Wiring lives in `app.dart`, exactly where the other
+/// publishers are constructed and disposed; which platforms get one is
+/// `AppConfig.healthSyncWritesOn`.
 library;
 
 import 'dart:async';
@@ -105,6 +110,12 @@ class LocalHealthFlowWriteCoordinator implements HealthFlowWriteCoordinator {
       _subscribeEntries(profileId);
       _scheduleSync();
     }));
+  }
+
+  @override
+  void onAppResumed() {
+    if (_lastBoundId == null) return;
+    _scheduleSync();
   }
 
   void _subscribeEntries(String profileId) {

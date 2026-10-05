@@ -47,10 +47,22 @@ class PermissionsRationaleActivity : Activity() {
         val body = TextView(this).apply {
             textSize = 15f
             setPadding(0, padding, 0, padding)
+            // Issue #1478: the data types below are the ones the adapter
+            // really writes and reads (HealthConnectAdapter.kt's
+            // writtenRecordTypes / readPermissions). The sentence used to
+            // name menstruation and spotting only, while the permission
+            // sheet this screen is reached from also asks to write cervical
+            // mucus, ovulation tests, and basal body temperature.
             text = "lunarlog is a privacy-first, local-first cycle tracker.\n\n" +
-                "• Health Connect data (menstruation dates and flow, and " +
-                "spotting logged between periods) is only ever read or " +
-                "written for the one profile explicitly bound as this " +
+                "• What is written: for the one profile you choose, the " +
+                "period days and flow, spotting between periods, cervical " +
+                "mucus, ovulation test results, and basal body temperature " +
+                "you log in lunarlog. Symptoms and moods are never written " +
+                "-- Health Connect has no place for them.\n\n" +
+                "• What is read: menstruation and spotting, when you run " +
+                "an import, and afterwards to keep that import current.\n\n" +
+                "• One profile only: Health Connect data is only ever read " +
+                "or written for the one profile explicitly bound as this " +
                 "device's owner -- never for another family member's " +
                 "profile, even one this device manages as a guardian.\n\n" +
                 "• Local & Encrypted: all cycle data is protected on your " +
@@ -64,9 +76,11 @@ class PermissionsRationaleActivity : Activity() {
                 "use ads. Crash reports strip all health and personal " +
                 "details on-device before they ever leave it.\n\n" +
                 "You can grant, deny, or later revoke any of these permissions " +
-                "individually in Health Connect's own settings; lunarlog " +
-                "disables only the affected feature when a permission is " +
-                "denied or revoked."
+                "individually in Health Connect's own settings. Writing " +
+                "needs every write permission: while any one of them is " +
+                "off, lunarlog writes nothing and says so on its Health " +
+                "Connect sync screen. An import you start yourself needs " +
+                "the two read permissions."
         }
 
         val privacyPolicyButton = Button(this).apply {

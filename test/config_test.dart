@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show TargetPlatform;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/config.dart';
 
@@ -240,9 +241,15 @@ void main() {
       expect(AppConfig.fcmIosAppId, isEmpty);
       expect(AppConfig.hasPush, isFalse);
       // Issue #193 flipped this when the one-way, opt-in, forward-only
-      // menstrual-flow write path landed (iOS only via that path's own
-      // platform gates).
+      // menstrual-flow write path landed.
       expect(AppConfig.hasHealthSync, isTrue);
+      // Issue #1478: the platforms that write path runs on, pinned so that
+      // taking one out (or adding one) is a conscious edit here too. Android
+      // joined iOS when its Health Connect half was switched on.
+      expect(AppConfig.healthSyncWritePlatforms, {
+        TargetPlatform.iOS,
+        TargetPlatform.android,
+      });
       // Issue #296 pinned this while the flag was false; Issue #882 flipped
       // it to true so a minor profile binds on the same terms as an adult
       // (the production configuration). Flipping the default in config.dart

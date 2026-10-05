@@ -1398,7 +1398,7 @@ abstract class AppLocalizations {
   /// **'Choose which profile\'s data may sync to {source}'**
   String settingsHealthSyncSubtitle(String source);
 
-  /// Android-only health-sync copy (Issue #238): Health Connect has no symptom category types, so symptom tags are never exported there. This documents the permanent platform limitation rather than hiding it.
+  /// Android-only health-sync copy (Issue #238): Health Connect has no symptom category types, so symptom tags are never exported there. This documents the permanent platform limitation rather than hiding it. Since issue #1478 it is shown beside the Android write copy, where 'still sync their flow and spotting' is true; it is no longer shown on an import-only screen, where it contradicted 'nothing is written automatically'.
   ///
   /// In en, this message translates to:
   /// **'Symptoms (cramps, headaches, mood, and more) can\'t be written to Health Connect — it has no symptom categories. Days logged with symptoms still sync their flow and spotting; the symptoms themselves stay in lunarlog.'**
@@ -8160,7 +8160,7 @@ abstract class AppLocalizations {
   /// **'Choose the one profile whose data this phone may ever write to its Health app. Every other profile stays out of this phone\'s Health app entirely.'**
   String get healthSyncWriteIntro;
 
-  /// Issue #1004 (tranche 5): bind-screen intro on an import-only platform (Android).
+  /// Issue #1004 (tranche 5): bind-screen intro on an import-only platform. Android was one until issue #1478 turned its writes on.
   ///
   /// In en, this message translates to:
   /// **'Choose the one profile this phone may import health data into. Every other profile stays out of Health Connect entirely.'**
@@ -8178,11 +8178,41 @@ abstract class AppLocalizations {
   /// **'Symptoms you tag — cramps, headache, bloating, and mood — are written to the Health app as symptom entries. Mood tags are written as \'Mood Changes\' without saying which mood.'**
   String get healthSyncWriteSymptoms;
 
-  /// Issue #1004 (tranche 5): import-only explanation (Android, #458). Issue #1215 aligned it with the enforced gate: the first import is the person's to start, and only after it does the import keep itself current in the background.
+  /// Issue #1004 (tranche 5): import-only explanation for a platform where lunarlog reads from the health store and writes nothing to it (#458). Issue #1215 aligned it with the enforced gate: the first import is the person's to start, and only after it does the import keep itself current in the background. Since issue #1478 no shipping platform is import-only (Android writes too), so this is shown only if a platform is taken out of AppConfig.healthSyncWritePlatforms.
   ///
   /// In en, this message translates to:
   /// **'Only menstrual flow and spotting written by other apps appear here — nothing is written automatically. You start the first import yourself; after it, lunarlog keeps the import current in the background.'**
   String get healthSyncImportOnly;
+
+  /// Issue #1478: bind-screen intro on Android, where lunarlog writes to Health Connect. The Health Connect counterpart of healthSyncWriteIntro, which names the iPhone Health app.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose the one profile whose data this phone may ever write to Health Connect. Every other profile stays out of Health Connect entirely.'**
+  String get healthSyncWriteIntroHealthConnect;
+
+  /// Issue #1478: forward-only write explanation plus the read-direction disclosure on Android (Health Connect). The counterpart of healthSyncWriteForwardOnly; the import half keeps issue #1215's wording (the first import is the person's to start).
+  ///
+  /// In en, this message translates to:
+  /// **'Only days logged after sync is turned on are written — nothing already in the app is sent on its own. Separately, you can import menstrual flow and spotting from Health Connect — you start the first import yourself, and after it lunarlog keeps the import current in the background.'**
+  String get healthSyncWriteForwardOnlyHealthConnect;
+
+  /// Issue #1478: the complete list of what lunarlog writes to Health Connect on Android, with the name Health Connect itself shows for a data type in brackets wherever it differs from lunarlog's own word for it. Must match HealthConnectAdapter.kt's writtenRecordTypes and the permission sheet. Do not add symptoms: Health Connect has no symptom types.
+  ///
+  /// In en, this message translates to:
+  /// **'What lunarlog writes to Health Connect: flow and the first and last day of each period (Menstruation), spotting between periods (Spotting), discharge you tag as sticky, creamy or egg white (Cervical mucus), ovulation test results, and basal body temperature.'**
+  String get healthSyncWrittenTypesHealthConnect;
+
+  /// Issue #1478: the lossy mappings on Android (Health Connect), the counterpart of healthSyncFlowCollapseNote. Health Connect has no flow level above Heavy and no peak ovulation result.
+  ///
+  /// In en, this message translates to:
+  /// **'Super heavy days are written as Heavy flow. Spotting logged inside a period is written as Light flow. A peak ovulation test is written as Positive.'**
+  String get healthSyncFlowCollapseNoteHealthConnect;
+
+  /// Issue #1478: what turning sync off or revoking access does on Android (Health Connect), the counterpart of healthSyncRevocationNote, which names the iPhone Health app.
+  ///
+  /// In en, this message translates to:
+  /// **'Turning sync off, or later removing lunarlog\'s access in Health Connect, leaves everything already written in Health Connect in place. To remove it, delete it in Health Connect itself.'**
+  String get healthSyncRevocationNoteHealthConnect;
 
   /// Issue #1004 (tranche 5): bind deny reason when minor health sync is off.
   ///

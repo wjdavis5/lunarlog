@@ -175,6 +175,11 @@ class HealthSyncTombstoneCoordinator {
         case HealthExportLedgerKind.spotting:
         case HealthExportLedgerKind.bbt:
           _knownObservationRecordIds[row.sourceRowId] = row.recordId;
+        case HealthExportLedgerKind.period:
+          // Issue #1478: a period interval record belongs to no single
+          // row, so no tombstone can name it. The write path reconciles
+          // it on its own pass (`_reconcilePeriodRecords`).
+          break;
       }
     }
   }

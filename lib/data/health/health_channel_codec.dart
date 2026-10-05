@@ -76,8 +76,9 @@
 ///
 /// *Period args* (the `writeMenstrualPeriod` interval record, #202):
 /// `startMs` (local midnight of the episode's first day) +
-/// `startZoneOffsetMs`, and `endMs` (the *exclusive* local midnight after
-/// the episode's last day) + `endZoneOffsetMs` — the two instant/offset
+/// `startZoneOffsetMs`, and `endMs` (the last instant of the episode's last
+/// day — the next local midnight minus one second; issue #1478, see
+/// [encodePeriodDayArgs]) + `endZoneOffsetMs` — the two instant/offset
 /// pairs a `MenstruationPeriodRecord` needs, both computed here via
 /// `day_boundary.dart` from the entry's own `tz`.
 ///
@@ -98,8 +99,9 @@
 /// requested with the rest of the read set wherever the platform offers
 /// the background-read feature, so the #993 WorkManager pass can actually
 /// read while the app is backgrounded (the worker skips its pass cleanly
-/// without the grant, and the granted-all status check deliberately
-/// excludes it). On iOS there is no history/background split: the read set
+/// without the grant, and the `permissionStatus` check — which since issue
+/// #1478 covers the write permissions only — never includes it or any other
+/// read permission). On iOS there is no history/background split: the read set
 /// is the single menstrual-flow type, and full history is simply the query
 /// range.
 library;
@@ -534,9 +536,16 @@ Map<String, Object?> encodeDayArgs(LocalDate date, String tzName) {
 
 /// The period-args half for one `writeMenstrualPeriod` (Issue #202): the
 /// instant/offset pair for the interval record's start (local midnight of
-/// [start]) and its end (the *exclusive* local midnight after [end], plus
-/// that instant's own offset — on a DST-transition day it differs from the
-/// start offset, which is exactly why they are computed together here).
+/// [start]) and its end — the **last instant of [end]** (the next local
+/// midnight minus one second), plus that instant's own offset; on a
+/// DST-transition day it differs from the start offset, which is exactly
+/// why they are computed together here.
+///
+/// Issue #1478 moved the end off the *exclusive* next midnight #202 chose:
+/// Health Connect counts a period's days from its start date to its end
+/// date inclusive, so the exclusive end made every period one day longer
+/// there (see `localDayLastInstant` in `day_boundary.dart`).
+///
 /// All from the entry's own `tzName` via `day_boundary.dart` (#180's
 /// timezone contract — never the device's current zone); the native side
 /// does no zone math.
@@ -545,11 +554,12 @@ Map<String, Object?> encodePeriodDayArgs(
   LocalDate end,
   String tzName,
 ) {
+  final last = localDayLastInstant(end, tzName);
   return {
     'startMs': localDayInstant(start, tzName).millisecondsSinceEpoch,
     'startZoneOffsetMs': zoneOffsetFor(start, tzName).inMilliseconds,
-    'endMs': localDayEndExclusive(end, tzName).millisecondsSinceEpoch,
-    'endZoneOffsetMs': endZoneOffsetFor(end, tzName).inMilliseconds,
+    'endMs': last.instant.millisecondsSinceEpoch,
+    'endZoneOffsetMs': last.offset.inMilliseconds,
   };
 }
 

@@ -1055,7 +1055,7 @@
   },
   "settingsHealthSyncSymptomsAndroidLimitation": "Symptoms (cramps, headaches, mood, and more) can't be written to Health Connect — it has no symptom categories. Days logged with symptoms still sync their flow and spotting; the symptoms themselves stay in lunarlog.",
   "@settingsHealthSyncSymptomsAndroidLimitation": {
-    "description": "Android-only health-sync copy (Issue #238): Health Connect has no symptom category types, so symptom tags are never exported there. This documents the permanent platform limitation rather than hiding it."
+    "description": "Android-only health-sync copy (Issue #238): Health Connect has no symptom category types, so symptom tags are never exported there. This documents the permanent platform limitation rather than hiding it. Since issue #1478 it is shown beside the Android write copy, where 'still sync their flow and spotting' is true; it is no longer shown on an import-only screen, where it contradicted 'nothing is written automatically'."
   },
   "healthSyncPermissionGranted": "{source} access: granted",
   "@healthSyncPermissionGranted": {
@@ -6628,7 +6628,7 @@
     },
     "healthSyncImportIntro": "Choose the one profile this phone may import health data into. Every other profile stays out of Health Connect entirely.",
     "@healthSyncImportIntro": {
-      "description": "Issue #1004 (tranche 5): bind-screen intro on an import-only platform (Android)."
+      "description": "Issue #1004 (tranche 5): bind-screen intro on an import-only platform. Android was one until issue #1478 turned its writes on."
     },
     "healthSyncWriteForwardOnly": "Only days logged after sync is turned on are written \u2014 nothing already in the app is sent on its own. Separately, you can import menstrual flow from the Health app \u2014 you start the first import yourself, and after it lunarlog keeps the import current in the background.",
     "@healthSyncWriteForwardOnly": {
@@ -6640,7 +6640,27 @@
     },
     "healthSyncImportOnly": "Only menstrual flow and spotting written by other apps appear here \u2014 nothing is written automatically. You start the first import yourself; after it, lunarlog keeps the import current in the background.",
     "@healthSyncImportOnly": {
-      "description": "Issue #1004 (tranche 5): import-only explanation (Android, #458). Issue #1215 aligned it with the enforced gate: the first import is the person's to start, and only after it does the import keep itself current in the background."
+      "description": "Issue #1004 (tranche 5): import-only explanation for a platform where lunarlog reads from the health store and writes nothing to it (#458). Issue #1215 aligned it with the enforced gate: the first import is the person's to start, and only after it does the import keep itself current in the background. Since issue #1478 no shipping platform is import-only (Android writes too), so this is shown only if a platform is taken out of AppConfig.healthSyncWritePlatforms."
+    },
+    "healthSyncWriteIntroHealthConnect": "Choose the one profile whose data this phone may ever write to Health Connect. Every other profile stays out of Health Connect entirely.",
+    "@healthSyncWriteIntroHealthConnect": {
+      "description": "Issue #1478: bind-screen intro on Android, where lunarlog writes to Health Connect. The Health Connect counterpart of healthSyncWriteIntro, which names the iPhone Health app."
+    },
+    "healthSyncWriteForwardOnlyHealthConnect": "Only days logged after sync is turned on are written \u2014 nothing already in the app is sent on its own. Separately, you can import menstrual flow and spotting from Health Connect \u2014 you start the first import yourself, and after it lunarlog keeps the import current in the background.",
+    "@healthSyncWriteForwardOnlyHealthConnect": {
+      "description": "Issue #1478: forward-only write explanation plus the read-direction disclosure on Android (Health Connect). The counterpart of healthSyncWriteForwardOnly; the import half keeps issue #1215's wording (the first import is the person's to start)."
+    },
+    "healthSyncWrittenTypesHealthConnect": "What lunarlog writes to Health Connect: flow and the first and last day of each period (Menstruation), spotting between periods (Spotting), discharge you tag as sticky, creamy or egg white (Cervical mucus), ovulation test results, and basal body temperature.",
+    "@healthSyncWrittenTypesHealthConnect": {
+      "description": "Issue #1478: the complete list of what lunarlog writes to Health Connect on Android, with the name Health Connect itself shows for a data type in brackets wherever it differs from lunarlog's own word for it. Must match HealthConnectAdapter.kt's writtenRecordTypes and the permission sheet. Do not add symptoms: Health Connect has no symptom types."
+    },
+    "healthSyncFlowCollapseNoteHealthConnect": "Super heavy days are written as Heavy flow. Spotting logged inside a period is written as Light flow. A peak ovulation test is written as Positive.",
+    "@healthSyncFlowCollapseNoteHealthConnect": {
+      "description": "Issue #1478: the lossy mappings on Android (Health Connect), the counterpart of healthSyncFlowCollapseNote. Health Connect has no flow level above Heavy and no peak ovulation result."
+    },
+    "healthSyncRevocationNoteHealthConnect": "Turning sync off, or later removing lunarlog's access in Health Connect, leaves everything already written in Health Connect in place. To remove it, delete it in Health Connect itself.",
+    "@healthSyncRevocationNoteHealthConnect": {
+      "description": "Issue #1478: what turning sync off or revoking access does on Android (Health Connect), the counterpart of healthSyncRevocationNote, which names the iPhone Health app."
     },
     "healthSyncDenyMinorOff": "Minor profiles sync on the same terms as any other profile. This build has minor health sync turned off.",
     "@healthSyncDenyMinorOff": {

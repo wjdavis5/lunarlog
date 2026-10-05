@@ -11,8 +11,17 @@
 /// (Apple Health / Health Connect) that never runs on its own. The copy
 /// below documents the one lossy write mapping (`superHeavy` → `heavy`, the
 /// same collapse Clue documents for its own Apple Health integration, plus
-/// the spotting rule), mirroring Clue's own disclosure. `SettingsScreen`
-/// gates this screen off on web and on desktop. The screen itself only ever
+/// the spotting rule), mirroring Clue's own disclosure.
+///
+/// **The write copy is per store (issue #1478).** Android writes to Health
+/// Connect too, and what is written there differs from Apple Health: no
+/// symptom or mood entries (Health Connect has no such types), and a period
+/// interval record iOS does not have. So each write paragraph has an Apple
+/// Health string and a Health Connect string, chosen by the store this
+/// platform uses — never by "does this platform write", which used to
+/// stand in for "is this an iPhone" and put "this phone's Health app" on
+/// Android the moment its writes were switched on. `SettingsScreen` gates
+/// this screen off on web and on desktop. The screen itself only ever
 /// changes the device-local [SettingsKeys.healthStoreProfileId] setting via
 /// [HealthSyncBinding]; unbinding tears the write flow down through the
 /// binding stream the write coordinator watches (cursor + native mirror),
@@ -110,6 +119,7 @@ class HealthSyncScreen extends StatefulWidget {
     this.deviationInsights,
     this.permissionProbe,
     this.writeEnabled = true,
+    this.storePlatform,
   });
 
   final ProfilesRepository profilesRepository;
@@ -135,12 +145,19 @@ class HealthSyncScreen extends StatefulWidget {
   /// unconfigured build, a platform with no health store) simply skips it.
   final HealthDeviationInsights? deviationInsights;
 
-  /// Whether the write direction is wired on this platform. False on
-  /// Android as of Issue #458, where only the read/import runner is wired
-  /// (writes stay behind #202's device checklist), so the write-specific
-  /// copy is replaced with import-only copy rather than claiming writes
-  /// that will not happen.
+  /// Whether the write direction is wired on this platform — production
+  /// passes `AppConfig.healthSyncWritesOn(defaultTargetPlatform)`, the same
+  /// answer the composition root builds the write coordinator from (issue
+  /// #1478). When false the write copy is replaced with import-only copy
+  /// rather than claiming writes that will not happen.
   final bool writeEnabled;
+
+  /// The OS health store this platform uses, which decides whose name and
+  /// whose write copy the screen shows (issue #1478). Null falls back to
+  /// the importer's own platform, and without an importer to the pre-#1478
+  /// guess (Apple Health when writes are on, Health Connect when not) so a
+  /// harness that passes neither renders what it always did.
+  final HealthImportPlatform? storePlatform;
 
   /// The signed-in account's user id, or null when signed out — passed in
   /// rather than read from an `AuthController` here so this widget stays
@@ -152,7 +169,8 @@ class HealthSyncScreen extends StatefulWidget {
   State<HealthSyncScreen> createState() => _HealthSyncScreenState();
 }
 
-class _HealthSyncScreenState extends State<HealthSyncScreen> {
+class _HealthSyncScreenState extends State<HealthSyncScreen>
+    with WidgetsBindingObserver {
   bool _loading = true;
   bool _loadFailed = false;
   String? _boundProfileId;
@@ -183,11 +201,11 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
   /// is (re-)opened or used.
   HealthPermissionStatus? _permissionStatus;
 
-  /// The platform the runner reads — drives the copy below. Defaults to
-  /// Apple Health only for the (never-shown) case where the importer is
-  /// absent; every rendered path is guarded by a non-null importer.
+  /// The store this screen is about — drives every store name and the
+  /// write copy below. See [HealthSyncScreen.storePlatform] for the order.
   HealthImportPlatform get _importPlatform {
-    if (widget.importer != null) return widget.importer!.platform;
+    final store = widget.storePlatform ?? widget.importer?.platform;
+    if (store != null) return store;
     return widget.writeEnabled
         ? HealthImportPlatform.appleHealth
         : HealthImportPlatform.healthConnect;
@@ -196,7 +214,33 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_load());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Issue #1478: the OS permission is decided on screens this one cannot
+  /// see — the health store's own permission sheet, which the write path
+  /// raises a moment after a profile is bound here, and the store's
+  /// settings. Coming back from either is when the status line may have
+  /// gone stale, so it is read again; before this it kept saying "not yet
+  /// asked" after the person had just answered.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    unawaited(_refreshPermissionStatus());
+  }
+
+  Future<void> _refreshPermissionStatus() async {
+    if (_loading) return;
+    final status = await _readPermissionStatus();
+    if (!mounted || status == _permissionStatus) return;
+    setState(() => _permissionStatus = status);
   }
 
   /// Loads the bound profile id, every non-archived profile, and each
@@ -750,71 +794,27 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
             padding: const EdgeInsets.all(16),
             child: Text(
               widget.writeEnabled
-                  ? l10n.healthSyncWriteIntro
+                  ? _writeIntro(l10n)
                   : l10n.healthSyncImportIntro,
             ),
           ),
           // Issue #959: the OS permission state, shown per platform, with
           // the settings deep link only when it is denied.
           ?permissionSection,
-          if (widget.writeEnabled) ...[
-            // Issue #193: document the write surface the way Clue documents
-            // its own — one-way, forward-only, and the one lossy mapping
-            // (superHeavy collapses to Apple's `heavy`; spotting follows the
-            // A3-4 in/outside-episode rule). Issue #217 adds the read
-            // direction: user-initiated import only, and the original
-            // "nothing is ever read back" claim is rewritten to say so.
-            Padding(
-              key: const ValueKey('health-sync-forward-only-copy'),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(l10n.healthSyncWriteForwardOnly),
-            ),
-            Padding(
-              key: const ValueKey('health-sync-flow-collapse-copy'),
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                AppLocalizations.of(context).healthSyncFlowCollapseNote,
-              ),
-            ),
-            // Issue #238 / #918: disclosure of symptom and mood writes.
-            Padding(
-              key: const ValueKey('health-sync-symptoms-copy'),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(l10n.healthSyncWriteSymptoms),
-            ),
-            // Issue #186 (AC7): what happens on revocation/unmapping. Stopping
-            // sync or revoking this phone's Health app permission never deletes
-            // what was already written — the samples stay in the Health app,
-            // which may consider them theirs.
-            Padding(
-              key: const ValueKey('health-sync-revocation-copy'),
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                AppLocalizations.of(context).healthSyncRevocationNote,
-              ),
-            ),
-          ] else ...[
-            // Issue #458: Android wires only the import direction, so the
-            // write-specific copy above is replaced rather than left to
-            // promise writes that never happen.
+          if (widget.writeEnabled)
+            ..._writeCopy(l10n)
+          else
+            // Issue #458: a platform that wires only the import direction
+            // gets this in place of the write copy, rather than a promise
+            // of writes that never happen. Issue #1478: nothing else rides
+            // along — the symptom line that used to follow said "days
+            // logged with symptoms still sync their flow and spotting",
+            // two lines under "nothing is written automatically".
             Padding(
               key: const ValueKey('health-sync-import-only-copy'),
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Text(l10n.healthSyncImportOnly),
             ),
-            // Issue #238: Health Connect has no symptom category types, so
-            // symptom tags are never exported on Android. State the
-            // permanent platform limitation rather than let an Android user
-            // see a silent difference.
-            Padding(
-              key: const ValueKey('health-sync-symptoms-android-limitation'),
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                AppLocalizations.of(context)
-                    .settingsHealthSyncSymptomsAndroidLimitation,
-              ),
-            ),
-          ],
           // Issue #992: the scope decision, stated plainly. Reads are
           // full-history now, and the #993 background pass runs wherever
           // Health Connect offers the background-read feature and its
@@ -870,6 +870,82 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
         ],
       ),
     );
+  }
+
+  bool get _isHealthConnect =>
+      _importPlatform == HealthImportPlatform.healthConnect;
+
+  /// The bind-screen intro for a platform that writes (issue #1478: the
+  /// Apple Health string says "this phone's Health app").
+  String _writeIntro(AppLocalizations l10n) => _isHealthConnect
+      ? l10n.healthSyncWriteIntroHealthConnect
+      : l10n.healthSyncWriteIntro;
+
+  /// The write disclosures, for the store this platform writes to.
+  ///
+  /// Issue #193: document the write surface the way Clue documents its own
+  /// — one-way, forward-only, and the lossy mappings (superHeavy collapses
+  /// to `heavy`; spotting follows the A3-4 in/outside-episode rule). Issue
+  /// #217 adds the read direction: the first import is user-initiated.
+  /// Issue #186 (AC7): stopping sync or revoking the OS permission never
+  /// deletes what was already written.
+  ///
+  /// Issue #1478: Health Connect gets its own strings. It is written a
+  /// different set of things (listed in full, in Health Connect's own
+  /// names), it has no symptom types at all — so where the iPhone screen
+  /// says symptoms are written, this one says they are not (Issue #238's
+  /// permanent platform limitation) — and nothing here may say "Health
+  /// app".
+  List<Widget> _writeCopy(AppLocalizations l10n) {
+    final healthConnect = _isHealthConnect;
+    return [
+      Padding(
+        key: const ValueKey('health-sync-forward-only-copy'),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Text(
+          healthConnect
+              ? l10n.healthSyncWriteForwardOnlyHealthConnect
+              : l10n.healthSyncWriteForwardOnly,
+        ),
+      ),
+      if (healthConnect)
+        Padding(
+          key: const ValueKey('health-sync-written-types-copy'),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: Text(l10n.healthSyncWrittenTypesHealthConnect),
+        ),
+      Padding(
+        key: const ValueKey('health-sync-flow-collapse-copy'),
+        padding: const EdgeInsets.all(16),
+        child: Text(
+          healthConnect
+              ? l10n.healthSyncFlowCollapseNoteHealthConnect
+              : l10n.healthSyncFlowCollapseNote,
+        ),
+      ),
+      if (healthConnect)
+        Padding(
+          key: const ValueKey('health-sync-symptoms-android-limitation'),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(l10n.settingsHealthSyncSymptomsAndroidLimitation),
+        )
+      else
+        // Issue #238 / #918: disclosure of symptom and mood writes.
+        Padding(
+          key: const ValueKey('health-sync-symptoms-copy'),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(l10n.healthSyncWriteSymptoms),
+        ),
+      Padding(
+        key: const ValueKey('health-sync-revocation-copy'),
+        padding: const EdgeInsets.all(16),
+        child: Text(
+          healthConnect
+              ? l10n.healthSyncRevocationNoteHealthConnect
+              : l10n.healthSyncRevocationNote,
+        ),
+      ),
+    ];
   }
 
   Widget _profileTile(Profile profile) {

@@ -7,6 +7,13 @@
 ///   Settings (`SettingsKeys.healthStoreProfileId`), and nothing is
 ///   requested from the OS health store until the first sync pass asks for
 ///   write authorization (stamping the grant instant). Off is the default.
+///   The pass asks only while the platform reports the write permission as
+///   not yet asked; once it is granted there is nothing to ask, and a pass
+///   that finds it already granted stamps the cursor without a request
+///   (Issue #1478 — on Android the grant can come from the import's own
+///   sheet or from Health Connect's settings, and a request there could
+///   put a second sheet in front of the person for a read permission they
+///   had just declined).
 /// * **One-way** — this file only ever calls write (or, since Issue #619's
 ///   LLA-024, delete-by-own-record-id reconciliation) methods on
 ///   [HealthPlatformStore]; no read/query API exists on the port in this
@@ -63,6 +70,7 @@ library;
 // ignore_for_file: prefer_initializing_formals
 
 import 'package:lunarlog/domain/episodes/episodes.dart';
+import 'package:lunarlog/domain/health/day_boundary.dart';
 import 'package:lunarlog/domain/health/health_export_ledger.dart';
 import 'package:lunarlog/domain/health/health_flow_write_service.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
@@ -164,6 +172,37 @@ class _PendingPeriodWrite {
 
   int get recordVersionMs => updatedAt.millisecondsSinceEpoch;
 }
+
+/// The longest period episode this service writes as one interval record
+/// (Issue #1478). Health Connect's `MenstruationPeriodRecord` refuses an
+/// interval longer than 31 days ("Period must not exceed 31 days",
+/// connect-client 1.1.0) by throwing while the record is built, which would
+/// fail every later pass. Thirty rather than thirty-one because the limit
+/// is on elapsed time, and thirty-one calendar days that include an autumn
+/// clock change last an hour longer than that. A longer episode keeps its
+/// daily flow records; only the interval record is left out.
+const int kHealthPeriodRecordMaxDays = 30;
+
+/// One period episode as it stands now (Issue #1478): what its interval
+/// record should say, whether or not any of its days is eligible this pass.
+class _CurrentPeriod {
+  const _CurrentPeriod({
+    required this.start,
+    required this.end,
+    required this.tzName,
+  });
+
+  final LocalDate start;
+  final LocalDate end;
+
+  /// The zone of the episode's first bleed day (#180 — the entry's own).
+  final String tzName;
+}
+
+/// An exported period interval as the ledger stores it:
+/// `<first day>/<last day>`, ISO dates.
+String _periodInterval(LocalDate start, LocalDate end) =>
+    '${start.iso}/${end.iso}';
 
 /// One day's resolved symptom writes (Issue #238): every HealthKit
 /// symptom sample the day entry's tags resolve to, in one channel call.
@@ -287,6 +326,13 @@ class _Batch {
   /// the BBT diff. A remembered id absent from this set is a reading the
   /// operator cleared (its row is tombstoned or no longer resolves).
   final Set<String> liveBbtRecordIds = {};
+
+  /// Every period episode the profile's live days derive this pass, keyed
+  /// by its interval record's id, regardless of the forward-only cursor —
+  /// the "now" side of the period-record reconcile (Issue #1478). A
+  /// remembered record id absent from this map belongs to an episode that
+  /// no longer exists.
+  final Map<String, _CurrentPeriod> currentPeriods = {};
 
   void add(LocalDate date, String tzName, DateTime updatedAt, String recordId,
       HealthFlowWritePlan plan, Episode? containing) {
@@ -424,6 +470,13 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// sessions in [HealthExportLedger] (Issue #936).
   final Set<String> _exportedBbtRecordIds = {};
 
+  /// The period interval records this device exported (Issue #1478): each
+  /// record id mapped to the interval it was last written with
+  /// ([_periodInterval]). Persisted in [HealthExportLedger] as
+  /// [HealthExportLedgerKind.period] rows and seeded from it like the two
+  /// sets above. See [_reconcilePeriodRecords].
+  final Map<String, String> _exportedPeriods = {};
+
   /// Runs one sync pass for the currently bound profile. Never throws —
   /// every expected failure mode is a [HealthFlowSyncReport.blocked];
   /// unexpected storage errors propagate (the coordinator's job to
@@ -488,7 +541,10 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       return HealthFlowSyncReport(bound: true, blocked: bindBlocked);
     }
 
-    final grant = await _ensureForwardOnlyCursor(bound.facts);
+    final grant = await _ensureForwardOnlyCursor(
+      bound.facts,
+      alreadyGranted: permission == HealthPermissionStatus.granted,
+    );
     if (grant.blocked != null) {
       // A refused/denied authorization — or `unavailable` (consent was
       // stamped but there is nothing to write to) — ends the pass.
@@ -544,11 +600,25 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// health store can never be written to, and re-prompting on every pass
   /// would churn; any other outcome leaves the cursor unset so the next
   /// pass retries. A non-null [GrantOutcome.blocked] always ends the pass.
+  ///
+  /// [alreadyGranted] is this pass's own #959 probe answering
+  /// [HealthPermissionStatus.granted] (Issue #1478): every write is already
+  /// allowed, so the stage stamps the cursor and asks nothing. The request
+  /// is for the not-yet-asked state only. On Android it carries the read
+  /// permissions too, so asking while the writes were already granted
+  /// could raise Health Connect's sheet again — in the middle of logging a
+  /// day — for a read permission the person had just declined.
   Future<({DateTime? cursor, HealthPlatformResult? blocked, bool grantedNow})>
-      _ensureForwardOnlyCursor(HealthGuardFacts facts) async {
+      _ensureForwardOnlyCursor(
+    HealthGuardFacts facts, {
+    required bool alreadyGranted,
+  }) async {
     final existing = await _readCursor();
     if (existing != null) {
       return (cursor: existing, blocked: null, grantedNow: false);
+    }
+    if (alreadyGranted) {
+      return (cursor: await _stampCursor(), blocked: null, grantedNow: false);
     }
     final auth = await _platform.requestWriteAuthorization(facts);
     final blocked = _notAllowed(auth);
@@ -556,12 +626,18 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     if (blocked != null && !unavailable) {
       return (cursor: null, blocked: blocked, grantedNow: true);
     }
+    return (cursor: await _stampCursor(), blocked: blocked, grantedNow: true);
+  }
+
+  /// Stamps the forward-only cursor with the current instant and returns
+  /// it.
+  Future<DateTime> _stampCursor() async {
     final stamped = _now();
     await _settings.set(
       SettingsKeys.healthSyncWrittenThroughMs,
       '${stamped.millisecondsSinceEpoch}',
     );
-    return (cursor: stamped, blocked: blocked, grantedNow: true);
+    return stamped;
   }
 
   /// Builds the pass's write batch from the bound profile's day entries
@@ -595,6 +671,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     final episodes = deriveEpisodes(bleedDatesOf(entries));
     final bleedDays = bleedDatesOf(entries);
     final batch = _Batch();
+    _collectCurrentPeriods(profileId, entries, episodes, batch);
 
     // Eligible bleed days keyed by date, for period-record derivation.
     final eligibleBleed = <LocalDate, _EligibleBleed>{};
@@ -648,6 +725,35 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     batch.pendingPeriods
         .addAll(_periodWritesFor(profileId, episodes, eligibleBleed));
     return batch;
+  }
+
+  /// Records every period episode the profile's live days derive right
+  /// now, eligible or not, as the "now" side of the period-record reconcile
+  /// (Issue #1478, [_reconcilePeriodRecords]). An episode longer than
+  /// [kHealthPeriodRecordMaxDays] is left out: the store cannot hold it, so
+  /// it is neither written nor kept.
+  void _collectCurrentPeriods(
+    String profileId,
+    List<DayEntry> entries,
+    List<Episode> episodes,
+    _Batch batch,
+  ) {
+    final zoneByBleedDay = <LocalDate, String>{
+      for (final entry in entries)
+        if (entry.deletedAt == null && isBleed(entry.flow))
+          entry.localDate: entry.tz,
+    };
+    for (final episode in episodes) {
+      final tzName = zoneByBleedDay[episode.start];
+      if (tzName == null) continue;
+      if (episode.lengthDays > kHealthPeriodRecordMaxDays) continue;
+      batch.currentPeriods[healthPeriodRecordId(profileId, episode.start)] =
+          _CurrentPeriod(
+            start: episode.start,
+            end: episode.end,
+            tzName: tzName,
+          );
+    }
   }
 
   /// The two observation-row loops of [_collectBatch] (spotting markers and
@@ -825,6 +931,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   ) {
     final writes = <_PendingPeriodWrite>[];
     for (final episode in episodes) {
+      // Issue #1478: Health Connect refuses a longer interval outright.
+      if (episode.lengthDays > kHealthPeriodRecordMaxDays) continue;
       _EligibleBleed? newest;
       for (var date = episode.start;
           !date.isAfter(episode.end);
@@ -858,7 +966,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     String profileId,
   ) async {
     final flow = await _writeFlowRecords(batch.pending, facts);
-    final periods = await _writePeriodRecords(batch.pendingPeriods, facts);
+    final periods =
+        await _writePeriodRecords(batch.pendingPeriods, facts, profileId);
     final symptoms = await _writeSymptomRecords(batch.pendingSymptoms, facts);
     final cervical =
         await _writeCervicalMucusRecords(batch.pendingCervicalMucus, facts);
@@ -871,6 +980,10 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     // write"; a failure here blocks the pass (and leaves the cursor) so the
     // removal is retried rather than silently skipped.
     final removed = await _reconcileRemovedRecords(batch, facts, profileId);
+    // Issue #1478: and the period interval records, which no single day
+    // entry owns.
+    final periodsReconciled =
+        await _reconcilePeriodRecords(batch, facts, profileId);
     return _BatchOutcome(
       written: flow.written,
       reconciled: flow.reconciled,
@@ -885,7 +998,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
           cervical.failure ??
           ovulation.failure ??
           bbt.failure ??
-          removed,
+          removed ??
+          periodsReconciled,
       newest: _latest(
         _latest(_latest(flow.newest, periods.newest), symptoms.newest),
         _latest(_latest(cervical.newest, ovulation.newest), bbt.newest),
@@ -908,6 +1022,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     final rows = await _ledger.readForProfile(profileId);
     _exportedEntryRecordIds.clear();
     _exportedBbtRecordIds.clear();
+    _exportedPeriods.clear();
     for (final row in rows) {
       switch (row.kind) {
         case HealthExportLedgerKind.entry:
@@ -916,6 +1031,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
               .add(row.recordId);
         case HealthExportLedgerKind.bbt:
           _exportedBbtRecordIds.add(row.recordId);
+        case HealthExportLedgerKind.period:
+          _exportedPeriods[row.recordId] = row.sourceRowId;
         case HealthExportLedgerKind.spotting:
           break;
       }
@@ -1201,6 +1318,10 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// `unavailable` on the per-day writes above, which already blocks).
   /// Stops outright on the same mid-pass authority drift
   /// [_writeFlowRecords] guards against (Issue #620, LLA-023).
+  ///
+  /// Every record the store accepted is remembered in the export ledger
+  /// (Issue #1478), which is what lets [_reconcilePeriodRecords] correct or
+  /// remove it later.
   Future<
       ({
         int written,
@@ -1209,6 +1330,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       })> _writePeriodRecords(
     List<_PendingPeriodWrite> pendingPeriods,
     HealthGuardFacts facts,
+    String profileId,
   ) async {
     var written = 0;
     HealthPlatformResult? failure;
@@ -1234,6 +1356,12 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       );
       if (result is HealthPlatformAllowed) {
         written++;
+        await _rememberPeriod(
+          profileId,
+          period.recordId,
+          period.start,
+          period.end,
+        );
       } else if (result is HealthPlatformUnavailable) {
         continue;
       } else {
@@ -1241,6 +1369,111 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       }
     }
     return (written: written, failure: failure, newest: newest);
+  }
+
+  /// Reconciles the period interval records a previous pass exported
+  /// against the episodes the profile's days derive now (Issue #1478).
+  ///
+  /// A period record is the one export derived from several day entries,
+  /// so neither a tombstone nor [_reconcileEntryRemovals]'s per-entry diff
+  /// can address it. Before this existed the only thing that ever touched
+  /// one was "an eligible bleed day re-writes its episode's record", which
+  /// left a wrong record in Health Connect in three cases:
+  ///
+  /// * the episode is gone (its only bleed day was deleted, or set to no
+  ///   bleeding) and the record stayed, still claiming a period;
+  /// * the episode's first day moved (an earlier day was logged, or the
+  ///   first day was removed) — the record id is derived from the first
+  ///   day, so a second record was written and the first stayed,
+  ///   overlapping it;
+  /// * the episode got shorter with no newly edited bleed day in it, and
+  ///   the record kept its old last day.
+  ///
+  /// So every remembered record whose episode no longer exists is deleted,
+  /// and every remembered record whose episode now covers different days —
+  /// and that this pass has not just re-written — is replaced
+  /// ([_replacePeriodRecord]). Only records this device exported are
+  /// touched: an episode that was never written (all of it logged before
+  /// the forward-only cursor) is not remembered, so it is not written here
+  /// either. Returns the first failure, or null; a failure blocks the pass
+  /// and leaves the cursor, so the correction is retried.
+  Future<HealthPlatformResult?> _reconcilePeriodRecords(
+    _Batch batch,
+    HealthGuardFacts facts,
+    String profileId,
+  ) async {
+    HealthPlatformResult? failure;
+    for (final recordId in _exportedPeriods.keys.toList()) {
+      final current = batch.currentPeriods[recordId];
+      final upToDate = current != null &&
+          _exportedPeriods[recordId] ==
+              _periodInterval(current.start, current.end);
+      if (upToDate) continue;
+      failure ??=
+          await _replacePeriodRecord(recordId, current, facts, profileId);
+    }
+    return failure;
+  }
+
+  /// Deletes the exported period record [recordId] and, when its episode
+  /// still exists ([current] is non-null), writes the episode's present
+  /// interval in its place. Delete-then-write rather than a plain re-write
+  /// because the store keeps whichever copy carries the higher version, and
+  /// a correction that has no newly edited day behind it has no version
+  /// that is certain to be higher. The record stays remembered with its old
+  /// interval until the new one is accepted, so a failed write is retried
+  /// by the next pass. Goes through the same [_authorityDrift] recheck and
+  /// guarded port as every other write. Null when everything was allowed.
+  Future<HealthPlatformResult?> _replacePeriodRecord(
+    String recordId,
+    _CurrentPeriod? current,
+    HealthGuardFacts facts,
+    String profileId,
+  ) async {
+    final drift = await _authorityDrift(facts);
+    if (drift != null) return drift;
+    final deleted = await _platform.deleteRecords(facts, [recordId]);
+    if (deleted is! HealthPlatformAllowed) return deleted;
+    if (current == null) {
+      _exportedPeriods.remove(recordId);
+      await _ledger.removeRecordIds([recordId]);
+      return null;
+    }
+    final written = await _platform.writeMenstrualPeriod(
+      HealthMenstrualPeriodWrite(
+        facts: facts,
+        start: current.start,
+        end: current.end,
+        tzName: current.tzName,
+        recordId: recordId,
+        recordVersionMs: _now().millisecondsSinceEpoch,
+      ),
+    );
+    if (written is! HealthPlatformAllowed) return written;
+    await _rememberPeriod(profileId, recordId, current.start, current.end);
+    return null;
+  }
+
+  /// Records that this device exported the period record [recordId] for
+  /// the interval [start]..[end], in memory and in the persisted ledger.
+  Future<void> _rememberPeriod(
+    String profileId,
+    String recordId,
+    LocalDate start,
+    LocalDate end,
+  ) async {
+    final interval = _periodInterval(start, end);
+    _exportedPeriods[recordId] = interval;
+    await _ledger.record([
+      HealthExportLedgerEntry(
+        recordId: recordId,
+        profileId: profileId,
+        sourceRowId: interval,
+        kind: HealthExportLedgerKind.period,
+        localDate: start.iso,
+        exportedAt: _now(),
+      ),
+    ]);
   }
 
   /// Sends the per-day symptom writes (Issue #238). A platform that
@@ -1421,7 +1654,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
               item.resolved.healthConnectMeasurementLocation,
           recordId: item.recordId,
           recordVersionMs: item.recordVersionMs,
-          observedAt: item.observedAt,
+          observedAt: _bbtObservedAt(item),
         ),
       );
       if (result is HealthPlatformAllowed) {
@@ -1433,6 +1666,38 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       }
     }
     return (written: written, failure: failure, newest: newest);
+  }
+
+  /// The moment to write [item]'s reading at: its own recorded time when it
+  /// has one; otherwise null, which the port resolves to the 07:00
+  /// local-morning default (Issue #920) — unless that default has not
+  /// happened yet, in which case the present moment is used instead (Issue
+  /// #1478).
+  ///
+  /// A waking temperature is typically entered before seven in the
+  /// morning, and Health Connect refuses a record dated in the future
+  /// ("Record time must not be in the future"). Seen on an emulator: a
+  /// reading entered at 03:27 was refused with its 07:00 default, and
+  /// because one refused write fails the whole pass, the cursor stopped
+  /// advancing until seven o'clock came. The reading exists now, so now is
+  /// a truthful time for it; a later re-write of the same record after
+  /// seven uses the default again, which the store ignores unless the row
+  /// itself changed.
+  DateTime? _bbtObservedAt(_PendingBbtWrite item) {
+    final observedAt = item.observedAt;
+    if (observedAt != null) return observedAt;
+    final now = _now();
+    try {
+      final fallback = basalBodyTemperatureInstant(
+        date: item.date,
+        tzName: item.tzName,
+      ).instant;
+      return fallback.isAfter(now) ? now : null;
+    } on TimeZoneResolutionException {
+      // An unresolvable zone is the port's to report (it turns it into a
+      // failed result); nothing to adjust here.
+      return null;
+    }
   }
 
   /// The unbind/reset half of the write flow: clears the forward-only
@@ -1449,6 +1714,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     // never diff (and delete) against the old profile's exports.
     _exportedEntryRecordIds.clear();
     _exportedBbtRecordIds.clear();
+    _exportedPeriods.clear();
     _ledgerProfileId = null;
     // Issue #936: the persisted ledger belongs to one binding, exactly like
     // the cursor — a re-bind must never diff (and delete) against the old

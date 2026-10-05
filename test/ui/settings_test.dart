@@ -8,6 +8,7 @@ import 'package:lunarlog/domain/feedback/device_diagnostics_collector.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
@@ -593,10 +594,87 @@ void main() {
         debugDefaultTargetPlatformOverride = null;
       }
     });
+
+    // Issue #1478: the screen the tile opens is told whether this platform
+    // writes by the same AppConfig answer the composition root builds the
+    // write coordinator from, and which store it is by the platform — so
+    // through the real Settings route, Android gets the write screen in
+    // Health Connect's name. Before, the tile said "may sync to Health
+    // Connect" and opened a screen saying nothing is written (and once the
+    // write gate alone was flipped, one saying "this phone's Health app").
+    Future<void> openHealthSync(WidgetTester tester) async {
+      await tester.tap(find.byKey(const ValueKey('health-sync-tile')));
+      await tester.pumpAndSettle();
+    }
+
+    Iterable<String> screenText(WidgetTester tester) => tester
+        .widgetList<Text>(find.byType(Text))
+        .map((text) => text.data ?? '');
+
+    testWidgets('the tile opens the write screen worded for the platform\'s '
+        'own store: Health Connect on Android, the Health app on iOS (issue '
+        '#1478)', (tester) async {
+      try {
+        useTallSettingsViewport(tester);
+        await pumpWithHealthSync(tester, platform: TargetPlatform.android);
+        await openHealthSync(tester);
+
+        expect(
+          find.byKey(const ValueKey('health-sync-forward-only-copy')),
+          findsOneWidget,
+          reason: 'Android is a write platform',
+        );
+        expect(
+          find.byKey(const ValueKey('health-sync-import-only-copy')),
+          findsNothing,
+        );
+        expect(
+          find.textContaining('this phone may ever write to Health Connect'),
+          findsOneWidget,
+        );
+        expect(
+          screenText(tester).where((text) => text.contains('Health app')),
+          isEmpty,
+          reason: 'the iPhone store name must not appear on Android',
+        );
+        expect(
+          screenText(tester).where((text) => text.contains('symptom entries')),
+          isEmpty,
+          reason: 'Health Connect has no symptom types',
+        );
+
+        // The same route on iOS still opens the Apple Health write screen.
+        await tester.pumpWidget(const SizedBox.shrink());
+        await pumpWithHealthSync(tester, platform: TargetPlatform.iOS);
+        await openHealthSync(tester);
+
+        expect(
+          find.byKey(const ValueKey('health-sync-forward-only-copy')),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining("stays out of this phone's Health app entirely"),
+          findsOneWidget,
+        );
+        expect(
+          screenText(tester).where((text) => text.contains('Health Connect')),
+          isEmpty,
+        );
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
   });
 }
 
 class _FakeProfileGuardiansRepository implements ProfileGuardiansRepository {
+  /// The health sync screen resolves each profile's owner on load (Issue
+  /// #1478's route tests open it); no guardian rows means a locally owned
+  /// profile.
+  @override
+  Future<List<ProfileGuardian>> getForProfile(String profileId) async =>
+      const [];
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

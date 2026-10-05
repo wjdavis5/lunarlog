@@ -266,26 +266,78 @@ void main() {
     });
   });
 
-  group('Android permissionStatus compares the requested set (#959)', () {
+  group('Android permissionStatus consults only the write permissions '
+      '(#959, #1478)', () {
     late String kotlin;
 
     setUpAll(() {
       kotlin = _stripLineComments(readRepoFile(_adapterPath));
     });
 
-    test('the status is the SDK check plus getGrantedPermissions over '
-        'the foreground status set (issue #1211: allPermissions minus the '
-        'background read)', () {
+    test('the status is the SDK check plus getGrantedPermissions over the '
+        'write permissions, and nothing a read could deny', () {
       expect(kotlin, contains('permissionController.getGrantedPermissions()'));
-      // Issue #1211: the granted-all comparison runs against
-      // foregroundStatusPermissions -- allPermissions minus
-      // PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND -- so a user who
-      // declines only background reads is not branded "denied" (their tap
-      // import still works; the background worker skips its own pass
-      // instead). The subtraction itself is pinned by
-      // health_connect_manifest_test.dart's #1211 test.
-      expect(kotlin,
-          contains('granted.containsAll(foregroundStatusPermissions)'));
+      // Issue #1478: the set the "granted" answer requires is the write
+      // set itself — the Android half now matches the iOS half above. It
+      // used to be every requested permission but the background read
+      // (#1211's foregroundStatusPermissions), which made declining an
+      // optional READ permission ("Access past data") a denial of the
+      // writes.
+      expect(
+        RegExp(r'private\s+val\s+statusPermissions\s*=\s*writePermissions\b')
+            .hasMatch(kotlin),
+        isTrue,
+        reason: 'permissionStatus must be decided on the write permissions',
+      );
+      expect(kotlin, contains('required = statusPermissions'));
+      expect(kotlin, isNot(contains('foregroundStatusPermissions')));
+      // The request sheet still carries writes and reads together.
+      expect(kotlin, contains('requested = allPermissions'));
+      expect(kotlin, contains('launcher.launch(allPermissions)'));
+    });
+
+    test('"never asked" is told apart from "denied" by remembering the '
+        'request (issue #1478)', () {
+      // Android cannot tell the two apart from the granted set, and the
+      // Dart write pass stops on "denied" before its own authorization
+      // request — so answering "denied" on a fresh install meant the write
+      // path could never ask. The adapter remembers that it launched the
+      // request, sets that BEFORE launching (an interrupted sheet has still
+      // been shown), and decides through the pure HealthPermissionState.
+      expect(kotlin, contains('PERMISSION_REQUESTED_KEY'));
+      final remembered = kotlin.indexOf(
+          'prefs.edit().putLong(PERMISSION_REQUESTED_KEY, installStamp)');
+      final launched = kotlin.indexOf('launcher.launch(allPermissions)');
+      expect(remembered, isNonNegative);
+      expect(launched, isNonNegative);
+      expect(remembered, lessThan(launched),
+          reason: 'the request is remembered before the sheet is launched');
+      expect(kotlin, contains('HealthPermissionState.statusFor('));
+      expect(kotlin, contains('everRequested = permissionEverRequested()'));
+      // The marker counts only for the install that made it: these prefs
+      // can reach a new phone through Android's device-to-device transfer,
+      // where no Health Connect permission is granted and nothing has been
+      // asked. So it is stamped with the install's own first-install time
+      // and compared against it, never read as a bare flag.
+      expect(kotlin, contains('.firstInstallTime'));
+      expect(
+        kotlin,
+        contains('prefs.getLong(PERMISSION_REQUESTED_KEY, 0L) == installStamp'),
+      );
+      expect(kotlin, isNot(contains('putBoolean(PERMISSION_REQUESTED_KEY')));
+      // The decision itself, in the order that matters: granted first,
+      // then asked-and-not-granted, and only then not-asked.
+      final decision = RegExp(
+        r'granted\.containsAll\(required\)\s*->\s*GRANTED\s*'
+        r'everRequested\s*\|\|\s*granted\.any\s*\{\s*it in requested\s*\}\s*->\s*DENIED\s*'
+        r'else\s*->\s*NOT_ASKED',
+      );
+      expect(decision.hasMatch(kotlin), isTrue,
+          reason: 'HealthPermissionState.statusFor changed shape — update '
+              'HealthPermissionStateTest.kt and this guard together');
+      for (final wire in ['"granted"', '"notAsked"', '"denied"']) {
+        expect(kotlin, contains(wire));
+      }
     });
 
     test('the settings deep link is Health Connect settings', () {

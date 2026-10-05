@@ -183,6 +183,57 @@ void main() {
     expect(service.syncCalls, 2);
   });
 
+  // Issue #1478: the OS health permission changes on screens the app is
+  // behind (the store's permission sheet, its settings). Without a pass on
+  // the way back, a grant made there was first noticed by the pass the next
+  // logged day started — which stamped the forward-only cursor after that
+  // day was saved, and never wrote it.
+  test('onAppResumed runs one debounced pass exactly while a profile is '
+      'bound — not before a binding, not after it is removed, not after '
+      'dispose (issue #1478)', () async {
+    Future<void> settle() =>
+        Future<void>.delayed(const Duration(milliseconds: 50));
+
+    // Nothing bound yet: coming back to the foreground is nobody's pass.
+    coordinator.start();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    coordinator.onAppResumed();
+    await settle();
+    expect(service.syncCalls, 0);
+
+    // Bound: the binding's own first pass, then one pass per return to the
+    // foreground with no entry change behind it. Two returns inside the
+    // debounce window are one pass.
+    await settings.set(_bindingKey, 'p1');
+    await dayEntries.emit(const []);
+    await service.firstSync;
+    await settle();
+    final syncsWhenBound = service.syncCalls;
+    coordinator.onAppResumed();
+    coordinator.onAppResumed();
+    await settle();
+    expect(service.syncCalls, syncsWhenBound + 1);
+
+    // Unbound again: nothing.
+    await settings.set(_bindingKey, '');
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(service.unboundCalls, 1);
+    final syncsAtUnbind = service.syncCalls;
+    coordinator.onAppResumed();
+    await settle();
+    expect(service.syncCalls, syncsAtUnbind);
+
+    // Disposed while bound: nothing.
+    await settings.set(_bindingKey, 'p1');
+    await dayEntries.emit(const []);
+    await settle();
+    final syncsAtDispose = service.syncCalls;
+    await coordinator.dispose();
+    coordinator.onAppResumed();
+    await settle();
+    expect(service.syncCalls, syncsAtDispose);
+  });
+
   test('unbind retires the cursor through the service unbind path',
       () async {
     startBound('p1');
