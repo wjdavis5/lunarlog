@@ -461,6 +461,7 @@ export const MESSAGE_IDS = [
   "predictionConnectionFailureAlreadyConnected",
   "predictionConnectionFailureOneDirectional",
   "predictionConnectionFailureMinorProfile",
+  "predictionConnectionFailureOwnCode",
   "feedbackFailureRateLimited",
   "feedbackFailureInvalidInput",
   "feedbackFailureAttachmentTooLarge",

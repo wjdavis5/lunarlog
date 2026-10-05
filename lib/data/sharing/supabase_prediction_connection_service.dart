@@ -293,22 +293,47 @@ class SupabasePredictionConnectionService
     final msg = error.message.toLowerCase();
     final code = error.code ?? '';
 
+    // Decided first: what answered was not PostgREST, so the message is a
+    // gateway's or proxy's page. It is not a refusal, and its text is not
+    // read for one.
+    if (_isServerFailure(code)) {
+      return const PredictionConnectionFailure.network();
+    }
     if (code == 'PGRST301' || code == '42501' || msg.contains('permission')) {
       return const PredictionConnectionFailure.unauthorized();
     }
-    final business = _mapBusinessError(code, msg);
-    if (business != null) return business;
-    final status = int.tryParse(code);
-    if (status != null && status >= 500) {
-      return const PredictionConnectionFailure.network();
-    }
-    return const PredictionConnectionFailure.other();
+    return _mapBusinessError(code, msg) ??
+        const PredictionConnectionFailure.other();
+  }
+
+  /// Whether [code] is an HTTP 5xx status - something in front of PostgREST
+  /// answered, not the database - rather than a refusal the server chose.
+  /// The same rule, for the same reason, as
+  /// `SupabaseSharingService._isServerFailure` (issue #1504): postgrest puts
+  /// the status in [PostgrestException.code] only when the body carried no
+  /// code of its own, and then it is three characters (`503`). Almost every
+  /// refusal here is SQLSTATE `55000`, five characters and never a status,
+  /// though the old test (any all-digit code of 500 or more) read it as one
+  /// whenever no message below matched: a revoked code, a stale one, and a
+  /// sharer entering her own all read as a network failure.
+  bool _isServerFailure(String code) {
+    final status = code.length == 3 ? int.tryParse(code) : null;
+    return status != null && status >= 500;
   }
 
   // Ordered substring -> failure lookup, checked before the code-based
   // mapping (the SupabaseOwnershipTransferService pattern).
   static const Map<String, PredictionConnectionFailure> _messageFailures = {
     'not found': PredictionConnectionFailure.notFound(),
+    // "prediction connection was revoked" (the sharer withdrew the code)
+    // and "the sharer is no longer the primary guardian of this profile;
+    // the code is stale" (she can no longer share it). Either way the code
+    // will never work again and a new one is the way forward, which is
+    // what the not-found line says.
+    'was revoked': PredictionConnectionFailure.notFound(),
+    'the code is stale': PredictionConnectionFailure.notFound(),
+    // "the sharer cannot accept their own prediction connection".
+    'cannot accept their own': PredictionConnectionFailure.ownCode(),
     'already accepted': PredictionConnectionFailure.alreadyAccepted(),
     'has expired': PredictionConnectionFailure.expired(),
     'you are already a guardian': PredictionConnectionFailure.alreadyGuardian(),

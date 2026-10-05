@@ -458,6 +458,7 @@
   "predictionConnectionFailureAlreadyConnected": "This profile already has a prediction connection. Revoke it before sharing with someone else.",
   "predictionConnectionFailureOneDirectional": "You cannot share and view predictions with the same person at the same time.",
   "predictionConnectionFailureMinorProfile": "Prediction sharing is not available for a minor's profile.",
+  "predictionConnectionFailureOwnCode": "That's your own code. Send it to the person you want to share with.",
   "feedbackFailureRateLimited": "You've sent a few reports already — please try again in a bit.",
   "feedbackFailureInvalidInput": "Check your message and try again.",
   "feedbackFailureAttachmentTooLarge": "That image is too large. Choose one under 5 MB.",

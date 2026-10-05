@@ -514,6 +514,84 @@ describe('ManageGuardiansPage (issue #1255)', () => {
     await screen.findByText('home');
   });
 
+  // A primary guardian leaving while a second one exists, so the control
+  // is offered; the server then answers as the row says.
+  const twoPrimaries = () => [
+    guardianRow(),
+    guardianRow({
+      id: '4f4f4f4f-4f4f-4f4f-8f4f-4f4f4f4f4f4f',
+      user_id: OTHER,
+      role: 'primary_guardian',
+      display_name: 'Dad',
+    }),
+  ];
+  const leave = async () => {
+    fireEvent.click(
+      await screen.findByText(messages['manageGuardiansLeaveProfileTooltip'] ?? ''),
+    );
+    fireEvent.click(screen.getByText(messages['manageGuardiansLeaveProfileConfirm'] ?? ''));
+  };
+
+  it('a primary guardian refused on leaving is told she is the only one left', async () => {
+    sharingMocks.fetchGuardians.mockResolvedValue(twoPrimaries());
+    // What the mapper makes of "the sole primary guardian cannot leave the
+    // profile" (SQLSTATE 55000).
+    sharingMocks.revokeGuardian.mockRejectedValue(new SharingError('other'));
+    renderPage();
+    await leave();
+    expect(
+      await screen.findByText(messages['sharingManageGuardiansSolePrimaryLeave'] ?? ''),
+    ).toBeInTheDocument();
+  });
+
+  it('a primary guardian whose leave never reached the server is told about the connection', async () => {
+    sharingMocks.fetchGuardians.mockResolvedValue(twoPrimaries());
+    sharingMocks.revokeGuardian.mockRejectedValue(new SharingError('network'));
+    renderPage();
+    await leave();
+    expect(
+      await screen.findByText(messages['sharingManageGuardiansRemoveFailed'] ?? ''),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(messages['sharingManageGuardiansSolePrimaryLeave'] ?? ''),
+    ).not.toBeInTheDocument();
+  });
+
+  it('a removal refused for lack of permission says so, not "check connection"', async () => {
+    sharingMocks.fetchGuardians.mockResolvedValue([
+      guardianRow(),
+      guardianRow({
+        id: '4f4f4f4f-4f4f-4f4f-8f4f-4f4f4f4f4f4f',
+        user_id: OTHER,
+        role: 'co_parent',
+        display_name: 'Uncle',
+      }),
+    ]);
+    sharingMocks.revokeGuardian.mockRejectedValue(new SharingError('unauthorized'));
+    renderPage();
+    fireEvent.click(
+      await screen.findByText(messages['manageGuardiansRemoveCaregiverTooltip'] ?? ''),
+    );
+    fireEvent.click(screen.getByText(messages['sharingManageGuardiansRemove'] ?? ''));
+    expect(await screen.findByText(messages['commonUnauthorized'] ?? '')).toBeInTheDocument();
+    expect(
+      screen.queryByText(messages['sharingManageGuardiansRemoveFailed'] ?? ''),
+    ).not.toBeInTheDocument();
+  });
+
+  it('a role change refused for lack of permission says so, not "check connection"', async () => {
+    sharingMocks.updateGuardianRole.mockRejectedValue(new SharingError('unauthorized'));
+    renderPage();
+    const selects = await screen.findAllByLabelText(
+      messages['manageGuardiansChangeRoleTooltip'] ?? '',
+    );
+    fireEvent.change(selects[1] ?? selects[0], { target: { value: 'co_parent' } });
+    expect(await screen.findByText(messages['commonUnauthorized'] ?? '')).toBeInTheDocument();
+    expect(
+      screen.queryByText(messages['sharingManageGuardiansRoleUpdateFailed'] ?? ''),
+    ).not.toBeInTheDocument();
+  });
+
   it('removing another guardian refreshes the guardians list only — no membership re-pull', async () => {
     sharingMocks.fetchGuardians.mockResolvedValue([
       guardianRow(),

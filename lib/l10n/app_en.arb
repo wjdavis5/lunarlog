@@ -2247,6 +2247,10 @@
   "@predictionConnectionFailureMinorProfile": {
     "description": "PredictionConnectionFailure.minorProfile copy."
   },
+  "predictionConnectionFailureOwnCode": "That's your own code. Send it to the person you want to share with.",
+  "@predictionConnectionFailureOwnCode": {
+    "description": "PredictionConnectionFailure.ownCode copy: the person who made a partner-sharing code typed it into her own Enter a code field. The server refuses it. Nothing is wrong with the code, so the line says who it is for. Before this it was shown as commonNetworkError."
+  },
   "feedbackFailureRateLimited": "You've sent a few reports already — please try again in a bit.",
   "@feedbackFailureRateLimited": {
     "description": "FeedbackFailure.rateLimited copy, rendered by feedbackFailureCopy (lib/ui/l10n/feedback_failure_copy.dart)."

@@ -1701,6 +1701,66 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     });
 
+    // The sole-primary line is inferred from who was leaving, so it must
+    // not be shown for a call the server never answered or refused for
+    // another reason: each of those says nothing about who the primary
+    // guardians are.
+    for (final (name, error, expected) in <(String, Object, String)>[
+      (
+        'a request that never arrived',
+        const SharingFailure.network(),
+        'Failed to remove guardian. Check connection.',
+      ),
+      (
+        'a refusal for lack of permission',
+        const SharingFailure.unauthorized(),
+        'You do not have permission for this action.',
+      ),
+    ]) {
+      testWidgets('a primary guardian leaving, and $name: the line says so, '
+          'not that she is the only primary guardian', (tester) async {
+        await storage.applyRemoteRows([
+          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+          guardianRow('g-1', 'user-dad', 'primary_guardian', 'Dad'),
+        ]);
+        final failingService = FakeSharingService()
+          ..scriptedRevokeError = error;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: ManageGuardiansScreen(
+              profile: testProfile,
+              guardiansRepository: DriftProfileGuardiansRepository(storage),
+              sharingService: failingService,
+              currentUserId: 'user-mom',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(
+          find.descendant(
+            of: find.widgetWithText(ListTile, 'Mom'),
+            matching: find.byIcon(Icons.remove_circle_outline),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(FilledButton, 'Leave'));
+        await tester.pumpAndSettle();
+
+        expect(find.text(expected), findsOneWidget);
+        expect(
+          find.textContaining("You're now the only primary guardian"),
+          findsNothing,
+        );
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
+    }
+
     testWidgets('#544: the revoke trigger disables itself while its RPC is in '
         'flight, and re-enables once it settles', (tester) async {
       await storage.applyRemoteRows([

@@ -2862,6 +2862,12 @@ abstract class AppLocalizations {
   /// **'Prediction sharing is not available for a minor\'s profile.'**
   String get predictionConnectionFailureMinorProfile;
 
+  /// PredictionConnectionFailure.ownCode copy: the person who made a partner-sharing code typed it into her own Enter a code field. The server refuses it. Nothing is wrong with the code, so the line says who it is for. Before this it was shown as commonNetworkError.
+  ///
+  /// In en, this message translates to:
+  /// **'That\'s your own code. Send it to the person you want to share with.'**
+  String get predictionConnectionFailureOwnCode;
+
   /// FeedbackFailure.rateLimited copy, rendered by feedbackFailureCopy (lib/ui/l10n/feedback_failure_copy.dart).
   ///
   /// In en, this message translates to:

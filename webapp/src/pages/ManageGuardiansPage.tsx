@@ -23,8 +23,10 @@ import {
   createGuardianInvitation,
   createOwnershipTransfer,
   invitePath,
+  revokeFailureMessageId,
   revokeGuardian,
   revokeGuardianInvitation,
+  roleChangeFailureMessageId,
   sharingFailureMessageId,
   transferFailureMessageId,
   updateGuardianRole,
@@ -236,8 +238,13 @@ function GuardianRowItem(props: {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [confirming, setConfirming] = useState<'remove' | 'leave' | null>(null);
-  const [roleFailure, setRoleFailure] = useState(false);
-  const [revokeFailure, setRevokeFailure] = useState(false);
+  // Each holds the line to show for the last failed attempt, or null.
+  const [roleFailure, setRoleFailure] = useState<ReturnType<
+    typeof roleChangeFailureMessageId
+  > | null>(null);
+  const [revokeFailure, setRevokeFailure] = useState<ReturnType<
+    typeof revokeFailureMessageId
+  > | null>(null);
 
   const roleChange = useMutation({
     mutationFn: async (newRole: GuardianRole) => {
@@ -245,10 +252,10 @@ function GuardianRowItem(props: {
       await updateGuardianRole(client, props.profileId, props.row.user_id, newRole);
     },
     onSuccess: () => {
-      setRoleFailure(false);
+      setRoleFailure(null);
       void queryClient.invalidateQueries({ queryKey: guardiansQueryKey(props.profileId) });
     },
-    onError: () => setRoleFailure(true),
+    onError: (error) => setRoleFailure(roleChangeFailureMessageId(failureKindOf(error))),
   });
 
   const revoke = useMutation({
@@ -267,10 +274,16 @@ function GuardianRowItem(props: {
         return;
       }
       setConfirming(null);
-      setRevokeFailure(false);
+      setRevokeFailure(null);
       void queryClient.invalidateQueries({ queryKey: guardiansQueryKey(props.profileId) });
     },
-    onError: () => setRevokeFailure(true),
+    onError: (error) =>
+      setRevokeFailure(
+        revokeFailureMessageId(
+          failureKindOf(error),
+          props.isMe && props.row.role === 'primary_guardian',
+        ),
+      ),
   });
 
   const roleLabel = t(guardianRoleLabelId(props.row.role));
@@ -305,12 +318,8 @@ function GuardianRowItem(props: {
         {props.row.status === 'pending' ? (
           <span className="badge">{t('sharingManageGuardiansPendingBadge')}</span>
         ) : null}
-        {roleFailure ? (
-          <p className="error">{t('sharingManageGuardiansRoleUpdateFailed')}</p>
-        ) : null}
-        {revokeFailure ? (
-          <p className="error">{t('sharingManageGuardiansRemoveFailed')}</p>
-        ) : null}
+        {roleFailure !== null ? <p className="error">{t(roleFailure)}</p> : null}
+        {revokeFailure !== null ? <p className="error">{t(revokeFailure)}</p> : null}
       </div>
       <div className="actions">
         {confirming === null && options.length > 0 ? (

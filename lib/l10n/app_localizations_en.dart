@@ -1807,6 +1807,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Prediction sharing is not available for a minor\'s profile.';
 
   @override
+  String get predictionConnectionFailureOwnCode =>
+      'That\'s your own code. Send it to the person you want to share with.';
+
+  @override
   String get feedbackFailureRateLimited =>
       'You\'ve sent a few reports already — please try again in a bit.';
 

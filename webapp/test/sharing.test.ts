@@ -19,6 +19,8 @@ import {
   updateGuardianRole,
   mapSharingFailure,
   mapTransferFailure,
+  revokeFailureMessageId,
+  roleChangeFailureMessageId,
   sha256Hex,
   sharingFailureMessageId,
   transferFailureMessageId,
@@ -684,6 +686,31 @@ describe('every refusal the sharing RPCs raise (issue #1504)', () => {
     expect(sharingFailureMessageId('revoked')).not.toBe(sharingFailureMessageId('network'));
     // The transfer ladder never returns it; its page has a line all the same.
     expect(transferFailureMessageId('revoked')).toBe('commonSomethingWentWrong');
+  });
+
+  it('a failed removal names what the server said, and the sole-primary line only when the server answered', () => {
+    // Someone else's row.
+    expect(revokeFailureMessageId('unauthorized', false)).toBe('commonUnauthorized');
+    expect(revokeFailureMessageId('network', false)).toBe('sharingManageGuardiansRemoveFailed');
+    expect(revokeFailureMessageId('other', false)).toBe('sharingManageGuardiansRemoveFailed');
+    // A primary guardian leaving: the only thing the server refuses her
+    // for, apart from permission, is being the last one.
+    expect(revokeFailureMessageId('other', true)).toBe(
+      'sharingManageGuardiansSolePrimaryLeave',
+    );
+    // Neither of these says anything about who the primary guardians are.
+    expect(revokeFailureMessageId('network', true)).toBe('sharingManageGuardiansRemoveFailed');
+    expect(revokeFailureMessageId('unauthorized', true)).toBe('commonUnauthorized');
+  });
+
+  it('a failed role change names a refusal for lack of permission', () => {
+    expect(roleChangeFailureMessageId('unauthorized')).toBe('commonUnauthorized');
+    expect(roleChangeFailureMessageId('network')).toBe(
+      'sharingManageGuardiansRoleUpdateFailed',
+    );
+    expect(roleChangeFailureMessageId('notFound')).toBe(
+      'sharingManageGuardiansRoleUpdateFailed',
+    );
   });
 
   it('a refused accept reaches the page as its own kind through the wrapper', async () => {
