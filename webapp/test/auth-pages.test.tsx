@@ -24,7 +24,7 @@ const fakes = vi.hoisted(() => ({
   sendPasswordReset: vi.fn<() => Promise<void>>(),
   updatePassword: vi.fn<() => Promise<void>>(),
   signOut: vi.fn<() => Promise<void>>(),
-  exchangeCallback: vi.fn<() => Promise<{ recovery: boolean }>>(),
+  exchangeCallback: vi.fn<() => Promise<{ recovery: boolean; next: string | null }>>(),
   startOAuth: vi.fn(),
 }));
 
@@ -91,7 +91,7 @@ beforeEach(() => {
   fakes.sendPasswordReset.mockResolvedValue(undefined);
   fakes.updatePassword.mockResolvedValue(undefined);
   fakes.signOut.mockResolvedValue(undefined);
-  fakes.exchangeCallback.mockResolvedValue({ recovery: false });
+  fakes.exchangeCallback.mockResolvedValue({ recovery: false, next: null });
 });
 
 afterEach(() => {
@@ -141,9 +141,9 @@ describe('SignInPage (issue #1250)', () => {
   it('offers the Google and Apple OAuth starts', () => {
     renderWithProviders(<SignInPage />, '/sign-in');
     fireEvent.click(screen.getByRole('button', { name: messages['accountGoogleButtonLabel'] }));
-    expect(fakes.startOAuth).toHaveBeenCalledWith('google');
+    expect(fakes.startOAuth).toHaveBeenCalledWith('google', null);
     fireEvent.click(screen.getByRole('button', { name: messages['webAuthAppleButtonLabel'] }));
-    expect(fakes.startOAuth).toHaveBeenCalledWith('apple');
+    expect(fakes.startOAuth).toHaveBeenCalledWith('apple', null);
   });
 
   it('navigates to the code screen only after the send resolves (issue #1294)', async () => {
@@ -152,7 +152,7 @@ describe('SignInPage (issue #1250)', () => {
     fireEvent.click(
       screen.getByRole('button', { name: messages['accountSignInMagicLinkSignIn'] }),
     );
-    await waitFor(() => expect(fakes.sendOtp).toHaveBeenCalledWith('a@b.co', false));
+    await waitFor(() => expect(fakes.sendOtp).toHaveBeenCalledWith('a@b.co', false, null));
     expect(
       await screen.findByLabelText(messages['accountSignInCodeLabel'] ?? ''),
     ).toBeInTheDocument();
@@ -243,9 +243,7 @@ describe('SignUpPage (issue #1250)', () => {
       screen.getByRole('button', { name: messages['accountSignInCreateAccountAction'] }),
     );
     await waitFor(() => expect(fakes.signUp).toHaveBeenCalledOnce());
-    expect(
-      await screen.findByText(messages['accountSignInConfirmEmailInfo']),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(messages['webAuthConfirmEmailInfo'])).toBeInTheDocument();
   });
 
   it('navigates to the code screen only after the send resolves (issue #1294)', async () => {
@@ -254,7 +252,7 @@ describe('SignUpPage (issue #1250)', () => {
     fireEvent.click(
       screen.getByRole('button', { name: messages['accountSignInMagicLinkCreate'] }),
     );
-    await waitFor(() => expect(fakes.sendOtp).toHaveBeenCalledWith('a@b.co', true));
+    await waitFor(() => expect(fakes.sendOtp).toHaveBeenCalledWith('a@b.co', true, null));
     expect(
       await screen.findByLabelText(messages['accountSignInCodeLabel'] ?? ''),
     ).toBeInTheDocument();
@@ -343,7 +341,7 @@ describe('ForgotPasswordPage (issue #1250)', () => {
     await fill(messages['accountSignInEmailLabel'] ?? '', 'a@b.co');
     fireEvent.click(screen.getByRole('button', { name: messages['webAuthSendResetAction'] }));
     await waitFor(() => expect(fakes.sendPasswordReset).toHaveBeenCalledWith('a@b.co'));
-    expect(await screen.findByText(messages['accountSignInResetInfo'])).toBeInTheDocument();
+    expect(await screen.findByText(messages['webAuthResetInfo'])).toBeInTheDocument();
   });
 });
 
@@ -415,7 +413,7 @@ describe('AuthCallbackPage (issue #1250)', () => {
     // The Worker's PKCE-cookie marker is what makes a recovery link show
     // this step — GoTrue's redirect carries only ?code=, never ?type=recovery,
     // so no query parameter is involved.
-    fakes.exchangeCallback.mockResolvedValue({ recovery: true });
+    fakes.exchangeCallback.mockResolvedValue({ recovery: true, next: null });
     fakes.getUser.mockReturnValue({ id: 'u1', email: 'a@b.co' });
     renderWithProviders(<AuthCallbackPage />, '/auth/callback?code=abc');
     await waitFor(() => expect(fakes.exchangeCallback).toHaveBeenCalledWith('abc'));
@@ -458,5 +456,125 @@ describe('AuthCallbackPage (issue #1250)', () => {
     renderWithProviders(<AuthCallbackPage />, '/auth/callback');
     expect(await screen.findByText(messages['accountSignInMagicLinkInfo'])).toBeInTheDocument();
     expect(fakes.exchangeCallback).not.toHaveBeenCalled();
+  });
+});
+
+// Issue #1456. Someone sent to sign in on the way to an invitation comes
+// back to it after a sign-in that leaves the site: Google, Apple, an
+// emailed link, a confirmation link. The pages hand the path to the auth
+// client; the Worker carries it; the callback page goes there.
+describe('the return path through a sign-in that leaves the site (issue #1456)', () => {
+  const INVITE = '/invite?code=ABC123&kind=claim';
+  const WITH_NEXT = `?next=${encodeURIComponent(INVITE)}`;
+
+  function renderCallback(path: string) {
+    const queryClient = createAppQueryClient();
+    return render(
+      <AppIntlProvider>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={[path]}>
+            <Routes>
+              <Route path="/" element={<div data-testid="home" />} />
+              <Route path="/invite" element={<div data-testid="invitation" />} />
+              <Route path="/auth/callback" element={<AuthCallbackPage />} />
+            </Routes>
+          </MemoryRouter>
+        </QueryClientProvider>
+      </AppIntlProvider>,
+    );
+  }
+
+  it('the sign-in page gives it to Google and Apple', () => {
+    renderWithProviders(<SignInPage />, `/sign-in${WITH_NEXT}`);
+    fireEvent.click(screen.getByRole('button', { name: messages['accountGoogleButtonLabel'] }));
+    expect(fakes.startOAuth).toHaveBeenCalledWith('google', INVITE);
+    fireEvent.click(screen.getByRole('button', { name: messages['webAuthAppleButtonLabel'] }));
+    expect(fakes.startOAuth).toHaveBeenCalledWith('apple', INVITE);
+  });
+
+  it('the sign-in page gives it to the emailed link', async () => {
+    renderWithRoutes(`/sign-in${WITH_NEXT}`);
+    await fill(messages['accountSignInEmailLabel'] ?? '', 'a@b.co');
+    fireEvent.click(
+      screen.getByRole('button', { name: messages['accountSignInMagicLinkSignIn'] }),
+    );
+    await waitFor(() => expect(fakes.sendOtp).toHaveBeenCalledWith('a@b.co', false, INVITE));
+  });
+
+  it('a hostile return path is given to nothing', () => {
+    renderWithProviders(
+      <SignInPage />,
+      `/sign-in?next=${encodeURIComponent('//evil.example')}`,
+    );
+    fireEvent.click(screen.getByRole('button', { name: messages['accountGoogleButtonLabel'] }));
+    expect(fakes.startOAuth).toHaveBeenCalledWith('google', null);
+  });
+
+  it('the sign-up page gives it to the new account', async () => {
+    renderWithRoutes(`/sign-up${WITH_NEXT}`);
+    await fill(messages['accountSignInEmailLabel'] ?? '', 'new@b.co');
+    await fill(messages['accountSignInPasswordLabel'] ?? '', 'long enough password');
+    fireEvent.click(
+      screen.getByRole('button', { name: messages['accountSignInCreateAccountAction'] }),
+    );
+    await waitFor(() =>
+      expect(fakes.signUp).toHaveBeenCalledWith('new@b.co', 'long enough password', INVITE),
+    );
+  });
+
+  it('the sign-up page gives it to the emailed link', async () => {
+    renderWithRoutes(`/sign-up${WITH_NEXT}`);
+    await fill(messages['accountSignInEmailLabel'] ?? '', 'new@b.co');
+    fireEvent.click(
+      screen.getByRole('button', { name: messages['accountSignInMagicLinkCreate'] }),
+    );
+    await waitFor(() => expect(fakes.sendOtp).toHaveBeenCalledWith('new@b.co', true, INVITE));
+  });
+
+  // The sign-up page reads the address bar itself, and goes there itself
+  // when the new account needs no confirmation. So it checks the path
+  // itself too, and does not lean on the auth client to.
+  it('the sign-up page gives a hostile return path to nothing', async () => {
+    const hostile = `/sign-up?next=${encodeURIComponent('//evil.example')}`;
+    renderWithRoutes(hostile);
+    await fill(messages['accountSignInEmailLabel'] ?? '', 'new@b.co');
+    fireEvent.click(
+      screen.getByRole('button', { name: messages['accountSignInMagicLinkCreate'] }),
+    );
+    await waitFor(() => expect(fakes.sendOtp).toHaveBeenCalledWith('new@b.co', true, null));
+    cleanup();
+
+    renderWithRoutes(hostile);
+    await fill(messages['accountSignInEmailLabel'] ?? '', 'new@b.co');
+    await fill(messages['accountSignInPasswordLabel'] ?? '', 'long enough password');
+    fireEvent.click(
+      screen.getByRole('button', { name: messages['accountSignInCreateAccountAction'] }),
+    );
+    await waitFor(() =>
+      expect(fakes.signUp).toHaveBeenCalledWith('new@b.co', 'long enough password', null),
+    );
+  });
+
+  it('the callback page goes straight on to the invitation', async () => {
+    fakes.exchangeCallback.mockResolvedValue({ recovery: false, next: INVITE });
+    renderCallback('/auth/callback?code=abc');
+    expect(await screen.findByTestId('invitation')).toBeInTheDocument();
+  });
+
+  it('the callback page stays put when there is nowhere to return to', async () => {
+    renderCallback('/auth/callback?code=abc');
+    expect(
+      await screen.findByRole('link', { name: messages['webAuthContinueAction'] }),
+    ).toHaveAttribute('href', '/');
+    expect(screen.queryByTestId('invitation')).toBeNull();
+  });
+
+  it('a recovery link goes to the new-password step, whatever else it carries', async () => {
+    fakes.exchangeCallback.mockResolvedValue({ recovery: true, next: INVITE });
+    renderCallback('/auth/callback?code=abc');
+    expect(
+      await screen.findByRole('link', { name: messages['accountPasswordRecoverySave'] }),
+    ).toHaveAttribute('href', '/reset-password');
+    expect(screen.queryByTestId('invitation')).toBeNull();
   });
 });

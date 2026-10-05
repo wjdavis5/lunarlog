@@ -220,6 +220,13 @@ jobs:
         if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/ios-simulator-budgets-fail-closed.test.sh
 
+      - name: Run ci-macos-runner-gate tests
+        # The three macOS jobs run on Linux when their gate skips them. This
+        # pins what makes that safe: the runner and the gate read the same
+        # output, and no step after the gate is unconditional.
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
+        run: bash .github/scripts/tests/ci-macos-runner-gate.test.sh
+
       # Issue #266: unlike the scripts above (proven only via their own
       # unit tests here, then invoked for real elsewhere -- e.g.
       # check-destructive-sql.sh against real migration files in
@@ -317,7 +324,13 @@ jobs:
     # non-ephemeral runner to serialise behind or to guard from fork PRs.
     name: Release guard scripts on macOS (bash 3.2 compatibility)
     needs: detect-changes
-    runs-on: macos-latest
+    # A Mac only when there is work for one. When the gate step below is
+    # going to skip everything (a web- or site-only change), the job runs
+    # on Linux instead: it reports the same check under the same name, but
+    # does not wait in the macOS queue behind real iOS builds to say
+    # "nothing to do". Safe only while every later step is conditional on
+    # the gate, which ci-macos-runner-gate.test.sh pins.
+    runs-on: ${{ needs.detect-changes.outputs.release_guards == 'true' && 'macos-latest' || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
       - name: Check if macOS release guards should run
@@ -438,6 +451,13 @@ jobs:
         # failure mode's exit status.
         if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/ios-simulator-budgets-fail-closed.test.sh
+
+      - name: Run ci-macos-runner-gate tests
+        # The three macOS jobs run on Linux when their gate skips them. This
+        # pins what makes that safe: the runner and the gate read the same
+        # output, and no step after the gate is unconditional.
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
+        run: bash .github/scripts/tests/ci-macos-runner-gate.test.sh
 
   check:
     # The former "Analyze, test, build web" job, minus the test suite: that
@@ -1060,7 +1080,13 @@ jobs:
     # Mac mini behind every other session's iOS jobs. Fork PRs can run this
     # (it needs no secrets that matter -- see the build step's comment).
     needs: detect-changes
-    runs-on: macos-latest
+    # A Mac only when there is work for one. When the gate step below is
+    # going to skip everything (a web- or site-only change), the job runs
+    # on Linux instead: it reports the same check under the same name, but
+    # does not wait in the macOS queue behind real iOS builds to say
+    # "nothing to do". Safe only while every later step is conditional on
+    # the gate, which ci-macos-runner-gate.test.sh pins.
+    runs-on: ${{ needs.detect-changes.outputs.app_flutter == 'true' && 'macos-latest' || 'ubuntu-latest' }}
     timeout-minutes: 45
     env:
       # `pod install` (run by `flutter build ios`) needs a UTF-8 locale or
@@ -1170,7 +1196,13 @@ jobs:
     # image upgrade that renames the simulators cannot break this job.
     name: iOS Simulator tests
     needs: detect-changes
-    runs-on: macos-latest
+    # A Mac only when there is work for one. When the gate step below is
+    # going to skip everything (a web- or site-only change), the job runs
+    # on Linux instead: it reports the same check under the same name, but
+    # does not wait in the macOS queue behind real iOS builds to say
+    # "nothing to do". Safe only while every later step is conditional on
+    # the gate, which ci-macos-runner-gate.test.sh pins.
+    runs-on: ${{ needs.detect-changes.outputs.app_flutter == 'true' && 'macos-latest' || 'ubuntu-latest' }}
     # Issue #922: raised from 25 so both steps below fit. A cold native build
     # gets its own 20-minute budget ("Build the app for the simulator") and the
     # test step keeps its 15-minute one, plus ~5 minutes of checkout / Flutter

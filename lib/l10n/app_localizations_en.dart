@@ -3056,6 +3056,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sharingManageGuardiansYouSuffix => '(you)';
 
   @override
+  String get sharingManageGuardiansNoNameSentenceStart => 'This guardian';
+
+  @override
+  String get sharingManageGuardiansNoNameMidSentence => 'this guardian';
+
+  @override
   String get sharingNotificationPreferencesTitle => 'Notifications';
 
   @override
@@ -4084,7 +4090,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get accountSignInResetInfo =>
-      'If an account exists for that email, a reset link is on its way. Open it on this device. If you request another email, only the newest link works — an earlier one stops working (issue #32).';
+      'If an account exists for that email, a reset link is on its way. Open it on this device. If you request another email, only the newest link works — an earlier one stops working.';
 
   @override
   String get accountSignInMagicLinkInfo =>
@@ -5641,6 +5647,39 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get webDayUnsavedWarning => 'Leave with unsaved changes?';
+
+  @override
+  String get webInviteNeutralIntro =>
+      'You\'ve been invited to a shared profile in lunarlog. Accepting adds it to your account.';
+
+  @override
+  String webInvitePreviewIntro(String profileName, String roleLabel) {
+    return 'You\'ve been invited to join $profileName\'s shared profile as $roleLabel. Accepting adds it to your account, with its cycle calendar and health logs.';
+  }
+
+  @override
+  String webInviteSubjectIntro(String profile) {
+    return 'This is your profile. Accepting adds $profile\'s cycle calendar and health logs to your account. The guardians already sharing it can see and log it too.';
+  }
+
+  @override
+  String get webAccountDeleteBody =>
+      'This permanently deletes your account and everything stored in it. This cannot be undone.';
+
+  @override
+  String get webProfileArchiveConfirmBody =>
+      'The profile moves to the archived list and out of everyday use. Its history is kept and can be restored at any time.';
+
+  @override
+  String get webAuthConfirmEmailInfo =>
+      'Check your email to confirm the account, then open the link in this browser.';
+
+  @override
+  String get webAuthResetInfo =>
+      'If an account exists for that email, a reset link is on its way. Open it in this browser. If you request another email, only the newest link works — an earlier one stops working.';
+
+  @override
+  String get webCalendarNoEntriesBody => 'Choose a day to log it';
 
   @override
   String get webInviteSignedOutBody =>

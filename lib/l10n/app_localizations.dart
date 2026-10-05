@@ -4590,7 +4590,7 @@ abstract class AppLocalizations {
   /// **'Failed to remove guardian. Check connection.'**
   String get sharingManageGuardiansRemoveFailed;
 
-  /// Issue #1004 (tranche 1): confirm dialog title for revoking a guardian or leaving.
+  /// Issue #1004 (tranche 1): confirm dialog title for revoking a guardian or leaving. {name} is the guardian's display name, or sharingManageGuardiansNoNameMidSentence when they have none (Issue #1455).
   ///
   /// In en, this message translates to:
   /// **'Remove {name}?'**
@@ -4614,7 +4614,7 @@ abstract class AppLocalizations {
   /// **'Remove'**
   String get sharingManageGuardiansRemove;
 
-  /// Issue #1004 (tranche 1): snackbar after a guardian is removed.
+  /// Issue #1004 (tranche 1): snackbar after a guardian is removed. {name} is the guardian's display name, or sharingManageGuardiansNoNameMidSentence when they have none (Issue #1455).
   ///
   /// In en, this message translates to:
   /// **'Removed {name}'**
@@ -4806,7 +4806,7 @@ abstract class AppLocalizations {
   /// **'Change role to {newRoleLabel}?'**
   String sharingManageGuardiansChangeRoleTitle(String newRoleLabel);
 
-  /// Issue #1004 (tranche 1): confirm dialog body for a role change. The consequence sentence is supplied by roleChangeConsequence.
+  /// Issue #1004 (tranche 1): confirm dialog body for a role change. The consequence sentence is supplied by roleChangeConsequence. {name} opens the sentence: the guardian's display name, or sharingManageGuardiansNoNameSentenceStart when they have none (Issue #1455).
   ///
   /// In en, this message translates to:
   /// **'{name} currently has {currentRoleLabel} access. {consequence} No new invitation is needed — the new role applies on their next sync.'**
@@ -4833,6 +4833,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'(you)'**
   String get sharingManageGuardiansYouSuffix;
+
+  /// Issue #1455: stands in for the display name of a guardian who has none, where it opens a sentence (sharingManageGuardiansChangeRoleBody: 'This guardian currently has Co-Parent access.'). Deliberately not the role label, which that sentence already states.
+  ///
+  /// In en, this message translates to:
+  /// **'This guardian'**
+  String get sharingManageGuardiansNoNameSentenceStart;
+
+  /// Issue #1455: the mid-sentence form of sharingManageGuardiansNoNameSentenceStart (sharingManageGuardiansRemoveTitle: 'Remove this guardian?'; sharingManageGuardiansRemoved: 'Removed this guardian').
+  ///
+  /// In en, this message translates to:
+  /// **'this guardian'**
+  String get sharingManageGuardiansNoNameMidSentence;
 
   /// Issue #1004 (tranche 1): notification-preferences app-bar title.
   ///
@@ -6529,7 +6541,7 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 2): sign-in screen post-reset-request info.
   ///
   /// In en, this message translates to:
-  /// **'If an account exists for that email, a reset link is on its way. Open it on this device. If you request another email, only the newest link works — an earlier one stops working (issue #32).'**
+  /// **'If an account exists for that email, a reset link is on its way. Open it on this device. If you request another email, only the newest link works — an earlier one stops working.'**
   String get accountSignInResetInfo;
 
   /// Issue #1004 (tranche 2): sign-in screen post-magic-link info.
@@ -8840,6 +8852,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Leave with unsaved changes?'**
   String get webDayUnsavedWarning;
+
+  /// The web invitation page's opening line when the invitation's details are not shown. The app's wording says the profile 'will sync to this device'; the web client stores nothing in the browser, so it says where the profile goes instead: the account.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'ve been invited to a shared profile in lunarlog. Accepting adds it to your account.'**
+  String get webInviteNeutralIntro;
+
+  /// The web invitation page's opening line once the invitation's details are known. Web wording of sharingAcceptInvitePreviewIntro, without the app's 'sync to this device'.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'ve been invited to join {profileName}\'s shared profile as {roleLabel}. Accepting adds it to your account, with its cycle calendar and health logs.'**
+  String webInvitePreviewIntro(String profileName, String roleLabel);
+
+  /// The web invitation page's opening line for the person the profile is about. Web wording of acceptInviteSubjectIntro, without the app's 'sync to this device'.
+  ///
+  /// In en, this message translates to:
+  /// **'This is your profile. Accepting adds {profile}\'s cycle calendar and health logs to your account. The guardians already sharing it can see and log it too.'**
+  String webInviteSubjectIntro(String profile);
+
+  /// The web account page's delete confirmation. The app's wording also mentions 'the copy on this device'; the web client keeps no copy.
+  ///
+  /// In en, this message translates to:
+  /// **'This permanently deletes your account and everything stored in it. This cannot be undone.'**
+  String get webAccountDeleteBody;
+
+  /// The web profiles page's archive confirmation. The app's wording says the history 'stays on this device'; on the web it stays in the account.
+  ///
+  /// In en, this message translates to:
+  /// **'The profile moves to the archived list and out of everyday use. Its history is kept and can be restored at any time.'**
+  String get webProfileArchiveConfirmBody;
+
+  /// The web sign-up page after an account is created. The emailed link only completes in the browser that asked for it, so the web says 'this browser' where the app says 'this device'.
+  ///
+  /// In en, this message translates to:
+  /// **'Check your email to confirm the account, then open the link in this browser.'**
+  String get webAuthConfirmEmailInfo;
+
+  /// The web forgot-password page after a reset is requested. Web wording of accountSignInResetInfo: the link only completes in the browser that asked for it.
+  ///
+  /// In en, this message translates to:
+  /// **'If an account exists for that email, a reset link is on its way. Open it in this browser. If you request another email, only the newest link works — an earlier one stops working.'**
+  String get webAuthResetInfo;
+
+  /// The web home calendar's line for a month with no entries. The app says 'Tap a day'; a browser is as often used with a mouse or a keyboard.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a day to log it'**
+  String get webCalendarNoEntriesBody;
 
   /// The web invitation page for a visitor who is not signed in. An invitation can only be read and accepted by an account, so the page says so and offers both ways in; the sign-in pages return here afterwards.
   ///

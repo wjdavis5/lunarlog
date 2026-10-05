@@ -56,7 +56,9 @@ export function SignUpPage() {
     // attempt's own result.
     sendOtp.reset();
     signUp.mutate(
-      { email: email.trim(), password },
+      // The confirmation link comes back through /auth/callback, so the
+      // return path goes with the request (issue #1456).
+      { email: email.trim(), password, next },
       {
         onSuccess: (result) => {
           setConfirmationSent(result === 'confirmation_required');
@@ -84,7 +86,7 @@ export function SignUpPage() {
     // copy on this page, not strand the user on the code screen waiting
     // for an email that never comes.
     sendOtp.mutate(
-      { email: email.trim(), createUser: true },
+      { email: email.trim(), createUser: true, next },
       {
         onSuccess: () =>
           navigate(
@@ -102,7 +104,7 @@ export function SignUpPage() {
       <h1 className="display">{t('accountSignInTitleCreate')}</h1>
       {confirmationSent ? (
         <div className="auth-info">
-          <p className="body">{t('accountSignInConfirmEmailInfo')}</p>
+          <p className="body">{t('webAuthConfirmEmailInfo')}</p>
           <div className="auth-links">
             <Link
               to={withNext(

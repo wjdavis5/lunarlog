@@ -949,6 +949,130 @@ void main() {
       });
     });
 
+    // Issue #1455: three sentences on this screen name a guardian — the
+    // change-role confirmation, the remove confirmation and the "removed"
+    // snackbar. The first named a guardian with no display name by their
+    // role and then stated the role again ("Co-Parent currently has
+    // Co-Parent access."); the other two kept an empty display name as a
+    // name ("Remove ?").
+    group('naming a guardian in a sentence (issue #1455)', () {
+      /// Mom (the reader, primary guardian) and a co-parent whose display
+      /// name is [dadName].
+      Future<void> pumpScreen(WidgetTester tester, String? dadName) async {
+        await storage.applyRemoteRows([
+          guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
+          guardianRow('g-1', 'user-dad', 'co_parent', dadName),
+        ]);
+        await tester.pumpWidget(
+          MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: ManageGuardiansScreen(
+              profile: testProfile,
+              guardiansRepository: DriftProfileGuardiansRepository(storage),
+              sharingService: sharingService,
+              currentUserId: 'user-mom',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      /// Opens the change-role confirmation for the co-parent (to Viewer)
+      /// and returns its body.
+      Future<String> changeRoleBody(WidgetTester tester) async {
+        await tester.tap(find.byKey(const ValueKey('change-role-user-dad')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Viewer'));
+        await tester.pumpAndSettle();
+        return tester
+            .widget<Text>(
+              find.descendant(
+                of: find.byType(AlertDialog),
+                matching: find.textContaining('currently has'),
+              ),
+            )
+            .data!;
+      }
+
+      /// Opens the remove confirmation for the co-parent and returns its
+      /// title.
+      Future<String?> removeTitle(WidgetTester tester) async {
+        await tester.tap(find.byKey(const ValueKey('revoke-user-dad')));
+        await tester.pumpAndSettle();
+        final dialog = tester.widget<AlertDialog>(find.byType(AlertDialog));
+        return (dialog.title! as Text).data;
+      }
+
+      /// Confirms the open remove confirmation and returns what the
+      /// snackbar says.
+      Future<String?> confirmRemoval(WidgetTester tester) async {
+        await tester.tap(find.widgetWithText(FilledButton, 'Remove'));
+        await tester.pumpAndSettle();
+        final snackBar = tester.widget<SnackBar>(find.byType(SnackBar));
+        return (snackBar.content as Text).data;
+      }
+
+      for (final name in <String?>[null, '']) {
+        final described = name == null ? 'no' : 'an empty';
+
+        testWidgets('the change-role confirmation states the role of a '
+            'guardian with $described display name once', (tester) async {
+          await pumpScreen(tester, name);
+
+          final body = await changeRoleBody(tester);
+          expect(
+            body,
+            startsWith('This guardian currently has Co-Parent access. '),
+          );
+          expect('Co-Parent'.allMatches(body), hasLength(1));
+
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        });
+
+        testWidgets('the remove confirmation asks about "this guardian" '
+            'when they have $described display name', (tester) async {
+          await pumpScreen(tester, name);
+
+          expect(await removeTitle(tester), 'Remove this guardian?');
+
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        });
+
+        testWidgets('the "removed" snackbar says "this guardian" when they '
+            'have $described display name', (tester) async {
+          await pumpScreen(tester, name);
+
+          await removeTitle(tester);
+          expect(await confirmRemoval(tester), 'Removed this guardian');
+          expect(sharingService.lastRevokedUserId, 'user-dad');
+
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        });
+      }
+
+      testWidgets('all three sentences still use a display name when there '
+          'is one', (tester) async {
+        await pumpScreen(tester, 'Dad');
+
+        expect(
+          await changeRoleBody(tester),
+          startsWith('Dad currently has Co-Parent access. '),
+        );
+        await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+        await tester.pumpAndSettle();
+
+        expect(await removeTitle(tester), 'Remove Dad?');
+        expect(await confirmRemoval(tester), 'Removed Dad');
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
+    });
+
     testWidgets(
       'issue #558: once the single-use link is generated, a stray tap '
       'outside the dialog cannot dismiss it, "Copy Link" shows its '

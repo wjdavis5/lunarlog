@@ -1,7 +1,9 @@
 /// Six biological hormonal subphases of the menstrual cycle (Issue #236, A2-23).
 ///
 /// Derived from calendar-method cycle predictions and the estimated ovulation
-/// back-calculation ([estimateFertileWindow] in `fertile_window.dart`).
+/// back-calculation ([estimateFertileWindow] in `fertile_window.dart`),
+/// applied to the open cycle's own expected end rather than to the live
+/// next-period estimate, which a late roll or a skip moves (issue #1424).
 ///
 /// **Subphases**:
 /// 1. [earlyFollicular]: Cycle Day 1 through bleed days (menses). Estrogen &
@@ -22,8 +24,9 @@
 /// - Descriptive biological education only: no individualised medical advice,
 ///   no diagnostic assertions, no cross-user aggregation.
 /// - Whenever the underlying prediction's confidence tier is not
-///   [CycleConfidence.high], or the cycle is overdue, explainer copy is
-///   honestly hedged to indicate statistical estimation rather than certainty.
+///   [CycleConfidence.high], or the open cycle has run past its expected
+///   length (skipped or not), explainer copy is honestly hedged to indicate
+///   statistical estimation rather than certainty.
 library;
 
 import '../models/local_date.dart';
@@ -171,12 +174,35 @@ class CycleSubphaseInfo {
   static const String kReviewDate = '2026-09-26';
 }
 
-/// Derives the active [CycleSubphaseInfo] for [today] given [prediction].
-int _calculateOvulationDay(ActivePrediction prediction, int bleedLength, int meanLength) {
+/// The date the open cycle's own length puts the next period on: the last
+/// period start plus the rounded mean cycle length ([meanLength]).
+///
+/// Issue #1424: the open cycle's phases are laid out against this date and
+/// never against an estimate that can move while the cycle stays open.
+/// [ActivePrediction.estimatedNextStart] rolls forward a whole cycle once
+/// the period is late, and "Skip this cycle" advances it and
+/// [ActivePrediction.originalEstimatedNextStart] alike (that field is
+/// un-rolled, but it carries the skip advance). Until one of those happens
+/// all three are the same date, so an ordinary cycle reads exactly as it
+/// did when this was back-calculated from the live estimate.
+LocalDate _openCycleExpectedNextStart(
+  ActivePrediction prediction,
+  int meanLength,
+) =>
+    prediction.lastEpisodeStart.addDays(meanLength);
+
+/// The cycle day estimated ovulation falls on: [kDefaultLutealPhaseDays]
+/// before [expectedNextStart], kept after the bleed and inside the cycle.
+int _calculateOvulationDay({
+  required LocalDate lastEpisodeStart,
+  required LocalDate expectedNextStart,
+  required int bleedLength,
+  required int meanLength,
+}) {
   final estimatedOvulation =
-      prediction.estimatedNextStart.addDays(-kDefaultLutealPhaseDays);
+      expectedNextStart.addDays(-kDefaultLutealPhaseDays);
   final rawOvulationCycleDay =
-      estimatedOvulation.difference(prediction.lastEpisodeStart) + 1;
+      estimatedOvulation.difference(lastEpisodeStart) + 1;
   final minOvulationDay = bleedLength + 2;
   final maxOvulationDay = (meanLength - 2) >= minOvulationDay
       ? meanLength - 2
@@ -225,9 +251,12 @@ _SubphaseBoundary _determineSubphase({
   return _SubphaseBoundary(CycleSubphase.lateLuteal, lateLutealStart, endCd);
 }
 
-String? _buildHedgedNotice({required bool isHedged, required bool isLate}) {
+String? _buildHedgedNotice({
+  required bool isHedged,
+  required bool runningLong,
+}) {
   if (!isHedged) return null;
-  return isLate
+  return runningLong
       ? 'Cycle is running longer than average. Subphase estimates remain in late luteal awaiting your next period.'
       : 'Subphase timing is estimated from your cycle average. Exact hormonal transitions vary from cycle to cycle.';
 }
@@ -257,7 +286,14 @@ CycleSubphaseInfo deriveSubphase({
       ? prediction.meanPeriodLengthDays.round().clamp(1, 10)
       : kDefaultPeriodLengthDays;
 
-  final ovulationDay = _calculateOvulationDay(prediction, bleedLength, meanLength);
+  final expectedNextStart =
+      _openCycleExpectedNextStart(prediction, meanLength);
+  final ovulationDay = _calculateOvulationDay(
+    lastEpisodeStart: prediction.lastEpisodeStart,
+    expectedNextStart: expectedNextStart,
+    bleedLength: bleedLength,
+    meanLength: meanLength,
+  );
 
   // 1. Early Follicular
   final earlyFollicularEnd = prediction.duringEpisode
@@ -313,7 +349,14 @@ CycleSubphaseInfo deriveSubphase({
   final subphaseEndDate =
       prediction.lastEpisodeStart.addDays(boundary.endCd - 1);
 
-  final isHedged = prediction.tier != CycleConfidence.high || prediction.isLate;
+  // Issue #1424: the open cycle has run past its expected length. This is
+  // the test [ActivePrediction.isLate] applies (more than [kLateGraceDays]
+  // past the estimate), measured against the cycle's own expected end, so
+  // "Skip this cycle" — which moves the estimate and clears `isLate` while
+  // the cycle stays open — does not drop the notice.
+  final runningLong =
+      prediction.today.difference(expectedNextStart) > kLateGraceDays;
+  final isHedged = prediction.tier != CycleConfidence.high || runningLong;
 
   return CycleSubphaseInfo(
     subphase: boundary.subphase,
@@ -323,7 +366,8 @@ CycleSubphaseInfo deriveSubphase({
     startDate: subphaseStartDate,
     endDate: subphaseEndDate,
     isHedged: isHedged,
-    hedgedNotice: _buildHedgedNotice(isHedged: isHedged, isLate: prediction.isLate),
+    hedgedNotice:
+        _buildHedgedNotice(isHedged: isHedged, runningLong: runningLong),
     biologicalExplainer: boundary.subphase.hormonalSummary,
     source: CycleSubphaseInfo.kSourceCitation,
     reviewDate: CycleSubphaseInfo.kReviewDate,

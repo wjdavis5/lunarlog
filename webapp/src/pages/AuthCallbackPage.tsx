@@ -1,4 +1,4 @@
-import { Link, useSearchParams } from 'react-router';
+import { Link, Navigate, useSearchParams } from 'react-router';
 import { useEffect, useRef, useState } from 'react';
 
 import { useT } from '../i18n/t';
@@ -10,7 +10,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 type CallbackState =
   | { kind: 'pending' }
-  | { kind: 'signedIn'; recovery: boolean }
+  | { kind: 'signedIn'; recovery: boolean; next: string | null }
   // The mapped copy and its FormatJS values (issue #1295): the render is
   // a state away from the failure, so the values ride along with the id —
   // otherwise the weak-password copy would show its raw `{minLength}`.
@@ -31,6 +31,10 @@ type CallbackState =
  *     open the link in the browser where you asked for it, or use the
  *     8-digit code;
  *   - any other failure — the mapped auth-failure copy.
+ *
+ * A sign-in that was started on the way to somewhere else (issue #1456)
+ * does not stop here: the Worker hands back the path it was carrying and
+ * the page goes straight on to it.
  *
  * In an environment without the Worker (vite preview in e2e) the exchange
  * fails generically and the same mapped-copy path renders; the heading is
@@ -62,9 +66,9 @@ export function AuthCallbackPage() {
     }
     webAuth
       .exchangeCallback(code)
-      .then(({ recovery }) => {
+      .then(({ recovery, next }) => {
         void queryClient.invalidateQueries({ queryKey: AUTH_SESSION_QUERY_KEY });
-        setState({ kind: 'signedIn', recovery });
+        setState({ kind: 'signedIn', recovery, next: next ?? null });
       })
       .catch((error: unknown) => {
         const copy =
@@ -74,6 +78,14 @@ export function AuthCallbackPage() {
         setState({ kind: 'failed', copyId: copy.id, values: copy.values });
       });
   }, [code, providerError, queryClient]);
+
+  // Someone who was headed somewhere before they were sent to sign in (an
+  // invitation, so far) goes straight on to it (issue #1456). The Worker
+  // carried the path through the sign-in and the auth client checked it
+  // again on arrival. A recovery link has its own next step, below.
+  if (state.kind === 'signedIn' && !state.recovery && state.next !== null) {
+    return <Navigate replace to={state.next} />;
+  }
 
   return (
     <main className="page page-auth">
