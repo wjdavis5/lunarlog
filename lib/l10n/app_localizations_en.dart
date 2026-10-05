@@ -3056,6 +3056,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sharingManageGuardiansYouSuffix => '(you)';
 
   @override
+  String get sharingManageGuardiansNoNameSentenceStart => 'This guardian';
+
+  @override
+  String get sharingManageGuardiansNoNameMidSentence => 'this guardian';
+
+  @override
   String get sharingNotificationPreferencesTitle => 'Notifications';
 
   @override

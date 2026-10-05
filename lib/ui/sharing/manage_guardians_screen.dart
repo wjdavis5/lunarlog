@@ -577,7 +577,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   /// [_revoke] itself.
   Future<bool?> _confirmRevoke(ProfileGuardian guardian) {
     final l10n = AppLocalizations.of(context);
-    final roleLabel = guardianRoleLabel(l10n, guardian.role);
+    final name = _guardianNameInSentence(guardian, startsSentence: false);
     final isSelf = guardian.userId == widget.currentUserId;
     return showDialog<bool>(
       context: context,
@@ -587,9 +587,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
               ? l10n.manageGuardiansLeaveProfileDialogTitle(
                   widget.profile.displayName,
                 )
-              : l10n.sharingManageGuardiansRemoveTitle(
-                  guardian.displayName ?? roleLabel,
-                ),
+              : l10n.sharingManageGuardiansRemoveTitle(name),
         ),
         content: SingleChildScrollView(
           child: Text(
@@ -629,12 +627,11 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
       );
       if (mounted) {
         final l10n = AppLocalizations.of(context);
-        final roleLabel = guardianRoleLabel(l10n, guardian.role);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               l10n.sharingManageGuardiansRemoved(
-                guardian.displayName ?? roleLabel,
+                _guardianNameInSentence(guardian, startsSentence: false),
               ),
             ),
           ),
@@ -1396,9 +1393,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     final l10n = AppLocalizations.of(context);
     final currentRoleLabel = guardianRoleLabel(l10n, guardian.role);
     final newRoleLabel = guardianRoleLabel(l10n, newRole);
-    final name = guardian.displayName?.isNotEmpty == true
-        ? guardian.displayName!
-        : currentRoleLabel;
+    final name = _guardianNameInSentence(guardian, startsSentence: true);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1481,6 +1476,31 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
       );
     }
     return (title: roleLabel, youSuffix: false, roleBeneath: false);
+  }
+
+  /// What a sentence calls [guardian] (issue #1455): their display name,
+  /// or "this guardian" when they have none. An empty name counts as none,
+  /// as it does for the row ([_guardianRowLabels]).
+  ///
+  /// The row can title a nameless guardian with their role because the
+  /// role is all it says. A sentence that states the role cannot: the
+  /// change-role confirmation read "Co-Parent currently has Co-Parent
+  /// access." The remove confirmation and the "removed" snackbar each
+  /// carried a fallback of their own, and both kept an empty name
+  /// ("Remove ?"), so all three ask here instead.
+  ///
+  /// [startsSentence] picks the capitalised form, for a sentence the name
+  /// opens.
+  String _guardianNameInSentence(
+    ProfileGuardian guardian, {
+    required bool startsSentence,
+  }) {
+    final name = guardian.displayName;
+    if (name != null && name.isNotEmpty) return name;
+    final l10n = AppLocalizations.of(context);
+    return startsSentence
+        ? l10n.sharingManageGuardiansNoNameSentenceStart
+        : l10n.sharingManageGuardiansNoNameMidSentence;
   }
 
   Widget _guardianTile(
