@@ -41,6 +41,7 @@ import 'package:lunarlog/domain/notifications/scheduling.dart'
     show resolveReminderText;
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/components/list_section_header.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/settings/reminder_text_editor_screen.dart';
 import 'package:provider/provider.dart';
@@ -386,30 +387,40 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
   }
 
   /// One named group of reminder types (Issue #178): the header, then each
-  /// type's toggle, lead-days (where the type has a forward anchor), and
-  /// time rows.
+  /// type's toggle and, while it is on, its option rows.
   List<Widget> _group(
     String header,
     List<ReminderKind> kinds,
     ReminderConfig config,
   ) =>
       [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text(
-            header,
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
-        ),
+        ListSectionHeader(title: header),
         for (final kind in kinds) ...[
           _typeTile(kind, config),
-          if (_hasLead(kind)) _leadTile(kind, config),
-          if (kind == ReminderKind.log) _cadenceTile(kind, config),
-          _timeTile(kind, config),
-          _textTile(kind, config),
+          ..._optionTiles(kind, config),
           const Divider(),
         ],
       ];
+
+  /// The rows under a reminder type's switch: how far ahead (where the
+  /// type has a forward anchor), how often (the log nudge), what time and
+  /// what text. Shown only while the type is on, the way quiet hours shows
+  /// its two boundary rows.
+  ///
+  /// They used to stay when the type was off, with nothing behind them:
+  /// five of the seven types ship off, so most of a four-screen list was
+  /// rows that looked like the working ones and did nothing when tapped.
+  /// What was chosen is kept while the type is off and is there again when
+  /// it is turned back on.
+  List<Widget> _optionTiles(ReminderKind kind, ReminderConfig config) {
+    if (!config.typeConfig(kind).enabled) return const [];
+    return [
+      if (_hasLead(kind)) _leadTile(kind, config),
+      if (kind == ReminderKind.log) _cadenceTile(kind, config),
+      _timeTile(kind, config),
+      _textTile(kind, config),
+    ];
+  }
 
   /// The "Your Birth Control" group (Issue #178's layout, Issue #183's
   /// content): the adherence reminder matching the profile's recorded
@@ -428,13 +439,7 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
     );
     final kind = method == null ? null : birthControlReminderKindFor(method);
     return [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-        child: Text(
-          l10n.reminderSectionBirthControl,
-          style: Theme.of(context).textTheme.titleSmall,
-        ),
-      ),
+      ListSectionHeader(title: l10n.reminderSectionBirthControl),
       if (kind == null)
         ListTile(
           key: const ValueKey('reminder-birth-control-none'),
@@ -452,8 +457,7 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
               ? l10n.reminderBirthControlNeedsStartDate
               : null,
         ),
-        _timeTile(kind, config),
-        _textTile(kind, config),
+        ..._optionTiles(kind, config),
       ],
       const Divider(),
     ];
@@ -562,16 +566,14 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
           for (final days in kLeadDayChoices)
             DropdownMenuItem(value: days, child: Text('$days')),
         ],
-        onChanged: typeConfig.enabled
-            ? (days) {
-                if (days != null) {
-                  _update(config.withTypeConfig(
-                    kind,
-                    typeConfig.copyWith(leadDays: days),
-                  ));
-                }
-              }
-            : null,
+        onChanged: (days) {
+          if (days != null) {
+            _update(config.withTypeConfig(
+              kind,
+              typeConfig.copyWith(leadDays: days),
+            ));
+          }
+        },
       ),
     );
   }
@@ -591,19 +593,17 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
               child: Text(cadence.label),
             ),
         ],
-        onChanged: typeConfig.enabled
-            ? (cadence) {
-                if (cadence != null) {
-                  _update(config.withTypeConfig(
-                    kind,
-                    typeConfig.copyWith(
-                      cadence: cadence,
-                      anchorDate: LocalDate.today(),
-                    ),
-                  ));
-                }
-              }
-            : null,
+        onChanged: (cadence) {
+          if (cadence != null) {
+            _update(config.withTypeConfig(
+              kind,
+              typeConfig.copyWith(
+                cadence: cadence,
+                anchorDate: LocalDate.today(),
+              ),
+            ));
+          }
+        },
       ),
     );
   }
@@ -615,8 +615,7 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
       title: Text(AppLocalizations.of(context).reminderTimeLabel),
       trailing: Text(
           _timeOfDay(typeConfig.timeOfDayMinutes).format(context)),
-      onTap:
-          typeConfig.enabled ? () => _pickTime(kind) : null,
+      onTap: () => _pickTime(kind),
     );
   }
 
@@ -636,7 +635,7 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
       subtitle: Text(hasCustom
           ? resolveReminderText(typeConfig).title
           : l10n.reminderTextTileDefaultSubtitle),
-      onTap: typeConfig.enabled ? () => _editText(kind) : null,
+      onTap: () => _editText(kind),
     );
   }
 
