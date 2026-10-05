@@ -34,8 +34,9 @@ been obtained.
   (`lib/data/auth/secure_local_storage.dart`) — backed by the OS Keychain
   (iOS) / Keystore-wrapped EncryptedSharedPreferences (Android), not an
   app-compiled cipher.
-- **Not part of this declaration:** the web build carries no
-  export-compliance surface (browser storage is the platform's
+- **Not part of this declaration:** the web client (`webapp/`) is not
+  part of the iOS binary and carries no export-compliance surface (it
+  keeps nothing in browser storage; its transport security is the platform's
   responsibility).
 
 ## Consistency anchor

@@ -17,7 +17,7 @@ answer for them. Everything else can be typed now.
 - **"Collected" means transmitted off the device** to LunarLog's servers or a
   third-party service. Data that never leaves the device (the home-screen widget
   container, Apple Health / Health Connect reads and writes, a share-sheet
-  export, the local SQLite/IndexedDB copy) is **not collected** for either
+  export, the local SQLite copy) is **not collected** for either
   store's declaration, and adding a capability that stays on-device does not
   change a declaration (`PRIVACY.md` §9 lines 180-181).
 - An **"s"** next to a row means it applies only when the user opts in:
@@ -72,7 +72,7 @@ Citations are `PRIVACY.md` section:line and, where useful, the code path.
 | 21 | Home-screen widget container (state word, cycle-day count, relative countdown, opaque profile id, anchor date) | **No** | OS shared container | n/a | not collected | not collected | `PRIVACY.md` §2.E:66-67, §9:180 |
 | 22 | Apple Health / Health Connect read **and** write (flow, intermenstrual bleeding, symptoms, mood, fertility/BBT; computed deviations read-only) | **No** | OS health store | n/a | not collected | not collected (Health declaration handled separately — §4 below) | `PRIVACY.md` §4:108, §9:181; `ios/Runner/PrivacyInfo.xcprivacy:72-102` |
 | 23 | Clinical exports (JSON / FHIR / CSV) | **No** (user-initiated share sheet) | user-chosen destination | n/a | not collected | not collected | `PRIVACY.md` §4:110, §7:149-150 |
-| 24 | Local SQLite (iOS/Android) / IndexedDB + session (signed-in web only) | Device only; browser store is **not** OS-protected | n/a | n/a | not collected | not collected | `PRIVACY.md` §1:15, §6:133 |
+| 24 | Local SQLite (iOS/Android). The web client keeps no data copy: nothing is written to browser storage, and its session is an in-memory access token plus an HttpOnly refresh cookie | Device only (phone apps); nothing at rest in the browser | n/a | n/a | not collected | not collected | `PRIVACY.md` §1:15, §6:133 |
 
 **Rows 3, 4, 6, 10, 12, 20 are "candidates":** the policy discloses them but no
 store declaration has ever named them. Settle each during the #1065 sweep by
@@ -278,7 +278,7 @@ and reconcile `NSPrivacyAccessedAPITypes` — this environment cannot run it
 | Trigger | What changes | Declaration(s) to re-file |
 |---|---|---|
 | **#993** background health sync (Apple Health background delivery; Health Connect background reads) — **shipped by #993; the re-file below is now due before the next reviewed track** | Adds `READ_HEALTH_DATA_IN_BACKGROUND` and background-delivery entitlement; reads become automatic rather than tap-initiated | Play **Health apps** declaration (new permission + justification). Data safety likely unchanged (still on-device only) — confirm whether "collected" changes. App Privacy unchanged on category, but re-check purpose copy. |
-| **#831** deployed signed-in web build | Signed-in browser holds synced rows + session in unencrypted browser storage; already disclosed in `PRIVACY.md` §6:133, but the deployed origin is new | Both stores' **security/data-safety** narrative and the Play **data deletion** answer (add "clear browser storage / sign out wipes it"). Apple/Play category list unchanged unless web-only features ship. |
+| **#831** web client at app.lunarlog.app | The React web client is a signed-in client over the same backend and keeps **nothing at rest in the browser**: no synced rows in browser storage, the access token in page memory only, the refresh token in an HttpOnly cookie (`PRIVACY.md` §6:133). The earlier Flutter web build, which did hold synced rows in IndexedDB, is retired (#1248) and is being removed from the app (#1257) | Both stores' **security/data-safety** narrative, if it describes the web at all, must say this and not the old browser-storage story. Play **data deletion** answer: signing out ends the browser session; there is no browser copy to clear. Apple/Play category list unchanged unless web-only features ship. |
 | **#117** Claude/ChatGPT connector (open, needs ideation) | Would send health data to a third-party AI assistant — a true third party, not a processor | Play Data safety: **Shared = Yes** for Health info (a real change). App Privacy: Health linked and shared. Also `PRIVACY.md` §4. Needs a product decision first. |
 | Any new off-device data type or new recipient | New row in §1 above, new category on both stores | Both declarations + `PRIVACY.md` §9 + `PrivacyInfo.xcprivacy` in the same change. |
 | Any new `android.permission.health.*` (issues #186, #210, #246) | Health apps declaration review re-triggers | Play **Health apps** declaration (`docs/ops/play-health-declaration.md` "Re-check triggers"). |
