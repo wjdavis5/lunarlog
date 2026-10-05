@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod';
 
 import type { AppSupabaseClient } from '../supabase';
 import { MINIMUM_AGE_POLICY_VERSION } from '../sharing';

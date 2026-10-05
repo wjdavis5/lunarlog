@@ -431,6 +431,21 @@ webapp_fixtures_output="$(run_detect "webapp/test/domain/fixtures.json")"
 assert_contains "webapp fixtures.json sets app_flutter=true" "$webapp_fixtures_output" "app_flutter=true"
 assert_contains "webapp fixtures.json keeps webapp=true" "$webapp_fixtures_output" "webapp=true"
 
+# webapp/src/lib/auth.ts is read by
+# test/site/privacy_browser_error_reporting_test.dart (the web sign-in
+# providers PRIVACY.md lists). It sits under the web data layer, so the arm
+# that adds app_flutter must keep that layer's webapp + database suites.
+webapp_auth_output="$(run_detect "webapp/src/lib/auth.ts")"
+assert_contains "webapp auth.ts sets app_flutter=true" "$webapp_auth_output" "app_flutter=true"
+assert_contains "webapp auth.ts keeps webapp=true" "$webapp_auth_output" "webapp=true"
+assert_contains "webapp auth.ts keeps database=true" "$webapp_auth_output" "database=true"
+
+# Its neighbours in the web data layer are not read by any Dart test and
+# keep their mapping.
+webapp_lib_neighbour_output="$(run_detect "webapp/src/lib/sharing.ts")"
+assert_contains "other webapp/src/lib files keep app_flutter=false" "$webapp_lib_neighbour_output" "app_flutter=false"
+assert_contains "other webapp/src/lib files keep database=true" "$webapp_lib_neighbour_output" "database=true"
+
 # Other docs and webapp files keep their old mapping -- the arms above are
 # pinned to the files the suites actually read.
 go_live_output="$(run_detect "docs/ops/supabase-go-live.md")"

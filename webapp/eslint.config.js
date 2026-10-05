@@ -137,6 +137,20 @@ export const COPY_BANS = [
   },
 ];
 
+/**
+ * zod's runtime may only be imported by `src/lib/zod.ts`, which sets
+ * `jitless` before any schema is built. A schema module that imported 'zod'
+ * directly could be evaluated first, and zod would then probe for `eval`,
+ * which the CSP refuses and the browser logs as a Trusted Types violation on
+ * every page load. `import type` is unaffected.
+ */
+export const ZOD_IMPORT_BAN = {
+  name: 'zod',
+  message:
+    "Import { z } from 'src/lib/zod' instead: it sets zod's jitless mode before any schema is built, so zod never probes for eval under the CSP (a Trusted Types violation on every page load otherwise). `import type` from 'zod' is fine.",
+  allowTypeImports: true,
+};
+
 const storageBanRules = {
   'no-restricted-globals': [
     'error',
@@ -209,6 +223,7 @@ export default tseslint.config(
     rules: {
       ...storageBanRules,
       ...syntaxBanRules,
+      '@typescript-eslint/no-restricted-imports': ['error', { paths: [ZOD_IMPORT_BAN] }],
     },
   },
 );
