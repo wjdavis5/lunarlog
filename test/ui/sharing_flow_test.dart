@@ -2665,6 +2665,81 @@ void main() {
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump(const Duration(milliseconds: 100));
       });
+
+      // Issue #1426: every test above finds the banner through the widget
+      // tree (`find.byKey`/`find.text`), which says nothing about what a
+      // screen reader is given. The banner is painted before the Navigator
+      // in the same `Column`, and each route's modal barrier is a
+      // `BlockSemantics`, which drops earlier-painted siblings up to the
+      // nearest semantics boundary — so a screen-reader user could not
+      // reach "Sign In" or the close control at all. `find.semantics` walks
+      // the semantics tree from its root, and `tester.semantics.tap`
+      // activates a node the way an assistive technology does.
+      group('in the accessibility tree (issue #1426)', () {
+        testWidgets('a screen reader reaches the title and can activate '
+            '"Sign In"', (tester) async {
+          final handle = tester.ensureSemantics();
+          final auth = FakeAuthService();
+          addTearDown(auth.dispose);
+
+          await pumpAppWithInvite(
+            tester,
+            auth,
+            initialInviteCode: 'cold-token',
+          );
+
+          expect(
+            find.semantics.byLabel('Sign in to accept your invite'),
+            findsOne,
+          );
+          final signIn = find.semantics.byLabel('Sign In');
+          expect(signIn, findsOne);
+          expect(
+            signIn.evaluate().single,
+            isSemantics(isButton: true, hasTapAction: true),
+          );
+
+          tester.semantics.tap(signIn);
+          await tester.pumpAndSettle();
+          expect(find.byType(SignInScreen), findsOneWidget);
+
+          handle.dispose();
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        });
+
+        testWidgets('a screen reader can activate the close control', (
+          tester,
+        ) async {
+          final handle = tester.ensureSemantics();
+          final auth = FakeAuthService();
+          addTearDown(auth.dispose);
+
+          await pumpAppWithInvite(
+            tester,
+            auth,
+            initialInviteCode: 'cold-token',
+          );
+
+          final close = find.semantics.byLabel('Close');
+          expect(close, findsOne);
+          expect(
+            close.evaluate().single,
+            isSemantics(isButton: true, hasTapAction: true),
+          );
+
+          tester.semantics.tap(close);
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const Key('pending-invite-sign-in-banner')),
+            findsNothing,
+          );
+
+          handle.dispose();
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        });
+      });
     });
 
     testWidgets('links without a code are ignored', (tester) async {

@@ -733,6 +733,64 @@ void main() {
       await db.close();
     });
 
+    // Issue #1426: the PMS toggle is a group of one, and its group name
+    // and its chip label are the same word, so the `'<group>, <label>'`
+    // phrase read it out twice ("PMS, PMS").
+    testWidgets('the PMS chip announces its name once, with its selected '
+        'state', (tester) async {
+      final handle = tester.ensureSemantics();
+      final db = await pumpDaySheet(tester);
+
+      expect(find.semantics.byLabel(RegExp('PMS, PMS')), findsNothing);
+      final pms = tester.getSemantics(find.bySemanticsLabel('PMS'));
+      expect(pms.flagsCollection.isButton, isTrue);
+      expect(pms.flagsCollection.isSelected, isNot(Tristate.isTrue));
+
+      await tester.tap(find.bySemanticsLabel('PMS'));
+      await tester.pump(const Duration(milliseconds: 700));
+
+      expect(
+        tester
+            .getSemantics(find.bySemanticsLabel('PMS'))
+            .flagsCollection.isSelected,
+        Tristate.isTrue,
+        reason: 'the shorter label still rides the same toggle',
+      );
+      handle.dispose();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+    });
+
+    // Issue #1426: the read-only sheet shows the PMS marker as a heading
+    // over a value, and both are the same word.
+    testWidgets('the read-only sheet announces the PMS marker once',
+        (tester) async {
+      final handle = tester.ensureSemantics();
+      final db = await pumpDaySheet(
+        tester,
+        readOnly: true,
+        buildExisting: (entries, observations, profileId) => entries.save(
+          DayEntry(
+            id: '',
+            profileId: profileId,
+            localDate: LocalDate(2026, 8, 29),
+            tz: 'America/Chicago',
+            flow: FlowLevel.none,
+            pms: true,
+            updatedAt: DateTime.utc(2026, 1, 1),
+          ),
+        ),
+      );
+
+      expect(find.semantics.byLabel(RegExp('PMS')), findsOne,
+          reason: 'a screen reader hears it once, not twice in a row');
+      handle.dispose();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+    });
+
     testWidgets('the sheet headings are flagged as semantic headers',
         (tester) async {
       final handle = tester.ensureSemantics();

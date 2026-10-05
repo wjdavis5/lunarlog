@@ -18,6 +18,9 @@ import 'package:flutter/material.dart';
 /// non-null — an accessible tap action. The visible chip's own semantics
 /// are excluded and rebuilt here: a raw chip announces only its own text
 /// plus its selected flag, never which group of controls it belongs to.
+///
+/// Issue #1426: when [group] and [label] are the same word it is announced
+/// once, not as "PMS, PMS" — kept in step with the day sheet's copy.
 Widget groupedChipSemantics({
   required String group,
   required String label,
@@ -26,7 +29,7 @@ Widget groupedChipSemantics({
   VoidCallback? onTap,
 }) {
   return Semantics(
-    label: '$group, $label',
+    label: group == label ? label : '$group, $label',
     button: onTap != null,
     enabled: onTap != null,
     selected: selected,

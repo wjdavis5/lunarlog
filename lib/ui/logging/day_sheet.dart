@@ -214,6 +214,9 @@ final List<int> kGradedIntensities = [
 /// working after the exclusion. The `'<group>, <chip>'` phrase shape (and
 /// its comma join) matches `dayCellSemanticLabel`'s, so every semantic
 /// label this pass introduces reads the same way.
+///
+/// Issue #1426: a group of one whose name is its only chip's label (the
+/// PMS toggle) is announced once, not as "PMS, PMS".
 Widget groupedChipSemantics({
   required String group,
   required String label,
@@ -222,7 +225,7 @@ Widget groupedChipSemantics({
   VoidCallback? onTap,
 }) {
   return Semantics(
-    label: '$group, $label',
+    label: group == label ? label : '$group, $label',
     button: onTap != null,
     enabled: onTap != null,
     selected: selected,
@@ -3318,7 +3321,18 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
                     l10n.daySheetPmsGroup,
                     style: theme.textTheme.labelMedium,
                   ),
-                  Text(l10n.daySheetPmsChip, style: theme.textTheme.titleSmall),
+                  // Issue #1426: the heading and the value are the same
+                  // word ("PMS"), so a screen reader read it twice in a
+                  // row. The value line stays on screen — the sheet's
+                  // heading-over-value shape — and is announced only when
+                  // it says something the heading did not.
+                  ExcludeSemantics(
+                    excluding: l10n.daySheetPmsChip == l10n.daySheetPmsGroup,
+                    child: Text(
+                      l10n.daySheetPmsChip,
+                      style: theme.textTheme.titleSmall,
+                    ),
+                  ),
                 ],
                 // Issue #642, LLA-011.
                 ..._readOnlyChildObservationsSection(theme, l10n),
