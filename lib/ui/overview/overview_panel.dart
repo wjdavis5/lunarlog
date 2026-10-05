@@ -672,20 +672,33 @@ class _OverviewPanelState extends State<OverviewPanel>
   /// today. It shows the summary to everyone on the subject's page and the
   /// Edit action only to someone who may log ([_effectiveReadOnly]); Edit
   /// opens the same sheet [_logItToday] opens for the late resolver.
-  Widget _todayLogCard(BuildContext context, TodayLog log) => Padding(
-        padding: const EdgeInsets.only(top: LLSpace.space2),
-        child: TodayLogCard(
-          summary: todayLogSummaryOf(
-            log,
-            l10n: AppLocalizations.of(context),
-            customTags: _customTags,
-            bbtUnit: widget.profile?.bbtUnit ?? BbtUnit.celsius,
-            weightUnit: widget.profile?.weightUnit ?? WeightUnit.kg,
-          ),
-          canEdit: !_effectiveReadOnly,
-          onEdit: () => unawaited(_logItToday()),
+  ///
+  /// Null when there is no card to show: until the first read of today's
+  /// entry lands, and when nothing is logged and the viewer cannot log
+  /// either (an archived profile, a `viewer`). "Nothing logged today yet"
+  /// points at the floating button; with no button and no way to log, it is
+  /// a card that could only ever say the one thing. A day that does have
+  /// something logged still shows to a read-only viewer, without Edit.
+  Widget? _todayLogCard(BuildContext context) {
+    final log = _todayLog;
+    if (log == null) return null;
+    final readOnly = _effectiveReadOnly;
+    if (readOnly && !log.hasContent) return null;
+    return Padding(
+      padding: const EdgeInsets.only(top: LLSpace.space2),
+      child: TodayLogCard(
+        summary: todayLogSummaryOf(
+          log,
+          l10n: AppLocalizations.of(context),
+          customTags: _customTags,
+          bbtUnit: widget.profile?.bbtUnit ?? BbtUnit.celsius,
+          weightUnit: widget.profile?.weightUnit ?? WeightUnit.kg,
         ),
-      );
+        canEdit: !readOnly,
+        onEdit: () => unawaited(_logItToday()),
+      ),
+    );
+  }
 
   /// [TodayCard]'s primary "Period started today" action (issue #209 item
   /// 4c): an upsert through the same [DayEntriesRepository] the day sheet
@@ -913,9 +926,10 @@ class _OverviewPanelState extends State<OverviewPanel>
           },
         ),
         // Issue #1489: what is logged for today, under the estimate in
-        // whichever of its four states is showing. Absent only until the
-        // first read of today's entry lands.
-        if (_todayLog case final log?) _todayLogCard(context, log),
+        // whichever of its four states is showing. Absent until the first
+        // read of today's entry lands, and where nothing is logged and
+        // nothing can be ([_todayLogCard]).
+        ?_todayLogCard(context),
         _seeHistoryLink(context),
         if (_deviationSnapshot case final snapshot?)
           HealthDeviationCard(

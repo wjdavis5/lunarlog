@@ -1106,13 +1106,13 @@ abstract class AppLocalizations {
   /// **'Note added'**
   String get todayLogNoteAdded;
 
-  /// Issue #1489: follows the tag labels on the Today log card when the day has more tags than the card names: more than six, or any the card counts without naming (sex life, test results). As in 'Cramps, Headache, Fatigue, Bloating, Nausea, Acne and 3 more'.
+  /// Issue #1489: follows the tag labels on the Today log card when the day has more tags than the card names: more than six, or any the card counts without naming (sex life, test results, and any tag this version of the app does not know). As in 'Cramps, Headache, Fatigue, Bloating, Nausea, Acne and 3 more'.
   ///
   /// In en, this message translates to:
   /// **'{count, plural, =1{and 1 more} other{and {count} more}}'**
   String todayLogMoreTags(int count);
 
-  /// Issue #1489: the tags line of the Today log card when every tag logged today is one the card counts without naming (sex life, test results). Says how many, never which.
+  /// Issue #1489: the tags line of the Today log card when every tag logged today is one the card counts without naming (sex life, test results, and any tag this version of the app does not know). Says how many, never which.
   ///
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 other entry} other{{count} other entries}}'**

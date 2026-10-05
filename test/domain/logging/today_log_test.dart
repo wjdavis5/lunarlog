@@ -130,6 +130,24 @@ void main() {
       expect(log(entry(), [wearable]).hasContent, isFalse);
       expect(log(entry(), [wearable]).bbt, isNull);
     });
+
+    test('a spotting record alone is logged: the health import stores a '
+        'spotting-only day with no flow at all', () {
+      final spotting = observation(ObservationCategory.spotting);
+      expect(log(entry(), [spotting]).hasContent, isTrue);
+      // Whoever wrote it: an imported spotting record is still spotting.
+      expect(
+        log(entry(), [
+          observation(
+            ObservationCategory.spotting,
+            source: ObservationSource.healthConnect,
+          ),
+        ]).hasContent,
+        isTrue,
+      );
+      // A tombstoned entry is still nothing logged.
+      expect(log(entry(deletedAt: kNow), [spotting]).hasContent, isFalse);
+    });
   });
 
   group('TodayLog readings', () {

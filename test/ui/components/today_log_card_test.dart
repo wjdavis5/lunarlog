@@ -210,6 +210,16 @@ void main() {
       );
     });
 
+    test('a spotting-only day with no flow at all, as the health import '
+        'stores it, is a logged day that reads "Spotting"', () {
+      final summary = summaryOf(
+        entry(),
+        observations: [observation(ObservationCategory.spotting)],
+      );
+      expect(summary, isNotNull);
+      expect(todayLogLines(summary!, kL10n), ['Spotting']);
+    });
+
     test('bleed wins over spotting, as on the calendar', () {
       expect(
         summaryOf(
@@ -299,13 +309,55 @@ void main() {
       );
     });
 
-    test('a custom tag reads by the name it was given, and a code the '
-        'registry does not hold reads as itself', () {
+    test('a custom tag in the profile\'s registry reads by the name it was '
+        'given', () {
       final summary = summaryOf(
-        entry(tags: const ['back_cracking', 'cramps', 'not_synced_yet']),
+        entry(tags: const ['back_cracking', 'cramps']),
         customTags: [customTag('back_cracking', 'Back cracking')],
       )!;
-      expect(summary.tags, ['Back cracking', 'Cramps', 'not_synced_yet']);
+      expect(summary.tags, ['Back cracking', 'Cramps']);
+      expect(summary.unnamedTagCount, 0);
+    });
+
+    // A code this build does not know could be anything, a later version's
+    // sex-life or test tag included, so Today never prints it. (The day
+    // sheet still shows it: its own rule is that an unknown code is never
+    // dropped.)
+    test('a code neither the taxonomy nor the registry knows is counted, '
+        'never printed', () {
+      final summary = summaryOf(
+        entry(tags: const ['back_cracking', 'cramps', 'some_new_code']),
+        customTags: [customTag('back_cracking', 'Back cracking')],
+      )!;
+      expect(summary.tags, ['Back cracking', 'Cramps']);
+      expect(summary.unnamedTagCount, 1);
+      final lines = todayLogLines(summary, kL10n);
+      expect(lines, ['Back cracking, Cramps and 1 more']);
+      expect(lines.join(' '), isNot(contains('some_new_code')));
+    });
+
+    test('a day whose only tag is an unknown code is still a logged day, '
+        'and says only how many', () {
+      final summary = summaryOf(entry(tags: const ['some_new_code']))!;
+      expect(summary.tags, isEmpty);
+      expect(todayLogLines(summary, kL10n), ['1 other entry']);
+    });
+
+    test('unknown codes and the unnamed categories are counted together',
+        () {
+      final summary = summaryOf(
+        entry(tags: const ['some_new_code', 'protected_sex', 'cramps']),
+      )!;
+      expect(summary.tags, ['Cramps']);
+      expect(summary.unnamedTagCount, 2);
+      expect(todayLogLines(summary, kL10n), ['Cramps and 2 more']);
+    });
+
+    test('with no registry in hand a custom tag is counted until its name '
+        'is known', () {
+      final summary = summaryOf(entry(tags: const ['back_cracking']))!;
+      expect(summary.tags, isEmpty);
+      expect(summary.unnamedTagCount, 1);
     });
 
     test('the PMS marker is named by the day sheet\'s own word', () {
@@ -502,6 +554,29 @@ void main() {
       );
       expect(find.textContaining('Fatigue'), findsNothing);
       expect(find.textContaining('Irritable'), findsNothing);
+    });
+
+    testWidgets('a tag code this build does not know is nowhere in the tree '
+        'or the semantics', (tester) async {
+      final handle = tester.ensureSemantics();
+      await pumpCard(
+        tester,
+        summary: summaryOf(entry(tags: const ['cramps', 'some_new_code'])),
+      );
+
+      expect(find.text('Cramps and 1 more'), findsOneWidget);
+      expect(
+        find.textContaining('some_new_code', findRichText: true),
+        findsNothing,
+      );
+      final spoken = semanticsNodes(tester)
+          .map((node) => node.getSemanticsData())
+          .map((data) => [data.label, data.value, data.hint, data.tooltip])
+          .expand((fields) => fields)
+          .join(' | ');
+      expect(spoken, contains('Logged today: Cramps and 1 more.'));
+      expect(spoken, isNot(contains('some_new_code')));
+      handle.dispose();
     });
 
     testWidgets('the note\'s text is nowhere in the tree or the semantics',

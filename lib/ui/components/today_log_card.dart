@@ -22,6 +22,11 @@
 /// or "Pregnancy · positive" does not belong there. They still count as
 /// logged, and the day sheet behind Edit names them as it always has.
 ///
+/// **So is a tag code this build does not know** — one in neither the
+/// curated taxonomy nor the profile's own registry. It has no label, only
+/// its code, and a later version's sex-life or test tag would be exactly
+/// such a code on an older build.
+///
 /// For the person who logs only. A guardian's front page is
 /// `GuardianOverviewCard`, which shows counts and never content (#850).
 library;
@@ -44,7 +49,8 @@ import '../theme/tokens.dart';
 const int kTodayLogMaxTags = 6;
 
 /// The tag categories the card counts without naming (see the library
-/// comment). A custom tag has no category and is named like any other.
+/// comment). A custom tag has no category and is named like any other,
+/// once the profile's registry says what it is called.
 const Set<TagCategory> kTodayLogUnnamedCategories = {
   TagCategory.sexLife,
   TagCategory.tests,
@@ -71,8 +77,8 @@ class TodayLogSummary {
   /// the rest.
   final List<String> tags;
 
-  /// How many of the day's tags the card counts without naming
-  /// ([kTodayLogUnnamedCategories]).
+  /// How many of the day's tags the card counts without naming: those in
+  /// [kTodayLogUnnamedCategories], and any code this build does not know.
   final int unnamedTagCount;
 
   /// The lines for what the day holds besides flow, tags and a note: the
@@ -100,13 +106,14 @@ TodayLogSummary? todayLogSummaryOf(
 }) {
   final entry = log.entry;
   if (entry == null || !log.hasContent) return null;
+  bool unnamed(String code) => _isUnnamedOnToday(code, customTags);
   return TodayLogSummary(
     flow: _flowLine(log, entry, l10n),
     tags: [
       for (final code in entry.tags)
-        if (!_isUnnamedOnToday(code)) _todayTagLabel(code, customTags),
+        if (!unnamed(code)) _todayTagLabel(code, customTags),
     ],
-    unnamedTagCount: entry.tags.where(_isUnnamedOnToday).length,
+    unnamedTagCount: entry.tags.where(unnamed).length,
     details: [
       if (entry.pms) l10n.daySheetPmsChip,
       if (log.bbt case final reading?)
@@ -146,11 +153,26 @@ String? _flowLine(TodayLog log, DayEntry entry, AppLocalizations l10n) {
   return flow == FlowLevel.none ? null : localizedFlowLabel(flow, l10n);
 }
 
-/// Whether [code] is a tag the card counts without naming.
-bool _isUnnamedOnToday(String code) {
+/// Whether [code] is a tag the card counts without naming: a curated tag in
+/// [kTodayLogUnnamedCategories], or a code that neither the curated
+/// taxonomy nor [customTags] (the profile's own registry) knows.
+///
+/// The second kind matters because an unknown code has no label to show,
+/// only itself, and what it stands for cannot be told from here: a later
+/// version of the app may add a sex-life or test tag that this build would
+/// otherwise print on the screen the app opens on. The day sheet keeps its
+/// own rule, that an unknown code is shown rather than dropped
+/// ([tagDisplayLabel]); here it is counted rather than dropped.
+///
+/// A custom tag is therefore counted until its registry row is in hand
+/// (the registry has not answered yet, or has not synced to this device),
+/// and named from then on.
+bool _isUnnamedOnToday(String code, Iterable<CustomTag> customTags) {
   final curated = tagByCode(code);
-  return curated != null &&
-      kTodayLogUnnamedCategories.contains(curated.category);
+  if (curated != null) {
+    return kTodayLogUnnamedCategories.contains(curated.category);
+  }
+  return !customTags.any((tag) => tag.code == code);
 }
 
 /// Categories whose options say what they are without their heading
@@ -164,9 +186,10 @@ const Set<TagCategory> _kSelfDescribingOnToday = {TagCategory.digestion};
 /// Sticky", "Normal" becomes "Stool: Normal" and the medication tag "Pain"
 /// becomes "Took pain medication", none of which the bare word says. A
 /// category in [_kSelfDescribingOnToday] keeps its own word, with only a
-/// true clash resolved ("Great (digestion)", [flatDisplayForTag]).
-/// Anything else, a custom tag included, reads as the day sheet shows it
-/// ([tagDisplayLabel]).
+/// true clash resolved ("Great (digestion)", [flatDisplayForTag]). A
+/// custom tag reads by the name its registry row gives it, as on the day
+/// sheet ([tagDisplayLabel]). A code that is neither never gets here: it
+/// is counted, not named ([_isUnnamedOnToday]).
 String _todayTagLabel(String code, Iterable<CustomTag> customTags) {
   final curated = tagByCode(code);
   if (curated == null) return tagDisplayLabel(code, customTags);

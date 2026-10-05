@@ -55,10 +55,19 @@ class TodayLog {
   /// no tags and no note. The PMS marker and a temperature or weight
   /// reading count as logged: each is something the person entered, and a
   /// day holding only one of them is not an empty day.
+  ///
+  /// So does a spotting record, whoever wrote it. The day sheet raises the
+  /// flow to "not bleeding" when it records spotting, but the health import
+  /// stores a spotting-only day with no flow at all, and that day is not
+  /// empty either: the day sheet opens on it with Spotting chosen and the
+  /// calendar marks it.
   bool get hasContent {
     final entry = this.entry;
     if (entry == null || entry.deletedAt != null) return false;
-    return _entryHasContent(entry) || bbt != null || weight != null;
+    return _entryHasContent(entry) ||
+        hasSpotting ||
+        bbt != null ||
+        weight != null;
   }
 
   bool _entryHasContent(DayEntry entry) =>

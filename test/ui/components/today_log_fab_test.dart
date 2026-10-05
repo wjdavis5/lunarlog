@@ -120,6 +120,18 @@ class Harness {
         updatedAt: DateTime.utc(2026, 1, 1),
       );
 
+  /// A spotting record for today, to attach in [saveDay].
+  Observation spotting(String profileId) => Observation(
+        id: '',
+        dayEntryId: '',
+        profileId: profileId,
+        localDate: kToday,
+        tz: 'America/Chicago',
+        category: ObservationCategory.spotting,
+        code: 'spotting',
+        updatedAt: DateTime.utc(2026, 1, 1),
+      );
+
   /// Pumps a bare [TodayLogFab]. Pumping again keeps its state, so a second
   /// call with another profile is a profile switch.
   Future<void> pump(
@@ -246,6 +258,17 @@ void main() {
         h.reading(profileId, ObservationCategory.bbt, 36.7, 'celsius'),
       ],
     );
+    await h.pump(profileId);
+
+    expect(fabLabel(tester), kEdit);
+    await h.dispose();
+  });
+
+  testWidgets('a spotting-only day with no flow at all, as the health import '
+      'stores it, reads "Edit today"', (tester) async {
+    final h = Harness(tester);
+    final profileId = await h.createProfile();
+    await h.saveDay(profileId, kToday, attached: [h.spotting(profileId)]);
     await h.pump(profileId);
 
     expect(fabLabel(tester), kEdit);

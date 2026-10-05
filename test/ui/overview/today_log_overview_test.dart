@@ -549,6 +549,48 @@ void main() {
       await h.dispose();
     });
 
+    testWidgets('a spotting-only day with no flow at all, as the health '
+        'import stores it, is a logged day', (tester) async {
+      final h = Harness(tester);
+      final profile = await h.createProfile();
+      await h.saveDay(
+        profile.id,
+        kToday,
+        attached: [
+          h.attachment(profile.id, kToday, ObservationCategory.spotting),
+        ],
+      );
+      await h.pump(profile);
+
+      expect(cardTexts(tester), ['Logged today', 'Edit', 'Spotting']);
+      await h.dispose();
+    });
+
+    testWidgets('a tag code this build does not know is counted, never '
+        'printed, while a custom tag beside it is still named',
+        (tester) async {
+      final h = Harness(tester);
+      final profile = await h.createProfile();
+      final custom = await h.tagRegistry
+          .create(profileId: profile.id, label: 'Back cracking');
+      await h.saveDay(
+        profile.id,
+        kToday,
+        tags: [custom.code, 'some_new_code'],
+      );
+      await h.pump(profile);
+
+      expect(
+        cardTexts(tester),
+        ['Logged today', 'Edit', 'Back cracking and 1 more'],
+      );
+      expect(
+        find.textContaining('some_new_code', findRichText: true),
+        findsNothing,
+      );
+      await h.dispose();
+    });
+
     testWidgets('a custom tag reads by the name it was given, and follows a '
         'rename', (tester) async {
       final h = Harness(tester);
@@ -567,14 +609,15 @@ void main() {
       await h.dispose();
     });
 
-    testWidgets('with no tag registry in the tree a custom tag is shown by '
-        'its code, not dropped', (tester) async {
+    testWidgets('with no tag registry in the tree a custom tag cannot be '
+        'told from an unknown code: it is counted, and still a logged day',
+        (tester) async {
       final h = Harness(tester);
       final profile = await h.createProfile();
       await h.saveDay(profile.id, kToday, tags: const ['back_cracking']);
       await h.pump(profile, withTagRegistry: false);
 
-      expect(cardTexts(tester), ['Logged today', 'Edit', 'back_cracking']);
+      expect(cardTexts(tester), ['Logged today', 'Edit', '1 other entry']);
       await h.dispose();
     });
 
@@ -585,12 +628,13 @@ void main() {
       final registry = _HandFedTagRegistry();
       await h.saveDay(profile.id, kToday, tags: const ['back_cracking']);
       await h.pump(profile, tagRegistrySeam: registry);
-      expect(cardTexts(tester), ['Logged today', 'Edit', 'back_cracking']);
+      // Until the registry answers, the tag is a code with no known name.
+      expect(cardTexts(tester), ['Logged today', 'Edit', '1 other entry']);
 
       registry.controller.addError(StateError('simulated'));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(cardTexts(tester), ['Logged today', 'Edit', 'back_cracking']);
+      expect(cardTexts(tester), ['Logged today', 'Edit', '1 other entry']);
 
       registry.controller.add([
         CustomTag(
@@ -821,6 +865,51 @@ void main() {
 
       expect(cardTexts(tester), ['Logged today', 'Medium flow']);
       expect(find.byKey(kEdit), findsNothing);
+      await h.dispose();
+    });
+
+    // Nobody can log on an archived profile, so "Nothing logged today yet"
+    // would be a card that can only ever say the one thing.
+    testWidgets('an archived profile with nothing logged gets no card at '
+        'all', (tester) async {
+      final h = Harness(tester);
+      final profile = await h.createProfile();
+      await h.logPeriods(profile.id, kActiveStarts);
+      await h.pump(profile, readOnly: true);
+
+      expect(find.byKey(const ValueKey('overview-active')), findsOneWidget);
+      expect(find.byKey(kDisclaimer), findsOneWidget);
+      expect(find.byKey(kCard), findsNothing);
+      expect(find.text(kEmptyLine), findsNothing);
+
+      // A day that arrives from another device still shows, without Edit.
+      await h.saveDay(profile.id, kToday, tags: const ['cramps']);
+      await tester.pumpAndSettle();
+      expect(cardTexts(tester), ['Logged today', 'Cramps']);
+      expect(find.byKey(kEdit), findsNothing);
+
+      // And goes again with it.
+      await h.entries.delete(profile.id, kToday);
+      await tester.pumpAndSettle();
+      expect(find.byKey(kCard), findsNothing);
+      await h.dispose();
+    });
+
+    testWidgets('a subject who may only view, with nothing logged, gets no '
+        'card either', (tester) async {
+      final h = Harness(tester);
+      final profile = await h.createProfile();
+      await h.db.storage.applyRemoteRows([
+        guardianRow(profile.id, 'user-self', 'viewer', isSubject: true),
+      ]);
+      await h.pump(
+        profile,
+        auth: h.signIn('user-self'),
+        withGuardians: true,
+      );
+
+      expect(find.byKey(kDisclaimer), findsOneWidget);
+      expect(find.byKey(kCard), findsNothing);
       await h.dispose();
     });
 
