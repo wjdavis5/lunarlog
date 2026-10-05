@@ -3,7 +3,12 @@ import { fileURLToPath } from 'node:url';
 import { ESLint } from 'eslint';
 import { expect, describe, it } from 'vitest';
 
-import { COPY_BANS, STORAGE_BANS, STORAGE_SYNTAX_BANS } from '../eslint.config.js';
+import {
+  COPY_BANS,
+  STORAGE_BANS,
+  STORAGE_SYNTAX_BANS,
+  ZOD_IMPORT_BAN,
+} from '../eslint.config.js';
 
 const webappRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -188,5 +193,49 @@ describe('the no-typed-copy ban (issue #1249)', () => {
     // Four selectors: JSXText, direct literal attribute, wrapped literal
     // attribute, dangerouslySetInnerHTML.
     expect(COPY_BANS).toHaveLength(4);
+  });
+});
+
+// zod probes for `eval` when a schema is built unless `jitless` is already
+// set; under the CSP that probe is a Trusted Types violation logged on every
+// page load. src/lib/zod.ts sets it, so nothing else in src/ may import the
+// runtime.
+describe('the zod runtime import ban (the CSP eval probe)', () => {
+  const RULE = '@typescript-eslint/no-restricted-imports';
+
+  it("bans importing zod's runtime in app code", async () => {
+    const messages = await lintSrc("import { z } from 'zod';\nexport const s = z.string();\n");
+    const hits = messages.filter((m) => m.ruleId === RULE);
+    expect(hits).not.toHaveLength(0);
+    expect(hits[0]?.message).toContain('src/lib/zod');
+  });
+
+  it('lets a type-only import through', async () => {
+    const messages = await lintSrc(
+      "import type { z } from 'zod';\nexport type S = z.infer<z.ZodString>;\n",
+    );
+    expect(messages.filter((m) => m.ruleId === RULE)).toEqual([]);
+  });
+
+  it('lets schema modules import z from the wrapper', async () => {
+    const messages = await lintSrc(
+      "import { z } from './lib/zod';\nexport const s = z.string();\n",
+    );
+    expect(messages.filter((m) => m.ruleId === RULE)).toEqual([]);
+  });
+
+  it('stays scoped to src/ (tests may import zod directly)', async () => {
+    const [result] = await linter.lintText(
+      "import { z } from 'zod';\nexport const s = z.string();\n",
+      {
+        filePath: join(webappRoot, 'test', 'probe.test.ts'),
+      },
+    );
+    expect((result?.messages ?? []).filter((m) => m.ruleId === RULE)).toEqual([]);
+  });
+
+  it('exports exactly the ban the config consumes', () => {
+    expect(ZOD_IMPORT_BAN.name).toBe('zod');
+    expect(ZOD_IMPORT_BAN.allowTypeImports).toBe(true);
   });
 });

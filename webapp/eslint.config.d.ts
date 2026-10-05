@@ -8,3 +8,4 @@ export const STORAGE_BANS: {
 }[];
 export const COPY_BANS: { selector: string; message: string }[];
 export const STORAGE_SYNTAX_BANS: { selector: string; message: string }[];
+export const ZOD_IMPORT_BAN: { name: string; message: string; allowTypeImports: boolean };

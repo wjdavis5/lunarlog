@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../lib/zod';
 
 /**
  * Zod schemas for the compiled Dart domain module's outputs (issue #1251).

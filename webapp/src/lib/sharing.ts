@@ -23,7 +23,7 @@
  * the server.
  */
 
-import { z } from 'zod';
+import { z } from './zod';
 
 import type { Json } from '../../../supabase/database.types';
 import { webAuth } from './auth';
