@@ -80,7 +80,9 @@ function modeRow(profileId: string, mode: string): ProfileModeRow {
 
 function guardianRow(profileId: string): ProfileGuardianRow {
   return {
-    id: '00000000-0000-4000-8000-0000000000g1',
+    // One membership row per profile. A shared id collapsed the three rows
+    // into one when merged, leaving two profiles with no membership.
+    id: `g-${profileId}`,
     profile_id: profileId,
     user_id: UID,
     role: 'primary_guardian',
@@ -231,6 +233,63 @@ describe('TodayPage — the profile home (issue #1253)', () => {
     expect(
       screen.getByText(messages['webHomeEstimateDisclaimer'] ?? 'missing'),
     ).toBeInTheDocument();
+  });
+
+  // The page exists so someone can log today. That action used to be a
+  // text link under everything else, labelled "Today" like the header link
+  // that goes home.
+  it('offers Log today for the active profile, at the top', async () => {
+    renderHome();
+    const logToday = await screen.findByRole('link', {
+      name: messages['householdLogToday'] ?? 'missing',
+    });
+    expect(logToday).toHaveAttribute('href', `/day/${RICH_ID}`);
+    // It sits in the switcher row, ahead of the cards.
+    expect(logToday.closest('.home-switcher')).not.toBeNull();
+  });
+
+  it('has no second link called "Today"', async () => {
+    renderHome();
+    await screen.findByRole('link', { name: messages['householdLogToday'] ?? 'missing' });
+    // The calendar keeps its "Today" button (jump to this month). No link
+    // on the page carries that name: the header owns it.
+    expect(
+      screen.queryAllByRole('link', { name: messages['calendarTodayTooltip'] ?? 'missing' }),
+    ).toHaveLength(0);
+  });
+
+  it('links to the guardians of the active profile from the switcher row', async () => {
+    renderHome();
+    const guardians = await screen.findByRole('link', {
+      name: messages['profilePickerMenuGuardians'] ?? 'missing',
+    });
+    expect(guardians).toHaveAttribute('href', `/profile/${RICH_ID}/guardians`);
+    expect(guardians.closest('.home-switcher')).not.toBeNull();
+  });
+
+  it('does not offer Log today to a viewer, who cannot log', async () => {
+    const fixture = syncedFixture();
+    vi.mocked(useSyncedData).mockReturnValue({
+      data: {
+        ...fixture,
+        profile_guardians: fixture.profile_guardians.map((row) => ({
+          ...row,
+          role: 'viewer',
+        })),
+      },
+      isError: false,
+      isPending: false,
+      isLoading: false,
+    } as ReturnType<typeof useSyncedData>);
+    renderHome();
+    // The page has rendered (the guardians link is there) and the button
+    // is not.
+    await screen.findByRole('link', {
+      name: messages['profilePickerMenuGuardians'] ?? 'missing',
+    });
+    expect(
+      screen.queryByRole('link', { name: messages['householdLogToday'] ?? 'missing' }),
+    ).toBeNull();
   });
 
   it('renders the month header and grid for the current month', async () => {

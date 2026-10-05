@@ -8,12 +8,14 @@ import { emptySyncedData } from '../lib/domain';
 import { browserTimeZone, todayInBrowserZone } from '../lib/day/day-entry-policy';
 import { spottingIsosFor } from '../lib/profiles/calendar-cells';
 import {
+  callerRoleFor,
   profileDomainInputs,
   profileListsFromSyncedData,
   profileModeFromDb,
   showsFertileWindow,
   withClockInputs,
 } from '../lib/profiles/profile-views';
+import { canWriteDayContent } from '../lib/day/payloads';
 import {
   useHasSyncSession,
   useCurrentUserId,
@@ -76,6 +78,14 @@ export function TodayPage() {
 
   if (!signedIn) return <SignedOutHome />;
 
+  // The same test the day editor applies to its own form: no accepted
+  // membership counts as a viewer, and a viewer cannot write a day.
+  const canLogActive =
+    active !== null &&
+    canWriteDayContent(
+      callerRoleFor(synced.data ?? emptySyncedData(), active.id, me) ?? 'viewer',
+    );
+
   if (synced.isError) {
     return (
       <main className="page">
@@ -109,6 +119,21 @@ export function TodayPage() {
           <Link className="nav-link" to="/profiles">
             {t('profilePickerTitle')}
           </Link>
+          {active !== null ? (
+            <Link className="nav-link" to={`/profile/${active.id}/guardians`}>
+              {t('profilePickerMenuGuardians')}
+            </Link>
+          ) : null}
+          {/* The one thing most visits are for, so it is the first button
+              on the page and the only filled one. It used to be a text
+              link under everything else, labelled "Today" like the header
+              link that goes somewhere else. A viewer cannot log, so a
+              viewer is not offered it; the calendar still opens any day. */}
+          {active !== null && canLogActive ? (
+            <Link className="btn btn-primary home-log-today" to={`/day/${active.id}`}>
+              {t('householdLogToday')}
+            </Link>
+          ) : null}
         </div>
       ) : (
         <section className="card">
@@ -247,17 +272,6 @@ function ProfileHome(props: { profileId: string; todayIso: string }) {
           <ProfileHomeComparison history={domain.history} />
         </>
       ) : null}
-      <section className="card">
-        <p className="card-body">
-          <Link className="nav-link" to={`/day/${props.profileId}`}>
-            {t('calendarTodayTooltip')}
-          </Link>
-          {' · '}
-          <Link className="nav-link" to={`/profile/${props.profileId}/guardians`}>
-            {t('profilePickerMenuGuardians')}
-          </Link>
-        </p>
-      </section>
     </div>
   );
 }

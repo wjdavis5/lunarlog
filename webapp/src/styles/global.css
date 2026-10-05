@@ -635,6 +635,26 @@ body {
   margin-bottom: var(--ll-space-4);
 }
 
+/* The home's primary action sits at the end of the switcher row on a wide
+   screen and takes a row of its own on a phone, where it is the full
+   width of the page: the easiest thing to hit with a thumb. */
+.home-log-today {
+  margin-left: auto;
+  text-decoration: none;
+  border-radius: var(--ll-r-full);
+  padding: var(--ll-space-2) var(--ll-space-5);
+}
+
+@media (max-width: 30rem) {
+  .home-log-today {
+    flex-basis: 100%;
+    margin-left: 0;
+    text-align: center;
+    padding-top: var(--ll-space-3);
+    padding-bottom: var(--ll-space-3);
+  }
+}
+
 .home-switcher-select {
   font: inherit;
   padding: var(--ll-space-2) var(--ll-space-3);
@@ -726,6 +746,16 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: var(--ll-space-2);
+}
+
+/* Three full-size buttons do not fit side by side on a phone, so the
+   month navigation wrapped onto two rows. Smaller type and padding keep
+   it on one. */
+@media (max-width: 30rem) {
+  .cal-nav-buttons .btn {
+    padding: var(--ll-space-1) var(--ll-space-2);
+    font-size: var(--ll-type-label-large-font-size);
+  }
 }
 
 .cal-grid {
