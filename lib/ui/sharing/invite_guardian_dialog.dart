@@ -115,12 +115,17 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
       }
     } on SharingFailure catch (failure) {
       // Issue #535 (d): distinct failure types (unauthorized vs. network,
-      // etc.) get their own accurate copy via sharingFailureCopy, rather
-      // than collapsing every SharingFailure into the generic connection
-      // message below — matching AcceptInviteSheet's own catch clause.
+      // etc.) get their own accurate copy rather than collapsing every
+      // SharingFailure into the generic connection message below. The
+      // lines are the ones for creating an invitation: sharingFailureCopy
+      // is AcceptInviteSheet's, and its generic line said "Failed to
+      // accept invitation" to someone who was making one.
       if (mounted) {
         setState(() {
-          _error = sharingFailureCopy(AppLocalizations.of(context), failure);
+          _error = inviteCreateFailureCopy(
+            AppLocalizations.of(context),
+            failure,
+          );
           _loading = false;
         });
       }

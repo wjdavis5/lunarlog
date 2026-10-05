@@ -18,6 +18,8 @@ import {
   revokeGuardianInvitation,
   updateGuardianRole,
   mapSharingFailure,
+  createInviteFailureMessageId,
+  guardiansLoadFailureMessageId,
   mapTransferFailure,
   revokeFailureMessageId,
   roleChangeFailureMessageId,
@@ -701,6 +703,36 @@ describe('every refusal the sharing RPCs raise (issue #1504)', () => {
     // Neither of these says anything about who the primary guardians are.
     expect(revokeFailureMessageId('network', true)).toBe('sharingManageGuardiansRemoveFailed');
     expect(revokeFailureMessageId('unauthorized', true)).toBe('commonUnauthorized');
+  });
+
+  // `sharingFailureMessageId` is written for the person accepting an
+  // invitation. These two actions used it, or one generic line, instead.
+  const ACCEPT_ONLY: SharingFailureKind[] = [
+    'notFound',
+    'expired',
+    'revoked',
+    'alreadyAccepted',
+    'alreadyGuardian',
+    'invalidToken',
+    'other',
+  ];
+
+  it('a failed invitation create never reads as a failed accept', () => {
+    expect(createInviteFailureMessageId('network')).toBe('commonNetworkError');
+    expect(createInviteFailureMessageId('unauthorized')).toBe('commonUnauthorized');
+    expect(createInviteFailureMessageId('notSignedIn')).toBe('sharingFailureNotSignedIn');
+    for (const kind of ACCEPT_ONLY) {
+      expect(createInviteFailureMessageId(kind)).toBe('commonSomethingWentWrong');
+    }
+  });
+
+  it('a guardian list that fails to load says so, not "failed to accept invitation"', () => {
+    expect(guardiansLoadFailureMessageId('network')).toBe('commonNetworkError');
+    expect(guardiansLoadFailureMessageId('unauthorized')).toBe('commonUnauthorized');
+    expect(guardiansLoadFailureMessageId('notSignedIn')).toBe('sharingFailureNotSignedIn');
+    for (const kind of ACCEPT_ONLY) {
+      expect(guardiansLoadFailureMessageId(kind)).toBe('webGuardiansLoadFailed');
+    }
   });
 
   it('a failed role change names a refusal for lack of permission', () => {

@@ -52,6 +52,25 @@ String _sharingFailureCopyRest(
   ),
 };
 
+/// The line for a failure to *create* an invitation.
+///
+/// [sharingFailureCopy] is written for the person accepting one: its
+/// generic line is "Failed to accept invitation", and its other lines are
+/// about a link ("Invalid invitation link", "Invitation not found"). None
+/// of those is true of someone who was making an invitation, so only the
+/// three answers that mean the same thing for any action are shared, and
+/// the rest read as the generic failure. The wildcard is deliberate: a
+/// new [SharingFailure] is about accepting unless it is added here.
+String inviteCreateFailureCopy(
+  AppLocalizations l10n,
+  SharingFailure failure,
+) => switch (failure) {
+  SharingNetworkFailure() => l10n.commonNetworkError,
+  SharingUnauthorizedFailure() => l10n.commonUnauthorized,
+  SharingNotSignedInFailure() => l10n.sharingFailureNotSignedIn,
+  _ => l10n.commonSomethingWentWrong,
+};
+
 String inviteCancellationCopy(
   AppLocalizations l10n,
   InviteCancellation outcome,

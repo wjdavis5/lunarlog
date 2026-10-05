@@ -25,6 +25,45 @@ void main() {
     });
   });
 
+  // The create dialog used sharingFailureCopy, which is written for the
+  // person accepting an invitation: someone making one was told "Failed to
+  // accept invitation" or "Invalid invitation link".
+  group('inviteCreateFailureCopy', () {
+    test('shares the three answers that mean the same for any action', () {
+      expect(
+        inviteCreateFailureCopy(_l10n, const SharingFailure.network()),
+        'Network error. Please check your connection.',
+      );
+      expect(
+        inviteCreateFailureCopy(_l10n, const SharingFailure.unauthorized()),
+        'You do not have permission for this action.',
+      );
+      expect(
+        inviteCreateFailureCopy(_l10n, const SharingFailure.notSignedIn()),
+        'Sign in to your account to manage sharing.',
+      );
+    });
+
+    test('never shows a line about accepting an invitation or its link', () {
+      const aboutAccepting = <SharingFailure>[
+        SharingFailure.notFound(),
+        SharingFailure.expired(),
+        SharingFailure.revoked(),
+        SharingFailure.alreadyAccepted(),
+        SharingFailure.alreadyGuardian(),
+        SharingFailure.invalidToken(),
+        SharingFailure.other(),
+      ];
+      for (final failure in aboutAccepting) {
+        expect(
+          inviteCreateFailureCopy(_l10n, failure),
+          'Something went wrong. Please try again.',
+          reason: '$failure',
+        );
+      }
+    });
+  });
+
   group('sharingFailureCopy', () {
     const allFailures = <SharingFailure>[
       SharingFailure.network(),
