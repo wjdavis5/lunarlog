@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router';
 
@@ -199,6 +199,23 @@ export function ProfilesPage() {
 
   const profileCount = lists.mine.length + lists.shared.length + lists.archived.length;
 
+  // The form opens above the lists, and the button that opened it can be a
+  // screen below: without this the form appeared out of sight and focus
+  // stayed on a button that had done nothing visible. Bring it into view
+  // and move focus into it, each time it opens or changes which profile it
+  // is editing. A new profile needs a name, so the cursor goes there; an
+  // edit may be for any field, so focus goes to the form's title, which a
+  // screen reader then reads and which does not raise a phone's keyboard.
+  const formRef = useRef<HTMLElement | null>(null);
+  const formTitleRef = useRef<HTMLHeadingElement | null>(null);
+  const nameRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (!creating && editingId === null) return;
+    // Optional call: jsdom has no layout, so no scrollIntoView.
+    formRef.current?.scrollIntoView?.({ block: 'start' });
+    (creating ? nameRef : formTitleRef).current?.focus({ preventScroll: true });
+  }, [creating, editingId]);
+
   const openCreate = () => {
     setNotice(null);
     setFormError(null);
@@ -359,8 +376,8 @@ export function ProfilesPage() {
       ) : null}
 
       {showForm && (
-        <section className="card" aria-labelledby="profile-form-title">
-          <h2 className="card-title" id="profile-form-title">
+        <section className="card" aria-labelledby="profile-form-title" ref={formRef}>
+          <h2 className="card-title" id="profile-form-title" tabIndex={-1} ref={formTitleRef}>
             {formTitle}
           </h2>
           <form
@@ -375,6 +392,7 @@ export function ProfilesPage() {
               <label htmlFor="profile-name">{t('firstRunNameLabel')}</label>
               <input
                 id="profile-name"
+                ref={nameRef}
                 value={form.displayName}
                 maxLength={MAX_DISPLAY_NAME_LENGTH}
                 onChange={(event) => setForm({ ...form, displayName: event.target.value })}
