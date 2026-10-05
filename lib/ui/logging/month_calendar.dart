@@ -57,6 +57,7 @@ import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/prediction/setup_period_mark.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
@@ -240,41 +241,6 @@ const double kDayCellCircleGutter = 4.0;
 /// #1469's setup mark joins them as the *dotted* pattern: its dots are
 /// this wide.
 const double kCalendarRingStrokeWidth = 2.0;
-
-/// Issue #1469: the day the month grid marks as "last period start from
-/// setup", or null when there is nothing to mark.
-///
-/// The decision is the engine's, read off [prediction] and never re-derived
-/// here: [ActivePrediction.cycleStartIsSupplied] says the current cycle
-/// still counts from the date given at setup, and
-/// [ActivePrediction.lastEpisodeStart] is that date. So the mark follows
-/// the estimate everywhere the estimate is withheld — estimates turned off
-/// ([PredictionsDisabled]), a life-stage mode or continuous method that
-/// suppresses them ([PredictionsSuppressed]), answers that cannot seed one
-/// ([NotEnoughHistory]) — and goes away once a logged period takes over as
-/// the cycle start or real cycles displace the seed.
-///
-/// A stale history ([ActivePrediction.staleHistory], issue #859) hides it
-/// too: the calendar already withholds the whole forecast off that flag
-/// (issue #982), and an input to an estimate that is no longer shown has
-/// nothing left to explain. A supplied date after [today] is never marked —
-/// future cells keep their own read-only rendering (KTD8).
-///
-/// Public and pure for direct testing, the same discipline as
-/// [dayCellSemanticLabel] below.
-LocalDate? setupPeriodMarkDateFor(
-  CyclePrediction prediction,
-  LocalDate today,
-) => switch (prediction) {
-  ActivePrediction(
-    cycleStartIsSupplied: true,
-    staleHistory: false,
-    :final lastEpisodeStart,
-  )
-      when !lastEpisodeStart.isAfter(today) =>
-    lastEpisodeStart,
-  _ => null,
-};
 
 /// Issue #1469: the colour of the setup mark's dotted ring — the middle
 /// step of the logged-period ramp, so the mark reads as "period" while the

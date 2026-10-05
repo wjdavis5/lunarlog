@@ -41,6 +41,7 @@ import 'package:lunarlog/domain/prediction/cycle_history.dart'
     show predictionsEnabledSettingKey;
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
+import 'package:lunarlog/domain/prediction/setup_period_mark.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';

@@ -981,6 +981,15 @@ body {
   box-shadow: inset 0 0 0 2px var(--ll-cal-flow-spotting);
 }
 
+/* The last-period date given at setup (issue #1476): a ring of dots in
+   the period colour, with no fill. A logged period day is filled, so the
+   outline reads as "not logged"; today's ring and the spotting ring are
+   solid, the estimated days are filled, and the fertile window is dashed.
+   It sits on the link, inside today's ring when the two fall together. */
+.cal-setup-period .cal-day-link {
+  border: 2px dotted var(--ll-cal-flow-medium);
+}
+
 .cal-predicted {
   background: color-mix(in srgb, var(--ll-cal-predicted-border) 16%, transparent);
   box-shadow: inset 0 0 0 2px var(--ll-cal-predicted-border);
@@ -1172,6 +1181,10 @@ body {
 
 .cal-swatch-today {
   box-shadow: inset 0 0 0 3px var(--ll-primary);
+}
+
+.cal-swatch-setup-period {
+  border: 2px dotted var(--ll-cal-flow-medium);
 }
 
 .cal-swatch-predicted {

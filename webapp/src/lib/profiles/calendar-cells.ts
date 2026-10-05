@@ -266,6 +266,12 @@ export interface DayCellView {
   layerHits: string[];
   /** The domain facade's forecast decoration for dates after today. */
   forecast: ForecastDayCell | null;
+  /**
+   * The "last period start from setup" mark (issue #1476): this is the day
+   * the profile's setup answer named, the estimate still counts from it,
+   * and nothing is logged on it.
+   */
+  setupPeriodMark: boolean;
 }
 
 /**
@@ -288,6 +294,8 @@ export function dayCellView(options: {
   /** Whether the profile's framing shows the fertile window (`showsFertileWindow`). */
   showsFertileWindow: boolean;
   activeLayers: string[];
+  /** The domain's `setupPeriodMarkDate` for this profile, or null. */
+  setupPeriodMarkIso?: string | null;
 }): DayCellView {
   const entry = options.entryByIso.get(options.iso) ?? null;
   const forecast =
@@ -310,7 +318,25 @@ export function dayCellView(options: {
     spottingStyle: entry !== null && !bleed && options.spottingIsos.has(options.iso),
     layerHits,
     forecast,
+    // A logged day shows what was logged, whatever it is: the mark is for
+    // a date that was given, not observed.
+    setupPeriodMark: entry === null && options.iso === (options.setupPeriodMarkIso ?? null),
   };
+}
+
+/**
+ * Whether a month has anything to show: a logged day, or the setup mark
+ * (issue #1476). A month whose only content is the mark is not empty, so it
+ * does not get the "No entries this month" line.
+ */
+export function monthHasContent(options: {
+  days: string[];
+  entryByIso: Map<string, DayEntryRow>;
+  setupPeriodMarkIso: string | null;
+}): boolean {
+  return options.days.some(
+    (iso) => options.entryByIso.has(iso) || iso === options.setupPeriodMarkIso,
+  );
 }
 
 /**

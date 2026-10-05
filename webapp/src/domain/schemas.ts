@@ -197,11 +197,17 @@ export const calendarForecastKindSchema = z.enum([
  * envelope), whether the active estimate is stale (#859 — the app
  * suppresses the whole forecast there, so `cells` comes back empty), and
  * the per-date cells keyed `yyyy-MM-dd` for dates strictly after `today`.
+ *
+ * `setupPeriodMarkDate` (issue #1476) is the day to mark as "last period
+ * start from setup", or null. The domain decides it, the same function the
+ * app's calendar asks, so the page never works out for itself when the
+ * mark shows.
  */
 export const calendarForecastSchema = z.object({
   kind: calendarForecastKindSchema,
   staleHistory: z.boolean(),
   cells: z.record(isoDate, forecastDayCellSchema),
+  setupPeriodMarkDate: isoDate.nullable(),
 });
 
 export type CalendarForecast = z.infer<typeof calendarForecastSchema>;

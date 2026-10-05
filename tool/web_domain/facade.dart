@@ -80,6 +80,7 @@ import 'package:lunarlog/domain/prediction/forecast.dart';
 import 'package:lunarlog/domain/prediction/pms.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
+import 'package:lunarlog/domain/prediction/setup_period_mark.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/sharing/invite_links.dart';
 import 'package:timezone/data/latest_10y.dart' as tzdata;
@@ -589,6 +590,10 @@ void _configureTimeZone(String name) {
 /// `cycleIndex`, `fertileTier` (tier name or null), and
 /// `fertileCycleIndex` (int or null). Only dates strictly after `today`
 /// appear (KTD3 — the past stays factual), exactly like the app.
+///
+/// It also carries `setupPeriodMarkDate` (issue #1476): the `yyyy-MM-dd`
+/// day to mark as "last period start from setup", or null. Unlike the
+/// cells it is never after `today`.
 Map<String, Object?> calendarForecastFromJson(Map<String, Object?> request) {
   final today = _requireToday(request);
   _configureTimeZone(_requireTimeZone(request));
@@ -630,6 +635,10 @@ Map<String, Object?> calendarForecastFromJson(Map<String, Object?> request) {
     'kind': _predictionKindName(prediction),
     'staleHistory': staleHistory,
     'cells': cells,
+    // Issue #1476: the day to mark as "last period start from setup", or
+    // null. The app's month grid asks the same function, so the two
+    // calendars cannot disagree about when the mark shows.
+    'setupPeriodMarkDate': setupPeriodMarkDateFor(prediction, today)?.iso,
   };
 }
 

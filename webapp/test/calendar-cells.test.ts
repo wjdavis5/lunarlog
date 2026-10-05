@@ -11,6 +11,7 @@ import {
   flowMarkCount,
   forecastCellForMode,
   leadingBlanksFor,
+  monthHasContent,
   monthDayIsos,
   rankTagUsage,
   shiftMonth,
@@ -279,6 +280,62 @@ describe('dayCellView', () => {
     expect(cell.entry?.flow).toBe('heavy');
     expect(cell.flowMarkCount).toBe(4);
     expect(cell.layerHits).toEqual(['cramps']);
+  });
+
+  // Issue #1476.
+  it('carries the setup mark on the named day only, and never over a logged day', () => {
+    const view = (iso: string, entries: Map<string, DayEntryRow>, mark: string | null) =>
+      dayCellView({
+        iso,
+        todayIso,
+        entryByIso: entries,
+        forecastByIso: new Map(),
+        spottingIsos: new Set(),
+        showsFertileWindow: true,
+        activeLayers: [],
+        setupPeriodMarkIso: mark,
+      });
+    expect(view('2026-10-01', new Map(), '2026-10-01').setupPeriodMark).toBe(true);
+    expect(view('2026-10-02', new Map(), '2026-10-01').setupPeriodMark).toBe(false);
+    expect(view('2026-10-01', new Map(), null).setupPeriodMark).toBe(false);
+    expect(
+      view('2026-10-01', new Map([['2026-10-01', entryRow({ flow: 'none' })]]), '2026-10-01')
+        .setupPeriodMark,
+    ).toBe(false);
+    // Left out altogether, as by a caller that has no domain answer yet.
+    expect(
+      dayCellView({
+        iso: '2026-10-01',
+        todayIso,
+        entryByIso: new Map(),
+        forecastByIso: new Map(),
+        spottingIsos: new Set(),
+        showsFertileWindow: true,
+        activeLayers: [],
+      }).setupPeriodMark,
+    ).toBe(false);
+  });
+
+  it('counts the setup mark as content for its month, and for no other', () => {
+    const october = ['2026-10-01', '2026-10-02'];
+    const september = ['2026-09-29', '2026-09-30'];
+    const none = new Map<string, DayEntryRow>();
+    expect(monthHasContent({ days: october, entryByIso: none, setupPeriodMarkIso: null })).toBe(
+      false,
+    );
+    expect(
+      monthHasContent({ days: october, entryByIso: none, setupPeriodMarkIso: '2026-10-01' }),
+    ).toBe(true);
+    expect(
+      monthHasContent({ days: september, entryByIso: none, setupPeriodMarkIso: '2026-10-01' }),
+    ).toBe(false);
+    expect(
+      monthHasContent({
+        days: september,
+        entryByIso: new Map([['2026-09-30', entryRow()]]),
+        setupPeriodMarkIso: null,
+      }),
+    ).toBe(true);
   });
 
   it('keeps the past factual: no forecast cell before today', () => {
