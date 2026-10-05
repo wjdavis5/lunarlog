@@ -1,5 +1,6 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
+import UiLabel from "../components/UiLabel.astro";
 
 // Issue #1102: the account-deletion page Google Play's Data safety form
 // links to from its "Delete account URL" field. Every factual claim about
@@ -32,10 +33,10 @@ const privacyPolicyUrl =
 
     <section>
       <h2>Delete from inside the app</h2>
-      <!-- cite: lib/ui/settings/settings_screen.dart (Settings screen, Account section), lib/ui/account/account_section.dart:562 (the "Delete account" tile), lib/ui/components/app_shell.dart (the More tab hosts Settings). The steps are identical on every platform; only the store they were installed from differs. -->
+      <!-- cite: lib/ui/settings/settings_screen.dart (Settings screen, Account section), lib/ui/account/account_section.dart:562 (the "Delete account" tile), lib/ui/components/app_shell.dart (the More tab hosts Settings). The steps are identical on iPhone and Android; the browser version has its own, below. -->
       <p>
-        The steps are the same on iPhone, Android, and the browser version at
-        <a href="https://app.lunarlog.app">app.lunarlog.app</a>:
+        The steps are the same on iPhone and Android. The
+        <a href="#browser">browser version</a> has its own, a little shorter.
       </p>
       <ol class="doc__steps">
         <li>Open lunarlog and sign in to the account you want to delete.</li>
@@ -85,6 +86,37 @@ const privacyPolicyUrl =
         One safety detail: if something fails part way — an Apple
         confirmation that doesn't land, a file that can't be removed — the
         deletion stops instead of half-completing, and you can retry it.
+      </p>
+    </section>
+
+    <section id="browser">
+      <h2>Delete from the browser version</h2>
+      <!-- cite: webapp/src/App.tsx (the header's Account link, shown once signed in); webapp/src/pages/AccountPage.tsx (the Account page: the export card, and DeleteAccountCard with its confirmation step and the Apple turn); supabase/functions/delete-account/index.ts (the same function the phone apps call). Labels via UiLabel from lib/l10n/app_en.arb. -->
+      <p>
+        The browser version at
+        <a href="https://app.lunarlog.app">app.lunarlog.app</a> has no More
+        tab. Deletion is on its account page:
+      </p>
+      <ol class="doc__steps">
+        <li>Sign in to the account you want to delete.</li>
+        <li>
+          Open <UiLabel key="accountSectionTitle" /> in the header.
+        </li>
+        <li>
+          To keep a copy, use <UiLabel key="yourDataExportTitle" /> on that
+          page first.
+        </li>
+        <li>
+          Under <UiLabel key="accountSectionDelete" />, choose
+          <UiLabel key="accountSectionDelete" />. The page says what will be
+          deleted and asks you to confirm; choose
+          <UiLabel key="accountDeleteDialogConfirm" /> again to finish.
+        </li>
+      </ol>
+      <p>
+        If the account signs in with Apple, you are sent to Apple to confirm
+        before anything is deleted. Deleting from the browser deletes the
+        same account and the same data as deleting from a phone.
       </p>
     </section>
 

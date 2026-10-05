@@ -513,29 +513,28 @@ void main() {
       expect(home, contains('https://app.lunarlog.app'));
     });
 
-    test('the browser CTA is backed by a lazy browser-width capture '
-        '(issue #1208)', () {
+    // Issue #1208 put a browser-width capture under the CTA, captioned as
+    // what the button opens. That capture is the Flutter app rendered at
+    // desktop width. The button now opens the React web client (#1258),
+    // which looks nothing like it, so the picture claimed a screen the
+    // browser version does not have. Until the screenshot tool can render
+    // the web client itself, the home page shows no browser picture at all.
+    test('the home page shows no capture of a browser screen it does not '
+        'ship', () {
       final home = File(pages['/']!).readAsStringSync();
       final blocks = RegExp(r'<Screenshot[^>]*?>', dotAll: true)
           .allMatches(home)
           .map((match) => match.group(0)!)
           .toList();
-      final browserBlocks = blocks
-          .where((block) => block.contains('device="browser"'))
-          .toList();
-      expect(browserBlocks, hasLength(1),
-          reason: 'the home page carries exactly one browser-class capture');
-      final block = browserBlocks.single;
-      expect(block, contains('screen="today"'),
-          reason: 'the capture shows the screen the CTA lands on');
-      expect(block, contains('loading="lazy"'),
-          reason: 'the hero eager/LCP slot is taken; a second near-the-fold '
-              'PNG must lazy-load or the 0.90 floor loses its margin '
-              '(issue #1172)');
-      // The issue #1172 convention: the page's FIRST screenshot stays the
-      // eager LCP candidate, so the browser capture must sit after it in
-      // the source (site/scripts/lighthouse-budget.test.mjs pins the same
-      // rule from the site side).
+      expect(
+        blocks.where((block) => block.contains('device="browser"')),
+        isEmpty,
+        reason: 'the browser device class renders the Flutter app, not the '
+            'web client the CTA opens',
+      );
+      expect(home, isNot(contains('in a desktop browser')));
+      // The issue #1172 convention still holds: the page's first
+      // screenshot is the eager LCP candidate.
       expect(blocks.first, contains('loading="eager"'),
           reason: 'the hero phone capture must remain the eager one');
     });

@@ -269,6 +269,86 @@ void main() {
       await teardown(tester, db);
     });
 
+    testWidgets('a second widget tap straight after the first is answered '
+        'at once: its "already logged" reply replaces the first tap\'s '
+        'snackbar instead of queueing behind it', (tester) async {
+      final store = _FakeWidgetStore();
+      final (db, profileId) = await _pumpApp(tester, store);
+
+      // First tap: today had no entry, so this creates it and offers Undo.
+      store.emit(Uri.parse(widgetQuickLogUri(profileId)));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<Text>(snackbarContent()).data,
+        'Recorded a medium-flow period start for today.',
+      );
+      expect(find.byType(SnackBarAction), findsOneWidget);
+
+      // Second tap, no waiting in between.
+      store.emit(Uri.parse(widgetQuickLogUri(profileId)));
+      await tester.pumpAndSettle();
+
+      expect(snackbarContent(), findsOneWidget);
+      expect(
+        tester.widget<Text>(snackbarContent()).data,
+        "Today's flow was already logged, so it stays as it was.",
+        reason: 'the reply shows at once, not after the first snackbar '
+            'has run out its time',
+      );
+      expect(
+        find.text('Recorded a medium-flow period start for today.'),
+        findsNothing,
+      );
+      expect(find.byType(SnackBarAction), findsNothing,
+          reason: 'the second tap changed nothing, so it offers no Undo');
+      expect(
+          (await _entriesOf(db).find(profileId, LocalDate.today()))!.flow,
+          FlowLevel.medium);
+      await teardown(tester, db);
+    });
+
+    testWidgets('the acknowledgement leaves on its own after eight seconds '
+        'rather than staying until swiped away', (tester) async {
+      final store = _FakeWidgetStore();
+      final (db, profileId) = await _pumpApp(tester, store);
+
+      store.emit(Uri.parse(widgetQuickLogUri(profileId)));
+      await tester.pumpAndSettle();
+      expect(snackbarContent(), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 7));
+      expect(find.byType(SnackBarAction), findsOneWidget,
+          reason: 'still there to be used');
+
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      expect(snackbarContent(), findsNothing);
+      expect(await _entriesOf(db).find(profileId, LocalDate.today()),
+          isNotNull,
+          reason: 'timing out is not an undo');
+      await teardown(tester, db);
+    });
+
+    testWidgets('with assistive navigation on, the acknowledgement and its '
+        'Undo persist past eight seconds', (tester) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(accessibleNavigation: true);
+      addTearDown(
+          tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+      final store = _FakeWidgetStore();
+      final (db, profileId) = await _pumpApp(tester, store);
+
+      store.emit(Uri.parse(widgetQuickLogUri(profileId)));
+      await tester.pumpAndSettle();
+      expect(snackbarContent(), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 9));
+      await tester.pumpAndSettle();
+      expect(snackbarContent(), findsOneWidget);
+      expect(find.byType(SnackBarAction), findsOneWidget);
+      await teardown(tester, db);
+    });
+
     testWidgets('a same-profile write while the operator is on More jumps '
         'back to Today (the issue repro)', (tester) async {
       final store = _FakeWidgetStore();

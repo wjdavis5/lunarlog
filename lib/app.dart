@@ -718,8 +718,12 @@ class _LunarLogAppState extends State<LunarLogApp>
     if (ctx == null) return;
     // Issue #1412: the same builder the Today card uses, so a widget tap on
     // a day already logged at medium flow or heavier is reported as
-    // unchanged here too.
-    ScaffoldMessenger.of(ctx).showSnackBar(
+    // unchanged here too. Whatever snackbar is on screen leaves first, as
+    // it does for the Today card's tap, so a second widget tap is answered
+    // at once rather than queueing behind the first one's message.
+    final messenger = ScaffoldMessenger.of(ctx);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
       quickLogSnackBar(
         l10n: AppLocalizations.of(ctx),
         previousFlow: outcome.previousEntry?.flow,
@@ -730,6 +734,7 @@ class _LunarLogAppState extends State<LunarLogApp>
           previous: outcome.previousEntry,
           date: outcome.date,
         )),
+        accessibleNavigation: MediaQuery.accessibleNavigationOf(ctx),
       ),
     );
   }

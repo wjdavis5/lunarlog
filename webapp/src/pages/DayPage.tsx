@@ -36,6 +36,7 @@ import {
 import {
   isSingleSelectCategory,
   resolveDayCategories,
+  symptomPickerCategories,
   taxonomy,
   tagsByCategory,
 } from '../lib/day/categories';
@@ -45,6 +46,24 @@ import {
   getDomainModule,
   validateDayEntryDate,
 } from '../domain/client';
+import { isoDateFormatter } from '../lib/profiles/profile-views';
+
+/** The day in the heading, written out: "Tuesday, September 29, 2026". */
+const formatFullDate = isoDateFormatter('en', { dateStyle: 'full' });
+
+/**
+ * The heading's date. The `date` query parameter is whatever the address
+ * bar holds, so a value that is not a calendar date is shown as typed
+ * rather than as "Invalid Date" (the page's own validation reports it).
+ */
+export function formatDayHeading(dateIso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) return dateIso;
+  try {
+    return formatFullDate(dateIso);
+  } catch {
+    return dateIso;
+  }
+}
 
 /**
  * The web day editor (issue #1254): the app day sheet's categories — flow
@@ -338,7 +357,8 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
   // here keeps its chips to exactly one copy, and gating that fieldset on
   // `surfaced` makes it honour the profile's tracking_preferences like every
   // other category.
-  const symptomCategories = surfaced.filter((category) => category.name !== 'tests');
+  // Only categories with something to pick are drawn (symptomPickerCategories).
+  const symptomCategories = symptomPickerCategories(surfaced, grouped);
   const testsSurfaced = surfaced.some((category) => category.name === 'tests');
   const bbtUnit = (view?.profile.bbt_unit ?? 'celsius') as BbtUnit;
   const weightUnit = (view?.profile.weight_unit ?? 'kg') as WeightUnit;
@@ -355,10 +375,14 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
   const privateDisabled =
     readOnly || (!isSubject && view !== undefined) || privateLockedOn || privateLockedOff;
 
-  const dateHeading = t('webDayPageTitle', {
-    profileName: view?.profile.display_name ?? profileId,
-    date: dateIso,
-  });
+  // The heading names the profile only once it is known. Until then (and
+  // when the day cannot be loaded) it is the date alone: the fallback used
+  // to be the profile's raw id.
+  const dateLabel = formatDayHeading(dateIso);
+  const dateHeading =
+    view === undefined
+      ? dateLabel
+      : t('webDayPageTitle', { profileName: view.profile.display_name, date: dateLabel });
 
   return (
     <main className="page">
@@ -372,14 +396,28 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
       {day.isPending ? (
         <section className="card">
           <p className="card-body" aria-busy="true">
-            {t('webDaySaving')}
+            {t('webDayLoading')}
           </p>
         </section>
       ) : null}
 
+      {/* Two different failures. A fetch that failed can be retried; a
+          profile the caller cannot see cannot. Both used to read "You
+          don't have access", which is wrong for someone who is offline. */}
       {day.isError ? (
         <section className="card" role="alert">
-          <p className="card-body">{t('webDayNoAccess')}</p>
+          {day.loadFailed ? (
+            <>
+              <p className="card-body">{t('webDayLoadFailed')}</p>
+              <div className="actions">
+                <button type="button" className="btn" onClick={() => void day.refetch()}>
+                  {t('commonRetry')}
+                </button>
+              </div>
+            </>
+          ) : (
+            <p className="card-body">{t('webDayNoAccess')}</p>
+          )}
         </section>
       ) : null}
 
@@ -450,8 +488,7 @@ export function DayPage({ client: clientProp }: { client?: AppSupabaseClient | n
 
           <fieldset className="card day-group" disabled={readOnly}>
             <legend className="card-title">{t('webDaySymptomsSection')}</legend>
-            {symptomCategories.map((category) => {
-              const codes = grouped.get(category.name) ?? [];
+            {symptomCategories.map(({ category, tags: codes }) => {
               return (
                 <div key={category.name} className="tag-category">
                   <p className="card-title">{category.label}</p>

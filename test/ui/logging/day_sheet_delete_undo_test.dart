@@ -9,7 +9,8 @@
 /// assert the restored entry and observation payloads end to end. The
 /// shared repo pattern these mirror is `overview_panel.dart`'s
 /// `today-card-logged-snackbar` Undo (issue #316) -- same content-plus-
-/// action snackbar shape and default duration.
+/// action snackbar shape, built through `actionSnackBar`: it stays eight
+/// seconds and then leaves, unless assistive navigation is on.
 library;
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -234,12 +235,15 @@ void main() {
     expect(find.byKey(const ValueKey('day-sheet-delete-snackbar')),
         findsOneWidget);
 
-    // No Undo tap: let the snackbar go away on its own. (Material's
-    // action-bearing SnackBar is persistent in this Flutter version rather
-    // than auto-timing out, so dismissal is explicit here -- the point is
-    // that the undo only ever runs from an explicit tap.)
-    final context = tester.element(find.byType(Scaffold).first);
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    // No Undo tap: let the snackbar go away on its own. It is built through
+    // `actionSnackBar`, so it stays for eight seconds (Material's own
+    // default for a snackbar with an action is to persist until dismissed)
+    // and then times out -- the undo only ever runs from an explicit tap.
+    await tester.pump(const Duration(seconds: 7));
+    expect(find.widgetWithText(SnackBarAction, 'Undo'), findsOneWidget,
+        reason: 'still there to be used well past four seconds');
+
+    await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('day-sheet-delete-snackbar')),
@@ -247,6 +251,32 @@ void main() {
     expect(await h.entries.find(h.profileId, kToday), isNull,
         reason: 'an expired/ignored snackbar must never resurrect the entry');
     expect(await h.observations.listForDayEntry(h.entry.id), isEmpty);
+
+    await h.dispose();
+  });
+
+  testWidgets(
+      'with assistive navigation on, the Undo snackbar is still there after '
+      'eight seconds and still restores the entry', (tester) async {
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(accessibleNavigation: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    final h = await pumpSheet(tester);
+
+    await deleteEntry(tester);
+    expect(find.byKey(const ValueKey('day-sheet-delete-snackbar')),
+        findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 9));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('day-sheet-delete-snackbar')),
+        findsOneWidget,
+        reason: 'someone navigating with assistive technology keeps the '
+            'Undo until they dismiss it');
+
+    await tester.tap(find.widgetWithText(SnackBarAction, 'Undo'));
+    await tester.pumpAndSettle();
+    expect(await h.entries.find(h.profileId, kToday), isNotNull);
 
     await h.dispose();
   });

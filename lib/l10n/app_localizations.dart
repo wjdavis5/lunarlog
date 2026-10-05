@@ -1806,10 +1806,10 @@ abstract class AppLocalizations {
   /// **'About the minor checkbox'**
   String get firstRunMinorExplainerTitle;
 
-  /// The truthful explanation of what 'This profile is for a minor' changes (#131 made mode chosen-not-derived; #882 made health-sync apply to minors on the same terms as adults). It is not a label only (#1382): #379 turns prediction sharing off for a minor's profile, and kMinorDefaultHiddenTrackingCategories starts the Sex life and Partying categories hidden.
+  /// The truthful explanation of what 'This profile is for a minor' changes (#131 made mode chosen-not-derived; #882 made health-sync apply to minors on the same terms as adults). It is not a label only (#1382): #379 turns prediction sharing off for a minor's profile, and kMinorDefaultHiddenTrackingCategories hides the Sex life and Partying categories. The copy says 'hides', not 'starts hidden until someone turns them on' (#1436): the data model lets a primary guardian or co-parent store an override, but no screen in either client writes one, so the text must not send a parent looking for a setting. Put that promise back, with both roles, in the change that ships the editor.
   ///
   /// In en, this message translates to:
-  /// **'It marks the profile as a minor\'s. That turns prediction sharing off for the profile and starts the Sex life and Partying categories hidden, until a primary guardian turns them on. Health app sync is not affected. Wording and reminders come from the care mode picked on the next screen, not from this checkbox.'**
+  /// **'It marks the profile as a minor\'s. That turns prediction sharing off for the profile and hides the Sex life and Partying categories. Health app sync is not affected. Wording and reminders come from the care mode picked on the next screen, not from this checkbox.'**
   String get firstRunMinorExplainerBody;
 
   /// The third onboarding card: today's data/sync notice, kept verbatim from the pre-#216 first run (the #334 repositioned copy).
@@ -8690,6 +8690,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'You don\'t have access to this profile.'**
   String get webDayNoAccess;
+
+  /// The web day editor's loading state, shown while the account's data is being fetched.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading this day…'**
+  String get webDayLoading;
+
+  /// The web day editor's retryable failure state: the fetch itself failed (offline, server error). Distinct from webDayNoAccess, which is not retryable.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load this day. Check your connection and try again.'**
+  String get webDayLoadFailed;
 
   /// Issue #1254: banner above the read-only day a viewer sees.
   ///

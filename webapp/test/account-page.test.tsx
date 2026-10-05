@@ -254,6 +254,28 @@ describe('AccountPage (issue #1256)', () => {
     expect(await screen.findByText(messages['webDaySaved'])).toBeDefined();
   });
 
+  it('heads the sign-out card with a label, not the dialog question', async () => {
+    await renderSignedIn();
+    expect(
+      screen.getByRole('heading', { level: 2, name: messages['accountSectionSignOut'] }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: messages['accountSectionSignOutTitle'] }),
+    ).toBeNull();
+  });
+
+  it('ties the password length rule to the new-password field', async () => {
+    await renderSignedIn();
+    expect(
+      screen.getByLabelText(messages['accountPasswordRecoveryNewLabel']),
+    ).toHaveAccessibleDescription(/at least 12 characters/i);
+  });
+
+  it('titles the page in the display face, like the other pages', async () => {
+    await renderSignedIn();
+    expect(screen.getByRole('heading', { level: 1 })).toHaveClass('display');
+  });
+
   it('sign out and sign out everywhere pass their scopes through', async () => {
     // One scope per render: a landed sign-out drops the page's session data
     // (the mutation's reset), which is the product's behavior, not a bug —

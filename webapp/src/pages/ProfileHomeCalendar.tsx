@@ -10,6 +10,7 @@ import {
   canNavigateForward,
   dayCellView,
   defaultLayerTags,
+  flowFillClass,
   leadingBlanksFor,
   monthDayIsos,
   shiftMonth,
@@ -183,10 +184,16 @@ export function ProfileHomeCalendar(props: {
                 activeLayers,
               });
               const decoration = cell.forecast;
+              // A logged bleed day is filled with its flow colour.
+              const flowFill =
+                cell.entry !== null && cell.flowMarkCount > 0
+                  ? flowFillClass(cell.entry.flow)
+                  : null;
               const classes = [
                 'cal-cell',
                 'cal-day',
                 cell.isToday ? 'cal-today' : '',
+                flowFill !== null ? `cal-flow ${flowFill}` : '',
                 cell.spottingStyle ? 'cal-spotting' : '',
                 decoration?.predictedBleed ? 'cal-predicted' : '',
                 decoration?.fertileWindow ? 'cal-fertile' : '',

@@ -205,7 +205,7 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
           );
         }
         final view = snapshot.data;
-        if (view == null || view.items.isEmpty) {
+        if (view == null || !view.hasHistory) {
           return const SizedBox.shrink();
         }
         return _card(context, view);

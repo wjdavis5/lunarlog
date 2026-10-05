@@ -205,9 +205,156 @@ class CiWatchTests(unittest.TestCase):
         self.assertIn(["issue", "comment", "7", "--body", "Still failing at `deadbeef00000000`.\n\nhttps://run"], calls)
         self.assertFalse(any(c[:2] == ["issue", "create"] for c in calls))
 
-    def _run_main(self, conclusion, comments, has_issue=True):
+    @staticmethod
+    def _job(name, conclusion="success", steps=None):
+        """A jobs-API job. By default one that really ran: checkout, the
+        suite, and an upload step that only runs on failure."""
+        if steps is None:
+            steps = [
+                ("Set up job", "success"),
+                ("Check if Flutter tests should run", "success"),
+                ("Run actions/checkout", "success"),
+                ("Test (with coverage)", conclusion),
+                ("Upload failure logs", "skipped"),
+                ("Post Run actions/checkout", "success"),
+                ("Complete job", "success"),
+            ]
+        return {
+            "name": name,
+            "conclusion": conclusion,
+            "steps": [{"name": n, "conclusion": c} for n, c in steps],
+        }
+
+    @classmethod
+    def _gated_job(cls, name):
+        """The same job on a push that did not touch its paths: the gate
+        step runs, everything after it is skipped, the job is green."""
+        return cls._job(name, steps=[
+            ("Set up job", "success"),
+            ("Check if Flutter tests should run", "success"),
+            ("Run actions/checkout", "skipped"),
+            ("Test (with coverage)", "skipped"),
+            ("Upload failure logs", "skipped"),
+            ("Complete job", "success"),
+        ])
+
+    def test_named_failing_jobs_reads_back_what_the_watch_writes(self):
+        body = ci_watch.issue_body("https://run", "abc", ["Test (shard 0)", "Verify"])
+        self.assertEqual(ci_watch.named_failing_jobs(body), ["Test (shard 0)", "Verify"])
+        comment = ci_watch.failure_comment("abc", "https://run", False, ["iOS"])
+        self.assertEqual(ci_watch.named_failing_jobs(comment), ["iOS"])
+        # Nothing recorded, nothing read back -- and the triage lines after
+        # the list are not mistaken for job names.
+        self.assertEqual(
+            ci_watch.named_failing_jobs(ci_watch.issue_body("https://run", "abc", [])), []
+        )
+        self.assertEqual(ci_watch.named_failing_jobs(""), [])
+        self.assertEqual(ci_watch.named_failing_jobs(None), [])
+
+    def test_a_failure_comment_without_jobs_is_unchanged(self):
+        self.assertEqual(
+            ci_watch.failure_comment("abc", "https://run", False),
+            "Still failing at `abc`.\n\nhttps://run",
+        )
+        self.assertEqual(
+            ci_watch.failure_comment("abc", "https://run", False, []),
+            "Still failing at `abc`.\n\nhttps://run",
+        )
+
+    def test_a_job_that_ran_its_suite_did_work(self):
+        self.assertTrue(ci_watch.job_did_work(self._job("Test (shard 0)")))
+        # No step detail: the job's own conclusion is all there is.
+        self.assertTrue(ci_watch.job_did_work({"name": "x", "conclusion": "success"}))
+        # A single real step and nothing skipped (an ungated workflow).
+        self.assertTrue(ci_watch.job_did_work(
+            self._job("migrate", steps=[("Set up job", "success"), ("db push", "success")])
+        ))
+
+    def test_a_job_with_no_gate_is_taken_at_its_conclusion(self):
+        # "CI required checks" as the jobs API reports it on a green run:
+        # one real step, and a failure-only step that is skipped. It has no
+        # path-filter gate, so the skipped step says nothing.
+        required = self._job("CI required checks", steps=[
+            ("Set up job", "success"),
+            ("Report required job results", "success"),
+            ("Fail unless every required job succeeded", "skipped"),
+            ("Complete job", "success"),
+        ])
+        self.assertTrue(ci_watch.job_did_work(required))
+
+    def test_the_gate_step_is_recognised_by_its_name(self):
+        self.assertTrue(ci_watch.is_gate_step("Check if Flutter tests should run"))
+        self.assertTrue(ci_watch.is_gate_step("Check if the web app should run"))
+        self.assertFalse(ci_watch.is_gate_step("Check internal links"))
+        self.assertFalse(ci_watch.is_gate_step("Report required job results"))
+        self.assertFalse(ci_watch.is_gate_step(""))
+        self.assertFalse(ci_watch.is_gate_step(None))
+
+    def test_a_gated_job_whose_suite_ran_did_work(self):
+        # The gate said run: steps after it executed, with only the
+        # failure-only upload skipped.
+        self.assertTrue(ci_watch.job_did_work(self._job("Test (shard 0)")))
+
+    def test_a_path_filtered_job_did_no_work_although_it_is_green(self):
+        gated = self._gated_job("Test (shard 0)")
+        self.assertEqual(gated["conclusion"], "success")
+        self.assertFalse(ci_watch.job_did_work(gated))
+
+    def test_a_failed_or_skipped_job_did_no_work(self):
+        self.assertFalse(ci_watch.job_did_work(self._job("Test (shard 0)", "failure")))
+        self.assertFalse(ci_watch.job_did_work({"name": "x", "conclusion": "skipped"}))
+        self.assertFalse(ci_watch.job_did_work({"name": "x", "conclusion": None}))
+
+    def test_a_green_run_is_a_recovery_only_when_the_failed_jobs_ran(self):
+        ran = {"jobs": [self._job("Test (shard 0)"), self._gated_job("Site")]}
+        self.assertTrue(ci_watch.recovery_verdict(["Test (shard 0)"], ran)[0])
+
+        skipped = {"jobs": [self._gated_job("Test (shard 0)"), self._job("Site")]}
+        recovered, reason = ci_watch.recovery_verdict(["Test (shard 0)"], skipped)
+        self.assertFalse(recovered)
+        self.assertIn("Test (shard 0)", reason)
+
+        # One of two failed suites re-ran: still not a recovery.
+        half = {"jobs": [self._job("Test (shard 0)"), self._gated_job("Verify")]}
+        self.assertFalse(ci_watch.recovery_verdict(["Test (shard 0)", "Verify"], half)[0])
+
+        # The failed job is not in this run at all.
+        self.assertFalse(
+            ci_watch.recovery_verdict(["Renamed job"], {"jobs": [self._job("Other")]})[0]
+        )
+
+    def test_with_no_failed_jobs_on_record_every_job_must_have_run(self):
+        self.assertTrue(
+            ci_watch.recovery_verdict([], {"jobs": [self._job("a"), self._job("b")]})[0]
+        )
+        self.assertFalse(
+            ci_watch.recovery_verdict([], {"jobs": [self._job("a"), self._gated_job("b")]})[0]
+        )
+
+    def test_unreadable_jobs_are_never_a_recovery(self):
+        self.assertFalse(ci_watch.recovery_verdict(["a"], {"jobs": []})[0])
+        self.assertFalse(ci_watch.recovery_verdict(["a"], {})[0])
+        self.assertFalse(ci_watch.recovery_verdict([], None)[0])
+
+    def test_failed_jobs_on_record_follow_the_incident(self):
+        body = ci_watch.issue_body("https://run", "abc", ["Test (shard 0)"])
+        later = {"body": ci_watch.failure_comment("def", "https://run2", False, ["Verify"])}
+        chatter = {"body": "looking into it"}
+        self.assertEqual(
+            ci_watch.failed_jobs_on_record(body, [chatter, later]),
+            ["Test (shard 0)", "Verify"],
+        )
+        # A noted recovery closed the first incident: only what failed
+        # after it is outstanding.
+        note = {"body": ci_watch.recovery_comment("ghi", "https://run3")}
+        again = {"body": ci_watch.failure_comment("jkl", "https://run4", True, ["iOS"])}
+        self.assertEqual(ci_watch.failed_jobs_on_record(body, [later, note, again]), ["iOS"])
+
+    def _run_main(self, conclusion, comments, has_issue=True, jobs=None, failed=None):
         """Drives main() for the CI workflow against a faked `gh`, with an
-        open rolling issue #7 (unless told otherwise) carrying [comments]."""
+        open rolling issue #7 (unless told otherwise) carrying [comments].
+        [failed] are the job names the issue body records; [jobs] is what
+        the run's jobs API answers."""
         env = {
             "RUN_ID": "1",
             "HEAD_SHA": "deadbeef00000000",
@@ -220,12 +367,12 @@ class CiWatchTests(unittest.TestCase):
         }
         existing = [{
             "number": 7,
-            "body": f"{ci_watch.MARKER}\n{ci_watch.workflow_marker('CI')}\nfailed",
+            "body": ci_watch.issue_body("https://first", "0000", failed or [], "CI"),
         }] if has_issue else []
 
         def fake_run(args, input_text=None):
             if args[0] == "api":
-                return '{"jobs": []}'
+                return json.dumps({"jobs": jobs or []})
             if args[:2] == ["issue", "list"]:
                 return json.dumps(existing)
             if args[:2] == ["issue", "view"]:
@@ -237,19 +384,54 @@ class CiWatchTests(unittest.TestCase):
                 self.assertEqual(ci_watch.main(), 0)
         return [c.args[0] for c in run_mock.call_args_list]
 
-    def test_main_notes_a_recovery_on_the_open_issue(self):
-        calls = self._run_main("success", comments=[
-            {"body": "Still failing at `abc`.\n\nhttps://old"},
-        ])
+    def test_main_notes_a_recovery_when_the_failed_suite_ran_and_passed(self):
+        calls = self._run_main(
+            "success",
+            comments=[{"body": "Still failing at `abc`.\n\nhttps://old"}],
+            failed=["Test (shard 0)"],
+            jobs=[self._job("Test (shard 0)"), self._gated_job("Site")],
+        )
         comments = [c for c in calls if c[:2] == ["issue", "comment"]]
         self.assertEqual(len(comments), 1)
         self.assertEqual(comments[0][2], "7")
         self.assertTrue(ci_watch.is_recovery_note(comments[0][4]))
         self.assertIn("deadbeef00000000", comments[0][4])
-        # A pass never files, closes, or reads the jobs API.
+        # A pass never files or closes.
         self.assertFalse(any(c[:2] == ["issue", "create"] for c in calls))
         self.assertFalse(any(c[:2] == ["issue", "close"] for c in calls))
-        self.assertFalse(any(c[0] == "api" for c in calls))
+
+    def test_main_says_nothing_when_the_green_run_skipped_the_failed_suite(self):
+        # Issue #1437: a docs-only merge. CI is green, and the Flutter shard
+        # that broke `main` never ran.
+        calls = self._run_main(
+            "success",
+            comments=[],
+            failed=["Test (shard 0)"],
+            jobs=[self._gated_job("Test (shard 0)"), self._job("Site")],
+        )
+        self.assertFalse(any(c[:2] == ["issue", "comment"] for c in calls))
+        self.assertFalse(any(c[:2] == ["issue", "close"] for c in calls))
+
+    def test_main_checks_the_jobs_a_later_failure_recorded_too(self):
+        later = {"body": ci_watch.failure_comment("def", "https://run2", False, ["Verify"])}
+        calls = self._run_main(
+            "success",
+            comments=[later],
+            failed=["Test (shard 0)"],
+            jobs=[self._job("Test (shard 0)"), self._gated_job("Verify")],
+        )
+        self.assertFalse(any(c[:2] == ["issue", "comment"] for c in calls))
+
+    def test_main_records_the_failing_jobs_on_a_further_failure(self):
+        calls = self._run_main(
+            "failure",
+            comments=[],
+            failed=["Test (shard 0)"],
+            jobs=[self._job("Verify", "failure")],
+        )
+        comment = next(c for c in calls if c[:2] == ["issue", "comment"])
+        self.assertEqual(ci_watch.named_failing_jobs(comment[4]), ["Verify"])
+        self.assertTrue(comment[4].startswith("Still failing at `deadbeef00000000`."))
 
     def test_main_does_not_repeat_a_recovery_note(self):
         calls = self._run_main("success", comments=[

@@ -6,6 +6,7 @@ import {
   dayCellView,
   daysInMonth,
   defaultLayerTags,
+  flowFillClass,
   flowIsBleed,
   flowMarkCount,
   forecastCellForMode,
@@ -109,6 +110,33 @@ describe('flow marks (the app mark-count port)', () => {
     expect(flowMarkCount('medium')).toBe(3);
     expect(flowMarkCount('heavy')).toBe(4);
     expect(flowMarkCount('super_heavy')).toBe(5);
+  });
+
+  it('fills a bleed day with its flow colour, super heavy sharing heavy', () => {
+    expect(flowFillClass('light')).toBe('cal-flow-light');
+    expect(flowFillClass('medium')).toBe('cal-flow-medium');
+    expect(flowFillClass('heavy')).toBe('cal-flow-heavy');
+    expect(flowFillClass('super_heavy')).toBe('cal-flow-heavy');
+  });
+
+  it('fills nothing that is not a bleed', () => {
+    for (const flow of ['none', 'spotting', 'not_bleeding', 'unknown_level']) {
+      expect(flowFillClass(flow)).toBeNull();
+    }
+  });
+
+  it('fills exactly the levels the isBleed port counts as a bleed', () => {
+    for (const flow of [
+      'none',
+      'spotting',
+      'not_bleeding',
+      'light',
+      'medium',
+      'heavy',
+      'super_heavy',
+    ]) {
+      expect(flowFillClass(flow) !== null).toBe(flowIsBleed(flow));
+    }
   });
 
   it('counts only the four bleed levels as a bleed (the isBleed port)', () => {

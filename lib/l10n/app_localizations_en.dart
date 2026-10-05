@@ -1127,7 +1127,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get firstRunMinorExplainerBody =>
-      'It marks the profile as a minor\'s. That turns prediction sharing off for the profile and starts the Sex life and Partying categories hidden, until a primary guardian turns them on. Health app sync is not affected. Wording and reminders come from the care mode picked on the next screen, not from this checkbox.';
+      'It marks the profile as a minor\'s. That turns prediction sharing off for the profile and hides the Sex life and Partying categories. Health app sync is not affected. Wording and reminders come from the care mode picked on the next screen, not from this checkbox.';
 
   @override
   String get firstRunNoticeBody =>
@@ -5551,6 +5551,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get webDayNoAccess => 'You don\'t have access to this profile.';
+
+  @override
+  String get webDayLoading => 'Loading this day…';
+
+  @override
+  String get webDayLoadFailed =>
+      'Couldn\'t load this day. Check your connection and try again.';
 
   @override
   String get webDayReadOnlyViewer =>

@@ -16,6 +16,13 @@ body,
   min-height: 100vh;
 }
 
+/* Room for the day form's pinned Save row: when the keyboard moves focus
+   to a control low on the screen, the browser scrolls it clear of the row
+   instead of leaving it underneath. */
+html {
+  scroll-padding-bottom: 6rem;
+}
+
 body {
   font-family: var(--ll-font-text);
   font-size: var(--ll-type-body-medium-font-size);
@@ -144,7 +151,6 @@ body {
 
 .welcome-actions .btn {
   text-decoration: none;
-  border-radius: var(--ll-r-full);
   padding: var(--ll-space-2) var(--ll-space-5);
 }
 
@@ -296,11 +302,19 @@ body {
   margin-top: var(--ll-space-2);
 }
 
+/* The day form is long: on a desktop the Save button sat more than three
+   screens below the flow chips. The row stays pinned to the bottom of the
+   window while the form scrolls under it, and settles into place at the
+   end of the form. */
 .day-actions {
   display: flex;
   align-items: center;
   gap: var(--ll-space-3);
   margin-top: var(--ll-space-4);
+  position: sticky;
+  bottom: var(--ll-space-3);
+  z-index: 1;
+  background: var(--ll-surface-container-high);
 }
 
 .save-button {
@@ -466,7 +480,6 @@ body {
 
 .page-auth .auth-button {
   min-height: 2.75rem;
-  border-radius: var(--ll-r-full);
 }
 
 .page-auth .auth-links {
@@ -546,7 +559,7 @@ body {
 .auth-button {
   padding: var(--ll-space-2) var(--ll-space-4);
   border: none;
-  border-radius: var(--ll-r-md);
+  border-radius: var(--ll-r-full);
   background: var(--ll-primary);
   color: var(--ll-on-primary);
   font: inherit;
@@ -596,11 +609,12 @@ body {
   border: 0;
 }
 
+/* Every button in the client is fully rounded, like the app theme's. */
 .btn {
   font: inherit;
   padding: var(--ll-space-2) var(--ll-space-4);
   border: 1px solid var(--ll-outline);
-  border-radius: var(--ll-r-md);
+  border-radius: var(--ll-r-full);
   background: var(--ll-surface-container-high);
   color: var(--ll-on-surface);
   cursor: pointer;
@@ -641,7 +655,6 @@ body {
 .home-log-today {
   margin-left: auto;
   text-decoration: none;
-  border-radius: var(--ll-r-full);
   padding: var(--ll-space-2) var(--ll-space-5);
 }
 
@@ -788,6 +801,13 @@ body {
   min-height: 0;
 }
 
+/* The weekday initials are a label row, not a row of days: without this
+   they took a day cell's full height and left a blank band under them. */
+.cal-head .cal-cell {
+  min-height: 0;
+  padding-bottom: var(--ll-space-1);
+}
+
 .cal-day {
   background: var(--ll-surface-container-low);
 }
@@ -867,6 +887,47 @@ body {
 
 .cal-mark:nth-child(-n + 5) {
   background: var(--ll-cal-flow-heavy);
+}
+
+/* A logged period day is filled with its flow colour, as in the app, so
+   what was recorded reads more strongly than what is only estimated. The
+   day number and the flow marks take the app theme's matching on-flow ink
+   (the colour-scheme-aware pair: white on these fills in the light scheme,
+   black in the dark one). These rules sit after the mark ramp above on
+   purpose: same specificity, so order decides. */
+.cal-flow-light .cal-day-link {
+  background: var(--ll-cal-flow-light);
+  color: var(--ll-cal-on-flow-light);
+}
+
+.cal-flow-medium .cal-day-link {
+  background: var(--ll-cal-flow-medium);
+  color: var(--ll-cal-on-flow-medium);
+}
+
+.cal-flow-heavy .cal-day-link {
+  background: var(--ll-cal-flow-heavy);
+  color: var(--ll-cal-on-flow-heavy);
+}
+
+.cal-flow .cal-mark {
+  background: currentColor;
+}
+
+.cal-flow .cal-cycle-day {
+  color: inherit;
+}
+
+/* Symptom dots keep their own colours; a hairline in the cell's ink keeps
+   them distinct from the fill behind them. */
+.cal-flow .cal-dot {
+  box-shadow: 0 0 0 1px currentColor;
+}
+
+/* The focus ring is the primary colour, which is the fill's own family:
+   lift it clear of the cell so it stays visible. */
+.cal-flow .cal-day-link:focus-visible {
+  outline-offset: 2px;
 }
 
 .cal-layers {

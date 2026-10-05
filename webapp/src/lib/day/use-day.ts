@@ -62,7 +62,15 @@ export function useDayView(
       // #1338).
       return getSyncedDataCache().refresh(client, () => webAuth.getUser()?.id ?? null);
     },
-    enabled: client !== null,
+    // Wait for the session before pulling. On a cold load (a reload, a
+    // bookmark, a link opened in a new tab) nothing is in memory yet. A
+    // pull started then restores the session part-way through, so the
+    // account it began under (none) is not the account it ended under, and
+    // the cache discards it as another account's data (the issue #1338
+    // guard). That left an empty snapshot, which this page read as "You
+    // don't have access to this profile". The home page has always waited
+    // (useHasSyncSession); this page did not.
+    enabled: client !== null && uid !== null && uid !== '',
     retry: false,
   });
 
@@ -87,6 +95,11 @@ export function useDayView(
     isPending: query.isPending || uid === null,
     signedOut: client !== null && uid === '',
     isError: query.isError || notFound,
+    // The fetch itself failed (offline, a server error): worth retrying.
+    // The other way to be in error — a profile that is not in the caller's
+    // data — is not, and the page says different things for the two.
+    loadFailed: query.isError,
+    refetch: query.refetch,
     error:
       (query.error as Error | null) ??
       (notFound ? new DaySaveError('profile not found (or not visible to you)') : null),

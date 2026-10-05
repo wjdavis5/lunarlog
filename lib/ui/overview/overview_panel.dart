@@ -39,7 +39,11 @@
 /// link that switches to Insights through the #313 tab-switch seam
 /// ([AppShellScope]) -- hidden entirely when no shell is mounted above
 /// this panel (`ProfileDetailScreen`'s archived read-only view, and any
-/// test tree that pumps this panel directly).
+/// test tree that pumps this panel directly), and hidden inside a shell
+/// until the profile has cycle history to show: a profile with only its
+/// onboarding answers has no history on Insights, so the link would lead
+/// to an empty place. That check watches the history view for one bool
+/// (`_SeeHistoryLink`); it does not bring the section back.
 library;
 
 import 'dart:async';
@@ -68,6 +72,7 @@ import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
+import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/pms.dart' show PmsEstimate;
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
@@ -626,6 +631,10 @@ class _OverviewPanelState extends State<OverviewPanel>
     final messenger = ScaffoldMessenger.of(context);
     await repository.save(entry);
     if (!mounted) return;
+    // A tap is answered at once: whatever is on screen (the first tap's
+    // "recorded" message, when this is a second tap) leaves first, so the
+    // reply never queues unseen behind it.
+    messenger.hideCurrentSnackBar();
     // Issue #1412: the shared builder names what the tap did — a day
     // already logged at this flow or heavier is reported as unchanged
     // rather than as a freshly recorded medium-flow start.
@@ -635,6 +644,7 @@ class _OverviewPanelState extends State<OverviewPanel>
         previousFlow: previous?.flow,
         contentKey: const ValueKey('today-card-logged-snackbar'),
         onUndo: () => _undoLogToday(previous, today),
+        accessibleNavigation: MediaQuery.accessibleNavigationOf(context),
       ),
     );
   }
@@ -901,19 +911,20 @@ class _OverviewPanelState extends State<OverviewPanel>
   /// above it) and in any test tree that pumps this panel on its own; in
   /// both cases there is nowhere for the link to switch to, so it renders
   /// nothing rather than a dead button.
+  ///
+  /// Inside a shell the link still shows only for a profile that has cycle
+  /// history ([_SeeHistoryLink]): Insights renders no history for a profile
+  /// with nothing logged, so the link would lead to an empty place. Keyed by
+  /// profile so a profile switch starts from "not known yet" instead of
+  /// briefly keeping the previous profile's answer.
   Widget _seeHistoryLink(BuildContext context) {
     final scope = AppShellScope.maybeOf(context);
     if (scope == null) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(top: LLSpace.space2),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: TextButton(
-          key: const ValueKey('overview-see-history-link'),
-          onPressed: () => scope.select(AppTab.insights),
-          child: Text(AppLocalizations.of(context).overviewSeeHistory),
-        ),
-      ),
+    return _SeeHistoryLink(
+      key: ValueKey('overview-see-history-${widget.profileId}'),
+      profileId: widget.profileId,
+      todayProvider: widget.todayProvider,
+      onPressed: () => scope.select(AppTab.insights),
     );
   }
 
@@ -1475,6 +1486,81 @@ class _OverviewPanelState extends State<OverviewPanel>
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The Today tab's "See cycle history" link (issue #314), shown only when
+/// the profile has cycle history to show.
+///
+/// The link switches to Insights, whose `CycleHistorySection` renders
+/// nothing until a period has been logged — so for a profile that has only
+/// its onboarding answers it used to lead to an empty place. Whether there
+/// is history is read off the same [CycleHistoryView] that section renders
+/// ([CycleHistoryView.hasHistory], from the same
+/// [CycleHistoryService.watch]), never from a second definition here. The
+/// prediction this panel already holds cannot answer it: a provisional
+/// estimate looks the same whether it is anchored on an onboarding answer
+/// or on a logged period, and the suppressed and turned-off states carry
+/// no history counts at all.
+///
+/// Unlike the section this panel stopped mounting (issue #314), this builds
+/// no list: the view is reduced to one bool and rebuilds only when that
+/// bool flips. It is mounted only inside an `AppShellScope`, so the
+/// archived read-only view never subscribes.
+///
+/// Renders nothing while the first view is loading, when the stream errors,
+/// and when no [CycleHistoryService] is provided (a tree that could not
+/// show the history either).
+class _SeeHistoryLink extends StatefulWidget {
+  const _SeeHistoryLink({
+    super.key,
+    required this.profileId,
+    required this.todayProvider,
+    required this.onPressed,
+  });
+
+  final String profileId;
+
+  /// "Today" for the history view, the same provider the section is handed.
+  final LocalDate Function() todayProvider;
+
+  final VoidCallback onPressed;
+
+  @override
+  State<_SeeHistoryLink> createState() => _SeeHistoryLinkState();
+}
+
+class _SeeHistoryLinkState extends State<_SeeHistoryLink> {
+  Stream<bool>? _hasHistory;
+
+  @override
+  void initState() {
+    super.initState();
+    _hasHistory = Provider.of<CycleHistoryService?>(context, listen: false)
+        ?.watch(widget.profileId, today: () => widget.todayProvider())
+        .map((view) => view.hasHistory)
+        .distinct();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<bool>(
+      stream: _hasHistory,
+      builder: (context, snapshot) {
+        if (snapshot.data != true) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: LLSpace.space2),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              key: const ValueKey('overview-see-history-link'),
+              onPressed: widget.onPressed,
+              child: Text(AppLocalizations.of(context).overviewSeeHistory),
+            ),
+          ),
+        );
+      },
     );
   }
 }
