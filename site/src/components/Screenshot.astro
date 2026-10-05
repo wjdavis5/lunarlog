@@ -99,9 +99,14 @@ if (!kThemes.includes(theme)) {
 
 const src = `/screenshots/${screen}-${device}-${theme}.png`;
 const [width, height] = size;
+// The shape decides how wide the page may draw it: a portrait (phone)
+// capture left to fill the text column grows taller than the window, so
+// the stylesheet caps that shape at a phone's own width.
+const shape = height > width ? "shot--portrait" : "shot--landscape";
 ---
 
 <img
+  class={`shot ${shape}`}
   src={src}
   width={width}
   height={height}

@@ -434,8 +434,14 @@ main {
   margin-top: 2rem;
 }
 
-.screenshot-figure--hero img {
-  max-width: 22rem;
+/* A phone capture is more than twice as tall as it is wide. Filling the
+ * text column it drew 640px wide and 1,385px tall on a desktop: more than a
+ * full window of one screenshot, most of it the screen's empty lower half.
+ * Every portrait shot is capped at the width a phone would show it, the
+ * hero included. On a phone the column is already narrower than the cap,
+ * so nothing changes there. */
+.screenshot-figure .shot--portrait {
+  max-width: min(100%, 22rem);
 }
 
 /* The two invitation directions, always a side-by-side pair (issue #1105:
