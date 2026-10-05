@@ -2,10 +2,11 @@
 ///
 /// The subject (a membership stamped `isSubject`) sees the "Keep this note
 /// private" toggle above the note field while the note is being written, and
-/// the flag rides the entry into storage. Every other guardian — even the
-/// profile owner — never sees the toggle, and a private note whose text the
-/// server masked to null renders as the "Private note" placeholder instead of
-/// an editor.
+/// the flag rides the entry into storage. Every other guardian — even an
+/// owner who is not the subject — never sees the toggle, and a private note
+/// whose text the server masked to null renders as the "Private note"
+/// placeholder instead of an editor. An owner who created the profile for
+/// herself is its subject (issue #1499) and is offered the toggle.
 ///
 /// Issue #1071 adds the write-then-decide coverage: the toggle is never
 /// hidden, the first persist of a non-empty note is held back until the
@@ -77,6 +78,7 @@ Future<_Sheet> _pumpSheet(
   required DayEntry? existing,
   bool readOnly = false,
   String? pushedNote,
+  List<ProfileGuardian>? guardians,
 }) async {
   tester.view.physicalSize = const Size(800, 1400);
   tester.view.devicePixelRatio = 1.0;
@@ -112,7 +114,7 @@ Future<_Sheet> _pumpSheet(
             existing: scoped,
             readOnly: readOnly,
             currentUserId: viewerId,
-            guardians: _guardians,
+            guardians: guardians ?? _guardians,
           ),
         ),
       ),
@@ -503,6 +505,61 @@ void main() {
       expect(find.text('Private note'), findsOneWidget);
 
       await _tearDown(tester, sheet.db);
+    },
+  );
+
+  testWidgets(
+    'the owner of a profile she created for herself is offered the private '
+    'choice; an owner who is not its subject is not (issue #1499)',
+    (tester) async {
+      // The server marks the primary guardian of a self profile as its
+      // subject. The day sheet reads only that marker.
+      final asSubject = await _pumpSheet(
+        tester,
+        viewerId: _mom,
+        existing: null,
+        guardians: [
+          _guardian(
+            _mom,
+            GuardianRole.primaryGuardian,
+            'Me',
+            isSubject: true,
+          ),
+          _guardian(_doc, GuardianRole.coParent, 'Partner'),
+        ],
+      );
+
+      final toggle = find.byKey(const ValueKey('note-private-toggle'));
+      expect(toggle, findsOneWidget);
+      expect(find.text('Keep this note private'), findsOneWidget);
+      expect(
+        tester.widget<CheckboxListTile>(toggle).onChanged,
+        isNotNull,
+        reason: 'the choice is open while the note is being written',
+      );
+      await _tearDown(tester, asSubject.db);
+
+      final asOwnerOnly = await _pumpSheet(
+        tester,
+        viewerId: _mom,
+        existing: null,
+        guardians: [
+          _guardian(_mom, GuardianRole.primaryGuardian, 'Mom'),
+          _guardian(
+            _daughter,
+            GuardianRole.caregiver,
+            'Daughter',
+            isSubject: true,
+          ),
+        ],
+      );
+      expect(find.byKey(const ValueKey('note-field')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('note-private-toggle')),
+        findsNothing,
+        reason: 'a parent who created her daughter\'s profile is its guardian',
+      );
+      await _tearDown(tester, asOwnerOnly.db);
     },
   );
 

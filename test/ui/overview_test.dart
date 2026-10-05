@@ -2547,8 +2547,10 @@ void main() {
   group('issue #850 U5: per-viewer guardian lens front page', () {
     /// Signs in as [userId], seeds a single accepted guardian row for it,
     /// and pumps the overview. [isSubject] picks the lens (a subject
-    /// membership keeps the subject front page); every non-subject row is a
-    /// guardian lens regardless of role.
+    /// membership keeps the subject front page, whatever its role: the
+    /// owner of a profile she created for herself is a subject primary
+    /// guardian, issue #1499); every non-subject row is a guardian lens
+    /// regardless of role.
     Future<Harness> pumpForViewer(
       WidgetTester tester,
       String userId, {
@@ -2607,6 +2609,52 @@ void main() {
       expect(
         find.byKey(const ValueKey('overview-disclaimer')),
         findsOneWidget,
+      );
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('a signed-in primary guardian whose own row carries the '
+        'subject marker gets the subject Today, with the Logged today card '
+        '(issue #1499)', (tester) async {
+      // Someone who created the profile for herself: the server marks her
+      // primary_guardian row as the subject, and it reaches her by sync.
+      final h = await pumpForViewer(
+        tester,
+        'user-self',
+        role: 'primary_guardian',
+        isSubject: true,
+        seed: (entries, profileId) async {
+          await seedEpisodes(entries, profileId, kActiveStarts);
+          await entries.save(
+            DayEntry(
+              id: '',
+              profileId: profileId,
+              localDate: kToday,
+              tz: 'America/Chicago',
+              flow: FlowLevel.none,
+              tags: const ['cramps'],
+              note: null,
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+        },
+      );
+
+      expect(
+        find.byKey(const ValueKey('today-card')),
+        findsOneWidget,
+        reason: 'her own Today, not a card about her in the third person',
+      );
+      expect(
+        find.byKey(const ValueKey('guardian-overview-card')),
+        findsNothing,
+      );
+      expect(find.byKey(const ValueKey('today-log-card')), findsOneWidget);
+      expect(find.text('Logged today'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('today-log-edit')),
+        findsOneWidget,
+        reason: 'the owner may log, so the card offers Edit',
       );
       await disposeOverview(tester, h);
     });

@@ -51,10 +51,22 @@ void main() {
       }
     });
 
-    test('a primary guardian who created the profile is not the subject '
-        '(isSubject=false) and gets the guardian lens', () {
+    test('a primary guardian who created the profile for someone else '
+        '(isSubject=false) gets the guardian lens', () {
       final rows = [_guardian('u-mom', GuardianRole.primaryGuardian)];
       expect(guardianLensFor(rows, 'u-mom'), GuardianLens.guardian);
+    });
+
+    test('a primary guardian who created the profile for herself carries '
+        'the marker and gets the subject lens (issue #1499)', () {
+      // The server stamps is_subject on the owner of a profile whose
+      // relationship is self; the resolver only reads the marker.
+      final rows = [
+        _guardian('u-self', GuardianRole.primaryGuardian, isSubject: true),
+        _guardian('u-partner', GuardianRole.coParent),
+      ];
+      expect(guardianLensFor(rows, 'u-self'), GuardianLens.subject);
+      expect(guardianLensFor(rows, 'u-partner'), GuardianLens.guardian);
     });
 
     test('a null viewer id reads as the subject lens (fail open)', () {

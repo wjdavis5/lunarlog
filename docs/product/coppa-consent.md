@@ -39,8 +39,14 @@ advice — a formal compliance review remains the owner's call.
   `record_minimum_age_acknowledgement`. Accepting a subject invitation writes
   `parent_invite`; the first-run cold acknowledgement writes `self_13_plus`.
 - `public.profile_guardians.is_subject` (issue #802): the durable membership
-  fact that the accepting account is the profile's subject, stamped only by
-  `accept_guardian_invitation`.
+  fact that the accepting account is the profile's subject, stamped by
+  `accept_guardian_invitation` when the invitation was a "her own profile"
+  invitation. The marker on its own is not the consent record: the server
+  also sets it when an ownership transfer is accepted and, since issue
+  #1499, on the owner of a profile she created for herself (relationship
+  `self`). What marks the parent-invitation path is the accepted
+  `guardian_invitations` row (`is_subject`, `accepted_by`) together with
+  the `parent_invite` row above.
 - The local `SettingsKeys.minimumAgeAcknowledged` flag remains the offline
   cache on the device.
 

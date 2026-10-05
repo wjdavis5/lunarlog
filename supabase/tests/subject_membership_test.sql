@@ -1,7 +1,11 @@
 -- Coverage for Issue #802's subject membership ("her own profile"):
--- the is_subject marker's write-path exclusivity (only the subject-invite
--- path and accept_ownership_transfer can set it; a client cannot; a plain
--- caregiver invitation cannot), the subject invite round trip
+-- the is_subject marker's write-path exclusivity (of the paths this file
+-- exercises, only the subject-invite path and accept_ownership_transfer
+-- set it; a client cannot; a plain caregiver invitation cannot -- the
+-- third server-side writer, issue #1499's rule that the owner of a profile
+-- whose relationship is 'self' is its subject, is covered by
+-- self_profile_subject_test.sql; Mom's profile here has no relationship,
+-- so she is never marked), the subject invite round trip
 -- (create -> preview -> accept stamps the membership), the invitation
 -- parameter validation (subject preset is caregiver-only, manager-only),
 -- the marker's durability under revoke/update_guardian_role, the

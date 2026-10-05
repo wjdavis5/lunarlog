@@ -9,8 +9,11 @@
 ///
 /// The lens is derived strictly from membership identity — #802's
 /// server-stamped [ProfileGuardian.isSubject] plus the accepted membership
-/// row — never from `ProfileRelationship`. It is presentation only: it
-/// changes no permission, and a viewer still cannot write (D-1, D-8).
+/// row — never from `ProfileRelationship`. The server is what reads the
+/// relationship: it stamps the marker on the owner of a profile she created
+/// for herself (issue #1499), so this file has nothing to derive. It is
+/// presentation only: it changes no permission, and a viewer still cannot
+/// write (D-1, D-8).
 ///
 /// Fail-open by construction, matching [acceptedGuardianFor] and
 /// `_effectiveReadOnly`: no signed-in membership (a local-only operator, or a
@@ -42,9 +45,13 @@ enum GuardianLens {
 /// Resolves the lens for [currentUserId] among a profile's [guardians]
 /// (D-1).
 ///
-/// * The subject's own accepted membership → [GuardianLens.subject].
-/// * Any other accepted membership (including a primary guardian who created
-///   the profile and is therefore not its subject) → [GuardianLens.guardian].
+/// * The subject's own accepted membership → [GuardianLens.subject]. That
+///   includes a primary guardian who created the profile for herself: the
+///   server marks her row as the subject while the profile's relationship
+///   is `self` (issue #1499).
+/// * Any other accepted membership → [GuardianLens.guardian], whatever its
+///   role. That includes a primary guardian who created the profile for
+///   someone else (a parent on a daughter's profile).
 /// * A null [currentUserId], empty [guardians], or a viewer with only
 ///   pending/revoked rows → [GuardianLens.subject] (fail open — only
 ///   `acceptedGuardianFor`'s accepted rows count, so non-accepted rows are
