@@ -79,12 +79,15 @@ const description =
         them to it. Each accepted guardian — each role, exactly — sees what
         <a href="/family-sharing">their role</a> allows, and no more.
       </p>
-      <!-- cite: PRIVACY.md §6 "Signed-In Browser Build (Web)". -->
+      <!-- cite: PRIVACY.md §6 "Browser Client (Web)" (nothing at rest; the access token in page memory; the refresh token in an HttpOnly cookie); webapp/e2e/storage-empty.spec.ts; webapp/worker/cookies.ts. -->
       <p>
-        The browser build gets the same honesty: a signed-in browser keeps
-        synced data and the session in browser storage, which no operating
-        system protects and a browser extension could read. The policy's
-        security section describes exactly what that means.
+        The browser app is built to a stricter rule than the phone apps:
+        it keeps nothing at rest. No copy of your entries is ever written
+        to browser storage, so closing the tab leaves none of them behind
+        in that browser. What keeps you signed in is a cookie that no
+        script on the page can read; the short-lived token the page itself
+        uses lives only in the open tab's memory. The policy's security
+        section describes exactly what that means.
       </p>
     </section>
 

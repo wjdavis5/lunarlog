@@ -48,6 +48,39 @@ void main() {
     );
   });
 
+  // Issue #1396: the bullet named "the native Google sign-in" alone while
+  // the web client offered Google and Apple, both by redirect. The pin
+  // reads the provider list from the client itself, so adding or removing
+  // a provider there fails here until the policy says so.
+  test('the browser bullet names every sign-in provider the web client '
+      'offers', () {
+    final auth = File('webapp/src/lib/auth.ts').readAsStringSync();
+    final union = RegExp(r"export type OAuthProvider = ([^;]+);")
+        .firstMatch(auth);
+    expect(union, isNotNull,
+        reason: 'webapp/src/lib/auth.ts no longer declares OAuthProvider');
+    final providers = RegExp(r"'([a-z]+)'")
+        .allMatches(union!.group(1)!)
+        .map((match) => match.group(1)!)
+        .toList();
+    expect(providers, isNotEmpty);
+    for (final provider in providers) {
+      final name = provider[0].toUpperCase() + provider.substring(1);
+      expect(
+        bullet,
+        contains(name),
+        reason: 'the web client offers $name sign-in; Section 6 must say so',
+      );
+    }
+    expect(bullet, contains('password, Google and Apple'));
+    expect(
+      bullet,
+      isNot(contains('native Google')),
+      reason: 'no provider sign-in is native in a browser; both redirect',
+    );
+    expect(bullet, contains('through a redirect'));
+  });
+
   test('the deployed Worker CSP allows only the app and Supabase', () {
     final headers = File('webapp/worker/headers.ts')
         .readAsStringSync()
