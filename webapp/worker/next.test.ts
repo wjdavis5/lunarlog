@@ -87,8 +87,8 @@ function post(path: string, body: unknown, cookie?: string): Request {
   });
 }
 
-function get(path: string): Request {
-  return new Request(`${ORIGIN}${path}`, { method: 'GET' });
+function get(path: string, headers: Record<string, string> = {}): Request {
+  return new Request(`${ORIGIN}${path}`, { method: 'GET', headers });
 }
 
 /** The PKCE cookie's value from a response's Set-Cookie headers. */
@@ -173,6 +173,15 @@ Deno.test('a damaged marker loses the path but never invents a verifier', () => 
   });
   // Bytes that are not UTF-8.
   assertEquals(parsePkceValue('next~_w:verifier-abc')?.next, null);
+  // Only the spelling this Worker writes is read back. `/i?~~~` in the
+  // standard alphabet ("L2k/fn5+") decodes fine, and is still not ours.
+  assertEquals(atob('L2k/fn5+'), '/i?~~~');
+  assertEquals(parsePkceValue('next~L2k/fn5+:verifier-abc'), {
+    verifier: 'verifier-abc',
+    recovery: false,
+    next: null,
+  });
+  assertEquals(parsePkceValue('next~L2k_fn5-:verifier-abc')?.next, '/i?~~~');
   // No terminator, or nothing after it: there is no verifier to use.
   assertEquals(parsePkceValue('next~L2ludml0ZQ'), null);
   assertEquals(parsePkceValue('next~L2ludml0ZQ:'), null);
@@ -211,6 +220,56 @@ Deno.test('OAuth start ignores a return path that is not a page on this site', a
     assertEquals(response?.status, 302, hostile);
     assertEquals(pkceValueOf(response), 'verifier-abc', hostile);
   }
+});
+
+Deno.test('OAuth start honours a return path only from the app itself', async () => {
+  const start = `/auth/oauth/start?provider=google&next=${encodeURIComponent(INVITE)}`;
+  // The app's own sign-in button, and a browser too old to say.
+  const fromTheApp: Record<string, string>[] = [{ 'sec-fetch-site': 'same-origin' }, {}];
+  for (const headers of fromTheApp) {
+    const { deps } = fakeDeps();
+    const response = await handleAuthRequest(get(start, headers), ENV, deps);
+    assertEquals(parsePkceValue(pkceValueOf(response))?.next, INVITE);
+  }
+  // A link on another site, a sibling subdomain, and an address that was
+  // typed, pasted or opened from a message: none of them picks the landing.
+  for (const site of ['cross-site', 'same-site', 'none']) {
+    const { deps } = fakeDeps();
+    const response = await handleAuthRequest(get(start, { 'sec-fetch-site': site }), ENV, deps);
+    // The sign-in still starts; it ends on the home page.
+    assertEquals(response?.status, 302, site);
+    assertEquals(pkceValueOf(response), 'verifier-abc', site);
+  }
+});
+
+Deno.test('a return path that would not fit is dropped, and the sign-in still starts', async () => {
+  // 58 characters in, 514 out once percent-encoded: over the limit, so it
+  // never reaches the cookie. It used to be written and then refused on the
+  // way back. A few hundred of them made a cookie the browser threw away,
+  // verifier and all, and the sign-in failed.
+  for (const length of [57, 334, 335, 511]) {
+    const { deps } = fakeDeps();
+    const long = `/${'\u4e2d'.repeat(length)}`;
+    const response = await handleAuthRequest(
+      get(`/auth/oauth/start?provider=google&next=${encodeURIComponent(long)}`),
+      ENV,
+      deps,
+    );
+    assertEquals(response?.status, 302, String(length));
+    assertEquals(pkceValueOf(response), 'verifier-abc', String(length));
+  }
+  // The longest path the app could ask for still fits a cookie with room to
+  // spare: the value stays far under the 4096 bytes a browser keeps.
+  const { deps } = fakeDeps();
+  const longest = `/invite?code=${'A'.repeat(512 - '/invite?code='.length)}`;
+  const response = await handleAuthRequest(
+    get(`/auth/oauth/start?provider=google&next=${encodeURIComponent(longest)}`),
+    ENV,
+    deps,
+  );
+  const value = pkceValueOf(response);
+  assertEquals(parsePkceValue(value)?.next, longest);
+  assertEquals(value.length < 1024, true);
 });
 
 Deno.test('the emailed link carries the return path in the verifier cookie', async () => {

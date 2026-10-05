@@ -308,6 +308,20 @@ function requestedNext(value: unknown): string | null {
   return typeof value === 'string' ? safeNextPath(value) : null;
 }
 
+/**
+ * Whether a navigation to this Worker began on one of the app's own pages.
+ *
+ * Browsers say so in `Sec-Fetch-Site`, a header a page cannot set or
+ * remove: `same-origin` for the app's own sign-in button, `cross-site` or
+ * `same-site` for a link on another site, `none` for an address typed,
+ * pasted or opened from a message. A browser too old to send the header is
+ * taken at its word, as it was before the header existed.
+ */
+function navigatedFromThisApp(request: Request): boolean {
+  const site = request.headers.get('sec-fetch-site');
+  return site === null || site === 'same-origin';
+}
+
 /** The three grant shapes that return a fresh session (and rotate the cookie). */
 async function grantSession(
   request: Request,
@@ -511,10 +525,14 @@ async function handleOAuthStart(request: Request, deps: AuthDeps): Promise<Respo
     return errorResponse(400, 'unknown_provider');
   }
   // Where the visitor was headed (issue #1456). This route is a plain
-  // navigation, so anyone can hand someone a link to it: a `next` that is
-  // not a path on this origin is ignored and the sign-in lands on the home
-  // page as before.
-  const next = requestedNext(parameters.get('next'));
+  // navigation, so anyone can hand someone a link to it. Two rules keep
+  // such a link from choosing where the sign-in ends: a `next` that is not
+  // a path on this origin is ignored, and so is any `next` on a navigation
+  // that did not begin on one of the app's own pages. Either way the
+  // sign-in still starts, and lands on the home page as before.
+  const next = navigatedFromThisApp(request)
+    ? requestedNext(parameters.get('next'))
+    : null;
   const verifier = deps.randomVerifier();
   const challenge = await deps.codeChallenge(verifier);
   const target = new URL(`${deps.supabaseUrl}/auth/v1/authorize`);

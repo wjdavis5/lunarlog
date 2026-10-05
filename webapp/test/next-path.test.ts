@@ -63,6 +63,34 @@ describe('safeNextPath', () => {
     expect(safeNextPath(`/invite?code=${'A'.repeat(600)}`)).toBeNull();
   });
 
+  // The limit is on what comes out, not only on what goes in. Resolving a
+  // path percent-encodes it, and a letter outside ASCII grows ninefold: 58
+  // characters used to come out as 514, which this function then refused
+  // when the sign-in cookie handed the value back.
+  it('rejects a short value that would grow past the limit once encoded', () => {
+    expect(safeNextPath(`/${'中'.repeat(57)}`)).toBeNull();
+    expect(safeNextPath(`/invite?note=${'é'.repeat(100)}`)).toBeNull();
+    // One that still fits is kept, encoded.
+    expect(safeNextPath('/invite?note=café')).toBe('/invite?note=caf%C3%A9');
+  });
+
+  it('accepts again whatever it accepted once', () => {
+    const inputs = [
+      '/invite?code=ABC123&kind=claim',
+      '/invite?note=café ✓',
+      `/${'中'.repeat(56)}`,
+      `/invite?code=${'A'.repeat(512 - '/invite?code='.length)}`,
+      '/a/../profiles?x=%2F#top',
+      '/profile/01ARZ3NDEKTSV4RRFFQ69G5FAV/day/2026-10-05',
+    ];
+    for (const input of inputs) {
+      const once = safeNextPath(input);
+      expect(once, input).not.toBeNull();
+      expect((once ?? '').length, input).toBeLessThanOrEqual(512);
+      expect(safeNextPath(once), input).toBe(once);
+    }
+  });
+
   it('normalises dot segments, so a path cannot climb into the auth screens', () => {
     expect(safeNextPath('/invite/../sign-in')).toBeNull();
     expect(safeNextPath('/a/../profiles')).toBe('/profiles');

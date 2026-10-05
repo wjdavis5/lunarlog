@@ -512,7 +512,7 @@ describe('the return path through a sign-in that leaves the site (issue #1456)',
     expect(fakes.startOAuth).toHaveBeenCalledWith('google', null);
   });
 
-  it('the sign-up page gives it to the new account and to the emailed link', async () => {
+  it('the sign-up page gives it to the new account', async () => {
     renderWithRoutes(`/sign-up${WITH_NEXT}`);
     await fill(messages['accountSignInEmailLabel'] ?? '', 'new@b.co');
     await fill(messages['accountSignInPasswordLabel'] ?? '', 'long enough password');
@@ -521,6 +521,39 @@ describe('the return path through a sign-in that leaves the site (issue #1456)',
     );
     await waitFor(() =>
       expect(fakes.signUp).toHaveBeenCalledWith('new@b.co', 'long enough password', INVITE),
+    );
+  });
+
+  it('the sign-up page gives it to the emailed link', async () => {
+    renderWithRoutes(`/sign-up${WITH_NEXT}`);
+    await fill(messages['accountSignInEmailLabel'] ?? '', 'new@b.co');
+    fireEvent.click(
+      screen.getByRole('button', { name: messages['accountSignInMagicLinkCreate'] }),
+    );
+    await waitFor(() => expect(fakes.sendOtp).toHaveBeenCalledWith('new@b.co', true, INVITE));
+  });
+
+  // The sign-up page reads the address bar itself, and goes there itself
+  // when the new account needs no confirmation. So it checks the path
+  // itself too, and does not lean on the auth client to.
+  it('the sign-up page gives a hostile return path to nothing', async () => {
+    const hostile = `/sign-up?next=${encodeURIComponent('//evil.example')}`;
+    renderWithRoutes(hostile);
+    await fill(messages['accountSignInEmailLabel'] ?? '', 'new@b.co');
+    fireEvent.click(
+      screen.getByRole('button', { name: messages['accountSignInMagicLinkCreate'] }),
+    );
+    await waitFor(() => expect(fakes.sendOtp).toHaveBeenCalledWith('new@b.co', true, null));
+    cleanup();
+
+    renderWithRoutes(hostile);
+    await fill(messages['accountSignInEmailLabel'] ?? '', 'new@b.co');
+    await fill(messages['accountSignInPasswordLabel'] ?? '', 'long enough password');
+    fireEvent.click(
+      screen.getByRole('button', { name: messages['accountSignInCreateAccountAction'] }),
+    );
+    await waitFor(() =>
+      expect(fakes.signUp).toHaveBeenCalledWith('new@b.co', 'long enough password', null),
     );
   });
 
