@@ -128,7 +128,10 @@ describe('sign in, then back to where you were headed', () => {
   it.each([
     ['another site', 'https://evil.example/invite'],
     ['a protocol-relative address', '//evil.example/invite'],
+    ['a dot segment hiding a protocol-relative address', '/.//evil.example/invite'],
+    ['an encoded slash hiding one', '/%2Fevil.example/invite'],
     ['a sign-in loop', '/sign-in'],
+    ['a sign-in loop in other letter case', '/Sign-In/'],
   ])('ignores %s in next and shows the ordinary signed-in page', async (_label, bad) => {
     signedIn();
     renderAt(`/sign-in?next=${encodeURIComponent(bad)}`);

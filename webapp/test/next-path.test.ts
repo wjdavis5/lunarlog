@@ -67,6 +67,130 @@ describe('safeNextPath', () => {
     expect(safeNextPath('/invite/../sign-in')).toBeNull();
     expect(safeNextPath('/a/../profiles')).toBe('/profiles');
   });
+
+  // Found in review: resolving a value removes its dot segments, and what
+  // is left can be protocol-relative even though what was typed was not.
+  // `/.//evil.example` came back as `//evil.example`, which a browser reads
+  // as another site. Only the router's own refusal stood in the way.
+  it.each([
+    '/.//evil.example',
+    '/.//evil.example/pwned',
+    '/%2e//evil.example',
+    '/%2E//evil.example',
+    '/a/..//evil.example',
+    '/a/%2e%2e//evil.example',
+    '/.//user@evil.example',
+    '/././/evil.example',
+    '/invite/..//evil.example?code=A',
+  ])('rejects %j, which resolves to a protocol-relative address', (value) => {
+    expect(safeNextPath(value)).toBeNull();
+  });
+
+  // The router decodes a path before it matches one, so an encoded slash
+  // or backslash must get no further than a literal one would.
+  it.each([
+    '/%2Fevil.example',
+    '/%2fevil.example',
+    '/%5Cevil.example',
+    '/%5cevil.example',
+    '/invite/%2F%2Fevil.example',
+    '/%09/evil.example',
+    '/invite%00',
+    '/%',
+    '/%E0%A4%A',
+  ])('rejects %j, which decodes to something a literal path may not be', (value) => {
+    expect(safeNextPath(value)).toBeNull();
+  });
+
+  it('rejects an empty path segment anywhere, which no page here has', () => {
+    expect(safeNextPath('/invite//x')).toBeNull();
+    expect(safeNextPath('/profiles//')).toBeNull();
+  });
+
+  // The router matches without regard to case or a trailing slash, and
+  // after decoding. Each of these is a sign-in screen by another spelling.
+  it.each([
+    '/Sign-In',
+    '/SIGN-UP',
+    '/sign-in/',
+    '/sign-up/',
+    '/Sign-In/Code?email=a@b.co',
+    '/AUTH/callback?code=x',
+    '/auth',
+    '/Forgot-Password/',
+    '/RESET-PASSWORD',
+    '/sign%2Din',
+    '/%73ign-in',
+    '/a/../Sign-Up',
+  ])('rejects %s, a sign-in screen by another spelling', (value) => {
+    expect(safeNextPath(value)).toBeNull();
+  });
+
+  it('still accepts a page whose name only starts like a sign-in screen', () => {
+    expect(safeNextPath('/authors')).toBe('/authors');
+    expect(safeNextPath('/sign-in-help')).toBe('/sign-in-help');
+  });
+
+  // Whatever comes back, however it was spelled going in, is a path on
+  // this site. Every combination below is hostile or malformed; most are
+  // refused, and the few that survive must still be harmless.
+  it('never returns a way off the site, for any mix of prefix and target', () => {
+    const prefixes = [
+      '/',
+      '//',
+      '/.',
+      '/./',
+      '/..',
+      '/../',
+      '/a/..',
+      '/a/../',
+      '/%2e',
+      '/%2e/',
+      '/%2e%2e/',
+      '/%252e/',
+      '/%2f',
+      '/%252f',
+      '/%5c',
+      '/\\',
+      '/;',
+      '/?',
+      '/#',
+      '/@',
+      '/ ',
+      '/%20',
+      '/\t',
+    ];
+    const targets = [
+      '/evil.example',
+      '//evil.example',
+      'evil.example',
+      '@evil.example',
+      '\\evil.example',
+      '%2Fevil.example',
+      '%5Cevil.example',
+      'https://evil.example',
+      'javascript:alert(1)',
+    ];
+    const origin = 'https://app.example';
+    let survivors = 0;
+    for (const prefix of prefixes) {
+      for (const target of targets) {
+        const candidate = `${prefix}${target}`;
+        const result = safeNextPath(candidate);
+        if (result === null) continue;
+        survivors += 1;
+        expect(result.startsWith('/'), candidate).toBe(true);
+        expect(result.startsWith('//'), candidate).toBe(false);
+        expect(result.includes('\\'), candidate).toBe(false);
+        const resolved = new URL(result, origin);
+        expect(resolved.origin, candidate).toBe(origin);
+        expect(resolved.pathname.includes('//'), candidate).toBe(false);
+        expect(decodeURIComponent(resolved.pathname).includes('//'), candidate).toBe(false);
+      }
+    }
+    // A scan in which nothing survived would prove nothing about survivors.
+    expect(survivors).toBeGreaterThan(0);
+  });
 });
 
 describe('withNext', () => {
