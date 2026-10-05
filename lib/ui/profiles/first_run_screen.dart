@@ -816,13 +816,19 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
       // Issue #808: the app's real brand mark (already bundled for the
       // launcher icon) instead of a stock `Icons.nights_stay` glyph, with
       // the wordmark raised to the display face's headlineSmall slot.
-      // `Center` keeps it at 72dp inside the stretched column.
+      // `Center` keeps it at 72dp inside the stretched column. The asset
+      // is the full-bleed square the launchers mask themselves, so drawn
+      // as it is it was a hard-cornered tile; the corners are rounded here
+      // the way a home screen shows it.
       Center(
-        child: Image.asset(
-          'assets/branding/app_icon_1024.png',
-          key: const ValueKey('first-run-brand-mark'),
-          width: 72,
-          height: 72,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Image.asset(
+            'assets/branding/app_icon_1024.png',
+            key: const ValueKey('first-run-brand-mark'),
+            width: 72,
+            height: 72,
+          ),
         ),
       ),
       const SizedBox(height: LLSpace.space2),
