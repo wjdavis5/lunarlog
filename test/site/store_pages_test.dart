@@ -115,6 +115,15 @@ void main() {
       );
     });
 
+    // Issue #1395's bug class on this page: it said the browser version
+    // holds a copy of your data. The React client keeps nothing at rest.
+    test('delete page does not claim the browser holds a copy', () {
+      final page = flat(deleteAccountPage);
+      expect(page, isNot(contains('the copy the browser holds')));
+      expect(page, contains('The browser version keeps no copy to begin with'));
+      expect(page, contains('cite: PRIVACY.md §6 "Browser Client (Web)"'));
+    });
+
     test('every deletion claim carries a source citation', () {
       // The acceptance criterion: claims cite PRIVACY.md §7 or the Edge
       // Function. Each cite comment names its source of record; the test

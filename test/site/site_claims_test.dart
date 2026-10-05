@@ -180,6 +180,37 @@ void main() {
       expect(privacyPage, contains('href="/privacy"'));
     });
 
+    // Issue #1395: the page kept telling visitors a signed-in browser
+    // stores synced data and the session in browser storage, after #1384
+    // shipped the opposite and rewrote PRIVACY.md §6 to say so.
+    test('the browser paragraph states the nothing-at-rest posture, citing '
+        'the bullet that exists', () {
+      final privacyPage = flat(
+        File(pages['/privacy-security']!).readAsStringSync(),
+      );
+      expect(
+        privacyPage,
+        contains('cite: PRIVACY.md §6 "Browser Client (Web)"'),
+      );
+      expect(
+        File('PRIVACY.md').readAsStringSync(),
+        contains('- **Browser Client (Web):**'),
+        reason: 'the page cites this bullet by name; it must exist',
+      );
+      expect(privacyPage, contains('it keeps nothing at rest'));
+      expect(
+        privacyPage,
+        contains('No copy of your entries is ever written to browser storage'),
+      );
+      expect(privacyPage, contains('a cookie that no script on the page can read'));
+      // The retired Flutter build's posture, in the page's old words.
+      expect(privacyPage, isNot(contains('Signed-In Browser Build')));
+      expect(
+        privacyPage,
+        isNot(contains('keeps synced data and the session in browser storage')),
+      );
+    });
+
     test('the full-policy claim names the app screen as a summary that '
         'links here, not "the same document" (issue #1164)', () {
       // The app's screen renders a 1.2k-char ARB summary, so the old
