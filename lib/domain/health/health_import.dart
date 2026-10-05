@@ -515,7 +515,9 @@ abstract interface class HealthImportRunner {
 ///   pass with [HealthImportSummary.firstImportNotStarted] before the
 ///   permission is even probed. Unbinding or re-binding re-gates it.
 /// * **never prompts.** No `bindProfile` re-write, no
-///   `requestWriteAuthorization` — the OS permission sheet has no place in
+///   `requestImportAuthorization` (the tap import's own request, Issue
+///   #1515) and no `requestWriteAuthorization` — the OS permission sheet
+///   has no place in
 ///   a pass the user did not start. Instead the OS permission is *probed*
 ///   (`HealthPermissionProbe.importPermissionStatus`, Issue #1491: the
 ///   reads the import performs where the store discloses them — Health

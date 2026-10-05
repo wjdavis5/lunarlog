@@ -24,7 +24,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 /// The guarded [HealthPlatformStore] methods a background import must
-/// never call — every write, the authorization prompt, the deletion
+/// never call — every write, both authorization prompts (the write path's
+/// and, since Issue #1515, the tap import's own), the deletion
 /// propagation, and the native-mirror binding writes. Deliberately
 /// NOT forbidden: `isAvailable`, `permissionStatus`,
 /// `importPermissionStatus`, and `openPermissionSettings` (the unguarded,
@@ -41,6 +42,7 @@ const List<String> _forbiddenWriteSurface = [
   'writeBasalBodyTemperature',
   'deleteRecords',
   'requestWriteAuthorization',
+  'requestImportAuthorization',
   'bindProfile',
   'unbindProfile',
 ];
@@ -135,7 +137,8 @@ void main() {
     });
 
     test('importInBackground is prompt-free: no bindProfile, no '
-        'requestWriteAuthorization (the probe replaces the prompt)', () {
+        'requestWriteAuthorization, no requestImportAuthorization (the '
+        'probe replaces the prompt)', () {
       final source = _stripComments(
         _read('lib/data/health/health_import_service.dart'),
       );
@@ -198,11 +201,17 @@ void main() {
             (name) =>
                 name.startsWith('write') ||
                 name == 'deleteRecords' ||
-                name == 'requestWriteAuthorization',
+                // Every permission prompt, whichever direction it asks for
+                // (Issue #1515 added the import's own).
+                name.startsWith('request'),
           )
           .toSet();
 
       expect(channelWrites, isNotEmpty);
+      expect(
+        channelWrites,
+        containsAll(['requestWriteAuthorization', 'requestImportAuthorization']),
+      );
       for (final name in channelWrites) {
         expect(
           _forbiddenWriteSurface,
@@ -272,6 +281,86 @@ void main() {
         ),
         contains('.permissionStatus()'),
       );
+    });
+  });
+
+  // Issue #1515. There are two permission requests and each belongs to one
+  // direction, like the two probes above: `requestImportAuthorization` is
+  // the tap import's (on Android the reads and no write permission) and
+  // `requestWriteAuthorization` is the write pass's. The import used to
+  // ask through the write pass's, so someone who had declined the writes
+  // was shown them again on every tap of Import. A future edit that
+  // crosses the two fails here.
+  group('Issue #1515: each direction asks through its own request', () {
+    test('the tap import raises the import\'s request and never the write '
+        'path\'s', () {
+      final source = _stripComments(
+        _read('lib/data/health/health_import_service.dart'),
+      );
+      // From importNow's signature to the next entry point's, rather than a
+      // brace match: its named-parameter braces would end the match at the
+      // parameter list.
+      final start = source.indexOf('Future<HealthImportSummary> importNow(');
+      final end = source.indexOf(
+        'Future<HealthImportSummary> importInBackground(',
+      );
+      expect(start, isNonNegative);
+      expect(end, greaterThan(start));
+      final body = source.substring(start, end);
+
+      expect('.requestImportAuthorization('.allMatches(body), hasLength(1));
+      // And nowhere in the service at all — importNow is its only prompt.
+      expect(source, isNot(contains('.requestWriteAuthorization(')));
+      expect('.requestImportAuthorization('.allMatches(source), hasLength(1));
+    });
+
+    test('the write direction never raises the import\'s request', () {
+      for (final path in [
+        'lib/data/health/health_flow_write_service.dart',
+        'lib/data/health/health_flow_write_coordinator.dart',
+        'lib/data/health/health_sync_deletion_service.dart',
+        'lib/data/health/health_sync_tombstone_coordinator.dart',
+      ]) {
+        expect(
+          _stripComments(_read(path)),
+          isNot(contains('requestImportAuthorization')),
+          reason: '$path writes; the import\'s request is not its to raise',
+        );
+      }
+      // And the write pass still has its own, raised in exactly one place.
+      expect(
+        '.requestWriteAuthorization('.allMatches(
+          _stripComments(
+            _read('lib/data/health/health_flow_write_service.dart'),
+          ),
+        ),
+        hasLength(1),
+      );
+    });
+
+    test('the screen raises neither: it only reads the probe', () {
+      final source = _stripComments(
+        _read('lib/ui/settings/health_sync_screen.dart'),
+      );
+
+      expect(source, isNot(contains('requestWriteAuthorization')));
+      expect(source, isNot(contains('requestImportAuthorization')));
+    });
+
+    test('the status line asks the read-side question only behind the '
+        'platform fact, never by comparing the two answers', () {
+      final source = _stripComments(
+        _read('lib/ui/settings/health_sync_screen.dart'),
+      );
+
+      // One place asks it, and that place checks the fact first.
+      expect('.importPermissionStatus()'.allMatches(source), hasLength(1));
+      final fact = source.indexOf('if (!probe.readAccessDisclosed) return null;');
+      final asked = source.indexOf('.importPermissionStatus()');
+      expect(fact, isNonNegative,
+          reason: 'the read-side answer must be withheld where the store '
+              'does not disclose read access');
+      expect(fact, lessThan(asked));
     });
   });
 

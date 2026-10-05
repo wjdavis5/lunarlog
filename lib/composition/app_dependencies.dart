@@ -791,8 +791,9 @@ HealthFlowWriteCoordinator? buildHealthFlowWriteCoordinator({
 ///
 /// It is handed the read port (`createHealthImportSource`) and the write
 /// port (`createHealthPlatform`) from one platform, so `bindProfile` (the
-/// native guard mirror) and `requestWriteAuthorization` (which now also
-/// requests the read types) are the same calls the write path makes.
+/// native guard mirror) is the same call the write path makes; its
+/// permission request is the import's own, `requestImportAuthorization`
+/// (issue #1515).
 /// Constructs the concrete import service both seams share (Issues #217
 /// and #458), or null when the feature is gated off — the same
 /// `AppConfig.hasHealthSync` plus wired-store gate. Internal so
@@ -853,9 +854,10 @@ typedef HealthImportSeams = ({
 ///
 /// The service is handed the read port (`createHealthImportSource`) and
 /// the write port (`createHealthPlatform`) from one platform, so
-/// `bindProfile` (the native guard mirror) and `requestWriteAuthorization`
-/// (which now also requests the read types) are the same calls the write
-/// path makes. Each seam stays typed down to its narrow interface: the
+/// `bindProfile` (the native guard mirror) is the same call the write path
+/// makes; its permission request is the import's own,
+/// `requestImportAuthorization` (issue #1515: on Android the reads and no
+/// write permission). Each seam stays typed down to its narrow interface: the
 /// coordinator can neither prompt nor reach a write port even by mistake
 /// (its runner view is [HealthBackgroundImportRunner], `importInBackground`
 /// only) and `lib/ui` sees only [HealthImportRunner].

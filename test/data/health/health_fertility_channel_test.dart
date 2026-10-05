@@ -96,6 +96,7 @@ void main() {
   }) => MethodChannelHealthPlatform(
     binding: HealthSyncBinding(FakeSettingsStore(seed)),
     minorBindingAllowed: true,
+    readAccessDisclosed: true,
   );
 
   test('a denied cervical-mucus write refuses without touching the channel',

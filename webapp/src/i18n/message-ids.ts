@@ -234,6 +234,8 @@ export const MESSAGE_IDS = [
   "healthSyncPermissionGranted",
   "healthSyncPermissionNotAsked",
   "healthSyncPermissionDenied",
+  "healthSyncPermissionReadingOnly",
+  "healthSyncPermissionWritingOnly",
   "healthSyncPermissionUnavailable",
   "healthSyncPermissionOpenSettings",
   "healthSyncImportUpdatedDays",

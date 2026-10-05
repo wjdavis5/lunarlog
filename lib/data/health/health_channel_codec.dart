@@ -13,6 +13,7 @@
 /// | `bind` | guard args | result string |
 /// | `unbind` | none | `null` |
 /// | `requestWriteAuthorization` | guard args | result string |
+/// | `requestImportAuthorization` (Android only) | guard args | result string |
 /// | `writeMenstrualFlow` | guard + day + `flow` + `cycleStart` + `recordId` + `recordVersionMs` | result string |
 /// | `writeIntermenstrualBleeding` | guard + day + `recordId` + `recordVersionMs` | result string |
 /// | `writeMenstrualPeriod` | guard + period + `recordId` + `recordVersionMs` | result string |
@@ -104,7 +105,11 @@
 /// #1478 covers the write permissions only — never includes it or any other
 /// read permission). The background pass's own gate is
 /// `importPermissionStatus` (issue #1491): the two record reads the import
-/// performs, and neither of these two optional extras. On iOS there is no
+/// performs, and neither of these two optional extras. Since issue #1515
+/// both extras are asked for by the import's own request
+/// (`requestImportAuthorization`) as well as by the write path's, which
+/// still carries the reads beside the writes; the import's request carries
+/// no write permission. On iOS there is no
 /// history/background split: the read set is the single menstrual-flow
 /// type, and full history is simply the query range.
 library;
@@ -122,6 +127,17 @@ abstract final class HealthChannelMethods {
   static const bind = 'bind';
   static const unbind = 'unbind';
   static const requestWriteAuthorization = 'requestWriteAuthorization';
+
+  /// The import's own permission request (Issue #1515): the reads the
+  /// import performs and Health Connect's two optional read extras, and no
+  /// write permission — raised only when one of those reads is not granted,
+  /// and answered `allowed` without a sheet when both are. Guarded like
+  /// [requestWriteAuthorization].
+  /// **Android only:** on iOS the import still asks through
+  /// [requestWriteAuthorization] — HealthKit's one sheet, which never
+  /// re-asks for a type already answered — so this name is never sent to
+  /// Swift (see `MethodChannelHealthPlatform.requestImportAuthorization`).
+  static const requestImportAuthorization = 'requestImportAuthorization';
   static const writeMenstrualFlow = 'writeMenstrualFlow';
   static const writeIntermenstrualBleeding = 'writeIntermenstrualBleeding';
   static const writeMenstrualPeriod = 'writeMenstrualPeriod';

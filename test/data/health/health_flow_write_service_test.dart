@@ -203,6 +203,30 @@ class _FakePlatform implements HealthPlatformStore {
     return importPermission;
   }
 
+  /// Issue #1515: whether the store discloses read access is the status
+  /// line's question and never a write pass's. Counted so a test can prove
+  /// the pass does not read it.
+  int readAccessDisclosedReads = 0;
+
+  @override
+  bool get readAccessDisclosed {
+    readAccessDisclosedReads++;
+    return true;
+  }
+
+  /// Issue #1515: the import's own request. The write pass has its own
+  /// ([requestWriteAuthorization]); counted so a test can prove it never
+  /// raises this one instead.
+  int importAuthCalls = 0;
+
+  @override
+  Future<HealthPlatformResult> requestImportAuthorization(
+    HealthGuardFacts facts,
+  ) async {
+    importAuthCalls++;
+    return const HealthPlatformAllowed();
+  }
+
   @override
   Future<void> openPermissionSettings() async {}
 
@@ -1525,6 +1549,61 @@ void main() {
 
       expect(report.samplesWritten, 1);
       expect(platform.authCalls, 0);
+    });
+  });
+
+  // Issue #1515. The import asks through a request of its own now, for the
+  // reads alone. Nothing about the write pass moved: it asks where it
+  // always did, through its own request, in the not-yet-asked state — and
+  // on Android that is the state someone who has only ever tapped Import is
+  // in for the writes, because being asked for the reads is not being asked
+  // for the writes.
+  group('issue #1515: the write pass still asks through its own request', () {
+    test('a first pass raises the write path\'s request, never the '
+        'import\'s, and does not ask what the store discloses', () async {
+      await settings.set(_bindingKey, _profileId);
+      platform.permission = HealthPermissionStatus.notAsked;
+
+      final report = await buildService().syncNow();
+
+      expect(platform.authCalls, 1);
+      expect(platform.importAuthCalls, 0);
+      expect(platform.readAccessDisclosedReads, 0);
+      expect(report.authorizationRequested, isTrue);
+    });
+
+    test('reads on and the writes not yet asked: the pass asks for the '
+        'writes, whatever the read side says', () async {
+      await settings.set(_bindingKey, _profileId);
+      // The reads are already allowed (she tapped Import and said yes); the
+      // write sheet has never been shown.
+      platform.importPermission = HealthPermissionStatus.granted;
+      platform.permission = HealthPermissionStatus.notAsked;
+      // She declines the writes on the sheet the pass raises.
+      platform.permissionAfterAuth = HealthPermissionStatus.denied;
+
+      final report = await buildService().syncNow();
+
+      expect(platform.authCalls, 1,
+          reason: 'never having been shown the writes must not stop the '
+              'write path from asking');
+      expect(platform.importAuthCalls, 0);
+      expect(platform.importPermissionStatusCalls, 0);
+      expect(report.blocked, isA<HealthPlatformPermissionDenied>());
+      expect(await settings.get(_cursorKey), isNull,
+          reason: 'no write access, so nothing is dated from this moment');
+    });
+
+    test('writes declined: the pass stops before either request', () async {
+      await settings.set(_bindingKey, _profileId);
+      platform.importPermission = HealthPermissionStatus.granted;
+      platform.permission = HealthPermissionStatus.denied;
+
+      final report = await buildService().syncNow();
+
+      expect(report.blocked, isA<HealthPlatformPermissionDenied>());
+      expect(platform.authCalls, 0);
+      expect(platform.importAuthCalls, 0);
     });
   });
 

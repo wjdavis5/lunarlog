@@ -1492,7 +1492,7 @@ abstract class AppLocalizations {
   /// **'Symptoms (cramps, headaches, mood, and more) can\'t be written to Health Connect — it has no symptom categories. Days logged with symptoms still sync their flow and spotting; the symptoms themselves stay in lunarlog.'**
   String get settingsHealthSyncSymptomsAndroidLimitation;
 
-  /// Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is the sentence-initial store name ('Health app' or 'Health Connect'), since this string opens with it (Issue #1053).
+  /// Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is the sentence-initial store name ('Health app' or 'Health Connect'), since this string opens with it (Issue #1053). On Android this is shown only when reading is not known to be off; see healthSyncPermissionWritingOnly (Issue #1515).
   ///
   /// In en, this message translates to:
   /// **'{source} access: granted'**
@@ -1504,11 +1504,23 @@ abstract class AppLocalizations {
   /// **'{source} access: not yet asked'**
   String healthSyncPermissionNotAsked(String source);
 
-  /// Health sync screen OS-permission status line (Issue #959): the OS write permission was denied. Shown with the settings deep link.
+  /// Health sync screen OS-permission status line (Issue #959): the OS write permission was denied. Shown with the settings deep link. On Android this is shown only when reading is not on either; see healthSyncPermissionReadingOnly (Issue #1515).
   ///
   /// In en, this message translates to:
   /// **'{source} access: denied — open Settings to change'**
   String healthSyncPermissionDenied(String source);
+
+  /// Health sync screen OS-permission status line (Issue #1515), Android only: Health Connect lets lunarlog read Menstruation and Spotting and does not let it write. The import works, by tap and in the background; nothing is written. Before #1515 this person was told 'denied'. Shown with the settings deep link. Never shown on iPhone: Apple Health does not tell an app whether it may read. Same shape as healthSyncPermissionDenied: state, dash, what to do.
+  ///
+  /// In en, this message translates to:
+  /// **'{source} access: reading only, so lunarlog can import but can\'t write — open Settings to change'**
+  String healthSyncPermissionReadingOnly(String source);
+
+  /// Health sync screen OS-permission status line (Issue #1515), Android only: the mirror of healthSyncPermissionReadingOnly. Health Connect lets lunarlog write and does not let it read Menstruation and Spotting, so logged days are written and the import reads nothing. 'Granted' alone would be misleading there. Shown with the settings deep link. Never shown on iPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'{source} access: writing only, so lunarlog can write but can\'t import — open Settings to change'**
+  String healthSyncPermissionWritingOnly(String source);
 
   /// Health sync screen OS-permission status line (Issue #959): there is no health store or permission surface on this device.
   ///
@@ -1516,7 +1528,7 @@ abstract class AppLocalizations {
   /// **'{source} access is not available on this device.'**
   String healthSyncPermissionUnavailable(String source);
 
-  /// The deep link offered on the health-sync status line only when the OS permission is denied (Issue #959).
+  /// The deep link offered under the health-sync status line whenever that line says to open Settings: the OS permission is denied (Issue #959), or on Android one direction is on and the other is off (Issue #1515).
   ///
   /// In en, this message translates to:
   /// **'Open Settings'**

@@ -96,6 +96,7 @@ void main() {
       MethodChannelHealthPlatform(
         binding: HealthSyncBinding(FakeSettingsStore(seed)),
         minorBindingAllowed: minorBindingAllowed,
+        readAccessDisclosed: true,
       );
 
   const flowWriteRecordId = '01ARZ3NDEKTSV4RRFFQ69G5FAV';
@@ -197,6 +198,7 @@ void main() {
     });
 
     test('bindProfile, requestWriteAuthorization, '
+        'requestImportAuthorization, '
         'writeIntermenstrualBleeding, and writeMenstrualPeriod all refuse '
         'identically (notOwner)', () async {
       final platform = makePlatform();
@@ -207,6 +209,12 @@ void main() {
       );
       expectRefusedWithoutInvocation(
         await platform.requestWriteAuthorization(notOwnerFacts),
+        HealthSyncCheck.notOwner,
+      );
+      // Issue #1515: the import's own request is a health-API touch like
+      // the write path's, behind the same guard.
+      expectRefusedWithoutInvocation(
+        await platform.requestImportAuthorization(notOwnerFacts),
         HealthSyncCheck.notOwner,
       );
       expectRefusedWithoutInvocation(
@@ -523,6 +531,10 @@ void main() {
       );
       expect(
         await platform.requestWriteAuthorization(_facts()),
+        isA<HealthPlatformUnavailable>(),
+      );
+      expect(
+        await platform.requestImportAuthorization(_facts()),
         isA<HealthPlatformUnavailable>(),
       );
       expect(calls, isEmpty, reason: 'no channel exists to call');
@@ -919,6 +931,113 @@ void main() {
         HealthPermissionStatus.unavailable,
       );
       expect(calls, isEmpty, reason: 'no channel exists to call');
+    });
+  });
+
+  // Issue #1515: the import asks through a request of its own. On Android
+  // that is a separate channel method, answered by a Kotlin handler that
+  // asks Health Connect for the reads and for no write permission — so
+  // tapping Import never puts the write permissions in front of someone
+  // who declined them. On iOS nothing changes: the import still asks
+  // through the one HealthKit sheet, and the read-only name is never sent
+  // to a Swift handler that does not exist. Which of the two it is turns
+  // on the same platform fact the read-side probe turns on.
+  group('the import\'s own permission request (Issue #1515)', () {
+    MethodChannelHealthPlatform makeUndisclosed() => MethodChannelHealthPlatform(
+          binding: HealthSyncBinding(
+            FakeSettingsStore({SettingsKeys.healthStoreProfileId: 'p1'}),
+          ),
+          minorBindingAllowed: true,
+          readAccessDisclosed: false,
+        );
+
+    HealthPlatformStore build(TargetPlatform platform) => createHealthPlatform(
+          platform,
+          binding: HealthSyncBinding(
+            FakeSettingsStore({SettingsKeys.healthStoreProfileId: 'p1'}),
+          ),
+          minorBindingAllowed: true,
+        );
+
+    test('where read access is disclosed it sends its own pinned method '
+        'name, with the guard args, and never the write path\'s', () async {
+      final result = await makePlatform().requestImportAuthorization(_facts());
+
+      expect(result, isA<HealthPlatformAllowed>());
+      expect(calls.single.method, 'requestImportAuthorization');
+      expect(
+        (calls.single.arguments as Map<Object?, Object?>)['profileId'],
+        'p1',
+      );
+    });
+
+    test('the write path\'s request is the same call it always was',
+        () async {
+      await makePlatform().requestWriteAuthorization(_facts());
+      await makeUndisclosed().requestWriteAuthorization(_facts());
+
+      expect(
+        calls.map((call) => call.method),
+        ['requestWriteAuthorization', 'requestWriteAuthorization'],
+      );
+    });
+
+    test('where read access is not disclosed it is the write path\'s one '
+        'sheet, exactly as before, and the read-only name is never sent',
+        () async {
+      final result = await makeUndisclosed().requestImportAuthorization(
+        _facts(),
+      );
+
+      expect(result, isA<HealthPlatformAllowed>());
+      expect(calls.single.method, 'requestWriteAuthorization');
+      expect(
+        (calls.single.arguments as Map<Object?, Object?>)['profileId'],
+        'p1',
+      );
+    });
+
+    test('native answers decode as they do for every guarded call', () async {
+      nextResult = 'permissionDenied';
+      expect(
+        await makePlatform().requestImportAuthorization(_facts()),
+        isA<HealthPlatformPermissionDenied>(),
+      );
+      nextResult = 'unavailable';
+      expect(
+        await makePlatform().requestImportAuthorization(_facts()),
+        isA<HealthPlatformUnavailable>(),
+      );
+      nextResult = 'allowed';
+      nextError = MissingPluginException();
+      expect(
+        await makePlatform().requestImportAuthorization(_facts()),
+        isA<HealthPlatformUnavailable>(),
+      );
+    });
+
+    test('the iOS adapter sends Swift only requestWriteAuthorization; the '
+        'Android adapter sends Kotlin requestImportAuthorization', () async {
+      await build(TargetPlatform.iOS).requestImportAuthorization(_facts());
+      expect(calls.single.method, 'requestWriteAuthorization');
+
+      calls.clear();
+      await build(TargetPlatform.android).requestImportAuthorization(_facts());
+      expect(calls.single.method, 'requestImportAuthorization');
+    });
+
+    test('the platform fact is readable through the probe the screen holds',
+        () {
+      HealthPermissionProbe probe(TargetPlatform platform) => build(platform);
+
+      expect(probe(TargetPlatform.iOS).readAccessDisclosed, isFalse);
+      expect(probe(TargetPlatform.android).readAccessDisclosed, isTrue);
+      expect(probe(TargetPlatform.windows).readAccessDisclosed, isFalse);
+      expect(
+        const UnsupportedHealthPlatform().readAccessDisclosed,
+        isFalse,
+        reason: 'no health store discloses nothing',
+      );
     });
   });
 }

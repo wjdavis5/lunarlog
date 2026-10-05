@@ -114,7 +114,12 @@ walkthrough:
 - **Asking.** Choosing the profile on Settings → Health Connect sync is
   the opt-in; the first write pass then opens Health Connect's permission
   sheet (writes and reads together). Until that has happened the screen
-  reads "Health Connect access: not yet asked".
+  reads "Health Connect access: not yet asked". Tapping Import asks on a
+  sheet of its own, for what the import reads and nothing else:
+  Menstruation and Spotting, with "Access past data" and background
+  access offered beside them, and no write permission. It asks only while
+  one of those two reads is off, so someone who allowed reading and not
+  writing sees no sheet when she taps Import (issue #1515).
 - **Forward-only.** A day gets a record of its own only if it was logged
   after the *write* permissions were granted. That moment is read back
   from Health Connect after the sheet closes, not taken from the sheet
@@ -142,8 +147,12 @@ walkthrough:
 - **Which permissions writing needs.** Every write permission, and no
   read permission: declining "Access past data" or background access
   does not stop writes. While any one write permission is off, nothing is
-  written and the screen reads "Health Connect access: denied — open
-  Settings to change".
+  written and the screen says so: "Health Connect access: denied — open
+  Settings to change", or, when reading Menstruation and Spotting is
+  allowed, "Health Connect access: reading only, so lunarlog can import
+  but can't write — open Settings to change" (issue #1515). The mirror
+  case, writes allowed and those reads off, reads "writing only, so
+  lunarlog can write but can't import".
 - **Turning it off.** "Stop syncing to this phone" stops writes and
   leaves what was already written in Health Connect; so does removing the
   permission there.
