@@ -22,8 +22,12 @@
 ///   option in the family would get the same glyph, which is a placeholder
 ///   in disguise.
 /// * **"Great"** (`great_digestion`, `great_stool`) — a positive assertion
-///   with no distinctive symbol; `pain_free`'s check-circle is reserved for
-///   the affirmative "none today" assertion, not "it was good".
+///   with no distinctive symbol.
+/// * **"Pain free"** (`pain_free`) — it had a tick in a circle, for the
+///   affirmative "none today". On a chip a tick means one thing, "this is
+///   selected", so the unselected chip looked chosen, and beside a selected
+///   neighbour the two differed by fill colour alone. No tick-like glyph
+///   goes on an option (`category_picker_test.dart` holds that).
 /// * **Collection method, discharge, sex life, medication, tests,
 ///   supplements, appointments** — no glyph actually identifies the option
 ///   (all pills look alike; there is no pad/cup/tampon icon), and the
@@ -62,7 +66,6 @@ const Map<String, IconData> _kTagOptionIcons = {
   'headache': Icons.psychology_alt,
   'breast_tenderness': Icons.favorite_border,
   'ovulation': Icons.egg_outlined,
-  'pain_free': Icons.check_circle_outline,
 
   // Sleep
   'sleep_trouble': Icons.bedtime_outlined,
