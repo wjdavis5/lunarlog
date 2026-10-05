@@ -253,7 +253,9 @@ describe('ProfileNotesPage (issue #1255)', () => {
     ]);
     sharingMocks.fetchGuardianNotesForDate.mockResolvedValue([noteRow()]);
     renderPage();
-    const note = (await screen.findByText('Felt better after lunch.')).closest('li') as HTMLElement;
+    const note = (await screen.findByText('Felt better after lunch.')).closest(
+      'li',
+    ) as HTMLElement;
     expect(
       within(note).getByText(messages['guardianNotesGuardianFallback'] ?? 'missing'),
     ).toHaveClass('row-title');
