@@ -315,8 +315,14 @@ export type SyncPushResult = z.infer<typeof syncPushResultSchema>;
  * offered for `profile` — the web mirror of `Profile.subjectInviteAvailableAt`
  * (`lib/domain/models/profile.dart`): the relationship is daughter/son/child,
  * or the profile counts as a minor today. The server re-checks the pairing.
+ *
+ * Never for a profile someone keeps for herself: she is its subject from
+ * the moment she creates it, and the server refuses a subject invitation
+ * for a profile that already has one. The guardians page, which has the
+ * member rows, also withholds the preset once anyone is the subject.
  */
 export function subjectInviteAvailable(profile: ProfileRow, today: Date = new Date()): boolean {
+  if (profile.relationship === 'self') return false;
   if (
     profile.relationship === 'daughter' ||
     profile.relationship === 'son' ||

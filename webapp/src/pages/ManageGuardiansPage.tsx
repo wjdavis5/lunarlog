@@ -224,7 +224,12 @@ export function ManageGuardiansPage() {
           profileId={profileId}
           profileName={profile.display_name}
           callerRole={myRole}
-          subjectAvailable={subjectInviteAvailable(profile)}
+          // Not once the profile has its subject: it has one, and the
+          // server refuses a second subject invitation.
+          subjectAvailable={
+            subjectInviteAvailable(profile) &&
+            !(guardians.data ?? []).some((row) => row.status === 'accepted' && row.is_subject)
+          }
         />
       ) : null}
     </main>
@@ -304,7 +309,9 @@ function GuardianRowItem(props: {
         : roleLabel;
   const roleLine = [
     rowKind === 'role' ? null : roleLabel,
-    props.row.is_subject ? t('manageGuardiansSubjectBadge') : null,
+    // Not on the caller's own row: "You" already says whose it is, and
+    // "(her profile)" beside it spoke about her in the third person.
+    props.row.is_subject && !props.isMe ? t('manageGuardiansSubjectBadge') : null,
   ]
     .filter((part) => part !== null)
     .join(DOT_SEPARATOR);

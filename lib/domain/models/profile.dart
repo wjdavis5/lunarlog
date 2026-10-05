@@ -148,8 +148,16 @@ class Profile {
   /// preset's own rules independently. Shared by Manage Guardians and the
   /// first-run invite step (issue #804) so both surfaces answer it
   /// identically.
+  ///
+  /// Never for a profile someone keeps for herself (issue #1509): she is
+  /// its subject from the moment she creates it (issue #1499), a profile
+  /// has one subject, and the server refuses a subject invitation for a
+  /// profile that already has one. A minor tracking her own cycle was
+  /// offered an invitation to herself. Manage Guardians, which has the
+  /// member rows, also withholds the preset once anyone is the subject.
   bool subjectInviteAvailableAt(DateTime today) {
     final relationship = this.relationship;
+    if (relationship == ProfileRelationship.self) return false;
     final childRelationship = relationship == ProfileRelationship.daughter ||
         relationship == ProfileRelationship.son ||
         relationship == ProfileRelationship.child;

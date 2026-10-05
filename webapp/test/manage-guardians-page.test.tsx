@@ -236,16 +236,38 @@ describe('ManageGuardiansPage (issue #1255)', () => {
     expect(row.querySelector('.row-sub')).toBeNull();
   });
 
-  it('keeps the profile badge beneath an unnamed row that is its subject', async () => {
+  it('keeps the profile badge beneath a named row that is its subject', async () => {
+    sharingMocks.fetchGuardians.mockResolvedValue([
+      guardianRow(),
+      guardianRow({
+        id: '4f4f4f4f-4f4f-4f4f-8f4f-4f4f4f4f4f4f',
+        user_id: OTHER,
+        role: 'caregiver',
+        display_name: 'Noor',
+        is_subject: true,
+      }),
+    ]);
+    renderPage();
+    const title = await screen.findByText(exactText('Noor'));
+    const row = title.closest('li') as HTMLElement;
+    expect(row.querySelector('.row-sub')).toHaveTextContent(
+      `${messages['guardianRoleLabelCaregiver']} · ${messages['manageGuardiansSubjectBadge']}`,
+    );
+  });
+
+  // Since the person who keeps her own profile is its subject, the badge
+  // would sit on her own row and speak about her in the third person.
+  it("leaves the profile badge off the caller's own row", async () => {
     sharingMocks.fetchGuardians.mockResolvedValue([
       guardianRow({ display_name: null, is_subject: true }),
     ]);
     renderPage();
     const title = await screen.findByText(exactText(messages['guardianNotesYou'] ?? 'missing'));
     const row = title.closest('li') as HTMLElement;
-    expect(row.querySelector('.row-sub')).toHaveTextContent(
-      `${messages['guardianRoleLabelPrimaryGuardian']} · ${messages['manageGuardiansSubjectBadge']}`,
+    expect(row.querySelector('.row-sub')?.textContent).toBe(
+      messages['guardianRoleLabelPrimaryGuardian'],
     );
+    expect(row).not.toHaveTextContent(messages['manageGuardiansSubjectBadge'] ?? 'missing');
   });
 
   it('renders the screen title and both guardian rows with role labels', async () => {
@@ -269,13 +291,22 @@ describe('ManageGuardiansPage (issue #1255)', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows the subject badge on a subject membership', async () => {
-    sharingMocks.fetchGuardians.mockResolvedValue([guardianRow({ is_subject: true })]);
+  it("shows the subject badge on someone else's subject membership", async () => {
+    sharingMocks.fetchGuardians.mockResolvedValue([
+      guardianRow(),
+      guardianRow({
+        id: '4f4f4f4f-4f4f-4f4f-8f4f-4f4f4f4f4f4f',
+        user_id: OTHER,
+        role: 'caregiver',
+        display_name: 'Noor',
+        is_subject: true,
+      }),
+    ]);
     renderPage();
     expect(
       await screen.findByText(
         exactText(
-          `${messages['guardianRoleLabelPrimaryGuardian']} · ${messages['manageGuardiansSubjectBadge']}`,
+          `${messages['guardianRoleLabelCaregiver']} · ${messages['manageGuardiansSubjectBadge']}`,
         ),
       ),
     ).toBeInTheDocument();
@@ -732,6 +763,43 @@ describe('ManageGuardiansPage role ladder (issue #1285)', () => {
         expect.objectContaining({ role: 'caregiver', subject: false }),
       );
     });
+  });
+
+  // The fixture profile is a daughter's, so the "her own profile" preset
+  // applies until she has joined. A profile has one subject, and the server
+  // refuses a second subject invitation.
+  const subjectOption = (messages['inviteSubjectOption'] ?? 'missing').replace(
+    '{name}',
+    'Maya',
+  );
+  const inviteOptions = async () =>
+    Array.from(
+      (
+        (await screen.findByLabelText(
+          messages['sharingInviteGuardianRoleLabel'] ?? '',
+        )) as HTMLSelectElement
+      ).querySelectorAll('option'),
+    ).map((option) => option.textContent);
+
+  it('offers the "her own profile" invitation while the profile has no subject', async () => {
+    renderPage();
+    expect(await inviteOptions()).toContain(subjectOption);
+  });
+
+  it('withholds it once someone is the subject', async () => {
+    sharingMocks.fetchGuardians.mockResolvedValue([
+      guardianRow(),
+      guardianRow({
+        id: '4f4f4f4f-4f4f-4f4f-8f4f-4f4f4f4f4f4f',
+        user_id: OTHER,
+        role: 'caregiver',
+        display_name: 'Noor',
+        is_subject: true,
+      }),
+    ]);
+    renderPage();
+    await screen.findByText(exactText('Noor'));
+    expect(await inviteOptions()).not.toContain(subjectOption);
   });
 
   it("a primary guardian's invite form still offers the co_parent preset by default", async () => {
