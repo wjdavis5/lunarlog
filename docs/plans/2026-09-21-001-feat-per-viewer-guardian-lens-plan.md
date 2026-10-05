@@ -50,9 +50,10 @@ lens.
 > guardian of her own profile once her membership row had synced. Issue
 > #1499 restores the decision on the server:
 > `supabase/migrations/20261005143105_self_profile_subject.sql` stamps
-> `is_subject` on the accepted primary guardian of a profile whose
-> relationship is `self`, and backfills the rows that already existed. The
-> client still reads only the marker. The text above is left as written.
+> `is_subject` on the owner of a profile she creates for herself or marks
+> as her own (relationship `self`), and backfills the rows that already
+> existed. The client still reads only the marker. The text above is left
+> as written.
 
 The surface this plan describes does not exist yet, and the issue's own
 citations have drifted (its `lib/ui/overview/month_calendar.dart`,
@@ -92,9 +93,13 @@ permission: a viewer still cannot write.
 > and still right, but two statements in this decision no longer hold.
 > First, the marker is not stamped only by the subject-invitation accept
 > path and `accept_ownership_transfer`: the server also stamps it on the
-> accepted primary guardian of a profile whose `relationship` is `self`,
-> and clears it again when the relationship leaves `self` (unless the
-> profile was transferred to that owner, whose marker is the transfer's).
+> owner (the accepted primary guardian) of a profile whose `relationship`
+> is `self`, when she creates it or when she herself sets the relationship
+> to `self`. It clears that marker again when she herself changes the
+> relationship away from `self`, unless the profile was transferred to her
+> (the marker is then the transfer's) or has a live private note, which the
+> change would otherwise unmask. A relationship edit by anyone else, a
+> co-parent included, moves no marker.
 > Second, `relationship == self` therefore *is* consulted: by the server,
 > when it stamps the marker, and still never by the client resolver. So a
 > primary guardian who created the profile for herself resolves to the

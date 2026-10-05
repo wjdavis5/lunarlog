@@ -34,9 +34,12 @@
 --      profile row already exists (with its relationship) when the creation
 --      trigger inserts the membership.
 --   2. sync_self_profile_subject_marker() -- AFTER UPDATE OF relationship on
---      profiles. Changing the relationship TO 'self' stamps the accepted
---      primary_guardian row; changing it AWAY from 'self' clears the marker
---      this rule stamped (see "Telling markers apart").
+--      profiles. When the owner herself changes the relationship TO 'self'
+--      her accepted primary_guardian row is stamped; when she changes it
+--      AWAY from 'self' the marker this rule stamped is cleared (see
+--      "Telling markers apart"), unless the profile has a live private note
+--      (see "Whose edit moves the marker"). Anyone else's edit moves
+--      nothing.
 --   3. yield_self_profile_subject_marker() -- AFTER INSERT OR UPDATE OF
 --      is_subject, status on profile_guardians. One subject per profile:
 --      when a non-primary membership becomes the accepted subject (a subject
@@ -75,6 +78,36 @@
 --   * otherwise the profile was never transferred to her, no invitation and
 --     no transfer can have marked the row, and a marker on it is this
 --     rule's. That is the only marker steps 2 and 3 ever clear.
+--
+-- Whose edit moves the marker (step 2). relationship is ordinary profile
+-- metadata: a co_parent may edit it (sync_push's role check, and the
+-- column's own update grant). The marker is not ordinary -- it decides
+-- whose private notes the server masks from whom, and a profile with no
+-- subject is not masked at all. So a relationship edit moves the marker
+-- only when it is the owner's own statement about her own profile, and it
+-- never unmasks a private note:
+--   * Who. Step 2 acts only when the caller is the profile's accepted
+--     primary guardian -- the row it would write has user_id = auth.uid().
+--     A change made by anyone else (a co_parent, the service role, any
+--     statement with no auth.uid()) leaves every marker exactly as it was,
+--     in BOTH directions: it neither clears the owner's marker nor stamps
+--     it. auth.uid() reads the request's JWT claims, so it is the caller's
+--     id here even though this function and sync_push are both SECURITY
+--     DEFINER. Creation is not this path: there the creator is the caller,
+--     and step 1 stamps the membership as it is inserted.
+--   * Private notes. When the owner herself changes the relationship away
+--     from 'self', her marker is cleared only if the profile has no live
+--     day entry marked private (day_entries.note_private on a row that is
+--     not deleted -- note_private is the one test mask_day_entry_note,
+--     sync_pull, sync_pull_day_entries and export_account_data use). If it
+--     has one, the marker stays and she remains the subject: changing a
+--     description field must not make her private notes readable by every
+--     guardian as a side effect.
+--   A consequence, accepted: a self-stamped marker can outlive the
+--   relationship that produced it (a co_parent relabelled the profile, or a
+--   private note held it), and a profile a co_parent labelled 'self' has an
+--   unmarked owner until she says so herself. The marker follows what the
+--   owner said, not what the field currently reads.
 --
 -- Reaching devices. The incremental pull keys on server_version
 -- (sync_pull's `server_version > cursor`), stamped by the BEFORE INSERT OR
@@ -162,7 +195,8 @@ create trigger profile_guardians_stamp_self_subject
   execute function public.stamp_self_profile_subject_membership();
 
 -- ---------------------------------------------------------------------------
--- 2. The relationship change: to 'self' stamps, away from 'self' clears
+-- 2. The relationship change, when it is the owner's own: to 'self' stamps,
+--    away from 'self' clears unless a private note would be unmasked
 -- ---------------------------------------------------------------------------
 
 create or replace function public.sync_self_profile_subject_marker()
@@ -171,15 +205,31 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  -- The caller, from the request's JWT claims: SECURITY DEFINER changes the
+  -- role this function runs as, not whose request it is, so this is the
+  -- caller's id even when the profile write came from inside sync_push.
+  v_uid uuid := (select auth.uid());
 begin
   -- The trigger's WHEN clause has already established that the
   -- relationship changed.
+  --
+  -- Only the owner's own edit moves the marker. Both statements below can
+  -- write one row only -- the profile's accepted primary_guardian row --
+  -- and only when that row is the caller's own (g.user_id = v_uid). A
+  -- co_parent's edit, the service role's, or any statement with no
+  -- auth.uid() matches nothing, in either direction.
+  if v_uid is null then
+    return null;
+  end if;
+
   if new.relationship = 'self' then
     update public.profile_guardians g
        set is_subject = true
      where g.profile_id = new.id
        and g.role = 'primary_guardian'
        and g.status = 'accepted'
+       and g.user_id = v_uid
        and g.is_subject is not true
        -- One subject per profile (see step 1).
        and not exists (
@@ -200,8 +250,19 @@ begin
      where g.profile_id = new.id
        and g.role = 'primary_guardian'
        and g.status = 'accepted'
+       and g.user_id = v_uid
        and g.is_subject is true
-       and new.transferred_to_user_id is distinct from g.user_id;
+       and new.transferred_to_user_id is distinct from g.user_id
+       -- Never unmask: a profile with no subject is not masked at all, so
+       -- the marker stays while any live day entry is marked private
+       -- (note_private, the test every masking path uses).
+       and not exists (
+         select 1
+           from public.day_entries de
+          where de.profile_id = new.id
+            and de.deleted_at is null
+            and de.note_private
+       );
   end if;
 
   return null;
@@ -209,7 +270,7 @@ end;
 $$;
 
 comment on function public.sync_self_profile_subject_marker() is
-  'Issue #1499: AFTER UPDATE OF relationship on profiles. A change to ''self'' stamps is_subject = true on the profile''s accepted primary_guardian row (unless the profile already has a different accepted subject); a change away from ''self'' clears that marker again, except on a profile transferred to its current owner (profiles.transferred_to_user_id = the row''s user_id), whose marker came from accept_ownership_transfer. Never raises, so it cannot reject the profile write that fired it. Trigger function only: EXECUTE revoked from public, anon, and authenticated.';
+  'Issue #1499: AFTER UPDATE OF relationship on profiles. Acts only when the caller is the profile''s accepted primary guardian (that row''s user_id = auth.uid()): her change to ''self'' stamps is_subject = true on her row (unless the profile already has a different accepted subject); her change away from ''self'' clears that marker again, except on a profile transferred to her (profiles.transferred_to_user_id = her user_id), whose marker came from accept_ownership_transfer, and except while the profile has a live day entry with note_private, so that a relationship edit never unmasks a private note. A change made by anyone else (a co_parent, the service role, no auth.uid()) leaves every marker as it was, in both directions. Never raises, so it cannot reject the profile write that fired it. Trigger function only: EXECUTE revoked from public, anon, and authenticated.';
 
 create trigger profiles_after_relationship_self_subject
   after update of relationship on public.profiles
@@ -271,13 +332,16 @@ revoke all on function public.yield_self_profile_subject_marker() from public, a
 -- ---------------------------------------------------------------------------
 
 comment on column public.profile_guardians.is_subject is
-  'Issue #802: this member is the person the profile is about (the subject), distinct from role. Nullable — null and false mean the same thing (a helper membership). Written only on the server: by accept_guardian_invitation (a subject invitation), by accept_ownership_transfer, and, since issue #1499, by the triggers that mark the accepted primary_guardian of a profile whose relationship is ''self'' (and clear that marker again when the relationship leaves ''self'' or an invited subject is accepted). No authenticated column grant exists, so a client cannot set or clear it. Server-visible and synced (sync_pull selects the whole row), unlike a client-side flag (#518''s lesson). Orthogonal to profiles.is_minor/birth_year (#295): membership identity vs profile fact.';
+  'Issue #802: this member is the person the profile is about (the subject), distinct from role. Nullable — null and false mean the same thing (a helper membership). Written only on the server: by accept_guardian_invitation (a subject invitation), by accept_ownership_transfer, and, since issue #1499, by the triggers that mark the owner (the accepted primary_guardian) of a profile whose relationship is ''self'': when she creates it, or when she herself sets the relationship to ''self''. That marker is cleared again when she herself changes the relationship away from ''self'' and the profile has no live private note, or when an invited subject is accepted; a relationship edit by anyone else moves no marker. No authenticated column grant exists, so a client cannot set or clear it. Server-visible and synced (sync_pull selects the whole row), unlike a client-side flag (#518''s lesson). Orthogonal to profiles.is_minor/birth_year (#295): membership identity vs profile fact.';
 
 -- ---------------------------------------------------------------------------
 -- 6. Backfill, by the same rule
 -- ---------------------------------------------------------------------------
 -- Live profiles whose relationship is 'self': their accepted
 -- primary_guardian row, only where the profile has no accepted subject.
+-- The backfill reads the relationship as it stands: who set it on an
+-- existing row is not recorded anywhere, so step 2's "the owner's own
+-- edit" test cannot be applied to the past.
 -- profile_guardians_one_primary_uq allows at most one such row per profile.
 -- Idempotent: a stamped row no longer matches `is_subject is not true`.
 -- The UPDATE fires profile_guardians_set_server_version for each row, so

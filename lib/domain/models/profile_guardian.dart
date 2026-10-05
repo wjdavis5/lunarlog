@@ -91,10 +91,11 @@ class ProfileGuardian {
   /// profile fact (that is [Profile.isMinor]/birth year, issue #295 —
   /// the two never derive from each other). Stamped only by the server: by
   /// the subject invitation path, by `accept_ownership_transfer`, and
-  /// (issue #1499) on the owner of a profile whose relationship is `self`.
-  /// Synced with the row; false covers both a helper membership and a
-  /// pre-#802 server row (the pull decodes a missing/null `is_subject` as
-  /// false).
+  /// (issue #1499) on the owner of a profile she created for herself or
+  /// marked as her own (relationship `self`; a co-parent's edit of the
+  /// relationship moves no marker). Synced with the row; false covers both
+  /// a helper membership and a pre-#802 server row (the pull decodes a
+  /// missing/null `is_subject` as false).
   final bool isSubject;
 
   ProfileGuardian copyWith({

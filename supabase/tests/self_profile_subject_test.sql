@@ -9,9 +9,9 @@
 --      EXECUTE posture, and that the marker is still unwritable by a client.
 --   2. Creation: a 'self' profile makes its creator the subject; a profile
 --      created with another relationship (or none) does not.
---   3. Relationship changes: to 'self' stamps, away from 'self' clears, and
---      an edit that does not move the relationship across 'self' writes
---      nothing to the membership row.
+--   3. Relationship changes by the owner: to 'self' stamps, away from
+--      'self' clears, and an edit that does not move the relationship
+--      across 'self' writes nothing to the membership row.
 --   4. Ownership transfer: a transferred profile keeps its subject whatever
 --      the relationship then does, and transferring a self-stamped profile
 --      ends with one subject.
@@ -20,9 +20,14 @@
 --      self-stamped profile ends with exactly one subject.
 --   6. Private-note masking (#849) now protects the self-owner's private
 --      note from another guardian, and she can still edit it herself.
---   7. A primary_guardian row that becomes accepted is stamped by the same
+--   7. Whose relationship edit moves the marker: only the owner's own
+--      (the caller is the profile's accepted primary guardian), through
+--      sync_push as each role and with no auth.uid() at all; and the
+--      owner's own edit away from 'self' never clears while a live day
+--      entry carries a private note.
+--   8. A primary_guardian row that becomes accepted is stamped by the same
 --      rule, and not beside an invited subject.
---   8. The backfill (simulate-then-reconcile, the caregiver_mode_backfill
+--   9. The backfill (simulate-then-reconcile, the caregiver_mode_backfill
 --      precedent): rows that match and rows that do not, then the
 --      migration's statement verbatim, then idempotence. Last on purpose:
 --      the statement is table-wide, so every section above has already
@@ -34,7 +39,7 @@
 -- was given, and every stamped or cleared row -- the backfilled ones
 -- included -- must come back from sync_pull past that cursor.
 begin;
-select plan(60);
+select plan(75);
 
 -- ---------------------------------------------------------------------------
 -- Helpers
@@ -535,7 +540,179 @@ select is(
 );
 
 -- ---------------------------------------------------------------------------
--- 7. A primary_guardian row that BECOMES accepted is stamped by the same
+-- 7. Whose relationship edit moves the marker, and what a private note
+--    holds in place.
+--
+--    A relationship edit moves the marker only when it is the owner's own
+--    statement about her own profile: the caller is the profile's accepted
+--    primary guardian. Anyone else's edit -- a co-parent's, or one made with
+--    no auth.uid() at all -- leaves every marker as it was, in both
+--    directions. And the owner's own edit away from self does not clear her
+--    marker while a live day entry of the profile carries a private note,
+--    so changing a description field can never unmask one.
+--
+--    Every edit by a person below goes through sync_push as that person.
+--    That is also the proof that the SECURITY DEFINER trigger function
+--    still reads the caller's id when it fires from inside the SECURITY
+--    DEFINER RPC: the owner's push moves the marker and the co-parent's
+--    identical push does not.
+-- ---------------------------------------------------------------------------
+create function pg_temp.private_note_masked(p_entry text)
+returns boolean language sql as $$
+  select (e ->> 'note') is null and (e ->> 'note_private') = 'true'
+    from jsonb_array_elements(public.sync_pull('{}'::jsonb) -> 'day_entries') e
+   where e ->> 'id' = p_entry
+$$;
+
+-- 7a. Nora's self profile (9120) with Omar as co-parent. No private notes,
+--     so nothing but the caller decides what happens here.
+select tests.create_supabase_user('nora');
+select tests.create_supabase_user('omar');
+select tests.authenticate_as('nora');
+select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora","relationship":"self"}');
+select public.create_guardian_invitation(tests.ulid(9120), 'co_parent', 'Omar', pg_temp.token(81), 48);
+select tests.authenticate_as('omar');
+select public.accept_guardian_invitation(pg_temp.token(81), 'Omar');
+select tests.authenticate_as('nora');
+select pg_temp.remember_cursor('nora');
+
+-- A co-parent changes self to another relationship.
+select tests.authenticate_as('omar');
+select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora","relationship":"partner"}');
+select is(
+  (select relationship from public.profiles where id = tests.ulid(9120)),
+  'partner',
+  'who: setup -- a co-parent''s relationship edit is itself applied to the profile'
+);
+select is(
+  pg_temp.marker(tests.ulid(9120), 'nora'),
+  'primary_guardian:accepted:true',
+  'who: a co-parent changing self to another relationship leaves the owner''s marker'
+);
+select tests.authenticate_as('nora');
+select is(
+  pg_temp.pulled_marker('nora', tests.ulid(9120), 'nora'),
+  'absent',
+  'who: and writes nothing to the owner''s membership row'
+);
+
+-- The owner makes the same kind of edit herself (back to self, then away):
+-- hers is the edit that counts.
+select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora","relationship":"self"}');
+select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora","relationship":"other"}');
+select is(
+  pg_temp.marker(tests.ulid(9120), 'nora'),
+  'primary_guardian:accepted:false',
+  'who: the owner changing self to another relationship herself, with no private note, clears her marker'
+);
+
+-- A co-parent changes another relationship to self.
+select tests.authenticate_as('omar');
+select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora","relationship":"self"}');
+select is(
+  pg_temp.marker(tests.ulid(9120), 'nora') || ' / ' || pg_temp.marker(tests.ulid(9120), 'omar'),
+  'primary_guardian:accepted:false / co_parent:accepted:false',
+  'who: a co-parent changing a relationship to self stamps nobody'
+);
+
+-- 7b. No auth.uid() at all (the service role): neither direction. The
+--     profile stands at self with its owner unmarked; away and back to self
+--     must not stamp her.
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
+update public.profiles set relationship = 'other' where id = tests.ulid(9120);
+update public.profiles set relationship = 'self' where id = tests.ulid(9120);
+select tests.clear_authentication();
+select is(
+  pg_temp.marker(tests.ulid(9120), 'nora'),
+  'primary_guardian:accepted:false',
+  'who: a change to self made with no auth.uid() (the service role) stamps nobody'
+);
+
+-- The owner says it herself (away, then to self): stamped.
+select tests.authenticate_as('nora');
+select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora","relationship":"other"}');
+select pg_temp.push_profile(tests.ulid(9120), '{"display_name":"Nora","relationship":"self"}');
+select is(
+  pg_temp.marker(tests.ulid(9120), 'nora'),
+  'primary_guardian:accepted:true',
+  'who: the owner changing another relationship to self herself stamps her'
+);
+
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
+update public.profiles set relationship = 'other' where id = tests.ulid(9120);
+select tests.clear_authentication();
+select is(
+  pg_temp.marker(tests.ulid(9120), 'nora'),
+  'primary_guardian:accepted:true',
+  'who: a change away from self made with no auth.uid() (the service role) leaves the marker'
+);
+
+-- 7c. Private notes, on Bea's profile (9104): she is its subject, Gus is a
+--     co-parent, and entry 9150 is a live day entry with a private note.
+--     First the co-parent's edit away from self.
+select tests.authenticate_as('gus');
+select pg_temp.push_profile(tests.ulid(9104), '{"display_name":"Bea","relationship":"partner"}');
+select is(
+  pg_temp.marker(tests.ulid(9104), 'bea'),
+  'primary_guardian:accepted:true',
+  'private note: a co-parent changing self to another relationship leaves the owner the subject'
+);
+select is(
+  pg_temp.private_note_masked(tests.ulid(9150)),
+  true,
+  'private note: and that co-parent''s pull of her private note is still masked'
+);
+
+-- Then the owner's own edit away from self, while the private note is live.
+select tests.authenticate_as('bea');
+select pg_temp.push_profile(tests.ulid(9104), '{"display_name":"Bea","relationship":"self"}');
+select pg_temp.push_profile(tests.ulid(9104), '{"display_name":"Bea","relationship":"other"}');
+select is(
+  pg_temp.marker(tests.ulid(9104), 'bea'),
+  'primary_guardian:accepted:true',
+  'private note: the owner changing self to another relationship keeps her marker while a live entry has a private note'
+);
+select tests.authenticate_as('gus');
+select is(
+  pg_temp.private_note_masked(tests.ulid(9150)),
+  true,
+  'private note: and the co-parent''s pull stays masked after the owner''s own edit'
+);
+
+-- Then she deletes that entry. A private note only on a deleted entry holds
+-- nothing in place.
+select tests.authenticate_as('bea');
+select is(
+  jsonb_array_length(public.sync_push(
+    '[]'::jsonb,
+    jsonb_build_array(jsonb_build_object(
+      'id', tests.ulid(9150), 'profile_id', tests.ulid(9104), 'local_date', '2026-09-01',
+      'tz', 'UTC', 'flow', 'none',
+      'updated_at', '2026-09-03T10:00:00Z', 'deleted_at', '2026-09-03T10:00:00Z'))
+  ) -> 'rejected'),
+  0,
+  'private note: setup -- the owner deletes the entry that carried it'
+);
+select tests.clear_authentication();
+select is(
+  (select (deleted_at is not null)::text || ':' || note_private::text || ':' || coalesce(note, 'null')
+     from public.day_entries where id = tests.ulid(9150)),
+  'true:true:null',
+  'private note: setup -- the deleted entry still carries note_private, and no text'
+);
+select tests.authenticate_as('bea');
+select pg_temp.push_profile(tests.ulid(9104), '{"display_name":"Bea","relationship":"self"}');
+select pg_temp.push_profile(tests.ulid(9104), '{"display_name":"Bea","relationship":"partner"}');
+select is(
+  pg_temp.marker(tests.ulid(9104), 'bea'),
+  'primary_guardian:accepted:false',
+  'private note: a private note only on a deleted entry does not hold the marker in place'
+);
+
+-- ---------------------------------------------------------------------------
+-- 8. A primary_guardian row that BECOMES accepted is stamped by the same
 --    rule (no client path does this today; the rule holds on any path).
 -- ---------------------------------------------------------------------------
 select tests.authenticate_as('eve');
@@ -583,7 +760,7 @@ select is(
 );
 
 -- ---------------------------------------------------------------------------
--- 8. The backfill (simulate-then-reconcile). Stand the fixtures up through
+-- 9. The backfill (simulate-then-reconcile). Stand the fixtures up through
 --    the real RPCs, strip the markers the triggers stamped to recreate the
 --    rows as they stood before the migration, then run the migration's
 --    statement verbatim as the migration role.

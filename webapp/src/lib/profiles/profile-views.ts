@@ -114,11 +114,13 @@ export type GuardianLens = 'subject' | 'guardian';
  *
  * The marker is stamped by the server alone: when someone accepts a "this
  * is your profile" invitation or an ownership transfer, and (issue 1499)
- * on the owner of a profile whose `relationship` is `self`. So someone who
- * created a profile for herself sees it as the subject, and an account
- * that created a profile for someone else is a guardian of it. This reads
- * only the marker; the profile's `relationship` is deliberately not
- * consulted here, as it is not in the app (the server is what reads it).
+ * on the owner of a profile she created for herself or marked as her own
+ * (`relationship` `self`; nobody else's edit of that field moves the
+ * marker). So someone who created a profile for herself sees it as the
+ * subject, and an account that created a profile for someone else is a
+ * guardian of it. This reads only the marker; the profile's
+ * `relationship` is deliberately not consulted here, as it is not in the
+ * app (the server is what reads it).
  *
  * Presentation only. It changes no permission: what a caller may write is
  * `callerRoleFor`'s answer, and the server's.

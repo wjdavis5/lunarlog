@@ -47,8 +47,8 @@ enum GuardianLens {
 ///
 /// * The subject's own accepted membership → [GuardianLens.subject]. That
 ///   includes a primary guardian who created the profile for herself: the
-///   server marks her row as the subject while the profile's relationship
-///   is `self` (issue #1499).
+///   server marks her row as the subject when she creates a profile whose
+///   relationship is `self`, or sets it to `self` herself (issue #1499).
 /// * Any other accepted membership → [GuardianLens.guardian], whatever its
 ///   role. That includes a primary guardian who created the profile for
 ///   someone else (a parent on a daughter's profile).
