@@ -121,9 +121,9 @@ walkthrough:
   having been answered: someone who allows only the reads and turns the
   writes on weeks later has nothing from those weeks written.
 - **The one thing that reaches back: a period's first day.** Once a day
-  in a period is written, that period's first and last day are written
-  with it as the period record, even if the period began before write
-  access was granted. A period record clipped to start on the first
+  in a period is written, the first and last day logged in lunarlog for
+  that period are written with it as the period record, even if the
+  period began before write access was granted. A period record clipped to start on the first
   written day would be a wrong period. The earlier days' own flow is
   still not written. The in-app screen says this in plain words.
 - **Edits and deletions.** Every daily record carries the lunarlog row's

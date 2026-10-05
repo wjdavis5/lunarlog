@@ -6650,7 +6650,7 @@
     "@healthSyncWriteForwardOnlyHealthConnect": {
       "description": "Issue #1478: forward-only write explanation plus the read-direction disclosure on Android (Health Connect). The counterpart of healthSyncWriteForwardOnly. It says 'after you allow lunarlog to write' rather than 'after sync is turned on' because the forward-only clock starts when the write permissions are actually granted: choosing a profile and then allowing only the read permissions starts nothing. The import half keeps issue #1215's wording (the first import is the person's to start)."
     },
-    "healthSyncPeriodRecordNoteHealthConnect": "Once a day in a period is written, that period's first and last day are written with it, even if the period began before you allowed lunarlog to write. Days imported from Health Connect are never written back and never change a period lunarlog has written.",
+    "healthSyncPeriodRecordNoteHealthConnect": "Once a day in a period is written, the first and last day you logged in lunarlog for that period are written with it, even if the period began before you allowed lunarlog to write. Days imported from Health Connect are never written back and never count towards a period lunarlog writes.",
     "@healthSyncPeriodRecordNoteHealthConnect": {
       "description": "Issue #1478: what a Health Connect period record covers, in plain words. The one way anything logged before write access can reach Health Connect: a period that began earlier is written with its true first day, because a period clipped to start on the first written day would be a wrong period. Also states that an imported day is never written back and never starts, extends or reshapes a written period."
     },

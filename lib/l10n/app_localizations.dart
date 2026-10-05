@@ -8199,7 +8199,7 @@ abstract class AppLocalizations {
   /// Issue #1478: what a Health Connect period record covers, in plain words. The one way anything logged before write access can reach Health Connect: a period that began earlier is written with its true first day, because a period clipped to start on the first written day would be a wrong period. Also states that an imported day is never written back and never starts, extends or reshapes a written period.
   ///
   /// In en, this message translates to:
-  /// **'Once a day in a period is written, that period\'s first and last day are written with it, even if the period began before you allowed lunarlog to write. Days imported from Health Connect are never written back and never change a period lunarlog has written.'**
+  /// **'Once a day in a period is written, the first and last day you logged in lunarlog for that period are written with it, even if the period began before you allowed lunarlog to write. Days imported from Health Connect are never written back and never count towards a period lunarlog writes.'**
   String get healthSyncPeriodRecordNoteHealthConnect;
 
   /// Issue #1478: the complete list of what lunarlog writes to Health Connect on Android, with the name Health Connect itself shows for a data type in brackets wherever it differs from lunarlog's own word for it. Must match HealthConnectAdapter.kt's writtenRecordTypes and the permission sheet. Do not add symptoms: Health Connect has no symptom types.

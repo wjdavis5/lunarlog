@@ -1637,10 +1637,11 @@ void main() {
       );
       expect(
         note.data,
-        "Once a day in a period is written, that period's first and last day "
-        'are written with it, even if the period began before you allowed '
-        'lunarlog to write. Days imported from Health Connect are never '
-        'written back and never change a period lunarlog has written.',
+        'Once a day in a period is written, the first and last day you logged '
+        'in lunarlog for that period are written with it, even if the period '
+        'began before you allowed lunarlog to write. Days imported from Health '
+        'Connect are never written back and never count towards a period '
+        'lunarlog writes.',
       );
 
       // An iPhone has no period record: the note is Health Connect's alone.
