@@ -736,6 +736,32 @@ void main() {
             .dy;
         expect(ownedY, lessThan(sharedY));
 
+        // Each title is a heading to a screen reader, and sits inside no
+        // control.
+        final semantics = tester.ensureSemantics();
+        await tester.pump();
+        for (final key in ['my-profiles-header', 'shared-with-me-header']) {
+          final heading = tester.getSemantics(
+            find.descendant(
+              of: find.byKey(ValueKey(key)),
+              matching: find.byType(Text),
+            ),
+          );
+          expect(
+            heading,
+            isSemantics(isHeader: true, hasTapAction: false),
+            reason: '$key is a heading and nothing else',
+          );
+          for (var node = heading.parent; node != null; node = node.parent) {
+            expect(
+              node,
+              isSemantics(isButton: false, hasTapAction: false),
+              reason: '$key sits inside no control',
+            );
+          }
+        }
+        semantics.dispose();
+
         // Zoe's row names the shared group and Mom's viewer role.
         expect(find.text('Shared with me · Viewer'), findsOneWidget);
         // Alice's row names Mom's primary role.

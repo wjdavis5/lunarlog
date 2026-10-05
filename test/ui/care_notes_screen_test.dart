@@ -304,6 +304,41 @@ void main() {
       await disposeCare(tester, h);
     });
 
+    testWidgets(
+        'each section title is a heading to a screen reader, and is not '
+        'inside one of the controls it heads', (tester) async {
+      final handle = tester.ensureSemantics();
+      final h = await pumpCare(
+        tester,
+        currentUserId: 'user-mom',
+        seed: (db, profileId) async {
+          await db.storage.upsertCareNote(
+              id: 'n-1', profileId: profileId, body: 'First note.');
+          await db.storage.addVisitPrepItem(
+              id: 'i-1', profileId: profileId, body: 'First item.');
+        },
+      );
+
+      for (final title in ['Care notes', 'Visit prep', 'Supplies']) {
+        final heading = tester.getSemantics(find.text(title));
+        expect(
+          heading,
+          isSemantics(label: title, isHeader: true, hasTapAction: false),
+          reason: '$title is a heading and nothing else',
+        );
+        for (var node = heading.parent; node != null; node = node.parent) {
+          expect(
+            node,
+            isSemantics(isButton: false, hasTapAction: false),
+            reason: '$title sits inside no control',
+          );
+        }
+      }
+
+      handle.dispose();
+      await disposeCare(tester, h);
+    });
+
     testWidgets('AC1: a synced note names its author, or "you" for self',
         (tester) async {
       final h = await pumpCare(

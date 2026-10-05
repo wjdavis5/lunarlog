@@ -13,6 +13,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/profile.dart';
@@ -229,9 +230,8 @@ void main() {
   });
 
   testWidgets(
-      'every section title is a heading to a screen reader, and a section '
-      "with one tile does not read its title as part of that tile's label",
-      (tester) async {
+      'every section title is a heading to a screen reader, read before the '
+      'rows of its section and never as part of one', (tester) async {
     final handle = tester.ensureSemantics();
     await pumpSettings(
       tester,
@@ -243,10 +243,26 @@ void main() {
     for (final header in tester.widgetList<ListSectionHeader>(
       find.byType(ListSectionHeader),
     )) {
+      final heading = tester.getSemantics(find.text(header.title));
       expect(
-        tester.getSemantics(find.text(header.title)),
+        heading,
         isSemantics(label: header.title, isHeader: true, hasTapAction: false),
         reason: '${header.title} is a heading and nothing else',
+      );
+      // The section is a plain group with the title first. It used to be
+      // a button: the section's first tile, with the title inside it.
+      final section = heading.parent!;
+      expect(
+        section,
+        isSemantics(label: '', isButton: false, hasTapAction: false),
+        reason: 'the ${header.title} section is not itself a control',
+      );
+      expect(
+        section
+            .debugListChildrenInOrder(DebugSemanticsDumpOrder.traversalOrder)
+            .first,
+        same(heading),
+        reason: '${header.title} is read before the rows it heads',
       );
     }
 
@@ -255,8 +271,15 @@ void main() {
     final healthTile = tester.getSemantics(
       find.byKey(const ValueKey('health-sync-tile')),
     );
-    expect(healthTile, isSemantics(isHeader: false, hasTapAction: true));
+    expect(
+      healthTile,
+      isSemantics(isHeader: false, isButton: true, hasTapAction: true),
+    );
     expect(healthTile.label, isNot(startsWith('Health\n')));
+    expect(
+      healthTile.parent,
+      same(tester.getSemantics(find.text('Health')).parent),
+    );
     handle.dispose();
   });
 
