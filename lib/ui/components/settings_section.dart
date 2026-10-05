@@ -42,14 +42,16 @@ class SettingsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      key: ValueKey('settings-section-$id'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        ListSectionHeader(title: title),
-        ...children,
-        if (trailingDivider) const Divider(),
-      ],
+    return ListSectionGroup(
+      child: Column(
+        key: ValueKey('settings-section-$id'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ListSectionHeader(title: title),
+          ...children,
+          if (trailingDivider) const Divider(),
+        ],
+      ),
     );
   }
 }

@@ -35,12 +35,40 @@ class ListSectionHeader extends StatelessWidget {
     final theme = Theme.of(context);
     return Padding(
       padding: padding,
-      child: Text(
-        title,
-        style: theme.textTheme.titleSmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
+      // A heading, and a node of its own. Without `container` the title
+      // is folded into whatever it sits beside, and the heading flag lands
+      // there with it. See [ListSectionGroup] for the other half.
+      child: Semantics(
+        header: true,
+        container: true,
+        child: Text(
+          title,
+          style: theme.textTheme.titleSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
       ),
     );
   }
+}
+
+/// A titled section that is one child of a list: its [ListSectionHeader]
+/// and the rows beneath it, as a plain group to a screen reader.
+///
+/// A list child is a semantics node. Left to itself that node takes the
+/// section's first control into itself: the whole section becomes that
+/// control's button, with the title and every later row inside it, and a
+/// screen reader reaches the title after the control it heads. Settings'
+/// Health section was one button the size of the section, "Health, Health
+/// Connect sync, ...". `explicitChildNodes` keeps the section a group:
+/// the title first, then each row as a node of its own.
+class ListSectionGroup extends StatelessWidget {
+  const ListSectionGroup({super.key, required this.child});
+
+  /// The section: a [ListSectionHeader] followed by its rows.
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) =>
+      Semantics(container: true, explicitChildNodes: true, child: child);
 }
