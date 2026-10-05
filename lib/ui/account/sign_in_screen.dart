@@ -28,12 +28,6 @@
 /// Google (the branded widget, only when [AppConfig.hasGoogle] or
 /// [showGoogle] says so) — and a dismissed picker is not a failure.
 ///
-/// Issue #1096: on web neither provider renders, so a Google- or
-/// Apple-created account has no visible way in and can mint a second,
-/// empty account by mistake — a hint line under the passwordless options
-/// points that account at the emailed sign-in link or code instead
-/// ([showWebProviderHint], null means [kIsWeb]).
-///
 /// Issue #165 (form accessibility): the email + password pair sits in one
 /// [AutofillGroup] with honest hints (`email`; `password` in sign-in mode,
 /// `newPassword` in create mode so password managers offer to generate),
@@ -67,7 +61,6 @@ class SignInScreen extends StatefulWidget {
     this.showApple,
     this.showGoogle,
     this.showPasskeys,
-    this.showWebProviderHint,
     this.embedded = false,
     this.onSignedIn,
     this.onNotNow,
@@ -85,17 +78,6 @@ class SignInScreen extends StatefulWidget {
   /// (#30 U4; KTD5). The nullable override is what lets widget tests force
   /// the flag on even though [AppConfig] is compile-time const.
   final bool? showPasskeys;
-
-  /// Whether the web-only provider hint renders (issue #1096); null means
-  /// [kIsWeb]. Google and Apple sign-in have no browser surface
-  /// ([AppConfig.hasGoogle] excludes web outright,
-  /// `computeAppleSignInAvailable` is false on web), so on web neither
-  /// provider button renders and a Google- or Apple-created account's only
-  /// way in is the passwordless email — the hint says so instead of leaving
-  /// the operator to guess. Same nullable seam as [showApple]: [kIsWeb] is
-  /// compile-time const false under `flutter test`, so tests inject both
-  /// values.
-  final bool? showWebProviderHint;
 
   /// First-run account step: no back button, a "Not now" action, and
   /// [onSignedIn] instead of popping.
@@ -147,19 +129,11 @@ class _SignInScreenState extends State<SignInScreen> {
   bool _completed = false;
 
   bool get _showApple =>
-      widget.showApple ??
-      computeAppleSignInAvailable(
-        isWeb: kIsWeb,
-        isIos: defaultTargetPlatform == TargetPlatform.iOS,
-      );
+      widget.showApple ?? (defaultTargetPlatform == TargetPlatform.iOS);
 
   bool get _showGoogle => widget.showGoogle ?? AppConfig.hasGoogle;
 
   bool get _showPasskeys => widget.showPasskeys ?? AppConfig.hasPasskeys;
-
-  /// Issue #1096: null means [kIsWeb] — the hint is a web-only surface, and
-  /// the compile-time-const read is what the nullable seam exists to mask.
-  bool get _showWebProviderHint => widget.showWebProviderHint ?? kIsWeb;
 
   /// #2 U4: the verify-code button stays disabled until the field holds a
   /// plausible code, mirroring the password-length guard on this same
@@ -657,23 +631,6 @@ class _SignInScreenState extends State<SignInScreen> {
         ],
       ];
 
-  /// Issue #1096: the web-only line under the sign-in options. On web no
-  /// provider button rendered above, so a Google- or Apple-created account
-  /// would otherwise find nothing that looks like its way in — and the
-  /// create-account form is a trap that mints a second, empty account.
-  /// Deliberately mode-independent: the steer away from "create an account"
-  /// matters most after the toggle has been flipped.
-  List<Widget> _buildWebProviderHint() => [
-        if (_showWebProviderHint)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              AppLocalizations.of(context).accountSignInWebProviderHint,
-              key: const ValueKey('auth-web-provider-hint'),
-            ),
-          ),
-      ];
-
   List<Widget> _buildEmbeddedFooter() {
     if (!widget.embedded) return const [];
     final l10n = AppLocalizations.of(context);
@@ -731,7 +688,6 @@ class _SignInScreenState extends State<SignInScreen> {
           const SizedBox(height: 8),
           ..._buildModeAndForgotSection(),
           ..._buildMagicLinkSection(),
-          ..._buildWebProviderHint(),
           ..._buildEmbeddedFooter(),
         ],
       ),

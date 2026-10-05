@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode;
 
 /// Build-time configuration read from `--dart-define` values.
 ///
@@ -29,9 +29,9 @@ abstract final class AppConfig {
   /// Sentry DSN. Empty disables crash reporting entirely.
   static const String sentryDsn = String.fromEnvironment('SENTRY_DSN');
 
-  /// Raw value of `SENTRY_TRACES_SAMPLE_RATE` (issue #7 U4); mirrors the
-  /// `_webSyncRaw` idiom (private: nothing but [sentryTracesSampleRate]
-  /// needs the unvalidated string). Empty in `dart_defines.example.json`
+  /// Raw value of `SENTRY_TRACES_SAMPLE_RATE` (issue #7 U4). Private:
+  /// nothing but [sentryTracesSampleRate] needs the unvalidated string.
+  /// Empty in `dart_defines.example.json`
   /// and in every workflow — an operator opts a build into performance
   /// tracing locally or by adding the flag deliberately, only after issue
   /// #19 exists.
@@ -46,25 +46,15 @@ abstract final class AppConfig {
   static final double? sentryTracesSampleRate =
       computeTracesSampleRate(_sentryTracesSampleRateRaw);
 
-  /// Raw value of `LUNARLOG_WEB_SYNC`; only the literal `true` opts a web
-  /// build into account sign-in and sync. Never set in CI.
-  static const String _webSyncRaw = String.fromEnvironment('LUNARLOG_WEB_SYNC');
-
-  /// True only when the build was compiled with `LUNARLOG_WEB_SYNC=true`.
-  static const bool webSyncEnabled = _webSyncRaw == 'true';
-
-  /// True when Supabase is configured for this build and platform. On web,
-  /// this additionally requires [webSyncEnabled]: a signed-in web session
-  /// would hold a bearer token in browser storage, so a default web build
-  /// opts out of accounts entirely.
+  /// True when Supabase is configured for this build: a project URL and a
+  /// publishable key were both supplied.
   ///
   /// Kept as a `const` expression (Dart forbids function calls in constant
   /// initializers) so unconfigured code paths tree-shake; [computeHasSupabase]
   /// is the same rule as a testable function, and `test/config_test.dart`
   /// asserts the two agree.
-  static const bool hasSupabase = supabaseUrl != '' &&
-      supabasePublishableKey != '' &&
-      (!kIsWeb || webSyncEnabled);
+  static const bool hasSupabase =
+      supabaseUrl != '' && supabasePublishableKey != '';
 
   /// True when a Sentry DSN was supplied. Mirrors [computeHasSentry].
   static const bool hasSentry = sentryDsn != '';
@@ -80,18 +70,15 @@ abstract final class AppConfig {
   static const String googleWebClientId =
       String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
 
-  /// True when native Google Sign-In is available for this build and
-  /// platform: Supabase configured, not web, and both client ids supplied.
-  /// Web builds never show Google regardless of defines (#2 U1; KTD2).
+  /// True when native Google Sign-In is available for this build: Supabase
+  /// configured and both client ids supplied (#2 U1; KTD2).
   ///
   /// Kept as a `const` expression (Dart forbids function calls in constant
   /// initializers) so unconfigured code paths tree-shake; [computeHasGoogle]
   /// is the same rule as a testable function, and `test/config_test.dart`
   /// asserts the two agree.
-  static const bool hasGoogle = hasSupabase &&
-      !kIsWeb &&
-      googleIosClientId != '' &&
-      googleWebClientId != '';
+  static const bool hasGoogle =
+      hasSupabase && googleIosClientId != '' && googleWebClientId != '';
 
   /// Passkey relying-party id: a bare HTTPS domain (e.g. `example.com`, no
   /// scheme), supplied by `PASSKEY_RP_ID`.
@@ -118,17 +105,14 @@ abstract final class AppConfig {
   static const String passkeyRelyingPartyId =
       String.fromEnvironment('PASSKEY_RP_ID');
 
-  /// True when passkey support is available for this build and platform:
-  /// Supabase configured, not web, and a relying-party id supplied (#30 U1;
-  /// KTD3). Web passkeys are out of scope (Non-goals) so web is excluded
-  /// outright, on the same terms as [hasGoogle].
+  /// True when passkey support is available for this build: Supabase
+  /// configured and a relying-party id supplied (#30 U1; KTD3).
   ///
   /// Kept as a `const` expression (Dart forbids function calls in constant
   /// initializers) so unconfigured code paths tree-shake; [computeHasPasskeys]
   /// is the same rule as a testable function, and `test/config_test.dart`
   /// asserts the two agree.
-  static const bool hasPasskeys =
-      hasSupabase && !kIsWeb && passkeyRelyingPartyId != '';
+  static const bool hasPasskeys = hasSupabase && passkeyRelyingPartyId != '';
 
   /// HTTPS universal-link host for invite/claim links (issue #129): a bare
   /// domain (e.g. `links.example.com`, no scheme), supplied by
@@ -179,8 +163,8 @@ abstract final class AppConfig {
   /// iOS Firebase app id (`1:...:ios:...`).
   static const String fcmIosAppId = String.fromEnvironment('FCM_IOS_APP_ID');
 
-  /// True when push is configured for this build and platform: Supabase
-  /// configured, not web, and every `FCM_*` define supplied (R17, R18).
+  /// True when push is configured for this build: Supabase configured and
+  /// every `FCM_*` define supplied (R17, R18).
   /// `Firebase.initializeApp(options:)` is built from these — never from a
   /// checked-in `google-services.json`/`GoogleService-Info.plist` (KTD6) —
   /// so an unconfigured build (empty defines) never touches Firebase at all.
@@ -190,7 +174,6 @@ abstract final class AppConfig {
   /// is the same rule as a testable function, and `test/config_test.dart`
   /// asserts the two agree.
   static const bool hasPush = hasSupabase &&
-      !kIsWeb &&
       fcmProjectId != '' &&
       fcmSenderId != '' &&
       fcmAndroidApiKey != '' &&
@@ -205,8 +188,8 @@ abstract final class AppConfig {
   /// `lunarlog/health` channel's Swift `HKHealthStore` half. Reachable on
   /// iOS only — the Settings tile and the app.dart coordinator both gate
   /// on `defaultTargetPlatform == TargetPlatform.iOS` until #202 wires the
-  /// Health Connect half's device checklist. Still off on web and inert in
-  /// every unconfigured build (no storage/profiles wiring, no tile).
+  /// Health Connect half's device checklist. Still inert in every
+  /// unconfigured build (no storage/profiles wiring, no tile).
   /// Deliberately a hardcoded constant, not a `--dart-define`: there is no
   /// build-time toggle, only a code change per epic issue.
   static const bool hasHealthSync = true;
@@ -330,25 +313,16 @@ abstract final class AppConfig {
       bool.fromEnvironment('LUNARLOG_CRASH_SMOKE') && kDebugMode;
 }
 
-/// Pure decision behind [AppConfig.webSyncEnabled]: the literal `true` only.
-/// Case variants (`TRUE`), `1`, and padded strings all count as off.
-bool parseWebSyncEnabled(String raw) => raw == 'true';
-
 /// Pure decision behind [AppConfig.hasSupabase].
 ///
-/// Requires a non-empty URL and key; on web it further requires
-/// [webSyncEnabled]. Exposed as a function so the rule is unit-testable even
-/// though the production inputs are compile-time constants.
+/// Requires a non-empty URL and key. Exposed as a function so the rule is
+/// unit-testable even though the production inputs are compile-time
+/// constants.
 bool computeHasSupabase({
   required String url,
   required String publishableKey,
-  required bool isWeb,
-  required bool webSyncEnabled,
-}) {
-  if (url.isEmpty || publishableKey.isEmpty) return false;
-  if (isWeb && !webSyncEnabled) return false;
-  return true;
-}
+}) =>
+    url.isNotEmpty && publishableKey.isNotEmpty;
 
 /// Pure decision behind [AppConfig.hasSentry]: any non-empty DSN.
 bool computeHasSentry(String dsn) => dsn.isNotEmpty;
@@ -383,43 +357,29 @@ double? computeTracesSampleRate(String raw) {
 
 /// Pure decision behind [AppConfig.hasGoogle] (#2 U1; KTD2).
 ///
-/// Requires [hasSupabase], a non-web platform, and non-empty iOS and Web
-/// client ids. Exposed as a function so the rule is unit-testable even
-/// though the production inputs are compile-time constants.
+/// Requires [hasSupabase] and non-empty iOS and Web client ids. Exposed as
+/// a function so the rule is unit-testable even though the production
+/// inputs are compile-time constants.
 bool computeHasGoogle({
   required bool hasSupabase,
-  required bool isWeb,
   required String iosClientId,
   required String webClientId,
 }) {
-  if (!hasSupabase || isWeb) return false;
+  if (!hasSupabase) return false;
   if (iosClientId.isEmpty || webClientId.isEmpty) return false;
   return true;
 }
 
-/// Pure decision behind the Apple Sign-In availability default shared by
-/// the auth service, `SignInScreen`, and `AccountSection` (epic #831 slice
-/// 2): Apple Sign-In exists natively on iOS only, so a web build never
-/// renders or offers it. Exposed as a function so the rule is unit-testable
-/// even though production reads the compile-time `kIsWeb` and
-/// `defaultTargetPlatform` constants.
-bool computeAppleSignInAvailable({
-  required bool isWeb,
-  required bool isIos,
-}) =>
-    !isWeb && isIos;
-
 /// Pure decision behind [AppConfig.hasPasskeys] (#30 U1; KTD3).
 ///
-/// Requires [hasSupabase], a non-web platform, and a non-empty relying-party
-/// id. Exposed as a function so the rule is unit-testable even though the
-/// production inputs are compile-time constants.
+/// Requires [hasSupabase] and a non-empty relying-party id. Exposed as a
+/// function so the rule is unit-testable even though the production inputs
+/// are compile-time constants.
 bool computeHasPasskeys({
   required bool hasSupabase,
-  required bool isWeb,
   required String relyingPartyId,
 }) {
-  if (!hasSupabase || isWeb) return false;
+  if (!hasSupabase) return false;
   if (relyingPartyId.isEmpty) return false;
   return true;
 }
@@ -433,12 +393,11 @@ bool computeHasPasskeys({
 bool computeHasUniversalLinks(String linkDomain) => linkDomain.isNotEmpty;
 
 /// Pure decision behind [AppConfig.hasPush] (Issue #5, U7).///
-/// Requires [hasSupabase], a non-web platform, and every `FCM_*` value
-/// non-empty. Exposed as a function so the rule is unit-testable even
-/// though the production inputs are compile-time constants.
+/// Requires [hasSupabase] and every `FCM_*` value non-empty. Exposed as a
+/// function so the rule is unit-testable even though the production inputs
+/// are compile-time constants.
 bool computeHasPush({
   required bool hasSupabase,
-  required bool isWeb,
   required String projectId,
   required String senderId,
   required String androidApiKey,
@@ -446,7 +405,7 @@ bool computeHasPush({
   required String iosApiKey,
   required String iosAppId,
 }) {
-  if (!hasSupabase || isWeb) return false;
+  if (!hasSupabase) return false;
   if (projectId.isEmpty || senderId.isEmpty) return false;
   if (androidApiKey.isEmpty || androidAppId.isEmpty) return false;
   if (iosApiKey.isEmpty || iosAppId.isEmpty) return false;

@@ -942,7 +942,6 @@ void main() {
     test('settled key names are stable', () {
       expect(SettingsKeys.lastActiveProfile, 'last_active_profile');
       expect(SettingsKeys.relockEnabled, 'relock_enabled');
-      expect(SettingsKeys.webModalAcknowledged, 'web_modal_acknowledged');
     });
   });
 }

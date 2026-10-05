@@ -4965,66 +4965,6 @@
     "@guardianNotesGuardianFallback": {
       "description": "Issue #1004 (tranche 3): fallback author name for a guardian note."
     },
-  "webBannerDevCopy": "Development build — not for real data.",
-  "@webBannerDevCopy": {
-    "description": "Web banner for a build with sync off (LUNARLOG_WEB_SYNC unset): no account, no token, not for real data. Epic #831."
-  },
-  "webBannerSyncedCopy": "Browser build — this browser stores a copy of the signed-in profiles' data unencrypted, plus your sign-in. Signing out clears it.",
-  "@webBannerSyncedCopy": {
-    "description": "Web banner when LUNARLOG_WEB_SYNC=true made web a first-class client (epic #831): the browser holds synced family data unencrypted alongside the session. Deliberately never says 'not for real data'."
-  },
-  "webBrowserNoticeDismissTooltip": "Dismiss",
-  "@webBrowserNoticeDismissTooltip": {
-    "description": "Tooltip/label on the browser-build notice's per-session dismiss button (epic #831)."
-  },
-  "webWipeAction": "Wipe local data",
-  "@webWipeAction": {
-    "description": "Action on the web banner opening the confirm-guarded local wipe (epic #831)."
-  },
-  "webWipeConfirmTitle": "Erase all local data?",
-  "@webWipeConfirmTitle": {
-    "description": "Title of the web banner's local-wipe confirmation (epic #831)."
-  },
-  "webWipeConfirmDevBody": "Erases all data stored in this browser. This cannot be undone.",
-  "@webWipeConfirmDevBody": {
-    "description": "Local-wipe confirmation body for a sync-off web build (epic #831)."
-  },
-  "webWipeConfirmSyncedBody": "Erases all data stored in this browser and signs out. This cannot be undone here; data already in your account stays there.",
-  "@webWipeConfirmSyncedBody": {
-    "description": "Local-wipe confirmation body for a sync-enabled web build, naming that the account copy is not touched (epic #831)."
-  },
-  "webWipeCancel": "Cancel",
-  "@webWipeCancel": {
-    "description": "Cancel action of the web local-wipe confirmation (epic #831)."
-  },
-  "webWipeConfirmAction": "Erase everything",
-  "@webWipeConfirmAction": {
-    "description": "Confirm action of the web local-wipe confirmation (epic #831)."
-  },
-  "webWipeDone": "All local data erased.",
-  "@webWipeDone": {
-    "description": "Snackbar after the web local wipe completes (epic #831)."
-  },
-  "webFirstRunDevTitle": "Development build",
-  "@webFirstRunDevTitle": {
-    "description": "Title of the one-time web first-run acknowledgement for a sync-off build (epic #831)."
-  },
-  "webFirstRunDevBody": "This is a development build, not for real data. Data in this browser is not encrypted and not backed up.",
-  "@webFirstRunDevBody": {
-    "description": "Body of the one-time web first-run acknowledgement for a sync-off build (epic #831)."
-  },
-  "webFirstRunSyncedTitle": "Using lunarlog in this browser",
-  "@webFirstRunSyncedTitle": {
-    "description": "Title of the one-time web first-run acknowledgement when the build is a first-class (sync-enabled) client (epic #831)."
-  },
-  "webFirstRunSyncedBody": "This browser keeps an unencrypted copy of the profiles you can see — including synced family data — and your sign-in. Anyone who uses this browser can read it. Signing out removes the copy from this browser; your account's data stays in your account and can sync again later.",
-  "@webFirstRunSyncedBody": {
-    "description": "Body of the one-time web first-run acknowledgement when LUNARLOG_WEB_SYNC=true; the honest browser-storage story that replaces the old 'not for real data' wording (epic #831)."
-  },
-  "webFirstRunAcknowledge": "I understand",
-  "@webFirstRunAcknowledge": {
-    "description": "Acknowledge button of the one-time web first-run acknowledgement (epic #831)."
-  },
     "accountMismatchTitle": "Different account",
     "@accountMismatchTitle": {
       "description": "Issue #1004 (tranche 2): account-mismatch screen app-bar title."
@@ -5325,10 +5265,6 @@
     "accountSignInMagicLinkSignIn": "Email me a sign-in link",
     "@accountSignInMagicLinkSignIn": {
       "description": "Issue #1004 (tranche 2): sign-in screen magic-link button in sign-in mode."
-    },
-    "accountSignInWebProviderHint": "Created your account with Google or Apple? Use the emailed sign-in link or code above with the email address that account uses.",
-    "@accountSignInWebProviderHint": {
-      "description": "Issue #1096: sign-in screen web-only hint pointing Google- and Apple-created accounts at the passwordless email option, shown under the sign-in options because neither provider button renders in a browser."
     },
     "accountDeleteDialogTitle": "Delete account?",
     "@accountDeleteDialogTitle": {
@@ -6367,10 +6303,6 @@
     "accountSyncStatusUploadPending": "Upload pending — tap to review",
     "@accountSyncStatusUploadPending": {
       "description": "Issue #1004 (tranche 5): sync-status copy while upload consent is pending."
-    },
-    "accountSyncStatusWebSyncOff": "Sync is off in this web build",
-    "@accountSyncStatusWebSyncOff": {
-      "description": "Issue #1004 (tranche 5): sync-status copy on the web build without the sync define."
     },
     "accountSyncStatusSignInAgain": "Sign in again to sync",
     "@accountSyncStatusSignInAgain": {

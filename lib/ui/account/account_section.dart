@@ -275,7 +275,6 @@ class AccountSection extends StatefulWidget {
     this.showAddGoogle,
     this.showAddApple,
     this.showAddPasskey,
-    this.showExportAndDelete,
     this.exportAccount,
     this.appleAuthorizationCodeRequest,
   });
@@ -284,21 +283,13 @@ class AccountSection extends StatefulWidget {
   /// (#2 U5). Injectable so tests exercise the action without defines.
   final bool? showAddGoogle;
 
-  /// Whether "Add Apple" may render; null means "iOS, not web" (#2 U5).
+  /// Whether "Add Apple" may render; null means "on iOS" (#2 U5).
   final bool? showAddApple;
 
   /// Whether "Add a passkey" may render; null means [AppConfig.hasPasskeys]
   /// (#30 U4; KTD5). Injectable so widget tests can force the flag on even
   /// though [AppConfig] is compile-time const.
   final bool? showAddPasskey;
-
-  /// Whether "Delete account" may render at all; null means "not web"
-  /// (Issue #17 R11 - it never ships on web, regardless of
-  /// `LUNARLOG_WEB_SYNC`). Named for the tile it used to gate alongside
-  /// "Export my data" before that tile moved out (Issue #222) - kept as-is
-  /// rather than renamed, since existing callers already pass it by name.
-  /// Injectable so tests simulate web without actually running on it.
-  final bool? showExportAndDelete;
 
   /// Export collaborator for the delete-confirmation dialog's "Export
   /// first" step (Issue #17 U5/U6); null means
@@ -345,15 +336,9 @@ class _AccountSectionState extends State<AccountSection> {
   bool get _canAddGoogle => widget.showAddGoogle ?? AppConfig.hasGoogle;
 
   bool get _canAddApple =>
-      widget.showAddApple ??
-      computeAppleSignInAvailable(
-        isWeb: kIsWeb,
-        isIos: defaultTargetPlatform == TargetPlatform.iOS,
-      );
+      widget.showAddApple ?? (defaultTargetPlatform == TargetPlatform.iOS);
 
   bool get _canAddPasskey => widget.showAddPasskey ?? AppConfig.hasPasskeys;
-
-  bool get _canExportAndDelete => widget.showExportAndDelete ?? !kIsWeb;
 
   @override
   Widget build(BuildContext context) {
@@ -392,8 +377,7 @@ class _AccountSectionState extends State<AccountSection> {
         // off (AuthController.mfaEnabled), so no tile group renders and no
         // factor call is made in the default build.
         if (signedIn) MfaSettingsSection(auth: auth),
-        if (signedIn && _canExportAndDelete)
-          ..._buildDeleteTile(context, theme, deletionService),
+        if (signedIn) ..._buildDeleteTile(context, theme, deletionService),
       ],
     );
   }

@@ -1,15 +1,14 @@
 /// Widget tests for `FirstRunScreen` (Issue #216's onboarding rework on
 /// top of the earlier split helpers): the three skippable introduction
 /// cards, the cycle-questions step between the name form and creation,
-/// and the pre-existing paths they sit among — the KTD9 web
-/// acknowledgment split and the restoring-phase decision split
-/// (`_restoreDone` / `_restoreDoneForPhase`).
+/// and the pre-existing path they sit among — the restoring-phase
+/// decision split (`_restoreDone` / `_restoreDoneForPhase`).
 ///
 /// The higher-level first-run flow (cards → account step → name form →
 /// cycle questions; the cold-start restoring wait through the full app)
 /// is also covered end-to-end in test/ui/account_test.dart and
-/// test/ui/profiles_test.dart. Those harnesses never build with
-/// `isWebBuild: true` and never drive the engine through every
+/// test/ui/profiles_test.dart. Those harnesses never drive the engine
+/// through every
 /// [SyncPhase], so these tests mount `FirstRunScreen` directly
 /// (skipping `ProfileHomeGate`/`LunarLogApp`) to reach the paths they
 /// leave untouched.
@@ -92,7 +91,6 @@ class Harness {
       DriftOnboardingCycleAnswersRecorder(db.storage, todayProvider: () => kToday);
 
   Future<void> pump({
-    bool isWebBuild = false,
     AuthController? auth,
     SyncStatusController? sync,
     ConsentService? consent,
@@ -113,7 +111,6 @@ class Harness {
           Provider<ConsentService>.value(value: consent),
       ],
       child: FirstRunScreen(
-        isWebBuild: isWebBuild,
         todayProvider: () => kToday,
         pickDate: pickDate ?? (_, _, _, _) async => null,
         onOpenImport: onOpenImport,
@@ -576,67 +573,6 @@ void main() {
       expect(find.byKey(const ValueKey('cycle-last-period-choose')),
           findsOneWidget,
           reason: 'back to the unanswered state');
-      await h.dispose();
-    });
-  });
-
-  group('web acknowledgment (KTD9; _checkWebAcknowledgment split)', () {
-    testWidgets('an unacknowledged web build blocks on the dialog before '
-        'the introduction, persists the acknowledgment, then falls through',
-        (tester) async {
-      final h = Harness(tester);
-      await h.pump(isWebBuild: true);
-
-      // initState's async settings read has not resolved yet: a data-free
-      // scaffold, no dialog, no cards.
-      expect(find.byType(AlertDialog), findsNothing);
-      expect(find.byKey(const ValueKey('first-run-card-value')),
-          findsNothing);
-
-      // The settings read resolves, then the dialog is scheduled
-      // post-frame.
-      await tester.pump();
-      await tester.pump();
-      expect(find.byType(AlertDialog), findsOneWidget);
-      expect(find.text('Development build'), findsOneWidget);
-      expect(find.byKey(const ValueKey('first-run-card-value')),
-          findsNothing,
-          reason: 'the introduction waits behind the blocking dialog');
-
-      await tester.tap(find.byKey(const Key('web-acknowledge')));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(AlertDialog), findsNothing);
-      expect(await h.settings.get(SettingsKeys.webModalAcknowledged), 'true',
-          reason: 'onAcknowledged persisted through the extracted helper');
-      expect(find.byKey(const ValueKey('first-run-card-value')),
-          findsOneWidget,
-          reason: 'falls through to the first onboarding card');
-      await h.dispose();
-    });
-
-    testWidgets('an already-acknowledged web build skips the dialog '
-        'entirely and goes straight to the first card', (tester) async {
-      final h = Harness(tester);
-      await h.settings.set(SettingsKeys.webModalAcknowledged, 'true');
-      await h.pump(isWebBuild: true);
-      await tester.pumpAndSettle();
-
-      expect(find.byType(AlertDialog), findsNothing);
-      expect(find.byKey(const ValueKey('first-run-card-value')),
-          findsOneWidget);
-      await h.dispose();
-    });
-
-    testWidgets('a non-web build never runs the acknowledgment check: no '
-        'dialog, straight to the first card', (tester) async {
-      final h = Harness(tester);
-      await h.pump();
-      await tester.pumpAndSettle();
-
-      expect(find.byType(AlertDialog), findsNothing);
-      expect(find.byKey(const ValueKey('first-run-card-value')),
-          findsOneWidget);
       await h.dispose();
     });
   });

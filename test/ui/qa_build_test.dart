@@ -332,7 +332,7 @@ void main() {
         'lunarlog$kQaBuildVersionSuffix',
         reason: 'the OS task-switcher label carries the QA suffix',
       );
-      // web_guardrails_test's teardown recipe, plus one more frame:
+      // The usual app-shell teardown recipe, plus one more frame:
       // drift's StreamQueryStore schedules a zero-duration cleanup timer
       // while the deferred unmount runs, and closing the database before
       // it fires (or while the tree is still subscribed) hangs the test.

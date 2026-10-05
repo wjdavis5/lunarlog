@@ -214,26 +214,26 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'as google_sign_in_client.dart.',
   ),
 
-  // LLA-106: these eight files were never excluded because they were never
+  // LLA-106: these files were never excluded because they were never
   // *visible* as a gap before -- a file lcov has no SF: record for at all
   // simply dropped out of both gates' denominators silently (the defect
   // LLA-106 fixes; see coverage_inventory.dart). Making that failure loud
   // is what surfaced them: each is either a compile-time conditional-export
   // branch that the native/VM `flutter test` target structurally never
   // selects (same shape as startup_native.dart's own exclusion above, just
-  // the *other* branch of the same `if (dart.library.ffi) ... if
-  // (dart.library.js_interop) ...` conditional exports -- native gets
-  // selected, so `_unsupported.dart`/`_web.dart` never do), or the app
-  // entry point / Supabase bootstrap wiring that only ever runs for real
-  // inside a launched app.
+  // the *other* branch of the same `if (dart.library.ffi) ...` conditional
+  // exports -- native gets selected, so `_unsupported.dart` never does), or
+  // the app entry point / Supabase bootstrap wiring that only ever runs for
+  // real inside a launched app. (The web branches that used to sit beside
+  // them went with the Flutter web target, issue #1257.)
   //
   // #215 device-checklist pairing: this file's entry under
   // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
   const CoverageExclusion(
     'lib/data/db/factory_unsupported.dart',
-    'The `if (dart.library.ffi) ... if (dart.library.js_interop) ...` '
-        'branch of lib/data/db/platform_factory.dart\'s conditional export '
-        '(neither native nor web) -- flutter test\'s native/VM target '
+    'The not-native branch of lib/data/db/platform_factory.dart\'s '
+        '`if (dart.library.ffi) ...` conditional export -- flutter test\'s '
+        'native/VM target '
         'always resolves dart.library.ffi true and selects native_db.dart '
         'instead, so this file structurally never loads. One line: '
         'throws UnsupportedError, nothing to unit test in isolation.',
@@ -241,30 +241,8 @@ final List<CoverageExclusion> excludedLibFilePaths = [
   // #215 device-checklist pairing: this file's entry under
   // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
   const CoverageExclusion(
-    'lib/data/db/web_db.dart',
-    'The web branch of lib/data/db/platform_factory.dart\'s conditional '
-        'export -- flutter test\'s native/VM target resolves '
-        'dart.library.ffi true and selects native_db.dart, so this file '
-        'never loads (same reasoning as factory_unsupported.dart above). '
-        'Wraps drift\'s WasmDatabase/IndexedDB wiring, which cannot run '
-        'under flutter test regardless.',
-  ),
-  const CoverageExclusion(
-    'lib/data/auth/web_url_cleaner_web.dart',
-    'The web branch of lib/data/auth/web_url_cleaner.dart\'s conditional '
-        'import (epic #831 slice 4) -- flutter test\'s native/VM target '
-        'never resolves dart.library.js_interop, so this file never loads '
-        '(same reasoning as web_db.dart above). One call to '
-        'window.history.replaceState via package:web; the pure URL '
-        'cleaning it is handed lives in web_url_cleaner.dart and is fully '
-        'covered there, and test/architecture/web_url_cleanup_test.dart '
-        'pins that this file uses replaceState, never pushState.',
-  ),
-  // #215 device-checklist pairing: this file's entry under
-  // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
-  const CoverageExclusion(
     'lib/startup/gate/gate_unsupported.dart',
-    'The neither-native-nor-web branch of lib/startup/gate/gate.dart\'s '
+    'The not-native branch of lib/startup/gate/gate.dart\'s '
         'conditional export -- same reasoning as '
         'lib/data/db/factory_unsupported.dart above: flutter test\'s '
         'native/VM target always selects local_auth_gate.dart instead, so '
@@ -273,32 +251,12 @@ final List<CoverageExclusion> excludedLibFilePaths = [
   // #215 device-checklist pairing: this file's entry under
   // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
   const CoverageExclusion(
-    'lib/startup/gate/web_gate.dart',
-    'The web branch of lib/startup/gate/gate.dart\'s conditional export -- '
-        'flutter test\'s native/VM target selects local_auth_gate.dart '
-        'instead, so this file never loads (same reasoning as web_db.dart '
-        'above). A no-op gate with no browser storage to exercise under '
-        'flutter test regardless.',
-  ),
-  // #215 device-checklist pairing: this file's entry under
-  // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
-  const CoverageExclusion(
     'lib/startup/startup_unsupported.dart',
-    'The neither-native-nor-web branch of lib/startup/startup.dart\'s '
+    'The not-native branch of lib/startup/startup.dart\'s '
         'conditional export -- same reasoning as gate_unsupported.dart '
         'above: flutter test\'s native/VM target always selects '
         'startup_native.dart instead, so these three one-line '
         'UnsupportedError throws never load.',
-  ),
-  // #215 device-checklist pairing: this file's entry under
-  // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
-  const CoverageExclusion(
-    'lib/startup/startup_web.dart',
-    'The web branch of lib/startup/startup.dart\'s conditional export -- '
-        'flutter test\'s native/VM target selects startup_native.dart '
-        'instead, so this file never loads (same reasoning as web_gate.dart '
-        'above). Wraps web_db.dart\'s WASM/IndexedDB wiring, which cannot '
-        'run under flutter test regardless.',
   ),
   // #215 device-checklist pairing: this file's entry under
   // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
@@ -355,7 +313,7 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         '`if (dart.library.io)` export, selected only where the plugin '
         'cannot exist. The VM test run always compiles the IO twin '
         'instead, so this file never loads and carries no lcov record -- '
-        'the same never-loaded case as startup_web.dart. Its whole '
+        'the same never-loaded case as startup_unsupported.dart. Its whole '
         'surface is a throwing constructor and throwing no-op methods.',
   ),
 ];

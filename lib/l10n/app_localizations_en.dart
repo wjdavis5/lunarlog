@@ -3874,56 +3874,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get guardianNotesGuardianFallback => 'Guardian';
 
   @override
-  String get webBannerDevCopy => 'Development build — not for real data.';
-
-  @override
-  String get webBannerSyncedCopy =>
-      'Browser build — this browser stores a copy of the signed-in profiles\' data unencrypted, plus your sign-in. Signing out clears it.';
-
-  @override
-  String get webBrowserNoticeDismissTooltip => 'Dismiss';
-
-  @override
-  String get webWipeAction => 'Wipe local data';
-
-  @override
-  String get webWipeConfirmTitle => 'Erase all local data?';
-
-  @override
-  String get webWipeConfirmDevBody =>
-      'Erases all data stored in this browser. This cannot be undone.';
-
-  @override
-  String get webWipeConfirmSyncedBody =>
-      'Erases all data stored in this browser and signs out. This cannot be undone here; data already in your account stays there.';
-
-  @override
-  String get webWipeCancel => 'Cancel';
-
-  @override
-  String get webWipeConfirmAction => 'Erase everything';
-
-  @override
-  String get webWipeDone => 'All local data erased.';
-
-  @override
-  String get webFirstRunDevTitle => 'Development build';
-
-  @override
-  String get webFirstRunDevBody =>
-      'This is a development build, not for real data. Data in this browser is not encrypted and not backed up.';
-
-  @override
-  String get webFirstRunSyncedTitle => 'Using lunarlog in this browser';
-
-  @override
-  String get webFirstRunSyncedBody =>
-      'This browser keeps an unencrypted copy of the profiles you can see — including synced family data — and your sign-in. Anyone who uses this browser can read it. Signing out removes the copy from this browser; your account\'s data stays in your account and can sync again later.';
-
-  @override
-  String get webFirstRunAcknowledge => 'I understand';
-
-  @override
   String get accountMismatchTitle => 'Different account';
 
   @override
@@ -4163,10 +4113,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get accountSignInMagicLinkSignIn => 'Email me a sign-in link';
-
-  @override
-  String get accountSignInWebProviderHint =>
-      'Created your account with Google or Apple? Use the emailed sign-in link or code above with the email address that account uses.';
 
   @override
   String get accountDeleteDialogTitle => 'Delete account?';
@@ -4924,9 +4870,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get accountSyncStatusUploadPending => 'Upload pending — tap to review';
-
-  @override
-  String get accountSyncStatusWebSyncOff => 'Sync is off in this web build';
 
   @override
   String get accountSyncStatusSignInAgain => 'Sign in again to sync';

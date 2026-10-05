@@ -1,5 +1,5 @@
 /// Epic #831 slice 5: the scheme gate behind every external launch. The
-/// architecture test (`test/architecture/web_dom_surface_test.dart`) pins
+/// architecture test (`test/architecture/dom_surface_test.dart`) pins
 /// that this is the only `launchUrl` call site; this proves the gate itself
 /// fails closed.
 library;

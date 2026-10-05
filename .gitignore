@@ -75,11 +75,6 @@ key.properties
 supabase/tests/manual/node_modules/
 supabase/tests/manual/package-lock.json
 
-# Node deps for the headless-Chromium web boot check (issue #1091). Its
-# package-lock.json IS committed (the script's pin); only node_modules is
-# ignored.
-tool/web_smoke/node_modules/
-
 # Node deps for the inbound email Cloudflare Worker (issue #1121). Its
 # package-lock.json IS committed; only node_modules is ignored.
 workers/email/node_modules/

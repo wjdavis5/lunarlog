@@ -4,9 +4,7 @@
 /// counts and a relative time only (R18).
 library;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_batch_limits.dart';
@@ -61,10 +59,9 @@ String formatRelative(AppLocalizations l10n, DateTime then, DateTime now) {
 }
 
 /// The one line the tile and the glyph show. Precedence, most urgent
-/// first: the web build's off state; an unconfirmed sign-up; a pending
-/// passwordless sign-in email (#2 U4); an auth error; a wrong account;
-/// pending upload consent; a running cycle; rejected rows; then the
-/// resting states.
+/// first: an unconfirmed sign-up; a pending passwordless sign-in email
+/// (#2 U4); an auth error; a wrong account; pending upload consent; a
+/// running cycle; rejected rows; then the resting states.
 ///
 /// Whether the tile should show the "waiting for email confirmation" state:
 /// a sign-up is pending on this device and no session has arrived (AS10).
@@ -94,9 +91,7 @@ String syncStatusCopy(
   String? awaitingConfirmationEmail,
   String? awaitingMagicLinkEmail,
   required DateTime now,
-  bool webSyncOff = false,
 }) {
-  if (webSyncOff) return l10n.accountSyncStatusWebSyncOff;
   if (isAwaitingConfirmation(
     authState: authState,
     awaitingConfirmationEmail: awaitingConfirmationEmail,
@@ -119,8 +114,8 @@ String syncStatusCopy(
   );
 }
 
-/// The copy once the web-off / awaiting-confirmation / awaiting-magic-link
-/// / no-snapshot tiers (handled by [syncStatusCopy]) are ruled out.
+/// The copy once the awaiting-confirmation / awaiting-magic-link /
+/// no-snapshot tiers (handled by [syncStatusCopy]) are ruled out.
 String _snapshotCopy(
   AppLocalizations l10n, {
   required SyncSnapshot snapshot,
@@ -231,22 +226,16 @@ bool isSyncRunning(SyncSnapshot? snapshot) => switch (snapshot?.phase) {
 
 IconData _iconFor(
   SyncSnapshot? snapshot, {
-  bool webSyncOff = false,
   bool awaitingConfirmation = false,
 }) {
-  final override = _iconOverride(webSyncOff, awaitingConfirmation, snapshot);
+  final override = _iconOverride(awaitingConfirmation, snapshot);
   if (override != null) return override;
   return _iconForPhase(snapshot!.phase, snapshot.rejectedCount);
 }
 
-/// The three cases where the phase-based icon never applies: split out of
+/// The two cases where the phase-based icon never applies: split out of
 /// [_iconFor] verbatim — same conditions, no behavior change.
-IconData? _iconOverride(
-  bool webSyncOff,
-  bool awaitingConfirmation,
-  SyncSnapshot? snapshot,
-) {
-  if (webSyncOff) return Icons.cloud_off_outlined;
+IconData? _iconOverride(bool awaitingConfirmation, SyncSnapshot? snapshot) {
   if (awaitingConfirmation) return Icons.mark_email_unread_outlined;
   if (snapshot == null) return Icons.cloud_off_outlined;
   return null;
@@ -271,17 +260,10 @@ IconData _iconForPhase(SyncPhase phase, int rejectedCount) => switch (phase) {
 /// [SettingsKeys.awaitingMagicLinkEmail] (#2 U4). Tappable while upload
 /// consent is pending: reopens the consent screen (AS4).
 class SyncStatusTile extends StatefulWidget {
-  const SyncStatusTile({
-    super.key,
-    this.now,
-    this.webSyncOff = kIsWeb && !AppConfig.webSyncEnabled,
-  });
+  const SyncStatusTile({super.key, this.now});
 
   /// Clock for the relative time; injectable for tests.
   final DateTime Function()? now;
-
-  /// AS9: the web build without the define renders the off copy.
-  final bool webSyncOff;
 
   @override
   State<SyncStatusTile> createState() => _SyncStatusTileState();
@@ -310,7 +292,6 @@ class _SyncStatusTileState extends State<SyncStatusTile> {
     final sync = Provider.of<SyncStatusController?>(context);
     final auth = Provider.of<AuthController?>(context);
     final now = widget.now;
-    final webSyncOff = widget.webSyncOff;
     return StreamBuilder<String?>(
       stream: _awaiting,
       builder: (context, awaitingSnapshot) => StreamBuilder<String?>(
@@ -324,7 +305,6 @@ class _SyncStatusTileState extends State<SyncStatusTile> {
             awaitingConfirmationEmail: awaitingSnapshot.data,
             awaitingMagicLinkEmail: linkSnapshot.data,
             now: (now ?? DateTime.now)(),
-            webSyncOff: webSyncOff,
           );
           final pendingConsent =
               snapshot?.phase == SyncPhase.awaitingUploadConsent;
@@ -350,7 +330,6 @@ class _SyncStatusTileState extends State<SyncStatusTile> {
                 : Icon(
                     _iconFor(
                       snapshot,
-                      webSyncOff: webSyncOff,
                       awaitingConfirmation: awaitingEmail,
                     ),
                   ),
