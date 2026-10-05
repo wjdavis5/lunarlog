@@ -106,4 +106,146 @@ void main() {
           reason: '$accessibleNavigation');
     }
   });
+
+  // Issue #1472. The reply used to hide whatever snackbar was current, so a
+  // second tap, or a tap within a few seconds of a day-sheet delete, threw
+  // away the only Undo for a write that had really happened.
+  group('showQuickLogSnackBar', () {
+    late ScaffoldMessengerState messenger;
+
+    Future<void> pumpHost(WidgetTester tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: SizedBox.expand())),
+      );
+      messenger = tester.state<ScaffoldMessengerState>(
+        find.byType(ScaffoldMessenger),
+      );
+    }
+
+    void tapQuickLog(FlowLevel? previousFlow, {VoidCallback? onUndo}) =>
+        showQuickLogSnackBar(
+          messenger,
+          l10n: l10n,
+          previousFlow: previousFlow,
+          contentKey: key,
+          onUndo: onUndo ?? () {},
+          accessibleNavigation: false,
+        );
+
+    testWidgets('a second tap that changes nothing leaves the first reply and its '
+        'Undo on screen, and the Undo still works', (tester) async {
+      await pumpHost(tester);
+      var undone = 0;
+
+      // Tap 1 logs the day: "recorded", with Undo.
+      tapQuickLog(null, onUndo: () => undone++);
+      await tester.pumpAndSettle();
+      expect(find.text(kRecorded), findsOneWidget);
+
+      // Tap 2 finds the day already at medium flow.
+      tapQuickLog(FlowLevel.medium);
+      await tester.pumpAndSettle();
+      expect(find.text(kRecorded), findsOneWidget);
+      expect(find.text(kAlreadyLogged), findsNothing);
+
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(undone, 1);
+      // Nothing was left waiting behind it either.
+      expect(find.text(kAlreadyLogged), findsNothing);
+    });
+
+    testWidgets('never dismisses a snackbar it did not show: an Undo from '
+        'elsewhere stays, and the reply waits its turn', (tester) async {
+      await pumpHost(tester);
+      var deleteUndone = 0;
+      messenger.showSnackBar(
+        actionSnackBar(
+          content: const Text('Deleted'),
+          actionLabel: 'Undo',
+          onAction: () => deleteUndone++,
+          accessibleNavigation: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      tapQuickLog(null);
+      await tester.pumpAndSettle();
+      expect(find.text('Deleted'), findsOneWidget);
+      expect(find.text(kRecorded), findsNothing);
+
+      // A second tap while its own first reply is still queued must not
+      // hide the other flow's snackbar either.
+      tapQuickLog(FlowLevel.medium);
+      await tester.pumpAndSettle();
+      expect(find.text('Deleted'), findsOneWidget);
+
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(deleteUndone, 1);
+      // With the other snackbar gone, the quick-log reply has its turn.
+      expect(find.text(kRecorded), findsOneWidget);
+    });
+
+    testWidgets('a second tap is still answered at once when there is no '
+        'Undo to lose', (tester) async {
+      await pumpHost(tester);
+
+      // Two taps on a day that was already logged: the second reply
+      // replaces the first instead of queueing behind it.
+      tapQuickLog(FlowLevel.heavy);
+      await tester.pumpAndSettle();
+      expect(find.text(kAlreadyLogged), findsOneWidget);
+      tapQuickLog(FlowLevel.heavy);
+      await tester.pumpAndSettle();
+      expect(find.text(kAlreadyLogged), findsOneWidget);
+      // One on screen and none waiting: after it times out nothing follows.
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      expect(find.text(kAlreadyLogged), findsNothing);
+    });
+
+    testWidgets('a new write replaces the earlier quick-log message, '
+        'whichever kind it was', (tester) async {
+      await pumpHost(tester);
+      var firstUndone = 0;
+      var secondUndone = 0;
+
+      tapQuickLog(null, onUndo: () => firstUndone++);
+      await tester.pumpAndSettle();
+      // The day was cleared again in between (an Undo elsewhere, a delete):
+      // this tap writes, so its own Undo is the one that matters now.
+      tapQuickLog(null, onUndo: () => secondUndone++);
+      await tester.pumpAndSettle();
+      expect(find.text(kRecorded), findsOneWidget);
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(firstUndone, 0);
+      expect(secondUndone, 1);
+      expect(find.text(kRecorded), findsNothing);
+
+      // And after "already logged", a tap that writes is shown at once.
+      tapQuickLog(FlowLevel.medium);
+      await tester.pumpAndSettle();
+      expect(find.text(kAlreadyLogged), findsOneWidget);
+      tapQuickLog(FlowLevel.light);
+      await tester.pumpAndSettle();
+      expect(find.text(kAlreadyLogged), findsNothing);
+      expect(find.text(kRecorded), findsOneWidget);
+    });
+
+    testWidgets('once the first message has gone, a second tap gets its own '
+        'reply', (tester) async {
+      await pumpHost(tester);
+      tapQuickLog(null);
+      await tester.pumpAndSettle();
+      await tester.pump(kActionSnackBarDuration);
+      await tester.pumpAndSettle();
+      expect(find.text(kRecorded), findsNothing);
+
+      tapQuickLog(FlowLevel.medium);
+      await tester.pumpAndSettle();
+      expect(find.text(kAlreadyLogged), findsOneWidget);
+    });
+  });
 }

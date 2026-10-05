@@ -707,26 +707,23 @@ class _LunarLogAppState extends State<LunarLogApp>
     gate?.setPendingLaunchProfileId(outcome.profileId);
     final ctx = _navigatorKey.currentContext;
     if (ctx == null) return;
-    // Issue #1412: the same builder the Today card uses, so a widget tap on
+    // Issue #1412: the same reply the Today card gives, so a widget tap on
     // a day already logged at medium flow or heavier is reported as
-    // unchanged here too. Whatever snackbar is on screen leaves first, as
-    // it does for the Today card's tap, so a second widget tap is answered
-    // at once rather than queueing behind the first one's message.
-    final messenger = ScaffoldMessenger.of(ctx);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      quickLogSnackBar(
-        l10n: AppLocalizations.of(ctx),
-        previousFlow: outcome.previousEntry?.flow,
-        contentKey: const ValueKey('widget-quick-log-snackbar'),
-        onUndo: () => unawaited(undoQuickLog(
-          _dayEntries,
-          profileId: outcome.profileId,
-          previous: outcome.previousEntry,
-          date: outcome.date,
-        )),
-        accessibleNavigation: MediaQuery.accessibleNavigationOf(ctx),
-      ),
+    // unchanged here too. A second widget tap is answered at once, and no
+    // Undo this tap did not show is ever taken away (issue #1472): see
+    // [showQuickLogSnackBar].
+    showQuickLogSnackBar(
+      ScaffoldMessenger.of(ctx),
+      l10n: AppLocalizations.of(ctx),
+      previousFlow: outcome.previousEntry?.flow,
+      contentKey: const ValueKey('widget-quick-log-snackbar'),
+      onUndo: () => unawaited(undoQuickLog(
+        _dayEntries,
+        profileId: outcome.profileId,
+        previous: outcome.previousEntry,
+        date: outcome.date,
+      )),
+      accessibleNavigation: MediaQuery.accessibleNavigationOf(ctx),
     );
   }
 
