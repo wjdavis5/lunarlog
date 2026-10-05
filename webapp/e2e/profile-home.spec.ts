@@ -274,3 +274,35 @@ test.describe('the profile home (issue #1253)', () => {
     expect(axe.violations).toEqual([]);
   });
 });
+
+// The day editor on a cold load: a reload, a bookmark, a link opened in a
+// new tab. This client keeps nothing at rest, so every one of those starts
+// with no session in memory. The page used to start its pull straight
+// away; the pull restored the session part-way through, the cache then
+// discarded it as having changed account, and the editor reported "You
+// don't have access to this profile" for a profile the reader owns.
+test.describe('the day editor on a cold load', () => {
+  test.beforeEach(async ({ page }) => {
+    await installSignedInFacade(page);
+  });
+
+  test('opens the profile, not a no-access error', async ({ page }) => {
+    test.skip(!(await buildIsConfigured(page)), 'unconfigured build (fork); runs in CI');
+    // A full navigation: a new document, nothing carried over in memory.
+    await page.goto(`/day/${RICH_ID}?date=2026-09-30`);
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Maya');
+    await expect(
+      page.getByRole('button', { name: messages['webDaySave'] ?? 'Save' }),
+    ).toBeVisible();
+    await expect(page.getByText(messages['webDayNoAccess'] ?? 'missing')).toHaveCount(0);
+  });
+
+  test('still opens after a reload', async ({ page }) => {
+    test.skip(!(await buildIsConfigured(page)), 'unconfigured build (fork); runs in CI');
+    await page.goto(`/day/${RICH_ID}?date=2026-09-30`);
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Maya');
+    await page.reload();
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Maya');
+    await expect(page.getByText(messages['webDayNoAccess'] ?? 'missing')).toHaveCount(0);
+  });
+});

@@ -214,6 +214,38 @@ describe('DayPage (issue #1254)', () => {
     expect(screen.getByText('Sign in to log a day.')).toBeInTheDocument();
   });
 
+  // On a cold load the session is not in memory yet. A pull started before
+  // it is known gets discarded by the cache as another account's data, and
+  // the page then reported "no access". The pull has to wait.
+  it('does not pull until the session is known', async () => {
+    const { client, rpc } = fakeClient();
+    let resolveSession: (value: unknown) => void = () => {};
+    (client as unknown as { auth: { getSession: () => Promise<unknown> } }).auth.getSession =
+      () =>
+        new Promise((resolve) => {
+          resolveSession = resolve;
+        });
+    renderDay(client);
+    // The page is up and waiting; nothing has been fetched.
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument());
+    expect(rpc).not.toHaveBeenCalled();
+
+    resolveSession({
+      data: { session: { user: { id: '00000000-0000-4000-8000-0000000000u1' } } },
+    });
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith('sync_pull', expect.anything()));
+    expect(await screen.findByRole('button', { name: 'Save' })).toBeInTheDocument();
+  });
+
+  it('does not pull at all for a signed-out visitor', async () => {
+    const { client, rpc } = fakeClient();
+    (client as unknown as { auth: { getSession: () => Promise<unknown> } }).auth.getSession =
+      async () => ({ data: { session: null } });
+    renderDay(client);
+    expect(await screen.findByText('Sign in to log a day.')).toBeInTheDocument();
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
   it('renders the heading and the flow chips for a writer', async () => {
     const { client } = fakeClient();
     renderDay(client);
