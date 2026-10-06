@@ -69,8 +69,14 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          # Astro 7 requires Node >= 22.12.
-          node-version: '22'
+          # The Node version is pinned in one place, site/.nvmrc (issue
+          # #1602). It is 24 for its npm, not for Node: the lockfile is
+          # written by npm 11, by the dependency bot as much as by
+          # anyone here, and npm 10 (Node 22) refuses a lockfile npm 11
+          # has regenerated ("Missing: proxy-agent from lock file"),
+          # which is how a security update sat unmergeable (#1593).
+          # Astro 7 needs Node >= 22.12 either way.
+          node-version-file: 'site/.nvmrc'
           cache: 'npm'
           cache-dependency-path: 'site/package-lock.json'
 
@@ -210,7 +216,8 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '22'
+          # One pin for every site job: see the build job above.
+          node-version-file: 'site/.nvmrc'
           cache: 'npm'
           cache-dependency-path: 'site/package-lock.json'
 

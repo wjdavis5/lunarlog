@@ -754,6 +754,19 @@ assert_contains "site/package.json pins @lhci/cli exactly" "$site_package" '"@lh
 assert_contains "site/package.json pins axe-core exactly" "$site_package" '"axe-core": "4.13.0"'
 assert_contains "the build script runs astro check" "$site_package" "astro check"
 
+# Issue #1602: the lockfile is written by npm 11 (the dependency bot uses
+# it too), and npm 10 refuses a lockfile npm 11 has regenerated. So every
+# job that installs the site reads one pin, and the pin is a Node that
+# ships npm 11.
+site_node="$(tr -d '[:space:]' <"$SCRIPT_DIR/../../../site/.nvmrc")"
+assert_eq "site/.nvmrc pins the Node whose npm writes the lockfile" "24" "$site_node"
+assert_contains "site.yml reads the Node pin" "$site_yaml" "node-version-file: 'site/.nvmrc'"
+assert_contains "site-deploy.yml reads the Node pin" "$site_deploy_yaml" "node-version-file: 'site/.nvmrc'"
+assert_not_contains "site.yml pins no Node of its own" "$site_yaml" "node-version: "
+assert_not_contains "site-deploy.yml pins no Node of its own" "$site_deploy_yaml" "node-version: "
+site_lock="$(cat "$SCRIPT_DIR/../../../site/package-lock.json")"
+assert_not_contains "the lockfile holds nothing npm 11 would prune" "$site_lock" '"extraneous": true'
+
 site_headers="$(cat "$SCRIPT_DIR/../../../site/public/_headers")"
 assert_contains "site/_headers carries the strict CSP" "$site_headers" "default-src 'self'"
 assert_not_contains "site/_headers forbids inline styles/scripts" "$site_headers" "unsafe-inline"
