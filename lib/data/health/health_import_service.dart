@@ -1374,11 +1374,14 @@ class _Accumulator {
   /// #1523). A pass is one or the other for all its pages.
   bool incremental = false;
 
-  /// The records the store says were deleted since the last import and
-  /// has not written again since (Issue #1594).
+  /// The records the store said were deleted since the last import
+  /// (Issue #1594). One it wrote again later in the read is here and in
+  /// [liveRecordIds] as well, and is not a deleted record: whoever reads
+  /// this takes those out.
   final Set<String> deletedRecordIds = {};
 
-  /// Every record this read found in the store.
+  /// Every record this read found in the store, less any it then said
+  /// was deleted.
   final Set<String> liveRecordIds = {};
 
   /// Whether a record this read brought was deleted later in the same
@@ -1394,7 +1397,6 @@ class _Accumulator {
   /// deleted: a whole-history page that lacks a record says nothing.
   void noteDeleted(HealthReadSamples read) {
     for (final sample in read.samples) {
-      deletedRecordIds.remove(sample.recordId);
       liveRecordIds.add(sample.recordId);
     }
     if (!read.incremental) return;

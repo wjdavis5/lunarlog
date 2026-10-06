@@ -242,9 +242,13 @@ class _FakeImporter implements HealthImportRunner {
   int removeCalls = 0;
   int keepCalls = 0;
 
+  /// Held open, the count is not answered until it completes.
+  Completer<void>? storeDeletedGate;
+
   @override
   Future<int> daysDeletedInStore() async {
     if (storeDeletedThrows) throw StateError('storage');
+    await storeDeletedGate?.future;
     return storeDeletedDays;
   }
 
@@ -1624,6 +1628,35 @@ void main() {
 
         expect(offer, findsNothing);
         expect(importTile, findsOneWidget);
+      });
+
+      // The days were the old binding's. The screen loads again after a
+      // change, and until that load is done it still shows the old
+      // binding: the offer must not be among what it shows.
+      testWidgets('stopping the sync takes the offer down at once, before '
+          'the screen has loaded again', (tester) async {
+        final importer = importerWith(waiting: 2);
+        await pumpBound(tester, importer);
+        expect(offer, findsOneWidget);
+        final unbind = find.byKey(const ValueKey('health-sync-unbind-tile'));
+        await tester.ensureVisible(unbind);
+        await tester.pumpAndSettle();
+        importer.storeDeletedGate = Completer<void>();
+
+        await tester.tap(unbind);
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey('health-sync-confirm-unbind')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(unbind, findsOneWidget, reason: 'the load is still waiting');
+        expect(offer, findsNothing);
+
+        importer.storeDeletedGate!.complete();
+        await tester.pumpAndSettle();
+        expect(unbind, findsNothing);
+        expect(offer, findsNothing);
       });
 
       testWidgets('with no profile bound there is nothing to offer',

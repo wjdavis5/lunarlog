@@ -29,6 +29,7 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 
 const _profileId = 'p1';
 const _ownerId = 'owner-user';
@@ -198,6 +199,49 @@ class _Store implements HealthImportSource {
       const HealthPlatformResult.allowed();
 }
 
+/// The real repository, with something run just before the next lookup of
+/// a day: for a row that changes in the middle of a removal.
+class _HookedDays implements DayEntriesRepository, DeletedDayEntryReader {
+  _HookedDays(this._inner);
+
+  final DriftDayEntriesRepository _inner;
+  Future<void> Function()? beforeNextFind;
+
+  @override
+  Future<DayEntry?> find(String profileId, LocalDate localDate) async {
+    final hook = beforeNextFind;
+    beforeNextFind = null;
+    await hook?.call();
+    return _inner.find(profileId, localDate);
+  }
+
+  @override
+  Future<List<DayEntry>> listForProfile(String profileId) =>
+      _inner.listForProfile(profileId);
+
+  @override
+  Future<DayEntry> save(DayEntry entry) => _inner.save(entry);
+
+  @override
+  Future<void> delete(String profileId, LocalDate localDate) =>
+      _inner.delete(profileId, localDate);
+
+  @override
+  Future<Map<String, DateTime>> deletedHealthRecords(String profileId) =>
+      _inner.deletedHealthRecords(profileId);
+
+  @override
+  Future<void> forgetDeletedHealthRecords(
+    String profileId,
+    Map<String, DateTime> deletedAt,
+  ) =>
+      _inner.forgetDeletedHealthRecords(profileId, deletedAt);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError('${invocation.memberName}');
+}
+
 /// A flow record on September [day] 2026, local midnight at UTC-4. Health
 /// Connect changes a record in place, so it carries when it last did.
 HealthFlowSample _flow(
@@ -235,17 +279,44 @@ void main() {
   late DriftDayEntriesRepository days;
   late DriftObservationsRepository observations;
   late HealthSyncBinding binding;
+  late DriftProfilesRepository profiles;
   late _Store store;
   late LocalHealthImportService import;
 
   LocalDate sept(int day) => LocalDate(2026, 9, day);
+
+  /// The import service over the test's database, reading and writing
+  /// days through [dayEntries].
+  LocalHealthImportService serviceOver(DayEntriesRepository dayEntries) =>
+      LocalHealthImportService(
+        importPlatform: HealthImportPlatform.healthConnect,
+        platform: _Platform(),
+        source: store,
+        binding: binding,
+        minorBindingAllowed: false,
+        profiles: profiles,
+        dayEntries: dayEntries,
+        observations: observations,
+        guardiansForProfile: (_) async => [
+          ProfileGuardian(
+            id: 'g1',
+            profileId: _profileId,
+            userId: _ownerId,
+            role: GuardianRole.primaryGuardian,
+            createdAt: DateTime.utc(2026, 1, 1),
+            updatedAt: DateTime.utc(2026, 1, 1),
+          ),
+        ],
+        signedInUserId: () => _ownerId,
+        today: () => LocalDate(2026, 9, 30),
+      );
 
   setUp(() async {
     db = LunarLogDatabase(NativeDatabase.memory());
     addTearDown(() => db.close());
     days = DriftDayEntriesRepository(db.storage);
     observations = DriftObservationsRepository(db.storage);
-    final profiles = DriftProfilesRepository(db.storage);
+    profiles = DriftProfilesRepository(db.storage);
     await db.storage.upsertProfile(
       id: _profileId,
       displayName: 'Ada',
@@ -260,28 +331,7 @@ void main() {
       minorBindingAllowed: false,
     );
     store = _Store();
-    import = LocalHealthImportService(
-      importPlatform: HealthImportPlatform.healthConnect,
-      platform: _Platform(),
-      source: store,
-      binding: binding,
-      minorBindingAllowed: false,
-      profiles: profiles,
-      dayEntries: days,
-      observations: observations,
-      guardiansForProfile: (_) async => [
-        ProfileGuardian(
-          id: 'g1',
-          profileId: _profileId,
-          userId: _ownerId,
-          role: GuardianRole.primaryGuardian,
-          createdAt: DateTime.utc(2026, 1, 1),
-          updatedAt: DateTime.utc(2026, 1, 1),
-        ),
-      ],
-      signedInUserId: () => _ownerId,
-      today: () => LocalDate(2026, 9, 30),
-    );
+    import = serviceOver(days);
   });
 
   Future<DayEntry?> dayOn(int day) => days.find(_profileId, sept(day));
@@ -525,6 +575,38 @@ void main() {
       expect(store.requests, [(null, false), ('page-2', false), (null, true)]);
       expect(store.commits, ['whole']);
     });
+
+    // That second read is the one a removal makes. Made by an import, it
+    // must not take the removal with it.
+    test('reading everything again for that removes nothing that is on '
+        'offer', () async {
+      await imported([
+        _flow('rec-10', 10, HealthFlowValue.heavy),
+        _flow('rec-11', 11, HealthFlowValue.medium),
+      ]);
+      await deletedInStore(['rec-11']);
+      expect(await import.daysDeletedInStore(), 1);
+      store.changePages.addAll([
+        HealthReadResult.samples(
+          [_flow('rec-20', 20, HealthFlowValue.medium)],
+          incremental: true,
+          nextCursor: 'page-2',
+        ),
+        HealthReadResult.samples(
+          const [],
+          incremental: true,
+          deletedRecordIds: const ['rec-20'],
+          commitToken: 'changes',
+        ),
+      ]);
+
+      final summary = await import.importNow();
+
+      expect(store.askedForWholeHistory.last, isTrue);
+      expect(summary.daysRemoved, 0);
+      expect((await dayOn(11))!.flow, FlowLevel.medium);
+      expect(await import.daysDeletedInStore(), 1);
+    });
   });
 
   group('removing the days, when she asks', () {
@@ -544,8 +626,9 @@ void main() {
       expect((await dayOn(11))!.flow, FlowLevel.medium);
       expect(summary.daysRemoved, 1);
       expect(summary.isEmpty, isFalse);
-      expect(await import.daysDeletedInStore(), 0);
+      // Before anything else reads the list: the removal cleared it.
       expect(await binding.storeDeletedRecordIds(), isEmpty);
+      expect(await import.daysDeletedInStore(), 0);
       // What changed since the last pass first, so that a deletion in that
       // stretch is not lost with the position; then everything.
       expect(store.requests, [(null, false), (null, true)]);
@@ -855,6 +938,31 @@ void main() {
       expect(summary.daysRemoved, 0);
     });
 
+    // After the list of days to remove has been made, and before this
+    // day's turn: the narrowest place a save can land.
+    test('a day that takes another record in the middle of the removal is '
+        'left as it is, and is not counted', () async {
+      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await deletedInStore(['rec-10']);
+      final hooked = _HookedDays(days)
+        ..beforeNextFind = () async {
+          await days.save(
+            (await dayOn(10))!.copyWith(
+              flow: FlowLevel.light,
+              sourceId: 'rec-other@5',
+            ),
+          );
+        };
+
+      final summary = await serviceOver(hooked).removeDaysDeletedInStore();
+
+      expect(hooked.beforeNextFind, isNull, reason: 'the save landed');
+      final day = (await dayOn(10))!;
+      expect(day.flow, FlowLevel.light);
+      expect(day.sourceId, 'rec-other@5');
+      expect(summary.daysRemoved, 0);
+    });
+
     test('a day she deletes herself while the store is being read again is '
         'hers: it is not counted, and stays remembered', () async {
       await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
@@ -933,6 +1041,17 @@ void main() {
       ]);
 
       await expectNothingRemoved(await import.removeDaysDeletedInStore());
+    });
+
+    test('that runs into the page limit', () async {
+      await offered();
+      store.wholeHistoryAgainPages.addAll([
+        for (var page = 0; page < kHealthImportMaxPages; page++)
+          HealthReadResult.samples(const [], nextCursor: 'page-$page'),
+      ]);
+
+      await expectNothingRemoved(await import.removeDaysDeletedInStore());
+      expect(store.wholeHistoryAgainPages, isEmpty, reason: 'all were read');
     });
 
     test('whose cursor comes round again', () async {
