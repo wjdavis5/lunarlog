@@ -580,6 +580,23 @@ void main() {
       expect(kotlin, contains('HealthImportCursor.reachedPastFromWire('));
     });
 
+    // Issue #1559: Health Connect changes a record in place and keeps its
+    // id. Without the record's own last-modified time the Dart merge
+    // cannot tell the other app's correction from hers, and keeps hers.
+    test('every imported sample carries its last-modified time', () {
+      expect(
+        kotlin,
+        contains('"modifiedAtMs" to lastModified.toEpochMilli(),'),
+      );
+      expect(
+        'record.metadata.lastModifiedTime'.allMatches(kotlin),
+        hasLength(2),
+        reason: 'one for each record type the import reads',
+      );
+      expect('sampleMap('.allMatches(kotlin), hasLength(3),
+          reason: 'declared once, called for each record type');
+    });
+
     test('the required set is the two record reads and nothing else', () {
       // The set literal: from its declaration to the line that closes it.
       const declaration = 'private val importReadPermissions = setOf(';

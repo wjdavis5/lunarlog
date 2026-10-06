@@ -489,6 +489,47 @@ void main() {
       expect(samples[1].offset, const Duration(hours: 5, minutes: 30));
     });
 
+    // Issue #1559: Health Connect changes a record in place, so the import
+    // needs to know when; HealthKit sends nothing, and that is not an error.
+    test('a sample carries the store\'s last-modified time when it is sent, '
+        'and none when it is not', () {
+      final decoded = decodeHealthReadResult([
+        {
+          'recordId': 'hc-1',
+          'kind': 'menstrualFlow',
+          'flow': 'heavy',
+          'startMs': 1000,
+          'endMs': 1000,
+          'zoneOffsetSeconds': 0,
+          'modifiedAtMs': 1791000000000,
+        },
+        {
+          'recordId': 'hk-1',
+          'flow': 'light',
+          'startMs': 1000,
+          'endMs': 2000,
+          'tzName': 'America/New_York',
+        },
+        // A wrongly typed value is ignored like an absent one.
+        {
+          'recordId': 'hc-2',
+          'flow': 'light',
+          'startMs': 1000,
+          'endMs': 1000,
+          'zoneOffsetSeconds': 0,
+          'modifiedAtMs': 'yesterday',
+        },
+      ]);
+      final samples = (decoded as HealthReadSamples).samples;
+      expect(
+        samples[0].modifiedAt,
+        DateTime.fromMillisecondsSinceEpoch(1791000000000, isUtc: true),
+      );
+      expect(samples[0].modifiedAt!.isUtc, isTrue);
+      expect(samples[1].modifiedAt, isNull);
+      expect(samples[2].modifiedAt, isNull);
+    });
+
     test('an iOS device-zone fallback decodes its offset and inferred flag '
         '(Issue #902)', () {
       final decoded = decodeHealthReadResult([
