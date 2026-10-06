@@ -327,6 +327,17 @@ abstract interface class AppSettingsStore {
   });
 }
 
+/// The device's memory of deleted health-store records (issue #1561), as
+/// the health import uses it. The storage layer writes it on its own,
+/// when a row is deleted; nothing outside it adds to it.
+abstract interface class HealthImportDeletionStore {
+  Future<Map<String, DateTime>> readHealthImportDeletions(String profileId);
+  Future<void> forgetHealthImportDeletions(
+    String profileId,
+    Map<String, DateTime> deletedAt,
+  );
+}
+
 /// Reads and writes for the same-date merge `day_entry_merge_events` table.
 abstract interface class MergeEventStore {
   Future<List<DayEntryMergeEventData>> getDayEntryMergeEventsForDay(
@@ -457,7 +468,11 @@ abstract interface class ImportedDataPurgeStore {
 
 /// The `day_entries` surface [DriftDayEntriesRepository] calls.
 abstract interface class DayEntriesRepositoryStore
-    implements DayEntryStore, MergeEventStore, AppSettingsStore {}
+    implements
+        DayEntryStore,
+        MergeEventStore,
+        AppSettingsStore,
+        HealthImportDeletionStore {}
 
 /// The `day_entries`/`observations` surface
 /// [DriftObservationsRepository] calls.

@@ -14,7 +14,11 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'mappers.dart';
 
 class DriftDayEntriesRepository
-    implements DayEntriesRepository, LatestDayEntryReader, DayEntrySyncStateReader {
+    implements
+        DayEntriesRepository,
+        LatestDayEntryReader,
+        DayEntrySyncStateReader,
+        DeletedDayEntryReader {
   DriftDayEntriesRepository(this._storage);
 
   final DayEntriesRepositoryStore _storage;
@@ -144,6 +148,17 @@ class DriftDayEntriesRepository
         profileId: profileId,
         localDate: localDate.iso,
       );
+
+  @override
+  Future<Map<String, DateTime>> deletedHealthRecords(String profileId) =>
+      _storage.readHealthImportDeletions(profileId);
+
+  @override
+  Future<void> forgetDeletedHealthRecords(
+    String profileId,
+    Map<String, DateTime> deletedAt,
+  ) =>
+      _storage.forgetHealthImportDeletions(profileId, deletedAt);
 
   /// Issue #130: the day sheet's merge-notice list — the window-filtered
   /// storage read minus this device's dismissed ids. Dismissal filtering

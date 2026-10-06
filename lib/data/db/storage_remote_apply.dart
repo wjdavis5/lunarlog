@@ -1213,6 +1213,9 @@ mixin LunarLogStorageRemoteApply
     await (db.delete(db.healthExportLedger)
           ..where((t) => t.profileId.equals(profileId)))
         .go();
+    // Issue #1561: so is the memory of what was deleted from its imports:
+    // record ids from a health store this device no longer reads for it.
+    await _forgetHealthImportDeletions(db, profileId);
   }
 
   /// Issue #522: applies a `deleted_profiles` row — the narrow tombstone a
@@ -1324,6 +1327,14 @@ mixin LunarLogStorageRemoteApply
               deletedAt: Value(stamp),
               dirty: const Value(false),
             ));
+        // Issue #1561: removing a health store's imported data is a clean
+        // slate for that store. What was deleted one by one from it is
+        // forgotten, so a later import brings everything the store holds.
+        // The whole store, whichever of its sources was named: on an
+        // iPhone the days and the entries on them carry different ones.
+        for (final ofStore in healthStoreSourcesSharedWith(source)) {
+          await _forgetHealthImportDeletions(db, profileId, ofStore);
+        }
         // Issue #907: only when nothing live remains for the profile.
         await _clearCycleFactsIfProfileEmpty(profileId);
       });

@@ -1452,6 +1452,141 @@ void main() {
       },
     );
 
+    // Issue #1561. Each save removed every spotting row on the day when
+    // Spotting was unticked, including one the sheet never showed her: a
+    // health import running behind the open sheet. Since a removed
+    // imported entry is no longer imported again, that would now be a
+    // loss she never asked for and could not see.
+    testWidgets(
+      'a spotting entry that arrives while the sheet is open is not '
+      'removed when she saves something else',
+      (tester) async {
+        final h = await pumpLogging(tester);
+        final day = await h.entries.save(
+          DayEntry(
+            id: '',
+            profileId: h.profile.id,
+            localDate: kToday,
+            tz: 'UTC',
+            flow: FlowLevel.light,
+            updatedAt: DateTime.utc(2026, 8, 30, 8),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<FilterChip>(find.byKey(const ValueKey('spotting-chip')))
+              .selected,
+          isFalse,
+        );
+
+        // The import adds spotting to the day behind the open sheet.
+        await h.observations.save(
+          Observation(
+            id: '',
+            dayEntryId: day.id,
+            profileId: h.profile.id,
+            localDate: kToday,
+            tz: 'UTC',
+            category: ObservationCategory.spotting,
+            code: 'spotting',
+            source: ObservationSource.healthConnect,
+            sourceId: 'rec-1',
+            updatedAt: DateTime.utc(2026, 8, 30, 9),
+          ),
+        );
+
+        await tester.tap(find.widgetWithText(ChoiceChip, 'Medium'));
+        await pumpAutosave(tester);
+
+        final saved = await h.entries.find(h.profile.id, kToday);
+        expect(saved!.flow, FlowLevel.medium);
+        expect(
+          (await h.observations.listForDayEntry(day.id))
+              .map((o) => o.sourceId),
+          ['rec-1'],
+        );
+        expect(
+          await h.db.storage.readHealthImportDeletions(h.profile.id),
+          isEmpty,
+        );
+        await disposeLogging(tester, h);
+      },
+    );
+
+    testWidgets(
+      'spotting she ticks and then unticks in one sitting is removed',
+      (tester) async {
+        final h = await pumpLogging(tester);
+
+        await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('spotting-chip')));
+        await pumpAutosave(tester);
+        final saved = await h.entries.find(h.profile.id, kToday);
+        expect(await h.observations.listForDayEntry(saved!.id), hasLength(1));
+
+        // The same sheet, never closed: nothing was loaded as ticked.
+        await tester.tap(find.byKey(const ValueKey('spotting-chip')));
+        await pumpAutosave(tester);
+        expect(await h.observations.listForDayEntry(saved.id), isEmpty);
+        await disposeLogging(tester, h);
+      },
+    );
+
+    testWidgets(
+      'unticking spotting that came from the health store removes it, '
+      'and the phone remembers it was removed (#1561)',
+      (tester) async {
+        final h = await pumpLogging(tester);
+        final day = await h.entries.save(
+          DayEntry(
+            id: '',
+            profileId: h.profile.id,
+            localDate: kToday,
+            tz: 'UTC',
+            flow: FlowLevel.notBleeding,
+            updatedAt: DateTime.utc(2026, 8, 30, 8),
+          ),
+        );
+        await h.observations.save(
+          Observation(
+            id: '',
+            dayEntryId: day.id,
+            profileId: h.profile.id,
+            localDate: kToday,
+            tz: 'UTC',
+            category: ObservationCategory.spotting,
+            code: 'spotting',
+            source: ObservationSource.healthConnect,
+            sourceId: 'rec-1',
+            updatedAt: DateTime.utc(2026, 8, 30, 9),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<FilterChip>(find.byKey(const ValueKey('spotting-chip')))
+              .selected,
+          isTrue,
+        );
+
+        await tester.tap(find.byKey(const ValueKey('spotting-chip')));
+        await pumpAutosave(tester);
+
+        expect(await h.observations.listForDayEntry(day.id), isEmpty);
+        expect(
+          (await h.db.storage.readHealthImportDeletions(h.profile.id)).keys,
+          ['health_connect|rec-1'],
+        );
+        await disposeLogging(tester, h);
+      },
+    );
+
     testWidgets(
       'unchecking a previously-saved spotting observation deletes it on '
       'save',

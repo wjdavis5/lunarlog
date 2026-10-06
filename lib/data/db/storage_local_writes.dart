@@ -1174,6 +1174,14 @@ mixin LunarLogStorageLocalWrites
           ),
         );
       }
+
+      // Issue #1561: what came from the health store is remembered as
+      // deleted, in this transaction, so the next import does not bring
+      // the day or its entries back.
+      await _rememberHealthImportDeletions(db, profileId, [
+        (live.source, live.sourceId),
+        for (final obs in liveObs) (obs.source, obs.sourceId),
+      ], at);
     });
   }
 
@@ -1367,6 +1375,13 @@ mixin LunarLogStorageLocalWrites
         localRev: Value(existing.localRev + 1),
       ),
     );
+    // Issue #1561: this is also how the day sheet removes one entry from
+    // a day (unticking Spotting). An entry that came from the health
+    // store is remembered as deleted, so the next import does not put it
+    // back.
+    await _rememberHealthImportDeletions(db, existing.profileId, [
+      (existing.source, existing.sourceId),
+    ], at);
   }
 
   // ------------------------------------------------------------- profile modes

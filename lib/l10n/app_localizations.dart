@@ -1606,10 +1606,10 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 day} other{{count} days}} already matched.'**
   String healthSyncImportAlreadyMatched(int count);
 
-  /// Health import summary: days whose hand-logged flow differed and was deliberately kept.
+  /// Health import summary: days where the store's value differed from what she has and hers was kept. That is a flow she logged or corrected by hand, a day she cleared, and a day or a spotting entry she deleted (Issues #1559, #1561).
   ///
   /// In en, this message translates to:
-  /// **'Kept your own logged value on {count, plural, =1{1 day} other{{count} days}}.'**
+  /// **'Kept your own changes on {count, plural, =1{1 day} other{{count} days}}.'**
   String healthSyncImportKeptManual(int count);
 
   /// Health import summary (Issue #902): entries the source recorded no zone for, dated on a civil date from this phone's own offset. Deliberately says dated, never skipped, so an inferred date is not reported as one the source recorded.

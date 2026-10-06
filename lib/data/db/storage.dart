@@ -68,6 +68,7 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart';
 import 'package:lunarlog/domain/activity/merge_events.dart';
+import 'package:lunarlog/domain/health/health_import_deletions.dart';
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
 import 'package:lunarlog/domain/logging/day_entry_policy.dart';
@@ -104,6 +105,7 @@ export '../sync/remote_rows.dart'
 
 part 'app_settings_storage.dart';
 part 'health_device_storage.dart';
+part 'health_import_deletions_storage.dart';
 part 'storage_local_writes.dart';
 part 'storage_queries.dart';
 part 'storage_remote_apply.dart';
@@ -157,6 +159,7 @@ class LunarLogStorage
     with
         LunarLogStorageQueries,
         LunarLogStorageAppSettings,
+        LunarLogStorageHealthImportDeletions,
         LunarLogStorageLocalWrites,
         LunarLogStorageSyncMetadata,
         LunarLogStorageHealthDevice,

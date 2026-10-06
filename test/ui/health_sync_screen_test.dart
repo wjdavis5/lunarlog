@@ -984,7 +984,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('Kept your own logged value on 1 day.'),
+        find.textContaining('Kept your own changes on 1 day.'),
         findsOneWidget,
       );
       // Issue #1017: the pre-#992 "Updated N days" line restated the
