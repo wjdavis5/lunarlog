@@ -234,6 +234,18 @@ class CaregiverAlertPreferences {
   /// resolve (KTD5).
   final String? timeZone;
 
+  /// Whether any alert in this configuration could produce a push to this
+  /// device (issue #1444): the entry-alert master, any ahead-of-time
+  /// opt-in, or a missed-entry threshold. Quiet hours, cadences and the
+  /// digest time only shape an alert that is already enabled, so they do
+  /// not count on their own.
+  bool get hasAnyAlert =>
+      alertOnLog ||
+      missedEntryThreshold != MissedEntryThreshold.off ||
+      aheadOfTimeAlerts.periodSoon ||
+      aheadOfTimeAlerts.restock ||
+      aheadOfTimeAlerts.pmsSoon;
+
   /// Structural identity for [==]/[hashCode]: records compare by value, so
   /// equality stays one branch however many fields this class gains.
   (bool, bool, bool, AlertCadence, AlertCadence, AlertCadence, int?,

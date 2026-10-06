@@ -23,14 +23,15 @@
 /// covered indirectly through `PushRegistrationCoordinator`'s tests against
 /// a fake `PushTokenSource` that models the same ordering contract.
 ///
-/// Issue #1425: the launch-time permission ask is not in this file either.
-/// Whether to ask, the system-UI window around an ask that can show the
-/// dialog, and the Android refusal count all live in
-/// `push_permission_ask.dart` and `lib/domain/notifications/
-/// push_permission_plan.dart` (neither excluded); what stays here is the
-/// two plugin calls they drive, [pushPermissionStateOf] between them, and
-/// [FirebasePushTokenSource.askPermission], which tests run against fakes
-/// in place of those two calls.
+/// Issue #1425: the launch-time permission ask used to live in this file;
+/// since issue #1444 it no longer happens at launch at all. Whether to
+/// ask, the system-UI window around an ask that can show the dialog, and
+/// the Android refusal count all live in `push_permission_ask.dart` and
+/// `lib/domain/notifications/push_permission_plan.dart` (neither
+/// excluded); what stays here is the two plugin calls they drive, and
+/// [FirebasePushTokenSource.askPermission], which in-context callers drive
+/// through `PushRegistrationCoordinator.ensurePermissionAndRegister` and
+/// tests run against fakes in place of those two calls.
 library;
 
 import 'dart:async';
@@ -70,8 +71,8 @@ FirebaseOptions buildFirebaseOptions({
 
 /// Pure mapping, directly unit-tested like [buildFirebaseOptions]: the
 /// plugin's [AuthorizationStatus] reduced to the [PushPermissionState] the
-/// launch-time ask decides on (issue #1425). `provisional` is Darwin's
-/// quiet-delivery grant and counts as granted.
+/// in-context ask decides on (issues #1425, #1444). `provisional` is
+/// Darwin's quiet-delivery grant and counts as granted.
 ///
 /// `denied` and `deniedPermanently` (Android, API 33+) both map to
 /// refused, on purpose. The plugin infers "permanently" from two indirect
@@ -122,12 +123,13 @@ class FirebasePushTokenSource implements PushTokenSource {
         duringSystemUi = null,
         _androidDenials = AndroidNotificationDenials(null);
 
-  /// Issue #287: serializes the launch-time permission ask ([askPermission])
+  /// Issue #287: serializes the in-context permission ask ([askPermission])
   /// against `FlutterLocalNotificationsScheduler`'s own Android/
-  /// Darwin permission requests. This one fires at database open; the
-  /// scheduler's no longer do (issues #863 and #1425 — they are now made
-  /// only from the "Turn on reminders" tap), but a tap can still land
-  /// while this request is pending. See
+  /// Darwin permission requests. The scheduler's are made only from the
+  /// "Turn on reminders" tap (issues #863 and #1425), and this class's own
+  /// only from `PushRegistrationCoordinator.ensurePermissionAndRegister`
+  /// (issue #1444) — but a tap and a guardian's alert toggle can still
+  /// land while the other side's request is pending. See
   /// `notification_permission_gate.dart`'s library doc for the full
   /// decision record.
   final NotificationPermissionGate _permissionGate;
@@ -141,7 +143,7 @@ class FirebasePushTokenSource implements PushTokenSource {
 
   /// Issue #1425: the one owner of the Android refusal count, over the
   /// same settings store `FlutterLocalNotificationsScheduler` reads it
-  /// from — so a launch-time refusal here is one the "Turn on reminders"
+  /// from — so an in-context refusal here is one the "Turn on reminders"
   /// tap knows about.
   final AndroidNotificationDenials _androidDenials;
 
@@ -199,16 +201,20 @@ class FirebasePushTokenSource implements PushTokenSource {
         projectId: AppConfig.fcmProjectId,
       ),
     );
-    // #4 (review): without this, iOS never asks the user for notification
-    // permission, so APNs never issues a token and getToken() below stays
-    // null forever on that platform. Android's runtime notification
-    // permission (API 33+) is folded into the same call by the plugin.
-    // Issue #287: routed through [_permissionGate] so this never runs
-    // concurrently with FlutterLocalNotificationsScheduler's own Android/
-    // Darwin permission request. Issue #1425: and inside the gate's
-    // system-UI window whenever the dialog can appear -- see
+    // Issue #1444: initialization is deliberately silent — no permission
+    // ask here, so database open never presents the system dialog on any
+    // build (on Android 13+ the POST_NOTIFICATIONS dialog; on iOS the
+    // one-shot notification dialog #863 keeps away from first launch).
+    // #4 (review)'s ordering still holds: the permission is requested
+    // first, in context, via [askPermission] — driven by
+    // `PushRegistrationCoordinator.ensurePermissionAndRegister` ahead of
+    // the token read that follows it — so APNs still issues a token and
+    // getToken() below still resolves once granted. Until then it reads
+    // null and registration is skipped, not failed. Issue #287: that ask
+    // is routed through [_permissionGate]; issue #1425: inside the gate's
+    // system-UI window whenever the dialog can appear — see
     // [askPermission].
-    await askPermission();
+    // Issue #174: without this, iOS silently drops the banner of a push
     // Issue #174: without this, iOS silently drops the banner of a push
     // arriving while the app is foregrounded (the pre-iOS-10 default is to
     // present nothing) — a caregiver alert landing while the recipient has
@@ -226,19 +232,21 @@ class FirebasePushTokenSource implements PushTokenSource {
     }
   }
 
-  /// The launch-time permission ask (issue #1425), queued on the shared
-  /// permission gate exactly as the bare request was (issue #287). The
-  /// window is opened inside that queue, not around it, so it is up only
-  /// while this request itself is — never while waiting behind another
-  /// one — and only when the request can present the system dialog;
-  /// `runPushPermissionAsk` decides, and on Android records the answer in
-  /// the shared refusal count.
+  /// The in-context permission ask (issues #1425, #1444), queued on the
+  /// shared permission gate exactly as the former launch-time request was
+  /// (issue #287). The window is opened inside that queue, not around it,
+  /// so it is up only while this request itself is — never while waiting
+  /// behind another one — and only when the request can present the
+  /// system dialog; `runPushPermissionAsk` decides, and on Android records
+  /// the answer in the shared refusal count.
   ///
-  /// Production calls this with no arguments, from [_initialize].
+  /// Production calls this with no arguments, from
+  /// `PushRegistrationCoordinator.ensurePermissionAndRegister` (after the
+  /// silent [_initialize], so permission still precedes the token read) —
+  /// wired as a tear-off in `lib/composition/app_dependencies.dart`.
   /// [currentState] and [request] stand in for the two plugin calls (and
   /// [isAndroid] for the platform), so tests can run the real queueing,
   /// window and count wiring of this class without Firebase.
-  @visibleForTesting
   Future<void> askPermission({
     bool? isAndroid,
     Future<PushPermissionState> Function()? currentState,

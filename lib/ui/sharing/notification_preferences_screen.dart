@@ -30,10 +30,18 @@ class NotificationPreferencesScreen extends StatefulWidget {
     super.key,
     required this.profile,
     required this.preferencesService,
+    this.ensurePushRegistration,
   });
 
   final Profile profile;
   final NotificationPreferencesService preferencesService;
+
+  /// The in-context push-permission ask (issue #1444), driven the moment a
+  /// guardian turns an alert on — without it, removing the launch-time ask
+  /// would leave guardians unable to grant the permission and caregiver
+  /// alerts would silently stop arriving. Null where push was never
+  /// started (unconfigured build), in which case toggles just save.
+  final Future<void> Function()? ensurePushRegistration;
 
   @override
   State<NotificationPreferencesScreen> createState() =>
@@ -103,6 +111,11 @@ class _NotificationPreferencesScreenState
   Future<void> _apply(
     CaregiverAlertPreferences Function(CaregiverAlertPreferences) transform,
   ) async {
+    // Issue #1444: whether any alert could already produce a push, read
+    // before the optimistic update — the in-context permission ask runs
+    // only on the off-to-on transition, never on narrowing, cadence,
+    // quiet-hours or retry saves while alerts stay enabled (or stay off).
+    final hadAlerts = _prefs.hasAnyAlert;
     final next = transform(_prefs);
     setState(() {
       _prefs = next;
@@ -122,6 +135,13 @@ class _NotificationPreferencesScreenState
           : l10n.notificationPreferencesFailureOther;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(message)));
+      return;
+    }
+    // Only after a successful save — and with no context use afterwards,
+    // so no mounted check is needed: the ask opens the gate's own
+    // system-UI window around a dialog-capable request itself.
+    if (!hadAlerts && next.hasAnyAlert) {
+      await widget.ensurePushRegistration?.call();
     }
   }
 

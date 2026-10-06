@@ -29,8 +29,8 @@ abstract final class SettingsKeys {
   /// `POST_NOTIFICATIONS` when the app asked for it (Issue #168). Two
   /// things ask, and both count here because Android's two dialogs are
   /// spent whoever asked: the "Turn on reminders" tap, and — on a
-  /// push-configured build — push registration's ask at launch. The key
-  /// has one owner, `AndroidNotificationDenials`
+  /// push-configured build — push registration's in-context ask (issue
+  /// #1444). The key has one owner, `AndroidNotificationDenials`
   /// (`lib/domain/notifications/`); nothing else reads or writes it. The
   /// scheduler's `initialize()` no longer asks at startup (issue #1425),
   /// so it no longer counts a refusal there either. A count written by an

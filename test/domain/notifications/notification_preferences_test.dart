@@ -225,4 +225,62 @@ void main() {
       expect(CaregiverAlertPreferences.off.digestTimeMinutes, isNull);
     });
   });
+
+  group('hasAnyAlert (issue #1444)', () {
+    test('the all-off default has no alert', () {
+      expect(CaregiverAlertPreferences.off.hasAnyAlert, isFalse);
+    });
+
+    test('the entry-alert master counts, narrowings alone do not', () {
+      expect(
+        const CaregiverAlertPreferences(alertOnLog: true).hasAnyAlert,
+        isTrue,
+      );
+      // A narrowing without the master enables nothing on its own — and
+      // the screen clears narrowings when the master goes off, so this
+      // shape only arises from a hand-built value.
+      expect(
+        const CaregiverAlertPreferences(alertOnCycleStartOnly: true)
+            .hasAnyAlert,
+        isFalse,
+      );
+    });
+
+    test('each ahead-of-time opt-in counts on its own', () {
+      for (final prefs in [
+        const CaregiverAlertPreferences(
+          aheadOfTimeAlerts: AheadOfTimeAlerts(periodSoon: true),
+        ),
+        const CaregiverAlertPreferences(
+          aheadOfTimeAlerts: AheadOfTimeAlerts(restock: true),
+        ),
+        const CaregiverAlertPreferences(
+          aheadOfTimeAlerts: AheadOfTimeAlerts(pmsSoon: true),
+        ),
+      ]) {
+        expect(prefs.hasAnyAlert, isTrue);
+      }
+    });
+
+    test('a missed-entry threshold counts on its own', () {
+      expect(
+        const CaregiverAlertPreferences(
+          missedEntryThreshold: MissedEntryThreshold.twoDays,
+        ).hasAnyAlert,
+        isTrue,
+      );
+    });
+
+    test('shaping-only settings never count', () {
+      expect(
+        const CaregiverAlertPreferences(
+          logCadence: AlertCadence.dailyDigest,
+          digestTimeMinutes: 8 * 60,
+          quietHours: QuietHours(startMinutes: 22 * 60, endMinutes: 7 * 60),
+          timeZone: 'America/New_York',
+        ).hasAnyAlert,
+        isFalse,
+      );
+    });
+  });
 }

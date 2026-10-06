@@ -1,4 +1,4 @@
-/// Issue #1425: push registration's launch-time permission ask against the
+/// Issue #1425: push registration's in-context permission ask against the
 /// real [GateController].
 ///
 /// The system permission dialog reports its own lifecycle departure
@@ -138,7 +138,7 @@ void main() {
     await ask;
   });
 
-  test('a launch whose permission is already settled opens no window and '
+  test('an ask whose permission is already settled opens no window and '
       'shows no cover', () async {
     // Settled either way: already granted, or refused twice so that
     // Android no longer shows its dialog.

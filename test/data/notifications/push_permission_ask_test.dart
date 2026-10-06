@@ -1,6 +1,7 @@
-/// Tests for [runPushPermissionAsk] (issue #1425): push registration's
-/// launch-time permission ask, driven here with fakes in place of the two
-/// `firebase_messaging` calls and of the gate's system-UI window.
+/// Tests for [runPushPermissionAsk] (issues #1425, #1444): push
+/// registration's in-context permission ask, driven here with fakes in
+/// place of the two `firebase_messaging` calls and of the gate's
+/// system-UI window.
 ///
 /// The same ask against the real `GateController` is in
 /// `test/ui/push_permission_window_test.dart`; through the real
@@ -120,7 +121,7 @@ void main() {
       await h.run(isAndroid: true);
 
       expect(h.window.opened, 0,
-          reason: 'a settled launch must show no cover');
+          reason: 'a settled ask must show no cover');
       expect(h.requests, 0);
       expect(h.events, ['probe']);
     });
@@ -141,8 +142,8 @@ void main() {
 
         expect(h.window.opened, 0,
             reason: '$state: two refusals on record -- a request would be '
-                'silently dropped, and a window for it would blank the '
-                'launch');
+                'silently dropped, and a window for it would cover the app '
+                'for no dialog');
         expect(h.requests, 0, reason: '$state');
       }
     });
@@ -251,7 +252,7 @@ void main() {
 
       await h.run(isAndroid: true);
 
-      expect(h.requests, 1, reason: 'the next launch asks nothing');
+      expect(h.requests, 1, reason: 'the next ask asks nothing');
       expect(h.window.opened, 1);
       expect(await h.count, '2');
     });
@@ -282,7 +283,7 @@ void main() {
       expect(await h.count, '1');
     });
 
-    test('a launch that finds the permission granted leaves the count '
+    test('an ask that finds the permission granted leaves the count '
         'alone -- only an answered ask writes it', () async {
       final h = _Harness(
         state: PushPermissionState.granted,

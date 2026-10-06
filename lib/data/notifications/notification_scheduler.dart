@@ -149,13 +149,13 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
 
   /// Issue #287: serializes every OS permission-request call below against
   /// [FirebasePushTokenSource]'s own `FirebaseMessaging.instance
-  /// .requestPermission()`, which fires at database open on a push-
-  /// configured build. This class no longer requests anything at database
-  /// open itself (Darwin since issue #863, Android since issue #1425), so
-  /// what the gate serializes here is [requestPermission] — the "Turn on
-  /// reminders" tap — plus the plugin's own `initialize()` channel call.
-  /// See `notification_permission_gate.dart`'s library doc for the full
-  /// decision record.
+  /// .requestPermission()` — the in-context push ask (issue #1444) on a
+  /// push-configured build. This class no longer requests anything at
+  /// database open itself (Darwin since issue #863, Android since issue
+  /// #1425), so what the gate serializes here is [requestPermission] —
+  /// the "Turn on reminders" tap — plus the plugin's own `initialize()`
+  /// channel call. See `notification_permission_gate.dart`'s library doc
+  /// for the full decision record.
   final NotificationPermissionGate _permissionGate;
 
   /// Issue #168: the device-local store the Android denial count is
@@ -170,7 +170,7 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
   /// [settingsStore]. The count has one owner, [AndroidNotificationDenials]
   /// (it used to be private state of this class): [requestPermission] — the
   /// "Turn on reminders" tap — reads and records through it, and so does
-  /// push registration's launch-time ask on a push-configured build
+  /// push registration's in-context ask on a push-configured build
   /// (`FirebasePushTokenSource`, over the same store), because Android's two
   /// dialogs are spent whoever asked. [initialize] does not ask (issue
   /// #1425), and so neither reads nor writes it. Feeds
@@ -374,7 +374,7 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
       // always goes back to the store). [initialize] does not touch the
       // count (issue #1425), so this read is what picks up whatever is on
       // record: an earlier process's taps, a pre-#1425 build's startup
-      // asks, or a refusal of push registration's launch-time ask.
+      // asks, or a refusal of push registration's in-context ask.
       final action =
           nextNotificationPermissionAction(await _androidDenials.load());
       try {
