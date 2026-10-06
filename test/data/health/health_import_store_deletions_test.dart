@@ -379,6 +379,92 @@ void main() {
   Future<void> keepOffered() async =>
       import.keepDaysDeletedInStore(await import.daysDeletedInStore());
 
+  // Issue #1564. The import takes the heaviest flow it is given for a
+  // day. A changes read used to give it only the records that changed,
+  // so a lighter record added to a day made the day lighter. The Android
+  // adapter now sends every flow record of each day a changes page
+  // touches (`flowRecordsOfTouchedDays`); these pin what the import does
+  // with such a page.
+  group('a changes page that carries the whole of the day it touches', () {
+    /// What the adapter answers when another app adds a light record to
+    /// a day that already holds a heavy one: both, the old one as it was.
+    void anotherAppAddsLightTo(int day) {
+      store.changePages.add(
+        HealthReadResult.samples(
+          [
+            _flow('rec-light', day, HealthFlowValue.light, modifiedHour: 20),
+            _flow('rec-heavy', day, HealthFlowValue.heavy),
+          ],
+          incremental: true,
+          commitToken: 'changes',
+        ),
+      );
+    }
+
+    test('a lighter record added to a day leaves the day as heavy as it '
+        'was', () async {
+      await imported([_flow('rec-heavy', 10, HealthFlowValue.heavy)]);
+      final before = (await dayOn(10))!;
+      anotherAppAddsLightTo(10);
+
+      final summary = await import.importNow();
+
+      final day = (await dayOn(10))!;
+      expect(day.flow, FlowLevel.heavy);
+      expect(day.sourceId, before.sourceId, reason: 'still the heavy record');
+      expect(summary.daysWritten, 0);
+      expect(summary.daysUnchanged, 1);
+    });
+
+    test('and does not undo a correction she made to that day', () async {
+      await imported([_flow('rec-heavy', 10, HealthFlowValue.heavy)]);
+      await days.save((await dayOn(10))!.copyWith(flow: FlowLevel.medium));
+      anotherAppAddsLightTo(10);
+
+      final summary = await import.importNow();
+
+      expect((await dayOn(10))!.flow, FlowLevel.medium);
+      expect(summary.daysWritten, 0);
+      expect(summary.daysKeptManual, 1);
+    });
+
+    test('a heavier record added to a day still makes the day heavier',
+        () async {
+      await imported([_flow('rec-light', 10, HealthFlowValue.light)]);
+      store.changePages.add(
+        HealthReadResult.samples(
+          [
+            _flow('rec-heavy', 10, HealthFlowValue.heavy, modifiedHour: 20),
+            _flow('rec-light', 10, HealthFlowValue.light),
+          ],
+          incremental: true,
+          commitToken: 'changes',
+        ),
+      );
+
+      final summary = await import.importNow();
+
+      final day = (await dayOn(10))!;
+      expect(day.flow, FlowLevel.heavy);
+      expect(day.sourceId, startsWith('rec-heavy@'));
+      expect(summary.daysWritten, 1);
+    });
+
+    // The day's other records are read from the store, so one of them
+    // that an earlier pass heard was deleted, and that is there, is there.
+    test('a record such a page carries is in the store, and comes off the '
+        'list of deleted ones', () async {
+      await imported([_flow('rec-heavy', 10, HealthFlowValue.heavy)]);
+      await binding.setStoreDeletedRecordIds({'rec-heavy'});
+      anotherAppAddsLightTo(10);
+
+      await import.importNow();
+
+      expect(await binding.storeDeletedRecordIds(), isEmpty);
+      expect(await onOffer(), 0);
+    });
+  });
+
   group('an import that finds a record was deleted', () {
     test('removes nothing: the day stays, and is offered', () async {
       await imported([

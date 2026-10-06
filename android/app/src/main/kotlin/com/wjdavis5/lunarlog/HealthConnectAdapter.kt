@@ -33,6 +33,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneOffset
 import java.util.Base64
 import java.util.Calendar
@@ -1448,8 +1449,16 @@ class HealthConnectAdapter(context: Context) {
                 is DeletionChange -> fold.delete(change.recordId)
             }
         }
+        // Issue #1564: the changed records alone do not say what a day
+        // holds. Dart takes the heaviest flow it is given for a date, so
+        // a lighter record added to a day that already had a heavier one
+        // used to make the day lighter until the next whole-range read.
+        val changed = fold.records.toList()
+        val samples = (changed + flowRecordsOfTouchedDays(client, changed))
+            .distinctBy { it.metadata.id }
+            .mapNotNull { sampleFor(it, start, end) }
         val payload = mutableMapOf<String, Any>(
-            "samples" to fold.records.mapNotNull { sampleFor(it, start, end) },
+            "samples" to samples,
             // The ids alone: a deletion carries nothing else, not even the
             // record's type. This app's own deleted writes are among them
             // and match nothing Dart imported.
@@ -1473,6 +1482,47 @@ class HealthConnectAdapter(context: Context) {
             }
         }
         return payload
+    }
+
+    // Issue #1564: every flow record the store holds for the days that
+    // [changed] touches, so that Dart decides those days from all of
+    // their records. A changes page carries only what was written since
+    // the last import; a record that did not change is absent from it and
+    // still counts.
+    //
+    // Flow records only. A day's spotting is one entry whichever record
+    // it came from, so nothing is decided between spotting records. This
+    // app's own writes come back too and are dropped by [sampleFor] with
+    // the rest. A record deleted on this same page is simply not there to
+    // be read.
+    private suspend fun flowRecordsOfTouchedDays(
+        client: HealthConnectClient,
+        changed: List<Record>,
+    ): List<Record> {
+        val dates = changed
+            .filterIsInstance<MenstruationFlowRecord>()
+            .filter {
+                it.metadata.dataOrigin.packageName != contextApp.packageName
+            }
+            .mapNotNull { HealthTouchedDays.dateOf(it.time, it.zoneOffset) }
+            .toSet()
+        val found = mutableListOf<Record>()
+        for (window in HealthTouchedDays.windows(dates)) {
+            var token: String? = null
+            do {
+                val response = client.readRecords(
+                    ReadRecordsRequest(
+                        MenstruationFlowRecord::class,
+                        TimeRangeFilter.between(window.first, window.second),
+                        pageToken = token,
+                    ))
+                found += response.records.filter {
+                    HealthTouchedDays.dateOf(it.time, it.zoneOffset) in dates
+                }
+                token = response.pageToken
+            } while (token != null)
+        }
+        return found
     }
 
     // One page of a full time-range read for one record type. The cursor's
@@ -2148,6 +2198,57 @@ internal class HealthChangeFold<T> {
 
     /** The ids deleted and not written again afterwards. */
     val deletedIds: List<String> get() = deleted.toList()
+}
+
+/**
+ * Issue #1564: which days a set of records falls on, and what to read
+ * from the store to see each of those days whole. Free of Health Connect
+ * types so that it runs on the JVM.
+ */
+internal object HealthTouchedDays {
+    /**
+     * How far apart two days may be and still be read in one request.
+     * A request returns everything between its ends, and what falls on
+     * no touched day is dropped afterwards, so a wide window costs
+     * records read, not correctness. A month keeps a year of scattered
+     * changes to a handful of requests.
+     */
+    const val MAX_GAP_DAYS = 31L
+
+    /**
+     * The day a record falls on, by its own offset. Null for a record
+     * that carries none: Dart places no such record on a day (it is
+     * counted as having no zone and skipped), so it touches none.
+     */
+    fun dateOf(time: Instant, offset: ZoneOffset?): LocalDate? =
+        offset?.let { time.atOffset(it).toLocalDate() }
+
+    /**
+     * Time ranges that between them hold every instant that can fall on
+     * one of [dates], whatever offset a record there carries. Days no
+     * more than [MAX_GAP_DAYS] apart share a range.
+     *
+     * A day begins up to eighteen hours before its UTC midnight (offset
+     * +18:00, the widest there is) and ends up to eighteen hours after
+     * the next one (-18:00), so each range is widened by that much at
+     * both ends.
+     */
+    fun windows(dates: Set<LocalDate>): List<Pair<Instant, Instant>> {
+        val ranges = mutableListOf<Pair<LocalDate, LocalDate>>()
+        for (date in dates.sorted()) {
+            val last = ranges.lastOrNull()
+            if (last != null && !date.isAfter(last.second.plusDays(MAX_GAP_DAYS))) {
+                ranges[ranges.size - 1] = last.first to date
+            } else {
+                ranges += date to date
+            }
+        }
+        return ranges.map { (first, last) ->
+            val from = first.atStartOfDay().toInstant(ZoneOffset.MAX)
+            val to = last.plusDays(1).atStartOfDay().toInstant(ZoneOffset.MIN)
+            from to to
+        }
+    }
 }
 
 /**
