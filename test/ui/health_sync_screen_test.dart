@@ -225,7 +225,44 @@ class _FakeImporter implements HealthImportRunner {
     await importGate?.future;
     final error = importError;
     if (error != null) throw error;
+    storeDeletedDays = storeDeletedDaysAfterImport ?? storeDeletedDays;
     return summary;
+  }
+
+  /// Issue #1594: how many imported days the store has said were
+  /// deleted, what an import leaves that at, and what a removal answers.
+  int storeDeletedDays = 0;
+  int? storeDeletedDaysAfterImport;
+  bool storeDeletedThrows = false;
+  HealthImportSummary removalSummary = const HealthImportSummary(
+    samplesRead: 8,
+    daysUnchanged: 8,
+    daysRemoved: 2,
+  );
+  int removeCalls = 0;
+  int keepCalls = 0;
+
+  @override
+  Future<int> daysDeletedInStore() async {
+    if (storeDeletedThrows) throw StateError('storage');
+    return storeDeletedDays;
+  }
+
+  @override
+  Future<HealthImportSummary> removeDaysDeletedInStore({
+    void Function(HealthImportProgress progress)? onProgress,
+  }) async {
+    removeCalls++;
+    await importGate?.future;
+    // A removal that was stopped leaves the days on offer.
+    if (!removalSummary.isBlocked) storeDeletedDays = 0;
+    return removalSummary;
+  }
+
+  @override
+  Future<void> keepDaysDeletedInStore() async {
+    keepCalls++;
+    storeDeletedDays = 0;
   }
 
   /// Issue #1573: whether the store has an "Access past data" switch at
@@ -344,6 +381,18 @@ class _ThrowingImporter implements HealthImportRunner {
 
   @override
   Future<bool> requestPastDataAccess() async => false;
+
+  @override
+  Future<int> daysDeletedInStore() async => 0;
+
+  @override
+  Future<HealthImportSummary> removeDaysDeletedInStore({
+    void Function(HealthImportProgress progress)? onProgress,
+  }) =>
+      throw StateError('boom');
+
+  @override
+  Future<void> keepDaysDeletedInStore() async {}
 }
 
 void main() {
@@ -1381,106 +1430,237 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    // Issue #1594: a record deleted in the app it came from takes its
-    // imported day out, and the result says so.
+    // Issue #1594. The health store reports that the records some imported
+    // days came from were deleted. lunarlog removes nothing on that report
+    // alone: it says how many days, and asks.
     group('Issue #1594 days the store deleted', () {
-      const removedOne = 'Removed what was imported for 1 day: its record '
-          'was deleted in Health Connect.';
       const removedTwo = 'Removed what was imported for 2 days: their '
           'records were deleted in Health Connect.';
-      const kept = '11 days you imported were deleted in Health Connect. '
-          'lunarlog kept them: it removes no more than 10 at a time on its '
-          'own. You can delete them here yourself.';
+      const offerTwo =
+          '2 days you imported are no longer in Health Connect.';
+      const detailTwo = 'They may have been removed in the app they came '
+          'from. Removing them here takes off what was imported and keeps '
+          'anything you added to those days.';
+      final offer = find.byKey(const ValueKey('health-sync-store-deleted-offer'));
+      final remove =
+          find.byKey(const ValueKey('health-sync-store-deleted-remove'));
+      final keep = find.byKey(const ValueKey('health-sync-store-deleted-keep'));
+      final importTile = find.byKey(const ValueKey('health-sync-import-tile'));
 
-      Future<List<String?>> resultLines(
-        WidgetTester tester,
-        HealthImportSummary summary,
-      ) async {
-        await pumpScreen(
-          tester,
-          binding: await boundBinding(FakeSettingsStore()),
-          importer: _FakeImporter(
-            summary,
-            platform: HealthImportPlatform.healthConnect,
-          ),
-        );
-        await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
-        await tester.pumpAndSettle();
-        return [
-          for (final text in tester.widgetList<Text>(
-            find.descendant(
-              of: find.byKey(const ValueKey('health-sync-import-summary')),
-              matching: find.byType(Text),
-            ),
-          ))
-            text.data,
-        ];
-      }
+      _FakeImporter importerWith({
+        int waiting = 0,
+        HealthImportPlatform platform = HealthImportPlatform.healthConnect,
+      }) =>
+          _FakeImporter(
+            const HealthImportSummary(incremental: true, pagesRead: 1),
+            platform: platform,
+          )..storeDeletedDays = waiting;
+
+      List<String?> linesIn(WidgetTester tester, Finder block) => [
+            for (final text in tester.widgetList<Text>(
+              find.descendant(of: block, matching: find.byType(Text)),
+            ))
+              text.data,
+          ];
+
+      Future<void> pumpBound(WidgetTester tester, _FakeImporter importer) async =>
+          pumpScreen(
+            tester,
+            binding: await boundBinding(FakeSettingsStore()),
+            importer: importer,
+          );
 
       Future<void> letTheSnackBarGo(WidgetTester tester) async {
         await tester.pump(const Duration(seconds: 5));
         await tester.pumpAndSettle();
       }
 
-      testWidgets('a pass that only removed a day says that, and is not '
-          'described as empty', (tester) async {
-        final lines = await resultLines(
+      testWidgets('days waiting when the screen opens are offered, with what '
+          'each button does', (tester) async {
+        await pumpBound(tester, importerWith(waiting: 2));
+
+        expect(linesIn(tester, offer), [
+          offerTwo,
+          detailTwo,
+          'Remove from lunarlog',
+          'Keep',
+        ]);
+      });
+
+      testWidgets('one day reads in the singular', (tester) async {
+        await pumpBound(tester, importerWith(waiting: 1));
+
+        expect(linesIn(tester, offer).take(2), [
+          '1 day you imported is no longer in Health Connect.',
+          'It may have been removed in the app it came from. Removing it '
+              'here takes off what was imported and keeps anything you '
+              'added to that day.',
+        ]);
+      });
+
+      testWidgets('on an iPhone the store is the Health app', (tester) async {
+        await pumpBound(
           tester,
-          const HealthImportSummary(incremental: true, daysRemoved: 1),
+          importerWith(waiting: 2, platform: HealthImportPlatform.appleHealth),
         );
 
-        expect(lines, [removedOne]);
+        expect(
+          linesIn(tester, offer).first,
+          '2 days you imported are no longer in the Health app.',
+        );
+      });
+
+      testWidgets('nothing is offered when no day is waiting', (tester) async {
+        await pumpBound(tester, importerWith());
+        expect(offer, findsNothing);
+      });
+
+      testWidgets('an import that finds deleted records leaves its result as '
+          'it would be and offers the days under it', (tester) async {
+        final importer = importerWith()..storeDeletedDaysAfterImport = 2;
+        await pumpBound(tester, importer);
+        expect(offer, findsNothing);
+
+        await tester.tap(importTile);
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text('Nothing new in Health Connect since the last import.'),
+          findsOneWidget,
+        );
+        expect(linesIn(tester, offer).first, offerTwo);
+        expect(importer.removeCalls, 0, reason: 'nothing is removed unasked');
+      });
+
+      testWidgets('Remove takes the days out, says so, and the offer goes',
+          (tester) async {
+        final importer = importerWith(waiting: 2);
+        await pumpBound(tester, importer);
+
+        await tester.tap(remove);
+        await tester.pumpAndSettle();
+
+        expect(importer.removeCalls, 1);
+        expect(importer.calls, 0, reason: 'a removal is not an import');
+        expect(
+          linesIn(
+            tester,
+            find.byKey(const ValueKey('health-sync-import-summary')),
+          ),
+          [removedTwo, '8 days were already logged.'],
+        );
+        expect(find.textContaining('Nothing new'), findsNothing);
+        expect(offer, findsNothing);
         expect(
           find.descendant(
             of: find.byType(SnackBar),
-            matching: find.text(removedOne),
+            matching: find.text(removedTwo),
           ),
           findsOneWidget,
         );
         await letTheSnackBarGo(tester);
       });
 
-      testWidgets('what was removed leads when no day was imported, and '
-          'the days already here follow', (tester) async {
-        final lines = await resultLines(
-          tester,
-          const HealthImportSummary(
-            samplesRead: 8,
-            daysUnchanged: 8,
-            daysRemoved: 2,
-          ),
-        );
+      testWidgets('Keep leaves everything as it is, and the offer goes',
+          (tester) async {
+        final importer = importerWith(waiting: 2);
+        await pumpBound(tester, importer);
 
-        expect(lines, [removedTwo, '8 days were already logged.']);
-        expect(find.textContaining('Nothing new'), findsNothing);
+        await tester.tap(keep);
+        await tester.pumpAndSettle();
+
+        expect(importer.keepCalls, 1);
+        expect(importer.removeCalls, 0);
+        expect(importer.calls, 0);
+        expect(offer, findsNothing);
+        expect(
+          find.byKey(const ValueKey('health-sync-import-summary')),
+          findsNothing,
+        );
+      });
+
+      testWidgets('a removal that could not read the store says so, and the '
+          'days stay on offer', (tester) async {
+        final importer = importerWith(waiting: 2)
+          ..removalSummary = const HealthImportSummary(
+            blocked: HealthPlatformResult.unavailable(),
+          );
+        await pumpBound(tester, importer);
+
+        await tester.tap(remove);
+        await tester.pumpAndSettle();
+
+        expect(importer.removeCalls, 1);
+        expect(
+          find.byKey(const ValueKey('health-sync-import-summary')),
+          findsOneWidget,
+        );
+        expect(find.text(removedTwo), findsNothing);
+        expect(linesIn(tester, offer).first, offerTwo);
+      });
+
+      testWidgets('the offer is out of the way while a pass is running',
+          (tester) async {
+        final importer = importerWith(waiting: 2)..importGate = Completer<void>();
+        await pumpBound(tester, importer);
+
+        await tester.tap(remove);
+        await tester.pump();
+        expect(offer, findsNothing);
+        expect(importer.removeCalls, 1);
+
+        importer.importGate!.complete();
+        await tester.pumpAndSettle();
+        expect(offer, findsNothing);
         await letTheSnackBarGo(tester);
       });
 
-      testWidgets('with a day imported, that leads and the removal follows',
-          (tester) async {
-        final lines = await resultLines(
+      testWidgets('a count that cannot be read makes no offer and does not '
+          'stop the screen loading', (tester) async {
+        await pumpBound(
           tester,
-          const HealthImportSummary(
+          importerWith(waiting: 2)..storeDeletedThrows = true,
+        );
+
+        expect(offer, findsNothing);
+        expect(importTile, findsOneWidget);
+      });
+
+      testWidgets('with no profile bound there is nothing to offer',
+          (tester) async {
+        await pumpScreen(
+          tester,
+          binding: HealthSyncBinding(FakeSettingsStore()),
+          importer: importerWith(waiting: 2),
+        );
+
+        expect(offer, findsNothing);
+      });
+
+      testWidgets('a removal with a day imported in the same pass leads with '
+          'the import', (tester) async {
+        final importer = importerWith(waiting: 1)
+          ..removalSummary = const HealthImportSummary(
             samplesRead: 1,
             daysWritten: 1,
             daysRemoved: 1,
+          );
+        await pumpBound(tester, importer);
+
+        await tester.tap(remove);
+        await tester.pumpAndSettle();
+
+        expect(
+          linesIn(
+            tester,
+            find.byKey(const ValueKey('health-sync-import-summary')),
           ),
+          [
+            'Imported 1 day.',
+            'Removed what was imported for 1 day: its record was deleted in '
+                'Health Connect.',
+          ],
         );
-
-        expect(lines, ['Imported 1 day.', removedOne]);
-        await letTheSnackBarGo(tester);
-      });
-
-      // More than lunarlog follows at once: nothing was removed.
-      testWidgets('days the store deleted and lunarlog kept are named, with '
-          'the limit', (tester) async {
-        final lines = await resultLines(
-          tester,
-          const HealthImportSummary(incremental: true, storeDeletionsKept: 11),
-        );
-
-        expect(lines, [kept]);
-        expect(find.textContaining('Nothing new'), findsNothing);
         await letTheSnackBarGo(tester);
       });
     });

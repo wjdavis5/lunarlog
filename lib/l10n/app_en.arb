@@ -1297,7 +1297,7 @@
   },
   "healthSyncImportRemovedDays": "{count, plural, =1{Removed what was imported for 1 day: its record was deleted in {source}.} other{Removed what was imported for {count} days: their records were deleted in {source}.}}",
   "@healthSyncImportRemovedDays": {
-    "description": "Health import summary (Issue #1594): days lunarlog had imported and has now taken out, because the app they came from deleted their records from the health store. Says 'what was imported', not 'the day': a day that carried anything of hers (a tag, a note, an entry) is still there and lost only the imported flow, and where only a spotting entry was imported only that went. {source} is the health store's name.",
+    "description": "Health import summary (Issue #1594): days lunarlog had imported and has now taken out at her request, after the health store reported that their records were deleted. Says 'what was imported', not 'the day': a day that carried anything of hers (a tag, a note, an entry) is still there and lost only the imported flow, and where only a spotting entry was imported only that went. {source} is the health store's name.",
     "placeholders": {
       "count": {
         "type": "int"
@@ -1307,20 +1307,34 @@
       }
     }
   },
-  "healthSyncImportKeptDeleted": "{count} days you imported were deleted in {source}. lunarlog kept them: it removes no more than {limit} at a time on its own. You can delete them here yourself.",
-  "@healthSyncImportKeptDeleted": {
-    "description": "Health import summary (Issue #1594): the health store reported more deleted records than lunarlog follows in one go, so it removed none of those days. That many at once is more likely someone clearing out the health store after moving to lunarlog than a correction, and following it would empty her history here. {count} is always more than {limit}. {source} is the health store's name.",
+  "healthSyncStoreDeletedOffer": "{count, plural, =1{1 day you imported is no longer in {source}.} other{{count} days you imported are no longer in {source}.}}",
+  "@healthSyncStoreDeletedOffer": {
+    "description": "Health sync screen (Issue #1594): the health store has reported that the records lunarlog imported these days from were deleted. lunarlog removes nothing on that report alone, because a record goes for more than one reason (a day taken back in the other app; that app, or the whole store, cleared out after moving to lunarlog), so it says how many days and asks. {source} is the health store's name.",
     "placeholders": {
       "count": {
-        "type": "int"
-      },
-      "limit": {
         "type": "int"
       },
       "source": {
         "type": "String"
       }
     }
+  },
+  "healthSyncStoreDeletedDetail": "{count, plural, =1{It may have been removed in the app it came from. Removing it here takes off what was imported and keeps anything you added to that day.} other{They may have been removed in the app they came from. Removing them here takes off what was imported and keeps anything you added to those days.}}",
+  "@healthSyncStoreDeletedDetail": {
+    "description": "Health sync screen (Issue #1594): under healthSyncStoreDeletedOffer, what the Remove button does. A day that carries a tag, a note or an entry of hers keeps its row and loses only the imported flow.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "healthSyncStoreDeletedRemove": "Remove from lunarlog",
+  "@healthSyncStoreDeletedRemove": {
+    "description": "Health sync screen (Issue #1594): the button that takes out what was imported for the days the health store deleted."
+  },
+  "healthSyncStoreDeletedKeep": "Keep",
+  "@healthSyncStoreDeletedKeep": {
+    "description": "Health sync screen (Issue #1594): the button that leaves the days the health store deleted as they are and stops offering them."
   },
   "healthSyncImportKeptManual": "Kept your own changes on {count, plural, =1{1 day} other{{count} days}}.",
   "@healthSyncImportKeptManual": {

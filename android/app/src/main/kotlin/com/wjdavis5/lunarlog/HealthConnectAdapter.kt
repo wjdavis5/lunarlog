@@ -1378,14 +1378,14 @@ class HealthConnectAdapter(context: Context) {
         wholeHistory: Boolean = false,
     ): Map<String, Any> {
         val decoded = cursor?.let { HealthImportCursor.decode(it) }
-        // Issue #1594: Dart asks for everything again when it is about to
-        // take out a day whose record was deleted, because another record
-        // for that day may still be here and a changes page never returns
-        // a record that did not change. Dropping the token makes the read
+        // Issue #1594: Dart asks for everything again before it takes
+        // out a day whose record was deleted, because another record for
+        // that day may still be here and a changes page never returns a
+        // record that did not change. Dropping the token makes the read
         // below a whole-range one. It stays dropped until that read's
         // last page is committed, so a pass that ends early is followed
-        // by another whole-range read, not by a changes read that has
-        // forgotten the deletion.
+        // by another whole-range read. The deletions are not lost with
+        // the token: Dart has stored their ids by the time it asks.
         if (HealthImportCursor.startsOver(decoded != null, wholeHistory)) {
             prefs.edit().remove(changesTokenKey(profileId)).apply()
         }
