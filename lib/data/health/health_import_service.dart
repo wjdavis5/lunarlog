@@ -132,10 +132,15 @@ class _DesiredSample {
     required this.value,
     required this.recordId,
     required this.tzName,
+    this.modifiedAt,
   });
 
   final FlowLevel flow;
   final HealthFlowValue value;
+
+  /// When the store last changed the winning sample
+  /// ([HealthFlowSample.modifiedAt]); null where it cannot be changed.
+  final DateTime? modifiedAt;
 
   /// The winning sample's store id — the imported row's `source_id`, so a
   /// re-import of the same sample is idempotent.
@@ -261,6 +266,7 @@ _PageResolveResult _resolvePage(_PageResolveRequest request) {
         recordId: sample.recordId,
         // Non-null: _dateFor already proved a zone resolves.
         tzName: _zoneNameFor(sample)!,
+        modifiedAt: sample.modifiedAt,
       );
     }
   }
@@ -684,11 +690,13 @@ class LocalHealthImportService
   ///
   /// * no live row → insert with this platform's provenance;
   /// * same flow → no-op;
-  /// * unlogged (`none`) day, or a day this importer previously wrote →
-  ///   adopt the imported flow, preserving the row's tags/note/PMS;
-  /// * a different human-logged flow → keep the human value
-  ///   ([_MergeOutcome.keptManual]); the import never overwrites what the
-  ///   user typed.
+  /// * a hand-logged day with no flow (`none`) → adopt the imported flow,
+  ///   preserving the row's tags/note/PMS;
+  /// * a day this importer previously wrote, when the store has changed
+  ///   since ([_storeChangedSince]) → adopt the store's new value;
+  /// * anything else → keep what is there ([_MergeOutcome.keptManual]):
+  ///   the import never overwrites what the user typed, and that
+  ///   includes a correction she made to a day it imported.
   Future<_MergeOutcome> _mergeDay(
     String profileId,
     LocalDate date,
@@ -712,8 +720,9 @@ class LocalHealthImportService
     }
     if (existing.flow == desired.flow) return _MergeOutcome.unchanged;
 
-    final canAdopt =
-        existing.flow == FlowLevel.none || existing.source == _daySource;
+    final canAdopt = existing.source == _daySource
+        ? _storeChangedSince(existing, desired)
+        : existing.flow == FlowLevel.none;
     if (!canAdopt) return _MergeOutcome.keptManual;
 
     // `copyWith` preserves tags/note/PMS; provenance flips to this platform
@@ -726,6 +735,27 @@ class LocalHealthImportService
       ),
     );
     return _MergeOutcome.written;
+  }
+
+  /// Whether the store's value for a day differs from [existing], a row
+  /// this importer wrote, because the store changed, and not because she
+  /// corrected the day in lunarlog (Issue #1559).
+  ///
+  /// The day sheet keeps an imported row's provenance through a hand edit,
+  /// so `source` alone cannot tell the two apart, and adopting on it put
+  /// the store's value back over her correction on every whole-history
+  /// read: every Apple Health pass, and a Health Connect pass that is not
+  /// changes-only. A day she cleared to `none` was refilled the same way.
+  ///
+  /// The store changed when the day's winning record is a different one
+  /// (a HealthKit sample cannot be edited, so a correction there is always
+  /// a new sample), or when it is the same record and the store says it
+  /// was changed after the row was last written (Health Connect updates a
+  /// record in place). The same record, unchanged since, is her edit.
+  static bool _storeChangedSince(DayEntry existing, _DesiredSample desired) {
+    if (existing.sourceId != desired.recordId) return true;
+    final modifiedAt = desired.modifiedAt;
+    return modifiedAt != null && modifiedAt.isAfter(existing.updatedAt);
   }
 
   /// Merges one date's intermenstrual-bleeding record as a `spotting`

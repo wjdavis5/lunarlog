@@ -269,6 +269,7 @@ HealthFlowSample _sample({
   required String startIso,
   String? tzName = _tz,
   String? externalUuid,
+  DateTime? modifiedAt,
 }) {
   final start = DateTime.parse(startIso);
   return HealthFlowSample(
@@ -278,6 +279,7 @@ HealthFlowSample _sample({
     end: start.add(const Duration(hours: 23, minutes: 59, seconds: 59)),
     tzName: tzName,
     externalUuid: externalUuid,
+    modifiedAt: modifiedAt,
   );
 }
 
@@ -812,6 +814,158 @@ void main() {
       expect(row.sourceId, 'hk-new');
     },
   );
+
+  // Issue #1559. The day sheet keeps an imported row's `source` and
+  // `sourceId` when she edits it by hand, so a corrected day still looks
+  // imported. The import used to put the store's value back over it on
+  // every whole-history read, which on an iPhone is every import.
+  group('a hand correction to an imported day (#1559)', () {
+    // An imported day as the day sheet leaves it after she changes the
+    // flow: her value, her edit time, the import's provenance.
+    DayEntry corrected({
+      required FlowLevel flow,
+      DayEntrySource source = DayEntrySource.healthkit,
+    }) =>
+        DayEntry(
+          id: 'imported-1',
+          profileId: _profileId,
+          localDate: LocalDate(2026, 9, 10),
+          tz: _tz,
+          flow: flow,
+          tags: const ['cramps'],
+          source: source,
+          sourceId: 'rec-1',
+          updatedAt: DateTime.utc(2026, 9, 12, 8),
+        );
+
+    test('survives the same sample being read again', () async {
+      await bind();
+      dayEntries.live['2026-09-10'] = corrected(flow: FlowLevel.light);
+      source.result = HealthReadResult.samples([
+        _sample(
+          id: 'rec-1',
+          flow: HealthFlowValue.heavy,
+          startIso: '2026-09-10T04:00:00Z',
+        ),
+      ]);
+      final summary = await build().importNow();
+      expect(summary.daysKeptManual, 1);
+      expect(summary.daysWritten, 0);
+      expect(dayEntries.saved, isEmpty);
+      // And again: a second whole-history read changes nothing either.
+      await build().importNow();
+      expect(dayEntries.saved, isEmpty);
+    });
+
+    test('a day she cleared stays cleared', () async {
+      await bind();
+      dayEntries.live['2026-09-10'] = corrected(flow: FlowLevel.none);
+      source.result = HealthReadResult.samples([
+        _sample(
+          id: 'rec-1',
+          flow: HealthFlowValue.heavy,
+          startIso: '2026-09-10T04:00:00Z',
+        ),
+      ]);
+      final summary = await build().importNow();
+      expect(summary.daysKeptManual, 1);
+      expect(dayEntries.saved, isEmpty);
+    });
+
+    test('gives way to a new sample for the day (Apple Health: a '
+        'correction there is always a new sample)', () async {
+      await bind();
+      dayEntries.live['2026-09-10'] = corrected(flow: FlowLevel.light);
+      source.result = HealthReadResult.samples([
+        _sample(
+          id: 'rec-2',
+          flow: HealthFlowValue.heavy,
+          startIso: '2026-09-10T04:00:00Z',
+        ),
+      ]);
+      final summary = await build().importNow();
+      expect(summary.daysWritten, 1);
+      final row = dayEntries.saved.single;
+      expect(row.flow, FlowLevel.heavy);
+      expect(row.sourceId, 'rec-2');
+      expect(row.tags, ['cramps'], reason: 'the rest of the day is kept');
+    });
+
+    test('Health Connect: the same record changed after her edit is the '
+        'store\'s news, and is adopted', () async {
+      await bind();
+      dayEntries.live['2026-09-10'] = corrected(
+        flow: FlowLevel.light,
+        source: DayEntrySource.healthConnect,
+      );
+      source.result = HealthReadResult.samples([
+        _sample(
+          id: 'rec-1',
+          flow: HealthFlowValue.heavy,
+          startIso: '2026-09-10T04:00:00Z',
+          modifiedAt: DateTime.utc(2026, 9, 12, 9),
+        ),
+      ]);
+      final summary = await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importNow();
+      expect(summary.daysWritten, 1);
+      expect(dayEntries.saved.single.flow, FlowLevel.heavy);
+    });
+
+    test('Health Connect: the same record, not changed since her edit, '
+        'leaves her value alone', () async {
+      await bind();
+      for (final modifiedAt in [
+        // Changed before her edit: what she corrected.
+        DateTime.utc(2026, 9, 11),
+        // The very instant of her edit is not after it.
+        DateTime.utc(2026, 9, 12, 8),
+      ]) {
+        dayEntries.saved.clear();
+        dayEntries.live['2026-09-10'] = corrected(
+          flow: FlowLevel.light,
+          source: DayEntrySource.healthConnect,
+        );
+        source.result = HealthReadResult.samples([
+          _sample(
+            id: 'rec-1',
+            flow: HealthFlowValue.heavy,
+            startIso: '2026-09-10T04:00:00Z',
+            modifiedAt: modifiedAt,
+          ),
+        ]);
+        final summary = await build(
+          importPlatform: HealthImportPlatform.healthConnect,
+        ).importNow();
+        expect(summary.daysKeptManual, 1, reason: '$modifiedAt');
+        expect(dayEntries.saved, isEmpty, reason: '$modifiedAt');
+      }
+    });
+
+    test('a hand-logged day with no flow is still filled in', () async {
+      await bind();
+      dayEntries.live['2026-09-10'] = DayEntry(
+        id: 'manual-none',
+        profileId: _profileId,
+        localDate: LocalDate(2026, 9, 10),
+        tz: _tz,
+        flow: FlowLevel.none,
+        source: DayEntrySource.manual,
+        updatedAt: DateTime.utc(2026, 9, 12, 8),
+      );
+      source.result = HealthReadResult.samples([
+        _sample(
+          id: 'rec-1',
+          flow: HealthFlowValue.heavy,
+          startIso: '2026-09-10T04:00:00Z',
+        ),
+      ]);
+      final summary = await build().importNow();
+      expect(summary.daysWritten, 1);
+      expect(dayEntries.saved.single.flow, FlowLevel.heavy);
+    });
+  });
 
   test(
     'a read refusal maps to a blocked summary with the same check',

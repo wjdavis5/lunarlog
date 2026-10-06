@@ -154,6 +154,7 @@ class HealthFlowSample {
     this.offset,
     this.offsetInferred = false,
     this.externalUuid,
+    this.modifiedAt,
   }) : assert(
           kind == HealthSampleKind.intermenstrualBleeding || flow != null,
           'a menstrual-flow sample requires a flow value',
@@ -193,6 +194,14 @@ class HealthFlowSample {
   final bool offsetInferred;
 
   final String? externalUuid;
+
+  /// When the store last changed this record (Issue #1559), where the
+  /// store's records can be changed in place: Health Connect, whose
+  /// update keeps the record's id. Null for HealthKit, whose samples
+  /// cannot be edited: there a correction is a new sample with a new
+  /// [recordId]. The import uses it to tell the store's own change from a
+  /// hand correction made in lunarlog.
+  final DateTime? modifiedAt;
 }
 
 /// The typed outcome of one read query, mirroring [HealthPlatformResult]'s

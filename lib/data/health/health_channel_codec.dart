@@ -403,7 +403,8 @@ HealthReadResult _decodeSampleList(
 
 /// One sample map from `readMenstrualFlowPage`, or null when a required key is
 /// missing/typed wrong. Optional keys (`tzName`, `zoneOffsetSeconds`,
-/// `zoneOffsetInferred`, `externalUuid`) are genuinely nullable. [start]/[end]
+/// `zoneOffsetInferred`, `externalUuid`, `modifiedAtMs`) are genuinely
+/// nullable. [start]/[end]
 /// cross as epoch-millisecond numbers and become UTC instants; the sample's
 /// own zone rides [HealthFlowSample.tzName] (iOS IANA) or
 /// [HealthFlowSample.offset] (Android raw offset) — the #180 import
@@ -426,6 +427,10 @@ HealthFlowSample? _decodeFlowSample(Object? entry) {
     return null;
   }
   final offsetSeconds = (entry['zoneOffsetSeconds'] as num?)?.toInt();
+  // Issue #1559: optional, and sent by Health Connect alone. Anything but
+  // a number is read as absent: without it the import keeps what is there.
+  final rawModifiedAt = entry['modifiedAtMs'];
+  final modifiedAtMs = rawModifiedAt is num ? rawModifiedAt.toInt() : null;
   return HealthFlowSample(
     recordId: recordId,
     kind: kind,
@@ -437,6 +442,9 @@ HealthFlowSample? _decodeFlowSample(Object? entry) {
         offsetSeconds == null ? null : Duration(seconds: offsetSeconds),
     offsetInferred: entry['zoneOffsetInferred'] as bool? ?? false,
     externalUuid: entry['externalUuid'] as String?,
+    modifiedAt: modifiedAtMs == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(modifiedAtMs, isUtc: true),
   );
 }
 

@@ -1413,14 +1413,16 @@ class HealthConnectAdapter(context: Context) {
             is MenstruationFlowRecord ->
                 if (inWindow(record.time, start, end)) {
                     sampleMap(record.metadata.id, "menstrualFlow", record.time,
-                        record.zoneOffset) + ("flow" to flowWire(record.flow))
+                        record.zoneOffset, record.metadata.lastModifiedTime) +
+                        ("flow" to flowWire(record.flow))
                 } else {
                     null
                 }
             is IntermenstrualBleedingRecord ->
                 if (inWindow(record.time, start, end)) {
                     sampleMap(record.metadata.id, "intermenstrualBleeding",
-                        record.time, record.zoneOffset)
+                        record.time, record.zoneOffset,
+                        record.metadata.lastModifiedTime)
                 } else {
                     null
                 }
@@ -1454,6 +1456,7 @@ class HealthConnectAdapter(context: Context) {
         kind: String,
         time: Instant,
         zoneOffset: ZoneOffset?,
+        lastModified: Instant,
     ): MutableMap<String, Any> {
         val map = mutableMapOf<String, Any>(
             "recordId" to id,
@@ -1461,6 +1464,12 @@ class HealthConnectAdapter(context: Context) {
             // These records are instantaneous; the codec needs one bound.
             "startMs" to time.toEpochMilli(),
             "endMs" to time.toEpochMilli(),
+            // Issue #1559: Health Connect changes a record in place and
+            // keeps its id, so the id cannot tell the import that the
+            // other app corrected a day. This can: the Dart merge adopts
+            // a changed value only when the record changed after the row
+            // was last written, and otherwise keeps what she typed.
+            "modifiedAtMs" to lastModified.toEpochMilli(),
         )
         if (zoneOffset != null) {
             // A Health Connect record carries a raw offset, not an IANA
