@@ -81,6 +81,21 @@ Set<String> _kotlinRecordTypes(String source) {
       .toSet();
 }
 
+/// The `("wire", .caseName)` pairs of the `categoryWires` table in
+/// Swift's `wireIdentifier(for:)`: the name a delete reports for a type it
+/// passed over, by the HealthKit case it stands for.
+Map<String, String> _swiftWireNamesByCase(String source) {
+  final start = source.indexOf('let categoryWires');
+  expect(start, isNonNegative, reason: 'categoryWires was not found');
+  final close = source.indexOf('\n    ]', start);
+  expect(close, greaterThan(start), reason: 'categoryWires is unterminated');
+  return {
+    for (final match in RegExp(r'\("(\w+)",\s*\.(\w+)\)')
+        .allMatches(source.substring(start, close)))
+      match.group(2)!: match.group(1)!,
+  };
+}
+
 String _swiftCaseName(String identifier, String prefix) {
   final remainder = identifier.substring(prefix.length).replaceFirst('.', '');
   return remainder.isEmpty
@@ -220,6 +235,44 @@ void main() {
         healthRecordMatchesSkippedType('symptom-123-headache', {'bloating'}),
         isFalse,
       );
+      // What the iOS half sends when one symptom type is off: that type,
+      // and 'symptoms' beside it. A record of another symptom type was
+      // deleted, and must not read as passed over.
+      expect(
+        healthRecordMatchesSkippedType(
+          'symptom-123-headache',
+          {'acne', 'symptoms'},
+        ),
+        isFalse,
+      );
+      expect(
+        healthRecordMatchesSkippedType(
+          'symptom-123-acne',
+          {'acne', 'symptoms'},
+        ),
+        isTrue,
+      );
+      // Every mapped symptom type is told from every other one, with a
+      // day's real id (a ULID) and with one that has hyphens in it.
+      final types = kSymptomHealthKitTypeIdentifiers.values.toSet();
+      for (final entryId in ['01ARZ3NDEKTSV4RRFFQ69G5FBC', 'entry-2026-06-02']) {
+        for (final type in types) {
+          final recordId = healthSymptomRecordId(entryId, type);
+          expect(
+            healthRecordMatchesSkippedType(recordId, {type, 'symptoms'}),
+            isTrue,
+            reason: recordId,
+          );
+          expect(
+            healthRecordMatchesSkippedType(
+              recordId,
+              {...types.where((other) => other != type), 'symptoms'},
+            ),
+            isFalse,
+            reason: recordId,
+          );
+        }
+      }
       expect(
         healthRecordMatchesSkippedType('01ARZ3NDEKTSV4RRFFQ69G5FBC', {'menstrualFlow'}),
         isTrue,
@@ -268,6 +321,25 @@ void main() {
       // The old symptom-only list must be gone — its survival is exactly
       // how a written type could be authorized but never deleted.
       expect(swift, isNot(contains('symptomCategoryTypes')));
+    });
+
+    // Review of #1603. A delete names the types it passed over, and Dart
+    // lets a symptom record go unless its own type is named. So a symptom
+    // type that Swift reported under any other name, or not at all, would
+    // be let go while still in Apple Health.
+    test('a passed-over symptom type is reported by the name its record '
+        'ids carry', () {
+      final wires = _swiftWireNamesByCase(swift);
+      for (final type in kSymptomHealthKitTypeIdentifiers.values.toSet()) {
+        expect(wires[type], type, reason: 'the wire name for .$type');
+      }
+    });
+
+    test('every written category type has a name to be reported by', () {
+      expect(
+        _swiftWireNamesByCase(swift).keys.toSet(),
+        _swiftArrayCases(swift, 'writtenCategoryTypeIdentifiers'),
+      );
     });
 
     test('the stale "two types this app writes" comment is gone', () {

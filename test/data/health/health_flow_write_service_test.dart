@@ -2779,6 +2779,38 @@ void main() {
           reason: 'the same removal is retried, not silently acknowledged');
     });
 
+    // What an iPhone answers with one symptom type off (acne here): that
+    // type, and 'symptoms' beside it. The cramps record is of another type
+    // and was deleted. Read as "every symptom was passed over", the answer
+    // kept it remembered, and the delete was sent again on every pass.
+    test('a partial delete that passed over another symptom type lets the '
+        'removed one go: it is not asked for again', () async {
+      await seedGranted(grant);
+      final service = buildService();
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1)),
+            tags: const ['cramps']),
+      ];
+      await service.syncNow();
+
+      platform.deleteResult =
+          const HealthPlatformResult.partial({'acne', 'symptoms'});
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 3)),
+            tags: const []),
+      ];
+      await service.syncNow();
+      expect(platform.deleteCalls.single,
+          ['symptom-entry-2026-06-02-abdominalCramps']);
+
+      final next = await service.syncNow();
+      expect(next.blocked, isNull);
+      expect(platform.deleteCalls, hasLength(1),
+          reason: 'the record is gone, so there is nothing left to ask for');
+    });
+
     test('the remembered set advances with the write, so a repeated '
         'cramp-free save deletes nothing a second time', () async {
       await seedGranted(grant);
