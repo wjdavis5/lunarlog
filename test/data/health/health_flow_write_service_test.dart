@@ -254,9 +254,18 @@ class _FakePlatform implements HealthPlatformStore {
   @override
   Future<void> openPermissionSettings() async {}
 
+  /// Run when the pass mirrors the binding, which it does once, before
+  /// any write or delete: a test's moment to change something behind
+  /// the running pass.
+  void Function()? onBind;
+
+  /// Run on each flow write, after the pass has checked it may write.
+  void Function()? onFlowWrite;
+
   @override
   Future<HealthPlatformResult> bindProfile(HealthGuardFacts facts) async {
     bindCalls++;
+    onBind?.call();
     return bindResult;
   }
 
@@ -279,6 +288,7 @@ class _FakePlatform implements HealthPlatformStore {
     HealthMenstrualFlowWrite write,
   ) async {
     flowWrites.add(write);
+    onFlowWrite?.call();
     return _nextWriteResult();
   }
 
@@ -466,7 +476,12 @@ void main() {
   late FakeHealthExportLedger ledger;
   late DateTime clock;
 
-  LocalHealthFlowWriteService buildService() => LocalHealthFlowWriteService(
+  /// [guardians] is read afresh on every authority check, so a test can
+  /// move the profile's ownership while a pass is running.
+  LocalHealthFlowWriteService buildService({
+    List<ProfileGuardian> Function()? guardians,
+  }) =>
+      LocalHealthFlowWriteService(
         platform: platform,
         binding: HealthSyncBinding(settings),
         minorBindingAllowed: false,
@@ -475,7 +490,7 @@ void main() {
         observations: observations,
         settings: settings,
         ledger: ledger,
-        guardiansForProfile: (_) async => [_ownerRow()],
+        guardiansForProfile: (_) async => guardians?.call() ?? [_ownerRow()],
         signedInUserId: () => _ownerId,
         now: () => clock,
       );
@@ -1482,12 +1497,20 @@ void main() {
         const HealthPlatformPermissionDenied(), // period write
       ];
 
-      final report = await buildService().syncNow();
+      final service = buildService();
+      final report = await service.syncNow();
 
       expect(report.blocked, isA<HealthPlatformPermissionDenied>());
-      // The cursor does not advance (blocked), so the next pass retries.
-      expect(await settings.get(_cursorKey),
-          '${grant.millisecondsSinceEpoch}');
+      expect(platform.periodWrites, hasLength(1));
+
+      // The period is still owed, and the day that was written is not
+      // sent again.
+      platform.writeResults = [];
+      final next = await service.syncNow();
+      expect(next.blocked, isNull);
+      expect(next.periodRecordsWritten, 1);
+      expect(platform.periodWrites, hasLength(2));
+      expect(platform.flowWrites, hasLength(1));
     });
   });
 
@@ -2510,11 +2533,10 @@ void main() {
       expect(report.blocked, isA<HealthPlatformRefused>());
       expect((report.blocked! as HealthPlatformRefused).check,
           HealthSyncCheck.notOwner);
-      // A blocked pass never advances the cursor: the whole batch,
-      // including the day that DID get written before the drift was
-      // observed, is retried by the next pass under fresh facts.
-      expect(await settings.get(_cursorKey),
-          '${grant.millisecondsSinceEpoch}');
+      // The day that was written before the transfer is remembered, and
+      // the one that was not is still owed: nothing is remembered as
+      // written that was cancelled.
+      expect(ledger.rows.map((row) => row.recordId), ['entry-2026-06-02']);
     });
 
     test(
@@ -2557,8 +2579,84 @@ void main() {
 
       expect(platform.flowWrites, hasLength(1));
       expect(report.blocked, isA<HealthPlatformFailed>());
-      expect(await settings.get(_cursorKey),
-          '${grant.millisecondsSinceEpoch}');
+      expect(ledger.rows.map((row) => row.recordId), ['entry-2026-06-02']);
+    });
+
+    // Issue #1605. The two deletes a pass can send are checked like its
+    // writes, and nothing tested it: the drift tests above cover writes.
+    test('ownership transferred away before a cleared day\'s record is asked '
+        'to be deleted: the delete is not sent, and is asked for on the next '
+        'pass', () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      // A day saved with no flow: the ledger knows of no record for it, so
+      // the pass asks the store to delete one, once.
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.none,
+            grant.add(const Duration(hours: 1))),
+      ];
+      var transferred = false;
+      platform.onBind = () => transferred = true;
+      final service = buildService(
+        guardians: () => [transferred ? _transferredRow() : _ownerRow()],
+      );
+
+      final report = await service.syncNow();
+
+      expect(platform.deleteCalls, isEmpty);
+      expect((report.blocked! as HealthPlatformRefused).check,
+          HealthSyncCheck.notOwner);
+
+      // Ownership is hers again. The delete was not counted as asked.
+      platform.onBind = null;
+      transferred = false;
+      final next = await service.syncNow();
+      expect(next.blocked, isNull);
+      expect(platform.deleteCalls, [
+        ['entry-2026-06-02'],
+      ]);
+    });
+
+    test('ownership transferred away after a day is written and before a '
+        'record it no longer has is deleted: the delete is not sent, and the '
+        'record stays remembered', () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      const symptom = 'symptom-entry-2026-06-02-abdominalCramps';
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1)),
+            tags: const ['cramps']),
+      ];
+      var transferred = false;
+      final service = buildService(
+        guardians: () => [transferred ? _transferredRow() : _ownerRow()],
+      );
+      await service.syncNow();
+      expect(ledger.rows.map((row) => row.recordId), contains(symptom));
+
+      // She unticks the symptom. The day is written again, and the
+      // transfer lands between that write and the delete.
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 3))),
+      ];
+      platform.onFlowWrite = () => transferred = true;
+      final report = await service.syncNow();
+
+      expect(platform.flowWrites, hasLength(2));
+      expect(platform.deleteCalls, isEmpty);
+      expect((report.blocked! as HealthPlatformRefused).check,
+          HealthSyncCheck.notOwner);
+      expect(ledger.rows.map((row) => row.recordId), contains(symptom));
+
+      platform.onFlowWrite = null;
+      transferred = false;
+      final next = await service.syncNow();
+      expect(next.blocked, isNull);
+      expect(platform.deleteCalls, [
+        [symptom],
+      ]);
     });
   });
 
@@ -4145,6 +4243,31 @@ void main() {
 
     // Two passes side by side would each decide from the ledger before the
     // other had written to it.
+    // Issue #1605. A pass runs on every save and every return to the
+    // app. Storing a state that has not changed would be a settings write,
+    // and a notification to whatever watches the key, each time.
+    test('a pass that leaves the state as it was does not store it again',
+        () async {
+      await seedGranted(grant);
+      dayEntries.entries = [_entry('2026-06-10', FlowLevel.medium, at(60))];
+      final stored = <String?>[];
+      final watching = settings
+          .watch(SettingsKeys.healthSyncWriteState)
+          .listen(stored.add);
+      addTearDown(watching.cancel);
+      final service = buildService();
+
+      await service.syncNow();
+      await service.syncNow();
+      await service.syncNow();
+      await pumpEventQueue();
+
+      // What was there to begin with (nothing), then the first pass's.
+      expect(stored, hasLength(2));
+      expect(stored.first, isNull);
+      expect(HealthWritePassState.decode(stored.last), isNotNull);
+    });
+
     group('one pass at a time', () {
       late _GatedPlatform gated;
 
@@ -4313,77 +4436,64 @@ void main() {
       expect(platform.periodWrites, isEmpty);
     });
 
-    test(
-        'a platform whose grantedWriteTypes throws leaves the cursor where it was (issue #1584)',
-        () async {
-      await seedGranted(grant);
-      platform.permission = HealthPermissionStatus.writingSome;
-      platform.grantedWriteTypesError = Exception('health connect failure');
-      final t1 = grant.add(const Duration(hours: 1));
-      dayEntries.entries = [
-        _entry('2026-06-02', FlowLevel.medium, t1),
-      ];
+    // Issue #1584, and since #1581 the reason it matters most: a failed
+    // query for which types are on says nothing about them. Read as "none
+    // are on", it would move every type's floor to the present, and the
+    // day below would never be sent. So each of these checks what the
+    // next pass does, with the query working again. (They used to check
+    // that a cursor had not moved, which it no longer can.)
+    for (final (what, error, answer) in <(String, Object, Type)>[
+      (
+        'an error',
+        Exception('health connect failure'),
+        HealthPlatformFailed,
+      ),
+      (
+        'a store that is not there',
+        PlatformException(
+          code: 'unavailable',
+          message: 'Health Connect unavailable',
+        ),
+        HealthPlatformUnavailable,
+      ),
+      (
+        'no native half',
+        MissingPluginException(),
+        HealthPlatformUnavailable,
+      ),
+    ]) {
+      test('a query for which types are on that ends in $what stops the '
+          'pass, moves no floor, and the next pass sends the day (issue '
+          '#1584)', () async {
+        await seedGranted(grant);
+        platform.permission = HealthPermissionStatus.writingSome;
+        platform.grantedWriteTypesError = error;
+        final t1 = grant.add(const Duration(hours: 1));
+        dayEntries.entries = [
+          _entry('2026-06-02', FlowLevel.medium, t1),
+        ];
+        // The pass runs after the day was saved, as it always does. A
+        // floor moved by this pass would stand after the day.
+        clock = t1.add(const Duration(minutes: 1));
+        final service = buildService();
 
-      final report = await buildService().syncNow();
+        final report = await service.syncNow();
 
-      expect(report.blocked, isA<HealthPlatformFailed>());
-      expect(
-        await settings.get(_cursorKey),
-        '${grant.millisecondsSinceEpoch}',
-        reason: 'a failed types query must not advance the cursor',
-      );
-      expect(report.samplesWritten, 0);
-      expect(platform.flowWrites, isEmpty);
-    });
+        expect(report.blocked.runtimeType, answer);
+        expect(report.samplesWritten, 0);
+        expect(platform.flowWrites, isEmpty);
+        expect(await settings.get(SettingsKeys.healthSyncWriteState), isNull);
 
-    test(
-        'grantedWriteTypes unavailable error stops pass with unavailable result (issue #1584)',
-        () async {
-      await seedGranted(grant);
-      platform.permission = HealthPermissionStatus.writingSome;
-      platform.grantedWriteTypesError = PlatformException(
-        code: 'unavailable',
-        message: 'Health Connect unavailable',
-      );
-      final t1 = grant.add(const Duration(hours: 1));
-      dayEntries.entries = [
-        _entry('2026-06-02', FlowLevel.medium, t1),
-      ];
-
-      final report = await buildService().syncNow();
-
-      expect(report.blocked, isA<HealthPlatformUnavailable>());
-      expect(
-        await settings.get(_cursorKey),
-        '${grant.millisecondsSinceEpoch}',
-        reason: 'an unavailable types query must not advance the cursor',
-      );
-      expect(report.samplesWritten, 0);
-      expect(platform.flowWrites, isEmpty);
-    });
-
-    test(
-        'grantedWriteTypes MissingPluginException stops pass with unavailable result (issue #1584)',
-        () async {
-      await seedGranted(grant);
-      platform.permission = HealthPermissionStatus.writingSome;
-      platform.grantedWriteTypesError = MissingPluginException();
-      final t1 = grant.add(const Duration(hours: 1));
-      dayEntries.entries = [
-        _entry('2026-06-02', FlowLevel.medium, t1),
-      ];
-
-      final report = await buildService().syncNow();
-
-      expect(report.blocked, isA<HealthPlatformUnavailable>());
-      expect(
-        await settings.get(_cursorKey),
-        '${grant.millisecondsSinceEpoch}',
-        reason: 'MissingPluginException must not advance the cursor',
-      );
-      expect(report.samplesWritten, 0);
-      expect(platform.flowWrites, isEmpty);
-    });
+        platform
+          ..grantedWriteTypesError = null
+          ..grantedTypes = {'menstrualFlow'};
+        clock = t1.add(const Duration(minutes: 2));
+        final next = await service.syncNow();
+        expect(next.blocked, isNull);
+        expect(next.samplesWritten, 1);
+        expect(platform.flowWrites.single.recordId, 'entry-2026-06-02');
+      });
+    }
   });
 
   // Sanity pin on the bleed-day set the service derives from: keeps the
