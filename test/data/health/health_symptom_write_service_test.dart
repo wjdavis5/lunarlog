@@ -268,6 +268,50 @@ void main() {
 
   tearDown(() => settings.close());
 
+  // Issue #1581: what was written is remembered sample by sample, so a
+  // pass with nothing changed sends nothing, and one new tag does not make
+  // the pass forget the others were written.
+  test('a pass with nothing changed sends no symptom again, in this session '
+      'or the next', () async {
+    await seedGranted();
+    dayEntries.entries = [
+      _entry(
+        '2026-06-02',
+        tags: const ['cramps', 'headache'],
+        updatedAt: grant.add(const Duration(hours: 1)),
+      ),
+    ];
+    final service = buildService();
+    expect((await service.syncNow()).symptomSamplesWritten, 2);
+
+    for (final again in [service, buildService()]) {
+      final report = await again.syncNow();
+      expect(report.blocked, isNull);
+      expect(report.symptomSamplesWritten, 0);
+      expect(platform.symptomWrites, hasLength(1));
+    }
+  });
+
+  test('a failed symptom write is sent again on the next pass', () async {
+    await seedGranted();
+    dayEntries.entries = [
+      _entry(
+        '2026-06-02',
+        tags: const ['cramps'],
+        updatedAt: grant.add(const Duration(hours: 1)),
+      ),
+    ];
+    platform.symptomResult = const HealthPlatformResult.failed('boom');
+    final service = buildService();
+    expect((await service.syncNow()).blocked, isA<HealthPlatformFailed>());
+
+    platform.symptomResult = const HealthPlatformResult.allowed();
+    final report = await service.syncNow();
+    expect(report.blocked, isNull);
+    expect(report.symptomSamplesWritten, 1);
+    expect(platform.symptomWrites, hasLength(2));
+  });
+
   test('a day with mapped tags writes one sample per symptom type, with the '
       'tag\'s graded severity and a stable record id', () async {
     await seedGranted();

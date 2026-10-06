@@ -279,6 +279,40 @@ void main() {
 
   tearDown(() => settings.close());
 
+  // Issue #1581: each record the store accepted is remembered, so a pass
+  // with nothing changed sends none of them again.
+  test('a pass with nothing changed sends no fertility record or reading '
+      'again, in this session or the next', () async {
+    await seedGranted();
+    dayEntries.entries = [
+      _entry(
+        '2026-06-02',
+        tags: const ['creamy', 'ovulation_positive'],
+        updatedAt: grant.add(const Duration(hours: 1)),
+      ),
+    ];
+    observations.observations = [
+      _bbt(
+        '2026-06-02',
+        value: 36.6,
+        updatedAt: grant.add(const Duration(hours: 1)),
+      ),
+    ];
+    final service = buildService();
+    final first = await service.syncNow();
+    expect(first.cervicalMucusSamplesWritten, 1);
+    expect(first.ovulationTestSamplesWritten, 1);
+    expect(first.basalBodyTemperatureSamplesWritten, 1);
+
+    for (final again in [service, buildService()]) {
+      final report = await again.syncNow();
+      expect(report.blocked, isNull);
+      expect(platform.cervicalWrites, hasLength(1));
+      expect(platform.ovulationWrites, hasLength(1));
+      expect(platform.bbtWrites, hasLength(1));
+    }
+  });
+
   test('a day with discharge + ovulation tags writes both, with stable ids',
       () async {
     await seedGranted();
