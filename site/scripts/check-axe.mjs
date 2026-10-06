@@ -9,6 +9,10 @@
 // look for that, and it is how the privacy policy's table went out 112 px
 // wider than a 390 px screen.
 //
+// At the wider of the two it also measures every link and button that
+// stands on its own (not one inside a sentence) and fails on any under
+// 44 px tall: axe accepts 24 px, which a thumb does not.
+//
 //   node scripts/check-axe.mjs
 //
 // Set `CHROME_PATH` when Chrome is not in its usual location.
@@ -134,8 +138,34 @@ async function sidewaysOverflow(page, width) {
   });
 }
 
+/** The least height, in CSS pixels, of a control a thumb has to hit. */
+const MIN_TARGET = 44;
+
+/**
+ * Links and buttons under [MIN_TARGET] tall at the current viewport. A link
+ * inside a sentence is `display: inline` and is left out: it is as tall as
+ * its line. One the keyboard brings on screen (the skip link) is measured
+ * where it sits.
+ */
+async function shortTargets(page) {
+  return await page.evaluate((min) => {
+    const found = [];
+    for (const el of document.querySelectorAll("a, button, summary")) {
+      const box = el.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) continue;
+      if (getComputedStyle(el).display === "inline") continue;
+      if (box.height < min) {
+        const label = (el.textContent ?? "").trim().slice(0, 30);
+        found.push(`${label} (${Math.round(box.height)} px)`);
+      }
+    }
+    return found;
+  }, MIN_TARGET);
+}
+
 const violations = [];
 const overflows = [];
+const targets = [];
 try {
   const page = await browser.newPage();
   for (const route of PAGES) {
@@ -143,6 +173,11 @@ try {
     for (const width of PHONE_WIDTHS) {
       const extra = await sidewaysOverflow(page, width);
       if (extra > 0) overflows.push({ route, width, extra });
+      if (width === PHONE_WIDTHS[0]) {
+        for (const target of await shortTargets(page)) {
+          targets.push({ route, target });
+        }
+      }
     }
     await page.setViewport(DESKTOP_VIEWPORT);
     await page.addScriptTag({ path: axePath });
@@ -177,9 +212,22 @@ if (overflows.length > 0) {
   }
 }
 
-if (violations.length > 0 || overflows.length > 0) process.exit(1);
+if (targets.length > 0) {
+  console.error(
+    `links and buttons under ${MIN_TARGET} px tall at ${PHONE_WIDTHS[0]} px ` +
+      `(${targets.length}):`,
+  );
+  for (const { route, target } of targets) {
+    console.error(`  - ${route}: ${target}`);
+  }
+}
+
+if (violations.length + overflows.length + targets.length > 0) {
+  process.exit(1);
+}
 
 console.log(
   `axe check passed (${PAGES.length} page(s), zero violations, ` +
-    `none scrolls sideways at ${PHONE_WIDTHS.join(" or ")} px).`,
+    `none scrolls sideways at ${PHONE_WIDTHS.join(" or ")} px, ` +
+    `no link or button under ${MIN_TARGET} px tall).`,
 );

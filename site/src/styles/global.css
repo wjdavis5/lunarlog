@@ -87,7 +87,7 @@ a:hover {
   top: -4rem;
   left: 1.5rem;
   z-index: 1;
-  padding: 0.5rem 0.875rem;
+  padding: 0.5625rem 0.875rem;
   border-radius: 0.5rem;
   background: var(--brand-purple);
   color: #ffffff;
@@ -115,9 +115,12 @@ a:hover {
   gap: 0 1.25rem;
 }
 
+/* 0.625rem above and below the 1.5rem line makes each link 44 px tall:
+ * the least a thumb hits reliably. `npm run check:axe` holds every
+ * standalone link on the site to it. */
 .site-nav a {
   display: inline-block;
-  padding: 0.5rem 0;
+  padding: 0.625rem 0;
   color: var(--ink);
   font-size: 0.9375rem;
   font-weight: 500;
@@ -164,6 +167,7 @@ a:hover {
   display: inline-flex;
   align-items: center;
   gap: 0.625rem;
+  min-height: 2.75rem;
   color: var(--brand-purple);
   font-family: var(--font-display);
   font-size: 1.25rem;
@@ -367,6 +371,14 @@ main {
 .site-map a {
   display: inline-block;
   padding: 0.25rem 0;
+}
+
+/* A column of links 32 px apart is easy with a mouse and a coin toss
+ * with a thumb. On a phone, and on any touch screen, each takes 44 px. */
+@media (max-width: 30rem), (pointer: coarse) {
+  .site-map a {
+    padding: 0.625rem 0;
+  }
 }
 
 .site-map a[aria-current] {

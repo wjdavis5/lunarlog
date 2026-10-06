@@ -101,7 +101,8 @@ universal-link routes.
   `check:links` (internal links + off-origin resources), `check:axe`
   (axe-core in system Chrome; it also fails when a page scrolls sideways
   at 390 or 320 px, which is why a markdown table is wrapped in a
-  scrolling region by `astro.config.mjs`), `check:lighthouse` (`@lhci/cli` budgets:
+  scrolling region by `astro.config.mjs`, and when a link or button
+  that stands on its own is under 44 px tall at 390 px), `check:lighthouse` (`@lhci/cli` budgets:
   accessibility 100, performance and best-practices >= 95), and
   `check:external-links` (outbound links; a no-op until #1104).
 - **Headers.** `site/public/_headers` carries the strict, third-party-free
