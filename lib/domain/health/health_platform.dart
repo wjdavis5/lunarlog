@@ -176,6 +176,11 @@ enum HealthPermissionStatus {
   /// absent, or Health Connect not installed or not available).
   unavailable;
 
+  /// Whether write access is permitted for at least some types (Issue #1555).
+  bool get canWriteSome =>
+      this == HealthPermissionStatus.granted ||
+      this == HealthPermissionStatus.writingSome;
+
   /// The wire string this status is reported as on the `lunarlog/health`
   /// channel. Both native halves send exactly this closed set; the Dart
   /// codec recognizes nothing else.

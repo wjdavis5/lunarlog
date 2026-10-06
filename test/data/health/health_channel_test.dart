@@ -815,6 +815,32 @@ void main() {
       expect(calls.last.method, 'openPermissionSettings');
     });
 
+    test('grantedWriteTypes sends the pinned method name and decodes lists',
+        () async {
+      calls.clear();
+      nextResult = ['menstrualFlow', 'spotting'];
+      expect(
+        await makePlatform().grantedWriteTypes(),
+        {'menstrualFlow', 'spotting'},
+      );
+      expect(calls.single.method, 'grantedWriteTypes');
+    });
+
+    test('grantedWriteTypes degrades on non-list or errors to empty set',
+        () async {
+      nextResult = 'not-a-list';
+      expect(await makePlatform().grantedWriteTypes(), isEmpty);
+
+      nextResult = null;
+      expect(await makePlatform().grantedWriteTypes(), isEmpty);
+
+      nextError = PlatformException(code: 'anything');
+      expect(await makePlatform().grantedWriteTypes(), isEmpty);
+
+      nextError = MissingPluginException();
+      expect(await makePlatform().grantedWriteTypes(), isEmpty);
+    });
+
     test('the unsupported platform reports unavailable and opens nothing',
         () async {
       const platform = UnsupportedHealthPlatform();

@@ -241,9 +241,7 @@ class MethodChannelHealthPlatform
         return raw.whereType<String>().toSet();
       }
       return const <String>{};
-    } on PlatformException {
-      return const <String>{};
-    } on MissingPluginException {
+    } on Exception {
       return const <String>{};
     }
   }
