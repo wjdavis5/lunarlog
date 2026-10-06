@@ -635,8 +635,9 @@ abstract interface class HealthImportRunner {
   /// Call it only from her tap.
   Future<bool> requestPastDataAccess();
 
-  /// How many imported days the store has said were deleted, for the
-  /// currently bound profile (Issue #1594). Zero with no bound profile.
+  /// The imported days the store has said were deleted, for the
+  /// currently bound profile (Issue #1594). Empty with no bound profile.
+  /// Nothing is written by asking.
   ///
   /// An import notes such days and removes none of them. A record goes
   /// from a health store for more than one reason: she took back a day
@@ -644,24 +645,46 @@ abstract interface class HealthImportRunner {
   /// the store, after moving to lunarlog, or an app trims what it keeps
   /// there. Nothing in a deletion says which, and following the wrong
   /// kind would take her history away on every device she syncs to. So
-  /// the screen shows this count and asks.
-  Future<int> daysDeletedInStore();
+  /// the screen shows the count and asks.
+  Future<HealthStoreDeletedOffer> daysDeletedInStore();
 
-  /// Takes out what was imported for those days, because she asked
-  /// (Issue #1594). Everything the store holds is read again first, so a
-  /// day the store still has another record for keeps a value; when that
-  /// read does not complete, nothing is removed and the days stay on
-  /// offer. The summary's [HealthImportSummary.daysRemoved] says how many
-  /// days were touched.
+  /// Takes out what was imported from the records of [offer], because
+  /// she asked (Issue #1594). Only those: a deletion the store reports
+  /// after the offer was read, this pass's own reads included, is one
+  /// she has not been shown, and stays on offer.
+  ///
+  /// Everything the store holds is read again first, so a day the store
+  /// still has another record for keeps a value; when that read does not
+  /// reach its end, nothing is removed and the days stay on offer. The
+  /// summary's [HealthImportSummary.daysRemoved] says how many days
+  /// were touched.
   ///
   /// Call it only from her tap. Guarded and prompted like [importNow].
-  Future<HealthImportSummary> removeDaysDeletedInStore({
+  Future<HealthImportSummary> removeDaysDeletedInStore(
+    HealthStoreDeletedOffer offer, {
     void Function(HealthImportProgress progress)? onProgress,
   });
 
-  /// Leaves those days as they are and stops offering them (Issue #1594).
-  /// They are ordinary imported days from then on.
-  Future<void> keepDaysDeletedInStore();
+  /// Leaves the days of [offer] as they are and stops offering them
+  /// (Issue #1594). They are ordinary imported days from then on.
+  Future<void> keepDaysDeletedInStore(HealthStoreDeletedOffer offer);
+}
+
+/// The days the health store has said were deleted, as she is shown
+/// them (Issue #1594): how many, and which of the store's records they
+/// were imported from. Both of her answers are about exactly these
+/// records.
+class HealthStoreDeletedOffer {
+  const HealthStoreDeletedOffer({this.days = 0, this.recordIds = const {}});
+
+  /// How many days carry something imported from [recordIds].
+  final int days;
+
+  /// The health store's ids of the deleted records. Ids only, and
+  /// nothing the screen reads.
+  final Set<String> recordIds;
+
+  bool get isEmpty => days == 0;
 }
 
 /// The seam the platform background triggers drive (Issue #993): the same

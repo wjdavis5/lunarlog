@@ -49,6 +49,7 @@ import '../../domain/repositories/profile_guardians_repository.dart'
 import '../../domain/repositories/profiles_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../observability/route_names.dart';
+import '../components/destructive_button.dart';
 
 // [GuardiansForProfile] (issue #575: declared once, next to
 // ProfileGuardiansRepository, rather than redeclared in every one of its
@@ -194,10 +195,15 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   bool _importFailed = false;
   HealthImportSummary? _importSummary;
 
-  /// How many imported days the store has said were deleted and are
-  /// waiting for her answer (Issue #1594). Read when the screen loads and
-  /// after every pass; the offer shows while it is above zero.
-  int _storeDeletedDays = 0;
+  /// The imported days the store has said were deleted, waiting for her
+  /// answer (Issue #1594). Read when the screen loads and after every
+  /// pass; the offer shows while it is not empty. Kept whole and not as
+  /// a count: her answer is about the records it names, and no others.
+  HealthStoreDeletedOffer _storeDeleted = const HealthStoreDeletedOffer();
+
+  /// Whether the pass whose result is showing was a removal she asked
+  /// for, so that a result that could not be had names the right thing.
+  bool _lastPassRemoved = false;
 
   /// What the store said about reading when [_importSummary]'s pass
   /// finished (Issue #1549): whether reading was allowed, and whether a
@@ -316,13 +322,14 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
     await _runImport();
   }
 
-  /// Best effort, like the permission probe: a count that cannot be read
-  /// must not fail the load. The offer is then simply not made.
-  Future<int> _daysDeletedInStore() async {
+  /// Best effort, like the permission probe: an offer that cannot be
+  /// read must not fail the load. It is then simply not made.
+  Future<HealthStoreDeletedOffer> _readStoreDeleted() async {
     try {
-      return await widget.importer?.daysDeletedInStore() ?? 0;
+      return await widget.importer?.daysDeletedInStore() ??
+          const HealthStoreDeletedOffer();
     } catch (_) {
-      return 0;
+      return const HealthStoreDeletedOffer();
     }
   }
 
@@ -380,10 +387,10 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       owners[profile.id] = ownerUserIdFor(guardians);
     }
     final access = await _readAccess();
-    final storeDeletedDays = await _daysDeletedInStore();
+    final storeDeleted = await _readStoreDeleted();
     if (!mounted) return;
     setState(() {
-      _storeDeletedDays = storeDeletedDays;
+      _storeDeleted = storeDeleted;
       _boundProfileId = bound;
       _profiles = profiles;
       _ownerUserIdByProfile = owners;
@@ -728,7 +735,8 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
     _pastDataStillOff = false;
     // The offer belongs to the binding too; the load that follows a
     // change reads it again.
-    _storeDeletedDays = 0;
+    _storeDeleted = const HealthStoreDeletedOffer();
+    _lastPassRemoved = false;
     _bindingChanges++;
   }
 
@@ -807,12 +815,14 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// storage error the runner does not classify) becomes the generic
   /// failure line rather than a crash.
   ///
-  /// [remove] runs the removal of the days the store deleted instead
-  /// (Issue #1594): the same sequence, progress and result.
-  Future<void> _runImport({bool remove = false}) async {
+  /// [remove] runs the removal of what was imported for the days of
+  /// that offer instead (Issue #1594): the same sequence, progress and
+  /// result.
+  Future<void> _runImport({HealthStoreDeletedOffer? remove}) async {
     final importer = widget.importer;
     if (importer == null || _importing) return;
     setState(() {
+      _lastPassRemoved = remove != null;
       _importing = true;
       _importFailed = false;
       _importSummary = null;
@@ -837,12 +847,12 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       // Issue #1594: asked afresh after every pass, whatever its outcome.
       // A pass may have noted deletions, taken the days out, or been
       // stopped before it could do either.
-      final storeDeletedDays = await _daysDeletedInStore();
+      final storeDeleted = await _readStoreDeleted();
       if (!mounted || _abandoned(startedUnder)) return;
       setState(() {
         _importing = false;
         _importSummary = summary;
-        _storeDeletedDays = storeDeletedDays;
+        _storeDeleted = storeDeleted;
         _importReadStatus = access.read;
         _importReachedPastData = reachedPastData;
         _importPastDataOffered = pastDataOffered;
@@ -859,27 +869,76 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   }
 
   /// Starts the pass [_runImport] sequences: an import, or the removal
-  /// of the days the store deleted.
+  /// of what was imported for the days of [remove].
   Future<HealthImportSummary> _startPass(
     HealthImportRunner importer, {
-    required bool remove,
+    required HealthStoreDeletedOffer? remove,
   }) {
     void onProgress(HealthImportProgress progress) {
       if (!mounted) return;
       setState(() => _importProgress = progress);
     }
 
-    return remove
-        ? importer.removeDaysDeletedInStore(onProgress: onProgress)
-        : importer.importNow(onProgress: onProgress);
+    return remove == null
+        ? importer.importNow(onProgress: onProgress)
+        : importer.removeDaysDeletedInStore(remove, onProgress: onProgress);
   }
 
-  /// Leaves the days the store deleted as they are, and stops offering
-  /// them (Issue #1594).
+  /// Asks once more, then takes out what was imported for the days on
+  /// offer (Issue #1594). The offer is taken as it stands when she
+  /// taps: the confirmation names its count, and the removal is of its
+  /// records. Days the store reports afterwards are not part of it.
+  Future<void> _removeStoreDeleted() async {
+    final offer = _storeDeleted;
+    if (!await _confirmRemoveStoreDeleted(offer.days) || !mounted) return;
+    await _runImport(remove: offer);
+  }
+
+  /// The confirmation before a removal: what goes, what stays, that it
+  /// reaches every device, and that there is no undo. The removal
+  /// cannot be taken back, so the confirming button is the destructive
+  /// one and Cancel is the calm default.
+  Future<bool> _confirmRemoveStoreDeleted(int days) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      routeSettings:
+          const RouteSettings(name: kRouteHealthSyncStoreDeletedDialog),
+      builder: (dialogContext) {
+        final l10n = AppLocalizations.of(dialogContext);
+        return AlertDialog(
+          title: Text(l10n.healthSyncStoreDeletedConfirmTitle(days)),
+          content: Text(l10n.healthSyncStoreDeletedConfirmBody(days)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(l10n.healthSyncStoreDeletedConfirmCancel),
+            ),
+            DestructiveButton(
+              key: const ValueKey('health-sync-store-deleted-confirm'),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(l10n.healthSyncStoreDeletedConfirmAction),
+            ),
+          ],
+        );
+      },
+    );
+    return confirmed ?? false;
+  }
+
+  /// Leaves the days on offer as they are, and stops offering them
+  /// (Issue #1594). The offer is read again afterwards: a record the
+  /// store reported since she was shown this one is still waiting. A
+  /// Keep that could not be stored leaves the offer up.
   Future<void> _keepStoreDeleted() async {
-    await widget.importer?.keepDaysDeletedInStore();
+    final offer = _storeDeleted;
+    try {
+      await widget.importer?.keepDaysDeletedInStore(offer);
+    } catch (_) {
+      // Nothing was answered; what is read next says so.
+    }
+    final next = await _readStoreDeleted();
     if (!mounted) return;
-    setState(() => _storeDeletedDays = 0);
+    setState(() => _storeDeleted = next);
   }
 
   /// Brings a finished pass's result into view.
@@ -914,6 +973,16 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       ),
     );
   }
+
+  /// What a pass that was stopped says. A removal that was stopped
+  /// removed nothing, whatever stopped it, and says that: the import's
+  /// lines are about importing (Issue #1594).
+  String _blockedPassCopy(AppLocalizations l10n, HealthPlatformResult blocked) =>
+      _lastPassRemoved
+          ? l10n.healthSyncStoreDeletedRemoveBlocked(
+              _sourceName(l10n, _importPlatform),
+            )
+          : _blockedImportCopy(l10n, blocked);
 
   /// The copy for a pass that ended before reading — a guard refusal or a
   /// platform outcome. A [HealthPlatformPermissionDenied] deliberately
@@ -1051,25 +1120,27 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
           children: [
             Text(
               l10n.healthSyncStoreDeletedOffer(
-                _storeDeletedDays,
+                _storeDeleted.days,
                 _sourceName(l10n, _importPlatform),
               ),
             ),
             const SizedBox(height: 4),
-            Text(l10n.healthSyncStoreDeletedDetail(_storeDeletedDays)),
+            Text(l10n.healthSyncStoreDeletedDetail(_storeDeleted.days)),
             const SizedBox(height: 4),
+            // The two answers carry the same weight. Keep comes first:
+            // it changes nothing.
             Wrap(
               spacing: 8,
               children: [
                 OutlinedButton(
-                  key: const ValueKey('health-sync-store-deleted-remove'),
-                  onPressed: () => _runImport(remove: true),
-                  child: Text(l10n.healthSyncStoreDeletedRemove),
-                ),
-                TextButton(
                   key: const ValueKey('health-sync-store-deleted-keep'),
                   onPressed: _keepStoreDeleted,
                   child: Text(l10n.healthSyncStoreDeletedKeep),
+                ),
+                OutlinedButton(
+                  key: const ValueKey('health-sync-store-deleted-remove'),
+                  onPressed: _removeStoreDeleted,
+                  child: Text(l10n.healthSyncStoreDeletedRemove),
                 ),
               ],
             ),
@@ -1080,7 +1151,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// Whether the offer shows: days are waiting, there is a profile to
   /// act on, and no pass is running (the removal is one).
   bool get _offersStoreDeleted =>
-      _storeDeletedDays > 0 &&
+      !_storeDeleted.isEmpty &&
       _boundProfileId != null &&
       widget.importer != null &&
       !_importing;
@@ -1116,7 +1187,11 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       children.add(Text(_importingCopy(l10n)));
     } else if (_importFailed) {
       children.add(
-        Text(l10n.healthSyncImportFailed),
+        Text(
+          _lastPassRemoved
+              ? l10n.healthSyncStoreDeletedRemoveFailed
+              : l10n.healthSyncImportFailed,
+        ),
       );
     } else if (_importSummary != null) {
       children.addAll(_importSummaryChildren(l10n, _importSummary!));
@@ -1274,7 +1349,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       ];
     }
     if (summary.isBlocked) {
-      return [Text(_blockedImportCopy(l10n, summary.blocked!))];
+      return [Text(_blockedPassCopy(l10n, summary.blocked!))];
     }
     if (summary.isEmpty) {
       return [

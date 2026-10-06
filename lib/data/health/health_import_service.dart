@@ -418,30 +418,50 @@ class LocalHealthImportService
   Future<HealthImportSummary> importNow({
     void Function(HealthImportProgress progress)? onProgress,
   }) =>
-      _userPass(onProgress, remove: false);
+      _userPass(onProgress);
 
   @override
-  Future<HealthImportSummary> removeDaysDeletedInStore({
+  Future<HealthImportSummary> removeDaysDeletedInStore(
+    HealthStoreDeletedOffer offer, {
     void Function(HealthImportProgress progress)? onProgress,
   }) =>
-      _userPass(onProgress, remove: true);
+      _userPass(onProgress, remove: offer.recordIds);
 
+  /// Read only. The list is brought down to what rows still name by
+  /// the passes ([_noteStoreDeleted]), which run one at a time; a write
+  /// from here could land between a pass's read of the list and its
+  /// write, and undo what the pass had just noted.
   @override
-  Future<int> daysDeletedInStore() async {
+  Future<HealthStoreDeletedOffer> daysDeletedInStore() async {
     final bound = await _resolveBound();
-    if (bound == null) return 0;
-    return (await _storeDeletedOnOffer(bound.profile.id)).dates.length;
+    if (bound == null) return const HealthStoreDeletedOffer();
+    final found = await _storeDeleted(
+      bound.profile.id,
+      await _binding.storeDeletedRecordIds(),
+    );
+    return HealthStoreDeletedOffer(
+      days: found.dates.length,
+      recordIds: found.recordIds,
+    );
   }
 
+  /// Queued with the passes, for the reason given on
+  /// [daysDeletedInStore].
   @override
-  Future<void> keepDaysDeletedInStore() =>
-      _binding.setStoreDeletedRecordIds(const {});
+  Future<void> keepDaysDeletedInStore(HealthStoreDeletedOffer offer) =>
+      _queued(() => _answered(offer.recordIds));
 
-  /// A pass she started: an import, or ([remove]) the removal of the days
-  /// the store has said were deleted. Guarded and prompted the same way.
+  /// Takes [recordIds] off the list: she has answered about them.
+  Future<void> _answered(Set<String> recordIds) async {
+    final waiting = await _binding.storeDeletedRecordIds();
+    await _binding.setStoreDeletedRecordIds(waiting.difference(recordIds));
+  }
+
+  /// A pass she started: an import, or the removal of what was imported
+  /// from the records [remove] names. Guarded and prompted the same way.
   Future<HealthImportSummary> _userPass(
     void Function(HealthImportProgress progress)? onProgress, {
-    required bool remove,
+    Set<String>? remove,
   }) async {
     final bound = await _resolveBound();
     if (bound == null) return const HealthImportSummary(bound: false);
@@ -570,14 +590,17 @@ class LocalHealthImportService
   Future<HealthImportSummary> _runPass(
     ({Profile profile, HealthGuardFacts facts}) bound,
     void Function(HealthImportProgress progress)? onProgress, {
-    bool remove = false,
-  }) {
+    Set<String>? remove,
+  }) =>
+      _queued(() => _runPassSteps(bound, onProgress, remove: remove));
+
+  /// Runs [body] when everything queued before it has finished, and
+  /// holds what is queued after it until it has.
+  Future<T> _queued<T>(Future<T> Function() body) {
     final previous = _passTail;
     final released = Completer<void>();
     _passTail = released.future;
-    return previous
-        .then((_) => _runPassSteps(bound, onProgress, remove: remove))
-        .whenComplete(released.complete);
+    return previous.then((_) => body()).whenComplete(released.complete);
   }
 
   /// The unsynchronized pipeline steps [_runPass] serializes: the
@@ -585,11 +608,12 @@ class LocalHealthImportService
   ///
   /// Issue #1594: a pass notes the records the store says were deleted
   /// ([_noteStoreDeleted]) and removes nothing. Only [remove], which she
-  /// asks for, takes out what was imported from them.
+  /// asks for, takes out what was imported, and only from the records it
+  /// names.
   Future<HealthImportSummary> _runPassSteps(
     ({Profile profile, HealthGuardFacts facts}) bound,
     void Function(HealthImportProgress progress)? onProgress, {
-    bool remove = false,
+    Set<String>? remove,
   }) async {
     final window = _window();
     var run = await _readPages(bound.facts, window, onProgress);
@@ -598,15 +622,20 @@ class LocalHealthImportService
     final profileId = bound.profile.id;
     await _noteStoreDeleted(profileId, run.accumulator);
     var removed = 0;
-    if (remove || run.accumulator.heldDeletedSample) {
+    if (remove != null || run.accumulator.heldDeletedSample) {
       // Everything the store holds is read again. Before a removal,
       // because the store may hold another record for a day whose record
       // went, and a changes-only read never returns a record that did
       // not change: without it the day would go here and still be in the
       // store. And when a record this read brought was deleted later in
       // the same read, because its sample has already been taken for its
-      // day's value. The request drops the stored position, so a pass
-      // that ends anywhere after it is followed by another whole read.
+      // day's value.
+      //
+      // Not after a changes read that was cut short. The request drops
+      // the stored position, and the pages nobody read hang on it: the
+      // deletions on them would never be reported.
+      final cut = _unfinished(run);
+      if (cut != null) return cut;
       final whole = await _readPages(
         bound.facts,
         window,
@@ -617,7 +646,12 @@ class LocalHealthImportService
       // reach its end. What is on offer stays on offer.
       final unfinished = _unfinished(whole);
       if (unfinished != null) return unfinished;
-      if (remove) removed = await _removeStoreDeleted(profileId);
+      // A record this read found is in the store, whatever was said of
+      // it before: it comes off the list.
+      await _noteStoreDeleted(profileId, whole.accumulator);
+      if (remove != null) {
+        removed = await _removeStoreDeleted(profileId, remove);
+      }
       run = whole;
     }
     final summary = await _apply(
@@ -626,6 +660,7 @@ class LocalHealthImportService
       run.lateBlocked,
       daysRemoved: removed,
     );
+    await _trimStoreDeleted(profileId);
     // Issue #1560: commit the read position only after days are stored.
     if (!summary.isBlocked && run.commitToken != null) {
       await _source.commitImport(bound.facts, run.commitToken!);
@@ -651,6 +686,7 @@ class LocalHealthImportService
     final accumulator = _Accumulator();
     String? cursor;
     String? commitToken;
+    var finished = false;
     final seenCursors = <String>{};
     while (true) {
       if (accumulator.pagesRead >= kHealthImportMaxPages) {
@@ -681,6 +717,7 @@ class LocalHealthImportService
       final next = read.nextCursor;
       if (next == null) {
         commitToken = read.commitToken;
+        finished = true;
         break;
       }
       if (next == cursor || seenCursors.contains(next)) {
@@ -690,24 +727,27 @@ class LocalHealthImportService
       seenCursors.add(next);
       cursor = next;
     }
-    return _PageRun(accumulator: accumulator, commitToken: commitToken);
+    return _PageRun(
+      accumulator: accumulator,
+      commitToken: commitToken,
+      finished: finished,
+    );
   }
 
-  /// The blocked summary of a whole-history read that did not reach its
-  /// end, or null when it did: an outcome on any page, the page cap, or a
-  /// cursor that came round again.
-  static HealthImportSummary? _unfinished(_PageRun whole) {
-    final early = whole.earlySummary;
-    if (early != null) return early;
-    final late = whole.lateBlocked;
-    if (late != null) return HealthImportSummary(blocked: late);
-    final accumulator = whole.accumulator;
-    if (accumulator.pageLimitReached || accumulator.repeatedCursor) {
-      return const HealthImportSummary(
-        blocked: HealthPlatformResult.failed('the read did not finish'),
-      );
-    }
-    return null;
+  /// The blocked summary of a read that did not reach its end, or null
+  /// when it did. A read reaches its end on a page with no cursor after
+  /// it, and in no other way: an outcome on any page, the page cap and a
+  /// cursor that came round again all stop short of it. So does a page
+  /// the store would not let be read, which an import treats as "no
+  /// data" ([_blockedFor]) and a removal must not.
+  static HealthImportSummary? _unfinished(_PageRun run) {
+    if (run.finished) return null;
+    final early = run.earlySummary;
+    if (early != null && early.isBlocked) return early;
+    return HealthImportSummary(
+      blocked: run.lateBlocked ??
+          const HealthPlatformResult.failed('the read did not finish'),
+    );
   }
 
   /// Wraps a platform outcome per the first-page rule described on
@@ -822,13 +862,14 @@ class LocalHealthImportService
     await _binding.setStoreDeletedRecordIds(found.recordIds);
   }
 
-  /// The imported rows written from the records waiting for her answer,
-  /// with the list brought down to the records a row still names.
-  Future<_StoreDeleted> _storeDeletedOnOffer(String profileId) async {
+  /// Brings the list down to the records a row still names. After the
+  /// merge, because the merge gives a day whose record was replaced its
+  /// new record, and such a day is not waiting for any answer.
+  Future<void> _trimStoreDeleted(String profileId) async {
     final waiting = await _binding.storeDeletedRecordIds();
+    if (waiting.isEmpty) return;
     final found = await _storeDeleted(profileId, waiting);
     await _binding.setStoreDeletedRecordIds(found.recordIds);
-    return found;
   }
 
   /// The imported rows that name one of [recordIds] (Issue #1594).
@@ -862,9 +903,15 @@ class LocalHealthImportService
       entry.source == _observationSource &&
       entry.category == ObservationCategory.spotting;
 
-  /// Takes out what was imported from the records waiting for her answer,
-  /// and answers how many days that touched. She asked for it
-  /// ([removeDaysDeletedInStore]); nothing else calls this.
+  /// Takes out what was imported from the records she was shown and
+  /// asked about ([offered]), and answers how many days that touched.
+  /// She asked for it ([removeDaysDeletedInStore]); nothing else calls
+  /// this.
+  ///
+  /// The list is what the store has said, and the offer only says which
+  /// of it she was asked about. A record that has come off the list
+  /// since she was shown it is not removed: the store has it again, or
+  /// she said Keep.
   ///
   /// * A spotting entry goes.
   /// * A day goes when it carries nothing but the imported flow.
@@ -879,10 +926,16 @@ class LocalHealthImportService
   /// tell this from a day she deleted on its sheet; left in place, the
   /// note would keep the record out if the store ever offered it again.
   ///
-  /// The list is cleared at the end. If this stops part-way, what it did
-  /// not reach is still on it.
-  Future<int> _removeStoreDeleted(String profileId) async {
-    final gone = await _storeDeletedOnOffer(profileId);
+  /// What she agreed to comes off the list at the end, and nothing else
+  /// does: a record noted since she was asked is still on offer. If
+  /// this stops part-way, what it did not reach is still on the list
+  /// too.
+  Future<int> _removeStoreDeleted(
+    String profileId,
+    Set<String> offered,
+  ) async {
+    final agreed = offered.intersection(await _binding.storeDeletedRecordIds());
+    final gone = await _storeDeleted(profileId, agreed);
     final noted = <String>{};
     final dates = <LocalDate>{};
     for (final entry in gone.spotting) {
@@ -890,16 +943,24 @@ class LocalHealthImportService
       noted.add(healthImportDeletionId(entry.source.toDb(), entry.sourceId!));
       dates.add(entry.localDate);
     }
+    // Read once, after the entries above have gone: the dates that still
+    // have an entry of any kind. Deleting a day takes every entry on its
+    // date with it, including one that hangs on an earlier row for the
+    // same date, so the date is what is looked at and not the day's row.
+    final entryDates = {
+      for (final entry in await _observations.listForProfile(profileId))
+        entry.localDate,
+    };
     for (final day in gone.days) {
-      if (!await _dropImportedFlow(profileId, day)) continue;
+      if (!await _dropImportedFlow(profileId, day, entryDates)) continue;
       noted.add(healthImportDeletionId(day.source.toDb(), day.sourceId!));
       dates.add(day.localDate);
     }
     for (final entry in gone.spotting) {
-      await _dropEmptyHost(profileId, entry.localDate);
+      await _dropEmptyHost(profileId, entry.localDate, entryDates);
     }
     await _forgetNoted(profileId, noted);
-    await _binding.setStoreDeletedRecordIds(const {});
+    await _answered(agreed);
     return dates.length;
   }
 
@@ -907,10 +968,14 @@ class LocalHealthImportService
   /// is all it carries. False when the live row no longer names the
   /// record [day] did: it changed while the store was being read, and is
   /// left as it is.
-  Future<bool> _dropImportedFlow(String profileId, DayEntry day) async {
+  Future<bool> _dropImportedFlow(
+    String profileId,
+    DayEntry day,
+    Set<LocalDate> entryDates,
+  ) async {
     final live = await _dayEntries.find(profileId, day.localDate);
     if (live == null || live.sourceId != day.sourceId) return false;
-    if (await _carriesMore(profileId, live)) {
+    if (_carriesMore(live, entryDates)) {
       // The store's source stays and the record goes: a row of this
       // store's with no record is hers ([_mayAdopt]), and takes a flow
       // from the store again only while it has none.
@@ -924,30 +989,30 @@ class LocalHealthImportService
   }
 
   /// Whether [day] carries anything beside its flow: a tag, a note, the
-  /// PMS mark, or a live entry of any kind.
+  /// PMS mark, or an entry of any kind on its date ([entryDates]).
   ///
   /// A private note counts though this phone cannot see it. The person
   /// the profile is about may have written one on another account; here
   /// the row then has no note and is marked private, and deleting the row
   /// would delete her note on the server.
-  ///
-  /// Entries are looked for by date, not by the day's row: deleting a day
-  /// takes every entry on its date with it, including one that still
-  /// hangs on an earlier row for the same date.
-  Future<bool> _carriesMore(String profileId, DayEntry day) async {
-    if (day.tags.isNotEmpty || day.pms || day.notePrivate) return true;
-    if (day.note?.isNotEmpty ?? false) return true;
-    final entries = await _observations.listForProfile(profileId);
-    return entries.any((entry) => entry.localDate == day.localDate);
-  }
+  static bool _carriesMore(DayEntry day, Set<LocalDate> entryDates) =>
+      day.tags.isNotEmpty ||
+      day.pms ||
+      day.notePrivate ||
+      (day.note?.isNotEmpty ?? false) ||
+      entryDates.contains(day.localDate);
 
   /// Removes the day on [date] when it is one the import made only to
   /// hang a spotting entry on ([_spottingHost]) and nothing is left on
   /// it: this store's source, no record, no flow, nothing else.
-  Future<void> _dropEmptyHost(String profileId, LocalDate date) async {
+  Future<void> _dropEmptyHost(
+    String profileId,
+    LocalDate date,
+    Set<LocalDate> entryDates,
+  ) async {
     final host = await _dayEntries.find(profileId, date);
     if (host == null || !_isBareHost(host)) return;
-    if (await _carriesMore(profileId, host)) return;
+    if (_carriesMore(host, entryDates)) return;
     await _dayEntries.delete(profileId, date);
   }
 
@@ -1312,12 +1377,18 @@ class _PageRun {
     this.earlySummary,
     this.lateBlocked,
     this.commitToken,
+    this.finished = false,
   });
 
   final _Accumulator accumulator;
   final HealthImportSummary? earlySummary;
   final HealthPlatformResult? lateBlocked;
   final String? commitToken;
+
+  /// Whether the read reached its last page: one with no cursor after
+  /// it. False for a read an outcome, the page cap or a repeated cursor
+  /// ended.
+  final bool finished;
 }
 
 /// What [LocalHealthImportService._storeDeleted] found (Issue #1594): the

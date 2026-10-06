@@ -9,6 +9,8 @@
 /// deleted it is not then held against the store.
 library;
 
+import 'dart:async';
+
 import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -68,6 +70,9 @@ class _Store implements HealthImportSource {
   /// Whether a read has been committed: later reads are changes-only.
   bool hasPosition = false;
 
+  /// Held open, no page is answered until it completes.
+  Completer<void>? readGate;
+
   /// Every page request: whether it asked for the whole history.
   final List<bool> askedForWholeHistory = [];
 
@@ -122,6 +127,7 @@ class _Store implements HealthImportSource {
   }) async {
     askedForWholeHistory.add(wholeHistory);
     requests.add((cursor, wholeHistory));
+    await readGate?.future;
     if (wholeHistory) {
       hasPosition = false;
       await onWholeHistoryAgain?.call();
@@ -359,6 +365,20 @@ void main() {
     return import.importNow();
   }
 
+  /// How many days are on offer.
+  Future<int> onOffer() async => (await import.daysDeletedInStore()).days;
+
+  /// She is shown the offer as it stands, and says Remove.
+  Future<HealthImportSummary> removeOffered([
+    LocalHealthImportService? through,
+  ]) async =>
+      (through ?? import)
+          .removeDaysDeletedInStore(await import.daysDeletedInStore());
+
+  /// She is shown the offer as it stands, and says Keep.
+  Future<void> keepOffered() async =>
+      import.keepDaysDeletedInStore(await import.daysDeletedInStore());
+
   group('an import that finds a record was deleted', () {
     test('removes nothing: the day stays, and is offered', () async {
       await imported([
@@ -372,7 +392,7 @@ void main() {
       expect(summary.daysRemoved, 0);
       expect(summary.isEmpty, isTrue,
           reason: 'the pass read no sample and changed no day');
-      expect(await import.daysDeletedInStore(), 1);
+      expect(await onOffer(), 1);
       // An ordinary changes read, committed as one.
       expect(store.requests, [(null, false)]);
       expect(store.commits, ['changes']);
@@ -386,7 +406,7 @@ void main() {
       await import.importNow();
       await import.importNow();
 
-      expect(await import.daysDeletedInStore(), 1);
+      expect(await onOffer(), 1);
       expect(await binding.storeDeletedRecordIds(), {'rec-10'});
     });
 
@@ -397,7 +417,7 @@ void main() {
       await import.importInBackground();
 
       expect((await dayOn(10))!.flow, FlowLevel.heavy);
-      expect(await import.daysDeletedInStore(), 1);
+      expect(await onOffer(), 1);
     });
 
     test('only the records a row here was imported from are kept on the '
@@ -415,7 +435,7 @@ void main() {
 
       await deletedInStore(['one-of-lunarlogs-own-writes']);
 
-      expect(await import.daysDeletedInStore(), 0);
+      expect(await onOffer(), 0);
       expect(await binding.storeDeletedRecordIds(), isEmpty);
     });
 
@@ -433,7 +453,7 @@ void main() {
       expect(day.flow, FlowLevel.light);
       expect(day.sourceId, startsWith('rec-10b@'));
       expect(summary.daysWritten, 1);
-      expect(await import.daysDeletedInStore(), 0);
+      expect(await onOffer(), 0);
       expect(await binding.storeDeletedRecordIds(), isEmpty);
     });
 
@@ -441,12 +461,12 @@ void main() {
         () async {
       await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
       await deletedInStore(['rec-10']);
-      expect(await import.daysDeletedInStore(), 1);
+      expect(await onOffer(), 1);
 
       store.write(_flow('rec-10', 10, HealthFlowValue.medium, modifiedHour: 18));
       await import.importNow();
 
-      expect(await import.daysDeletedInStore(), 0);
+      expect(await onOffer(), 0);
       expect((await dayOn(10))!.flow, FlowLevel.medium);
     });
 
@@ -457,7 +477,7 @@ void main() {
 
       await days.delete(_profileId, sept(10));
 
-      expect(await import.daysDeletedInStore(), 0);
+      expect(await onOffer(), 0);
     });
 
     test('a spotting entry and a flow on the same day are one day',
@@ -469,19 +489,19 @@ void main() {
 
       await deletedInStore(['rec-11', 'spot-11']);
 
-      expect(await import.daysDeletedInStore(), 1);
+      expect(await onOffer(), 1);
     });
 
     test('Keep clears the offer and leaves the days', () async {
       await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
       await deletedInStore(['rec-10']);
 
-      await import.keepDaysDeletedInStore();
+      await keepOffered();
 
-      expect(await import.daysDeletedInStore(), 0);
+      expect(await onOffer(), 0);
       expect((await dayOn(10))!.flow, FlowLevel.heavy);
       await import.importNow();
-      expect(await import.daysDeletedInStore(), 0);
+      expect(await onOffer(), 0);
     });
 
     test('choosing a profile again, or stopping the sync, clears the offer',
@@ -491,7 +511,7 @@ void main() {
 
       await binding.unbind();
       expect(await binding.storeDeletedRecordIds(), isEmpty);
-      expect(await import.daysDeletedInStore(), 0);
+      expect(await onOffer(), 0);
     });
 
     test('a record a whole-history read does not return is not a deleted '
@@ -508,7 +528,7 @@ void main() {
       await import.importNow();
 
       expect((await dayOn(10))!.flow, FlowLevel.heavy);
-      expect(await import.daysDeletedInStore(), 0);
+      expect(await onOffer(), 0);
     });
 
     test('only a changes page can say a record was deleted', () async {
@@ -519,7 +539,7 @@ void main() {
 
       await import.importNow();
 
-      expect(await import.daysDeletedInStore(), 0);
+      expect(await onOffer(), 0);
     });
 
     // Pages come in the order things happened.
@@ -544,7 +564,7 @@ void main() {
       await import.importNow();
 
       expect((await dayOn(10))!.flow, FlowLevel.medium);
-      expect(await import.daysDeletedInStore(), 0);
+      expect(await onOffer(), 0);
       expect(store.requests, [(null, false), ('page-2', false)]);
     });
 
@@ -585,7 +605,7 @@ void main() {
         _flow('rec-11', 11, HealthFlowValue.medium),
       ]);
       await deletedInStore(['rec-11']);
-      expect(await import.daysDeletedInStore(), 1);
+      expect(await onOffer(), 1);
       store.changePages.addAll([
         HealthReadResult.samples(
           [_flow('rec-20', 20, HealthFlowValue.medium)],
@@ -605,7 +625,7 @@ void main() {
       expect(store.askedForWholeHistory.last, isTrue);
       expect(summary.daysRemoved, 0);
       expect((await dayOn(11))!.flow, FlowLevel.medium);
-      expect(await import.daysDeletedInStore(), 1);
+      expect(await onOffer(), 1);
     });
   });
 
@@ -620,7 +640,7 @@ void main() {
       store.requests.clear();
       store.commits.clear();
 
-      final summary = await import.removeDaysDeletedInStore();
+      final summary = await removeOffered();
 
       expect(await dayOn(10), isNull);
       expect((await dayOn(11))!.flow, FlowLevel.medium);
@@ -628,7 +648,7 @@ void main() {
       expect(summary.isEmpty, isFalse);
       // Before anything else reads the list: the removal cleared it.
       expect(await binding.storeDeletedRecordIds(), isEmpty);
-      expect(await import.daysDeletedInStore(), 0);
+      expect(await onOffer(), 0);
       // What changed since the last pass first, so that a deletion in that
       // stretch is not lost with the position; then everything.
       expect(store.requests, [(null, false), (null, true)]);
@@ -639,7 +659,7 @@ void main() {
         'removes nothing', () async {
       await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
 
-      final summary = await import.removeDaysDeletedInStore();
+      final summary = await removeOffered();
 
       expect(summary.daysRemoved, 0);
       expect((await dayOn(10))!.flow, FlowLevel.heavy);
@@ -649,7 +669,7 @@ void main() {
         'imported if the store offers it again', () async {
       await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
       await deletedInStore(['rec-10']);
-      await import.removeDaysDeletedInStore();
+      await removeOffered();
       expect(await dayOn(10), isNull);
       expect(await days.deletedHealthRecords(_profileId), isEmpty);
 
@@ -671,7 +691,7 @@ void main() {
       expect(hers, hasLength(1));
       await deletedInStore(['rec-10']);
 
-      await import.removeDaysDeletedInStore();
+      await removeOffered();
 
       expect(await days.deletedHealthRecords(_profileId), hers);
       expect(await dayOn(11), isNull, reason: 'and her deletion still holds');
@@ -683,7 +703,7 @@ void main() {
       await days.save((await dayOn(10))!.copyWith(tags: const ['cramps']));
       await deletedInStore(['rec-10']);
 
-      final summary = await import.removeDaysDeletedInStore();
+      final summary = await removeOffered();
 
       final day = (await dayOn(10))!;
       expect(day.flow, FlowLevel.none);
@@ -705,7 +725,7 @@ void main() {
         await days.save(change((await dayOn(10))!));
         await deletedInStore(['rec-10']);
 
-        await import.removeDaysDeletedInStore();
+        await removeOffered();
 
         expect((await dayOn(10))!.flow, FlowLevel.none);
       });
@@ -729,7 +749,7 @@ void main() {
       );
       await deletedInStore(['rec-10']);
 
-      await import.removeDaysDeletedInStore();
+      await removeOffered();
 
       expect((await dayOn(10))!.flow, FlowLevel.none);
       expect(await entriesOn(10), hasLength(1));
@@ -739,7 +759,7 @@ void main() {
       await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
       await days.save((await dayOn(10))!.copyWith(tags: const ['cramps']));
       await deletedInStore(['rec-10']);
-      await import.removeDaysDeletedInStore();
+      await removeOffered();
 
       store.write(_flow('rec-10b', 10, HealthFlowValue.light));
       await import.importNow();
@@ -760,7 +780,7 @@ void main() {
       expect((await dayOn(10))!.flow, FlowLevel.heavy);
       await deletedInStore(['rec-heavy']);
 
-      final summary = await import.removeDaysDeletedInStore();
+      final summary = await removeOffered();
 
       expect((await dayOn(10))!.flow, FlowLevel.light);
       expect(summary.daysRemoved, 1);
@@ -772,9 +792,9 @@ void main() {
       await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
       await days.save((await dayOn(10))!.copyWith(flow: FlowLevel.light));
       await deletedInStore(['rec-10']);
-      expect(await import.daysDeletedInStore(), 1);
+      expect(await onOffer(), 1);
 
-      await import.removeDaysDeletedInStore();
+      await removeOffered();
 
       expect(await dayOn(10), isNull);
     });
@@ -793,7 +813,7 @@ void main() {
       );
       await deletedInStore(['rec-10']);
 
-      await import.removeDaysDeletedInStore();
+      await removeOffered();
 
       expect((await dayOn(12))!.flow, FlowLevel.medium);
     });
@@ -805,9 +825,9 @@ void main() {
       await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
       await days.save((await dayOn(10))!.copyWith(sourceId: 'rec-10'));
       await deletedInStore(['rec-10']);
-      expect(await import.daysDeletedInStore(), 1);
+      expect(await onOffer(), 1);
 
-      await import.removeDaysDeletedInStore();
+      await removeOffered();
 
       expect(await dayOn(10), isNull);
       expect(await days.deletedHealthRecords(_profileId), isEmpty);
@@ -818,11 +838,11 @@ void main() {
       await imported([_flow('rec@10', 10, HealthFlowValue.heavy)]);
 
       await deletedInStore(['rec']);
-      expect(await import.daysDeletedInStore(), 0);
+      expect(await onOffer(), 0);
 
       await deletedInStore(['rec@10']);
-      expect(await import.daysDeletedInStore(), 1);
-      await import.removeDaysDeletedInStore();
+      expect(await onOffer(), 1);
+      await removeOffered();
       expect(await dayOn(10), isNull);
     });
 
@@ -866,7 +886,7 @@ void main() {
       expect(await entriesOn(10), isEmpty, reason: 'not on the live row');
       await deletedInStore(['rec-10']);
 
-      await import.removeDaysDeletedInStore();
+      await removeOffered();
 
       expect((await dayOn(10))!.flow, FlowLevel.none);
       expect(
@@ -898,8 +918,8 @@ void main() {
 
       await deletedInStore(['rec-12']);
 
-      expect(await import.daysDeletedInStore(), 0);
-      await import.removeDaysDeletedInStore();
+      expect(await onOffer(), 0);
+      await removeOffered();
       expect((await dayOn(12))!.flow, FlowLevel.heavy);
     });
 
@@ -910,11 +930,11 @@ void main() {
           _flow('rec-$day', day, HealthFlowValue.medium),
       ]);
       await deletedInStore([for (var day = 1; day <= count; day++) 'rec-$day']);
-      expect(await import.daysDeletedInStore(), count);
+      expect(await onOffer(), count);
       expect(await days.listForProfile(_profileId), hasLength(count),
           reason: 'none removed until she asks');
 
-      final summary = await import.removeDaysDeletedInStore();
+      final summary = await removeOffered();
 
       expect(summary.daysRemoved, count);
       expect(await days.listForProfile(_profileId), isEmpty);
@@ -930,7 +950,7 @@ void main() {
         await days.save(row.copyWith(sourceId: 'rec-other@1'));
       };
 
-      final summary = await import.removeDaysDeletedInStore();
+      final summary = await removeOffered();
 
       final day = (await dayOn(10))!;
       expect(day.flow, FlowLevel.heavy);
@@ -954,7 +974,7 @@ void main() {
           );
         };
 
-      final summary = await serviceOver(hooked).removeDaysDeletedInStore();
+      final summary = await removeOffered(serviceOver(hooked));
 
       expect(hooked.beforeNextFind, isNull, reason: 'the save landed');
       final day = (await dayOn(10))!;
@@ -969,7 +989,7 @@ void main() {
       await deletedInStore(['rec-10']);
       store.onWholeHistoryAgain = () => days.delete(_profileId, sept(10));
 
-      final summary = await import.removeDaysDeletedInStore();
+      final summary = await removeOffered();
 
       expect(summary.daysRemoved, 0);
       expect(await days.deletedHealthRecords(_profileId), hasLength(1));
@@ -988,7 +1008,7 @@ void main() {
         ..requests.clear()
         ..wholeHistoryPaged = true;
 
-      final summary = await import.removeDaysDeletedInStore();
+      final summary = await removeOffered();
 
       expect(store.requests, [
         (null, false),
@@ -999,6 +1019,149 @@ void main() {
       expect(summary.pagesRead, 2);
       expect((await dayOn(11))!.flow, FlowLevel.medium);
       expect((await dayOn(12))!.flow, FlowLevel.light);
+    });
+  });
+
+  // The second review of #1609. The offer she is shown names records,
+  // and both answers are about those records and no others.
+  group('she answers about what she was shown', () {
+    Future<HealthStoreDeletedOffer> shownOneDay() async {
+      await imported([
+        _flow('rec-10', 10, HealthFlowValue.heavy),
+        _flow('rec-11', 11, HealthFlowValue.medium),
+      ]);
+      await deletedInStore(['rec-10']);
+      final offer = await import.daysDeletedInStore();
+      expect(offer.days, 1);
+      expect(offer.recordIds, {'rec-10'});
+      return offer;
+    }
+
+    // She clears the other app out after reading "1 day", and taps
+    // Remove before any import has run. The removal's own read is the
+    // first to hear of it.
+    test('a record deleted after she was asked is not removed with the '
+        'rest, and is offered next', () async {
+      final offer = await shownOneDay();
+      store.delete('rec-11');
+
+      final summary = await import.removeDaysDeletedInStore(offer);
+
+      expect(summary.daysRemoved, 1);
+      expect(await dayOn(10), isNull);
+      expect((await dayOn(11))!.flow, FlowLevel.medium);
+      expect(await binding.storeDeletedRecordIds(), {'rec-11'});
+      expect(await onOffer(), 1);
+    });
+
+    test('nor is one a background pass noted while the offer was on the '
+        'screen', () async {
+      final offer = await shownOneDay();
+      store.delete('rec-11');
+      await import.importInBackground();
+      expect(await binding.storeDeletedRecordIds(), {'rec-10', 'rec-11'});
+
+      final summary = await import.removeDaysDeletedInStore(offer);
+
+      expect(summary.daysRemoved, 1);
+      expect(await dayOn(10), isNull);
+      expect((await dayOn(11))!.flow, FlowLevel.medium);
+      expect(await onOffer(), 1);
+    });
+
+    test('Keep answers only what she was shown', () async {
+      final offer = await shownOneDay();
+      store.delete('rec-11');
+      await import.importInBackground();
+
+      await import.keepDaysDeletedInStore(offer);
+
+      expect(await binding.storeDeletedRecordIds(), {'rec-11'});
+      expect(await onOffer(), 1);
+    });
+
+    // The list is what the store has said. An offer read earlier only
+    // says which of it she was asked about.
+    test('an offer she already answered with Keep removes nothing',
+        () async {
+      final offer = await shownOneDay();
+      await import.keepDaysDeletedInStore(offer);
+
+      final summary = await import.removeDaysDeletedInStore(offer);
+
+      expect(summary.daysRemoved, 0);
+      expect((await dayOn(10))!.flow, FlowLevel.heavy);
+    });
+
+    test('a record that is back in the store by the time she says Remove '
+        'is not removed', () async {
+      final offer = await shownOneDay();
+      store.write(_flow('rec-10', 10, HealthFlowValue.heavy));
+
+      final summary = await import.removeDaysDeletedInStore(offer);
+
+      expect(summary.daysRemoved, 0);
+      expect((await dayOn(10))!.flow, FlowLevel.heavy);
+      expect(await binding.storeDeletedRecordIds(), isEmpty);
+    });
+
+    // The read of everything finds it, though no changes read said so.
+    test('nor one that only the read of everything finds in the store',
+        () async {
+      final offer = await shownOneDay();
+      store.onWholeHistoryAgain = () async {
+        store.records['rec-10'] = _flow('rec-10', 10, HealthFlowValue.heavy);
+      };
+
+      final summary = await import.removeDaysDeletedInStore(offer);
+
+      expect(summary.daysRemoved, 0);
+      expect((await dayOn(10))!.flow, FlowLevel.heavy);
+      expect(await binding.storeDeletedRecordIds(), isEmpty);
+    });
+
+    // Asking must not write: a write from the screen could land between
+    // a pass's read of the list and its write.
+    test('asking what is on offer writes nothing', () async {
+      await shownOneDay();
+      await binding.setStoreDeletedRecordIds({'rec-10', 'no-row-names-me'});
+
+      final offer = await import.daysDeletedInStore();
+
+      expect(offer.days, 1);
+      expect(offer.recordIds, {'rec-10'});
+      expect(
+        await binding.storeDeletedRecordIds(),
+        {'rec-10', 'no-row-names-me'},
+      );
+    });
+
+    test('Keep waits for a pass that is running, so the pass cannot put '
+        'back what she answered', () async {
+      final offer = await shownOneDay();
+      store.readGate = Completer<void>();
+      final pass = import.importNow();
+      await pumpEventQueue();
+
+      final kept = import.keepDaysDeletedInStore(offer);
+      await pumpEventQueue();
+      expect(await binding.storeDeletedRecordIds(), {'rec-10'},
+          reason: 'not yet: the pass has the list in hand');
+
+      store.readGate!.complete();
+      await pass;
+      await kept;
+      expect(await binding.storeDeletedRecordIds(), isEmpty);
+    });
+
+    test('with no profile bound nothing is on offer', () async {
+      await shownOneDay();
+      await binding.unbind();
+
+      final offer = await import.daysDeletedInStore();
+
+      expect(offer.isEmpty, isTrue);
+      expect(offer.recordIds, isEmpty);
     });
   });
 
@@ -1016,7 +1179,7 @@ void main() {
       expect(summary.isBlocked, isTrue);
       expect(summary.daysRemoved, 0);
       expect((await dayOn(10))!.flow, FlowLevel.heavy);
-      expect(await import.daysDeletedInStore(), 1,
+      expect(await onOffer(), 1,
           reason: 'the day is still on offer');
       expect(store.commits, isEmpty);
     }
@@ -1027,7 +1190,7 @@ void main() {
       store.wholeHistoryAgainPages
           .add(const HealthReadResult.unavailable());
 
-      await expectNothingRemoved(await import.removeDaysDeletedInStore());
+      await expectNothingRemoved(await removeOffered());
     });
 
     test('that fails on a later page', () async {
@@ -1040,7 +1203,74 @@ void main() {
         const HealthReadResult.failed('the store went away'),
       ]);
 
-      await expectNothingRemoved(await import.removeDaysDeletedInStore());
+      await expectNothingRemoved(await removeOffered());
+    });
+
+    // An import treats a page the store would not let be read as "no
+    // data". A removal must not: the read did not reach its end.
+    test('whose later page the store will not let be read', () async {
+      await offered();
+      store.wholeHistoryAgainPages.addAll([
+        HealthReadResult.samples(
+          [_flow('rec-11', 11, HealthFlowValue.medium)],
+          nextCursor: 'page-2',
+        ),
+        const HealthReadResult.permissionDenied(),
+      ]);
+
+      await expectNothingRemoved(await removeOffered());
+    });
+
+    test('whose first page the store will not let be read', () async {
+      await offered();
+      store.wholeHistoryAgainPages
+          .add(const HealthReadResult.permissionDenied());
+
+      await expectNothingRemoved(await removeOffered());
+    });
+
+    // The read of everything drops the stored position, and the pages
+    // nobody read hang on it: their deletions would never be reported.
+    test('is not started after a changes read that was cut short',
+        () async {
+      await offered();
+      store.changePages.addAll([
+        HealthReadResult.samples(
+          const [],
+          incremental: true,
+          nextCursor: 'page-2',
+        ),
+        const HealthReadResult.failed('the store went away'),
+      ]);
+
+      await expectNothingRemoved(await removeOffered());
+      expect(store.askedForWholeHistory, isNot(contains(true)));
+    });
+
+    test('an import that would read everything again does not, after a '
+        'changes read that was cut short', () async {
+      await offered();
+      store.changePages.addAll([
+        HealthReadResult.samples(
+          [_flow('rec-20', 20, HealthFlowValue.medium)],
+          incremental: true,
+          nextCursor: 'page-2',
+        ),
+        HealthReadResult.samples(
+          const [],
+          incremental: true,
+          deletedRecordIds: const ['rec-20'],
+          nextCursor: 'page-3',
+        ),
+        const HealthReadResult.failed('the store went away'),
+      ]);
+
+      final summary = await import.importNow();
+
+      expect(summary.isBlocked, isTrue);
+      expect(store.askedForWholeHistory, isNot(contains(true)));
+      expect(await dayOn(20), isNull, reason: 'its record was deleted');
+      expect(store.commits, isEmpty);
     });
 
     test('that runs into the page limit', () async {
@@ -1050,7 +1280,7 @@ void main() {
           HealthReadResult.samples(const [], nextCursor: 'page-$page'),
       ]);
 
-      await expectNothingRemoved(await import.removeDaysDeletedInStore());
+      await expectNothingRemoved(await removeOffered());
       expect(store.wholeHistoryAgainPages, isEmpty, reason: 'all were read');
     });
 
@@ -1061,20 +1291,20 @@ void main() {
         HealthReadResult.samples(const [], nextCursor: 'same'),
       ]);
 
-      await expectNothingRemoved(await import.removeDaysDeletedInStore());
+      await expectNothingRemoved(await removeOffered());
     });
 
     test('and she can ask again once the store can be read', () async {
       await offered();
       store.wholeHistoryAgainPages
           .add(const HealthReadResult.unavailable());
-      await import.removeDaysDeletedInStore();
+      await removeOffered();
 
-      final summary = await import.removeDaysDeletedInStore();
+      final summary = await removeOffered();
 
       expect(summary.daysRemoved, 1);
       expect(await dayOn(10), isNull);
-      expect(await import.daysDeletedInStore(), 0);
+      expect(await onOffer(), 0);
     });
   });
 
@@ -1083,9 +1313,9 @@ void main() {
       await imported([_spotting('spot-11', 11)]);
       expect(await entriesOn(11), hasLength(1));
       await deletedInStore(['spot-11']);
-      expect(await import.daysDeletedInStore(), 1);
+      expect(await onOffer(), 1);
 
-      final summary = await import.removeDaysDeletedInStore();
+      final summary = await removeOffered();
 
       expect(await dayOn(11), isNull);
       expect(summary.daysRemoved, 1);
@@ -1099,7 +1329,7 @@ void main() {
       ]);
       await deletedInStore(['spot-11']);
 
-      await import.removeDaysDeletedInStore();
+      await removeOffered();
 
       expect((await dayOn(11))!.flow, FlowLevel.light);
       expect(await entriesOn(11), isEmpty);
@@ -1110,7 +1340,7 @@ void main() {
       await days.save((await dayOn(11))!.copyWith(tags: const ['headache']));
       await deletedInStore(['spot-11']);
 
-      await import.removeDaysDeletedInStore();
+      await removeOffered();
 
       expect((await dayOn(11))!.tags, ['headache']);
       expect(await entriesOn(11), isEmpty);
@@ -1124,7 +1354,7 @@ void main() {
       ]);
       await deletedInStore(['spot-11', 'rec-11']);
 
-      final summary = await import.removeDaysDeletedInStore();
+      final summary = await removeOffered();
 
       expect(await dayOn(11), isNull);
       expect(summary.daysRemoved, 1, reason: 'one day, counted once');
@@ -1138,7 +1368,7 @@ void main() {
       ]);
       await deletedInStore(['rec-11']);
 
-      await import.removeDaysDeletedInStore();
+      await removeOffered();
 
       expect((await dayOn(11))!.flow, FlowLevel.none);
       expect(await entriesOn(11), hasLength(1));
@@ -1181,7 +1411,7 @@ void main() {
         expect(await entriesOn(11), hasLength(1));
         await deletedInStore(['spot-11']);
 
-        final summary = await import.removeDaysDeletedInStore();
+        final summary = await removeOffered();
 
         final day = (await dayOn(11))!;
         expect(day.id, made.id);
@@ -1214,8 +1444,8 @@ void main() {
 
       await deletedInStore(['spot-11']);
 
-      expect(await import.daysDeletedInStore(), 0);
-      await import.removeDaysDeletedInStore();
+      expect(await onOffer(), 0);
+      await removeOffered();
       expect(await entriesOn(11), hasLength(1));
     });
   });
