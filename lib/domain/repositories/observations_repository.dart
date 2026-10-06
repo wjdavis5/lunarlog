@@ -48,22 +48,6 @@ abstract interface class ObservationsRepository {
   Future<void> delete(String id);
 }
 
-/// Issue #1561: the deleted observation carrying a provenance, for the
-/// health import, which revives it instead of inserting a second row for
-/// the same record. Kept off [ObservationsRepository] for the reason the
-/// capabilities below are: its test doubles keep compiling.
-abstract interface class DeletedObservationReader {
-  /// The id of the deleted observation of [profileId] with this [source]
-  /// and [sourceId], or null when there is none or the one that carries
-  /// them is live. Its id and nothing else: a deleted observation has no
-  /// category left, so there is no [Observation] to make of it.
-  Future<String?> findDeletedIdBySource({
-    required String profileId,
-    required ObservationSource source,
-    required String sourceId,
-  });
-}
-
 /// Optional capability of an [ObservationsRepository] (issue #795): a
 /// date-scoped, spotting-category read that never scans the profile's full
 /// observation history. It is itself an [ObservationsRepository] (so a

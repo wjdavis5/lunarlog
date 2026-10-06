@@ -1,5 +1,5 @@
-/// What the device remembers about health-store records that were deleted
-/// in lunarlog (Issue #1561), so that the next import does not bring them
+/// What the device remembers about health-store records she deleted in
+/// lunarlog (Issue #1561), so that the next import does not bring them
 /// back.
 ///
 /// A deleted row keeps which record it was imported from, but only for as
@@ -15,12 +15,13 @@
 /// The record itself is still in the health store on the same phone; this
 /// only says "not this one again".
 ///
-/// It is written by the storage layer at the moment a row stops being
-/// live, by any of the three ways that is a deletion of that row: she
-/// deletes a day, she removes one entry from a day, or a deletion made on
-/// another device arrives by sync. It is NOT derived from deleted rows:
-/// "Remove imported data" also leaves deleted rows, and after that an
-/// import must bring the days back.
+/// It is written by the storage layer in the transaction that deletes the
+/// row, for the two things she can do on this phone: delete a day, and
+/// remove one entry from a day. Nothing else adds to it. In particular it
+/// is NOT derived from deleted rows, and a deletion that arrives by sync is
+/// not remembered: "Remove imported data" leaves deleted rows and sends
+/// deletions to every device too, nothing in a row tells the two apart, and
+/// after it an import must bring the days back.
 ///
 /// Never synced: it lives in `app_settings`, and it is this phone's health
 /// store the ids belong to.
@@ -34,6 +35,20 @@ const Set<String> kHealthStoreSources = {
   'health_connect',
   'apple_health',
 };
+
+/// The sources Apple Health's imports carry: days and the entries on them
+/// have different ones.
+const Set<String> _kAppleHealthSources = {'healthkit', 'apple_health'};
+
+/// Every source that comes from the same health store as [source], itself
+/// included; none when [source] is not a health store's (a file import).
+/// Removing a store's imported data is a clean slate for the whole store,
+/// whichever of its sources was named.
+Set<String> healthStoreSourcesSharedWith(String source) {
+  if (_kAppleHealthSources.contains(source)) return _kAppleHealthSources;
+  if (kHealthStoreSources.contains(source)) return {source};
+  return const {};
+}
 
 /// One remembered record's name: its source, then its record id.
 String healthImportDeletionId(String source, String sourceId) =>

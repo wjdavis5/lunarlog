@@ -1,6 +1,6 @@
 /// Issue #1561 end to end: the health import over the real repositories and
-/// a real database, so that what the storage layer remembers when a row is
-/// deleted and what the import does with it are tested together.
+/// a real database, so that what the storage layer remembers when she
+/// deletes a row and what the import does with it are tested together.
 ///
 /// `health_import_service_test.dart` pins the import's rules against test
 /// doubles, and `health_import_deletions_storage_test.dart` pins what the
@@ -13,13 +13,11 @@ import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
-import 'package:lunarlog/data/db/tables.dart' as tables;
 import 'package:lunarlog/data/health/health_import_service.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
-import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/health/health_deviation.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
@@ -105,6 +103,7 @@ void main() {
   late DriftObservationsRepository observations;
   late _Store store;
   late LocalHealthImportService import;
+  late LocalHealthImportService Function(HealthImportPlatform) importFor;
 
   final flowDate = LocalDate(2026, 9, 10);
   final spottingDate = LocalDate(2026, 9, 11);
@@ -133,8 +132,8 @@ void main() {
         _flow('rec-1', HealthFlowValue.heavy),
         _spotting('spot-1'),
       ];
-    import = LocalHealthImportService(
-      importPlatform: HealthImportPlatform.appleHealth,
+    importFor = (platform) => LocalHealthImportService(
+      importPlatform: platform,
       platform: _Platform(),
       source: store,
       binding: binding,
@@ -155,6 +154,7 @@ void main() {
       signedInUserId: () => _ownerId,
       today: () => LocalDate(2026, 9, 15),
     );
+    import = importFor(HealthImportPlatform.appleHealth);
   });
 
   Future<int> rowsFor(String sourceId) async => [
@@ -262,59 +262,70 @@ void main() {
     expect((await days.find(_profileId, flowDate))!.id, day.id);
   });
 
-  test('after the source\'s imported data is removed, an import brings '
-      'everything back in the rows that were there', () async {
+  // On an iPhone the days carry one source and the entries on them another,
+  // and "Remove imported data" removes one source at a time. The review of
+  // an earlier version found that removing the days' source left what she
+  // had removed from the other one remembered, with no way to clear it.
+  test('after Apple Health\'s imported data is removed, an import brings '
+      'back what she had deleted from it too', () async {
     await import.importNow();
-    final day = (await days.find(_profileId, flowDate))!;
-    final entry = (await spottingOn(spottingDate)).single;
-    // She had deleted the day by hand first: removing the source forgets
-    // that too.
     await days.delete(_profileId, flowDate);
+    final spottingDay = (await days.find(_profileId, spottingDate))!;
+    await days.saveDayEntryWithObservations(
+      entry: spottingDay,
+      observationIdsToDelete: [(await spottingOn(spottingDate)).single.id],
+    );
+    expect(await db.storage.readHealthImportDeletions(_profileId),
+        hasLength(2));
+    expect((await import.importNow()).daysWritten, 0);
+
     await db.storage.applyLocalImportedDataPurge(
       profileId: _profileId,
       source: 'healthkit',
     );
-    await db.storage.applyLocalImportedDataPurge(
-      profileId: _profileId,
-      source: 'apple_health',
-    );
-    expect(await days.find(_profileId, flowDate), isNull);
-    expect(await spottingOn(spottingDate), isEmpty);
+    expect(await db.storage.readHealthImportDeletions(_profileId), isEmpty);
 
     final summary = await import.importNow();
     expect(summary.daysWritten, 1);
     expect(summary.spottingDaysWritten, 1);
-    expect((await days.find(_profileId, flowDate))!.id, day.id);
-    expect((await spottingOn(spottingDate)).single.id, entry.id);
-    expect(await rowsFor('rec-1'), 1);
-    expect(await spottingRows(), 1);
+    expect((await days.find(_profileId, flowDate))!.flow, FlowLevel.heavy);
+    expect(await spottingOn(spottingDate), hasLength(1));
   });
 
-  test('a day deleted on another device stays deleted here', () async {
-    await import.importNow();
-    final day = (await days.find(_profileId, flowDate))!;
-    final at = DateTime.now().toUtc().add(const Duration(minutes: 1));
-    await db.storage.applyRemoteDayEntry(
-      RemoteDayEntryRow(
-        id: day.id,
-        profileId: _profileId,
-        localDate: flowDate.iso,
-        tz: _tz,
-        flow: tables.FlowLevel.none,
-        tags: const [],
-        note: null,
-        updatedAt: at,
-        deletedAt: at,
-        source: 'healthkit',
-        sourceId: 'rec-1',
-      ),
-    );
+  test('Health Connect: a day she deletes stays deleted until the store '
+      'changes the record', () async {
+    final hc = importFor(HealthImportPlatform.healthConnect);
+    final start = DateTime.parse('2026-09-10T04:00:00Z');
+    HealthFlowSample record(HealthFlowValue flow, DateTime modifiedAt) =>
+        HealthFlowSample(
+          recordId: 'hc-1',
+          flow: flow,
+          start: start,
+          end: start.add(const Duration(hours: 1)),
+          offset: Duration.zero,
+          modifiedAt: modifiedAt,
+        );
+    final first = DateTime.utc(2026, 9, 10, 6);
+    store.samples = [record(HealthFlowValue.heavy, first)];
+
+    expect((await hc.importNow()).daysWritten, 1);
+    final imported = (await days.find(_profileId, flowDate))!;
+    expect(imported.source, DayEntrySource.healthConnect);
+    expect(imported.sourceId, 'hc-1@${first.millisecondsSinceEpoch}');
+
+    await days.delete(_profileId, flowDate);
+    final summary = await hc.importNow();
+    expect(summary.daysWritten, 0);
+    expect(summary.daysKeptManual, 1);
     expect(await days.find(_profileId, flowDate), isNull);
 
-    final summary = await import.importNow();
-    expect(summary.daysWritten, 0);
-    expect(await days.find(_profileId, flowDate), isNull);
-    expect(await rowsFor('rec-1'), 1);
+    // The store changes the record: its news, and the day is imported.
+    final later = DateTime.utc(2026, 9, 14, 6);
+    store.samples = [record(HealthFlowValue.light, later)];
+    expect((await hc.importNow()).daysWritten, 1);
+    final back = (await days.find(_profileId, flowDate))!;
+    expect(back.flow, FlowLevel.light);
+    expect(back.sourceId, 'hc-1@${later.millisecondsSinceEpoch}');
   });
 
   test('a symptom she logs on a day she deleted does not let the record '

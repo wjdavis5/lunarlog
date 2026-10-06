@@ -556,6 +556,13 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
   /// was just removed" apart from "spotting was never on this session".
   bool _hadSpottingOnLoad = false;
 
+  /// `true` once she ticks Spotting in this session. With
+  /// [_hadSpottingOnLoad] it says whether Spotting was ever on while the
+  /// sheet was open: only then can an unticked Spotting be something she
+  /// unticked, and only then does a save remove spotting rows (see
+  /// `computeSpottingMutations`).
+  bool _spottingTicked = false;
+
   /// Review fix (blocking): `true` once the user taps any flow chip this
   /// session (including re-tapping the already-selected one) — an
   /// explicit choice, as opposed to [_flow]'s initial value merely being
@@ -1540,6 +1547,7 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
     return computeObservationMutations(
       existingObservations: existingObs,
       spotting: _spotting,
+      spottingWasOn: _hadSpottingOnLoad || _spottingTicked,
       painIntensity: _painIntensity,
       // Issue #457: the BBT/weight fields' last-validated values, not the
       // controllers' raw (possibly currently-invalid) text — see
@@ -2425,6 +2433,7 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
     LLHaptics.selection();
     setState(() {
       if (value) {
+        _spottingTicked = true;
         final before = _flow;
         _flow = resolveEffectiveFlow(
           spotting: true,

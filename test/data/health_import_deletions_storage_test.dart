@@ -1,11 +1,9 @@
-/// The device's memory of deleted health-store records (Issue #1561),
+/// The device's memory of health-store records she deleted (Issue #1561),
 /// against a real database: which deletions the storage layer remembers,
 /// which it does not, and what clears the memory.
 ///
-/// The rule being pinned: a record is remembered at the moment its row
-/// stops being live by a deletion of that row. Removing a source's imported
-/// data is not that, and neither is the echo of a deletion this device
-/// already made.
+/// The rule being pinned: a record is remembered when she deletes its row
+/// on this phone, a day or one entry on a day, and at no other time.
 library;
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -207,19 +205,23 @@ void main() {
     });
   });
 
-  group('a deletion that arrives by sync', () {
-    test('a live imported day deleted on another device is remembered',
-        () async {
+  // A deletion that arrives by sync is not remembered. Removing a store's
+  // imported data sends deletions to every device too, and nothing in a row
+  // tells that from a day someone deleted; remembering either would stop a
+  // later import from bringing the data back, with no way to undo it on
+  // this phone. Telling the two apart needs the server's help (#1576).
+  group('a deletion that arrives by sync is not remembered', () {
+    test('a live imported day deleted on another device', () async {
       final day = await importedDay();
       await storage.applyRemoteDayEntry(
         remoteDay(day, updatedAt: t1, deletedAt: t1),
       );
       expect(await storage.getDayEntry(profileId: 'p1', localDate: date),
           isNull);
-      expect(await remembered(), {hk: t1});
+      expect(await remembered(), isEmpty);
     });
 
-    test('a day that arrives already deleted is remembered', () async {
+    test('a day that arrives already deleted', () async {
       await storage.applyRemoteDayEntry(
         RemoteDayEntryRow(
           id: 'never-seen-live',
@@ -235,10 +237,24 @@ void main() {
           sourceId: 'rec-1',
         ),
       );
-      expect(await remembered(), {hk: t1});
+      expect(await remembered(), isEmpty);
     });
 
-    test('the echo of this device\'s own deletion does not move its time',
+    test('an imported entry, in a page as well as one row at a time',
+        () async {
+      final day = await importedDay(source: 'manual', sourceId: null);
+      final spotting = await importedSpotting(day);
+      await storage.applyRemoteRows([
+        remoteSpotting(spotting, updatedAt: t1, deletedAt: t1),
+      ]);
+      final other = await importedSpotting(day, sourceId: 'spot-2');
+      await storage.applyRemoteObservation(
+        remoteSpotting(other, updatedAt: t1, deletedAt: t1),
+      );
+      expect(await remembered(), isEmpty);
+    });
+
+    test('and one that she had deleted here keeps the moment she did',
         () async {
       final day = await importedDay();
       clock.now = t1;
@@ -248,104 +264,11 @@ void main() {
       );
       expect(await remembered(), {hk: t1});
     });
-
-    // What lets an import after "Remove imported data" bring the days
-    // back: the server's copy of the removal lands on rows this device
-    // has already deleted.
-    test('the echo of this device\'s own removal of imported data is not '
-        'remembered', () async {
-      final day = await importedDay();
-      final spotting = await importedSpotting(day);
-      await storage.applyLocalImportedDataPurge(
-        profileId: 'p1',
-        source: 'healthkit',
-      );
-      await storage.applyLocalImportedDataPurge(
-        profileId: 'p1',
-        source: 'apple_health',
-      );
-      await storage.applyRemoteRows([
-        remoteDay(day, updatedAt: t1, deletedAt: t1),
-        remoteSpotting(spotting, updatedAt: t1, deletedAt: t1),
-      ]);
-      expect(await remembered(), isEmpty);
-    });
-
-    test('a live copy, and a deletion older than the local row, change '
-        'nothing', () async {
-      final day = await importedDay();
-      await storage.applyRemoteDayEntry(remoteDay(day, updatedAt: t1));
-      expect(await remembered(), isEmpty);
-
-      // The local row is newer than the server's deletion, so the server's
-      // copy is not applied and the day stays live.
-      await storage.upsertDayEntry(
-        id: day.id,
-        profileId: 'p1',
-        localDate: date,
-        tz: 'UTC',
-        flow: FlowLevel.light,
-        source: 'healthkit',
-        sourceId: 'rec-1',
-        updatedAt: t2,
-      );
-      await storage.applyRemoteDayEntry(
-        remoteDay(day, updatedAt: t1, deletedAt: t1),
-      );
-      expect(await storage.getDayEntry(profileId: 'p1', localDate: date),
-          isNotNull);
-      expect(await remembered(), isEmpty);
-    });
-
-    test('an imported entry deleted on another device is remembered, in a '
-        'page as well as one row at a time', () async {
-      final day = await importedDay(source: 'manual', sourceId: null);
-      final spotting = await importedSpotting(day);
-      await storage.applyRemoteRows([
-        remoteSpotting(spotting, updatedAt: t1, deletedAt: t1),
-      ]);
-      expect(await remembered(), {spot: t1});
-
-      // Arriving already deleted.
-      await storage.applyRemoteObservation(
-        RemoteObservationRow(
-          id: 'never-seen-live',
-          dayEntryId: day.id,
-          profileId: 'p1',
-          localDate: date,
-          tz: 'UTC',
-          source: 'apple_health',
-          sourceId: 'spot-2',
-          updatedAt: t2,
-          deletedAt: t2,
-        ),
-      );
-      expect(await remembered(), {
-        spot: t1,
-        healthImportDeletionId('apple_health', 'spot-2'): t2,
-      });
-    });
-
-    test('a live copy of an entry, and the echo of a deletion made here, '
-        'change nothing', () async {
-      final day = await importedDay(source: 'manual', sourceId: null);
-      final spotting = await importedSpotting(day);
-      await storage.applyRemoteObservation(
-        remoteSpotting(spotting, updatedAt: t1),
-      );
-      expect(await remembered(), isEmpty);
-
-      clock.now = t1.add(const Duration(hours: 1));
-      await storage.softDeleteObservation(spotting.id);
-      final at = (await remembered())[spot];
-      await storage.applyRemoteObservation(
-        remoteSpotting(spotting, updatedAt: t2, deletedAt: t2),
-      );
-      expect(await remembered(), {spot: at});
-    });
   });
 
   group('what clears it', () {
+    final hc = healthImportDeletionId('health_connect', 'hc-1@5');
+
     Future<void> deleteThree() async {
       final day = await importedDay();
       await importedSpotting(day);
@@ -361,44 +284,80 @@ void main() {
       );
     }
 
-    test('removing a source\'s imported data forgets that source and no '
-        'other, and its own deleted rows are not remembered', () async {
-      await deleteThree();
-      final hc = healthImportDeletionId('health_connect', 'hc-1@5');
-      expect((await remembered()).keys, unorderedEquals([hk, spot, hc]));
+    // On an iPhone the days carry `healthkit` and the entries on them
+    // `apple_health`, and the app removes one source at a time. Either one
+    // is the whole of Apple Health as far as what she deleted goes.
+    for (final named in ['healthkit', 'apple_health']) {
+      test('removing Apple Health\'s imported data, named as $named, '
+          'forgets what she deleted from Apple Health and nothing else',
+          () async {
+        await deleteThree();
+        expect((await remembered()).keys, unorderedEquals([hk, spot, hc]));
 
+        await storage.applyLocalImportedDataPurge(
+          profileId: 'p1',
+          source: named,
+        );
+        expect((await remembered()).keys, [hc]);
+      });
+    }
+
+    test('removing Health Connect\'s forgets Health Connect\'s alone, and '
+        'the rows the removal deletes are not remembered', () async {
+      await deleteThree();
       // A live day of the source being removed.
-      await importedDay(localDate: '2026-08-03', sourceId: 'rec-9');
+      await importedDay(
+        localDate: '2026-08-03',
+        source: 'health_connect',
+        sourceId: 'hc-9@5',
+      );
       await storage.applyLocalImportedDataPurge(
         profileId: 'p1',
-        source: 'healthkit',
+        source: 'health_connect',
       );
-      expect((await remembered()).keys, unorderedEquals([spot, hc]));
+      expect((await remembered()).keys, unorderedEquals([hk, spot]));
       expect(
         (await storage.findDayEntryBySource(
           profileId: 'p1',
-          source: 'healthkit',
-          sourceId: 'rec-9',
+          source: 'health_connect',
+          sourceId: 'hc-9@5',
         ))!
             .deletedAt,
         isNotNull,
       );
-
-      // A source whose name begins another's does not take it along.
-      await storage.applyLocalImportedDataPurge(
-        profileId: 'p1',
-        source: 'health',
-      );
-      expect((await remembered()).keys, unorderedEquals([spot, hc]));
     });
 
-    test('the import forgets the records it names, and only those', () async {
+    test('removing a file import\'s data, or a source whose name begins '
+        'another\'s, forgets nothing', () async {
       await deleteThree();
-      await storage.forgetHealthImportDeletions('p1', [hk, 'healthkit|other']);
-      expect((await remembered()).keys, hasLength(2));
-      expect((await remembered()).keys, isNot(contains(hk)));
-      await storage.forgetHealthImportDeletions('p1', const []);
-      expect((await remembered()).keys, hasLength(2));
+      for (final source in ['clue_import', 'health', 'apple']) {
+        await storage.applyLocalImportedDataPurge(
+          profileId: 'p1',
+          source: source,
+        );
+      }
+      expect((await remembered()).keys, unorderedEquals([hk, spot, hc]));
+    });
+
+    test('the import forgets a record only while it still carries the '
+        'moment the import read', () async {
+      await deleteThree();
+      final read = await remembered();
+
+      // Deleted again since the import read it: a new moment, and kept.
+      await importedDay();
+      clock.now = t2;
+      await storage.softDeleteDayEntry(profileId: 'p1', localDate: date);
+
+      await storage.forgetHealthImportDeletions('p1', {
+        hk: read[hk]!,
+        spot: read[spot]!,
+        'healthkit|never-remembered': t0,
+      });
+      expect(await remembered(), {hk: t2, hc: read[hc]});
+
+      await storage.forgetHealthImportDeletions('p1', const {});
+      expect((await remembered()).keys, unorderedEquals([hk, hc]));
     });
 
     test('a profile wiped from this device takes its memory with it, and '

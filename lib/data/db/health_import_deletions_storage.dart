@@ -3,11 +3,9 @@ part of 'storage.dart';
 // The device's memory of deleted health-store records (issue #1561). What
 // it is for is in `lib/domain/health/health_import_deletions.dart`.
 //
-// One `app_settings` row per record, not one value per profile. A deletion
-// that arrives by sync is noted inside the page's own transaction, and a
-// page can carry hundreds of them: a row is one small write, where a
-// single growing value would be read, decoded, encoded and written again
-// for every one.
+// One `app_settings` row per record, not one value per profile: a deletion
+// is one small write inside the transaction that deletes the row, and
+// forgetting one record does not rewrite the others.
 //
 // Key: `health_import_deleted_<profileId>|<source>|<record id>`.
 // Value: the moment of the deletion, in UTC milliseconds.
@@ -91,13 +89,22 @@ mixin LunarLogStorageHealthImportDeletions on LunarLogStorageQueries
 
   /// Forgets the named records: the import found each of them on a live
   /// row again, so the deletion was undone.
+  ///
+  /// Each is forgotten only if it still carries the moment the import
+  /// read ([deletedAt]). A record deleted again since then has a new one,
+  /// and that deletion is kept.
   @override
   Future<void> forgetHealthImportDeletions(
     String profileId,
-    Iterable<String> recordIds,
+    Map<String, DateTime> deletedAt,
   ) async {
     final prefix = _healthImportDeletedPrefix(profileId);
-    final keys = [for (final id in recordIds) '$prefix$id'];
-    await (db.delete(db.appSettings)..where((t) => t.key.isIn(keys))).go();
+    for (final MapEntry(key: id, value: at) in deletedAt.entries) {
+      await (db.delete(db.appSettings)
+            ..where((t) =>
+                t.key.equals('$prefix$id') &
+                t.value.equals('${at.toUtc().millisecondsSinceEpoch}')))
+          .go();
+    }
   }
 }

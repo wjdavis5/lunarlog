@@ -334,7 +334,7 @@ abstract interface class HealthImportDeletionStore {
   Future<Map<String, DateTime>> readHealthImportDeletions(String profileId);
   Future<void> forgetHealthImportDeletions(
     String profileId,
-    Iterable<String> recordIds,
+    Map<String, DateTime> deletedAt,
   );
 }
 

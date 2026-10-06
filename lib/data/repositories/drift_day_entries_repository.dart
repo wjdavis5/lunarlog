@@ -156,26 +156,9 @@ class DriftDayEntriesRepository
   @override
   Future<void> forgetDeletedHealthRecords(
     String profileId,
-    Iterable<String> recordIds,
+    Map<String, DateTime> deletedAt,
   ) =>
-      _storage.forgetHealthImportDeletions(profileId, recordIds);
-
-  /// Issue #1561: the storage lookup answers live and deleted rows alike;
-  /// a live one is not what was asked for.
-  @override
-  Future<domain.DayEntry?> findDeletedBySource({
-    required String profileId,
-    required domain.DayEntrySource source,
-    required String sourceId,
-  }) async {
-    final row = await _storage.findDayEntryBySource(
-      profileId: profileId,
-      source: source.toDb(),
-      sourceId: sourceId,
-    );
-    if (row == null || row.deletedAt == null) return null;
-    return dayEntryToDomain(row);
-  }
+      _storage.forgetHealthImportDeletions(profileId, deletedAt);
 
   /// Issue #130: the day sheet's merge-notice list — the window-filtered
   /// storage read minus this device's dismissed ids. Dismissal filtering

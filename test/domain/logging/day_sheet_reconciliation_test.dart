@@ -231,6 +231,57 @@ void main() {
       expect(mutations.toDelete, unorderedEquals(['o1', 'o2']));
     });
 
+    // Issue #1561. A spotting row the sheet never showed her (it arrived
+    // from a health import after the sheet loaded, or the load failed) is
+    // not hers to remove: she cannot have unticked what was never ticked.
+    // And a removed imported entry is not imported again.
+    test('spotting off and never on while the sheet was open: nothing is '
+        'removed', () {
+      final mutations = computeSpottingMutations(
+        existingObservations: [_spottingObs('o1'), _spottingObs('o2')],
+        spotting: false,
+        spottingWasOn: false,
+        targetDayEntryId: 'e1',
+        profileId: 'p1',
+        date: _date,
+        tz: 'UTC',
+        updatedAt: _now,
+      );
+      expect(mutations.toDelete, isEmpty);
+      expect(mutations.toUpsert, isEmpty);
+    });
+
+    test('spotting off after being on: removed, as before', () {
+      final mutations = computeSpottingMutations(
+        existingObservations: [_spottingObs('o1')],
+        spotting: false,
+        spottingWasOn: true,
+        targetDayEntryId: 'e1',
+        profileId: 'p1',
+        date: _date,
+        tz: 'UTC',
+        updatedAt: _now,
+      );
+      expect(mutations.toDelete, ['o1']);
+    });
+
+    test('the whole reconciliation passes it through', () {
+      ObservationMutations run({required bool spottingWasOn}) =>
+          computeObservationMutations(
+            existingObservations: [_spottingObs('o1')],
+            spotting: false,
+            spottingWasOn: spottingWasOn,
+            painIntensity: const {},
+            targetDayEntryId: 'e1',
+            profileId: 'p1',
+            date: _date,
+            tz: 'UTC',
+            updatedAt: _now,
+          );
+      expect(run(spottingWasOn: false).toDelete, isEmpty);
+      expect(run(spottingWasOn: true).toDelete, ['o1']);
+    });
+
     test('spotting off, none persisted: no-op', () {
       final mutations = computeSpottingMutations(
         existingObservations: const [],

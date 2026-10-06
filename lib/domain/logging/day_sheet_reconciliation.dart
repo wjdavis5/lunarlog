@@ -87,9 +87,18 @@ class ObservationMutations {
 /// created if missing, removed (every existing spotting row) if unchecked.
 /// Never updates an existing spotting row in place (there is nothing on it
 /// to change besides its existence).
+///
+/// [spottingWasOn] is whether Spotting has been ticked at any point since
+/// the sheet opened: on when it loaded, or ticked since. Unticked with
+/// that false, there is nothing she unticked, and nothing is removed. A
+/// spotting row found then is one the sheet never showed her: it arrived
+/// after the sheet loaded (a health import running in the background), or
+/// the load failed. Removing it would delete something she never saw,
+/// and since Issue #1561 a removed imported entry is not imported again.
 ObservationMutations computeSpottingMutations({
   required List<Observation> existingObservations,
   required bool spotting,
+  bool spottingWasOn = true,
   required String targetDayEntryId,
   required String profileId,
   required LocalDate date,
@@ -101,6 +110,7 @@ ObservationMutations computeSpottingMutations({
       if (o.category == ObservationCategory.spotting) o,
   ];
   if (!spotting) {
+    if (!spottingWasOn) return const ObservationMutations();
     return ObservationMutations(
       toDelete: [for (final o in existingSpotting) o.id],
     );
@@ -299,6 +309,7 @@ ObservationMutations computeMeasurementMutations({
 ObservationMutations computeObservationMutations({
   required List<Observation> existingObservations,
   required bool spotting,
+  bool spottingWasOn = true,
   required Map<String, int?> painIntensity,
   double? bbtValue,
   String bbtUnit = 'celsius',
@@ -317,6 +328,7 @@ ObservationMutations computeObservationMutations({
         computeSpottingMutations(
           existingObservations: existingObservations,
           spotting: spotting,
+          spottingWasOn: spottingWasOn,
           targetDayEntryId: targetDayEntryId,
           profileId: profileId,
           date: date,

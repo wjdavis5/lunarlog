@@ -1327,10 +1327,14 @@ mixin LunarLogStorageRemoteApply
               deletedAt: Value(stamp),
               dirty: const Value(false),
             ));
-        // Issue #1561: removing a source's imported data is a clean slate
-        // for it. What was deleted one by one from that source is
+        // Issue #1561: removing a health store's imported data is a clean
+        // slate for that store. What was deleted one by one from it is
         // forgotten, so a later import brings everything the store holds.
-        await _forgetHealthImportDeletions(db, profileId, source);
+        // The whole store, whichever of its sources was named: on an
+        // iPhone the days and the entries on them carry different ones.
+        for (final ofStore in healthStoreSourcesSharedWith(source)) {
+          await _forgetHealthImportDeletions(db, profileId, ofStore);
+        }
         // Issue #907: only when nothing live remains for the profile.
         await _clearCycleFactsIfProfileEmpty(profileId);
       });
@@ -1425,13 +1429,6 @@ mixin LunarLogStorageRemoteApply
       local: local,
       onlyExisting: onlyExisting,
     );
-    await _noteRemoteHealthDeletion(
-      profileId: remote.profileId,
-      source: remote.source,
-      sourceId: remote.sourceId,
-      deletedAt: remote.deletedAt,
-      wasDeleted: local?.deletedAt != null,
-    );
 
     var updatedAt = remote.updatedAt.toUtc();
     var deletedAt = remote.deletedAt?.toUtc();
@@ -1516,29 +1513,6 @@ mixin LunarLogStorageRemoteApply
           ),
         );
     cache?.storeDayEntry(written.first);
-  }
-
-  /// Issue #1561: a deletion made on another device is remembered like
-  /// one made here, so this phone's next import leaves the record deleted
-  /// instead of bringing the day back for the whole household.
-  ///
-  /// Noted only when the server's row is deleted and the local one was
-  /// not ([wasDeleted]): either a live row here is being deleted, or the
-  /// row arrives already deleted. The echo of this device's own delete,
-  /// and of its own removal of a source's imported data, lands on a row
-  /// that is already deleted here and notes nothing. That is what lets an
-  /// import after that removal bring the days back.
-  Future<void> _noteRemoteHealthDeletion({
-    required String profileId,
-    required String source,
-    required String? sourceId,
-    required DateTime? deletedAt,
-    required bool wasDeleted,
-  }) async {
-    if (deletedAt == null || wasDeleted) return;
-    await _rememberHealthImportDeletions(db, profileId, [
-      (source, sourceId),
-    ], deletedAt);
   }
 
   /// Issue #124 (AC4): a push resolution (`applyResolved`) overwriting a
@@ -1712,28 +1686,12 @@ mixin LunarLogStorageRemoteApply
       // [_ensureDayEntryProfileExists]: a typed, retryable failure rather
       // than a raw constraint exception.
       checkParent: (r) => _ensureObservationDayEntryExists(r, cache: cache),
-      insert: (r, dirty, localRev) async {
-        await _noteRemoteHealthDeletion(
-          profileId: r.profileId,
-          source: r.source,
-          sourceId: r.sourceId,
-          deletedAt: deletedAt,
-          wasDeleted: false,
-        );
-        await _insertObservation(
-            r, payload, updatedAt, deletedAt, dirty, localRev, cache);
-      },
-      update: (r, local, dirty, _) async {
-        await _noteRemoteHealthDeletion(
-          profileId: r.profileId,
-          source: r.source,
-          sourceId: r.sourceId,
-          deletedAt: deletedAt,
-          wasDeleted: local.deletedAt != null,
-        );
-        await _updateObservation(
-            r, local, payload, updatedAt, deletedAt, dirty, cache);
-      },
+      insert: (r, dirty, localRev) =>
+          _insertObservation(r, payload, updatedAt, deletedAt, dirty, localRev,
+              cache),
+      update: (r, local, dirty, _) =>
+          _updateObservation(r, local, payload, updatedAt, deletedAt, dirty,
+              cache),
     );
   }
 

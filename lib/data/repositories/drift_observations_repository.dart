@@ -20,8 +20,7 @@ class DriftObservationsRepository
     implements
         ObservationsRepository,
         SpottingObservationsRangeRepository,
-        DayEntryObservationsWatchRepository,
-        DeletedObservationReader {
+        DayEntryObservationsWatchRepository {
   DriftObservationsRepository(this._storage);
 
   final ObservationsRepositoryStore _storage;
@@ -150,23 +149,6 @@ class DriftObservationsRepository
 
   @override
   Future<void> delete(String id) => _storage.softDeleteObservation(id);
-
-  /// Issue #1561: the storage lookup answers live and deleted rows alike;
-  /// a live one is not what was asked for.
-  @override
-  Future<String?> findDeletedIdBySource({
-    required String profileId,
-    required domain.ObservationSource source,
-    required String sourceId,
-  }) async {
-    final row = await _storage.findObservationBySource(
-      profileId: profileId,
-      source: source.toDb(),
-      sourceId: sourceId,
-    );
-    if (row == null || row.deletedAt == null) return null;
-    return row.id;
-  }
 }
 
 /// A never-persisted `spotting` observation standing in for a legacy
