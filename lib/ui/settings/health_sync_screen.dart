@@ -974,12 +974,13 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
     );
   }
 
-  /// What a pass that was stopped says. A removal that was stopped
-  /// removed nothing, whatever stopped it, and says that: the import's
-  /// lines are about importing (Issue #1594).
+  /// Why a pass was stopped. A removal is stopped by the same things an
+  /// import is and says the same of them, with one exception: the
+  /// import's line for a read that failed is about the import (Issue
+  /// #1594).
   String _blockedPassCopy(AppLocalizations l10n, HealthPlatformResult blocked) =>
-      _lastPassRemoved
-          ? l10n.healthSyncStoreDeletedRemoveBlocked(
+      _lastPassRemoved && blocked is HealthPlatformFailed
+          ? l10n.healthSyncStoreDeletedReadFailed(
               _sourceName(l10n, _importPlatform),
             )
           : _blockedImportCopy(l10n, blocked);
@@ -1349,7 +1350,12 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       ];
     }
     if (summary.isBlocked) {
-      return [Text(_blockedPassCopy(l10n, summary.blocked!))];
+      return [
+        // A removal that was stopped removed nothing, whatever stopped
+        // it, and says so before it says why.
+        if (_lastPassRemoved) Text(l10n.healthSyncStoreDeletedNothingRemoved),
+        Text(_blockedPassCopy(l10n, summary.blocked!)),
+      ];
     }
     if (summary.isEmpty) {
       return [

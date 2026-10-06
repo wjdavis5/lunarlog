@@ -618,8 +618,11 @@ class LocalHealthImportService
   }) async {
     final window = _window();
     var run = await _readPages(bound.facts, window, onProgress);
+    // An import that could read nothing ends here, as it always has: a
+    // read the store would not allow is "no data" to it. A removal goes
+    // on to [_unfinished], which says it was stopped.
     final early = run.earlySummary;
-    if (early != null) return early;
+    if (early != null && remove == null) return early;
     final profileId = bound.profile.id;
     await _noteStoreDeleted(profileId, run.accumulator);
     var removed = 0;
@@ -662,11 +665,20 @@ class LocalHealthImportService
       daysRemoved: removed,
     );
     await _trimStoreDeleted(profileId);
-    // Issue #1560: commit the read position only after days are stored.
-    if (!summary.isBlocked && run.commitToken != null) {
-      await _source.commitImport(bound.facts, run.commitToken!);
-    }
+    await _commitRead(bound.facts, run, summary);
     return summary;
+  }
+
+  /// Issue #1560: the read position is committed only after the days
+  /// are stored, and not for a pass that was stopped.
+  Future<void> _commitRead(
+    HealthGuardFacts facts,
+    _PageRun run,
+    HealthImportSummary summary,
+  ) async {
+    final token = run.commitToken;
+    if (summary.isBlocked || token == null) return;
+    await _source.commitImport(facts, token);
   }
 
   /// Fetches pages until the cursor is exhausted, a page cannot advance, or
@@ -976,7 +988,7 @@ class LocalHealthImportService
   ) async {
     final live = await _dayEntries.find(profileId, day.localDate);
     if (live == null || live.sourceId != day.sourceId) return false;
-    if (_carriesMore(live, entryDates)) {
+    if (_carriesMore(live, entryDates) || await _hasEntries(live)) {
       // The store's source stays and the record goes: a row of this
       // store's with no record is hers ([_mayAdopt]), and takes a flow
       // from the store again only while it has none.
@@ -1003,6 +1015,14 @@ class LocalHealthImportService
       (day.note?.isNotEmpty ?? false) ||
       entryDates.contains(day.localDate);
 
+  /// Whether [day]'s own row has an entry on it now. [_carriesMore] goes
+  /// by dates read once, before the first day is touched; this is asked
+  /// for each day at the moment it would be deleted. An entry that lands
+  /// on a day while a long removal is running lands on its live row,
+  /// and is not deleted with the day.
+  Future<bool> _hasEntries(DayEntry day) async =>
+      (await _observations.listForDayEntry(day.id)).isNotEmpty;
+
   /// Removes the day on [date] when it is one the import made only to
   /// hang a spotting entry on ([_spottingHost]) and nothing is left on
   /// it: this store's source, no record, no flow, nothing else.
@@ -1013,7 +1033,7 @@ class LocalHealthImportService
   ) async {
     final host = await _dayEntries.find(profileId, date);
     if (host == null || !_isBareHost(host)) return;
-    if (_carriesMore(host, entryDates)) return;
+    if (_carriesMore(host, entryDates) || await _hasEntries(host)) return;
     await _dayEntries.delete(profileId, date);
   }
 

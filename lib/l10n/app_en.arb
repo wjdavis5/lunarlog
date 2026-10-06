@@ -1362,9 +1362,13 @@
   "@healthSyncStoreDeletedConfirmAction": {
     "description": "Health sync screen (Issue #1594): the confirming button of the removal confirmation."
   },
-  "healthSyncStoreDeletedRemoveBlocked": "Nothing was removed, because lunarlog could not read everything in {source}. Please try again.",
-  "@healthSyncStoreDeletedRemoveBlocked": {
-    "description": "Health sync screen (Issue #1594): the result of a removal that was stopped before it removed anything. Everything in the store is read first, and a read that does not reach its end removes nothing. {source} is the health store's name.",
+  "healthSyncStoreDeletedNothingRemoved": "Nothing was removed.",
+  "@healthSyncStoreDeletedNothingRemoved": {
+    "description": "Health sync screen (Issue #1594): first line of the result of a removal that was stopped before it removed anything. The line after it says what stopped it."
+  },
+  "healthSyncStoreDeletedReadFailed": "lunarlog could not read everything in {source}. Please try again.",
+  "@healthSyncStoreDeletedReadFailed": {
+    "description": "Health sync screen (Issue #1594): under healthSyncStoreDeletedNothingRemoved, when the read of everything in the store that precedes a removal did not reach its end. Other reasons (the profile may not use the store, the store is unavailable) use the import's own lines. {source} is the health store's name.",
     "placeholders": {
       "source": {
         "type": "String"

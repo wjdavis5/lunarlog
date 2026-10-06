@@ -1471,8 +1471,9 @@ void main() {
           'and other entries stay. This cannot be undone.';
       const removedTwo = 'Removed what was imported for 2 days: their '
           'records were deleted in Health Connect.';
-      const removeBlocked = 'Nothing was removed, because lunarlog could not '
-          'read everything in Health Connect. Please try again.';
+      const nothingRemoved = 'Nothing was removed.';
+      const readFailed = 'lunarlog could not read everything in Health '
+          'Connect. Please try again.';
       const nothingNew =
           'Nothing new to import from Health Connect since the last import.';
       final offer = find.byKey(const ValueKey('health-sync-store-deleted-offer'));
@@ -1740,8 +1741,41 @@ void main() {
         await removeAndConfirm(tester);
 
         expect(importer.removed, hasLength(1));
-        expect(linesIn(tester, result), [removeBlocked]);
+        expect(linesIn(tester, result), [nothingRemoved, readFailed]);
         expect(linesIn(tester, offer).first, offerTwo);
+      });
+
+      // No read was tried: the reason is the import's own line, and
+      // "try again" would not be true.
+      testWidgets('a removal the profile may not make says nothing was '
+          'removed, and why', (tester) async {
+        final importer = importerWith(waiting: 2)
+          ..removalSummary = const HealthImportSummary(
+            blocked: HealthPlatformResult.refused(HealthSyncCheck.notOwner),
+          );
+        await pumpBound(tester, importer);
+
+        await removeAndConfirm(tester);
+
+        expect(linesIn(tester, result), [
+          nothingRemoved,
+          "This profile can't import from Health Connect right now.",
+        ]);
+        expect(linesIn(tester, offer).first, offerTwo);
+      });
+
+      // The read of everything found nothing in the store, so the
+      // removal is all the pass did.
+      testWidgets('a removal that read nothing still says what it removed',
+          (tester) async {
+        final importer = importerWith(waiting: 2)
+          ..removalSummary = const HealthImportSummary(daysRemoved: 2);
+        await pumpBound(tester, importer);
+
+        await removeAndConfirm(tester);
+
+        expect(linesIn(tester, result), [removedTwo]);
+        await letTheSnackBarGo(tester);
       });
 
       testWidgets('a removal that failed part-way does not call itself an '
@@ -1772,7 +1806,7 @@ void main() {
           ..removalSummary = stopped;
         await pumpBound(tester, importer);
         await removeAndConfirm(tester);
-        expect(linesIn(tester, result), [removeBlocked]);
+        expect(linesIn(tester, result), [nothingRemoved, readFailed]);
 
         await tester.ensureVisible(importTile);
         await tester.tap(importTile);

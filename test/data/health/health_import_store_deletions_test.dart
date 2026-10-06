@@ -983,6 +983,38 @@ void main() {
       expect(summary.daysRemoved, 0);
     });
 
+    // A long removal reads the entries once, before the first day. One
+    // that lands on a day after that lands on the day's live row.
+    test('an entry that lands on a day in the middle of the removal is not '
+        'deleted with it: the day stays, without the flow', () async {
+      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await deletedInStore(['rec-10']);
+      final hooked = _HookedDays(days)
+        ..beforeNextFind = () async {
+          final day = (await dayOn(10))!;
+          await observations.save(
+            Observation(
+              id: '',
+              dayEntryId: day.id,
+              profileId: _profileId,
+              localDate: day.localDate,
+              tz: day.tz,
+              category: ObservationCategory.pain,
+              code: 'cramps',
+              intensity: 3,
+              updatedAt: DateTime.utc(2026, 9, 10, 13),
+            ),
+          );
+        };
+
+      final summary = await removeOffered(serviceOver(hooked));
+
+      expect(hooked.beforeNextFind, isNull, reason: 'the entry landed');
+      expect((await dayOn(10))!.flow, FlowLevel.none);
+      expect((await entriesOn(10)).map((entry) => entry.code), ['cramps']);
+      expect(summary.daysRemoved, 1);
+    });
+
     test('a day she deletes herself while the store is being read again is '
         'hers: it is not counted, and stays remembered', () async {
       await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
@@ -1240,6 +1272,28 @@ void main() {
       await expectNothingRemoved(await removeOffered());
     });
 
+    // An import treats that as "no data" and says so. A removal that
+    // could not make its first read was stopped, and must say that.
+    test('whose first read of all the store will not let be made',
+        () async {
+      await offered();
+      store.changePages.add(const HealthReadResult.permissionDenied());
+
+      await expectNothingRemoved(await removeOffered());
+      expect(store.askedForWholeHistory, isNot(contains(true)));
+    });
+
+    test('an import the store will not let read is still "no data", not '
+        'a stopped pass', () async {
+      await offered();
+      store.changePages.add(const HealthReadResult.permissionDenied());
+
+      final summary = await import.importNow();
+
+      expect(summary.isBlocked, isFalse);
+      expect(summary.isEmpty, isTrue);
+    });
+
     // The read of everything drops the stored position, and the pages
     // nobody read hang on it: their deletions would never be reported.
     test('is not started after a changes read that was cut short',
@@ -1330,7 +1384,40 @@ void main() {
 
       expect(await dayOn(11), isNull);
       expect(summary.daysRemoved, 1);
+      // The store held nothing else, so the removal is all the pass did.
+      // It is not a pass that did nothing.
+      expect(summary.samplesRead, 0);
+      expect(summary.isEmpty, isFalse);
       expect(await days.deletedHealthRecords(_profileId), isEmpty);
+    });
+
+    test('an entry that lands on the day it hangs on, in the middle of the '
+        'removal, keeps that day', () async {
+      await imported([_spotting('spot-11', 11)]);
+      await deletedInStore(['spot-11']);
+      final hooked = _HookedDays(days)
+        ..beforeNextFind = () async {
+          final day = (await dayOn(11))!;
+          await observations.save(
+            Observation(
+              id: '',
+              dayEntryId: day.id,
+              profileId: _profileId,
+              localDate: day.localDate,
+              tz: day.tz,
+              category: ObservationCategory.pain,
+              code: 'cramps',
+              intensity: 3,
+              updatedAt: DateTime.utc(2026, 9, 11, 13),
+            ),
+          );
+        };
+
+      await removeOffered(serviceOver(hooked));
+
+      expect(hooked.beforeNextFind, isNull, reason: 'the entry landed');
+      expect(await dayOn(11), isNotNull);
+      expect((await entriesOn(11)).map((entry) => entry.code), ['cramps']);
     });
 
     test('goes and leaves the day when the day has a flow', () async {

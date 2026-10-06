@@ -1044,8 +1044,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get healthSyncStoreDeletedConfirmAction => 'Remove';
 
   @override
-  String healthSyncStoreDeletedRemoveBlocked(String source) {
-    return 'Nothing was removed, because lunarlog could not read everything in $source. Please try again.';
+  String get healthSyncStoreDeletedNothingRemoved => 'Nothing was removed.';
+
+  @override
+  String healthSyncStoreDeletedReadFailed(String source) {
+    return 'lunarlog could not read everything in $source. Please try again.';
   }
 
   @override

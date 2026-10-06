@@ -1660,11 +1660,17 @@ abstract class AppLocalizations {
   /// **'Remove'**
   String get healthSyncStoreDeletedConfirmAction;
 
-  /// Health sync screen (Issue #1594): the result of a removal that was stopped before it removed anything. Everything in the store is read first, and a read that does not reach its end removes nothing. {source} is the health store's name.
+  /// Health sync screen (Issue #1594): first line of the result of a removal that was stopped before it removed anything. The line after it says what stopped it.
   ///
   /// In en, this message translates to:
-  /// **'Nothing was removed, because lunarlog could not read everything in {source}. Please try again.'**
-  String healthSyncStoreDeletedRemoveBlocked(String source);
+  /// **'Nothing was removed.'**
+  String get healthSyncStoreDeletedNothingRemoved;
+
+  /// Health sync screen (Issue #1594): under healthSyncStoreDeletedNothingRemoved, when the read of everything in the store that precedes a removal did not reach its end. Other reasons (the profile may not use the store, the store is unavailable) use the import's own lines. {source} is the health store's name.
+  ///
+  /// In en, this message translates to:
+  /// **'lunarlog could not read everything in {source}. Please try again.'**
+  String healthSyncStoreDeletedReadFailed(String source);
 
   /// Health sync screen (Issue #1594): the result of a removal that failed unexpectedly part-way. It does not say nothing was removed, because some days may have been.
   ///
