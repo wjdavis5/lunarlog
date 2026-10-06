@@ -1384,10 +1384,10 @@ void main() {
     // Issue #1594: a record deleted in the app it came from takes its
     // imported day out, and the result says so.
     group('Issue #1594 days the store deleted', () {
-      const removedOne =
-          'Removed 1 day whose record was deleted in Health Connect.';
-      const removedTwo =
-          'Removed 2 days whose records were deleted in Health Connect.';
+      const removedOne = 'Removed what was imported for 1 day: its record '
+          'was deleted in Health Connect.';
+      const removedTwo = 'Removed what was imported for 2 days: their '
+          'records were deleted in Health Connect.';
       const kept = '11 days you imported were deleted in Health Connect. '
           'lunarlog kept them: it removes no more than 10 at a time on its '
           'own. You can delete them here yourself.';

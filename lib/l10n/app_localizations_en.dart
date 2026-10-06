@@ -978,8 +978,10 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: 'Removed $count days whose records were deleted in $source.',
-      one: 'Removed 1 day whose record was deleted in $source.',
+      other:
+          'Removed what was imported for $count days: their records were deleted in $source.',
+      one:
+          'Removed what was imported for 1 day: its record was deleted in $source.',
     );
     return '$_temp0';
   }

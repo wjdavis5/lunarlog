@@ -60,6 +60,17 @@ class _Store implements HealthImportSource {
 
   /// Every page request: whether it asked for the whole history.
   final List<bool> askedForWholeHistory = [];
+
+  /// Every page request: its cursor, and whether it asked for the whole
+  /// history.
+  final List<(String?, bool)> requests = [];
+
+  /// Changes pages to serve in order, in place of the one page that
+  /// holds everything since the last commit.
+  final List<HealthReadResult> changePages = [];
+
+  /// When true a whole-history read comes one record to a page.
+  bool wholeHistoryPaged = false;
   final List<String> commits = [];
 
   /// What a whole-history read answers, when not the records.
@@ -96,10 +107,13 @@ class _Store implements HealthImportSource {
     bool wholeHistory = false,
   }) async {
     askedForWholeHistory.add(wholeHistory);
+    requests.add((cursor, wholeHistory));
     if (wholeHistory) {
       hasPosition = false;
       await onWholeHistoryAgain?.call();
     }
+    if (hasPosition && changePages.isNotEmpty) return changePages.removeAt(0);
+    if (!hasPosition && wholeHistoryPaged) return _wholeHistoryPage(cursor);
     if (hasPosition) {
       return HealthReadResult.samples(
         [for (final id in _written) records[id]!],
@@ -114,6 +128,18 @@ class _Store implements HealthImportSource {
           deletedRecordIds: deletedOnWholeHistoryPage,
           commitToken: 'whole',
         );
+  }
+
+  /// One record of a whole-history read; the cursor is the next index.
+  HealthReadResult _wholeHistoryPage(String? cursor) {
+    final all = records.values.toList();
+    final index = cursor == null ? 0 : int.parse(cursor);
+    final last = index >= all.length - 1;
+    return HealthReadResult.samples(
+      [if (index < all.length) all[index]],
+      nextCursor: last ? null : '${index + 1}',
+      commitToken: last ? 'whole' : null,
+    );
   }
 
   @override
@@ -246,6 +272,7 @@ void main() {
     await import.importNow();
     expect(store.hasPosition, isTrue);
     store.askedForWholeHistory.clear();
+    store.requests.clear();
     store.commits.clear();
   }
 
@@ -419,6 +446,51 @@ void main() {
       expect((await dayOn(12))!.flow, FlowLevel.medium);
     });
 
+    // The same id under another source is another record: a file import's
+    // row, or one from another kind of store.
+    test('a day from another source that carries the same id is not this '
+        'store\'s, and is never touched', () async {
+      await imported([_flow('rec-11', 11, HealthFlowValue.medium)]);
+      await days.save(
+        DayEntry(
+          id: '',
+          profileId: _profileId,
+          localDate: sept(12),
+          tz: 'America/New_York',
+          flow: FlowLevel.heavy,
+          source: DayEntrySource.fileImport,
+          sourceId: 'rec-12',
+          updatedAt: DateTime.utc(2026, 9, 12, 13),
+        ),
+      );
+
+      store.delete('rec-12');
+      final summary = await import.importNow();
+
+      expect((await dayOn(12))!.flow, FlowLevel.heavy);
+      expect(summary.daysRemoved, 0);
+      expect(store.askedForWholeHistory, [false]);
+    });
+
+    // The whole history is read between finding the row and removing it.
+    test('a day whose row names another record by the time it is to be '
+        'removed is left as it is', () async {
+      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      final row = (await dayOn(10))!;
+      store
+        ..delete('rec-10')
+        ..onWholeHistoryAgain = () async {
+          await days.save(row.copyWith(sourceId: 'rec-other@1'));
+        };
+
+      final summary = await import.importNow();
+
+      final day = (await dayOn(10))!;
+      expect(day.flow, FlowLevel.heavy);
+      expect(day.sourceId, 'rec-other@1');
+      expect(summary.daysRemoved, 0);
+    });
+
     test('a deleted record lunarlog imported nothing from changes nothing, '
         'and nothing is read again', () async {
       await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
@@ -485,6 +557,33 @@ void main() {
 
       expect(await dayOn(11), isNull);
       expect(summary.daysRemoved, 1, reason: 'one day, counted once');
+    });
+
+    test('a spotting entry from another source that carries the same id is '
+        'never touched', () async {
+      await imported([_flow('rec-11', 11, HealthFlowValue.light)]);
+      final day = (await dayOn(11))!;
+      await observations.save(
+        Observation(
+          id: '',
+          dayEntryId: day.id,
+          profileId: _profileId,
+          localDate: day.localDate,
+          tz: day.tz,
+          category: ObservationCategory.spotting,
+          code: ObservationCategory.spotting.wireCode,
+          source: ObservationSource.clueImport,
+          sourceId: 'spot-11',
+          updatedAt: DateTime.utc(2026, 9, 11, 13),
+        ),
+      );
+
+      store.delete('spot-11');
+      final summary = await import.importNow();
+
+      expect(await entriesOn(11), hasLength(1));
+      expect(summary.daysRemoved, 0);
+      expect(store.askedForWholeHistory, [false]);
     });
 
     test('a flow record deleted leaves the day while its imported spotting '
@@ -575,6 +674,80 @@ void main() {
 
       expect((await dayOn(10))!.flow, FlowLevel.heavy);
       expect(summary.daysRemoved, 0);
+    });
+
+    // Pages come in the order things happened.
+    test('a record deleted on one page and written again on a later one is '
+        'in the store: its day stays and takes the new value', () async {
+      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      store.changePages.addAll([
+        HealthReadResult.samples(
+          const [],
+          incremental: true,
+          deletedRecordIds: const ['rec-10'],
+          nextCursor: 'page-2',
+        ),
+        HealthReadResult.samples(
+          [_flow('rec-10', 10, HealthFlowValue.medium, modifiedHour: 18)],
+          incremental: true,
+          commitToken: 'changes',
+        ),
+      ]);
+
+      final summary = await import.importNow();
+
+      expect((await dayOn(10))!.flow, FlowLevel.medium);
+      expect(summary.daysRemoved, 0);
+      expect(store.requests, [(null, false), ('page-2', false)]);
+    });
+
+    test('a record written on one page and deleted on a later one is gone',
+        () async {
+      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      store.records.remove('rec-10');
+      store.changePages.addAll([
+        HealthReadResult.samples(
+          [_flow('rec-10', 10, HealthFlowValue.medium, modifiedHour: 18)],
+          incremental: true,
+          nextCursor: 'page-2',
+        ),
+        HealthReadResult.samples(
+          const [],
+          incremental: true,
+          deletedRecordIds: const ['rec-10'],
+          commitToken: 'changes',
+        ),
+      ]);
+
+      final summary = await import.importNow();
+
+      expect(await dayOn(10), isNull);
+      expect(summary.daysRemoved, 1);
+    });
+
+    // Asking again on a later page would start the read over each time.
+    test('only the first page of the second read asks for the whole history',
+        () async {
+      await imported([
+        _flow('rec-10', 10, HealthFlowValue.heavy),
+        _flow('rec-11', 11, HealthFlowValue.medium),
+        _flow('rec-12', 12, HealthFlowValue.light),
+      ]);
+      store
+        ..delete('rec-10')
+        ..wholeHistoryPaged = true;
+
+      final summary = await import.importNow();
+
+      expect(store.requests, [
+        (null, false),
+        (null, true),
+        ('1', false),
+      ]);
+      expect(summary.daysRemoved, 1);
+      expect(summary.pagesRead, 2);
+      expect((await dayOn(11))!.flow, FlowLevel.medium);
+      expect((await dayOn(12))!.flow, FlowLevel.light);
     });
 
     test('when everything cannot be read again, nothing is removed', () async {
