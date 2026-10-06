@@ -78,6 +78,15 @@ class _Store implements HealthImportSource {
     String commitToken,
   ) async =>
       const HealthPlatformResult.allowed();
+
+  @override
+  Future<bool> pastDataSwitchOffered() async => true;
+
+  @override
+  Future<HealthPlatformResult> requestPastDataAccess(
+    HealthGuardFacts facts,
+  ) async =>
+      const HealthPlatformResult.allowed();
 }
 
 HealthFlowSample _flow(String id, HealthFlowValue flow) {
