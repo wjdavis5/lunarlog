@@ -569,10 +569,19 @@ jobs:
     # suite in CI: the old separate plain `flutter test` step duplicated
     # the coverage run for no extra signal. TOTAL_SHARDS must match the
     # matrix length and the download pattern in quality-gate.
+    #
+    # The cap is twice what a shard takes. On 2026-10-06 the three shards
+    # ran for 12 to 14 minutes on main against a cap of 15, and a pull
+    # request's shard was cancelled at 15 with every test so far passing.
+    # A cancelled shard fails `CI required checks`, so the cap was acting
+    # as a coin toss on a slow runner. It is here to stop a hung run, not
+    # to time a healthy one: when the shards approach it again, add a
+    # shard (TOTAL_SHARDS, the matrix, quality-gate's download pattern and
+    # the required check names) before raising it.
     name: Test (shard ${{ matrix.shard }})
     needs: detect-changes
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
