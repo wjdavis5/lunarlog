@@ -1092,6 +1092,35 @@ void main() {
       expect(ledger.rows, isEmpty);
     });
 
+    test(
+        'a partial reconciliation delete with flow skipped is reported, '
+        'and asked again on the next pass (issue #1583)',
+        () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      platform.deleteResult =
+          const HealthPlatformResult.partial({'menstrualFlow'});
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.none,
+            grant.add(const Duration(hours: 1))),
+      ];
+
+      final service = buildService();
+      final report = await service.syncNow();
+
+      expect(report.blocked, isA<HealthPlatformPartial>());
+
+      // Issue #1581: nothing was let go, so the day is asked for again.
+      platform.deleteResult = const HealthPlatformAllowed();
+      expect((await service.syncNow()).blocked, isNull);
+      expect(platform.deleteCalls, [
+        ['entry-2026-06-02'],
+        ['entry-2026-06-02'],
+      ]);
+      await service.syncNow();
+      expect(platform.deleteCalls, hasLength(2));
+    });
+
     test('superHeavy is written as heavy (the documented collapse)',
         () async {
       final grant = DateTime.utc(2026, 6, 1, 12);
@@ -1604,6 +1633,30 @@ void main() {
       platform.deleteResult = const HealthPlatformPermissionDenied();
       final refused = await service.syncNow();
       expect(refused.blocked, isA<HealthPlatformPermissionDenied>());
+      expect(periodRow('period-$_profileId-2026-06-02'), isNotNull);
+
+      platform.deleteResult = const HealthPlatformAllowed();
+      final retried = await service.syncNow();
+      expect(retried.blocked, isNull);
+      expect(platform.deleteCalls, hasLength(2));
+      expect(periodRow('period-$_profileId-2026-06-02'), isNull);
+    });
+
+    test('a partial delete with menstrualFlow skipped keeps the period record '
+        'remembered and is retried (issue #1583)', () async {
+      await seedGranted(grant);
+      final service = buildService();
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1))),
+      ];
+      await service.syncNow();
+
+      dayEntries.entries = [];
+      platform.deleteResult =
+          const HealthPlatformResult.partial({'menstrualFlow'});
+      final partial = await service.syncNow();
+      expect(partial.blocked, isA<HealthPlatformPartial>());
       expect(periodRow('period-$_profileId-2026-06-02'), isNotNull);
 
       platform.deleteResult = const HealthPlatformAllowed();
@@ -2661,6 +2714,40 @@ void main() {
       expect(platform.deleteCalls, hasLength(1));
       expect(platform.flowWrites, hasLength(2),
           reason: 'the edited day itself was written');
+
+      platform.deleteResult = const HealthPlatformAllowed();
+      final retried = await service.syncNow();
+      expect(retried.blocked, isNull);
+      expect(platform.deleteCalls, hasLength(2),
+          reason: 'the same removal is retried, not silently acknowledged');
+    });
+
+    test('a partial delete with the removed type skipped leaves the record in '
+        'the ledger and retries next pass (issue #1583)', () async {
+      await seedGranted(grant);
+      final service = buildService();
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1)),
+            tags: const ['cramps']),
+      ];
+      await service.syncNow();
+
+      platform.deleteResult =
+          const HealthPlatformResult.partial({'symptoms'});
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 3)),
+            tags: const []),
+      ];
+      final blocked = await service.syncNow();
+      expect(blocked.blocked, isA<HealthPlatformPartial>());
+      expect(platform.deleteCalls, hasLength(1));
+      expect(
+        ledger.rows.map((row) => row.recordId),
+        contains(healthSymptomRecordId('entry-2026-06-02', 'abdominalCramps')),
+        reason: 'a record the store passed over is not forgotten',
+      );
 
       platform.deleteResult = const HealthPlatformAllowed();
       final retried = await service.syncNow();

@@ -253,6 +253,7 @@
   "healthSyncImportSkippedUnsupported": "Skipped {count, plural, =1{1 entry} other{{count} entries}} with no matching flow level.",
   "healthSyncImportSummaryHeadline": "Imported {imported, plural, =1{1 day} other{{imported} days}}, skipped {skipped, plural, =1{1 already logged} other{{skipped} already logged}}.",
   "healthSyncImportSummaryImported": "Imported {imported, plural, =1{1 day} other{{imported} days}}.",
+  "healthSyncImportSummaryAlreadyLogged": "{skipped, plural, =1{1 day was} other{{skipped} days were}} already logged.",
   "healthSyncImportSummaryNothingNew": "Nothing new — {skipped, plural, =1{1 day} other{{skipped} days}} already logged.",
   "healthSyncImportTileSubtitle": "Bring in all available menstrual flow and spotting.",
   "healthSyncImportProgress": "Importing… {samples, plural, =1{1 sample} other{{samples} samples}} read so far.",

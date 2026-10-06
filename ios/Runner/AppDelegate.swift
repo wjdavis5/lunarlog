@@ -423,6 +423,36 @@ enum HealthKitChannelHandler {
     return types
   }
 
+  static func wireIdentifier(for sampleType: HKSampleType) -> String? {
+    let categoryWires: [(String, HKCategoryTypeIdentifier)] = [
+      ("menstrualFlow", .menstrualFlow),
+      ("spotting", .intermenstrualBleeding),
+      ("cervicalMucus", .cervicalMucusQuality),
+      ("ovulationTest", .ovulationTestResult),
+      ("abdominalCramps", .abdominalCramps),
+      ("headache", .headache),
+      ("lowerBackPain", .lowerBackPain),
+      ("breastPain", .breastPain),
+      ("bloating", .bloating),
+      ("acne", .acne),
+      ("nausea", .nausea),
+      ("fatigue", .fatigue),
+      ("dizziness", .dizziness),
+      ("moodChanges", .moodChanges),
+      ("sleepChanges", .sleepChanges),
+      ("appetiteChanges", .appetiteChanges),
+    ]
+    for (wire, identifier) in categoryWires {
+      if HKObjectType.categoryType(forIdentifier: identifier) == sampleType {
+        return wire
+      }
+    }
+    if HKObjectType.quantityType(forIdentifier: .basalBodyTemperature) == sampleType {
+      return "basalBodyTemperature"
+    }
+    return nil
+  }
+
   /// The guard-args half of every guarded call (mirrors
   /// `encodeGuardArgs` in health_channel_codec.dart).
   struct GuardArgs {
@@ -1279,8 +1309,15 @@ enum HealthKitChannelHandler {
           // callback-based APIs wrapped in continuations (`HKSampleQuery` +
           // `store.execute(_:)`, and `store.delete(_:withCompletion:)`).
           var toDelete: [HKSample] = []
+          var skippedTypes: Set<String> = []
           for sampleType in writtenSampleTypes {
             guard store.authorizationStatus(for: sampleType) == .sharingAuthorized else {
+              if let wire = wireIdentifier(for: sampleType) {
+                skippedTypes.insert(wire)
+                if HealthKitChannelHandler.symptomCategoryTypeIdentifiers.keys.contains(wire) {
+                  skippedTypes.insert("symptoms")
+                }
+              }
               continue
             }
             toDelete.append(
@@ -1291,7 +1328,14 @@ enum HealthKitChannelHandler {
           if !toDelete.isEmpty {
             try await delete(toDelete)
           }
-          result("allowed")
+          if skippedTypes.isEmpty {
+            result("allowed")
+          } else {
+            result([
+              "status": "partial",
+              "skippedTypes": Array(skippedTypes),
+            ])
+          }
         } catch {
           result(
             FlutterError(

@@ -1072,6 +1072,7 @@ class HealthConnectAdapter(context: Context) {
                         // orphaned. writtenRecordTypes is the same list the
                         // write-permission request uses, so a future type
                         // cannot be added to one without the other.
+                        val skippedTypes = mutableSetOf<String>()
                         for (recordType in writtenRecordTypes) {
                             try {
                                 @Suppress("UNCHECKED_CAST")
@@ -1081,10 +1082,11 @@ class HealthConnectAdapter(context: Context) {
                                     recordIdsList = emptyList(),
                                     clientRecordIdsList = ids)
                             } catch (e: SecurityException) {
-                                // Skip record types whose write permission is not granted
+                                val wire = HealthDeletionState.wireForRecordType(recordType)
+                                if (wire != null) skippedTypes.add(wire)
                             }
                         }
-                        result.success("allowed")
+                        result.success(HealthDeletionState.resultFor(skippedTypes))
                     } catch (e: SecurityException) {
                         result.success("permissionDenied")
                     } catch (e: Exception) {
@@ -1767,6 +1769,45 @@ class HealthConnectAdapter(context: Context) {
             "sleepChanges",
             "appetiteChanges",
         )
+    }
+}
+
+/**
+ * Issue #1583: maps written Health Connect record types to their wire
+ * identifiers and formats partial deletion outcomes when write permissions
+ * are missing for some types.
+ */
+internal object HealthDeletionState {
+    fun wireForRecordType(recordType: KClass<out Record>): String? = when (recordType) {
+        MenstruationFlowRecord::class, MenstruationPeriodRecord::class -> "menstrualFlow"
+        IntermenstrualBleedingRecord::class -> "spotting"
+        CervicalMucusRecord::class -> "cervicalMucus"
+        OvulationTestRecord::class -> "ovulationTest"
+        BasalBodyTemperatureRecord::class -> "basalBodyTemperature"
+        else -> null
+    }
+
+    fun resultFor(skippedTypes: Set<String>): Any =
+        if (skippedTypes.isEmpty()) "allowed"
+        else mapOf(
+            "status" to "partial",
+            "skippedTypes" to skippedTypes.toList(),
+        )
+
+    fun deleteRecords(
+        types: List<KClass<out Record>>,
+        deleteAction: (KClass<out Record>) -> Unit,
+    ): Any {
+        val skipped = mutableSetOf<String>()
+        for (recordType in types) {
+            try {
+                deleteAction(recordType)
+            } catch (e: SecurityException) {
+                val wire = wireForRecordType(recordType)
+                if (wire != null) skipped.add(wire)
+            }
+        }
+        return resultFor(skipped)
     }
 }
 

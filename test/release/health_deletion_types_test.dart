@@ -186,6 +186,57 @@ void main() {
         'period-profile-2026-09-01',
       );
     });
+
+    test('healthRecordMatchesSkippedType correctly matches skipped write types (issue #1583)', () {
+      expect(
+        healthRecordMatchesSkippedType('cervical-mucus-123', {'cervicalMucus'}),
+        isTrue,
+      );
+      expect(
+        healthRecordMatchesSkippedType('cervical-mucus-123', {'ovulationTest'}),
+        isFalse,
+      );
+      expect(
+        healthRecordMatchesSkippedType('ovulation-123-positive', {'ovulationTest'}),
+        isTrue,
+      );
+      expect(
+        healthRecordMatchesSkippedType('bbt-123', {'basalBodyTemperature'}),
+        isTrue,
+      );
+      expect(
+        healthRecordMatchesSkippedType('period-prof-2026-09-01', {'menstrualFlow'}),
+        isTrue,
+      );
+      expect(
+        healthRecordMatchesSkippedType('symptom-123-headache', {'symptoms'}),
+        isTrue,
+      );
+      expect(
+        healthRecordMatchesSkippedType('symptom-123-headache', {'headache'}),
+        isTrue,
+      );
+      expect(
+        healthRecordMatchesSkippedType('symptom-123-headache', {'bloating'}),
+        isFalse,
+      );
+      expect(
+        healthRecordMatchesSkippedType('01ARZ3NDEKTSV4RRFFQ69G5FBC', {'menstrualFlow'}),
+        isTrue,
+      );
+      expect(
+        healthRecordMatchesSkippedType('01ARZ3NDEKTSV4RRFFQ69G5FBC', {'spotting'}),
+        isFalse,
+      );
+      expect(
+        healthRecordMatchesSkippedType('01ARZ3NDEKTSV4RRFFQ69G5FBC', {'spotting'}, isSpotting: true),
+        isTrue,
+      );
+      expect(
+        healthRecordMatchesSkippedType('01ARZ3NDEKTSV4RRFFQ69G5FBC', const {}),
+        isFalse,
+      );
+    });
   });
 
   group('iOS deleteRecords covers every written HealthKit type', () {

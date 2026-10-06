@@ -1436,12 +1436,9 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     var removed = 0;
     HealthPlatformResult? failure;
     for (final stale in _staleRecords(batch, grantedTypes)) {
-      final refused = await _removeFromStore(stale, facts);
-      if (refused == null) {
-        removed += stale.length;
-      } else {
-        failure ??= refused;
-      }
+      final outcome = await _removeFromStore(stale, facts);
+      removed += outcome.removed;
+      failure ??= outcome.failure;
     }
     final unclear = await _clearUnknownFlowRecords(batch, facts, grantedTypes);
     return (removed: removed, failure: failure ?? unclear);
@@ -1473,7 +1470,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     final drift = await _authorityDrift(facts);
     if (drift != null) return drift;
     final result = await _platform.deleteRecords(facts, unknown.keys.toList());
-    if (result is! HealthPlatformAllowed) return result;
+    if (!_flowRecordsGone(result)) return result;
     for (final version in unknown.values) {
       _state = _state.withClearedThrough(version);
     }
@@ -1514,19 +1511,66 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
             recordId,
       ];
 
-  /// Deletes [recordIds] from the store and forgets them. Returns what
-  /// stopped it, or null when the store let them go.
-  Future<HealthPlatformResult?> _removeFromStore(
+  /// Deletes [recordIds] from the store and forgets the ones it let go.
+  /// Answers how many those were, and the store's answer when any of them
+  /// is still there: a refusal, or a delete that passed some over.
+  Future<({int removed, HealthPlatformResult? failure})> _removeFromStore(
     List<String> recordIds,
     HealthGuardFacts facts,
   ) async {
     final drift = await _authorityDrift(facts);
-    if (drift != null) return drift;
+    if (drift != null) return (removed: 0, failure: drift);
     final result = await _platform.deleteRecords(facts, recordIds);
-    if (result is! HealthPlatformAllowed) return result;
-    await _memory.forget(recordIds);
-    return null;
+    final gone = _letGo(recordIds, result);
+    if (gone == null) return (removed: 0, failure: result);
+    await _memory.forget(gone);
+    return (
+      removed: gone.length,
+      failure: gone.length == recordIds.length ? null : result,
+    );
   }
+
+  /// Those of [recordIds] the store let go, going by its answer to the
+  /// delete, or null when it refused the delete altogether.
+  ///
+  /// Since Issue #1583 the native halves say which types they passed over
+  /// because their write permission is off ([HealthPlatformPartial]), and
+  /// they say so for any type that is off, whether or not one of
+  /// [recordIds] is of that type. A record of a type they name is still in
+  /// the store and stays remembered; the rest are gone. The pass does not
+  /// ask for a record whose type it knows to be off ([_deletable]), so
+  /// this matters when a type is switched off between that check and the
+  /// delete.
+  List<String>? _letGo(List<String> recordIds, HealthPlatformResult result) {
+    if (result is HealthPlatformAllowed) return recordIds;
+    if (result is! HealthPlatformPartial) return null;
+    return [
+      for (final recordId in recordIds)
+        if (!_passedOver(recordId, result.skippedTypes)) recordId,
+    ];
+  }
+
+  /// Whether a delete that skipped [skippedTypes] may have left [recordId]
+  /// in the store. A spotting entry's record is an intermenstrual marker,
+  /// or a light flow sample when its day falls inside a period, and the
+  /// ledger does not say which, so either type being skipped counts.
+  bool _passedOver(String recordId, Set<String> skippedTypes) {
+    final spotting =
+        _memory.entryOf(recordId)?.kind == HealthExportLedgerKind.spotting;
+    return healthRecordMatchesSkippedType(
+          recordId,
+          skippedTypes,
+          isSpotting: spotting,
+        ) ||
+        (spotting && skippedTypes.contains(HealthWriteTypes.menstrualFlow));
+  }
+
+  /// Whether a delete of flow or period records went through: the store
+  /// allowed it, or passed over other types only (Issue #1583).
+  static bool _flowRecordsGone(HealthPlatformResult result) =>
+      result is HealthPlatformAllowed ||
+      (result is HealthPlatformPartial &&
+          !result.skippedTypes.contains(HealthWriteTypes.menstrualFlow));
 
   /// Re-validates ownership/profile authority against the CURRENT stored
   /// binding, signed-in session, and guardian rows — never [facts], which
@@ -1771,7 +1815,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       final drift = await _authorityDrift(facts);
       if (drift != null) return drift;
       final deleted = await _platform.deleteRecords(facts, [recordId]);
-      if (deleted is! HealthPlatformAllowed) return deleted;
+      if (!_flowRecordsGone(deleted)) return deleted;
       await _memory.forget([recordId]);
     }
     return null;

@@ -152,3 +152,45 @@ bool _entryRecordDeletable(
   // Not a shape this file builds: nothing to hold it back on.
   return true;
 }
+
+bool _symptomRecordMatchesSkippedType(
+  String recordId,
+  Set<String> skippedTypes,
+) {
+  if (skippedTypes.contains(HealthWriteTypes.symptoms)) return true;
+  final parts = recordId.split('-');
+  if (parts.length >= 3) {
+    final typeIdentifier = parts.sublist(2).join('-');
+    return skippedTypes.contains(typeIdentifier);
+  }
+  return false;
+}
+
+/// Checks whether [recordId] belongs to one of the write types in [skippedTypes]
+/// (Issue #1583).
+bool healthRecordMatchesSkippedType(
+  String recordId,
+  Set<String> skippedTypes, {
+  bool isSpotting = false,
+}) {
+  if (skippedTypes.isEmpty) return false;
+  if (recordId.startsWith('cervical-mucus-')) {
+    return skippedTypes.contains(HealthWriteTypes.cervicalMucus);
+  }
+  if (recordId.startsWith('ovulation-')) {
+    return skippedTypes.contains(HealthWriteTypes.ovulationTest);
+  }
+  if (recordId.startsWith('bbt-')) {
+    return skippedTypes.contains(HealthWriteTypes.basalBodyTemperature);
+  }
+  if (recordId.startsWith('period-')) {
+    return skippedTypes.contains(HealthWriteTypes.menstrualFlow);
+  }
+  if (recordId.startsWith('symptom-')) {
+    return _symptomRecordMatchesSkippedType(recordId, skippedTypes);
+  }
+  if (isSpotting) {
+    return skippedTypes.contains(HealthWriteTypes.spotting);
+  }
+  return skippedTypes.contains(HealthWriteTypes.menstrualFlow);
+}
