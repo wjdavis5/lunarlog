@@ -529,7 +529,16 @@ class LocalHealthImportService
     final run = await _readPages(bound.facts, window, onProgress);
     final early = run.earlySummary;
     if (early != null) return early;
-    return _apply(bound.profile.id, run.accumulator, run.lateBlocked);
+    final summary = await _apply(
+      bound.profile.id,
+      run.accumulator,
+      run.lateBlocked,
+    );
+    // Issue #1560: commit the read position only after days are stored.
+    if (!summary.isBlocked && run.commitToken != null) {
+      await _source.commitImport(bound.facts, run.commitToken!);
+    }
+    return summary;
   }
 
   /// Fetches pages until the cursor is exhausted, a page cannot advance, or
@@ -545,6 +554,7 @@ class LocalHealthImportService
   ) async {
     final accumulator = _Accumulator();
     String? cursor;
+    String? commitToken;
     final seenCursors = <String>{};
     while (true) {
       if (accumulator.pagesRead >= kHealthImportMaxPages) {
@@ -571,7 +581,10 @@ class LocalHealthImportService
       );
       onProgress?.call(accumulator.progress);
       final next = read.nextCursor;
-      if (next == null) break;
+      if (next == null) {
+        commitToken = read.commitToken;
+        break;
+      }
       if (next == cursor || seenCursors.contains(next)) {
         accumulator.repeatedCursor = true;
         break;
@@ -579,7 +592,7 @@ class LocalHealthImportService
       seenCursors.add(next);
       cursor = next;
     }
-    return _PageRun(accumulator: accumulator);
+    return _PageRun(accumulator: accumulator, commitToken: commitToken);
   }
 
   /// Wraps a platform outcome per the first-page rule described on
@@ -893,11 +906,17 @@ class LocalHealthImportService
 /// already merged days (those are still applied and the outcome rides
 /// along).
 class _PageRun {
-  _PageRun({required this.accumulator, this.earlySummary, this.lateBlocked});
+  _PageRun({
+    required this.accumulator,
+    this.earlySummary,
+    this.lateBlocked,
+    this.commitToken,
+  });
 
   final _Accumulator accumulator;
   final HealthImportSummary? earlySummary;
   final HealthPlatformResult? lateBlocked;
+  final String? commitToken;
 }
 
 /// The running per-date accumulator across pages (Issue #992). A page's

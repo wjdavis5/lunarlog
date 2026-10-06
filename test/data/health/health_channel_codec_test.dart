@@ -368,6 +368,25 @@ void main() {
       );
     });
 
+    test('Issue #1560: a page Map decodes commitToken on the final page', () {
+      final withCommit = decodeHealthReadResult({
+        'samples': <Object?>[],
+        'commitToken': 'cmt:abc123',
+      }) as HealthReadSamples;
+      expect(withCommit.commitToken, 'cmt:abc123');
+
+      final emptyCommit = decodeHealthReadResult({
+        'samples': <Object?>[],
+        'commitToken': '',
+      }) as HealthReadSamples;
+      expect(emptyCommit.commitToken, isNull);
+
+      final noCommit = decodeHealthReadResult({
+        'samples': <Object?>[],
+      }) as HealthReadSamples;
+      expect(noCommit.commitToken, isNull);
+    });
+
     test('Issue #1523: a page says whether it is only what changed since '
         'the last import, and only a literal true counts', () {
       bool incremental(Map<String, Object?> page) =>

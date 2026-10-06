@@ -124,4 +124,37 @@ class HealthImportCursorTest {
         // A payload that is not valid base64url.
         assertNull(HealthImportCursor.decode("flow:***"))
     }
+
+    // Issue #1560: commitToken pins round-trip and decoding
+    @Test
+    fun `commit token round-trips token and lowerPast flag`() {
+        val falseCommit = HealthImportCursor.commit("tok123", lowerPast = false)
+        val decodedFalse = HealthImportCursor.decodeCommit(falseCommit)!!
+        assertEquals("tok123", decodedFalse.token)
+        assertFalse(decodedFalse.lowerPast)
+
+        val trueCommit = HealthImportCursor.commit("tok456", lowerPast = true)
+        val decodedTrue = HealthImportCursor.decodeCommit(trueCommit)!!
+        assertEquals("tok456", decodedTrue.token)
+        assertTrue(decodedTrue.lowerPast)
+    }
+
+    @Test
+    fun `commit token round-trips token containing colons or unicode`() {
+        for (token in listOf("a:b:c", "ünïcödé:1", "x".repeat(4096))) {
+            val decoded = HealthImportCursor.decodeCommit(HealthImportCursor.commit(token, lowerPast = true))!!
+            assertEquals(token, decoded.token)
+            assertTrue(decoded.lowerPast)
+        }
+    }
+
+    @Test
+    fun `malformed commit tokens decode to null`() {
+        assertNull(HealthImportCursor.decodeCommit(""))
+        assertNull(HealthImportCursor.decodeCommit("noseparator"))
+        assertNull(HealthImportCursor.decodeCommit(":missingmode"))
+        assertNull(HealthImportCursor.decodeCommit("other:tok"))
+        assertNull(HealthImportCursor.decodeCommit("commit:***"))
+    }
 }
+

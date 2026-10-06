@@ -572,6 +572,22 @@ class MethodChannelHealthPlatform
             'readCycleDeviations failed (${error.code}): ${error.message}',
           ),
       };
+
+  @override
+  Future<HealthPlatformResult> commitImport(
+    HealthGuardFacts facts,
+    String commitToken,
+  ) async {
+    if (!readAccessDisclosed) {
+      // iOS HealthKit does not track position via commit tokens.
+      return const HealthPlatformResult.allowed();
+    }
+    return _invokeGuarded(
+      HealthChannelMethods.commitImport,
+      facts,
+      payloadArgs: () => {'commitToken': commitToken},
+    );
+  }
 }
 
 /// The default [HealthPlatformStore] for platforms with no native half
@@ -697,6 +713,13 @@ class UnsupportedHealthPlatform
     required DateTime end,
   }) async =>
       const HealthDeviationReadResult.unavailable();
+
+  @override
+  Future<HealthPlatformResult> commitImport(
+    HealthGuardFacts facts,
+    String commitToken,
+  ) async =>
+      const HealthPlatformResult.unavailable();
 }
 
 /// Production wiring entry: the platform adapter for [platform]

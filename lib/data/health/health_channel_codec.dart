@@ -28,6 +28,7 @@
 /// | `importPastDataGranted` (Android only) | none | `bool` |
 /// | `openPermissionSettings` | none | `null` |
 /// | `readMenstrualFlowPage` | guard + `startMs` + `endMs` + `pageSize` + `cursor?` | a page `Map` (`samples` list + `nextCursor`), or a result string |
+/// | `commitImport` (Android only) | guard + `commitToken` | result string |
 /// | `readCycleDeviations` | guard + `startMs` + `endMs` + `kinds` (list of wire names) | a `List` of deviation maps, or a result string |
 ///
 /// *Page result* (`readMenstrualFlowPage`, Issue #992): a `Map` with
@@ -186,6 +187,12 @@ abstract final class HealthChannelMethods {
   /// result is a page `Map` (`samples` + `nextCursor`) rather than a result
   /// string — see [decodeHealthReadResult].
   static const readMenstrualFlowPage = 'readMenstrualFlowPage';
+
+  /// Commits the import position (Issue #1560) after all read pages have been
+  /// successfully stored in the local database.
+  /// **Android only:** Health Connect saves its changes token and reached-past
+  /// flag upon commit; HealthKit does not track position this way.
+  static const commitImport = 'commitImport';
 
   /// The computed cycle-deviation read (Issue #799). Its success result is
   /// a `List` of deviation maps rather than a result string — see
@@ -355,9 +362,15 @@ HealthReadResult _decodeReadPage(Map<Object?, Object?> raw) {
   final cursorText = cursor as String?;
   final nextCursor =
       (cursorText == null || cursorText.isEmpty) ? null : cursorText;
+  final rawCommitToken = raw['commitToken'];
+  final commitToken =
+      (rawCommitToken is String && rawCommitToken.isNotEmpty)
+          ? rawCommitToken
+          : null;
   return _decodeSampleList(
     rawSamples,
     nextCursor: nextCursor,
+    commitToken: commitToken,
     // Only a literal true counts: absent, null, or any other value is a
     // full-history page.
     incremental: raw['incremental'] == true,
@@ -389,6 +402,7 @@ HealthReadResult _decodeReadString(String raw) {
 HealthReadResult _decodeSampleList(
   Object? raw, {
   String? nextCursor,
+  String? commitToken,
   bool incremental = false,
 }) {
   if (raw is! List) return HealthReadResult.failed('samples is not a list');
@@ -403,6 +417,7 @@ HealthReadResult _decodeSampleList(
   return HealthReadResult.samples(
     samples,
     nextCursor: nextCursor,
+    commitToken: commitToken,
     incremental: incremental,
   );
 }

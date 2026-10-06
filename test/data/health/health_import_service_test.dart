@@ -179,6 +179,19 @@ class _FakeSource implements HealthImportSource {
     required DateTime end,
   }) async =>
       const HealthDeviationReadResult.unavailable();
+
+  int commitCalls = 0;
+  final List<String> committedTokens = [];
+
+  @override
+  Future<HealthPlatformResult> commitImport(
+    HealthGuardFacts facts,
+    String commitToken,
+  ) async {
+    commitCalls++;
+    committedTokens.add(commitToken);
+    return const HealthPlatformResult.allowed();
+  }
 }
 
 class _FakeProfiles implements ProfilesRepository {
@@ -196,6 +209,7 @@ class _FakeDayEntries implements DayEntriesRepository {
   final Map<String, DayEntry> live = {};
   final List<DayEntry> saved = [];
   int _nextId = 0;
+  Object? saveError;
 
   @override
   Future<DayEntry?> find(String profileId, LocalDate localDate) async =>
@@ -203,6 +217,7 @@ class _FakeDayEntries implements DayEntriesRepository {
 
   @override
   Future<DayEntry> save(DayEntry entry) async {
+    if (saveError != null) throw saveError!;
     final id = entry.id.isEmpty ? 'day-${++_nextId}' : entry.id;
     final stored = DayEntry(
       id: id,
@@ -1927,6 +1942,118 @@ void main() {
       expect(dayEntries.saved.single.sourceId, 'bg-hc-1');
       expect(platform.bindCalls, 0);
       expect(platform.authCalls, 0);
+    });
+  });
+
+  group('commitImport (Issue #1560)', () {
+    test('commits position once after days are stored', () async {
+      await bind();
+      source.result = HealthReadResult.samples(
+        [
+          _offsetSample(
+            id: 'hc-1',
+            flow: HealthFlowValue.medium,
+            startIso: '2026-09-10T12:00:00Z',
+          ),
+        ],
+        commitToken: 'commit-token-abc',
+      );
+
+      final summary = await build().importNow();
+
+      expect(summary.daysWritten, 1);
+      expect(source.commitCalls, 1);
+      expect(source.committedTokens, ['commit-token-abc']);
+    });
+
+    test('multi-page read commits only the token from the final page', () async {
+      await bind();
+      source.pages = [
+        HealthReadResult.samples(
+          [
+            _offsetSample(
+              id: 'hc-1',
+              flow: HealthFlowValue.medium,
+              startIso: '2026-09-10T12:00:00Z',
+            ),
+          ],
+          nextCursor: 'cursor-page-2',
+          commitToken: 'intermediate-token',
+        ),
+        HealthReadResult.samples(
+          [
+            _offsetSample(
+              id: 'hc-2',
+              flow: HealthFlowValue.light,
+              startIso: '2026-09-11T12:00:00Z',
+            ),
+          ],
+          nextCursor: null,
+          commitToken: 'final-commit-token',
+        ),
+      ];
+
+      final summary = await build().importNow();
+
+      expect(summary.daysWritten, 2);
+      expect(source.commitCalls, 1);
+      expect(source.committedTokens, ['final-commit-token']);
+    });
+
+    test('a merge that throws never commits the position', () async {
+      await bind();
+      dayEntries.saveError = StateError('disk I/O error');
+      source.result = HealthReadResult.samples(
+        [
+          _offsetSample(
+            id: 'hc-1',
+            flow: HealthFlowValue.medium,
+            startIso: '2026-09-10T12:00:00Z',
+          ),
+        ],
+        commitToken: 'commit-token-abc',
+      );
+
+      expect(() => build().importNow(), throwsA(isA<StateError>()));
+      expect(source.commitCalls, 0);
+    });
+
+    test('a blocked pass never commits the position', () async {
+      await bind();
+      source.pages = [
+        HealthReadResult.samples(
+          [
+            _offsetSample(
+              id: 'hc-1',
+              flow: HealthFlowValue.medium,
+              startIso: '2026-09-10T12:00:00Z',
+            ),
+          ],
+          nextCursor: 'cursor-page-2',
+        ),
+        const HealthReadResult.failed('store error'),
+      ];
+
+      final summary = await build().importNow();
+
+      expect(summary.isBlocked, isTrue);
+      expect(source.commitCalls, 0);
+    });
+
+    test('a pass with null commitToken does not call commitImport', () async {
+      await bind();
+      source.result = HealthReadResult.samples([
+        _offsetSample(
+          id: 'hc-1',
+          flow: HealthFlowValue.medium,
+          startIso: '2026-09-10T12:00:00Z',
+        ),
+      ]);
+
+      final summary = await build().importNow();
+
+      expect(summary.daysWritten, 1);
+      expect(source.commitCalls, 0);
     });
   });
 }
