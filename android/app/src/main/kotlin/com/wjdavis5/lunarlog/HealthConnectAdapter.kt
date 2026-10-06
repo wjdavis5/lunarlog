@@ -1773,29 +1773,6 @@ class HealthConnectAdapter(context: Context) {
 }
 
 /**
- * The permission-status decisions (Issue #959, reworked by Issues #1478 and
- * #1515), as pure functions of the facts the adapter gathers so they are
- * unit-testable on the JVM without a Health Connect client (the same reason
- * [HealthImportCursor] holds no Health Connect types).
- *
- * There is one decision, [statusFor], asked once for each direction over
- * that direction's own facts: [writeStatusFor] is `permissionStatus`, and
- * [importStatusFor] is `importPermissionStatus`.
- *
- * The wire strings are `HealthPermissionStatus`'s, defined in
- * `lib/domain/health/health_platform.dart`:
- *
- *  * `granted`  — every permission in `required` is granted;
- *  * `denied`   — something in `required` is missing AND the person has
- *                 been asked for it: either this install launched a request
- *                 that carries it (`everRequested`), or at least one
- *                 permission in `requested` is granted right now, which can
- *                 only follow a decision the person made on a screen that
- *                 offered `required` too;
- *  * `notAsked` — neither. The Dart write pass asks in exactly this state;
- *                 the screen says "not yet asked" rather than "denied".
- *
-/**
  * Issue #1583: maps written Health Connect record types to their wire
  * identifiers and formats partial deletion outcomes when write permissions
  * are missing for some types.
@@ -1834,6 +1811,32 @@ internal object HealthDeletionState {
     }
 }
 
+/**
+ * The permission-status decisions (Issue #959, reworked by Issues #1478 and
+ * #1515), as pure functions of the facts the adapter gathers so they are
+ * unit-testable on the JVM without a Health Connect client (the same reason
+ * [HealthImportCursor] holds no Health Connect types).
+ *
+ * There is one decision, [statusFor], asked once for each direction over
+ * that direction's own facts: [writeStatusFor] is `permissionStatus`, and
+ * [importStatusFor] is `importPermissionStatus`.
+ *
+ * The wire strings are `HealthPermissionStatus`'s, defined in
+ * `lib/domain/health/health_platform.dart`:
+ *
+ *  * `granted`  — every permission in `required` is granted;
+ *  * `denied`   — something in `required` is missing AND the person has
+ *                 been asked for it: either this install launched a request
+ *                 that carries it (`everRequested`), or at least one
+ *                 permission in `requested` is granted right now, which can
+ *                 only follow a decision the person made on a screen that
+ *                 offered `required` too;
+ *  * `notAsked` — neither. The Dart write pass asks in exactly this state;
+ *                 the screen says "not yet asked" rather than "denied".
+ *
+ * "Unavailable" is decided before this is reached (no Health Connect, or
+ * the granted-permissions query failed).
+ */
 internal object HealthPermissionState {
     const val GRANTED = "granted"
     const val NOT_ASKED = "notAsked"
