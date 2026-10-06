@@ -12,5 +12,11 @@
     <!-- The quick-log button's label: "Log" — a neutral word. The meaning
          rides the intent URI, never this string. -->
     <string name="widget_quick_log_label">Log</string>
+    <!-- The widget picker's description and sample (Android 12 and
+         later). The sample is fixed text, never anyone's stored state,
+         and carries the same numeric-only vocabulary as a real render. -->
+    <string name="widget_description">A discreet cycle-day glance.</string>
+    <string name="widget_preview_title">Day 14</string>
+    <string name="widget_preview_subtitle">≈7 d</string>
     <color name="widget_on_surface">#FFFFFF</color>
 </resources>

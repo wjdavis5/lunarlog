@@ -13,5 +13,7 @@
     android:targetCellHeight="2"
     android:updatePeriodMillis="86400000"
     android:initialLayout="@layout/lunarlog_widget"
+    android:previewLayout="@layout/lunarlog_widget_preview"
+    android:description="@string/widget_description"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen" />

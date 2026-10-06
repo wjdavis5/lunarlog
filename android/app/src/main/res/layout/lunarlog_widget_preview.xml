@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the launcher's widget picker shows for this widget (Android 12
+     and later; earlier versions show the app icon). A fixed sample, never
+     anyone's stored state: the picker is drawn before a widget exists and
+     must not read the store. Without it the picker showed a blank card. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:background="@drawable/lunarlog_widget_background">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/widget_app_label"
+        android:textColor="@color/widget_on_surface"
+        android:textSize="12sp"
+        android:alpha="0.6" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="@string/widget_preview_title"
+        android:textColor="@color/widget_on_surface"
+        android:textSize="22sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="@string/widget_preview_subtitle"
+        android:textColor="@color/widget_on_surface"
+        android:textSize="13sp"
+        android:alpha="0.7" />
+</LinearLayout>

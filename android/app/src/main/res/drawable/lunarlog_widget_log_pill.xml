@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The widget's Log button: a quiet pill on the brand surface, the same
+     treatment as the iPhone widget's (white at 18%). The inset keeps the
+     pill itself 32dp tall inside a 48dp touch target. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:insetTop="8dp"
+    android:insetBottom="8dp">
+    <ripple android:color="#33FFFFFF">
+        <item>
+            <shape android:shape="rectangle">
+                <solid android:color="#2EFFFFFF" />
+                <corners android:radius="16dp" />
+            </shape>
+        </item>
+    </ripple>
+</inset>
