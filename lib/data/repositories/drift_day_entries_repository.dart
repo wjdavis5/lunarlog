@@ -3,7 +3,6 @@
 library;
 
 import 'package:lunarlog/data/db/storage.dart';
-import 'package:lunarlog/domain/health/health_import_deletions.dart';
 import 'package:lunarlog/domain/logging/day_entry_merge_event.dart'
     as mergelog;
 import 'package:lunarlog/domain/logging/merge_notice_dismissals.dart';
@@ -101,24 +100,6 @@ class DriftDayEntriesRepository
   Future<bool> hasAnyEntries(String profileId) =>
       _storage.hasAnyEntries(profileId);
 
-  /// Issue #1561: the deleted row carrying this provenance, however it
-  /// came to be deleted. The storage lookup answers live and deleted rows
-  /// alike; a live one is not what was asked for.
-  @override
-  Future<domain.DayEntry?> findDeletedBySource({
-    required String profileId,
-    required domain.DayEntrySource source,
-    required String sourceId,
-  }) async {
-    final row = await _storage.findDayEntryBySource(
-      profileId: profileId,
-      source: source.toDb(),
-      sourceId: sourceId,
-    );
-    if (row == null || row.deletedAt == null) return null;
-    return dayEntryToDomain(row);
-  }
-
   /// Issue #850 U5: the guardian logistics card's bounded "last logged"
   /// read — one indexed live row at the greatest civil date.
   @override
@@ -161,37 +142,40 @@ class DriftDayEntriesRepository
           )
           .map((rows) => [for (final row in rows) dayEntryToDomain(row)]);
 
-  /// Deletes the day, and remembers which health-store records it and its
-  /// entries had come from (Issue #1561), so the next import does not
-  /// bring them back. A day she logged herself leaves nothing behind.
   @override
-  Future<void> delete(String profileId, domain.LocalDate localDate) async {
-    final live = await _storage.getDayEntry(
-      profileId: profileId,
-      localDate: localDate.iso,
-    );
-    final entries = live == null
-        ? const <(String, String?)>[]
-        : [
-            for (final o in await _storage.getObservationsForDayEntry(live.id))
-              (o.source, o.sourceId),
-          ];
-    await _storage.softDeleteDayEntry(
-      profileId: profileId,
-      localDate: localDate.iso,
-    );
-    if (live == null) return;
-    await rememberDeletedHealthImports(_storage, profileId, [
-      (live.source, live.sourceId),
-      ...entries,
-    ]);
-  }
+  Future<void> delete(String profileId, domain.LocalDate localDate) =>
+      _storage.softDeleteDayEntry(
+        profileId: profileId,
+        localDate: localDate.iso,
+      );
 
   @override
-  Future<Map<String, DateTime>> handDeletedRecords(String profileId) async =>
-      decodeHealthImportDeletions(
-        await _storage.getSetting(healthImportDeletionsKey(profileId)),
-      );
+  Future<Map<String, DateTime>> deletedHealthRecords(String profileId) =>
+      _storage.readHealthImportDeletions(profileId);
+
+  @override
+  Future<void> forgetDeletedHealthRecords(
+    String profileId,
+    Iterable<String> recordIds,
+  ) =>
+      _storage.forgetHealthImportDeletions(profileId, recordIds);
+
+  /// Issue #1561: the storage lookup answers live and deleted rows alike;
+  /// a live one is not what was asked for.
+  @override
+  Future<domain.DayEntry?> findDeletedBySource({
+    required String profileId,
+    required domain.DayEntrySource source,
+    required String sourceId,
+  }) async {
+    final row = await _storage.findDayEntryBySource(
+      profileId: profileId,
+      source: source.toDb(),
+      sourceId: sourceId,
+    );
+    if (row == null || row.deletedAt == null) return null;
+    return dayEntryToDomain(row);
+  }
 
   /// Issue #130: the day sheet's merge-notice list — the window-filtered
   /// storage read minus this device's dismissed ids. Dismissal filtering
@@ -230,27 +214,4 @@ class DriftDayEntriesRepository
         in await _storage.getDayEntryMergeEventsForProfile(profileId))
       dayEntryMergeEventToDomain(row),
   ];
-}
-
-/// Adds the health-store records among [records] to [profileId]'s
-/// device-local memory of what she deleted (Issue #1561). Writes nothing
-/// when none of them came from the health store. Shared by the two
-/// repositories whose `delete` she reaches: a whole day, and one entry.
-Future<void> rememberDeletedHealthImports(
-  AppSettingsStore settings,
-  String profileId,
-  Iterable<(String source, String? sourceId)> records,
-) async {
-  final key = healthImportDeletionsKey(profileId);
-  final before = decodeHealthImportDeletions(await settings.getSetting(key));
-  final after = rememberHealthImportDeletions(
-    before,
-    records,
-    DateTime.now().toUtc(),
-  );
-  if (identical(after, before)) return;
-  await settings.setSetting(
-    key: key,
-    value: encodeHealthImportDeletions(after),
-  );
 }
