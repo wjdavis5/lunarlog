@@ -684,6 +684,28 @@ void main() {
       expect(find.byType(SnackBar), findsOneWidget);
     });
 
+    testWidgets(
+        'a successful save after a failed off-to-on save still asks once (#1628)',
+        (tester) async {
+      final delegate = FakeNotificationPreferencesService();
+      final service = _FailingOnceService(delegate);
+      var asks = 0;
+      await pumpScreen(tester, service, onEnsure: () => asks++);
+
+      await tester.tap(find.byKey(const ValueKey('alert-on-log-toggle')));
+      await tester.pumpAndSettle();
+      expect(asks, 0);
+
+      // The optimistic value is still on screen; a further change saves it.
+      await _scrollTo(
+          tester, find.byKey(const ValueKey('alert-period-soon-toggle')));
+      await tester.tap(find.byKey(const ValueKey('alert-period-soon-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(delegate.stored['profile-1']?.alertOnLog, isTrue);
+      expect(asks, 1);
+    });
+
     testWidgets('without the callback toggles just save', (tester) async {
       final service = FakeNotificationPreferencesService();
       await pumpScreen(tester, service);
