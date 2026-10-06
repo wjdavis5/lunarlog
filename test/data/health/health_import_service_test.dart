@@ -192,10 +192,31 @@ class _FakeProfiles implements ProfilesRepository {
       throw UnimplementedError('${invocation.memberName}');
 }
 
-class _FakeDayEntries implements DayEntriesRepository {
+class _FakeDayEntries
+    implements DayEntriesRepository, DeletedDayEntryReader {
   final Map<String, DayEntry> live = {};
   final List<DayEntry> saved = [];
+
+  /// Rows she deleted (Issue #1561). `find` does not see them, as in the
+  /// real repository.
+  final List<DayEntry> deleted = [];
   int _nextId = 0;
+
+  @override
+  Future<DayEntry?> findDeletedBySource({
+    required String profileId,
+    required DayEntrySource source,
+    required String sourceId,
+  }) async {
+    for (final row in deleted) {
+      if (row.profileId == profileId &&
+          row.source == source &&
+          row.sourceId == sourceId) {
+        return row;
+      }
+    }
+    return null;
+  }
 
   @override
   Future<DayEntry?> find(String profileId, LocalDate localDate) async =>
@@ -227,8 +248,20 @@ class _FakeDayEntries implements DayEntriesRepository {
       throw UnimplementedError('${invocation.memberName}');
 }
 
-class _FakeObservations implements ObservationsRepository {
+class _FakeObservations
+    implements ObservationsRepository, DeletedObservationReader {
   final List<Observation> saved = [];
+
+  /// Source ids of observations she deleted (Issue #1561).
+  final Set<String> deletedSourceIds = {};
+
+  @override
+  Future<bool> wasDeletedBySource({
+    required String profileId,
+    required ObservationSource source,
+    required String sourceId,
+  }) async =>
+      deletedSourceIds.contains(sourceId);
   final Map<String, List<Observation>> byDay = {};
   int _nextId = 0;
 
@@ -1088,6 +1121,146 @@ void main() {
       final summary = await build().importNow();
       expect(summary.daysKeptManual, 1);
       expect(dayEntries.saved, isEmpty);
+    });
+  });
+
+  // Issue #1561. Deleting a day clears its content and keeps which record
+  // it was imported from. The import looked for a live row only, found
+  // none, and inserted the day again on every whole-history read.
+  group('a day she deleted (#1561)', () {
+    final deletedAt = DateTime.utc(2026, 9, 12, 8);
+    final hc = HealthImportPlatform.healthConnect;
+    String keyAt(String id, DateTime time) =>
+        '$id@${time.millisecondsSinceEpoch}';
+
+    // What deleting an imported day leaves: no flow, the provenance, and
+    // the time of the deletion.
+    DayEntry tombstone(
+      String sourceId, {
+      DayEntrySource source = DayEntrySource.healthkit,
+    }) =>
+        DayEntry(
+          id: 'deleted-1',
+          profileId: _profileId,
+          localDate: LocalDate(2026, 9, 10),
+          tz: _tz,
+          flow: FlowLevel.none,
+          source: source,
+          sourceId: sourceId,
+          updatedAt: deletedAt,
+          deletedAt: deletedAt,
+        );
+
+    HealthReadResult store(String id, {DateTime? modifiedAt}) =>
+        HealthReadResult.samples([
+          _sample(
+            id: id,
+            flow: HealthFlowValue.heavy,
+            startIso: '2026-09-10T04:00:00Z',
+            modifiedAt: modifiedAt,
+          ),
+        ]);
+
+    test('stays deleted while the store holds the same record', () async {
+      await bind();
+      dayEntries.deleted.add(tombstone('rec-1'));
+      source.result = store('rec-1');
+      final summary = await build().importNow();
+      expect(summary.daysWritten, 0);
+      expect(summary.daysKeptManual, 1);
+      expect(dayEntries.saved, isEmpty);
+      // And on every later read.
+      await build().importNow();
+      expect(dayEntries.saved, isEmpty);
+    });
+
+    test('comes back when the store has a different record for the day',
+        () async {
+      await bind();
+      dayEntries.deleted.add(tombstone('rec-1'));
+      source.result = store('rec-2');
+      final summary = await build().importNow();
+      expect(summary.daysWritten, 1);
+      expect(dayEntries.saved.single.sourceId, 'rec-2');
+      expect(dayEntries.saved.single.flow, FlowLevel.heavy);
+    });
+
+    test('Health Connect: the same record, unchanged, stays deleted; '
+        'changed since, it comes back', () async {
+      await bind();
+      final t0 = DateTime.utc(2026, 9, 11);
+      final later = DateTime.utc(2026, 9, 13);
+
+      dayEntries.deleted.add(
+        tombstone(keyAt('rec-1', t0), source: DayEntrySource.healthConnect),
+      );
+      source.result = store('rec-1', modifiedAt: t0);
+      expect(
+        (await build(importPlatform: hc).importNow()).daysKeptManual,
+        1,
+      );
+      expect(dayEntries.saved, isEmpty);
+
+      source.result = store('rec-1', modifiedAt: later);
+      final summary = await build(importPlatform: hc).importNow();
+      expect(summary.daysWritten, 1);
+      expect(dayEntries.saved.single.sourceId, keyAt('rec-1', later));
+    });
+
+    test('Health Connect: a day deleted before the key carried a time is '
+        'decided by the record\'s time and the deletion\'s', () async {
+      await bind();
+      for (final (modifiedAt, comesBack) in [
+        // Changed after she deleted the day.
+        (DateTime.utc(2026, 9, 12, 9), true),
+        // Not changed since: what she deleted.
+        (DateTime.utc(2026, 9, 11), false),
+        (deletedAt, false),
+      ]) {
+        dayEntries.saved.clear();
+        dayEntries.live.clear();
+        dayEntries.deleted
+          ..clear()
+          ..add(tombstone('rec-1', source: DayEntrySource.healthConnect));
+        source.result = store('rec-1', modifiedAt: modifiedAt);
+        final summary = await build(importPlatform: hc).importNow();
+        expect(summary.daysWritten, comesBack ? 1 : 0, reason: '$modifiedAt');
+        expect(dayEntries.saved, comesBack ? hasLength(1) : isEmpty,
+            reason: '$modifiedAt');
+      }
+    });
+
+    test('a day deleted under the other store\'s provenance is not this '
+        'importer\'s to keep deleted', () async {
+      await bind();
+      dayEntries.deleted.add(
+        tombstone('rec-1', source: DayEntrySource.healthConnect),
+      );
+      source.result = store('rec-1');
+      final summary = await build().importNow();
+      expect(summary.daysWritten, 1);
+    });
+
+    test('a spotting entry she deleted stays deleted, and no empty day is '
+        'made for it', () async {
+      await bind();
+      observations.deletedSourceIds.add('hk-spot');
+      source.result = HealthReadResult.samples([
+        _bleedingSample(
+          id: 'hk-spot',
+          startIso: '2026-09-10T04:00:00Z',
+          offset: Duration.zero,
+        ),
+      ]);
+      final summary = await build().importNow();
+      expect(summary.daysKeptManual, 1);
+      expect(dayEntries.saved, isEmpty);
+      expect(observations.saved, isEmpty);
+
+      // One she did not delete is imported as before.
+      observations.deletedSourceIds.clear();
+      await build().importNow();
+      expect(observations.saved.single.sourceId, 'hk-spot');
     });
   });
 

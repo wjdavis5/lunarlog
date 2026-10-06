@@ -14,7 +14,11 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'mappers.dart';
 
 class DriftDayEntriesRepository
-    implements DayEntriesRepository, LatestDayEntryReader, DayEntrySyncStateReader {
+    implements
+        DayEntriesRepository,
+        LatestDayEntryReader,
+        DayEntrySyncStateReader,
+        DeletedDayEntryReader {
   DriftDayEntriesRepository(this._storage);
 
   final DayEntriesRepositoryStore _storage;
@@ -95,6 +99,24 @@ class DriftDayEntriesRepository
   @override
   Future<bool> hasAnyEntries(String profileId) =>
       _storage.hasAnyEntries(profileId);
+
+  /// Issue #1561: the deleted row carrying this provenance. The storage
+  /// lookup answers live and deleted rows alike; a live one is not what
+  /// was asked for.
+  @override
+  Future<domain.DayEntry?> findDeletedBySource({
+    required String profileId,
+    required domain.DayEntrySource source,
+    required String sourceId,
+  }) async {
+    final row = await _storage.findDayEntryBySource(
+      profileId: profileId,
+      source: source.toDb(),
+      sourceId: sourceId,
+    );
+    if (row == null || row.deletedAt == null) return null;
+    return dayEntryToDomain(row);
+  }
 
   /// Issue #850 U5: the guardian logistics card's bounded "last logged"
   /// read — one indexed live row at the greatest civil date.

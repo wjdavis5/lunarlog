@@ -20,10 +20,27 @@ class DriftObservationsRepository
     implements
         ObservationsRepository,
         SpottingObservationsRangeRepository,
-        DayEntryObservationsWatchRepository {
+        DayEntryObservationsWatchRepository,
+        DeletedObservationReader {
   DriftObservationsRepository(this._storage);
 
   final ObservationsRepositoryStore _storage;
+
+  /// Issue #1561: whether the observation carrying this provenance was
+  /// deleted. The storage lookup answers live and deleted rows alike.
+  @override
+  Future<bool> wasDeletedBySource({
+    required String profileId,
+    required domain.ObservationSource source,
+    required String sourceId,
+  }) async {
+    final row = await _storage.findObservationBySource(
+      profileId: profileId,
+      source: source.toDb(),
+      sourceId: sourceId,
+    );
+    return row != null && row.deletedAt != null;
+  }
 
   /// Issue #247: alongside every persisted observation, synthesises a
   /// `category: 'spotting'` row (never written back) for any live day

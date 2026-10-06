@@ -361,6 +361,12 @@ class LocalHealthImportService
        _profiles = profiles,
        _dayEntries = dayEntries,
        _observations = observations,
+       _deletedDays = dayEntries is DeletedDayEntryReader
+           ? dayEntries as DeletedDayEntryReader
+           : null,
+       _deletedObservations = observations is DeletedObservationReader
+           ? observations as DeletedObservationReader
+           : null,
        _guardiansForProfile = guardiansForProfile,
        _signedInUserId = signedInUserId,
        _today = today ?? LocalDate.today,
@@ -374,6 +380,12 @@ class LocalHealthImportService
   final ProfilesRepository _profiles;
   final DayEntriesRepository _dayEntries;
   final ObservationsRepository _observations;
+
+  /// Issue #1561: what she deleted, where the repositories can say. Null
+  /// for one that cannot (a test double), and the import then inserts as
+  /// it always did.
+  final DeletedDayEntryReader? _deletedDays;
+  final DeletedObservationReader? _deletedObservations;
   final GuardiansForProfile _guardiansForProfile;
   final String? Function() _signedInUserId;
   final LocalDate Function() _today;
@@ -708,6 +720,9 @@ class LocalHealthImportService
   ) async {
     final existing = await _dayEntries.find(profileId, date);
     final key = _recordKey(desired);
+    if (existing == null && await _deletedAndUnchanged(profileId, desired)) {
+      return _MergeOutcome.keptManual;
+    }
     if (existing == null) {
       await _dayEntries.save(
         DayEntry(
@@ -742,6 +757,51 @@ class LocalHealthImportService
       ),
     );
     return _MergeOutcome.written;
+  }
+
+  /// Whether she deleted the day this record was imported as, and the
+  /// store's record is still the one the deleted row was written from
+  /// (Issue #1561).
+  ///
+  /// Deleting a day clears its content and keeps its provenance, so the
+  /// deleted row still says which record it came from. Her deletion holds
+  /// for as long as the store keeps that record; a different record for
+  /// the day, or the same one changed since, is the store's news and the
+  /// day is imported again ([_storeChangedSince], the same rule a hand
+  /// correction follows).
+  ///
+  /// Without this the day came back on every whole-history read, and the
+  /// re-inserted row could not sync: the server allows one row per
+  /// record, deleted or not.
+  Future<bool> _deletedAndUnchanged(
+    String profileId,
+    _DesiredSample desired,
+  ) async {
+    final deleted = await _deletedRowFor(profileId, desired);
+    return deleted != null && !_storeChangedSince(deleted, desired);
+  }
+
+  /// The deleted row written from [desired]'s record: by its full key, or
+  /// by the bare record id a Health Connect row carried before the key
+  /// held a time.
+  Future<DayEntry?> _deletedRowFor(
+    String profileId,
+    _DesiredSample desired,
+  ) async {
+    final reader = _deletedDays;
+    if (reader == null) return null;
+    final key = _recordKey(desired);
+    final byKey = await reader.findDeletedBySource(
+      profileId: profileId,
+      source: _daySource,
+      sourceId: key,
+    );
+    if (byKey != null || key == desired.recordId) return byKey;
+    return reader.findDeletedBySource(
+      profileId: profileId,
+      source: _daySource,
+      sourceId: desired.recordId,
+    );
   }
 
   /// What an imported row's `sourceId` holds (Issue #1559): which of the
@@ -840,6 +900,15 @@ class LocalHealthImportService
     LocalDate date,
     _SpottingSample sample,
   ) async {
+    // Issue #1561: a spotting entry she deleted stays deleted while the
+    // store still holds the record it came from. Asked before anything is
+    // written, so no empty day is created to hang it on either.
+    final deleted = await _deletedObservations?.wasDeletedBySource(
+      profileId: profileId,
+      source: _observationSource,
+      sourceId: sample.recordId,
+    );
+    if (deleted == true) return _MergeOutcome.keptManual;
     final day = await _dayEntries.find(profileId, date) ??
         await _dayEntries.save(
           DayEntry(

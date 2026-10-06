@@ -36,6 +36,24 @@ abstract interface class LatestDayEntryReader {
 /// the day sheet resolves it with an `is` check, so a tree whose entries
 /// repository cannot answer it (a hand-rolled fake) simply treats the note as
 /// never shared rather than reaching for a second store.
+/// Issue #1561: the one thing the health import needs to know about a day
+/// she deleted. [DayEntriesRepository.find] answers for live rows only, so
+/// a deleted imported day looked like a day that had never been imported,
+/// and the next whole-history read inserted it again.
+///
+/// Kept off [DayEntriesRepository] itself, like the readers beside it: a
+/// repository that does not implement it simply cannot answer, and the
+/// import then behaves as it did before.
+abstract interface class DeletedDayEntryReader {
+  /// The deleted entry of [profileId] carrying this provenance, or null
+  /// when there is none or the entry that carries it is live.
+  Future<DayEntry?> findDeletedBySource({
+    required String profileId,
+    required DayEntrySource source,
+    required String sourceId,
+  });
+}
+
 abstract interface class DayEntrySyncStateReader {
   /// Whether (profileId, date) holds a live row with a non-empty note whose
   /// `dirty` flag is clear — i.e. the note has been pushed to the server at

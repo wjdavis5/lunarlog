@@ -46,6 +46,70 @@ void main() {
         ),
       );
 
+  // Issue #1561: the health import asks whether a day it once wrote was
+  // deleted. `find` answers for live rows only.
+  group('findDeletedBySource (#1561)', () {
+    Future<void> saveImported(String iso, String sourceId) => repository.save(
+          DayEntry(
+            id: '',
+            profileId: 'p1',
+            localDate: LocalDate.fromIso(iso),
+            tz: 'America/Chicago',
+            flow: FlowLevel.heavy,
+            source: DayEntrySource.healthkit,
+            sourceId: sourceId,
+            updatedAt: DateTime.utc(2026, 1, 1),
+          ),
+        );
+
+    Future<DayEntry?> deletedBy(
+      String sourceId, {
+      DayEntrySource source = DayEntrySource.healthkit,
+      String profileId = 'p1',
+    }) =>
+        repository.findDeletedBySource(
+          profileId: profileId,
+          source: source,
+          sourceId: sourceId,
+        );
+
+    test('a live imported day is not a deleted one', () async {
+      await saveImported('2026-08-01', 'rec-1');
+      expect(await deletedBy('rec-1'), isNull);
+    });
+
+    test('a deleted imported day is found by the record it came from, with '
+        'its content gone and its provenance kept', () async {
+      await saveImported('2026-08-01', 'rec-1');
+      await repository.delete('p1', LocalDate.fromIso('2026-08-01'));
+
+      expect(await repository.find('p1', LocalDate.fromIso('2026-08-01')),
+          isNull);
+      final deleted = await deletedBy('rec-1');
+      expect(deleted, isNotNull);
+      expect(deleted!.deletedAt, isNotNull);
+      expect(deleted.flow, FlowLevel.none);
+      expect(deleted.source, DayEntrySource.healthkit);
+      expect(deleted.sourceId, 'rec-1');
+      expect(deleted.localDate, LocalDate.fromIso('2026-08-01'));
+      // The deletion is the row's last change.
+      expect(deleted.updatedAt, deleted.deletedAt);
+    });
+
+    test('nothing is found under another record, source or profile',
+        () async {
+      await saveImported('2026-08-01', 'rec-1');
+      await repository.delete('p1', LocalDate.fromIso('2026-08-01'));
+
+      expect(await deletedBy('rec-2'), isNull);
+      expect(
+        await deletedBy('rec-1', source: DayEntrySource.healthConnect),
+        isNull,
+      );
+      expect(await deletedBy('rec-1', profileId: 'p2'), isNull);
+    });
+  });
+
   test('latestEntryFor returns null for a profile with no entries', () async {
     expect(await repository.latestEntryFor('p1'), isNull);
   });
