@@ -377,6 +377,11 @@ sealed class HealthPlatformResult {
   const factory HealthPlatformResult.permissionDenied() =
       HealthPlatformPermissionDenied;
 
+  /// The delete operation could not delete records for some write types
+  /// because write permissions for those types were denied (Issue #1583).
+  const factory HealthPlatformResult.partial(Set<String> skippedTypes) =
+      HealthPlatformPartial;
+
   /// The platform threw or answered with something this Dart side does
   /// not understand (including an unresolvable time zone — the write is
   /// refused rather than written at a wrong instant). [message] is
@@ -401,6 +406,12 @@ final class HealthPlatformUnavailable extends HealthPlatformResult {
 
 final class HealthPlatformPermissionDenied extends HealthPlatformResult {
   const HealthPlatformPermissionDenied();
+}
+
+final class HealthPlatformPartial extends HealthPlatformResult {
+  const HealthPlatformPartial(this.skippedTypes);
+
+  final Set<String> skippedTypes;
 }
 
 final class HealthPlatformFailed extends HealthPlatformResult {

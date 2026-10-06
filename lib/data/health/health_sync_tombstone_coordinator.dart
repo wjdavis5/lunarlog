@@ -51,6 +51,8 @@ library;
 import 'dart:async';
 
 import 'package:lunarlog/domain/health/health_export_ledger.dart';
+import 'package:lunarlog/domain/health/health_platform.dart'
+    show HealthPlatformPartial;
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_deletion_service.dart';
 import 'package:lunarlog/domain/health/health_sync_tombstone_source.dart';
@@ -119,6 +121,7 @@ class HealthSyncTombstoneCoordinator {
   /// carries no trace of what it used to be. Seeded from the ledger too
   /// (Issue #936).
   final Map<String, String> _knownObservationRecordIds = {};
+  final Set<String> _knownSpottingRecordIds = {};
 
   /// The profile the coordinator is currently subscribed to (or loading
   /// for) — lets the async ledger seed abandon itself if the binding moved
@@ -173,6 +176,8 @@ class HealthSyncTombstoneCoordinator {
               .putIfAbsent(row.sourceRowId, () => <String>{})
               .add(row.recordId);
         case HealthExportLedgerKind.spotting:
+          _knownObservationRecordIds[row.sourceRowId] = row.recordId;
+          _knownSpottingRecordIds.add(row.recordId);
         case HealthExportLedgerKind.bbt:
           _knownObservationRecordIds[row.sourceRowId] = row.recordId;
         case HealthExportLedgerKind.period:
@@ -200,6 +205,7 @@ class HealthSyncTombstoneCoordinator {
     _latestObservations = const [];
     _knownEntryRecordIds.clear();
     _knownObservationRecordIds.clear();
+    _knownSpottingRecordIds.clear();
     _activeProfileId = null;
   }
 
@@ -220,6 +226,9 @@ class HealthSyncTombstoneCoordinator {
         final recordId = _recordIdForObservation(observation);
         if (recordId != null) {
           _knownObservationRecordIds[observation.id] = recordId;
+          if (observation.category == kSpottingObservationCategory) {
+            _knownSpottingRecordIds.add(recordId);
+          }
         }
       }
       _latestObservations = observations;
@@ -284,6 +293,26 @@ class HealthSyncTombstoneCoordinator {
         // sample is a documented no-op) rather than stranding the rows.
         await _ledger.removeRecordIds(tombstoned);
         _alreadyDeleted = {..._alreadyDeleted, ...tombstoned};
+        _knownSpottingRecordIds.removeAll(tombstoned);
+      } else if (report.blocked is HealthPlatformPartial) {
+        // Issue #1583: when some write permissions are denied, native skips
+        // those types and reports them. We drop only the ledger rows and mark
+        // done only the ids whose types were NOT skipped; the skipped ones stay
+        // in the ledger and out of _alreadyDeleted so they retry once permission
+        // returns.
+        final skipped = (report.blocked as HealthPlatformPartial).skippedTypes;
+        final deletedIds = tombstoned
+            .where((id) => !healthRecordMatchesSkippedType(
+                  id,
+                  skipped,
+                  isSpotting: _knownSpottingRecordIds.contains(id),
+                ))
+            .toList();
+        if (deletedIds.isNotEmpty) {
+          await _ledger.removeRecordIds(deletedIds);
+          _alreadyDeleted = {..._alreadyDeleted, ...deletedIds};
+          _knownSpottingRecordIds.removeAll(deletedIds);
+        }
       }
     } catch (_) {
       // Best-effort background upkeep — the next change re-arms it, and

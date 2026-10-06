@@ -648,6 +648,68 @@ void main() {
     });
 
     test(
+        'issue #1583: when deletion returns partial, a skipped type keeps its '
+        'ledger row and retries next pass, while authorized types are dropped',
+        () async {
+      final settings = FakeSettingsStore({
+        SettingsKeys.healthStoreProfileId: _profileId,
+      });
+      final binding = HealthSyncBinding(settings);
+      final source = _FakeTombstoneSource();
+      final deletion = _FakeDeletion();
+      final ledger = FakeHealthExportLedger();
+      final mucusRecordId = healthCervicalMucusRecordId(_entryId);
+      await ledger.record([
+        HealthExportLedgerEntry(
+          recordId: _entryId,
+          profileId: _profileId,
+          sourceRowId: _entryId,
+          kind: HealthExportLedgerKind.entry,
+          localDate: '2026-09-01',
+          exportedAt: DateTime.utc(2026, 9, 1),
+        ),
+        HealthExportLedgerEntry(
+          recordId: mucusRecordId,
+          profileId: _profileId,
+          sourceRowId: _entryId,
+          kind: HealthExportLedgerKind.entry,
+          localDate: '2026-09-01',
+          exportedAt: DateTime.utc(2026, 9, 1),
+        ),
+      ]);
+      final coordinator = HealthSyncTombstoneCoordinator(
+        binding: binding,
+        source: source,
+        deletionService: deletion,
+        ledger: ledger,
+        debounce: const Duration(milliseconds: 10),
+      );
+      coordinator.start();
+      addTearDown(() => coordinator.dispose());
+
+      deletion.result = const HealthSyncDeletionReport(
+        attempted: 2,
+        blocked: HealthPlatformResult.partial({'cervicalMucus'}),
+      );
+
+      await source
+          .emitEntries([_entry(_entryId, deletedAt: DateTime.utc(2026, 9, 2))]);
+      await _waitUntil(() => ledger.rows.length == 1);
+
+      expect(ledger.rows.map((r) => r.recordId).toSet(), {mucusRecordId});
+
+      deletion.result = const HealthSyncDeletionReport(
+        attempted: 1,
+        blocked: null,
+      );
+      await source.emitEntries([
+        _entry(_entryId, deletedAt: DateTime.utc(2026, 9, 2)),
+      ]);
+      await _waitUntil(() => ledger.rows.isEmpty);
+      expect(ledger.rows, isEmpty);
+    });
+
+    test(
         'issue #936: a ledger read failure is swallowed and the coordinator '
         'still subscribes with the live-emission memory', () async {
       final settings = FakeSettingsStore({

@@ -306,6 +306,19 @@ void main() {
           [flowWriteRecordId, '01ARZ3NDEKTSV4RRFFQ69G5FBC']);
     });
 
+    test('deleteRecords decodes partial map result (issue #1583)', () async {
+      nextResult = {
+        'status': 'partial',
+        'skippedTypes': ['cervicalMucus'],
+      };
+      final result = await makePlatform().deleteRecords(
+        _facts(),
+        const [flowWriteRecordId],
+      );
+      expect(result, isA<HealthPlatformPartial>());
+      expect((result as HealthPlatformPartial).skippedTypes, {'cervicalMucus'});
+    });
+
     test('writeIntermenstrualBleeding sends guard + day args, no flow key',
         () async {
       await makePlatform().writeIntermenstrualBleeding(
