@@ -339,6 +339,13 @@ class _Batch {
   /// been asked for and must not be asked for again as an unknown one.
   final Map<String, DateTime> noFlowDays = {};
 
+  /// The id of every live day entry and observation of the profile,
+  /// whether or not the pass looks at it (Issue #1589). A remembered
+  /// record whose row is not among them belongs to a row that was
+  /// deleted, and is to be taken out of the store
+  /// ([LocalHealthFlowWriteService._staleRecords]).
+  final Set<String> liveRowIds = {};
+
   /// Every live, exportable BBT observation's record id this pass, whether
   /// or not it is due — the "still present" side of the BBT diff. A
   /// remembered id absent from this set is a reading the operator cleared
@@ -956,6 +963,9 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     final bleedDays = bleedDatesOf(entries);
     final episodes = deriveEpisodes(bleedDays);
     final batch = _Batch();
+    batch.liveRowIds
+      ..addAll(entries.map((entry) => entry.id))
+      ..addAll(observationRows.map((row) => row.id));
     _collectPeriods(profileId, entries, floor, batch);
     for (final entry in entries) {
       if (!_inScope(entry.id, entry.updatedAt, entry.source, floor)) continue;
@@ -1581,10 +1591,10 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     return null;
   }
 
-  /// The records to delete, one list for each row that has any, and one
-  /// for the BBT readings whose observation is no longer live and
-  /// resolved (the operator cleared the reading and left the day in
-  /// place).
+  /// The records to delete, one list for each row that has any, one for
+  /// the BBT readings whose observation is no longer live and resolved
+  /// (the operator cleared the reading and left the day in place), and
+  /// one for the records of rows that are gone ([_recordsOfGoneRows]).
   List<List<String>> _staleRecords(_Batch batch, Set<String>? grantedTypes) {
     final groups = [
       for (final row in batch.desiredByRow.entries)
@@ -1592,6 +1602,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
           _memory.recordIdsOf(row.key).difference(row.value),
           grantedTypes,
         ),
+      _deletable(_recordsOfGoneRows(batch), grantedTypes),
       _deletable(
         {
           for (final written in _memory.ofKind(HealthExportLedgerKind.bbt))
@@ -1606,6 +1617,32 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         if (group.isNotEmpty) group,
     ];
   }
+
+  /// The remembered records of day entries and spotting entries that are
+  /// no longer live: she deleted the day or the entry (Issue #1589).
+  ///
+  /// The tombstone path deletes a deleted row's records while the deleted
+  /// row is still on the phone, and keeps in the ledger those whose type
+  /// was switched off at the time (Issue #1583). A deleted row is swept
+  /// two days after it has synced. If the type came back on after that,
+  /// nothing looked at the ledger row again, and the record stayed in
+  /// the store for good. The ledger row is all that is left to go on, so
+  /// this pass goes on it: no live row, so the record is not wanted.
+  ///
+  /// A period record is not among them: it belongs to no row and has its
+  /// own rule ([_reconcilePeriodRecords]). Nor is a temperature reading,
+  /// which goes when its observation stops being exportable as well as
+  /// when it is deleted ([_Batch.liveBbtRecordIds]).
+  Set<String> _recordsOfGoneRows(_Batch batch) => {
+        for (final written in _memory.all)
+          if (_isRowRecord(written.kind) &&
+              !batch.liveRowIds.contains(written.sourceRowId))
+            written.recordId,
+      };
+
+  static bool _isRowRecord(HealthExportLedgerKind kind) =>
+      kind == HealthExportLedgerKind.entry ||
+      kind == HealthExportLedgerKind.spotting;
 
   /// Those of [recordIds] a delete is sure to reach with [grantedTypes]
   /// switched on.
@@ -1656,19 +1693,15 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   }
 
   /// Whether a delete that skipped [skippedTypes] may have left [recordId]
-  /// in the store. A spotting entry's record is an intermenstrual marker,
-  /// or a light flow sample when its day falls inside a period, and the
-  /// ledger does not say which, so either type being skipped counts.
-  bool _passedOver(String recordId, Set<String> skippedTypes) {
-    final spotting =
-        _memory.entryOf(recordId)?.kind == HealthExportLedgerKind.spotting;
-    return healthRecordMatchesSkippedType(
-          recordId,
-          skippedTypes,
-          isSpotting: spotting,
-        ) ||
-        (spotting && skippedTypes.contains(HealthWriteTypes.menstrualFlow));
-  }
+  /// in the store ([healthRecordMatchesSkippedType], which counts either
+  /// of a spotting record's two types).
+  bool _passedOver(String recordId, Set<String> skippedTypes) =>
+      healthRecordMatchesSkippedType(
+        recordId,
+        skippedTypes,
+        isSpotting:
+            _memory.entryOf(recordId)?.kind == HealthExportLedgerKind.spotting,
+      );
 
   /// Whether a delete of flow or period records went through: the store
   /// allowed it, or passed over other types only (Issue #1583).

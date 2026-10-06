@@ -201,8 +201,14 @@ bool healthRecordMatchesSkippedType(
   if (recordId.startsWith('symptom-')) {
     return _symptomRecordMatchesSkippedType(recordId, skippedTypes);
   }
-  if (isSpotting) {
-    return skippedTypes.contains(HealthWriteTypes.spotting);
+  // Issue #1589: a spotting entry's record is an intermenstrual marker,
+  // or a light flow sample when its day falls inside a period, and
+  // nothing kept on the phone says which it was. So it may still be in
+  // the store when either type was passed over. Checked against
+  // spotting alone, a spotting entry deleted during a period with flow
+  // switched off was counted as gone, and its light flow sample stayed.
+  if (isSpotting && skippedTypes.contains(HealthWriteTypes.spotting)) {
+    return true;
   }
   return skippedTypes.contains(HealthWriteTypes.menstrualFlow);
 }
