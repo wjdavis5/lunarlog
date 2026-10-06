@@ -155,6 +155,8 @@ class _Platform implements HealthPlatformStore {
   @override
   Future<HealthPermissionStatus> permissionStatus() async => permission;
   @override
+  Future<Set<String>> grantedWriteTypes() async => const {};
+  @override
   Future<void> openPermissionSettings() async {}
   @override
   Future<HealthPlatformResult> bindProfile(HealthGuardFacts facts) async =>

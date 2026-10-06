@@ -376,7 +376,7 @@ void main() {
             .hasMatch(kotlin),
         isTrue,
       );
-      for (final wire in ['"granted"', '"notAsked"', '"denied"']) {
+      for (final wire in ['"granted"', '"notAsked"', '"denied"', '"writingSome"']) {
         expect(kotlin, contains(wire));
       }
     });
@@ -885,9 +885,11 @@ void main() {
         RegExp(
           r'fun writeStatusFor\(\s*granted: Set<String>,\s*'
           r'writes: Set<String>,\s*writesEverRequested: Boolean,\s*\)'
-          r': String = statusFor\(\s*granted = granted,\s*'
-          r'required = writes,\s*requested = writes,\s*'
-          r'everRequested = writesEverRequested,\s*\)',
+          r': String = when \{\s*'
+          r'granted\.containsAll\(writes\)\s*->\s*GRANTED\s*'
+          r'granted\.any\s*\{\s*it in writes\s*\}\s*->\s*WRITING_SOME\s*'
+          r'writesEverRequested\s*->\s*DENIED\s*'
+          r'else\s*->\s*NOT_ASKED\s*\}',
         ).hasMatch(kotlin),
         isTrue,
         reason: 'HealthPermissionState.writeStatusFor changed shape — '

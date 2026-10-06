@@ -615,6 +615,38 @@ class HealthConnectAdapter(context: Context) {
                 }
             }
 
+            "grantedWriteTypes" -> {
+                val client = healthConnectClient()
+                if (client == null) {
+                    result.success(emptyList<String>())
+                    return
+                }
+                CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
+                    try {
+                        val granted = client.permissionController.getGrantedPermissions()
+                        val types = mutableListOf<String>()
+                        if (granted.contains(HealthPermission.getWritePermission(MenstruationFlowRecord::class))) {
+                            types.add("menstrualFlow")
+                        }
+                        if (granted.contains(HealthPermission.getWritePermission(IntermenstrualBleedingRecord::class))) {
+                            types.add("spotting")
+                        }
+                        if (granted.contains(HealthPermission.getWritePermission(CervicalMucusRecord::class))) {
+                            types.add("cervicalMucus")
+                        }
+                        if (granted.contains(HealthPermission.getWritePermission(OvulationTestRecord::class))) {
+                            types.add("ovulationTest")
+                        }
+                        if (granted.contains(HealthPermission.getWritePermission(BasalBodyTemperatureRecord::class))) {
+                            types.add("basalBodyTemperature")
+                        }
+                        result.success(types)
+                    } catch (e: Exception) {
+                        result.success(emptyList<String>())
+                    }
+                }
+            }
+
             "openPermissionSettings" -> {
                 // Issue #959: Health Connect's own settings/permission
                 // activity is where the operator changes this app's access.
@@ -1041,12 +1073,16 @@ class HealthConnectAdapter(context: Context) {
                         // write-permission request uses, so a future type
                         // cannot be added to one without the other.
                         for (recordType in writtenRecordTypes) {
-                            @Suppress("UNCHECKED_CAST")
-                            val concreteType = recordType as KClass<Record>
-                            client.deleteRecords(
-                                concreteType,
-                                recordIdsList = emptyList(),
-                                clientRecordIdsList = ids)
+                            try {
+                                @Suppress("UNCHECKED_CAST")
+                                val concreteType = recordType as KClass<Record>
+                                client.deleteRecords(
+                                    concreteType,
+                                    recordIdsList = emptyList(),
+                                    clientRecordIdsList = ids)
+                            } catch (e: SecurityException) {
+                                // Skip record types whose write permission is not granted
+                            }
                         }
                         result.success("allowed")
                     } catch (e: SecurityException) {
@@ -1736,6 +1772,7 @@ internal object HealthPermissionState {
     const val GRANTED = "granted"
     const val NOT_ASKED = "notAsked"
     const val DENIED = "denied"
+    const val WRITING_SOME = "writingSome"
 
     fun statusFor(
         granted: Set<String>,
@@ -1787,35 +1824,23 @@ internal object HealthPermissionState {
             (!importRequestLaunched && provesAsked(granted, requested))
 
     /**
-     * The `permissionStatus` decision: may lunarlog write?
+     * The `permissionStatus` decision (Issue #1555): may lunarlog write?
      *
      * Everything about it is decided on the WRITE permissions (Issue #1515).
-     * `granted` needs every one of them and no read (Issue #1478). And
-     * "asked" means asked for the writes: `writesEverRequested` is the
-     * marker of the request that carries them, and the only grant that
-     * proves the question was put is a write grant.
-     *
-     * A granted read used to prove it too, which was true while one request
-     * carried everything. It is not now that the import asks for the reads
-     * alone: someone who tapped Import and allowed the reads has never been
-     * shown a write permission. Answering `denied` for her would stop the
-     * Dart write pass before its own request, so the write path could never
-     * ask — the same trap `notAsked` was introduced to close.
-     *
-     * A read granted before the import had a request of its own is the
-     * exception, and it reaches this function as `writesEverRequested`: the
-     * adapter sets that marker for it ([remembersWritesAsked]).
+     * `granted` needs every one of them (Issue #1478). When at least one write
+     * is granted, it reports [WRITING_SOME] so writes for authorized types can
+     * proceed. Zero writes granted reports [DENIED] if asked, else [NOT_ASKED].
      */
     fun writeStatusFor(
         granted: Set<String>,
         writes: Set<String>,
         writesEverRequested: Boolean,
-    ): String = statusFor(
-        granted = granted,
-        required = writes,
-        requested = writes,
-        everRequested = writesEverRequested,
-    )
+    ): String = when {
+        granted.containsAll(writes) -> GRANTED
+        granted.any { it in writes } -> WRITING_SOME
+        writesEverRequested -> DENIED
+        else -> NOT_ASKED
+    }
 
     /**
      * The `importPermissionStatus` decision (Issue #1491): may the import

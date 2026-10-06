@@ -818,34 +818,82 @@ enum HealthKitChannelHandler {
       // write sample types (`writtenSampleTypes`, the same list the
       // authorization sheet and deleteRecords use): HealthKit's read
       // authorization is opaque by Apple's design, so a denied read must
-      // never be reported as a refusal here. `.sharingDenied` is the only
-      // denial that maps to "denied"; a partial grant (some types denied)
-      // reports denied, because writes to those types will fail.
+      // never be reported as a refusal here.
+      //
+      // Issue #1555: when some (but not all) write types are authorized,
+      // report "writingSome" so writes for authorized types can proceed.
       guard HKHealthStore.isHealthDataAvailable() else {
         result("unavailable")
         return
       }
-      var denied = false
-      var notAsked = false
+      var anyAuthorized = false
+      var allAuthorized = true
+      var anyDenied = false
       for type in writtenSampleTypes {
         switch store.authorizationStatus(for: type) {
-        case .sharingDenied:
-          denied = true
-        case .notDetermined:
-          notAsked = true
         case .sharingAuthorized:
-          break
+          anyAuthorized = true
+        case .sharingDenied:
+          allAuthorized = false
+          anyDenied = true
+        case .notDetermined:
+          allAuthorized = false
         @unknown default:
-          break
+          allAuthorized = false
         }
       }
-      if denied {
-        result("denied")
-      } else if notAsked {
-        result("notAsked")
-      } else {
+      if allAuthorized {
         result("granted")
+      } else if anyAuthorized {
+        result("writingSome")
+      } else if anyDenied {
+        result("denied")
+      } else {
+        result("notAsked")
       }
+
+    case "grantedWriteTypes":
+      // Issue #1555: returns the wire identifiers of authorized write types.
+      guard HKHealthStore.isHealthDataAvailable() else {
+        result([String]())
+        return
+      }
+      var granted: [String] = []
+      let categoryWires: [(String, HKCategoryTypeIdentifier)] = [
+        ("menstrualFlow", .menstrualFlow),
+        ("spotting", .intermenstrualBleeding),
+        ("cervicalMucus", .cervicalMucusQuality),
+        ("ovulationTest", .ovulationTestResult),
+        ("abdominalCramps", .abdominalCramps),
+        ("headache", .headache),
+        ("lowerBackPain", .lowerBackPain),
+        ("breastPain", .breastPain),
+        ("bloating", .bloating),
+        ("acne", .acne),
+        ("nausea", .nausea),
+        ("fatigue", .fatigue),
+        ("dizziness", .dizziness),
+        ("moodChanges", .moodChanges),
+        ("sleepChanges", .sleepChanges),
+        ("appetiteChanges", .appetiteChanges),
+      ]
+      var allSymptomsAuthorized = true
+      for (wire, identifier) in categoryWires {
+        if let sampleType = HKObjectType.categoryType(forIdentifier: identifier),
+           store.authorizationStatus(for: sampleType) == .sharingAuthorized {
+          granted.append(wire)
+        } else if HealthKitChannelHandler.symptomCategoryTypeIdentifiers.keys.contains(wire) {
+          allSymptomsAuthorized = false
+        }
+      }
+      if let bbtType = HKObjectType.quantityType(forIdentifier: .basalBodyTemperature),
+         store.authorizationStatus(for: bbtType) == .sharingAuthorized {
+        granted.append("basalBodyTemperature")
+      }
+      if allSymptomsAuthorized {
+        granted.append("symptoms")
+      }
+      result(granted)
 
     case "openPermissionSettings":
       // Issue #959: the settings deep link offered when the status line is
@@ -1009,6 +1057,9 @@ enum HealthKitChannelHandler {
           badArgs(result, "unknown symptom type: \(typeWire)")
           return
         }
+        guard store.authorizationStatus(for: categoryType) == .sharingAuthorized else {
+          continue
+        }
         // #186 sync mechanics, as for writeMenstrualFlow:
         // HKMetadataKeyExternalUUID/Identifier/Version make the write
         // idempotent and addressable by record id. No cycle-start flag —
@@ -1026,6 +1077,10 @@ enum HealthKitChannelHandler {
             ]
           )
         )
+      }
+      if toSave.isEmpty {
+        result("allowed")
+        return
       }
       save(toSave, result: result)
 
@@ -1225,6 +1280,9 @@ enum HealthKitChannelHandler {
           // `store.execute(_:)`, and `store.delete(_:withCompletion:)`).
           var toDelete: [HKSample] = []
           for sampleType in writtenSampleTypes {
+            guard store.authorizationStatus(for: sampleType) == .sharingAuthorized else {
+              continue
+            }
             toDelete.append(
               contentsOf: try await querySamples(
                 ofType: sampleType,

@@ -176,7 +176,7 @@ class HealthImportPermissionStateTest {
             assertEquals("denied", importStatus(granted, everRequested = true))
         }
         // And so does a granted write, with no marker anywhere.
-        assertEquals("denied", writeStatus(setOf(writeMenstruation), everRequested = false))
+        assertEquals("writingSome", writeStatus(setOf(writeMenstruation), everRequested = false))
         assertEquals("denied", importStatus(setOf(writeMenstruation), everRequested = false))
     }
 

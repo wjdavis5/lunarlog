@@ -217,6 +217,7 @@ class _ScriptedProbe implements HealthPermissionProbe {
     this.readThrows = false,
     this.reachesPastData = true,
     this.pastDataThrows = false,
+    this.grantedTypes = const {},
   });
 
   @override
@@ -230,14 +231,22 @@ class _ScriptedProbe implements HealthPermissionProbe {
   /// test that is not about it sees the store's whole history.
   bool reachesPastData;
   final bool pastDataThrows;
+  Set<String> grantedTypes;
   int writeProbes = 0;
   int readProbes = 0;
   int pastDataProbes = 0;
+  int grantedWriteTypesProbes = 0;
 
   @override
   Future<HealthPermissionStatus> permissionStatus() async {
     writeProbes++;
     return write;
+  }
+
+  @override
+  Future<Set<String>> grantedWriteTypes() async {
+    grantedWriteTypesProbes++;
+    return grantedTypes;
   }
 
   @override
@@ -2741,6 +2750,9 @@ void main() {
           readAccessDisclosed: false,
           write: write,
           read: HealthPermissionStatus.granted,
+          grantedTypes: write == HealthPermissionStatus.writingSome
+              ? const {'menstrualFlow'}
+              : const {},
         );
         await tester.pumpWidget(const SizedBox.shrink());
         await pumpIphone(tester, permissionProbe: probe);
@@ -2753,6 +2765,8 @@ void main() {
           statusLine(tester),
           switch (write) {
             HealthPermissionStatus.granted => 'Health app access: granted',
+            HealthPermissionStatus.writingSome =>
+              'Health app access: writing some (Basal body temperature, Cervical mucus, Ovulation test, Spotting, Symptoms off) — open Settings to change',
             HealthPermissionStatus.notAsked =>
               'Health app access: not yet asked',
             HealthPermissionStatus.denied =>
@@ -2763,7 +2777,8 @@ void main() {
         );
         expect(
           find.byKey(settingsKey),
-          write == HealthPermissionStatus.denied
+          write == HealthPermissionStatus.denied ||
+                  write == HealthPermissionStatus.writingSome
               ? findsOneWidget
               : findsNothing,
         );
@@ -2829,6 +2844,34 @@ void main() {
         permissionCalls.map((call) => call.method),
         ['permissionStatus', 'importPermissionStatus'],
       );
+    });
+
+    testWidgets(
+        'Android: writingSome shows off types and settings link (issue #1555)',
+        (tester) async {
+      final probe = _ScriptedProbe(
+        readAccessDisclosed: true,
+        write: HealthPermissionStatus.writingSome,
+        read: HealthPermissionStatus.granted,
+        grantedTypes: const {
+          'menstrualFlow',
+          'basalBodyTemperature',
+          'cervicalMucus',
+          'ovulationTest',
+          'symptoms',
+        },
+      );
+      await pumpAndroid(
+        tester,
+        binding: await boundBinding(),
+        permissionProbe: probe,
+      );
+
+      expect(
+        statusLine(tester),
+        'Health Connect access: writing some (Spotting off) — open Settings to change',
+      );
+      expect(find.byKey(settingsKey), findsOneWidget);
     });
   });
 

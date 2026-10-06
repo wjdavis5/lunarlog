@@ -71,9 +71,14 @@ String _sourceName(AppLocalizations l10n, HealthImportPlatform platform) =>
         l10n.healthSyncSourceNameHealthConnect,
     };
 
-/// What the permission probe says: the status line's state and, where the
-/// store discloses it, the read-side answer on its own (Issue #1523).
-typedef _Access = ({HealthAccessState? state, HealthPermissionStatus? read});
+/// What the permission probe says: the status line's state, where the
+/// store discloses it the read-side answer on its own (Issue #1523), and
+/// for writingSome the set of granted write types (Issue #1555).
+typedef _Access = ({
+  HealthAccessState? state,
+  HealthPermissionStatus? read,
+  Set<String>? grantedWriteTypes,
+});
 
 /// The human name of [platform]'s health store for titles and headings.
 /// Arb-backed since issue #1004, tranche 5 (`healthSyncSourceTitle*`).
@@ -225,6 +230,9 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// leave out "or read access is off" when reading is known to be on.
   HealthPermissionStatus? _readStatus;
 
+  /// The set of authorized write types for writingSome (Issue #1555).
+  Set<String>? _grantedWriteTypes;
+
   /// The store this screen is about — drives every store name and the
   /// write copy below. See [HealthSyncScreen.storePlatform] for the order.
   HealthImportPlatform get _importPlatform {
@@ -268,12 +276,21 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   }
 
   bool _sameAccess(_Access access) =>
-      access.state == _accessState && access.read == _readStatus;
+      access.state == _accessState &&
+      access.read == _readStatus &&
+      _sameGranted(access.grantedWriteTypes, _grantedWriteTypes);
+
+  static bool _sameGranted(Set<String>? a, Set<String>? b) {
+    if (identical(a, b)) return true;
+    if (a == null || b == null) return false;
+    return a.length == b.length && a.containsAll(b);
+  }
 
   /// Stores a fresh probe answer. Call inside `setState`.
   void _setAccess(_Access access) {
     _accessState = access.state;
     _readStatus = access.read;
+    _grantedWriteTypes = access.grantedWriteTypes;
   }
 
   /// Loads the bound profile id, every non-archived profile, and each
@@ -327,14 +344,49 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// the import result line (Issue #1523).
   Future<_Access> _readAccess() async {
     final probe = widget.permissionProbe;
-    if (probe == null) return (state: null, read: null);
+    if (probe == null) {
+      return (state: null, read: null, grantedWriteTypes: null);
+    }
     try {
       final write = await probe.permissionStatus();
       final read = await _readSideStatus(probe);
-      return (state: healthAccessState(write: write, read: read), read: read);
+      final state = healthAccessState(write: write, read: read);
+      Set<String>? granted;
+      if (state == HealthAccessState.writingSome) {
+        granted = await probe.grantedWriteTypes();
+      }
+      return (state: state, read: read, grantedWriteTypes: granted);
     } catch (_) {
-      return (state: HealthAccessState.unavailable, read: null);
+      return (
+        state: HealthAccessState.unavailable,
+        read: null,
+        grantedWriteTypes: null,
+      );
     }
+  }
+
+  /// Formats the comma-separated list of disabled write types for writingSome (Issue #1555).
+  String _formatOffTypes(AppLocalizations l10n, Set<String> granted) {
+    final isHealthConnect = _isHealthConnect;
+    final knownTypes = <String, String>{
+      HealthWriteTypes.basalBodyTemperature:
+          l10n.healthSyncTypeBasalBodyTemperature,
+      HealthWriteTypes.cervicalMucus: l10n.healthSyncTypeCervicalMucus,
+      HealthWriteTypes.menstrualFlow: isHealthConnect
+          ? l10n.healthSyncTypeMenstruation
+          : l10n.healthSyncTypeMenstrualFlow,
+      HealthWriteTypes.ovulationTest: l10n.healthSyncTypeOvulationTest,
+      HealthWriteTypes.spotting: l10n.healthSyncTypeSpotting,
+      if (!isHealthConnect)
+        HealthWriteTypes.symptoms: l10n.healthSyncTypeSymptoms,
+    };
+    final off = <String>[];
+    for (final entry in knownTypes.entries) {
+      if (!granted.contains(entry.key)) {
+        off.add(entry.value);
+      }
+    }
+    return off.join(', ');
   }
 
   /// The read-side answer, or null where the store does not disclose read
@@ -381,7 +433,11 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// Connect says which reads are granted, so the line tells the two
   /// directions apart (Issue #1515): someone who allowed reading and not
   /// writing is told exactly that, not "denied".
-  String _permissionStatusText(AppLocalizations l10n, HealthAccessState state) {
+  String _permissionStatusText(
+    AppLocalizations l10n,
+    HealthAccessState state, [
+    Set<String>? grantedWriteTypes,
+  ]) {
     final source = _sourceTitle(l10n, _importPlatform);
     return switch (state) {
       HealthAccessState.granted => l10n.healthSyncPermissionGranted(source),
@@ -393,6 +449,12 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
         l10n.healthSyncPermissionReadingOnly(source),
       HealthAccessState.writingOnly =>
         l10n.healthSyncPermissionWritingOnly(source),
+      HealthAccessState.writingSome => l10n.healthSyncPermissionWritingSome(
+          source,
+          grantedWriteTypes == null
+              ? ''
+              : _formatOffTypes(l10n, grantedWriteTypes),
+        ),
     };
   }
 
@@ -409,7 +471,9 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
         Padding(
           key: const ValueKey('health-sync-permission-status'),
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(_permissionStatusText(l10n, state)),
+          child: Text(
+            _permissionStatusText(l10n, state, _grantedWriteTypes),
+          ),
         ),
         // The settings link is offered only when it is actionable: a denied
         // permission, or (Issue #1515) one direction left off, is what the

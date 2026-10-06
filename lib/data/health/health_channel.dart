@@ -230,6 +230,22 @@ class MethodChannelHealthPlatform
   Future<HealthPermissionStatus> permissionStatus() =>
       _probePermission(HealthChannelMethods.permissionStatus);
 
+  /// The set of authorized write types (Issue #1555). Unguarded like
+  /// [permissionStatus]. A missing handler or error degrades to an empty set.
+  @override
+  Future<Set<String>> grantedWriteTypes() async {
+    try {
+      final raw = await channel
+          .invokeMethod<Object?>(HealthChannelMethods.grantedWriteTypes);
+      if (raw is List) {
+        return raw.whereType<String>().toSet();
+      }
+      return const <String>{};
+    } on Exception {
+      return const <String>{};
+    }
+  }
+
   /// The OS permission state for what the import reads (Issue #1491) —
   /// the background pass's gate. Unguarded and data-free like
   /// [permissionStatus], and like it a missing handler or a platform error
@@ -574,6 +590,9 @@ class UnsupportedHealthPlatform
   @override
   Future<HealthPermissionStatus> permissionStatus() async =>
       HealthPermissionStatus.unavailable;
+
+  @override
+  Future<Set<String>> grantedWriteTypes() async => const <String>{};
 
   @override
   Future<HealthPermissionStatus> importPermissionStatus() async =>

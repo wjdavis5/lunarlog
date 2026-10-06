@@ -1528,6 +1528,54 @@ abstract class AppLocalizations {
   /// **'{source} access: writing only, so lunarlog can write but can\'t import — open Settings to change'**
   String healthSyncPermissionWritingOnly(String source);
 
+  /// Health sync screen OS-permission status line (Issue #1555): some write types are allowed and some are off. {source} is the sentence-initial store name ('Health app' or 'Health Connect'). {offTypes} is a comma-separated list of types that are switched off. Shown with the settings deep link.
+  ///
+  /// In en, this message translates to:
+  /// **'{source} access: writing some ({offTypes} off) — open Settings to change'**
+  String healthSyncPermissionWritingSome(String source, String offTypes);
+
+  /// Health store write permission type name for basal body temperature (Issue #1555).
+  ///
+  /// In en, this message translates to:
+  /// **'Basal body temperature'**
+  String get healthSyncTypeBasalBodyTemperature;
+
+  /// Health store write permission type name for cervical mucus (Issue #1555).
+  ///
+  /// In en, this message translates to:
+  /// **'Cervical mucus'**
+  String get healthSyncTypeCervicalMucus;
+
+  /// Health Connect write permission type name for menstruation (Issue #1555).
+  ///
+  /// In en, this message translates to:
+  /// **'Menstruation'**
+  String get healthSyncTypeMenstruation;
+
+  /// HealthKit write permission type name for menstrual flow (Issue #1555).
+  ///
+  /// In en, this message translates to:
+  /// **'Menstrual flow'**
+  String get healthSyncTypeMenstrualFlow;
+
+  /// Health store write permission type name for ovulation test (Issue #1555).
+  ///
+  /// In en, this message translates to:
+  /// **'Ovulation test'**
+  String get healthSyncTypeOvulationTest;
+
+  /// Health store write permission type name for spotting (Issue #1555).
+  ///
+  /// In en, this message translates to:
+  /// **'Spotting'**
+  String get healthSyncTypeSpotting;
+
+  /// HealthKit write permission type name for symptoms (Issue #1555).
+  ///
+  /// In en, this message translates to:
+  /// **'Symptoms'**
+  String get healthSyncTypeSymptoms;
+
   /// Health sync screen OS-permission status line (Issue #959): there is no health store or permission surface on this device.
   ///
   /// In en, this message translates to:

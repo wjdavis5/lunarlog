@@ -516,7 +516,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
 
     final grant = await _ensureForwardOnlyCursor(
       bound.facts,
-      alreadyGranted: permission == HealthPermissionStatus.granted,
+      alreadyGranted: permission.canWriteSome,
+      currentStatus: permission,
     );
     if (grant.blocked != null) {
       // A refused/denied authorization — or `unavailable` (consent was
@@ -528,8 +529,15 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       );
     }
 
+    final grantedTypes = await _resolveGrantedTypes(grant.status);
+
     final batch = await _collectBatch(bound.profile.id, grant.cursor!);
-    final outcome = await _writeBatch(batch, bound.facts, bound.profile.id);
+    final outcome = await _writeBatch(
+      batch,
+      bound.facts,
+      bound.profile.id,
+      grantedTypes: grantedTypes,
+    );
     if (outcome.failure == null && outcome.newest != null) {
       await _settings.set(
         SettingsKeys.healthSyncWrittenThroughMs,
@@ -591,39 +599,97 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// only the reads a cursor dated at the sheet: when they turned the
   /// writes on weeks later, every day logged since was written at once,
   /// days logged while write access was refused.
-  Future<({DateTime? cursor, HealthPlatformResult? blocked, bool grantedNow})>
-      _ensureForwardOnlyCursor(
+  Future<
+      ({
+        DateTime? cursor,
+        HealthPlatformResult? blocked,
+        bool grantedNow,
+        HealthPermissionStatus status,
+      })> _ensureForwardOnlyCursor(
     HealthGuardFacts facts, {
     required bool alreadyGranted,
+    required HealthPermissionStatus currentStatus,
   }) async {
     final existing = await _readCursor();
     if (existing != null) {
-      return (cursor: existing, blocked: null, grantedNow: false);
+      return (
+        cursor: existing,
+        blocked: null,
+        grantedNow: false,
+        status: currentStatus,
+      );
     }
     if (alreadyGranted) {
-      return (cursor: await _stampCursor(), blocked: null, grantedNow: false);
+      return (
+        cursor: await _stampCursor(),
+        blocked: null,
+        grantedNow: false,
+        status: currentStatus,
+      );
     }
     final auth = await _platform.requestWriteAuthorization(facts);
-    final blocked = _notAllowed(auth) ?? await _writesStillNotGranted();
-    if (blocked == null || auth is HealthPlatformUnavailable) {
-      return (cursor: await _stampCursor(), blocked: blocked, grantedNow: true);
+    if (auth is HealthPlatformUnavailable) {
+      return (
+        cursor: await _stampCursor(),
+        blocked: auth,
+        grantedNow: true,
+        status: currentStatus,
+      );
     }
-    return (cursor: null, blocked: blocked, grantedNow: true);
+    final notAllowed = _notAllowed(auth);
+    if (notAllowed != null) {
+      return (
+        cursor: null,
+        blocked: notAllowed,
+        grantedNow: true,
+        status: currentStatus,
+      );
+    }
+    final afterAuth = await _writesStillNotGranted();
+    if (afterAuth.blocked == null) {
+      return (
+        cursor: await _stampCursor(),
+        blocked: null,
+        grantedNow: true,
+        status: afterAuth.status,
+      );
+    }
+    return (
+      cursor: null,
+      blocked: afterAuth.blocked,
+      grantedNow: true,
+      status: afterAuth.status,
+    );
   }
 
   /// After an allowed authorization request: null when the write permission
   /// is now granted, otherwise the result the pass ends with (see
   /// [_ensureForwardOnlyCursor]). A permission surface that cannot answer
   /// is reported as that, not as a denial.
-  Future<HealthPlatformResult?> _writesStillNotGranted() async =>
-      switch (await _platform.permissionStatus()) {
-        HealthPermissionStatus.granted => null,
-        HealthPermissionStatus.unavailable =>
-          const HealthPlatformResult.unavailable(),
-        HealthPermissionStatus.notAsked ||
-        HealthPermissionStatus.denied =>
-          const HealthPlatformResult.permissionDenied(),
-      };
+  Future<({HealthPlatformResult? blocked, HealthPermissionStatus status})>
+      _writesStillNotGranted() async {
+    final status = await _platform.permissionStatus();
+    final blocked = switch (status) {
+      HealthPermissionStatus.granted ||
+      HealthPermissionStatus.writingSome =>
+        null,
+      HealthPermissionStatus.unavailable =>
+        const HealthPlatformResult.unavailable(),
+      HealthPermissionStatus.notAsked ||
+      HealthPermissionStatus.denied =>
+        const HealthPlatformResult.permissionDenied(),
+    };
+    return (blocked: blocked, status: status);
+  }
+
+  /// When permission is [HealthPermissionStatus.writingSome], queries the
+  /// specific write types granted by the OS.
+  Future<Set<String>?> _resolveGrantedTypes(
+    HealthPermissionStatus status,
+  ) async =>
+      status == HealthPermissionStatus.writingSome
+          ? await _platform.grantedWriteTypes()
+          : null;
 
   /// Stamps the forward-only cursor with the current instant and returns
   /// it.
@@ -979,18 +1045,65 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// remembering the first failure and leaving the cursor — the next pass
   /// retries the batch rather than half-skipping (see the class doc's
   /// forward-only note).
+  static bool _canWriteType(Set<String>? granted, String type) =>
+      granted == null || granted.contains(type);
+
+  static HealthPlatformResult? _firstBatchFailure(
+    List<HealthPlatformResult?> results,
+  ) {
+    for (final result in results) {
+      if (result != null) return result;
+    }
+    return null;
+  }
+
+  static DateTime? _latestBatchDate(List<DateTime?> dates) {
+    DateTime? latest;
+    for (final date in dates) {
+      latest = _latest(latest, date);
+    }
+    return latest;
+  }
+
+  /// Sends the batch to the port: the per-day writes, the removal of
+  /// records an edit took away, and last the period interval records.
+  /// Keeps writing after a failure (one bad day must not hide the others),
+  /// remembering the first failure and leaving the cursor — the next pass
+  /// retries the batch rather than half-skipping (see the class doc's
+  /// forward-only note).
   Future<_BatchOutcome> _writeBatch(
     _Batch batch,
     HealthGuardFacts facts,
-    String profileId,
-  ) async {
-    final flow = await _writeFlowRecords(batch.pending, facts);
-    final symptoms = await _writeSymptomRecords(batch.pendingSymptoms, facts);
-    final cervical =
-        await _writeCervicalMucusRecords(batch.pendingCervicalMucus, facts);
-    final ovulation =
-        await _writeOvulationTestRecords(batch.pendingOvulation, facts);
-    final bbt = await _writeBbtRecords(batch.pendingBbt, facts);
+    String profileId, {
+    Set<String>? grantedTypes,
+  }) async {
+    final canWriteFlow = _canWriteType(grantedTypes, 'menstrualFlow');
+    final flow = await _writeFlowRecords(
+      batch.pending,
+      facts,
+      canWriteFlow: canWriteFlow,
+      canWriteSpotting: _canWriteType(grantedTypes, 'spotting'),
+    );
+    final symptoms = await _writeSymptomRecords(
+      batch.pendingSymptoms,
+      facts,
+      grantedTypes: grantedTypes,
+    );
+    final cervical = await _writeCervicalMucusRecords(
+      batch.pendingCervicalMucus,
+      facts,
+      allowed: _canWriteType(grantedTypes, 'cervicalMucus'),
+    );
+    final ovulation = await _writeOvulationTestRecords(
+      batch.pendingOvulation,
+      facts,
+      allowed: _canWriteType(grantedTypes, 'ovulationTest'),
+    );
+    final bbt = await _writeBbtRecords(
+      batch.pendingBbt,
+      facts,
+      allowed: _canWriteType(grantedTypes, 'basalBodyTemperature'),
+    );
     // Issue #930: after this pass's writes, reconcile away any sample a
     // PRIOR export wrote for the day/observation that no longer asserts it.
     // Runs after the writes so the remembered sets move "now" -> "after the
@@ -1000,7 +1113,12 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     // Issue #1478: and the period interval records, which no single day
     // entry owns. Last, so the days a record covers are already in the
     // store when it is written.
-    final periods = await _reconcilePeriodRecords(batch, facts, profileId);
+    final periods = await _reconcilePeriodRecords(
+      batch,
+      facts,
+      profileId,
+      allowed: canWriteFlow,
+    );
     return _BatchOutcome(
       written: flow.written,
       reconciled: flow.reconciled,
@@ -1009,19 +1127,24 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       cervicalMucusSamplesWritten: cervical.written,
       ovulationTestSamplesWritten: ovulation.written,
       basalBodyTemperatureSamplesWritten: bbt.written,
-      failure: flow.failure ??
-          symptoms.failure ??
-          cervical.failure ??
-          ovulation.failure ??
-          bbt.failure ??
-          removed ??
-          periods.failure,
+      failure: _firstBatchFailure([
+        flow.failure,
+        symptoms.failure,
+        cervical.failure,
+        ovulation.failure,
+        bbt.failure,
+        removed,
+        periods.failure,
+      ]),
       // A period record has no row of its own to advance the cursor to:
       // the days it covers are among the flow writes.
-      newest: _latest(
-        _latest(flow.newest, symptoms.newest),
-        _latest(_latest(cervical.newest, ovulation.newest), bbt.newest),
-      ),
+      newest: _latestBatchDate([
+        flow.newest,
+        symptoms.newest,
+        cervical.newest,
+        ovulation.newest,
+        bbt.newest,
+      ]),
     );
   }
 
@@ -1235,6 +1358,20 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// id with no matching store sample is a documented no-op delete, so
   /// this is issued unconditionally rather than only when a prior write is
   /// known to have happened — see [_resolveNoWriteOutcome].
+  static bool _canWriteFlowPlan(
+    _PendingWrite write, {
+    required bool canWriteFlow,
+    required bool canWriteSpotting,
+  }) {
+    if (write.plan is HealthFlowMenstrualSample && !canWriteFlow) {
+      return false;
+    }
+    if (write.plan is HealthFlowIntermenstrualMarker && !canWriteSpotting) {
+      return false;
+    }
+    return true;
+  }
+
   Future<
       ({
         int written,
@@ -1243,8 +1380,10 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         DateTime? newest,
       })> _writeFlowRecords(
     List<_PendingWrite> pending,
-    HealthGuardFacts facts,
-  ) async {
+    HealthGuardFacts facts, {
+    bool canWriteFlow = true,
+    bool canWriteSpotting = true,
+  }) async {
     var written = 0;
     var reconciled = 0;
     HealthPlatformResult? failure;
@@ -1255,9 +1394,13 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         failure ??= drift;
         break;
       }
-      final current = newest;
-      if (current == null || write.updatedAt.isAfter(current)) {
-        newest = write.updatedAt;
+      newest = _latest(newest, write.updatedAt);
+      if (!_canWriteFlowPlan(
+        write,
+        canWriteFlow: canWriteFlow,
+        canWriteSpotting: canWriteSpotting,
+      )) {
+        continue;
       }
       final result = await _resolveNoWriteOutcome(write, facts) ??
           await _sendSample(write, facts);
@@ -1361,8 +1504,12 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       _reconcilePeriodRecords(
     _Batch batch,
     HealthGuardFacts facts,
-    String profileId,
-  ) async {
+    String profileId, {
+    bool allowed = true,
+  }) async {
+    if (!allowed) {
+      return (written: 0, failure: null);
+    }
     final writes = await _writeDuePeriodRecords(batch, facts, profileId);
     if (writes.failure != null) return writes;
     return (
@@ -1514,8 +1661,9 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         DateTime? newest,
       })> _writeSymptomRecords(
     List<_PendingSymptomWrite> pendingSymptoms,
-    HealthGuardFacts facts,
-  ) async {
+    HealthGuardFacts facts, {
+    Set<String>? grantedTypes,
+  }) async {
     var written = 0;
     HealthPlatformResult? failure;
     DateTime? newest;
@@ -1525,19 +1673,22 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         failure ??= drift;
         break;
       }
-      if (newest == null || symptom.updatedAt.isAfter(newest)) {
-        newest = symptom.updatedAt;
-      }
+      newest = _latest(newest, symptom.updatedAt);
+      final samples = _filterGrantedSymptomSamples(
+        symptom.samples,
+        grantedTypes,
+      );
+      if (samples.isEmpty) continue;
       final result = await _platform.writeSymptomSamples(
         HealthSymptomSamplesWrite(
           facts: facts,
           date: symptom.date,
           tzName: symptom.tzName,
-          samples: symptom.samples,
+          samples: samples,
         ),
       );
       if (result is HealthPlatformAllowed) {
-        written += symptom.samples.length;
+        written += samples.length;
       } else if (result is HealthPlatformUnavailable) {
         continue;
       } else {
@@ -1545,6 +1696,18 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       }
     }
     return (written: written, failure: failure, newest: newest);
+  }
+
+  static List<HealthSymptomSample> _filterGrantedSymptomSamples(
+    List<HealthSymptomSample> samples,
+    Set<String>? grantedTypes,
+  ) {
+    if (grantedTypes == null || grantedTypes.contains('symptoms')) {
+      return samples;
+    }
+    return samples
+        .where((s) => grantedTypes.contains(s.healthKitTypeIdentifier))
+        .toList();
   }
 
   /// Sends the per-day cervical-mucus writes (Issue #228). Both platforms
@@ -1559,8 +1722,9 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         DateTime? newest,
       })> _writeCervicalMucusRecords(
     List<_PendingCervicalMucusWrite> pending,
-    HealthGuardFacts facts,
-  ) async {
+    HealthGuardFacts facts, {
+    bool allowed = true,
+  }) async {
     var written = 0;
     HealthPlatformResult? failure;
     DateTime? newest;
@@ -1570,9 +1734,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         failure ??= drift;
         break;
       }
-      if (newest == null || item.updatedAt.isAfter(newest)) {
-        newest = item.updatedAt;
-      }
+      newest = _latest(newest, item.updatedAt);
+      if (!allowed) continue;
       final result = await _platform.writeCervicalMucus(
         HealthCervicalMucusWrite(
           facts: facts,
@@ -1605,8 +1768,9 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         DateTime? newest,
       })> _writeOvulationTestRecords(
     List<_PendingOvulationWrite> pending,
-    HealthGuardFacts facts,
-  ) async {
+    HealthGuardFacts facts, {
+    bool allowed = true,
+  }) async {
     var written = 0;
     HealthPlatformResult? failure;
     DateTime? newest;
@@ -1616,9 +1780,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         failure ??= drift;
         break;
       }
-      if (newest == null || item.updatedAt.isAfter(newest)) {
-        newest = item.updatedAt;
-      }
+      newest = _latest(newest, item.updatedAt);
+      if (!allowed) continue;
       final result = await _platform.writeOvulationTest(
         HealthOvulationTestWrite(
           facts: facts,
@@ -1650,8 +1813,9 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         DateTime? newest,
       })> _writeBbtRecords(
     List<_PendingBbtWrite> pending,
-    HealthGuardFacts facts,
-  ) async {
+    HealthGuardFacts facts, {
+    bool allowed = true,
+  }) async {
     var written = 0;
     HealthPlatformResult? failure;
     DateTime? newest;
@@ -1661,9 +1825,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         failure ??= drift;
         break;
       }
-      if (newest == null || item.updatedAt.isAfter(newest)) {
-        newest = item.updatedAt;
-      }
+      newest = _latest(newest, item.updatedAt);
+      if (!allowed) continue;
       final result = await _platform.writeBasalBodyTemperature(
         HealthBasalBodyTemperatureWrite(
           facts: facts,
