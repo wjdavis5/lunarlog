@@ -159,6 +159,7 @@ class AppDependencies {
     required this.healthSyncAnchors,
     required this.healthSyncTombstoneSource,
     required this.healthExportLedger,
+    required this.localWriteClock,
     required this.accountExportWriter,
     required this.fhirBundleWriter,
     required this.csvExportWriter,
@@ -228,6 +229,13 @@ class AppDependencies {
   /// synced to the server; the drift `health_export_ledger` table's domain
   /// contract. Seeds both health-store deletion paths across app restarts.
   final HealthExportLedger healthExportLedger;
+
+  /// The clock a local write is stamped with: the device's, plus what
+  /// the sync engine has learned of how far it is from the server's
+  /// (Issue #1581). The health write pass stamps its forward-only floor
+  /// with it, so the floor and the rows it is compared with are timed
+  /// by one clock.
+  final DateTime Function() localWriteClock;
 
   final AccountExportWriter accountExportWriter;
   final FhirBundleWriter fhirBundleWriter;
@@ -399,6 +407,7 @@ AppDependencies buildAppDependencies({
     healthSyncAnchors: DriftHealthSyncStateRepository(storage),
     healthSyncTombstoneSource: DriftHealthSyncTombstoneSource(storage),
     healthExportLedger: DriftHealthExportLedger(storage),
+    localWriteClock: () => DateTime.now().toUtc().add(storage.clockOffset),
     accountExportWriter: PlatformAccountExportWriter(
       remoteSource: builtAccountExportRemoteSource,
     ),
@@ -756,6 +765,7 @@ HealthFlowWriteCoordinator? buildHealthFlowWriteCoordinator({
   required String? Function() signedInUserId,
   required bool minorBindingAllowed,
   required HealthExportLedger ledger,
+  DateTime Function()? rowClock,
 }) {
   if (!_healthWritesOnThisPlatform()) return null;
   final binding = HealthSyncBinding(settings);
@@ -765,6 +775,7 @@ HealthFlowWriteCoordinator? buildHealthFlowWriteCoordinator({
     minorBindingAllowed: minorBindingAllowed,
   );
   final service = LocalHealthFlowWriteService(
+    rowClock: rowClock,
     platform: platform,
     binding: binding,
     minorBindingAllowed: minorBindingAllowed,

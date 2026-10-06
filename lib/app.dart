@@ -770,6 +770,7 @@ class _LunarLogAppState extends State<LunarLogApp>
       signedInUserId: () => confirmedHealthSyncUserId(_authController),
       minorBindingAllowed: AppConfig.healthSyncMinorBindingAllowed,
       ledger: _deps.healthExportLedger,
+      rowClock: _deps.localWriteClock,
     );
     if (coordinator == null) return;
     _healthFlowCoordinator = coordinator;

@@ -23,26 +23,32 @@
 ///   echoed back — writing them would duplicate rows Apple Health already
 ///   holds and could become a loop once #217's import direction exists.
 /// * **Forward-only** — the first successful authorization stamps
-///   [SettingsKeys.healthSyncWrittenThroughMs] with the grant instant; a
-///   day is eligible only when its row's `updatedAt` is strictly after the
-///   cursor, so pre-grant history is never backfilled (Clue's own
-///   documented behavior, A3-35). A fully successful pass advances the
-///   cursor to the newest processed row's `updatedAt`; any failure leaves
-///   it (and the whole batch) to be retried by the next pass rather than
-///   half-skipping. The cursor is stored to the microsecond, the
-///   precision `updatedAt` has ([_writeCursor], Issue #1577): stored in
-///   milliseconds alone, the newest row written was still after it and
-///   was written again on every pass.
+///   [SettingsKeys.healthSyncWrittenThroughMs] with the grant instant, and
+///   that floor does not move. A row is looked at only when its
+///   `updatedAt` is strictly after it, so pre-grant history is never
+///   backfilled (Clue's own documented behavior, A3-35).
 ///
-/// **The remember-side is persisted (Issue #936).** The record ids a prior
-/// export wrote are held in the device-local [HealthExportLedger], not only
-/// in [_exportedEntryRecordIds]/[_exportedBbtRecordIds] process memory, and
-/// are seeded from it on the first pass for a bound profile. Before this,
-/// a symptom/BTT/fertility sample exported in an earlier app session was
-/// never reconciled away after a relaunch (on iOS a fresh process is the
-/// common case), because the diff's "previous" side was empty. The ledger
-/// is cleared per profile on deletion and outright on unbind; it never
-/// syncs and holds ids/provenance only.
+/// **What is sent is decided from what has been written (Issue #1581).**
+/// The record ids this device wrote are held in the device-local
+/// [HealthExportLedger] (Issue #936), each with the `updatedAt` its row
+/// had when it was written, and read through [HealthExportMemory]. A pass
+/// works out, for every row in scope, the records it should have in the
+/// store now; sends the ones the ledger does not hold at the row's
+/// present version; and deletes the ones the ledger holds that the row no
+/// longer produces. Only a write the store accepted is remembered, so a
+/// failed write, or one whose type is switched off, is still due on the
+/// next pass, and nothing that was written is sent twice.
+///
+/// Until #1581 the floor was a cursor that moved to the newest row each
+/// pass wrote, and a row was sent when it was newer than the cursor. That
+/// cannot see a row that turns up with an older time: one that arrives
+/// late from another device, a spotting entry whose day stops being a
+/// bleed day, a row stamped by a clock a few seconds behind the one that
+/// stamped the cursor, or an edit made while its type was switched off.
+/// The floor is still stored to the microsecond ([_writeCursor], Issue
+/// #1577). An install that upgrades keeps the cursor it had as its floor,
+/// and its ledger rows carry the time of the export instead of the row's
+/// version; that time is at or after the version, so they read as written.
 ///
 /// **The guard is not re-implemented here.** Every write goes through the
 /// port, whose implementations evaluate `HealthSyncBinding.canWrite` first
@@ -95,12 +101,13 @@ import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart'
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 
+import 'health_export_memory.dart';
 import 'health_fertility_mapping.dart';
 import 'health_flow_mapping.dart';
 import 'health_record_ids.dart';
 import 'health_symptom_mapping.dart';
 
-/// One eligible day's resolved write, before it is sent to the port.
+/// One due flow or spotting record, before it is sent to the port.
 class _PendingWrite {
   const _PendingWrite({
     required this.date,
@@ -109,10 +116,14 @@ class _PendingWrite {
     required this.cycleStart,
     required this.recordId,
     required this.updatedAt,
+    required this.kind,
   });
 
   final LocalDate date;
   final String tzName;
+
+  /// Never [HealthFlowNoWrite]: a row that maps to no sample is not queued
+  /// ([_Batch.add]'s callers count it instead).
   final HealthFlowWritePlan plan;
 
   /// Whether [date] is the first day of its period episode — the
@@ -124,9 +135,14 @@ class _PendingWrite {
   /// The source row's ULID (day-entry id for flow, observation id for
   /// spotting) — Issue #186 sync mechanics: becomes Health Connect's
   /// `clientRecordId` / HealthKit's `HKMetadataKeyExternalUUID` so the
-  /// write is idempotent and a tombstone can delete the exact sample.
+  /// write is idempotent and a tombstone can delete the exact sample. It
+  /// is the row's own id, which is also what the export ledger files the
+  /// record under.
   final String recordId;
   final DateTime updatedAt;
+
+  /// Whether the row is a day entry or a spotting observation.
+  final HealthExportLedgerKind kind;
 
   int get recordVersionMs => updatedAt.millisecondsSinceEpoch;
 }
@@ -164,30 +180,26 @@ class _DesiredPeriod {
   final String tzName;
 }
 
-/// A period record this device has written: the days it was last written
-/// with ([_periodInterval]) and the version that write carried.
-class _ExportedPeriod {
-  const _ExportedPeriod(this.interval, this.versionMs);
-
-  final String interval;
-  final int versionMs;
-}
-
 /// An exported period interval as the ledger stores it:
 /// `<first day>/<last day>`, ISO dates.
 String _periodInterval(LocalDate start, LocalDate end) =>
     '${start.iso}/${end.iso}';
 
-/// One day's resolved symptom writes (Issue #238): every HealthKit
-/// symptom sample the day entry's tags resolve to, in one channel call.
+/// One day's due symptom writes (Issue #238): the HealthKit symptom
+/// samples the day entry's tags resolve to that the store does not hold at
+/// this version of the entry, in one channel call.
 class _PendingSymptomWrite {
   const _PendingSymptomWrite({
+    required this.entryId,
     required this.date,
     required this.tzName,
     required this.samples,
     required this.updatedAt,
   });
 
+  /// The source day entry, which the export ledger files the samples
+  /// under.
+  final String entryId;
   final LocalDate date;
   final String tzName;
 
@@ -199,10 +211,11 @@ class _PendingSymptomWrite {
   final DateTime updatedAt;
 }
 
-/// One day's resolved cervical-mucus write (Issue #228), before the port
+/// One day's due cervical-mucus write (Issue #228), before the port
 /// payload's guard facts are attached.
 class _PendingCervicalMucusWrite {
   const _PendingCervicalMucusWrite({
+    required this.entryId,
     required this.date,
     required this.tzName,
     required this.resolved,
@@ -210,6 +223,7 @@ class _PendingCervicalMucusWrite {
     required this.updatedAt,
   });
 
+  final String entryId;
   final LocalDate date;
   final String tzName;
   final ResolvedCervicalMucus resolved;
@@ -219,9 +233,10 @@ class _PendingCervicalMucusWrite {
   int get recordVersionMs => updatedAt.millisecondsSinceEpoch;
 }
 
-/// One day's resolved ovulation-test write (Issue #228).
+/// One day's due ovulation-test write (Issue #228).
 class _PendingOvulationWrite {
   const _PendingOvulationWrite({
+    required this.entryId,
     required this.date,
     required this.tzName,
     required this.resolved,
@@ -229,6 +244,7 @@ class _PendingOvulationWrite {
     required this.updatedAt,
   });
 
+  final String entryId;
   final LocalDate date;
   final String tzName;
   final ResolvedOvulationTest resolved;
@@ -238,7 +254,7 @@ class _PendingOvulationWrite {
   int get recordVersionMs => updatedAt.millisecondsSinceEpoch;
 }
 
-/// One resolved BBT observation write (Issue #228).
+/// One due BBT observation write (Issue #228).
 class _PendingBbtWrite {
   const _PendingBbtWrite({
     required this.observationId,
@@ -263,11 +279,11 @@ class _PendingBbtWrite {
   int get recordVersionMs => updatedAt.millisecondsSinceEpoch;
 }
 
-/// Accumulates one pass's write plan: every day (whatever it maps to,
-/// [HealthFlowNoWrite] included since Issue #619's LLA-024 — see [add])
-/// joins [pending], days mapped to no sample are additionally counted in
-/// [withoutSample], period episodes join [desiredPeriods], and the Issue
-/// #228 fertility/measurement signals join their own lists.
+/// Accumulates one pass's plan: the due flow and spotting records join
+/// [pending], rows that map to no sample are counted in [withoutSample],
+/// period episodes join [desiredPeriods], the Issue #228
+/// fertility/measurement signals join their own lists, and every row in
+/// scope says what it should have in the store ([desiredByRow]).
 class _Batch {
   final List<_PendingWrite> pending = [];
   final List<_PendingSymptomWrite> pendingSymptoms = [];
@@ -276,28 +292,18 @@ class _Batch {
   final List<_PendingBbtWrite> pendingBbt = [];
   int withoutSample = 0;
 
-  /// Every record id each eligible day entry produces this pass (Issue
-  /// #930), keyed by day-entry id — the "now" side of the removed-record
-  /// diff. Built from [healthRecordIdsForEntry], never by parsing the
-  /// pending writes' ids.
-  final Map<String, Set<String>> entryRecordIds = {};
+  /// The record ids each in-scope day entry or spotting observation should
+  /// have in the store now (Issues #930 and #1581), keyed by the row's id.
+  /// Whatever the export ledger remembers for the row beyond this set is
+  /// deleted ([LocalHealthFlowWriteService._reconcileRemovedRecords]). A
+  /// row that is not in scope has no key here, and nothing of its is
+  /// touched.
+  final Map<String, Set<String>> desiredByRow = {};
 
-  /// The ISO civil date behind each [entryRecordIds] key, so the persisted
-  /// ledger can record provenance (Issue #936).
-  final Map<String, String> entryLocalDates = {};
-
-  /// Every spotting observation written through the flow writer this pass
-  /// (Issue #936), keyed by observation id: its record id and civil date.
-  /// Spotting writes are not part of [entryRecordIds], so the persisted
-  /// ledger needs them separately for the tombstone coordinator's
-  /// cross-session spotting deletion.
-  final Map<String, ({String recordId, String localDate})> spottingExports =
-      {};
-
-  /// Every live, exportable BBT observation's record id this pass,
-  /// regardless of the forward-only cursor — the "still present" side of
-  /// the BBT diff. A remembered id absent from this set is a reading the
-  /// operator cleared (its row is tombstoned or no longer resolves).
+  /// Every live, exportable BBT observation's record id this pass, whether
+  /// or not it is due — the "still present" side of the BBT diff. A
+  /// remembered id absent from this set is a reading the operator cleared
+  /// (its row is tombstoned or no longer resolves).
   final Set<String> liveBbtRecordIds = {};
 
   /// The period interval records the store should hold after this pass,
@@ -312,72 +318,59 @@ class _Batch {
   /// left alone rather than taken away.
   final List<Episode> unresolvedPeriods = [];
 
-  void add(LocalDate date, String tzName, DateTime updatedAt, String recordId,
-      HealthFlowWritePlan plan, Episode? containing) {
-    switch (plan) {
-      case HealthFlowNoWrite():
-        withoutSample++;
-        // Issue #619, LLA-024: also queued as a write-loop item so a day
-        // edited FROM an exportable value TO no sample reconciles away
-        // whatever sample a prior pass wrote under this same recordId —
-        // see _writeFlowRecords's HealthFlowNoWrite branch.
-        pending.add(_PendingWrite(
-          date: date,
-          tzName: tzName,
-          plan: plan,
-          cycleStart: false,
-          recordId: recordId,
-          updatedAt: updatedAt,
-        ));
-      case HealthFlowMenstrualSample():
-        pending.add(_PendingWrite(
-          date: date,
-          tzName: tzName,
-          plan: plan,
-          // #193 AC: the cycle-start flag is true exactly on the first
-          // day of the containing episode (per episodes.dart), false on
-          // every other written sample.
-          cycleStart: containing != null && containing.start == date,
-          recordId: recordId,
-          updatedAt: updatedAt,
-        ));
-      case HealthFlowIntermenstrualMarker():
-        pending.add(_PendingWrite(
-          date: date,
-          tzName: tzName,
-          plan: plan,
-          cycleStart: false,
-          recordId: recordId,
-          updatedAt: updatedAt,
-        ));
-    }
+  /// Queues one due record. [plan] is never [HealthFlowNoWrite].
+  void add(
+    LocalDate date,
+    String tzName,
+    DateTime updatedAt,
+    String recordId,
+    HealthFlowWritePlan plan,
+    Episode? containing,
+    HealthExportLedgerKind kind,
+  ) {
+    pending.add(_PendingWrite(
+      date: date,
+      tzName: tzName,
+      plan: plan,
+      // #193 AC: the cycle-start flag is true exactly on the first day of
+      // the containing episode (per episodes.dart) and false on every
+      // other written sample. An intermenstrual marker carries no such
+      // metadata, so it is always false there.
+      cycleStart: plan is HealthFlowMenstrualSample &&
+          containing != null &&
+          containing.start == date,
+      recordId: recordId,
+      updatedAt: updatedAt,
+      kind: kind,
+    ));
   }
 }
 
-/// One pass's aggregate write outcome, across every type (flow, period,
-/// symptom, and Issue #228's fertility/measurement signals).
+/// One pass's aggregate outcome, across every type (flow, period, symptom,
+/// and Issue #228's fertility/measurement signals).
 class _BatchOutcome {
   const _BatchOutcome({
     required this.written,
-    required this.reconciled,
+    required this.removed,
     required this.periodRecordsWritten,
     required this.symptomSamplesWritten,
     required this.cervicalMucusSamplesWritten,
     required this.ovulationTestSamplesWritten,
     required this.basalBodyTemperatureSamplesWritten,
     required this.failure,
-    required this.newest,
   });
 
   final int written;
-  final int reconciled;
+
+  /// Records taken out of the store because their row no longer produces
+  /// them.
+  final int removed;
   final int periodRecordsWritten;
   final int symptomSamplesWritten;
   final int cervicalMucusSamplesWritten;
   final int ovulationTestSamplesWritten;
   final int basalBodyTemperatureSamplesWritten;
   final HealthPlatformResult? failure;
-  final DateTime? newest;
 }
 
 class LocalHealthFlowWriteService implements HealthFlowWriteService {
@@ -393,6 +386,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     required String? Function() signedInUserId,
     required HealthExportLedger ledger,
     DateTime Function()? now,
+    DateTime Function()? rowClock,
   })  : _platform = platform,
         _binding = binding,
         _minorBindingAllowed = minorBindingAllowed,
@@ -402,8 +396,11 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         _settings = settings,
         _guardiansForProfile = guardiansForProfile,
         _signedInUserId = signedInUserId,
-        _ledger = ledger,
-        _now = now ?? (() => DateTime.now().toUtc());
+        _memory = HealthExportMemory(ledger),
+        _now = now ?? _deviceNow,
+        _rowClock = rowClock ?? now ?? _deviceNow;
+
+  static DateTime _deviceNow() => DateTime.now().toUtc();
 
   final HealthPlatformStore _platform;
   final HealthSyncBinding _binding;
@@ -415,44 +412,25 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   final GuardiansForProfile _guardiansForProfile;
   final String? Function() _signedInUserId;
 
-  /// The persisted device-local export ledger (Issue #936). Both in-memory
-  /// sets below are seeded from it on the first pass for a bound profile, so
-  /// a tombstone or an edit made in a later app session still reconciles.
-  final HealthExportLedger _ledger;
+  /// What this device has written to the store, and at which version of
+  /// each row (Issue #1581): the persisted export ledger (Issue #936),
+  /// read once for the bound profile so a tombstone or an edit made in a
+  /// later app session still reconciles. Emptied by [onUnbound].
+  final HealthExportMemory _memory;
 
+  /// The device's own clock: the version a period record is written with,
+  /// and what a reading's time is checked against before it is sent (the
+  /// store refuses a record dated in its future, and its clock is the
+  /// device's).
   final DateTime Function() _now;
 
-  /// The profile [_exportedEntryRecordIds]/[_exportedBbtRecordIds] currently
-  /// hold ledger state for; null until the first pass. Cleared by
-  /// [onUnbound].
-  String? _ledgerProfileId;
-
-  /// The record ids the previous pass recorded for each day entry (Issue
-  /// #930) — the "previously exported" side of the removed-record diff.
-  /// Keyed by day-entry id; populated from [healthRecordIdsForEntry], the
-  /// same derivation the tombstone coordinator remembers and the write path
-  /// writes, so a delete can never address an id a write did not use.
-  ///
-  /// Deliberately this service's own memory rather than the tombstone
-  /// coordinator's: only the write path knows which record was actually
-  /// exported (the coordinator's set is seeded by live stream emissions,
-  /// including rows the forward-only cursor never wrote). Persisted across
-  /// sessions in [HealthExportLedger] (Issue #936) — seeded from it by
-  /// [_ensureLedgerLoaded] on the first pass for a bound profile. See
-  /// [_reconcileRemovedRecords].
-  final Map<String, Set<String>> _exportedEntryRecordIds = {};
-
-  /// The BBT record ids a previous export wrote (Issue #930), compared
-  /// against the live BBT set on every pass so a reading cleared from a day
-  /// that itself still exists is reconciled away. Also persisted across
-  /// sessions in [HealthExportLedger] (Issue #936).
-  final Set<String> _exportedBbtRecordIds = {};
-
-  /// The period interval records this device exported (Issue #1478), by
-  /// record id. Persisted in [HealthExportLedger] as
-  /// [HealthExportLedgerKind.period] rows and seeded from it like the two
-  /// sets above. See [_reconcilePeriodRecords].
-  final Map<String, _ExportedPeriod> _exportedPeriods = {};
+  /// The clock rows are stamped with: the device's, plus what the sync
+  /// engine has learned of how far it is from the server's. Used for one
+  /// thing, the floor stamped when write access is granted (Issue #1581).
+  /// Stamped with the device's own clock on a phone running ahead of the
+  /// server, the floor was later than the time given to a day saved just
+  /// after it, and that day was never sent.
+  final DateTime Function() _rowClock;
 
   /// Runs one sync pass for the currently bound profile. Never throws —
   /// every expected failure mode is a [HealthFlowSyncReport.blocked];
@@ -468,11 +446,11 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       return const HealthFlowSyncReport(bound: false);
     }
 
-    // Issue #936: seed the remembered export sets from the persisted ledger
-    // before diffing, so a relaunch (a fresh process on iOS is the common
-    // case) still reconciles a tombstone or edit made in an earlier
-    // session.
-    await _ensureLedgerLoaded(bound.profile.id);
+    // Issue #936: read what this device has written from the persisted
+    // ledger before deciding anything, so a relaunch (a fresh process on
+    // iOS is the common case) neither sends everything again nor misses
+    // an edit made in an earlier session.
+    await _memory.load(bound.profile.id);
 
     // Pre-flight only (the port re-checks per call, natively mirrored):
     // refuses the pass before any channel traffic when the guard would
@@ -542,9 +520,6 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       bound.profile.id,
       grantedTypes: grantedTypes,
     );
-    if (outcome.failure == null && outcome.newest != null) {
-      await _writeCursor(outcome.newest!);
-    }
 
     return HealthFlowSyncReport(
       bound: true,
@@ -558,7 +533,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       basalBodyTemperatureSamplesWritten:
           outcome.basalBodyTemperatureSamplesWritten,
       daysWithoutSample: batch.withoutSample,
-      samplesReconciled: outcome.reconciled,
+      samplesReconciled: outcome.removed,
     );
   }
 
@@ -692,10 +667,10 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
           ? await _platform.grantedWriteTypes()
           : null;
 
-  /// Stamps the forward-only cursor with the current instant and returns
-  /// it.
+  /// Stamps the forward-only floor with the present moment, by the clock
+  /// rows are stamped with ([_rowClock]), and returns it.
   Future<DateTime> _stampCursor() async {
-    final stamped = _now();
+    final stamped = _rowClock();
     await _writeCursor(stamped);
     return stamped;
   }
@@ -719,80 +694,99 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     );
   }
 
-  /// Builds the pass's write batch from the bound profile's day entries
-  /// and observations: everything strictly newer than [cursor]
-  /// (forward-only), mapped through `health_flow_mapping.dart`,
+  /// Builds the pass's plan from the bound profile's day entries and
+  /// observations (Issue #1581). Every row in scope ([_inScope]) says
+  /// which records it should have in the store now
+  /// ([_Batch.desiredByRow]); of those, the ones the store does not hold
+  /// at the row's present version ([_isDue]) are queued to be written.
+  /// Mapped through `health_flow_mapping.dart`,
   /// `health_symptom_mapping.dart`, and — Issue #228 —
-  /// `health_fertility_mapping.dart`, plus the period interval records
-  /// the store should hold (Issue #202 — see [_collectPeriods]).
-  Future<_Batch> _collectBatch(String profileId, DateTime cursor) async {
+  /// `health_fertility_mapping.dart`, plus the period interval records the
+  /// store should hold (Issue #202 — see [_collectPeriods]).
+  Future<_Batch> _collectBatch(String profileId, DateTime floor) async {
     final entries = await _dayEntries.listForProfile(profileId);
     final observationRows = await _observations.listForProfile(profileId);
-    final spottingRows = [
-      for (final observation in observationRows)
-        if (observation.category == ObservationCategory.spotting) observation,
-    ];
-    // Issue #238 / Issue #934: index pain observations by entry id and date
-    // so each entry resolves its own graded pain severity rather than
-    // inheriting the profile's lifetime maximum.
-    final painByEntryId = <String, List<Observation>>{};
-    final painByDate = <LocalDate, List<Observation>>{};
+    final pain = _indexPain(observationRows);
+    final bleedDays = bleedDatesOf(entries);
+    final episodes = deriveEpisodes(bleedDays);
+    final batch = _Batch();
+    _collectPeriods(profileId, entries, floor, batch);
+    for (final entry in entries) {
+      if (!_inScope(entry.id, entry.updatedAt, entry.source, floor)) continue;
+      _collectEntry(
+        entry,
+        _containing(episodes, entry.localDate),
+        _gradedPainForEntry(entry, pain.byEntryId, pain.byDate),
+        batch,
+      );
+    }
+    _collectObservationWrites(
+      observationRows: observationRows,
+      bleedDays: bleedDays,
+      episodes: episodes,
+      batch: batch,
+      floor: floor,
+    );
+    return batch;
+  }
+
+  /// Issue #238 / Issue #934: the pain observations by entry id and by
+  /// date, so each entry resolves its own graded pain severity rather than
+  /// inheriting the profile's lifetime maximum.
+  static ({
+    Map<String, List<Observation>> byEntryId,
+    Map<LocalDate, List<Observation>> byDate,
+  }) _indexPain(List<Observation> observationRows) {
+    final byEntryId = <String, List<Observation>>{};
+    final byDate = <LocalDate, List<Observation>>{};
     for (final observation in observationRows) {
       if (observation.category != ObservationCategory.pain) continue;
-      painByEntryId
-          .putIfAbsent(observation.dayEntryId, () => [])
-          .add(observation);
-      painByDate
-          .putIfAbsent(observation.localDate, () => [])
-          .add(observation);
+      byEntryId.putIfAbsent(observation.dayEntryId, () => []).add(observation);
+      byDate.putIfAbsent(observation.localDate, () => []).add(observation);
     }
-    final episodes = deriveEpisodes(bleedDatesOf(entries));
-    final bleedDays = bleedDatesOf(entries);
-    final batch = _Batch();
-    _collectPeriods(profileId, entries, cursor, batch);
+    return (byEntryId: byEntryId, byDate: byDate);
+  }
 
-    for (final entry in entries) {
-      if (!_isEligible(entry.updatedAt, entry.source, cursor)) continue;
-      final containing = _containing(episodes, entry.localDate);
+  /// One in-scope day entry's part of the plan: the records it should have
+  /// in the store, and the writes for those that are due.
+  void _collectEntry(
+    DayEntry entry,
+    Episode? containing,
+    Map<String, int> gradedPain,
+    _Batch batch,
+  ) {
+    final desired = healthRecordIdsForEntry(entry);
+    final flowId = healthFlowRecordId(entry.id);
+    final plan = mapFlowToHealthWrite(
+      entry.flow,
+      inPeriodEpisode: containing != null,
+    );
+    if (plan is HealthFlowNoWrite) {
+      // [healthRecordIdsForEntry] always names the flow record, because a
+      // tombstone has to be able to address it. A day with no flow to
+      // write should have none in the store: if an earlier pass wrote one
+      // (Issue #619, LLA-024 — bleeding edited to `notBleeding`), leaving
+      // it out here is what gets it deleted.
+      desired.remove(flowId);
+      batch.withoutSample++;
+    } else if (_isDue(flowId, entry.updatedAt)) {
       batch.add(
         entry.localDate,
         entry.tz,
         entry.updatedAt,
-        healthFlowRecordId(entry.id),
-        mapFlowToHealthWrite(
-          entry.flow,
-          inPeriodEpisode: containing != null,
-        ),
+        flowId,
+        plan,
         containing,
+        HealthExportLedgerKind.entry,
       );
-      final gradedPain = _gradedPainForEntry(
-        entry,
-        painByEntryId,
-        painByDate,
-      );
-      final symptomWrite = _symptomWriteFor(entry, gradedPain);
-      if (symptomWrite != null) batch.pendingSymptoms.add(symptomWrite);
-      final fertility = _fertilityWritesFor(entry);
-      final cervical = fertility.cervicalMucus;
-      if (cervical != null) batch.pendingCervicalMucus.add(cervical);
-      batch.pendingOvulation.addAll(fertility.ovulation);
-      // Issue #930: the ids this entry asserts *now*, for the reconcile
-      // diff against what the previous export wrote for it.
-      batch.entryRecordIds[entry.id] = healthRecordIdsForEntry(entry);
-      // Issue #936: the date behind that grouping key, for the persisted
-      // ledger's provenance.
-      batch.entryLocalDates[entry.id] = entry.localDate.iso;
     }
-
-    _collectObservationWrites(
-      observationRows: observationRows,
-      spottingRows: spottingRows,
-      bleedDays: bleedDays,
-      episodes: episodes,
-      batch: batch,
-      cursor: cursor,
-    );
-    return batch;
+    batch.desiredByRow[entry.id] = desired;
+    final symptomWrite = _symptomWriteFor(entry, gradedPain);
+    if (symptomWrite != null) batch.pendingSymptoms.add(symptomWrite);
+    final fertility = _fertilityWritesFor(entry);
+    final cervical = fertility.cervicalMucus;
+    if (cervical != null) batch.pendingCervicalMucus.add(cervical);
+    batch.pendingOvulation.addAll(fertility.ovulation);
   }
 
   /// Decides which period interval records the store should hold after
@@ -801,8 +795,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// store match. Three rules:
   ///
   /// * **Hand-logged days only.** The episodes are derived from the bleed
-  ///   days lunarlog itself logged — the same source test [_isEligible]
-  ///   applies, without the cursor. A day imported from Apple Health or
+  ///   days lunarlog itself logged — the same source test [_inScope]
+  ///   applies, without the floor. A day imported from Apple Health or
   ///   Health Connect can therefore never start, extend, or reshape a
   ///   written period: an import (a background one included) writes
   ///   nothing back to the store. It also means the record's zone always
@@ -827,7 +821,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   void _collectPeriods(
     String profileId,
     List<DayEntry> entries,
-    DateTime cursor,
+    DateTime floor,
     _Batch batch,
   ) {
     final own = <LocalDate, DayEntry>{
@@ -837,7 +831,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     for (final episode in deriveEpisodes(own.keys)) {
       if (episode.lengthDays > kHealthPeriodRecordMaxDays) continue;
       final days = _handLoggedDaysOf(episode, own);
-      if (!days.any((day) => _isOrWillBeExported(day, cursor))) continue;
+      if (!days.any((day) => _isOrWillBeExported(day, floor))) continue;
       final tzName = _firstResolvableZone(days, episode);
       if (tzName == null) {
         batch.unresolvedPeriods.add(episode);
@@ -860,11 +854,11 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       !_isHealthStoreImport(entry.source);
 
   /// Whether the store holds, or is about to be sent, a record for [day]:
-  /// the export ledger remembers one from an earlier pass, or the row is
-  /// newer than the forward-only [cursor] and so is written by this one.
-  bool _isOrWillBeExported(DayEntry day, DateTime cursor) =>
-      _exportedEntryRecordIds.containsKey(day.id) ||
-      day.updatedAt.isAfter(cursor);
+  /// the export ledger remembers one, or the row was saved after the
+  /// forward-only [floor], so this pass writes it if an earlier one has
+  /// not.
+  bool _isOrWillBeExported(DayEntry day, DateTime floor) =>
+      _memory.knowsRow(day.id) || day.updatedAt.isAfter(floor);
 
   /// [episode]'s hand-logged bleed days, first to last.
   static List<DayEntry> _handLoggedDaysOf(
@@ -896,142 +890,168 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     return null;
   }
 
-  /// The two observation-row loops of [_collectBatch] (spotting markers and
-  /// Issue #228's BBT values), extracted so [_collectBatch]'s own
-  /// cyclomatic complexity stays under the quality gate's CRAP ceiling.
+  /// The observation half of [_collectBatch]: spotting markers and Issue
+  /// #228's BBT values.
   void _collectObservationWrites({
     required List<Observation> observationRows,
-    required List<Observation> spottingRows,
     required Set<LocalDate> bleedDays,
     required List<Episode> episodes,
     required _Batch batch,
-    required DateTime cursor,
+    required DateTime floor,
   }) {
-    for (final row in spottingRows) {
-      if (!_isEligible(row.updatedAt, row.source, cursor)) continue;
-      if (bleedDays.contains(row.localDate)) {
-        // The day's own flow sample already carries the intensity — a
-        // spotting record alongside it would write a second, contradictory
-        // menstrual sample for the same day.
-        batch.withoutSample++;
-        continue;
-      }
-      final containing = _containing(episodes, row.localDate);
-      batch.add(
-        row.localDate,
-        row.tz,
-        row.updatedAt,
-        healthSpottingRecordId(row.id),
-        mapSpottingToHealthWrite(inPeriodEpisode: containing != null),
-        containing,
-      );
-      // Issue #936: remember this spotting export for the persisted ledger
-      // (its own record id, keyed by the observation id), so a later
-      // session's tombstone can delete it.
-      batch.spottingExports[row.id] = (
-        recordId: healthSpottingRecordId(row.id),
-        localDate: row.localDate.iso,
-      );
-    }
-
-    // Issue #228: the bbt observations. `_bbtWriteFor` enforces source
-    // separation (resolveBasalBodyTemperature returns null for a
-    // platform/wearable-sourced or excluded row).
     for (final row in observationRows) {
-      // Issue #930: every *live* exportable BBT row counts as present even
-      // when the forward-only cursor excludes it from this pass's writes —
-      // so an unchanged reading is never mistaken for a cleared one.
+      if (row.category == ObservationCategory.spotting) {
+        _collectSpotting(row, bleedDays, episodes, batch, floor);
+      }
+      // Issue #930: every *live* exportable BBT row counts as present,
+      // whether or not it is due, so an unchanged reading is never mistaken
+      // for a cleared one. `_bbtWriteFor` enforces source separation
+      // (resolveBasalBodyTemperature returns null for a platform- or
+      // wearable-sourced or excluded row).
       if (resolveBasalBodyTemperature(row) != null) {
         batch.liveBbtRecordIds.add(healthBbtRecordId(row.id));
       }
-      final bbt = _bbtWriteFor(row, cursor);
+      final bbt = _bbtWriteFor(row, floor);
       if (bbt != null) batch.pendingBbt.add(bbt);
     }
   }
 
-  /// Resolves one eligible day entry's fertility tags (Issue #228): its
-  /// cervical-mucus appearance (at most one — discharge is single-select)
-  /// and its ovulation-test results (deduplicated by platform result).
+  /// One spotting observation's part of the plan.
+  ///
+  /// On a bleed day it should have nothing in the store: the day's own
+  /// flow sample already carries the intensity, and a spotting record
+  /// beside it would be a second, contradictory sample for the same day.
+  /// The row stays in scope all the same (Issue #1581), which is what puts
+  /// both changes of mind right. A marker written before the day was given
+  /// a flow is taken out; and when a flow is cleared, the spotting entry
+  /// under it, which nothing has touched, is written.
+  void _collectSpotting(
+    Observation row,
+    Set<LocalDate> bleedDays,
+    List<Episode> episodes,
+    _Batch batch,
+    DateTime floor,
+  ) {
+    if (!_inScope(row.id, row.updatedAt, row.source, floor)) return;
+    if (bleedDays.contains(row.localDate)) {
+      batch.withoutSample++;
+      batch.desiredByRow[row.id] = const {};
+      return;
+    }
+    final recordId = healthSpottingRecordId(row.id);
+    batch.desiredByRow[row.id] = {recordId};
+    if (!_isDue(recordId, row.updatedAt)) return;
+    final containing = _containing(episodes, row.localDate);
+    batch.add(
+      row.localDate,
+      row.tz,
+      row.updatedAt,
+      recordId,
+      mapSpottingToHealthWrite(inPeriodEpisode: containing != null),
+      containing,
+      HealthExportLedgerKind.spotting,
+    );
+  }
+
+  /// Resolves one in-scope day entry's fertility tags (Issue #228) into
+  /// the writes that are due: its cervical-mucus appearance (at most one —
+  /// discharge is single-select) and its ovulation-test results
+  /// (deduplicated by platform result).
   ({
     _PendingCervicalMucusWrite? cervicalMucus,
     List<_PendingOvulationWrite> ovulation,
   }) _fertilityWritesFor(DayEntry entry) {
     final cervical = resolveCervicalMucus(entry.tags);
-    final ovulation = resolveOvulationTests(entry.tags);
+    final cervicalId = healthCervicalMucusRecordId(entry.id);
     return (
-      cervicalMucus: cervical == null
+      cervicalMucus: cervical == null || !_isDue(cervicalId, entry.updatedAt)
           ? null
           : _PendingCervicalMucusWrite(
+              entryId: entry.id,
               date: entry.localDate,
               tzName: entry.tz,
               resolved: cervical,
-              recordId: healthCervicalMucusRecordId(entry.id),
+              recordId: cervicalId,
               updatedAt: entry.updatedAt,
             ),
       ovulation: [
-        for (final result in ovulation)
-          _PendingOvulationWrite(
-            date: entry.localDate,
-            tzName: entry.tz,
-            resolved: result,
-            recordId:
-                healthOvulationRecordId(entry.id, result.healthKitResult),
-            updatedAt: entry.updatedAt,
-          ),
+        for (final result in resolveOvulationTests(entry.tags))
+          if (_isDue(
+            healthOvulationRecordId(entry.id, result.healthKitResult),
+            entry.updatedAt,
+          ))
+            _PendingOvulationWrite(
+              entryId: entry.id,
+              date: entry.localDate,
+              tzName: entry.tz,
+              resolved: result,
+              recordId:
+                  healthOvulationRecordId(entry.id, result.healthKitResult),
+              updatedAt: entry.updatedAt,
+            ),
       ],
     );
   }
 
   /// Resolves one BBT observation row (Issue #228), or null when it is not
-  /// an eligible manually tracked/imported `bbt` value. Source separation
-  /// is enforced by [resolveBasalBodyTemperature] (a platform- or
-  /// wearable-sourced value produces no write) and by [_isEligible]
-  /// (forward-only, never echo a health-store-sourced row).
-  _PendingBbtWrite? _bbtWriteFor(Observation row, DateTime cursor) {
+  /// a manually tracked/imported `bbt` value that is in scope and due.
+  /// Source separation is enforced by [resolveBasalBodyTemperature] (a
+  /// platform- or wearable-sourced value produces no write) and by
+  /// [_inScope] (forward-only, never echo a health-store-sourced row).
+  _PendingBbtWrite? _bbtWriteFor(Observation row, DateTime floor) {
     if (row.category != ObservationCategory.bbt) return null;
-    if (!_isEligible(row.updatedAt, row.source, cursor)) return null;
+    if (!_inScope(row.id, row.updatedAt, row.source, floor)) return null;
     final resolved = resolveBasalBodyTemperature(row);
     if (resolved == null) return null;
+    final recordId = healthBbtRecordId(row.id);
+    if (!_isDue(recordId, row.updatedAt)) return null;
     return _PendingBbtWrite(
       observationId: row.id,
       date: row.localDate,
       tzName: row.tz,
       resolved: resolved,
-      recordId: healthBbtRecordId(row.id),
+      recordId: recordId,
       updatedAt: row.updatedAt,
       observedAt: row.observedAt,
     );
   }
 
-  /// Resolves one eligible day entry's [DayEntry.tags] into its symptom
-  /// write, or null when the day carries no mapped symptom. Never sends an
-  /// empty batch (the port documents that at least one sample is present).
+  /// Resolves one in-scope day entry's [DayEntry.tags] into its due
+  /// symptom write, or null when the day carries no mapped symptom that
+  /// the store does not already hold at this version of the entry. Never
+  /// sends an empty batch (the port documents that at least one sample is
+  /// present).
   _PendingSymptomWrite? _symptomWriteFor(
     DayEntry entry,
     Map<String, int> gradedPain,
   ) {
-    final resolved = resolveHealthKitSymptoms(
-      tags: entry.tags,
-      gradedPainIntensities: gradedPain,
-    );
-    if (resolved.isEmpty) return null;
     final versionMs = entry.updatedAt.millisecondsSinceEpoch;
-    return _PendingSymptomWrite(
-      date: entry.localDate,
-      tzName: entry.tz,
-      updatedAt: entry.updatedAt,
-      samples: [
-        for (final symptom in resolved)
+    final due = [
+      for (final symptom in resolveHealthKitSymptoms(
+        tags: entry.tags,
+        gradedPainIntensities: gradedPain,
+      ))
+        if (_isDue(
+          healthSymptomRecordId(entry.id, symptom.typeIdentifier),
+          entry.updatedAt,
+        ))
           HealthSymptomSample(
             healthKitTypeIdentifier: symptom.typeIdentifier,
             severity: symptom.severity,
             // Stable per (day entry, symptom type): a re-write replaces the
-            // same sample (sync identifier/version), and a future
-            // reconciliation can address it by this exact id.
+            // same sample (sync identifier/version), and a later removal
+            // can address it by this exact id.
             recordId: healthSymptomRecordId(entry.id, symptom.typeIdentifier),
             recordVersionMs: versionMs,
           ),
-      ],
+    ];
+    if (due.isEmpty) return null;
+    return _PendingSymptomWrite(
+      entryId: entry.id,
+      date: entry.localDate,
+      tzName: entry.tz,
+      updatedAt: entry.updatedAt,
+      samples: due,
     );
   }
 
@@ -1056,12 +1076,6 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     return gradedPainIntensitiesFrom(combined);
   }
 
-  /// Sends the batch to the port: the per-day writes, the removal of
-  /// records an edit took away, and last the period interval records.
-  /// Keeps writing after a failure (one bad day must not hide the others),
-  /// remembering the first failure and leaving the cursor — the next pass
-  /// retries the batch rather than half-skipping (see the class doc's
-  /// forward-only note).
   static bool _canWriteType(Set<String>? granted, String type) =>
       granted == null || granted.contains(type);
 
@@ -1074,59 +1088,55 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     return null;
   }
 
-  static DateTime? _latestBatchDate(List<DateTime?> dates) {
-    DateTime? latest;
-    for (final date in dates) {
-      latest = _latest(latest, date);
-    }
-    return latest;
-  }
-
-  /// Sends the batch to the port: the per-day writes, the removal of
-  /// records an edit took away, and last the period interval records.
-  /// Keeps writing after a failure (one bad day must not hide the others),
-  /// remembering the first failure and leaving the cursor — the next pass
-  /// retries the batch rather than half-skipping (see the class doc's
-  /// forward-only note).
+  /// Sends the plan to the port: the due writes, then the removal of
+  /// records their rows no longer produce, and last the period interval
+  /// records. Keeps going after a failure (one bad day must not hide the
+  /// others) and reports the first one. Nothing that failed is remembered
+  /// as written, so the next pass sends it again; everything the store
+  /// accepted is, so the next pass does not.
   Future<_BatchOutcome> _writeBatch(
     _Batch batch,
     HealthGuardFacts facts,
     String profileId, {
     Set<String>? grantedTypes,
   }) async {
-    final canWriteFlow = _canWriteType(grantedTypes, 'menstrualFlow');
+    final canWriteFlow =
+        _canWriteType(grantedTypes, HealthWriteTypes.menstrualFlow);
     final flow = await _writeFlowRecords(
       batch.pending,
       facts,
+      profileId,
       canWriteFlow: canWriteFlow,
-      canWriteSpotting: _canWriteType(grantedTypes, 'spotting'),
+      canWriteSpotting: _canWriteType(grantedTypes, HealthWriteTypes.spotting),
     );
     final symptoms = await _writeSymptomRecords(
       batch.pendingSymptoms,
       facts,
+      profileId,
       grantedTypes: grantedTypes,
     );
     final cervical = await _writeCervicalMucusRecords(
       batch.pendingCervicalMucus,
       facts,
-      allowed: _canWriteType(grantedTypes, 'cervicalMucus'),
+      profileId,
+      allowed: _canWriteType(grantedTypes, HealthWriteTypes.cervicalMucus),
     );
     final ovulation = await _writeOvulationTestRecords(
       batch.pendingOvulation,
       facts,
-      allowed: _canWriteType(grantedTypes, 'ovulationTest'),
+      profileId,
+      allowed: _canWriteType(grantedTypes, HealthWriteTypes.ovulationTest),
     );
     final bbt = await _writeBbtRecords(
       batch.pendingBbt,
       facts,
-      allowed: _canWriteType(grantedTypes, 'basalBodyTemperature'),
+      profileId,
+      allowed:
+          _canWriteType(grantedTypes, HealthWriteTypes.basalBodyTemperature),
     );
-    // Issue #930: after this pass's writes, reconcile away any sample a
-    // PRIOR export wrote for the day/observation that no longer asserts it.
-    // Runs after the writes so the remembered sets move "now" -> "after the
-    // write"; a failure here blocks the pass (and leaves the cursor) so the
-    // removal is retried rather than silently skipped.
-    final removed = await _reconcileRemovedRecords(batch, facts, profileId);
+    // Issue #930: after this pass's writes, take out any record a row put
+    // in the store and no longer produces.
+    final removed = await _reconcileRemovedRecords(batch, facts, grantedTypes);
     // Issue #1478: and the period interval records, which no single day
     // entry owns. Last, so the days a record covers are already in the
     // store when it is written.
@@ -1138,7 +1148,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     );
     return _BatchOutcome(
       written: flow.written,
-      reconciled: flow.reconciled,
+      removed: removed.removed,
       periodRecordsWritten: periods.written,
       symptomSamplesWritten: symptoms.written,
       cervicalMucusSamplesWritten: cervical.written,
@@ -1150,181 +1160,123 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         cervical.failure,
         ovulation.failure,
         bbt.failure,
-        removed,
+        removed.failure,
         periods.failure,
-      ]),
-      // A period record has no row of its own to advance the cursor to:
-      // the days it covers are among the flow writes.
-      newest: _latestBatchDate([
-        flow.newest,
-        symptoms.newest,
-        cervical.newest,
-        ovulation.newest,
-        bbt.newest,
       ]),
     );
   }
 
-  /// Seeds [_exportedEntryRecordIds]/[_exportedBbtRecordIds] from the
-  /// persisted ledger (Issue #936) the first time a pass runs for
-  /// [profileId]. A relaunch — a fresh process on iOS is the common case,
-  /// not an edge case — otherwise starts with empty sets, so
-  /// `previous.difference(current)` is always empty and an edit made in an
-  /// earlier session is never reconciled away.
-  ///
-  /// Spotting rows are deliberately not loaded into memory: the write path
-  /// only diffs entry-derived and BBT records, while the persisted spotting
-  /// rows exist for the tombstone coordinator's own cross-session deletion.
-  Future<void> _ensureLedgerLoaded(String profileId) async {
-    if (_ledgerProfileId == profileId) return;
-    final rows = await _ledger.readForProfile(profileId);
-    _exportedEntryRecordIds.clear();
-    _exportedBbtRecordIds.clear();
-    _exportedPeriods.clear();
-    for (final row in rows) {
-      switch (row.kind) {
-        case HealthExportLedgerKind.entry:
-          _exportedEntryRecordIds
-              .putIfAbsent(row.sourceRowId, () => <String>{})
-              .add(row.recordId);
-        case HealthExportLedgerKind.bbt:
-          _exportedBbtRecordIds.add(row.recordId);
-        case HealthExportLedgerKind.period:
-          // The row's export instant is the version the record was written
-          // with ([_rememberPeriod]).
-          _exportedPeriods[row.recordId] = _ExportedPeriod(
-            row.sourceRowId,
-            row.exportedAt.millisecondsSinceEpoch,
-          );
-        case HealthExportLedgerKind.spotting:
-          break;
-      }
-    }
-    _ledgerProfileId = profileId;
-  }
-
-  /// Reconciles the records a *previous* export wrote against what this pass
-  /// found (Issue #930) — the fix for a symptom/BTT/fertility sample left
-  /// orphaned when a live day entry is edited rather than deleted.
-  ///
-  /// The remembered set is this service's own [_exportedEntryRecordIds] /
-  /// [_exportedBbtRecordIds], seeded from the persisted device-local ledger
-  /// (Issue #936, [HealthExportLedger]) and otherwise maintained from this
-  /// device's own exports through [healthRecordIdsForEntry] and the BBT
-  /// builder. A remembered id that the current state no longer produces is
-  /// deleted; an id that is unchanged (a graded intensity or flow edit
-  /// rewrites the same id) is left alone. Deleting is a health-API touch,
-  /// so it goes through the same `_authorityDrift` recheck and guarded
-  /// [HealthPlatformStore.deleteRecords] as every write — no new bypass.
-  /// Returns the first removal failure, or null when every removal was
-  /// allowed.
-  Future<HealthPlatformResult?> _reconcileRemovedRecords(
-    _Batch batch,
-    HealthGuardFacts facts,
-    String profileId,
-  ) async {
-    final entryFailure =
-        await _reconcileEntryRemovals(batch, facts, profileId);
-    final bbtFailure = await _reconcileBbtRemovals(batch, facts);
-    // Only once the BBT diff is computed: every BBT id this pass exported is
-    // remembered so a LATER clear can address it.
-    final bbtExports = <HealthExportLedgerEntry>[];
-    for (final item in batch.pendingBbt) {
-      _exportedBbtRecordIds.add(item.recordId);
-      bbtExports.add(HealthExportLedgerEntry(
-        recordId: item.recordId,
-        profileId: profileId,
-        sourceRowId: item.observationId,
-        kind: HealthExportLedgerKind.bbt,
-        localDate: item.date.iso,
-        exportedAt: _now(),
-      ));
-    }
-    // Issue #936: spotting exports are persisted too, so a tombstone in a
-    // later session can still delete them (the coordinator seeds its own
-    // observation memory from the ledger).
-    final spottingExports = <HealthExportLedgerEntry>[];
-    for (final export in batch.spottingExports.entries) {
-      spottingExports.add(HealthExportLedgerEntry(
-        recordId: export.value.recordId,
-        profileId: profileId,
-        sourceRowId: export.key,
-        kind: HealthExportLedgerKind.spotting,
-        localDate: export.value.localDate,
-        exportedAt: _now(),
-      ));
-    }
-    await _ledger.record([...bbtExports, ...spottingExports]);
-    return entryFailure ?? bbtFailure;
-  }
-
-  /// The day-entry half of [_reconcileRemovedRecords]: for every eligible
-  /// entry, delete the ids it produced on a previous export but no longer
-  /// produces, then remember the current set. A delete failure leaves the
-  /// old set in place so the removal is retried on the next pass (LLA-019's
-  /// discipline), rather than being silently acknowledged. The persisted
-  /// ledger moves in lockstep: removed ids are dropped on a successful
-  /// delete, and the current set is written so the next session's diff sees
-  /// it.
-  Future<HealthPlatformResult?> _reconcileEntryRemovals(
-    _Batch batch,
-    HealthGuardFacts facts,
-    String profileId,
-  ) async {
-    HealthPlatformResult? failure;
-    for (final entry in batch.entryRecordIds.entries) {
-      final current = entry.value;
-      final previous = _exportedEntryRecordIds[entry.key] ?? const <String>{};
-      final removed = previous.difference(current);
-      if (removed.isNotEmpty) {
-        final drift = await _authorityDrift(facts);
-        if (drift != null) {
-          failure ??= drift;
-          continue;
-        }
-        final result = await _platform.deleteRecords(facts, removed.toList());
-        if (result is! HealthPlatformAllowed) {
-          failure ??= result;
-          continue;
-        }
-        await _ledger.removeRecordIds(removed.toList());
-      }
-      _exportedEntryRecordIds[entry.key] = current;
-      await _ledger.record([
-        for (final recordId in current)
-          HealthExportLedgerEntry(
-            recordId: recordId,
-            profileId: profileId,
-            sourceRowId: entry.key,
-            kind: HealthExportLedgerKind.entry,
-            localDate: batch.entryLocalDates[entry.key] ?? '',
-            exportedAt: _now(),
-          ),
+  /// Remembers that the store accepted [recordId] for its row as it stood
+  /// at [version]. The only way a day's or an observation's record enters
+  /// the export ledger, so the ledger never names a record that was not
+  /// written.
+  Future<void> _remember(
+    String profileId, {
+    required String recordId,
+    required String sourceRowId,
+    required HealthExportLedgerKind kind,
+    required LocalDate date,
+    required DateTime version,
+  }) =>
+      _memory.remember([
+        HealthExportLedgerEntry(
+          recordId: recordId,
+          profileId: profileId,
+          sourceRowId: sourceRowId,
+          kind: kind,
+          localDate: date.iso,
+          exportedAt: version,
+        ),
       ]);
-    }
-    return failure;
-  }
 
-  /// The BBT half of [_reconcileRemovedRecords]: a remembered BBT record
-  /// whose observation is no longer live-and-resolved (the operator cleared
-  /// the reading, leaving the day itself in place) is deleted. The memory is
-  /// only cleared on success, so a refusal retries; the persisted ledger
-  /// row is dropped only alongside the same successful delete.
-  Future<HealthPlatformResult?> _reconcileBbtRemovals(
+  /// Takes out of the store every record a row put there and no longer
+  /// produces (Issue #930; rewritten by Issue #1581): a symptom or a
+  /// fertility tag removed from a day, a flow cleared, a spotting entry
+  /// whose day was given a flow, a reading cleared or excluded.
+  ///
+  /// The comparison is between what the export ledger remembers for a row
+  /// and what the row produces now ([_Batch.desiredByRow]), so it covers
+  /// every row in scope on every pass, not only the rows that changed
+  /// since the last one. An id that is unchanged (a graded intensity or a
+  /// flow edit rewrites the same id) is left alone. One delete is sent for
+  /// each row, so a failure costs that row's removals and no others, and a
+  /// record is forgotten only when the store has let it go: a delete that
+  /// failed is sent again on the next pass.
+  ///
+  /// A record whose type is switched off is not asked for at all
+  /// ([healthRecordDeletable]). The native halves pass over a type they
+  /// may not write and still answer allowed, so asking would forget a
+  /// record that is still in the store. It stays remembered, and is
+  /// removed once the type is back on.
+  ///
+  /// Deleting is a health-API touch, so it goes through the same
+  /// [_authorityDrift] recheck and guarded
+  /// [HealthPlatformStore.deleteRecords] as every write — no new bypass.
+  Future<({int removed, HealthPlatformResult? failure})>
+      _reconcileRemovedRecords(
     _Batch batch,
     HealthGuardFacts facts,
+    Set<String>? grantedTypes,
   ) async {
-    final removed = _exportedBbtRecordIds.difference(batch.liveBbtRecordIds);
-    if (removed.isEmpty) return null;
+    var removed = 0;
+    HealthPlatformResult? failure;
+    for (final stale in _staleRecords(batch, grantedTypes)) {
+      final refused = await _removeFromStore(stale, facts);
+      if (refused == null) {
+        removed += stale.length;
+      } else {
+        failure ??= refused;
+      }
+    }
+    return (removed: removed, failure: failure);
+  }
+
+  /// The records to delete, one list for each row that has any, and one
+  /// for the BBT readings whose observation is no longer live and
+  /// resolved (the operator cleared the reading and left the day in
+  /// place).
+  List<List<String>> _staleRecords(_Batch batch, Set<String>? grantedTypes) {
+    final groups = [
+      for (final row in batch.desiredByRow.entries)
+        _deletable(
+          _memory.recordIdsOf(row.key).difference(row.value),
+          grantedTypes,
+        ),
+      _deletable(
+        {
+          for (final written in _memory.ofKind(HealthExportLedgerKind.bbt))
+            if (!batch.liveBbtRecordIds.contains(written.recordId))
+              written.recordId,
+        },
+        grantedTypes,
+      ),
+    ];
+    return [
+      for (final group in groups)
+        if (group.isNotEmpty) group,
+    ];
+  }
+
+  /// Those of [recordIds] a delete is sure to reach with [grantedTypes]
+  /// switched on.
+  List<String> _deletable(Set<String> recordIds, Set<String>? grantedTypes) => [
+        for (final recordId in recordIds)
+          if (healthRecordDeletable(_memory.entryOf(recordId), grantedTypes))
+            recordId,
+      ];
+
+  /// Deletes [recordIds] from the store and forgets them. Returns what
+  /// stopped it, or null when the store let them go.
+  Future<HealthPlatformResult?> _removeFromStore(
+    List<String> recordIds,
+    HealthGuardFacts facts,
+  ) async {
     final drift = await _authorityDrift(facts);
     if (drift != null) return drift;
-    final result = await _platform.deleteRecords(facts, removed.toList());
-    if (result is HealthPlatformAllowed) {
-      _exportedBbtRecordIds.removeAll(removed);
-      await _ledger.removeRecordIds(removed.toList());
-      return null;
-    }
-    return result;
+    final result = await _platform.deleteRecords(facts, recordIds);
+    if (result is! HealthPlatformAllowed) return result;
+    await _memory.forget(recordIds);
+    return null;
   }
 
   /// Re-validates ownership/profile authority against the CURRENT stored
@@ -1358,23 +1310,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     return recheck.isAllowed ? null : HealthPlatformResult.refused(recheck);
   }
 
-  /// Sends the per-day flow/marker writes to the port. Keeps writing after
-  /// a failure (one bad day must not hide the others), remembering the
-  /// first failure and leaving the cursor — the next pass retries the batch
-  /// rather than half-skipping (see the class doc's forward-only note).
-  /// Stops outright, rather than skipping just the one day, the moment
-  /// [_authorityDrift] detects the pass's authority has changed underneath
-  /// it (Issue #620, LLA-023) — a drift found on day N means every day
-  /// after N is written under the same now-invalid authority too.
-  ///
-  /// Issue #619, LLA-024: a [HealthFlowNoWrite] item is not merely skipped
-  /// — it issues [HealthPlatformStore.deleteRecords] for its own
-  /// [_PendingWrite.recordId], reconciling away whatever sample a PRIOR
-  /// pass may have written under that exact id for a day that has since
-  /// been edited to no sample (e.g. bleeding edited to `notBleeding`). An
-  /// id with no matching store sample is a documented no-op delete, so
-  /// this is issued unconditionally rather than only when a prior write is
-  /// known to have happened — see [_resolveNoWriteOutcome].
+  /// Whether [write]'s own type is switched on (Issue #1555).
   static bool _canWriteFlowPlan(
     _PendingWrite write, {
     required bool canWriteFlow,
@@ -1389,29 +1325,31 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     return true;
   }
 
-  Future<
-      ({
-        int written,
-        int reconciled,
-        HealthPlatformResult? failure,
-        DateTime? newest,
-      })> _writeFlowRecords(
+  /// Sends the due flow and spotting records to the port and remembers
+  /// each one the store accepts.
+  ///
+  /// Keeps writing after a failure (one bad day must not hide the others)
+  /// and reports the first. A record that failed is not remembered, so the
+  /// next pass sends it again. A record whose type is switched off is
+  /// passed over in the same way (Issue #1555): it stays due, and is sent
+  /// when the type is back on, with whatever its row says then.
+  ///
+  /// Stops outright in two cases. The moment [_authorityDrift] finds the
+  /// pass's authority has changed underneath it (Issue #620, LLA-023): a
+  /// drift found on day N means every day after N would be written under
+  /// the same now-invalid authority too. And when the platform answers
+  /// that it has no such store: every other record would get the same
+  /// answer.
+  Future<({int written, HealthPlatformResult? failure})> _writeFlowRecords(
     List<_PendingWrite> pending,
-    HealthGuardFacts facts, {
+    HealthGuardFacts facts,
+    String profileId, {
     bool canWriteFlow = true,
     bool canWriteSpotting = true,
   }) async {
     var written = 0;
-    var reconciled = 0;
     HealthPlatformResult? failure;
-    DateTime? newest;
     for (final write in pending) {
-      final drift = await _authorityDrift(facts);
-      if (drift != null) {
-        failure ??= drift;
-        break;
-      }
-      newest = _latest(newest, write.updatedAt);
       if (!_canWriteFlowPlan(
         write,
         canWriteFlow: canWriteFlow,
@@ -1419,39 +1357,31 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       )) {
         continue;
       }
-      final result = await _resolveNoWriteOutcome(write, facts) ??
-          await _sendSample(write, facts);
-      if (result is! HealthPlatformAllowed) {
-        failure ??= result;
-      } else if (write.plan is HealthFlowNoWrite) {
-        reconciled++;
-      } else {
-        written++;
+      final stopped = await _authorityDrift(facts);
+      if (stopped != null) {
+        failure ??= stopped;
+        break;
       }
+      final result = await _sendSample(write, facts);
+      if (result is HealthPlatformAllowed) {
+        written++;
+        await _remember(
+          profileId,
+          recordId: write.recordId,
+          sourceRowId: write.recordId,
+          kind: write.kind,
+          date: write.date,
+          version: write.updatedAt,
+        );
+        continue;
+      }
+      failure ??= result;
+      if (result is HealthPlatformUnavailable) break;
     }
-    return (
-      written: written,
-      reconciled: reconciled,
-      failure: failure,
-      newest: newest,
-    );
-  }
-
-  /// [write]'s reconciliation delete when its plan is [HealthFlowNoWrite],
-  /// or null for every other plan (the caller then sends the sample
-  /// itself via [_sendSample]). Split out purely to keep
-  /// [_writeFlowRecords]'s own CRAP score under the quality gate.
-  Future<HealthPlatformResult?> _resolveNoWriteOutcome(
-    _PendingWrite write,
-    HealthGuardFacts facts,
-  ) async {
-    if (write.plan is! HealthFlowNoWrite) return null;
-    return _platform.deleteRecords(facts, [write.recordId]);
+    return (written: written, failure: failure);
   }
 
   /// Sends [write]'s menstrual-flow or intermenstrual-bleeding sample.
-  /// Never called for a [HealthFlowNoWrite] plan — [_resolveNoWriteOutcome]
-  /// handles that case first.
   Future<HealthPlatformResult> _sendSample(
     _PendingWrite write,
     HealthGuardFacts facts,
@@ -1480,17 +1410,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
           ),
         );
       case HealthFlowNoWrite():
-        throw StateError(
-          'unreachable: _resolveNoWriteOutcome handles HealthFlowNoWrite',
-        );
+        throw StateError('unreachable: a row with no sample is never queued');
     }
-  }
-
-  /// The later of [a] and [b], or the non-null one when only one is set.
-  static DateTime? _latest(DateTime? a, DateTime? b) {
-    if (a == null) return b;
-    if (b == null) return a;
-    return a.isAfter(b) ? a : b;
   }
 
   /// Makes the store's period interval records match
@@ -1510,8 +1431,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   ///   derived from the first day, so that episode has a new record).
   ///
   /// Writes come first and a failed write ends the step, so a record is
-  /// never taken away while its replacement is still owed. A failure blocks
-  /// the pass and leaves the cursor, so the step is retried.
+  /// never taken away while its replacement is still owed. A failure is
+  /// reported, and the step is tried again on the next pass.
   ///
   /// On iOS nothing here reaches the store: HealthKit has no interval
   /// record (episode boundaries ride the flow samples' cycle-start
@@ -1551,9 +1472,9 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     var written = 0;
     for (final due in batch.desiredPeriods.entries) {
       final period = due.value;
-      final remembered = _exportedPeriods[due.key];
+      final remembered = _memory.entryOf(due.key);
       final interval = _periodInterval(period.start, period.end);
-      if (remembered?.interval == interval) continue;
+      if (remembered?.sourceRowId == interval) continue;
       final drift = await _authorityDrift(facts);
       if (drift != null) return (written: written, failure: drift);
       final versionMs = _nextPeriodVersion(remembered);
@@ -1592,16 +1513,17 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     _Batch batch,
     HealthGuardFacts facts,
   ) async {
-    for (final recordId in _exportedPeriods.keys.toList()) {
+    for (final written in _memory.ofKind(HealthExportLedgerKind.period)) {
+      final recordId = written.recordId;
       if (batch.desiredPeriods.containsKey(recordId)) continue;
-      final interval = _exportedPeriods[recordId]!.interval;
-      if (_overlapsAny(interval, batch.unresolvedPeriods)) continue;
+      // The ledger files a period record under the days it was written
+      // with.
+      if (_overlapsAny(written.sourceRowId, batch.unresolvedPeriods)) continue;
       final drift = await _authorityDrift(facts);
       if (drift != null) return drift;
       final deleted = await _platform.deleteRecords(facts, [recordId]);
       if (deleted is! HealthPlatformAllowed) return deleted;
-      _exportedPeriods.remove(recordId);
-      await _ledger.removeRecordIds([recordId]);
+      await _memory.forget([recordId]);
     }
     return null;
   }
@@ -1616,10 +1538,13 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// carry the lower of the two — and the store ignores a lower version
   /// while the ledger records the new days as written. The floor covers the
   /// one case left, a device clock that has been set back.
-  int _nextPeriodVersion(_ExportedPeriod? remembered) {
+  int _nextPeriodVersion(HealthExportLedgerEntry? remembered) {
     final nowMs = _now().millisecondsSinceEpoch;
-    if (remembered == null || nowMs > remembered.versionMs) return nowMs;
-    return remembered.versionMs + 1;
+    if (remembered == null) return nowMs;
+    // The ledger row's export instant is the version it was written with
+    // ([_rememberPeriod]).
+    final lastMs = remembered.exportedAt.millisecondsSinceEpoch;
+    return nowMs > lastMs ? nowMs : lastMs + 1;
   }
 
   /// Whether the exported [interval] (`<first day>/<last day>`) shares a
@@ -1637,65 +1562,58 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   }
 
   /// Records that this device wrote the period record [recordId] for
-  /// [interval] at [versionMs], in memory and in the persisted ledger. The
-  /// ledger row's export instant *is* the version, which is how a later
-  /// session knows what the next write has to exceed.
+  /// [interval] at [versionMs]. The ledger row's export instant *is* the
+  /// version, which is how a later session knows what the next write has
+  /// to exceed, and its source row is the interval, since a period record
+  /// comes from no single row.
   Future<void> _rememberPeriod(
     String profileId,
     String recordId,
     String interval,
     LocalDate start,
     int versionMs,
-  ) async {
-    _exportedPeriods[recordId] = _ExportedPeriod(interval, versionMs);
-    await _ledger.record([
-      HealthExportLedgerEntry(
-        recordId: recordId,
-        profileId: profileId,
-        sourceRowId: interval,
-        kind: HealthExportLedgerKind.period,
-        localDate: start.iso,
-        exportedAt: DateTime.fromMillisecondsSinceEpoch(versionMs, isUtc: true),
-      ),
-    ]);
-  }
+  ) =>
+      _memory.remember([
+        HealthExportLedgerEntry(
+          recordId: recordId,
+          profileId: profileId,
+          sourceRowId: interval,
+          kind: HealthExportLedgerKind.period,
+          localDate: start.iso,
+          exportedAt:
+              DateTime.fromMillisecondsSinceEpoch(versionMs, isUtc: true),
+        ),
+      ]);
 
-  /// Sends the per-day symptom writes (Issue #238). A platform that
-  /// answers `unavailable` — Health Connect has no symptom category types
-  /// at all, permanently — is a graceful skip, never a pass-blocking
-  /// failure, exactly like [HealthPlatformUnavailable] period records.
-  /// Every other failure blocks the pass and leaves the cursor for a
-  /// retry, matching [_writeFlowRecords]. Stops outright on the same
-  /// mid-pass authority drift [_writeFlowRecords] guards against.
+  /// Sends the due symptom samples (Issue #238) and remembers the ones the
+  /// store accepts. A platform that answers `unavailable` — Health Connect
+  /// has no symptom category types at all, permanently — is a graceful
+  /// skip, never a pass-blocking failure, and ends the step: the answer
+  /// would be the same for every other day. Any other failure is reported
+  /// and leaves its samples due. Stops outright on the same mid-pass
+  /// authority drift [_writeFlowRecords] guards against.
   ///
-  /// **Not done in this PR:** a symptom removed from a day entry is not
-  /// reconciled away in the health store (the native delete path still
-  /// queries only the flow types); see the PR's `## Not done`.
-  Future<
-      ({
-        int written,
-        HealthPlatformResult? failure,
-        DateTime? newest,
-      })> _writeSymptomRecords(
+  /// Only the samples whose type is switched on are sent (Issue #1555).
+  /// The rest stay due.
+  Future<({int written, HealthPlatformResult? failure})> _writeSymptomRecords(
     List<_PendingSymptomWrite> pendingSymptoms,
-    HealthGuardFacts facts, {
+    HealthGuardFacts facts,
+    String profileId, {
     Set<String>? grantedTypes,
   }) async {
     var written = 0;
     HealthPlatformResult? failure;
-    DateTime? newest;
     for (final symptom in pendingSymptoms) {
-      final drift = await _authorityDrift(facts);
-      if (drift != null) {
-        failure ??= drift;
-        break;
-      }
-      newest = _latest(newest, symptom.updatedAt);
       final samples = _filterGrantedSymptomSamples(
         symptom.samples,
         grantedTypes,
       );
       if (samples.isEmpty) continue;
+      final stopped = await _authorityDrift(facts);
+      if (stopped != null) {
+        failure ??= stopped;
+        break;
+      }
       final result = await _platform.writeSymptomSamples(
         HealthSymptomSamplesWrite(
           facts: facts,
@@ -1704,22 +1622,33 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
           samples: samples,
         ),
       );
-      if (result is HealthPlatformAllowed) {
-        written += samples.length;
-      } else if (result is HealthPlatformUnavailable) {
-        continue;
-      } else {
+      if (result is HealthPlatformUnavailable) break;
+      if (result is! HealthPlatformAllowed) {
         failure ??= result;
+        continue;
       }
+      written += samples.length;
+      await _memory.remember([
+        for (final sample in samples)
+          HealthExportLedgerEntry(
+            recordId: sample.recordId,
+            profileId: profileId,
+            sourceRowId: symptom.entryId,
+            kind: HealthExportLedgerKind.entry,
+            localDate: symptom.date.iso,
+            exportedAt: symptom.updatedAt,
+          ),
+      ]);
     }
-    return (written: written, failure: failure, newest: newest);
+    return (written: written, failure: failure);
   }
 
   static List<HealthSymptomSample> _filterGrantedSymptomSamples(
     List<HealthSymptomSample> samples,
     Set<String>? grantedTypes,
   ) {
-    if (grantedTypes == null || grantedTypes.contains('symptoms')) {
+    if (grantedTypes == null ||
+        grantedTypes.contains(HealthWriteTypes.symptoms)) {
       return samples;
     }
     return samples
@@ -1727,145 +1656,140 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         .toList();
   }
 
-  /// Sends the per-day cervical-mucus writes (Issue #228). Both platforms
-  /// have the type, so `unavailable` is not expected — but it is still a
-  /// graceful skip rather than a pass-blocking failure, for parity with the
-  /// other writers and so a future platform gap cannot wedge a pass. Stops
-  /// on the same mid-pass authority drift as [_writeFlowRecords].
-  Future<
-      ({
-        int written,
-        HealthPlatformResult? failure,
-        DateTime? newest,
-      })> _writeCervicalMucusRecords(
+  /// Sends the due cervical-mucus records (Issue #228) and remembers the
+  /// ones the store accepts. Both platforms have the type, so
+  /// `unavailable` is not expected — but it is still a graceful skip that
+  /// ends the step rather than a pass-blocking failure, for parity with
+  /// the other writers and so a future platform gap cannot wedge a pass.
+  /// With the type switched off ([allowed] false) nothing is sent and
+  /// everything stays due. Stops on the same mid-pass authority drift as
+  /// [_writeFlowRecords].
+  Future<({int written, HealthPlatformResult? failure})>
+      _writeCervicalMucusRecords(
     List<_PendingCervicalMucusWrite> pending,
-    HealthGuardFacts facts, {
+    HealthGuardFacts facts,
+    String profileId, {
     bool allowed = true,
-  }) async {
-    var written = 0;
-    HealthPlatformResult? failure;
-    DateTime? newest;
-    for (final item in pending) {
-      final drift = await _authorityDrift(facts);
-      if (drift != null) {
-        failure ??= drift;
-        break;
-      }
-      newest = _latest(newest, item.updatedAt);
-      if (!allowed) continue;
-      final result = await _platform.writeCervicalMucus(
-        HealthCervicalMucusWrite(
-          facts: facts,
-          date: item.date,
-          tzName: item.tzName,
-          healthKitValue: item.resolved.healthKitValue,
-          healthConnectAppearance: item.resolved.healthConnectAppearance,
-          recordId: item.recordId,
-          recordVersionMs: item.recordVersionMs,
-        ),
-      );
-      if (result is HealthPlatformAllowed) {
-        written++;
-      } else if (result is HealthPlatformUnavailable) {
-        continue;
-      } else {
-        failure ??= result;
-      }
-    }
-    return (written: written, failure: failure, newest: newest);
-  }
+  }) =>
+          _writeEach(
+            allowed ? pending : const <_PendingCervicalMucusWrite>[],
+            facts,
+            send: (item) => _platform.writeCervicalMucus(
+              HealthCervicalMucusWrite(
+                facts: facts,
+                date: item.date,
+                tzName: item.tzName,
+                healthKitValue: item.resolved.healthKitValue,
+                healthConnectAppearance: item.resolved.healthConnectAppearance,
+                recordId: item.recordId,
+                recordVersionMs: item.recordVersionMs,
+              ),
+            ),
+            remember: (item) => _remember(
+              profileId,
+              recordId: item.recordId,
+              sourceRowId: item.entryId,
+              kind: HealthExportLedgerKind.entry,
+              date: item.date,
+              version: item.updatedAt,
+            ),
+          );
 
-  /// Sends the per-day ovulation-test writes (Issue #228). Same error
-  /// handling as [_writeCervicalMucusRecords] and the same mid-pass
-  /// authority-drift stop.
-  Future<
-      ({
-        int written,
-        HealthPlatformResult? failure,
-        DateTime? newest,
-      })> _writeOvulationTestRecords(
+  /// Sends the due ovulation-test records (Issue #228). Same handling as
+  /// [_writeCervicalMucusRecords].
+  Future<({int written, HealthPlatformResult? failure})>
+      _writeOvulationTestRecords(
     List<_PendingOvulationWrite> pending,
-    HealthGuardFacts facts, {
+    HealthGuardFacts facts,
+    String profileId, {
     bool allowed = true,
-  }) async {
-    var written = 0;
-    HealthPlatformResult? failure;
-    DateTime? newest;
-    for (final item in pending) {
-      final drift = await _authorityDrift(facts);
-      if (drift != null) {
-        failure ??= drift;
-        break;
-      }
-      newest = _latest(newest, item.updatedAt);
-      if (!allowed) continue;
-      final result = await _platform.writeOvulationTest(
-        HealthOvulationTestWrite(
-          facts: facts,
-          date: item.date,
-          tzName: item.tzName,
-          healthKitResult: item.resolved.healthKitResult,
-          healthConnectResult: item.resolved.healthConnectResult,
-          recordId: item.recordId,
-          recordVersionMs: item.recordVersionMs,
-        ),
-      );
-      if (result is HealthPlatformAllowed) {
-        written++;
-      } else if (result is HealthPlatformUnavailable) {
-        continue;
-      } else {
-        failure ??= result;
-      }
-    }
-    return (written: written, failure: failure, newest: newest);
-  }
+  }) =>
+          _writeEach(
+            allowed ? pending : const <_PendingOvulationWrite>[],
+            facts,
+            send: (item) => _platform.writeOvulationTest(
+              HealthOvulationTestWrite(
+                facts: facts,
+                date: item.date,
+                tzName: item.tzName,
+                healthKitResult: item.resolved.healthKitResult,
+                healthConnectResult: item.resolved.healthConnectResult,
+                recordId: item.recordId,
+                recordVersionMs: item.recordVersionMs,
+              ),
+            ),
+            remember: (item) => _remember(
+              profileId,
+              recordId: item.recordId,
+              sourceRowId: item.entryId,
+              kind: HealthExportLedgerKind.entry,
+              date: item.date,
+              version: item.updatedAt,
+            ),
+          );
 
-  /// Sends the per-observation BBT writes (Issue #228). Same error handling
-  /// and mid-pass authority-drift stop as [_writeCervicalMucusRecords].
-  Future<
-      ({
-        int written,
-        HealthPlatformResult? failure,
-        DateTime? newest,
-      })> _writeBbtRecords(
+  /// Sends the due BBT readings (Issue #228). Same handling as
+  /// [_writeCervicalMucusRecords].
+  Future<({int written, HealthPlatformResult? failure})> _writeBbtRecords(
     List<_PendingBbtWrite> pending,
-    HealthGuardFacts facts, {
+    HealthGuardFacts facts,
+    String profileId, {
     bool allowed = true,
+  }) =>
+      _writeEach(
+        allowed ? pending : const <_PendingBbtWrite>[],
+        facts,
+        send: (item) => _platform.writeBasalBodyTemperature(
+          HealthBasalBodyTemperatureWrite(
+            facts: facts,
+            date: item.date,
+            tzName: item.tzName,
+            celsius: item.resolved.celsius,
+            healthConnectMeasurementLocation:
+                item.resolved.healthConnectMeasurementLocation,
+            recordId: item.recordId,
+            recordVersionMs: item.recordVersionMs,
+            observedAt: _bbtObservedAt(item),
+          ),
+        ),
+        remember: (item) => _remember(
+          profileId,
+          recordId: item.recordId,
+          sourceRowId: item.observationId,
+          kind: HealthExportLedgerKind.bbt,
+          date: item.date,
+          version: item.updatedAt,
+        ),
+      );
+
+  /// The loop the three one-record-at-a-time writers share: [send] each of
+  /// [pending], [remember] the ones the store accepts, report the first
+  /// failure and keep going, stop on a loss of authority, and stop quietly
+  /// when the platform has no such type.
+  Future<({int written, HealthPlatformResult? failure})> _writeEach<T>(
+    List<T> pending,
+    HealthGuardFacts facts, {
+    required Future<HealthPlatformResult> Function(T item) send,
+    required Future<void> Function(T item) remember,
   }) async {
     var written = 0;
     HealthPlatformResult? failure;
-    DateTime? newest;
     for (final item in pending) {
-      final drift = await _authorityDrift(facts);
-      if (drift != null) {
-        failure ??= drift;
+      final stopped = await _authorityDrift(facts);
+      if (stopped != null) {
+        failure ??= stopped;
         break;
       }
-      newest = _latest(newest, item.updatedAt);
-      if (!allowed) continue;
-      final result = await _platform.writeBasalBodyTemperature(
-        HealthBasalBodyTemperatureWrite(
-          facts: facts,
-          date: item.date,
-          tzName: item.tzName,
-          celsius: item.resolved.celsius,
-          healthConnectMeasurementLocation:
-              item.resolved.healthConnectMeasurementLocation,
-          recordId: item.recordId,
-          recordVersionMs: item.recordVersionMs,
-          observedAt: _bbtObservedAt(item),
-        ),
-      );
-      if (result is HealthPlatformAllowed) {
-        written++;
-      } else if (result is HealthPlatformUnavailable) {
-        continue;
-      } else {
+      final result = await send(item);
+      if (result is HealthPlatformUnavailable) break;
+      if (result is! HealthPlatformAllowed) {
         failure ??= result;
+        continue;
       }
+      written++;
+      await remember(item);
     }
-    return (written: written, failure: failure, newest: newest);
+    return (written: written, failure: failure);
   }
 
   /// The moment to write [item]'s reading at: its own recorded time when it
@@ -1878,8 +1802,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// morning, and Health Connect refuses a record dated in the future
   /// ("Record time must not be in the future"). Seen on an emulator: a
   /// reading entered at 03:27 was refused with its 07:00 default, and
-  /// because one refused write fails the whole pass, the cursor stopped
-  /// advancing until seven o'clock came. The reading exists now, so now is
+  /// went on being refused on every pass until seven o'clock came. The
+  /// reading exists now, so now is
   /// a truthful time for it; a later re-write of the same record after
   /// seven uses the default again, which the store ignores unless the row
   /// itself changed.
@@ -1901,7 +1825,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   }
 
   /// The unbind/reset half of the write flow: clears the forward-only
-  /// cursor and the native-side binding mirror. Called by the coordinator
+  /// floor, what this device remembers writing, and the native-side
+  /// binding mirror. Called by the coordinator
   /// whenever the stored binding goes away *or is replaced* — forward-only
   /// consent belongs to one binding, so re-binding (same or different
   /// profile) re-grants from the new authorization moment rather than
@@ -1910,26 +1835,33 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   Future<void> onUnbound() async {
     await _settings.set(SettingsKeys.healthSyncWrittenThroughMs, '');
     await _settings.set(SettingsKeys.healthSyncWrittenThroughUs, '');
-    // Issue #930: the remembered export sets belong to one binding —
-    // forward-only consent belongs to one binding too, so re-binding must
-    // never diff (and delete) against the old profile's exports.
-    _exportedEntryRecordIds.clear();
-    _exportedBbtRecordIds.clear();
-    _exportedPeriods.clear();
-    _ledgerProfileId = null;
-    // Issue #936: the persisted ledger belongs to one binding, exactly like
-    // the cursor — a re-bind must never diff (and delete) against the old
-    // profile's exports, and the rows describe a health store this device
-    // may no longer be permitted to touch.
-    await _ledger.clearAll();
+    // Issues #930 and #936: what was written belongs to one binding,
+    // exactly like the floor. A re-bind must never diff (and delete)
+    // against the old profile's exports, and the rows describe a health
+    // store this device may no longer be permitted to touch.
+    await _memory.reset();
     await _platform.unbindProfile();
   }
 
-  /// Forward-only eligibility: the row must have been written strictly
-  /// after the cursor, and must not have come *from* a health store (see
-  /// the class doc's one-way note).
-  bool _isEligible(DateTime updatedAt, Object? source, DateTime cursor) =>
-      updatedAt.isAfter(cursor) && !_isHealthStoreImport(source);
+  /// Whether the pass looks at a row at all (Issue #1581): one lunarlog
+  /// logged itself (never one that came *from* a health store — see the
+  /// class doc's one-way note), saved strictly after the forward-only
+  /// [floor], or one this device has already written a record from. The
+  /// second arm matters for an install that upgraded: its floor is where
+  /// its cursor stood, which is not before the rows it had written.
+  bool _inScope(
+    String rowId,
+    DateTime updatedAt,
+    Object? source,
+    DateTime floor,
+  ) =>
+      !_isHealthStoreImport(source) &&
+      (updatedAt.isAfter(floor) || _memory.knowsRow(rowId));
+
+  /// Whether [recordId] has to be sent: the store does not hold it for its
+  /// row as it stands at [version].
+  bool _isDue(String recordId, DateTime version) =>
+      !_memory.holds(recordId, version);
 
   /// Whether [source] marks a row that came *from* an OS health store (a
   /// day entry or an observation the import wrote) rather than one lunarlog

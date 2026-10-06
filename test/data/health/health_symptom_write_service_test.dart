@@ -232,7 +232,10 @@ void main() {
   late _FakeDayEntries dayEntries;
   late _FakeObservations observations;
 
-  final ledger = FakeHealthExportLedger();
+  // A new one for each test (Issue #1581): what the ledger holds now
+  // decides what is sent, so one shared by the whole file made a later
+  // test's day read as already written.
+  late FakeHealthExportLedger ledger;
 
   LocalHealthFlowWriteService buildService() => LocalHealthFlowWriteService(
     platform: platform,
@@ -256,6 +259,7 @@ void main() {
   }
 
   setUp(() {
+    ledger = FakeHealthExportLedger();
     platform = _FakePlatform();
     settings = FakeSettingsStore();
     dayEntries = _FakeDayEntries();
