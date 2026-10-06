@@ -9,6 +9,7 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/health/health_flow_write_service.dart';
 import 'package:lunarlog/data/health/health_record_ids.dart';
@@ -193,10 +194,14 @@ class _FakePlatform implements HealthPlatformStore {
 
   Set<String> grantedTypes = const {};
   int grantedWriteTypesCalls = 0;
+  Object? grantedWriteTypesError;
 
   @override
   Future<Set<String>> grantedWriteTypes() async {
     grantedWriteTypesCalls++;
+    if (grantedWriteTypesError != null) {
+      throw grantedWriteTypesError!;
+    }
     return grantedTypes;
   }
 
@@ -2926,6 +2931,78 @@ void main() {
       expect(report.ovulationTestSamplesWritten, 0);
       expect(report.basalBodyTemperatureSamplesWritten, 0);
       expect(await settings.get(_cursorKey), '${t2.millisecondsSinceEpoch}');
+    });
+
+    test(
+        'a platform whose grantedWriteTypes throws leaves the cursor where it was (issue #1584)',
+        () async {
+      await seedGranted(grant);
+      platform.permission = HealthPermissionStatus.writingSome;
+      platform.grantedWriteTypesError = Exception('health connect failure');
+      final t1 = grant.add(const Duration(hours: 1));
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium, t1),
+      ];
+
+      final report = await buildService().syncNow();
+
+      expect(report.blocked, isA<HealthPlatformFailed>());
+      expect(
+        await settings.get(_cursorKey),
+        '${grant.millisecondsSinceEpoch}',
+        reason: 'a failed types query must not advance the cursor',
+      );
+      expect(report.samplesWritten, 0);
+      expect(platform.flowWrites, isEmpty);
+    });
+
+    test(
+        'grantedWriteTypes unavailable error stops pass with unavailable result (issue #1584)',
+        () async {
+      await seedGranted(grant);
+      platform.permission = HealthPermissionStatus.writingSome;
+      platform.grantedWriteTypesError = PlatformException(
+        code: 'unavailable',
+        message: 'Health Connect unavailable',
+      );
+      final t1 = grant.add(const Duration(hours: 1));
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium, t1),
+      ];
+
+      final report = await buildService().syncNow();
+
+      expect(report.blocked, isA<HealthPlatformUnavailable>());
+      expect(
+        await settings.get(_cursorKey),
+        '${grant.millisecondsSinceEpoch}',
+        reason: 'an unavailable types query must not advance the cursor',
+      );
+      expect(report.samplesWritten, 0);
+      expect(platform.flowWrites, isEmpty);
+    });
+
+    test(
+        'grantedWriteTypes MissingPluginException stops pass with unavailable result (issue #1584)',
+        () async {
+      await seedGranted(grant);
+      platform.permission = HealthPermissionStatus.writingSome;
+      platform.grantedWriteTypesError = MissingPluginException();
+      final t1 = grant.add(const Duration(hours: 1));
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium, t1),
+      ];
+
+      final report = await buildService().syncNow();
+
+      expect(report.blocked, isA<HealthPlatformUnavailable>());
+      expect(
+        await settings.get(_cursorKey),
+        '${grant.millisecondsSinceEpoch}',
+        reason: 'MissingPluginException must not advance the cursor',
+      );
+      expect(report.samplesWritten, 0);
+      expect(platform.flowWrites, isEmpty);
     });
   });
 
