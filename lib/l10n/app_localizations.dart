@@ -1642,6 +1642,12 @@ abstract class AppLocalizations {
   /// **'Imported {imported, plural, =1{1 day} other{{imported} days}}.'**
   String healthSyncImportSummaryImported(int imported);
 
+  /// Health import completion line for a pass that added spotting and imported no day: it follows the line that says what was added, and says what happened to the days. 'Imported 0 days, skipped 4 already logged' read as a failure, and 'Nothing new' would be untrue.
+  ///
+  /// In en, this message translates to:
+  /// **'{skipped, plural, =1{1 day was} other{{skipped} days were}} already logged.'**
+  String healthSyncImportSummaryAlreadyLogged(int skipped);
+
   /// Health import completion headline (Issue #1017) for a pass that imported no days: says plainly that nothing was new because the days were already logged, rather than the pre-#1017 'Imported 0 days'.
   ///
   /// In en, this message translates to:

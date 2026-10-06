@@ -1046,6 +1046,17 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String healthSyncImportSummaryAlreadyLogged(int skipped) {
+    String _temp0 = intl.Intl.pluralLogic(
+      skipped,
+      locale: localeName,
+      other: '$skipped days were',
+      one: '1 day was',
+    );
+    return '$_temp0 already logged.';
+  }
+
+  @override
   String healthSyncImportSummaryNothingNew(int skipped) {
     String _temp0 = intl.Intl.pluralLogic(
       skipped,
