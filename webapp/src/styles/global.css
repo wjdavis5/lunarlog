@@ -5,6 +5,19 @@
 
 @import '../theme/tokens.css';
 
+/* The theme follows the system: tokens.css switches on
+   prefers-color-scheme. Saying so here makes the browser draw its own
+   parts of a control to match: a checkbox's box, the calendar button in a
+   date field, the clear button in a search field, a select's list,
+   scrollbars. Without it they kept their light form on the dark theme:
+   white checkboxes, and a calendar button that was dark on a dark field.
+   accent-color gives ticked boxes the theme's colour in place of the
+   browser's blue. */
+:root {
+  color-scheme: light dark;
+  accent-color: var(--ll-primary);
+}
+
 * {
   box-sizing: border-box;
 }
