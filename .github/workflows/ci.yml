@@ -1174,6 +1174,12 @@ jobs:
       - name: Build iOS (unsigned)
         # Unsigned: a PR from a fork cannot read signing secrets, and this
         # only needs to prove the app still compiles for a device.
+        # Bounded retry (issue #1615): `flutter build ios` shells out to
+        # xcodebuild, whose SwiftPM resolution downloads binary-target
+        # archives (sentry-cocoa xcframeworks) from github.com release
+        # assets with no retry of its own -- a transient HTTP 500 there
+        # failed this step on main with no code change involved. The build
+        # is idempotent, so retrying only costs time on a genuine break.
         if: steps.check_run.outputs.run == 'true'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -1188,7 +1194,9 @@ jobs:
           FCM_IOS_API_KEY: ${{ secrets.FCM_IOS_API_KEY }}
           FCM_IOS_APP_ID: ${{ secrets.FCM_IOS_APP_ID }}
         run: |
-          flutter build ios --release --no-codesign \
+          attempt=1
+          max_attempts=3
+          until flutter build ios --release --no-codesign \
             --dart-define=SUPABASE_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY" \
             --dart-define=SENTRY_DSN="$SENTRY_DSN" \
@@ -1200,7 +1208,15 @@ jobs:
             --dart-define=FCM_ANDROID_APP_ID="$FCM_ANDROID_APP_ID" \
             --dart-define=FCM_IOS_API_KEY="$FCM_IOS_API_KEY" \
             --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID" \
-            --dart-define=LUNARLOG_LINK_DOMAIN="lunarlog.app"
+            --dart-define=LUNARLOG_LINK_DOMAIN="lunarlog.app"; do
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "::error::iOS build failed after $attempt attempt(s)."
+              exit 1
+            fi
+            echo "iOS build failed (attempt $attempt/$max_attempts); retrying in 60s..."
+            attempt=$((attempt + 1))
+            sleep 60
+          done
 
   ios-simulator:
     # GitHub-hosted macOS image (Xcode + iOS Simulator runtimes preinstalled),
