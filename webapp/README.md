@@ -144,15 +144,16 @@ source of truth, imported by both `worker/index.ts` and `vite.config.ts`).
 `.github/workflows/webapp-deploy.yml` builds and deploys to the
 `lunarlog-app-staging` Cloudflare Worker on every push to `main` that
 touches `webapp/**`, `supabase/database.types.ts`, or
-`lib/l10n/app_en.arb`. Staging **only**: the origin is the Worker's
-`workers.dev` hostname (the per-account subdomain is resolved from the
-Cloudflare API at deploy time), backed by the production Supabase project,
-and used **only with the fabricated accounts from #710**. Moving
-`app.lunarlog.app` since 2026-10-03 (#1258): `webapp-deploy.yml` retires the
-Flutter build's `lunarlog-app` Pages project (freeing the hostname) and
-attaches `app.lunarlog.app` to this Worker as a custom domain
-(`wrangler.jsonc`'s `routes`), with the `workers.dev` hostname kept as the
-staging alias (#1249). The Worker also performs the #1248 retirement
+`lib/l10n/app_en.arb`. The Worker serves two origins: `app.lunarlog.app` (the
+production origin, attached as a custom domain via `wrangler.jsonc`'s
+`routes`) and its `workers.dev` hostname (the per-account subdomain is
+resolved from the Cloudflare API at deploy time), kept as the staging alias
+(#1249). The `workers.dev` origin is backed by the production Supabase
+project and used **only with the fabricated accounts from #710**. The cutover
+of `app.lunarlog.app` from the Flutter build's `lunarlog-app` Pages project
+happened on 2026-10-03 (#1258); the workflow's Pages-retirement and
+cutover-probe steps were removed in #1624, so a deploy now only deploys the
+Worker and smoke-checks both origins. The Worker also performs the #1248 retirement
 duties on the production origin: `Clear-Site-Data: "cache", "storage"` on
 the app shell (never `"cookies"` — the refresh cookie must survive), a
 301 from `/privacy.html` to the apex policy, and a self-unregistering
