@@ -545,8 +545,13 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       );
     }
     final grantedTypes = resolved.types;
+    final canWriteFlow = _canWriteType(grantedTypes, 'menstrualFlow');
 
-    final batch = await _collectBatch(bound.profile.id, grant.cursor!);
+    final batch = await _collectBatch(
+      bound.profile.id,
+      grant.cursor!,
+      canWriteFlow: canWriteFlow,
+    );
     final outcome = await _writeBatch(
       batch,
       bound.facts,
@@ -752,7 +757,11 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// `health_symptom_mapping.dart`, and — Issue #228 —
   /// `health_fertility_mapping.dart`, plus the period interval records
   /// the store should hold (Issue #202 — see [_collectPeriods]).
-  Future<_Batch> _collectBatch(String profileId, DateTime cursor) async {
+  Future<_Batch> _collectBatch(
+    String profileId,
+    DateTime cursor, {
+    bool canWriteFlow = true,
+  }) async {
     final entries = await _dayEntries.listForProfile(profileId);
     final observationRows = await _observations.listForProfile(profileId);
     final spottingRows = [
@@ -776,7 +785,13 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     final episodes = deriveEpisodes(bleedDatesOf(entries));
     final bleedDays = bleedDatesOf(entries);
     final batch = _Batch();
-    _collectPeriods(profileId, entries, cursor, batch);
+    _collectPeriods(
+      profileId,
+      entries,
+      cursor,
+      batch,
+      canWriteFlow: canWriteFlow,
+    );
 
     for (final entry in entries) {
       if (!_isEligible(entry.updatedAt, entry.source, cursor)) continue;
@@ -855,8 +870,9 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     String profileId,
     List<DayEntry> entries,
     DateTime cursor,
-    _Batch batch,
-  ) {
+    _Batch batch, {
+    bool canWriteFlow = true,
+  }) {
     final own = <LocalDate, DayEntry>{
       for (final entry in entries)
         if (_isHandLoggedBleed(entry)) entry.localDate: entry,
@@ -864,7 +880,13 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     for (final episode in deriveEpisodes(own.keys)) {
       if (episode.lengthDays > kHealthPeriodRecordMaxDays) continue;
       final days = _handLoggedDaysOf(episode, own);
-      if (!days.any((day) => _isOrWillBeExported(day, cursor))) continue;
+      if (!days.any((day) => _isOrWillBeExported(
+            day,
+            cursor,
+            canWriteFlow: canWriteFlow,
+          ))) {
+        continue;
+      }
       final tzName = _firstResolvableZone(days, episode);
       if (tzName == null) {
         batch.unresolvedPeriods.add(episode);
@@ -889,9 +911,14 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// Whether the store holds, or is about to be sent, a record for [day]:
   /// the export ledger remembers one from an earlier pass, or the row is
   /// newer than the forward-only [cursor] and so is written by this one.
-  bool _isOrWillBeExported(DayEntry day, DateTime cursor) =>
-      _exportedEntryRecordIds.containsKey(day.id) ||
-      day.updatedAt.isAfter(cursor);
+  bool _isOrWillBeExported(
+    DayEntry day,
+    DateTime cursor, {
+    bool canWriteFlow = true,
+  }) =>
+      (_exportedEntryRecordIds[day.id]?.contains(healthFlowRecordId(day.id)) ??
+          false) ||
+      (canWriteFlow && day.updatedAt.isAfter(cursor));
 
   /// [episode]'s hand-logged bleed days, first to last.
   static List<DayEntry> _handLoggedDaysOf(
@@ -1148,12 +1175,20 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       facts,
       allowed: _canWriteType(grantedTypes, 'basalBodyTemperature'),
     );
-    // Issue #930: after this pass's writes, reconcile away any sample a
-    // PRIOR export wrote for the day/observation that no longer asserts it.
-    // Runs after the writes so the remembered sets move "now" -> "after the
-    // write"; a failure here blocks the pass (and leaves the cursor) so the
-    // removal is retried rather than silently skipped.
-    final removed = await _reconcileRemovedRecords(batch, facts, profileId);
+    final writtenEntryRecordIds = <String>{
+      ...flow.writtenRecordIds,
+      ...symptoms.writtenRecordIds,
+      ...cervical.writtenRecordIds,
+      ...ovulation.writtenRecordIds,
+    };
+    final removed = await _reconcileRemovedRecords(
+      batch,
+      facts,
+      profileId,
+      writtenEntryRecordIds: writtenEntryRecordIds,
+      writtenBbtRecordIds: bbt.writtenRecordIds,
+      writtenSpottingRecordIds: flow.writtenRecordIds,
+    );
     // Issue #1478: and the period interval records, which no single day
     // entry owns. Last, so the days a record covers are already in the
     // store when it is written.
@@ -1248,15 +1283,42 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   Future<HealthPlatformResult?> _reconcileRemovedRecords(
     _Batch batch,
     HealthGuardFacts facts,
-    String profileId,
-  ) async {
-    final entryFailure =
-        await _reconcileEntryRemovals(batch, facts, profileId);
+    String profileId, {
+    required Set<String> writtenEntryRecordIds,
+    required Set<String> writtenBbtRecordIds,
+    required Set<String> writtenSpottingRecordIds,
+  }) async {
+    final entryFailure = await _reconcileEntryRemovals(
+      batch,
+      facts,
+      profileId,
+      writtenRecordIds: writtenEntryRecordIds,
+    );
     final bbtFailure = await _reconcileBbtRemovals(batch, facts);
-    // Only once the BBT diff is computed: every BBT id this pass exported is
-    // remembered so a LATER clear can address it.
+    final bbtExports = _bbtLedgerEntries(
+      batch.pendingBbt,
+      profileId,
+      writtenBbtRecordIds,
+    );
+    final spottingExports = _spottingLedgerEntries(
+      batch.spottingExports,
+      profileId,
+      writtenSpottingRecordIds,
+    );
+    if (bbtExports.isNotEmpty || spottingExports.isNotEmpty) {
+      await _ledger.record([...bbtExports, ...spottingExports]);
+    }
+    return entryFailure ?? bbtFailure;
+  }
+
+  List<HealthExportLedgerEntry> _bbtLedgerEntries(
+    List<_PendingBbtWrite> pendingBbt,
+    String profileId,
+    Set<String> writtenBbtRecordIds,
+  ) {
     final bbtExports = <HealthExportLedgerEntry>[];
-    for (final item in batch.pendingBbt) {
+    for (final item in pendingBbt) {
+      if (!writtenBbtRecordIds.contains(item.recordId)) continue;
       _exportedBbtRecordIds.add(item.recordId);
       bbtExports.add(HealthExportLedgerEntry(
         recordId: item.recordId,
@@ -1267,12 +1329,18 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         exportedAt: _now(),
       ));
     }
-    // Issue #936: spotting exports are persisted too, so a tombstone in a
-    // later session can still delete them (the coordinator seeds its own
-    // observation memory from the ledger).
-    final spottingExports = <HealthExportLedgerEntry>[];
-    for (final export in batch.spottingExports.entries) {
-      spottingExports.add(HealthExportLedgerEntry(
+    return bbtExports;
+  }
+
+  List<HealthExportLedgerEntry> _spottingLedgerEntries(
+    Map<String, ({String localDate, String recordId})> spottingExports,
+    String profileId,
+    Set<String> writtenSpottingRecordIds,
+  ) {
+    final entries = <HealthExportLedgerEntry>[];
+    for (final export in spottingExports.entries) {
+      if (!writtenSpottingRecordIds.contains(export.value.recordId)) continue;
+      entries.add(HealthExportLedgerEntry(
         recordId: export.value.recordId,
         profileId: profileId,
         sourceRowId: export.key,
@@ -1281,66 +1349,104 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         exportedAt: _now(),
       ));
     }
-    await _ledger.record([...bbtExports, ...spottingExports]);
-    return entryFailure ?? bbtFailure;
+    return entries;
   }
 
   /// The day-entry half of [_reconcileRemovedRecords]: for every eligible
   /// entry, delete the ids it produced on a previous export but no longer
-  /// produces, then remember the current set. A delete failure leaves the
-  /// old set in place so the removal is retried on the next pass (LLA-019's
-  /// discipline), rather than being silently acknowledged. The persisted
-  /// ledger moves in lockstep: removed ids are dropped on a successful
-  /// delete, and the current set is written so the next session's diff sees
-  /// it.
+  /// produces, then remember the current set of actually exported ids.
+  /// A delete failure leaves the old set in place so the removal is retried
+  /// on the next pass (LLA-019's discipline), rather than being silently
+  /// acknowledged. The persisted ledger moves in lockstep: removed ids are
+  /// dropped on a successful delete, and newly written ids are recorded.
   Future<HealthPlatformResult?> _reconcileEntryRemovals(
     _Batch batch,
     HealthGuardFacts facts,
-    String profileId,
-  ) async {
+    String profileId, {
+    required Set<String> writtenRecordIds,
+  }) async {
     HealthPlatformResult? failure;
     for (final entry in batch.entryRecordIds.entries) {
       final current = entry.value;
       final previous = _exportedEntryRecordIds[entry.key] ?? const <String>{};
       final removed = previous.difference(current);
       if (removed.isNotEmpty) {
-        final drift = await _authorityDrift(facts);
-        if (drift != null) {
-          failure ??= drift;
+        final removalFailure = await _reconcileEntryRemoval(
+          facts: facts,
+          entryKey: entry.key,
+          previous: previous,
+          removed: removed,
+        );
+        if (removalFailure != null) {
+          failure ??= removalFailure;
           continue;
         }
-        final result = await _platform.deleteRecords(facts, removed.toList());
-        if (result is! HealthPlatformAllowed) {
-          if (result is HealthPlatformPartial) {
-            final skipped = result.skippedTypes;
-            final deletedIds = removed
-                .where((id) => !healthRecordMatchesSkippedType(id, skipped))
-                .toList();
-            if (deletedIds.isNotEmpty) {
-              await _ledger.removeRecordIds(deletedIds);
-              _exportedEntryRecordIds[entry.key] =
-                  previous.difference(deletedIds.toSet());
-            }
-          }
-          failure ??= result;
-          continue;
-        }
-        await _ledger.removeRecordIds(removed.toList());
       }
-      _exportedEntryRecordIds[entry.key] = current;
+      final newlyWritten = current.intersection(writtenRecordIds);
+      final exportedNow = previous.difference(removed).union(newlyWritten);
+      await _rememberExportedEntry(
+        profileId: profileId,
+        entryKey: entry.key,
+        localDate: batch.entryLocalDates[entry.key] ?? '',
+        exportedNow: exportedNow,
+        newlyWritten: newlyWritten,
+      );
+    }
+    return failure;
+  }
+
+  Future<HealthPlatformResult?> _reconcileEntryRemoval({
+    required HealthGuardFacts facts,
+    required String entryKey,
+    required Set<String> previous,
+    required Set<String> removed,
+  }) async {
+    final drift = await _authorityDrift(facts);
+    if (drift != null) return drift;
+    final result = await _platform.deleteRecords(facts, removed.toList());
+    if (result is! HealthPlatformAllowed) {
+      if (result is HealthPlatformPartial) {
+        final skipped = result.skippedTypes;
+        final deletedIds = removed
+            .where((id) => !healthRecordMatchesSkippedType(id, skipped))
+            .toList();
+        if (deletedIds.isNotEmpty) {
+          await _ledger.removeRecordIds(deletedIds);
+          _exportedEntryRecordIds[entryKey] =
+              previous.difference(deletedIds.toSet());
+        }
+      }
+      return result;
+    }
+    await _ledger.removeRecordIds(removed.toList());
+    return null;
+  }
+
+  Future<void> _rememberExportedEntry({
+    required String profileId,
+    required String entryKey,
+    required String localDate,
+    required Set<String> exportedNow,
+    required Set<String> newlyWritten,
+  }) async {
+    if (exportedNow.isNotEmpty) {
+      _exportedEntryRecordIds[entryKey] = exportedNow;
+    } else {
+      _exportedEntryRecordIds.remove(entryKey);
+    }
+    if (newlyWritten.isNotEmpty) {
       await _ledger.record([
-        for (final recordId in current)
+        for (final recordId in newlyWritten)
           HealthExportLedgerEntry(
             recordId: recordId,
             profileId: profileId,
-            sourceRowId: entry.key,
+            sourceRowId: entryKey,
             kind: HealthExportLedgerKind.entry,
-            localDate: batch.entryLocalDates[entry.key] ?? '',
+            localDate: localDate,
             exportedAt: _now(),
           ),
       ]);
     }
-    return failure;
   }
 
   /// The BBT half of [_reconcileRemovedRecords]: a remembered BBT record
@@ -1451,6 +1557,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         int reconciled,
         HealthPlatformResult? failure,
         DateTime? newest,
+        Set<String> writtenRecordIds,
       })> _writeFlowRecords(
     List<_PendingWrite> pending,
     HealthGuardFacts facts, {
@@ -1461,6 +1568,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     var reconciled = 0;
     HealthPlatformResult? failure;
     DateTime? newest;
+    final writtenRecordIds = <String>{};
     for (final write in pending) {
       final drift = await _authorityDrift(facts);
       if (drift != null) {
@@ -1483,6 +1591,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         reconciled++;
       } else {
         written++;
+        writtenRecordIds.add(write.recordId);
       }
     }
     return (
@@ -1490,6 +1599,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       reconciled: reconciled,
       failure: failure,
       newest: newest,
+      writtenRecordIds: writtenRecordIds,
     );
   }
 
@@ -1737,6 +1847,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         int written,
         HealthPlatformResult? failure,
         DateTime? newest,
+        Set<String> writtenRecordIds,
       })> _writeSymptomRecords(
     List<_PendingSymptomWrite> pendingSymptoms,
     HealthGuardFacts facts, {
@@ -1745,6 +1856,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     var written = 0;
     HealthPlatformResult? failure;
     DateTime? newest;
+    final writtenRecordIds = <String>{};
     for (final symptom in pendingSymptoms) {
       final drift = await _authorityDrift(facts);
       if (drift != null) {
@@ -1767,13 +1879,19 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       );
       if (result is HealthPlatformAllowed) {
         written += samples.length;
+        writtenRecordIds.addAll(samples.map((s) => s.recordId));
       } else if (result is HealthPlatformUnavailable) {
         continue;
       } else {
         failure ??= result;
       }
     }
-    return (written: written, failure: failure, newest: newest);
+    return (
+      written: written,
+      failure: failure,
+      newest: newest,
+      writtenRecordIds: writtenRecordIds,
+    );
   }
 
   static List<HealthSymptomSample> _filterGrantedSymptomSamples(
@@ -1798,6 +1916,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         int written,
         HealthPlatformResult? failure,
         DateTime? newest,
+        Set<String> writtenRecordIds,
       })> _writeCervicalMucusRecords(
     List<_PendingCervicalMucusWrite> pending,
     HealthGuardFacts facts, {
@@ -1806,6 +1925,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     var written = 0;
     HealthPlatformResult? failure;
     DateTime? newest;
+    final writtenRecordIds = <String>{};
     for (final item in pending) {
       final drift = await _authorityDrift(facts);
       if (drift != null) {
@@ -1827,13 +1947,19 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       );
       if (result is HealthPlatformAllowed) {
         written++;
+        writtenRecordIds.add(item.recordId);
       } else if (result is HealthPlatformUnavailable) {
         continue;
       } else {
         failure ??= result;
       }
     }
-    return (written: written, failure: failure, newest: newest);
+    return (
+      written: written,
+      failure: failure,
+      newest: newest,
+      writtenRecordIds: writtenRecordIds,
+    );
   }
 
   /// Sends the per-day ovulation-test writes (Issue #228). Same error
@@ -1844,6 +1970,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         int written,
         HealthPlatformResult? failure,
         DateTime? newest,
+        Set<String> writtenRecordIds,
       })> _writeOvulationTestRecords(
     List<_PendingOvulationWrite> pending,
     HealthGuardFacts facts, {
@@ -1852,6 +1979,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     var written = 0;
     HealthPlatformResult? failure;
     DateTime? newest;
+    final writtenRecordIds = <String>{};
     for (final item in pending) {
       final drift = await _authorityDrift(facts);
       if (drift != null) {
@@ -1873,13 +2001,19 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       );
       if (result is HealthPlatformAllowed) {
         written++;
+        writtenRecordIds.add(item.recordId);
       } else if (result is HealthPlatformUnavailable) {
         continue;
       } else {
         failure ??= result;
       }
     }
-    return (written: written, failure: failure, newest: newest);
+    return (
+      written: written,
+      failure: failure,
+      newest: newest,
+      writtenRecordIds: writtenRecordIds,
+    );
   }
 
   /// Sends the per-observation BBT writes (Issue #228). Same error handling
@@ -1889,6 +2023,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         int written,
         HealthPlatformResult? failure,
         DateTime? newest,
+        Set<String> writtenRecordIds,
       })> _writeBbtRecords(
     List<_PendingBbtWrite> pending,
     HealthGuardFacts facts, {
@@ -1897,6 +2032,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     var written = 0;
     HealthPlatformResult? failure;
     DateTime? newest;
+    final writtenRecordIds = <String>{};
     for (final item in pending) {
       final drift = await _authorityDrift(facts);
       if (drift != null) {
@@ -1920,13 +2056,19 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       );
       if (result is HealthPlatformAllowed) {
         written++;
+        writtenRecordIds.add(item.recordId);
       } else if (result is HealthPlatformUnavailable) {
         continue;
       } else {
         failure ??= result;
       }
     }
-    return (written: written, failure: failure, newest: newest);
+    return (
+      written: written,
+      failure: failure,
+      newest: newest,
+      writtenRecordIds: writtenRecordIds,
+    );
   }
 
   /// The moment to write [item]'s reading at: its own recorded time when it
