@@ -74,7 +74,12 @@ class DriftDayEntriesRepository
             sourceId: o.sourceId,
             importId: o.importId,
             raw: o.raw,
-            updatedAt: o.updatedAt,
+            // No `updatedAt`: the storage layer stamps the row with its
+            // own clock, as it does the day entry saved beside it and as
+            // `ObservationsRepository.save` always has (Issue #1581). The
+            // day sheet's stamp is the device's clock alone, which on a
+            // phone that has learned an offset from the server put an
+            // entry and the day it hangs on at two different times.
           ),
       ],
       observationIdsToDelete: observationIdsToDelete,

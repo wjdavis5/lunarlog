@@ -254,6 +254,47 @@ void main() {
       expect(obs.single.category, 'spotting');
     });
 
+    // Issue #1581. The day sheet stamps an entry with the device's clock,
+    // and the repository used to pass that through, while the day saved
+    // beside it was stamped by the storage clock. On a phone that has
+    // learned an offset from the server the two were minutes apart, and
+    // anything that orders rows by time (the health write pass did) could
+    // take the entry for older than the day.
+    test('an entry saved with a day is stamped by the storage clock, as the '
+        'day is, whatever time the caller gave it', () async {
+      const offset = Duration(minutes: 5);
+      storage.setClockOffset(offset);
+      final callersTime = t0.subtract(const Duration(hours: 3));
+
+      final saved = await repository.saveDayEntryWithObservations(
+        entry: domain.DayEntry(
+          id: '',
+          profileId: 'p1',
+          localDate: domain.LocalDate(2026, 9, 1),
+          tz: 'UTC',
+          flow: domain.FlowLevel.notBleeding,
+          updatedAt: callersTime,
+        ),
+        observationsToUpsert: [
+          domain.Observation(
+            id: '',
+            dayEntryId: '',
+            profileId: 'p1',
+            localDate: domain.LocalDate(2026, 9, 1),
+            tz: 'UTC',
+            category: domain.ObservationCategory.spotting,
+            code: 'spotting',
+            updatedAt: callersTime,
+          ),
+        ],
+      );
+
+      final observation =
+          (await storage.getObservationsForDayEntry(saved.id)).single;
+      expect(saved.updatedAt, t0.add(offset));
+      expect(observation.updatedAt, t0.add(offset));
+    });
+
     test('save delegates to saveDayEntryWithObservations without observations', () async {
       final domainEntry = domain.DayEntry(
         id: '',

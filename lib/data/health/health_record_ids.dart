@@ -22,6 +22,7 @@
 /// Pure Dart (R14/R16) — no Flutter/drift imports.
 library;
 
+import 'package:lunarlog/domain/health/health_export_ledger.dart';
 import 'package:lunarlog/domain/health/health_platform.dart'
     show HealthWriteTypes;
 import 'package:lunarlog/domain/models/day_entry.dart';
@@ -90,6 +91,66 @@ Set<String> healthRecordIdsForEntry(DayEntry entry) {
     ids.add(healthOvulationRecordId(entry.id, ovulation.healthKitResult));
   }
   return ids;
+}
+
+/// Whether a delete of the record [written] is sure to reach it, given the
+/// write types switched on in the health store (Issue #1581). [granted] is
+/// `HealthPlatformStore.grantedWriteTypes`' answer, or null when every
+/// type is on.
+///
+/// Both native halves delete by record id across every type they write,
+/// pass over a type they may not write, and answer allowed all the same.
+/// So a delete sent while the record's type is off removes nothing and
+/// reads as done. The write pass asks this first and leaves such a record
+/// remembered until its type is back on.
+///
+/// The type is read off the id, which is how these builders made it. A
+/// spotting observation's record is the one that can be either of two
+/// types — an intermenstrual marker, or a light flow sample when the day
+/// falls inside a period — and the ledger does not say which it was, so
+/// it needs both. Nothing is known about a record the ledger does not
+/// hold ([written] null), and deleting an id the store does not have is
+/// harmless.
+bool healthRecordDeletable(
+  HealthExportLedgerEntry? written,
+  Set<String>? granted,
+) {
+  if (written == null || granted == null) return true;
+  return switch (written.kind) {
+    HealthExportLedgerKind.period =>
+      granted.contains(HealthWriteTypes.menstrualFlow),
+    HealthExportLedgerKind.bbt =>
+      granted.contains(HealthWriteTypes.basalBodyTemperature),
+    HealthExportLedgerKind.spotting =>
+      granted.contains(HealthWriteTypes.menstrualFlow) &&
+          granted.contains(HealthWriteTypes.spotting),
+    HealthExportLedgerKind.entry => _entryRecordDeletable(written, granted),
+  };
+}
+
+/// [healthRecordDeletable] for a record written from a day entry.
+bool _entryRecordDeletable(
+  HealthExportLedgerEntry written,
+  Set<String> granted,
+) {
+  final recordId = written.recordId;
+  final entryId = written.sourceRowId;
+  if (recordId == healthFlowRecordId(entryId)) {
+    return granted.contains(HealthWriteTypes.menstrualFlow);
+  }
+  if (recordId == healthCervicalMucusRecordId(entryId)) {
+    return granted.contains(HealthWriteTypes.cervicalMucus);
+  }
+  final symptomPrefix = healthSymptomRecordId(entryId, '');
+  if (recordId.startsWith(symptomPrefix)) {
+    return granted.contains(HealthWriteTypes.symptoms) ||
+        granted.contains(recordId.substring(symptomPrefix.length));
+  }
+  if (recordId.startsWith(healthOvulationRecordId(entryId, ''))) {
+    return granted.contains(HealthWriteTypes.ovulationTest);
+  }
+  // Not a shape this file builds: nothing to hold it back on.
+  return true;
 }
 
 /// Whether a delete that passed over [skippedTypes] may have left the

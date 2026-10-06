@@ -70,19 +70,19 @@ class HealthFlowSyncReport {
   /// eligible manually tracked/imported `bbt` observation.
   final int basalBodyTemperatureSamplesWritten;
 
-  /// Eligible days that mapped to [HealthFlowNoWrite] (`none`/
-  /// `notBleeding`), or to a skipped duplicate (spotting on a day whose
-  /// own flow already carries the intensity).
+  /// Rows the pass looked at that map to no sample: a day whose flow is
+  /// `none` or `notBleeding`, or a spotting entry on a day whose own flow
+  /// already carries the intensity. Since Issue #1581 the pass looks at
+  /// every row saved since write access was granted, so this counts them
+  /// all on every pass, not only the ones that changed.
   final int daysWithoutSample;
 
-  /// Issue #619, LLA-024: of [daysWithoutSample], how many issued a
-  /// `deleteRecords` call for their own record id — reconciling away a
-  /// sample a PRIOR pass may have written under that same id, for a day
-  /// that has since been edited to no sample (e.g. an exported bleeding
-  /// day changed to `notBleeding`). Deleting an id with no matching store
-  /// sample is a documented no-op, so this call is issued unconditionally
-  /// for every eligible no-write day rather than only when a prior write
-  /// is known to have happened.
+  /// Records taken out of the store this pass because their row no longer
+  /// produces them (Issue #619, LLA-024; Issue #930): a bleeding day
+  /// changed to `notBleeding`, a symptom or fertility tag removed, a
+  /// reading cleared. Counts only records this device remembers writing
+  /// (Issue #1581); a row that never had a record in the store sends no
+  /// delete.
   final int samplesReconciled;
 }
 
