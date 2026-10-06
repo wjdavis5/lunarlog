@@ -244,9 +244,12 @@ class HealthConnectAdapter(context: Context) {
     // lunarlog read and not write used to get the write permissions put in
     // front of her again on every tap of Import, because the import asked
     // through the one request that carried everything.
-    private val readPermissions = setOf(
-        HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY,
-    ) + importReadPermissions + backgroundReadPermissions()
+    //
+    // Issue #1573: "Access past data" rides the sheet only where this
+    // phone's Health Connect has that switch ([pastDataPermissions]), for
+    // the reason given at [backgroundReadPermissions].
+    private val readPermissions =
+        pastDataPermissions() + importReadPermissions + backgroundReadPermissions()
 
     // What the WRITE path asks for (requestWriteAuthorization): the writes,
     // with the reads beside them on the same sheet. That request is raised
@@ -297,6 +300,37 @@ class HealthConnectAdapter(context: Context) {
     } catch (_: Exception) {
         emptySet()
     }
+
+    // Whether this phone's Health Connect has the "Access past data"
+    // switch at all (Issue #1573). Where it does not, the permission can
+    // never be granted and the answer to "is it on" is always no, so the
+    // Health sync screen must not name a switch the phone does not have,
+    // and no request may carry a permission string this Health Connect
+    // does not know. The same check, with the same fail-to-not-offer
+    // rule, as [backgroundReadPermissions].
+    private fun pastDataOffered(): Boolean = pastDataOfferedOrNull() == true
+
+    // The same question for the screen, which has a third answer: null
+    // when the probe failed. "Cannot tell" must not be shown as "this
+    // phone has no such switch"; for a request sheet it still counts as
+    // not offered ([pastDataOffered]).
+    private fun pastDataOfferedOrNull(): Boolean? = try {
+        isAvailable() &&
+            HealthConnectClient.getOrCreate(contextApp).features
+                .getFeatureStatus(
+                    HealthConnectFeatures.FEATURE_READ_HEALTH_DATA_HISTORY,
+                ) == HealthConnectFeatures.FEATURE_STATUS_AVAILABLE
+    } catch (_: Exception) {
+        null
+    }
+
+    // The "Access past data" permission, only where it can be granted.
+    private fun pastDataPermissions(): Set<String> =
+        if (pastDataOffered()) {
+            setOf(HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY)
+        } else {
+            emptySet()
+        }
 
     // The guard-args half of every guarded call (mirrors
     // encodeGuardArgs in health_channel_codec.dart). StandardMessageCodec
@@ -455,13 +489,71 @@ class HealthConnectAdapter(context: Context) {
                         launchPermissionRequest(
                             result,
                             askedMarker = IMPORT_REQUEST_LAUNCHED_KEY,
-                            permissions = readPermissions,
+                            permissions = HealthPermissionState.importRequestPermissions(
+                                reads = readPermissions,
+                                pastData = pastDataPermissions(),
+                                launchedBefore = permissionEverRequested(),
+                            ),
                         )
                     } catch (e: Exception) {
                         if (pendingAuthResult === result) pendingAuthResult = null
                         result.error("writeFailed", e.message, null)
                     }
                 }
+            }
+
+            "requestPastDataAccess" -> {
+                // Issue #1573: Health Connect's own prompt for the one
+                // permission that lets a read reach data from before
+                // lunarlog was first allowed ("Access past data"), raised
+                // only by a tap on the Health sync screen. The app cannot
+                // open its own page in Health Connect (that intent is
+                // refused to it), so before this the way to the switch
+                // was Health Connect's first screen and three more taps.
+                //
+                // It carries no write and neither record read, so neither
+                // asked-marker is set (#1478, #1515): what this sheet was
+                // answered says nothing about either of them. Health
+                // Connect drops a request, showing nothing, once a
+                // permission in it has been declined twice; the caller
+                // reads the granted set afterwards and does not trust the
+                // answer given here.
+                if (!requestGuardAllows(call.method, args, result)) return
+                val client = healthConnectClient()
+                if (client == null || !pastDataOffered()) {
+                    result.success("unavailable")
+                    return
+                }
+                CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
+                    // A query that fails says nothing about what is
+                    // granted, so nothing is asked.
+                    val granted = try {
+                        client.permissionController.getGrantedPermissions()
+                    } catch (e: Exception) {
+                        emptySet()
+                    }
+                    if (!HealthPermissionState.pastDataMayAsk(granted, importReadPermissions)) {
+                        result.success("permissionDenied")
+                        return@launch
+                    }
+                    try {
+                        launchPermissionRequest(
+                            result,
+                            askedMarker = null,
+                            permissions = pastDataPermissions(),
+                        )
+                    } catch (e: Exception) {
+                        if (pendingAuthResult === result) pendingAuthResult = null
+                        result.error("writeFailed", e.message, null)
+                    }
+                }
+            }
+
+            "pastDataSwitchOffered" -> {
+                // Issue #1573: whether this Health Connect has the
+                // "Access past data" switch at all. Only looks: no
+                // request, no marker. Null when it cannot tell.
+                result.success(pastDataOfferedOrNull())
             }
 
             "importPermissionStatus" -> {
@@ -1203,11 +1295,12 @@ class HealthConnectAdapter(context: Context) {
     // Shared by the write path's request and the import's (issue #1515) so
     // the two cannot drift on the one-prompt-at-a-time rule or on
     // remembering before launching; they differ only in which permissions
-    // they ask for and which asked-marker they set. Call only after
-    // [requestGuardAllows].
+    // they ask for and which asked-marker they set. The request for past
+    // data alone (issue #1573) sets none: [askedMarker] is null. Call only
+    // after [requestGuardAllows].
     private fun launchPermissionRequest(
         result: MethodChannel.Result,
-        askedMarker: String,
+        askedMarker: String?,
         permissions: Set<String>,
     ) {
         // One prompt at a time: a second request while the sheet is
@@ -1227,7 +1320,9 @@ class HealthConnectAdapter(context: Context) {
             // the status reports "notAsked" only until this is set,
             // and a request that is interrupted (the process dies
             // behind the sheet) has still been asked.
-            prefs.edit().putLong(askedMarker, installStamp).apply()
+            if (askedMarker != null) {
+                prefs.edit().putLong(askedMarker, installStamp).apply()
+            }
             launcher.launch(permissions)
         }
     }
@@ -1966,6 +2061,41 @@ internal object HealthPermissionState {
      */
     fun importMustAsk(granted: Set<String>, importReads: Set<String>): Boolean =
         !granted.containsAll(importReads)
+
+    /**
+     * Whether the Health sync screen's button may raise the request for
+     * "Access past data" alone (Issue #1573): only for someone the import
+     * can already read for, that is with every record read in `importReads`
+     * granted.
+     *
+     * The screen shows the button only in that state. The check is made
+     * here too so that the rule does not rest on the screen. With no record
+     * read granted and neither request ever launched, a grant on this sheet
+     * would be the first permission the app holds, and
+     * [remembersWritesAsked] would take it for proof that the write sheet
+     * had been shown.
+     */
+    fun pastDataMayAsk(granted: Set<String>, importReads: Set<String>): Boolean =
+        granted.containsAll(importReads)
+
+    /**
+     * What the import's own request asks for (Issue #1573). Everything in
+     * `reads` when this install has raised neither of its two sheets
+     * before (`launchedBefore` false). After that, `reads` without "Access
+     * past data" (`pastData`): both sheets carry it, so it has by then
+     * been offered, and the way to it is the screen's button, which asks
+     * for it alone.
+     *
+     * Health Connect drops a whole request, unseen, once any permission in
+     * it has been declined twice. Left on this sheet, a past-data
+     * permission declined once here and once from the button would stop the
+     * import ever asking for a record read again.
+     */
+    fun importRequestPermissions(
+        reads: Set<String>,
+        pastData: Set<String>,
+        launchedBefore: Boolean,
+    ): Set<String> = if (launchedBefore) reads - pastData else reads
 }
 
 /**
