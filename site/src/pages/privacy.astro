@@ -102,9 +102,29 @@ const description =
     overflow-wrap: anywhere;
   }
 
+  /* A table scrolls inside its own region (`wrapTablesInScrollRegions` in
+   * astro.config.mjs), so a phone never scrolls the whole page sideways.
+   * The two fixed gradients are the cue that there is more to one side;
+   * the two that travel with the content cover them at either end. */
+  .policy .table-scroll {
+    margin: 0 0 1rem;
+    overflow-x: auto;
+    background:
+      linear-gradient(to right, var(--bg) 40%, transparent) left / 2.5rem 100%
+        no-repeat local,
+      linear-gradient(to left, var(--bg) 40%, transparent) right / 2.5rem 100%
+        no-repeat local,
+      linear-gradient(to right, var(--border), transparent) left / 0.75rem 100%
+        no-repeat scroll,
+      linear-gradient(to left, var(--border), transparent) right / 0.75rem 100%
+        no-repeat scroll;
+  }
+
   .policy table {
     width: 100%;
-    margin: 0 0 1rem;
+    /* Four columns of prose need room to stay readable; below this the
+     * region scrolls instead of the columns collapsing to a few letters. */
+    min-width: 38rem;
     border-collapse: collapse;
     font-size: 0.9375rem;
   }

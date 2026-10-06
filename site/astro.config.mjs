@@ -41,7 +41,11 @@ export default defineConfig({
     // handling keep their defaults — the processor appends those built-ins
     // after the user plugins.
     processor: satteri({
-      hastPlugins: [rewriteRepoRelativeLinks, stripLeftAlignedTableStyles],
+      hastPlugins: [
+        rewriteRepoRelativeLinks,
+        stripLeftAlignedTableStyles,
+        wrapTablesInScrollRegions,
+      ],
     }),
   },
   vite: {
@@ -110,4 +114,48 @@ function stripLeftAlignedTableStyles() {
       },
     },
   };
+}
+
+// A markdown table is as wide as its content needs, and the policy's
+// four-column table needs more than a phone has: at 390 px the whole page
+// scrolled sideways. Wrap every markdown table in a region that scrolls on
+// its own, so the page never does. The region is focusable and named, which
+// is what lets a keyboard reach and scroll it; the name is the table's own
+// column headings. The styles live with the page (`.table-scroll` in
+// `src/pages/privacy.astro`).
+function wrapTablesInScrollRegions() {
+  return {
+    name: "wrap-tables-in-scroll-regions",
+    element: {
+      filter: ["table"],
+      visit(node, ctx) {
+        const headings = tableHeadings(node, ctx);
+        ctx.wrapNode(node, {
+          type: "element",
+          tagName: "section",
+          properties: {
+            className: ["table-scroll"],
+            ariaLabel:
+              headings.length > 0 ? `Table: ${headings.join(", ")}` : "Table",
+            tabIndex: 0,
+          },
+          children: [],
+        });
+      },
+    },
+  };
+}
+
+// The text of a table's heading cells, in order. Body rows are skipped: a
+// row heading there names a row, not a column.
+function tableHeadings(node, ctx, found = []) {
+  for (const child of node.children ?? []) {
+    if (child.type !== "element" || child.tagName === "tbody") continue;
+    if (child.tagName === "th") {
+      found.push(ctx.textContent(child).trim());
+    } else {
+      tableHeadings(child, ctx, found);
+    }
+  }
+  return found;
 }

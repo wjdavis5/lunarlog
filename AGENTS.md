@@ -99,7 +99,9 @@ universal-link routes.
   `npm run build`. `npm run build` runs `astro sync`, `astro check`, and the
   static build to `site/dist`. Checks: `npm run check:html` (html-validate),
   `check:links` (internal links + off-origin resources), `check:axe`
-  (axe-core in system Chrome), `check:lighthouse` (`@lhci/cli` budgets:
+  (axe-core in system Chrome; it also fails when a page scrolls sideways
+  at 390 or 320 px, which is why a markdown table is wrapped in a
+  scrolling region by `astro.config.mjs`), `check:lighthouse` (`@lhci/cli` budgets:
   accessibility 100, performance and best-practices >= 95), and
   `check:external-links` (outbound links; a no-op until #1104).
 - **Headers.** `site/public/_headers` carries the strict, third-party-free
