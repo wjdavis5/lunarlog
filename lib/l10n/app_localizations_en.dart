@@ -907,6 +907,32 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String healthSyncPermissionWritingSome(String source, String offTypes) {
+    return '$source access: writing some ($offTypes off) — open Settings to change';
+  }
+
+  @override
+  String get healthSyncTypeBasalBodyTemperature => 'Basal body temperature';
+
+  @override
+  String get healthSyncTypeCervicalMucus => 'Cervical mucus';
+
+  @override
+  String get healthSyncTypeMenstruation => 'Menstruation';
+
+  @override
+  String get healthSyncTypeMenstrualFlow => 'Menstrual flow';
+
+  @override
+  String get healthSyncTypeOvulationTest => 'Ovulation test';
+
+  @override
+  String get healthSyncTypeSpotting => 'Spotting';
+
+  @override
+  String get healthSyncTypeSymptoms => 'Symptoms';
+
+  @override
   String healthSyncPermissionUnavailable(String source) {
     return '$source access is not available on this device.';
   }

@@ -29,6 +29,9 @@ enum HealthAccessState {
   /// Writing is allowed, and reading is not known to be off.
   granted,
 
+  /// Some write types are granted and some are off (Issue #1555).
+  writingSome,
+
   /// Nothing has been answered yet for the writes, and reading is not on.
   notAsked,
 
@@ -50,7 +53,7 @@ enum HealthAccessState {
   /// Whether the way to change this state is the platform's own settings
   /// screen, so the status line says so and the screen offers the link.
   bool get changedInSettings => switch (this) {
-        denied || readingOnly || writingOnly => true,
+        denied || readingOnly || writingOnly || writingSome => true,
         granted || notAsked || unavailable => false,
       };
 }
@@ -84,6 +87,7 @@ bool _knownOff(HealthPermissionStatus? status) =>
 
 HealthAccessState _writeAlone(HealthPermissionStatus write) => switch (write) {
       HealthPermissionStatus.granted => HealthAccessState.granted,
+      HealthPermissionStatus.writingSome => HealthAccessState.writingSome,
       HealthPermissionStatus.notAsked => HealthAccessState.notAsked,
       HealthPermissionStatus.denied => HealthAccessState.denied,
       HealthPermissionStatus.unavailable => HealthAccessState.unavailable,

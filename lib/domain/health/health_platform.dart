@@ -161,12 +161,15 @@ enum HealthPermissionStatus {
   /// The write types are authorized.
   granted,
 
+  /// At least one write type is authorized, but not all (Issue #1555).
+  writingSome,
+
   /// The OS permission sheet has not been answered yet — the first sync
   /// pass is what asks.
   notAsked,
 
-  /// The OS permission was denied (or partially denied): writes will fail
-  /// until the operator changes it in the platform's settings.
+  /// The OS permission was denied: no write types are allowed and the
+  /// operator was asked.
   denied,
 
   /// No health store / permission surface exists on this device (HealthKit
@@ -178,6 +181,7 @@ enum HealthPermissionStatus {
   /// codec recognizes nothing else.
   String toWire() => switch (this) {
         granted => 'granted',
+        writingSome => 'writingSome',
         notAsked => 'notAsked',
         denied => 'denied',
         unavailable => 'unavailable',
@@ -189,11 +193,22 @@ enum HealthPermissionStatus {
   /// status.
   static HealthPermissionStatus? fromWire(String? raw) => switch (raw) {
         'granted' => granted,
+        'writingSome' => writingSome,
         'notAsked' => notAsked,
         'denied' => denied,
         'unavailable' => unavailable,
         _ => null,
       };
+}
+
+/// The stable wire identifiers for health store write permission types (Issue #1555).
+abstract final class HealthWriteTypes {
+  static const menstrualFlow = 'menstrualFlow';
+  static const spotting = 'spotting';
+  static const cervicalMucus = 'cervicalMucus';
+  static const ovulationTest = 'ovulationTest';
+  static const basalBodyTemperature = 'basalBodyTemperature';
+  static const symptoms = 'symptoms';
 }
 
 /// The narrow seam `lib/ui`, the write pass and the background import read
@@ -206,6 +221,10 @@ abstract interface class HealthPermissionProbe {
   /// The current OS permission state for the types this app writes. Never
   /// touches user data; safe to call before any binding exists.
   Future<HealthPermissionStatus> permissionStatus();
+
+  /// The set of write type identifiers currently authorized by the health
+  /// store (Issue #1555).
+  Future<Set<String>> grantedWriteTypes();
 
   /// The current OS permission state for what the **import** reads (Issue
   /// #1491) — the gate of the prompt-free background pass

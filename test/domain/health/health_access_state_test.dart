@@ -13,6 +13,7 @@ import 'package:lunarlog/domain/health/health_access_state.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 
 const _granted = HealthPermissionStatus.granted;
+const _writingSome = HealthPermissionStatus.writingSome;
 const _notAsked = HealthPermissionStatus.notAsked;
 const _denied = HealthPermissionStatus.denied;
 const _unavailable = HealthPermissionStatus.unavailable;
@@ -20,6 +21,7 @@ const _unavailable = HealthPermissionStatus.unavailable;
 /// What the line said before Issue #1515: the write answer on its own.
 HealthAccessState _writeAlone(HealthPermissionStatus write) => switch (write) {
       HealthPermissionStatus.granted => HealthAccessState.granted,
+      HealthPermissionStatus.writingSome => HealthAccessState.writingSome,
       HealthPermissionStatus.notAsked => HealthAccessState.notAsked,
       HealthPermissionStatus.denied => HealthAccessState.denied,
       HealthPermissionStatus.unavailable => HealthAccessState.unavailable,
@@ -55,6 +57,21 @@ void main() {
       expect(
         healthAccessState(write: _granted, read: _notAsked),
         HealthAccessState.writingOnly,
+      );
+    });
+
+    test('some writes on: writingSome, regardless of read status', () {
+      expect(
+        healthAccessState(write: _writingSome, read: _granted),
+        HealthAccessState.writingSome,
+      );
+      expect(
+        healthAccessState(write: _writingSome, read: _denied),
+        HealthAccessState.writingSome,
+      );
+      expect(
+        healthAccessState(write: _writingSome, read: _notAsked),
+        HealthAccessState.writingSome,
       );
     });
 
@@ -166,6 +183,7 @@ void main() {
       expect(HealthAccessState.denied.changedInSettings, isTrue);
       expect(HealthAccessState.readingOnly.changedInSettings, isTrue);
       expect(HealthAccessState.writingOnly.changedInSettings, isTrue);
+      expect(HealthAccessState.writingSome.changedInSettings, isTrue);
     });
 
     test('nothing to change there when granted, not yet asked or unavailable',

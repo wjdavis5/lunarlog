@@ -22,7 +22,8 @@
 /// | `writeOvulationTest` | guard + day + `healthKitResult` + `healthConnectResult` + `recordId` + `recordVersionMs` | result string |
 /// | `writeBasalBodyTemperature` | guard + BBT instant args + `celsius` + `healthConnectMeasurementLocation` + `recordId` + `recordVersionMs` | result string |
 /// | `deleteRecords` | guard + `recordIds` | result string |
-/// | `permissionStatus` | none | one of `granted` / `notAsked` / `denied` / `unavailable` |
+/// | `permissionStatus` | none | one of `granted` / `writingSome` / `notAsked` / `denied` / `unavailable` |
+/// | `grantedWriteTypes` | none | `List<String>` of authorized write wire identifiers |
 /// | `importPermissionStatus` (Android only) | none | one of `granted` / `notAsked` / `denied` / `unavailable` |
 /// | `importPastDataGranted` (Android only) | none | `bool` |
 /// | `openPermissionSettings` | none | `null` |
@@ -159,6 +160,11 @@ abstract final class HealthChannelMethods {
   /// OS consent state for the types this app writes and open the platform
   /// settings screen, neither of which touches user health data.
   static const permissionStatus = 'permissionStatus';
+
+  /// The authorized write types query (Issue #1555): returns the list of
+  /// write type wire identifiers currently granted. Unguarded.
+  static const grantedWriteTypes = 'grantedWriteTypes';
+
   static const openPermissionSettings = 'openPermissionSettings';
 
   /// The read-side OS-permission method (Issue #1491): the consent state

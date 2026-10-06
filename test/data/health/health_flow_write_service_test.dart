@@ -191,6 +191,15 @@ class _FakePlatform implements HealthPlatformStore {
     return permission;
   }
 
+  Set<String> grantedTypes = const {};
+  int grantedWriteTypesCalls = 0;
+
+  @override
+  Future<Set<String>> grantedWriteTypes() async {
+    grantedWriteTypesCalls++;
+    return grantedTypes;
+  }
+
   /// Issue #1491: the read-side probe gates the background import and
   /// nothing else. Programmable and counted so a test can prove a write
   /// pass is neither stopped by it nor reads it.
@@ -2601,6 +2610,96 @@ void main() {
       expect(platform.deleteCalls, hasLength(1),
           reason: 'the ledger seeds the same state the in-memory set held, '
               'so a repeated save is still a no-op');
+    });
+  });
+
+  group('partial write permissions (issue #1555)', () {
+    final grant = DateTime.utc(2026, 6, 1, 12);
+
+    test('writingSome does not block the sync pass and queries grantedWriteTypes',
+        () async {
+      await seedGranted(grant);
+      platform.permission = HealthPermissionStatus.writingSome;
+      platform.grantedTypes = {'menstrualFlow'};
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1))),
+      ];
+
+      final report = await buildService().syncNow();
+
+      expect(report.blocked, isNull);
+      expect(report.samplesWritten, 1);
+      expect(platform.grantedWriteTypesCalls, 1);
+      expect(platform.flowWrites, hasLength(1));
+    });
+
+    test('when menstrualFlow is off, flow and period writes are skipped but cursor advances past skipped days',
+        () async {
+      await seedGranted(grant);
+      platform.permission = HealthPermissionStatus.writingSome;
+      platform.grantedTypes = {'spotting'};
+      final t1 = grant.add(const Duration(hours: 1));
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.heavy, t1),
+      ];
+
+      final report = await buildService().syncNow();
+
+      expect(report.blocked, isNull);
+      expect(report.samplesWritten, 0);
+      expect(report.periodRecordsWritten, 0);
+      expect(platform.flowWrites, isEmpty);
+      expect(platform.periodWrites, isEmpty);
+      expect(await settings.get(_cursorKey), '${t1.millisecondsSinceEpoch}');
+    });
+
+    test('when spotting is off, spotting marker writes are skipped while flow writes succeed',
+        () async {
+      await seedGranted(grant);
+      platform.permission = HealthPermissionStatus.writingSome;
+      platform.grantedTypes = {'menstrualFlow'};
+      final t1 = grant.add(const Duration(hours: 1));
+      final t2 = grant.add(const Duration(hours: 2));
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium, t1),
+      ];
+      observations.observations = [
+        _spotting('2026-06-03', t2),
+      ];
+
+      final report = await buildService().syncNow();
+
+      expect(report.blocked, isNull);
+      expect(report.samplesWritten, 1);
+      expect(platform.flowWrites, hasLength(1));
+      expect(platform.markerWrites, isEmpty);
+      expect(await settings.get(_cursorKey), '${t2.millisecondsSinceEpoch}');
+    });
+
+    test('when BBT, cervical mucus, and ovulation are off, those writes are skipped while flow succeeds and cursor advances',
+        () async {
+      await seedGranted(grant);
+      platform.permission = HealthPermissionStatus.writingSome;
+      platform.grantedTypes = {'menstrualFlow'};
+      final t1 = grant.add(const Duration(hours: 1));
+      final t2 = grant.add(const Duration(hours: 2));
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium, t1,
+            tags: const ['cervical_egg_white', 'lh_surge_positive']),
+      ];
+      observations.observations = [
+        _bbt('2026-06-03', 36.6, t2),
+      ];
+
+      final report = await buildService().syncNow();
+
+      expect(report.blocked, isNull);
+      expect(report.samplesWritten, 1);
+      expect(report.cervicalMucusSamplesWritten, 0);
+      expect(report.ovulationTestSamplesWritten, 0);
+      expect(report.basalBodyTemperatureSamplesWritten, 0);
+      expect(await settings.get(_cursorKey), '${t2.millisecondsSinceEpoch}');
     });
   });
 

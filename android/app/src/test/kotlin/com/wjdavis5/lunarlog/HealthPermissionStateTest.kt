@@ -87,21 +87,24 @@ class HealthPermissionStateTest {
     }
 
     @Test
-    fun `a missing write permission is denied even with every read granted`() {
+    fun `a missing write permission reports writingSome when at least one write is granted`() {
         assertEquals(
-            "denied",
+            "writingSome",
             status(setOf(writeMenstruation) + importRequest, writesEverRequested = true),
         )
     }
 
     @Test
-    fun `one write granted proves she was asked for the writes, flag or no flag`() {
+    fun `one write granted reports writingSome, flag or no flag`() {
         // A write switched on in Health Connect's settings, or on the sheet
-        // of a build older than the flag: a decision about the writes was
-        // made, so the missing one is a denial.
+        // of a build older than the flag: partial write access reports writingSome.
         assertEquals(
-            "denied",
+            "writingSome",
             status(setOf(writeMenstruation), writesEverRequested = false),
+        )
+        assertEquals(
+            "writingSome",
+            status(setOf(writeMenstruation), writesEverRequested = true),
         )
     }
 
@@ -248,28 +251,23 @@ class HealthPermissionStateTest {
     }
 
     @Test
-    fun `the write status is the one decision over the writes alone`() {
-        // writeStatusFor is statusFor with the writes as both what is
-        // required and what counts as proof of having been asked.
-        for (writesEverRequested in listOf(false, true)) {
-            for (granted in listOf(
-                emptySet(),
-                writes,
-                setOf(writeMenstruation),
-                importRequest,
-                writeRequest,
-            )) {
-                assertEquals(
-                    HealthPermissionState.statusFor(
-                        granted = granted,
-                        required = writes,
-                        requested = writes,
-                        everRequested = writesEverRequested,
-                    ),
-                    status(granted, writesEverRequested),
-                )
-            }
-        }
+    fun `the write status decision reports granted, writingSome, denied, or notAsked`() {
+        // All writes granted -> granted regardless of writesEverRequested
+        assertEquals("granted", status(writes, writesEverRequested = false))
+        assertEquals("granted", status(writes, writesEverRequested = true))
+        assertEquals("granted", status(writeRequest, writesEverRequested = true))
+
+        // Some writes granted -> writingSome regardless of writesEverRequested
+        assertEquals("writingSome", status(setOf(writeMenstruation), writesEverRequested = false))
+        assertEquals("writingSome", status(setOf(writeMenstruation), writesEverRequested = true))
+        assertEquals("writingSome", status(setOf(writeSpotting), writesEverRequested = false))
+        assertEquals("writingSome", status(setOf(writeSpotting), writesEverRequested = true))
+
+        // 0 writes granted -> denied if asked, notAsked if not asked
+        assertEquals("denied", status(emptySet(), writesEverRequested = true))
+        assertEquals("denied", status(importRequest, writesEverRequested = true))
+        assertEquals("notAsked", status(emptySet(), writesEverRequested = false))
+        assertEquals("notAsked", status(importRequest, writesEverRequested = false))
     }
 
     @Test
@@ -277,5 +275,6 @@ class HealthPermissionStateTest {
         assertEquals("granted", HealthPermissionState.GRANTED)
         assertEquals("notAsked", HealthPermissionState.NOT_ASKED)
         assertEquals("denied", HealthPermissionState.DENIED)
+        assertEquals("writingSome", HealthPermissionState.WRITING_SOME)
     }
 }

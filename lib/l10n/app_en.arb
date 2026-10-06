@@ -1209,6 +1209,46 @@
       }
     }
   },
+  "healthSyncPermissionWritingSome": "{source} access: writing some ({offTypes} off) — open Settings to change",
+  "@healthSyncPermissionWritingSome": {
+    "description": "Health sync screen OS-permission status line (Issue #1555): some write types are allowed and some are off. {source} is the sentence-initial store name ('Health app' or 'Health Connect'). {offTypes} is a comma-separated list of types that are switched off. Shown with the settings deep link.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      },
+      "offTypes": {
+        "type": "String"
+      }
+    }
+  },
+  "healthSyncTypeBasalBodyTemperature": "Basal body temperature",
+  "@healthSyncTypeBasalBodyTemperature": {
+    "description": "Health store write permission type name for basal body temperature (Issue #1555)."
+  },
+  "healthSyncTypeCervicalMucus": "Cervical mucus",
+  "@healthSyncTypeCervicalMucus": {
+    "description": "Health store write permission type name for cervical mucus (Issue #1555)."
+  },
+  "healthSyncTypeMenstruation": "Menstruation",
+  "@healthSyncTypeMenstruation": {
+    "description": "Health Connect write permission type name for menstruation (Issue #1555)."
+  },
+  "healthSyncTypeMenstrualFlow": "Menstrual flow",
+  "@healthSyncTypeMenstrualFlow": {
+    "description": "HealthKit write permission type name for menstrual flow (Issue #1555)."
+  },
+  "healthSyncTypeOvulationTest": "Ovulation test",
+  "@healthSyncTypeOvulationTest": {
+    "description": "Health store write permission type name for ovulation test (Issue #1555)."
+  },
+  "healthSyncTypeSpotting": "Spotting",
+  "@healthSyncTypeSpotting": {
+    "description": "Health store write permission type name for spotting (Issue #1555)."
+  },
+  "healthSyncTypeSymptoms": "Symptoms",
+  "@healthSyncTypeSymptoms": {
+    "description": "HealthKit write permission type name for symptoms (Issue #1555)."
+  },
   "healthSyncPermissionUnavailable": "{source} access is not available on this device.",
   "@healthSyncPermissionUnavailable": {
     "description": "Health sync screen OS-permission status line (Issue #959): there is no health store or permission surface on this device.",
