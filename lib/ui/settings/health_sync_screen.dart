@@ -730,8 +730,10 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
     if (summary.isBlocked || summary.isEmpty) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
+        // The result's first line: the headline, or what was added when
+        // the pass imported no day (see [_importResultLines]).
         content: Text(
-          _completedSummaryHeadline(AppLocalizations.of(context), summary),
+          _importResultLines(AppLocalizations.of(context), summary).first,
         ),
       ),
     );
@@ -760,24 +762,43 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// pre-#992 "Updated N days" and "N days already matched" lines restated
   /// them with different verbs, so they are gone. When nothing was imported,
   /// say so plainly instead of "Imported 0 days".
-  String _completedSummaryHeadline(
+  ///
+  /// Null when there is nothing for it to say: the pass added spotting,
+  /// imported no day and skipped none.
+  String? _completedSummaryHeadline(
     AppLocalizations l10n,
     HealthImportSummary summary,
   ) {
-    if (summary.importedDays == 0 && summary.spottingDaysWritten == 0) {
-      return l10n.healthSyncImportSummaryNothingNew(
-        summary.skippedAlreadyLoggedDays,
+    final skipped = summary.skippedAlreadyLoggedDays;
+    if (summary.importedDays == 0) {
+      return _noDayImportedHeadline(
+        l10n,
+        skipped,
+        spottingAdded: summary.spottingDaysWritten > 0,
       );
     }
     // Issue #1557: with nothing skipped the headline read "Imported 1
     // day, skipped 0 already logged."
-    if (summary.skippedAlreadyLoggedDays == 0) {
+    if (skipped == 0) {
       return l10n.healthSyncImportSummaryImported(summary.importedDays);
     }
-    return l10n.healthSyncImportSummaryHeadline(
-      summary.importedDays,
-      summary.skippedAlreadyLoggedDays,
-    );
+    return l10n.healthSyncImportSummaryHeadline(summary.importedDays, skipped);
+  }
+
+  /// [_completedSummaryHeadline] for a pass that imported no day. When it
+  /// added spotting, "Nothing new" would be untrue, and the general
+  /// headline read "Imported 0 days, skipped 4 already logged" above a line
+  /// saying spotting was added. So the spotting line leads
+  /// ([_importResultLines]) and this says only what happened to the days,
+  /// or nothing when none was skipped.
+  static String? _noDayImportedHeadline(
+    AppLocalizations l10n,
+    int skipped, {
+    required bool spottingAdded,
+  }) {
+    if (!spottingAdded) return l10n.healthSyncImportSummaryNothingNew(skipped);
+    if (skipped == 0) return null;
+    return l10n.healthSyncImportSummaryAlreadyLogged(skipped);
   }
 
   /// The positive result lines for a pass that read samples. Empty when
@@ -792,12 +813,19 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
     HealthImportSummary summary,
   ) {
     final source = _sourceName(l10n, _importPlatform);
+    final headline = _completedSummaryHeadline(l10n, summary);
+    final spotting = summary.spottingDaysWritten > 0
+        ? l10n.healthSyncImportAddedSpotting(summary.spottingDaysWritten, source)
+        : null;
+    // What was added comes first. When a day was imported that is the
+    // headline; when only spotting was, it is the spotting line.
+    final spottingLeads = summary.importedDays == 0;
     return [
+      if (spottingLeads && spotting != null) spotting,
       // Issue #992/#1017: one completion headline, then only the detail
       // lines that add information the headline does not already carry.
-      _completedSummaryHeadline(l10n, summary),
-      if (summary.spottingDaysWritten > 0)
-        l10n.healthSyncImportAddedSpotting(summary.spottingDaysWritten, source),
+      ?headline,
+      if (!spottingLeads && spotting != null) spotting,
       if (summary.daysKeptManual > 0)
         l10n.healthSyncImportKeptManual(summary.daysKeptManual),
       if (summary.samplesWithoutZone > 0) ...[

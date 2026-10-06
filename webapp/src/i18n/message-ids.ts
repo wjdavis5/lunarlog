@@ -256,6 +256,7 @@ export const MESSAGE_IDS = [
   "healthSyncImportSkippedUnsupported",
   "healthSyncImportSummaryHeadline",
   "healthSyncImportSummaryImported",
+  "healthSyncImportSummaryAlreadyLogged",
   "healthSyncImportSummaryNothingNew",
   "healthSyncImportTileSubtitle",
   "healthSyncImportProgress",
