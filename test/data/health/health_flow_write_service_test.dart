@@ -3788,6 +3788,82 @@ void main() {
       ]);
     });
 
+    // Issue #1583: the store says which types it passed over, and it says
+    // so for any type that is off, whichever records were asked for.
+    group('a delete the store answers "partial" to', () {
+      test('with another type passed over, the record is gone: forgotten, '
+          'counted, and nothing is reported', () async {
+        await seedGranted(grant);
+        dayEntries.entries = [_entry('2026-06-10', FlowLevel.medium, at(10))];
+        clock = at(11);
+        final service = buildService();
+        await service.syncNow();
+
+        // Temperature is switched off for lunarlog. She clears the day.
+        platform.deleteResult =
+            const HealthPlatformResult.partial({'basalBodyTemperature'});
+        dayEntries.entries = [_entry('2026-06-10', FlowLevel.none, at(20))];
+        clock = at(21);
+        final report = await service.syncNow();
+
+        expect(report.blocked, isNull);
+        expect(report.samplesReconciled, 1);
+        expect(ledger.rows, isEmpty,
+            reason: 'the flow record and the period record are both gone');
+        final asked = platform.deleteCalls.length;
+        await service.syncNow();
+        expect(platform.deleteCalls, hasLength(asked));
+      });
+
+      test('a no-flow day the ledger knows nothing of is cleared all the '
+          'same when only another type was passed over', () async {
+        await seedGranted(grant);
+        platform.deleteResult =
+            const HealthPlatformResult.partial({'cervicalMucus'});
+        dayEntries.entries = [_entry('2026-06-10', FlowLevel.none, at(10))];
+        clock = at(11);
+        final service = buildService();
+
+        expect((await service.syncNow()).blocked, isNull);
+        await service.syncNow();
+        expect(platform.deleteCalls, hasLength(1));
+      });
+
+      // A spotting entry's record is a marker, or a light flow sample when
+      // the day falls inside a period, and the ledger does not say which.
+      test('a spotting entry\'s record stays remembered when either of its '
+          'two types was passed over', () async {
+        for (final skipped in ['menstrualFlow', 'spotting']) {
+          ledger = FakeHealthExportLedger();
+          settings = FakeSettingsStore();
+          platform = _FakePlatform();
+          await seedGranted(grant);
+          dayEntries.entries = [_entry('2026-06-10', FlowLevel.none, at(10))];
+          observations.observations = [_spotting('2026-06-10', at(10))];
+          clock = at(11);
+          final service = buildService();
+          await service.syncNow();
+          expect(platform.markerWrites, hasLength(1));
+
+          // The day is given a flow, so the marker should go.
+          platform.deleteResult = HealthPlatformResult.partial({skipped});
+          dayEntries.entries = [
+            _entry('2026-06-10', FlowLevel.medium, at(20)),
+          ];
+          clock = at(21);
+          final report = await service.syncNow();
+
+          expect(report.blocked, isA<HealthPlatformPartial>(),
+              reason: skipped);
+          expect(
+            ledger.rows.map((row) => row.recordId),
+            contains('spot-2026-06-10'),
+            reason: skipped,
+          );
+        }
+      });
+    });
+
     // Never written back, whatever the ledger says: a row lunarlog wrote
     // and the import later took over has a health store as its source.
     test('a row that came from the health store is left alone even when the '

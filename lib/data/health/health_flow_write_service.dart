@@ -331,6 +331,11 @@ class _Batch {
   /// ([LocalHealthFlowWriteService._clearUnknownFlowRecords]).
   final Map<String, DateTime> unknownFlowRecords = {};
 
+  /// The flow record id of every in-scope no-flow day, with the day's
+  /// `updatedAt`. When the pass deletes one the ledger knew, the day has
+  /// been asked for and must not be asked for again as an unknown one.
+  final Map<String, DateTime> noFlowDays = {};
+
   /// Every live, exportable BBT observation's record id this pass, whether
   /// or not it is due — the "still present" side of the BBT diff. A
   /// remembered id absent from this set is a reading the operator cleared
@@ -936,6 +941,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       // it out here is what gets it deleted.
       desired.remove(flowId);
       batch.withoutSample++;
+      batch.noFlowDays[flowId] = entry.updatedAt;
       // And if the ledger knows of none, one may still be there from an
       // earlier binding or an earlier install, whose ledger is gone.
       if (_memory.entryOf(flowId) == null &&
@@ -1435,12 +1441,18 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   ) async {
     var removed = 0;
     HealthPlatformResult? failure;
+    // The no-flow days whose flow record this pass has just deleted.
+    final cleared = <DateTime>[];
     for (final stale in _staleRecords(batch, grantedTypes)) {
       final outcome = await _removeFromStore(stale, facts);
-      removed += outcome.removed;
+      removed += outcome.gone.length;
       failure ??= outcome.failure;
+      cleared.addAll([
+        for (final recordId in outcome.gone) ?batch.noFlowDays[recordId],
+      ]);
     }
-    final unclear = await _clearUnknownFlowRecords(batch, facts, grantedTypes);
+    final unclear =
+        await _clearUnknownFlowRecords(batch, facts, grantedTypes, cleared);
     return (removed: removed, failure: failure ?? unclear);
   }
 
@@ -1456,22 +1468,32 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// a no-op. It is sent once for each save of such a day
   /// ([HealthWritePassState.clearedThrough]), which is what every build
   /// before this one did, and not at all while flow is switched off.
-  /// Returns what stopped it, or null.
+  ///
+  /// [alreadyCleared] is the no-flow days whose flow record the pass has
+  /// just deleted because the ledger did know it. Those have been asked
+  /// for; without this the next pass would find them unknown and ask
+  /// again. They count only once the unknown ones are through, since the
+  /// mark is one time for all of them.
+  ///
+  /// Returns the store's answer when it did not let the records go, or
+  /// null.
   Future<HealthPlatformResult?> _clearUnknownFlowRecords(
     _Batch batch,
     HealthGuardFacts facts,
     Set<String>? grantedTypes,
+    List<DateTime> alreadyCleared,
   ) async {
     final unknown = batch.unknownFlowRecords;
-    if (unknown.isEmpty ||
-        !_canWriteType(grantedTypes, HealthWriteTypes.menstrualFlow)) {
-      return null;
+    if (unknown.isNotEmpty) {
+      if (!_canWriteType(grantedTypes, HealthWriteTypes.menstrualFlow)) {
+        return null;
+      }
+      final drift = await _authorityDrift(facts);
+      if (drift != null) return drift;
+      final result = await _platform.deleteRecords(facts, unknown.keys.toList());
+      if (!_flowRecordsGone(result)) return result;
     }
-    final drift = await _authorityDrift(facts);
-    if (drift != null) return drift;
-    final result = await _platform.deleteRecords(facts, unknown.keys.toList());
-    if (!_flowRecordsGone(result)) return result;
-    for (final version in unknown.values) {
+    for (final version in [...unknown.values, ...alreadyCleared]) {
       _state = _state.withClearedThrough(version);
     }
     return null;
@@ -1512,20 +1534,21 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       ];
 
   /// Deletes [recordIds] from the store and forgets the ones it let go.
-  /// Answers how many those were, and the store's answer when any of them
-  /// is still there: a refusal, or a delete that passed some over.
-  Future<({int removed, HealthPlatformResult? failure})> _removeFromStore(
+  /// Answers which those were, and the store's answer when any of the
+  /// rest is still there: a refusal, or a delete that passed some over.
+  Future<({List<String> gone, HealthPlatformResult? failure})>
+      _removeFromStore(
     List<String> recordIds,
     HealthGuardFacts facts,
   ) async {
     final drift = await _authorityDrift(facts);
-    if (drift != null) return (removed: 0, failure: drift);
+    if (drift != null) return (gone: const <String>[], failure: drift);
     final result = await _platform.deleteRecords(facts, recordIds);
     final gone = _letGo(recordIds, result);
-    if (gone == null) return (removed: 0, failure: result);
+    if (gone == null) return (gone: const <String>[], failure: result);
     await _memory.forget(gone);
     return (
-      removed: gone.length,
+      gone: gone,
       failure: gone.length == recordIds.length ? null : result,
     );
   }
