@@ -531,4 +531,42 @@ void main() {
       expect(identical(result, base), isTrue);
     });
   });
+
+  // A `DropdownButton` paints its open menu with the theme's `canvasColor`.
+  // Left at its default that is `surface`, which in dark mode is darker
+  // than everything a menu opens over, and a shadow does not show on a
+  // dark background: an open menu had no edge and read as a hole in the
+  // sheet behind it.
+  group('an open dropdown menu stands out from what it opens over', () {
+    test('in dark mode it is lighter than the page, a sheet and a dialog',
+        () {
+      final scheme = AppTheme.darkTheme.colorScheme;
+      final menu = AppTheme.darkTheme.canvasColor.computeLuminance();
+      for (final (name, under) in [
+        ('the page', scheme.surface),
+        ('a sheet', scheme.surfaceContainerLow),
+        ('a dialog', scheme.surfaceContainerHigh),
+      ]) {
+        expect(menu, greaterThan(under.computeLuminance()), reason: name);
+      }
+    });
+
+    test('in light mode it stays the lightest surface, where its shadow '
+        'sets it apart', () {
+      expect(
+        AppTheme.lightTheme.canvasColor,
+        AppTheme.lightTheme.colorScheme.surface,
+      );
+    });
+
+    test('its text keeps its contrast in both modes', () {
+      for (final theme in [AppTheme.lightTheme, AppTheme.darkTheme]) {
+        expect(
+          wcagContrastRatio(theme.colorScheme.onSurface, theme.canvasColor),
+          greaterThanOrEqualTo(4.5),
+          reason: '${theme.brightness}',
+        );
+      }
+    });
+  });
 }

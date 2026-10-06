@@ -42,6 +42,7 @@ abstract final class AppTheme {
     return ThemeData(
       brightness: brightness,
       colorScheme: colorScheme,
+      canvasColor: _menuColor(colorScheme),
       // Issue #808: the default family for any text that is not an explicit
       // `LLType` slot (Material components, `displayLarge`/`headlineLarge`,
       // and the `DefaultTextStyle` a bare `Text` inherits). The ramp's own
@@ -55,6 +56,20 @@ abstract final class AppTheme {
       extensions: [LunarLogColors.forColorScheme(colorScheme)],
     );
   }
+
+  /// What a `DropdownButton` paints its open menu with: it takes the theme's
+  /// `canvasColor`, and nothing else in the app paints with that.
+  ///
+  /// The default is `surface`. In dark mode that is the darkest tone there
+  /// is, darker than the page, the sheets and the dialogs a menu opens
+  /// over, and a shadow does not show on a dark background: an open menu
+  /// read as a hole in the sheet, with no edge. So in dark mode the menu
+  /// takes the lightest container tone, which is lighter than all three.
+  /// In light mode the default stays: the menu's shadow sets it apart.
+  static Color _menuColor(ColorScheme colorScheme) =>
+      colorScheme.brightness == Brightness.dark
+          ? colorScheme.surfaceContainerHighest
+          : colorScheme.surface;
 
   /// The type ramp (B-4), matching issue #176's table and #807. `displayLarge`
   /// and the unused `headlineLarge` slot are left at Flutter's M3 default.
