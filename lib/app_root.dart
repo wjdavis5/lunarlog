@@ -150,6 +150,22 @@ class RemoveAllPushRegistrationsCallback {
   Future<void> call() => _call();
 }
 
+/// Runs the in-context push-permission ask and completes registration
+/// (issue #1444): the "Turn on reminders" tap and the Notifications
+/// screen's alert toggles drive this so granting there also registers
+/// this device for caregiver alerts. Best-effort and a no-op when push
+/// was never started (unconfigured build, or no session yet) — the same
+/// wrapper-class rationale as [RemovePushRegistrationCallback] (a bare
+/// same-shaped typedef would collide with it and [DeviceResetCallback]
+/// in the provider tree).
+class EnsurePushRegistrationCallback {
+  const EnsurePushRegistrationCallback(this._call);
+
+  final Future<void> Function() _call;
+
+  Future<void> call() => _call();
+}
+
 /// Overview hint seam (issue #168): the "Turn on reminders" tap runs
 /// through this so `lib/ui` never touches `ReminderCoordinator` directly —
 /// same wrapper-class rationale as [RemovePushRegistrationCallback] (a bare
@@ -617,11 +633,14 @@ class LunarLogRootState extends State<LunarLogRoot> {
       authStates: authService.states,
       currentAuthState: () => authService.state,
       onTap: _gate.setPendingLaunchProfileId,
-      // Issue #1425: push registration asks for notification permission at
-      // launch. It gets the gate's system-UI window to open around that
-      // ask (so the dialog does not re-lock the app behind it) and the
-      // store the Android refusal count lives in (so a refusal there is
-      // one the "Turn on reminders" tap knows about).
+      // Issue #1425: the coordinator's in-context permission ask (issue
+      // #1444) gets the gate's system-UI window to open around a request
+      // that can present the system dialog (so the dialog does not
+      // re-lock the app behind it) and the store the Android refusal
+      // count lives in (so a refusal in context is one the "Turn on
+      // reminders" tap knows about). Nothing here asks at launch:
+      // initialization is silent and registration simply skips while the
+      // token reads null.
       settings: settings,
       duringSystemUi: _gate.duringSystemUi,
     );
@@ -860,12 +879,16 @@ class LunarLogRootState extends State<LunarLogRoot> {
           child: Provider<RemoveAllPushRegistrationsCallback>.value(
             value: _removeAllPushRegistrationsCallback,
             updateShouldNotify: (_, _) => false,
-            child: Directionality(
-              textDirection: TextDirection.ltr,
-              child: GateShell(
-                controller: _gate,
-                themeMode: _themeMode,
-                child: content,
+            child: Provider<EnsurePushRegistrationCallback>.value(
+              value: _ensurePushRegistrationCallback,
+              updateShouldNotify: (_, _) => false,
+              child: Directionality(
+                textDirection: TextDirection.ltr,
+                child: GateShell(
+                  controller: _gate,
+                  themeMode: _themeMode,
+                  child: content,
+                ),
               ),
             ),
           ),
@@ -895,6 +918,13 @@ class LunarLogRootState extends State<LunarLogRoot> {
       RemoveAllPushRegistrationsCallback(
         () async =>
             _pushCoordinator?.removeAllRegistrations() ?? Future.value(),
+      );
+
+  EnsurePushRegistrationCallback get _ensurePushRegistrationCallback =>
+      EnsurePushRegistrationCallback(
+        () async =>
+            _pushCoordinator?.ensurePermissionAndRegister() ??
+            Future.value(),
       );
 }
 

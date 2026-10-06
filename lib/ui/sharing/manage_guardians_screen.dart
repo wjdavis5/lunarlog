@@ -52,6 +52,7 @@ class ManageGuardiansScreen extends StatefulWidget {
     required this.currentUserId,
     this.ownershipTransferService,
     this.notificationPreferencesService,
+    this.ensurePushRegistration,
     this.activityRepository,
     this.predictionConnectionService,
     this.onPredictionConnectionChanged,
@@ -75,6 +76,11 @@ class ManageGuardiansScreen extends StatefulWidget {
   /// platform/build with push unavailable) hides the action entirely - this
   /// is what keeps R17 true with zero conditionals in the caller.
   final NotificationPreferencesService? notificationPreferencesService;
+
+  /// Issue #1444: forwarded to [NotificationPreferencesScreen], which
+  /// drives it the moment a guardian turns an alert on. Null where push
+  /// was never started — the screen then just saves.
+  final Future<void> Function()? ensurePushRegistration;
 
   /// Issue #124: when present, an AppBar "Activity" action opens
   /// [ActivityFeedScreen] - the feed is reachable from Manage Guardians as
@@ -1064,6 +1070,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
                   builder: (_) => NotificationPreferencesScreen(
                     profile: widget.profile,
                     preferencesService: notificationPreferencesService,
+                    ensurePushRegistration: widget.ensurePushRegistration,
                   ),
                 ),
               ),

@@ -1,5 +1,5 @@
 /// Unit tests for the pure decisions behind push registration's
-/// launch-time permission ask (issue #1425).
+/// in-context permission ask (issues #1425, #1444).
 library;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -39,7 +39,8 @@ void main() {
     });
 
     test('two refusals on record make no request -- it would be silently '
-        'dropped, and a window for it would blank the launch', () {
+        'dropped, and a window for it would cover the app for no dialog',
+        () {
       for (final state in [
         PushPermissionState.undetermined,
         PushPermissionState.refused,

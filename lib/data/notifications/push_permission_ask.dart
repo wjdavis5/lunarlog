@@ -1,6 +1,6 @@
-/// Runs push registration's launch-time permission ask (issue #1425): the
-/// probe, the decision, the system-UI window around a request that can
-/// show a dialog, and — on Android — the refusal count.
+/// Runs push registration's in-context permission ask (issues #1425,
+/// #1444): the probe, the decision, the system-UI window around a request
+/// that can show a dialog, and — on Android — the refusal count.
 ///
 /// The two plugin calls it drives arrive as closures, so this file has no
 /// plugin import and every branch runs under `flutter test`
@@ -19,7 +19,7 @@ import 'package:lunarlog/domain/notifications/push_permission_plan.dart';
 /// lifecycle events a system dialog produces.
 typedef SystemUiWindow = Future<T> Function<T>(Future<T> Function() action);
 
-/// Makes the launch-time ask, or decides not to.
+/// Makes the in-context ask, or decides not to.
 ///
 /// [currentState] reads the permission without asking; [request] asks and
 /// reports the state it left behind. A failed read is treated as
@@ -28,7 +28,7 @@ typedef SystemUiWindow = Future<T> Function<T>(Future<T> Function() action);
 ///
 /// [duringSystemUi] is opened only around a [request] that can present the
 /// system dialog (see [planPushPermissionAsk]), and only for as long as
-/// that request takes — so a launch whose permission is already settled
+/// that request takes — so an ask whose permission is already settled
 /// opens no window and covers nothing. `null` (no gate in the tree) runs
 /// the request bare.
 ///

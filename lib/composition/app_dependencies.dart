@@ -1020,7 +1020,10 @@ RealtimeSyncCoordinator buildRealtimeSyncCoordinator({
 /// `resolvePushDeviceId`) and owns `start()`/`dispose()`.
 ///
 /// Issue #1425: [settings] and [duringSystemUi] go to the token source —
-/// see [buildPushTokenSource].
+/// see [buildPushTokenSource]. Issue #1444: the source's permission ask no
+/// longer runs at launch; the coordinator drives it in context instead
+/// (`ensurePermissionAndRegister`), ahead of the token read, so the iOS
+/// permission/APNs ordering is unchanged.
 PushRegistrationCoordinator buildPushRegistrationCoordinator({
   required SupabaseClient client,
   required String deviceId,
@@ -1030,30 +1033,36 @@ PushRegistrationCoordinator buildPushRegistrationCoordinator({
   required void Function(String profileId)? onTap,
   required SettingsStore settings,
   required SystemUiWindow? duringSystemUi,
-}) => PushRegistrationCoordinator(
-  tokenSource: buildPushTokenSource(
+}) {
+  final tokenSource = buildPushTokenSource(
     settings: settings,
     duringSystemUi: duringSystemUi,
-  ),
-  registry: SupabasePushDeviceRegistry(client: client),
-  deviceId: deviceId,
-  platform: platform,
-  authStates: authStates,
-  currentAuthState: currentAuthState,
-  onTap: onTap,
-);
+  );
+  return PushRegistrationCoordinator(
+    tokenSource: tokenSource,
+    requestPushPermission: tokenSource.askPermission,
+    registry: SupabasePushDeviceRegistry(client: client),
+    deviceId: deviceId,
+    platform: platform,
+    authStates: authStates,
+    currentAuthState: currentAuthState,
+    onTap: onTap,
+  );
+}
 
 /// Constructs the Firebase-backed push token source (issue #1425), split
 /// out of [buildPushRegistrationCoordinator] so its wiring is testable
 /// without a Supabase client.
 ///
-/// The source makes its permission ask at launch. [duringSystemUi] is the
-/// app gate's system-UI window (`GateController.duringSystemUi`): the ask
-/// opens it around a request that can present the system dialog, so the
-/// gate does not re-lock the app behind that dialog. [settings] is where
-/// the Android refusal count lives — the same store the scheduler built by
-/// [buildAppDependencies] reads it from, so a refusal at launch is one the
-/// "Turn on reminders" tap knows about.
+/// The source makes no permission ask on its own since issue #1444 —
+/// initialization is silent. [duringSystemUi] is the app gate's
+/// system-UI window (`GateController.duringSystemUi`): the in-context ask
+/// (`PushRegistrationCoordinator.ensurePermissionAndRegister`) opens it
+/// around a request that can present the system dialog, so the gate does
+/// not re-lock the app behind that dialog. [settings] is where the
+/// Android refusal count lives — the same store the scheduler built by
+/// [buildAppDependencies] reads it from, so a refusal in context is one
+/// the "Turn on reminders" tap knows about.
 FirebasePushTokenSource buildPushTokenSource({
   required SettingsStore settings,
   required SystemUiWindow? duringSystemUi,

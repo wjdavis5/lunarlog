@@ -481,4 +481,167 @@ void main() {
     await coordinator.dispose();
     await tokenSource.close();
   });
+
+  group('ensurePermissionAndRegister (issue #1444)', () {
+    PushRegistrationCoordinator coordinator({
+      required FakePushTokenSource tokenSource,
+      required _FakeRegistry registry,
+      Future<void> Function()? requestPushPermission,
+      AuthSessionState state = AuthSessionState.signedIn,
+      BreadcrumbLog? breadcrumbLog,
+    }) =>
+        PushRegistrationCoordinator(
+          tokenSource: tokenSource,
+          registry: registry,
+          deviceId: deviceId,
+          platform: platform,
+          authStates: const Stream<AuthSessionState>.empty(),
+          currentAuthState: () => state,
+          requestPushPermission: requestPushPermission,
+          breadcrumbLog: breadcrumbLog,
+        );
+
+    test('asks first, then registers the token the grant makes available',
+        () async {
+      // Models the real ordering: no token until the ask grants (iOS
+      // getToken() reads null without permission), then the grant makes
+      // one available.
+      final tokenSource = FakePushTokenSource()..tokenToReturn = null;
+      final registry = _FakeRegistry();
+      var asks = 0;
+      final c = coordinator(
+        tokenSource: tokenSource,
+        registry: registry,
+        requestPushPermission: () async {
+          asks++;
+          expect(registry.registerCalls, isEmpty,
+              reason: 'nothing is registered before the ask completes');
+          tokenSource.tokenToReturn = 'token-1';
+        },
+      );
+      await c.start();
+      expect(registry.registerCalls, isEmpty,
+          reason: 'launch registers nothing while the token reads null');
+
+      await c.ensurePermissionAndRegister();
+
+      expect(asks, 1);
+      expect(registry.registerCalls, hasLength(1));
+      expect(registry.registerCalls.single.token, 'token-1');
+
+      await c.dispose();
+      await tokenSource.close();
+    });
+
+    test('without a permission step it just registers the current token',
+        () async {
+      final tokenSource = FakePushTokenSource()..tokenToReturn = 'token-1';
+      final registry = _FakeRegistry();
+      final c = coordinator(
+        tokenSource: tokenSource,
+        registry: registry,
+      );
+      await c.start();
+      expect(registry.registerCalls, hasLength(1));
+
+      await c.ensurePermissionAndRegister();
+
+      expect(registry.registerCalls, hasLength(2));
+      expect(registry.registerCalls[1].token, 'token-1');
+
+      await c.dispose();
+      await tokenSource.close();
+    });
+
+    test('a throwing ask is logged and registration is still attempted',
+        () async {
+      final tokenSource = FakePushTokenSource()..tokenToReturn = 'token-1';
+      final registry = _FakeRegistry();
+      final log = BreadcrumbLog();
+      final c = coordinator(
+        tokenSource: tokenSource,
+        registry: registry,
+        requestPushPermission: () async => throw StateError('ask failed'),
+        breadcrumbLog: log,
+      );
+      await c.start();
+
+      // The throw must not escape; the ask failure is logged and the
+      // token read is still attempted.
+      await expectLater(c.ensurePermissionAndRegister(), completes);
+      expect(registry.registerCalls, hasLength(2));
+      expect(log.snapshot(), ['push: StateError']);
+
+      await c.dispose();
+      await tokenSource.close();
+    });
+
+    test('a refusal (still no token) registers nothing', () async {
+      final tokenSource = FakePushTokenSource()..tokenToReturn = null;
+      final registry = _FakeRegistry();
+      var asks = 0;
+      final c = coordinator(
+        tokenSource: tokenSource,
+        registry: registry,
+        requestPushPermission: () async {
+          asks++;
+        },
+      );
+      await c.start();
+
+      await c.ensurePermissionAndRegister();
+
+      expect(asks, 1);
+      expect(registry.registerCalls, isEmpty);
+
+      await c.dispose();
+      await tokenSource.close();
+    });
+
+    test('while signed out it asks but registers nothing', () async {
+      final tokenSource = FakePushTokenSource()..tokenToReturn = 'token-1';
+      final registry = _FakeRegistry();
+      var asks = 0;
+      final c = coordinator(
+        tokenSource: tokenSource,
+        registry: registry,
+        state: AuthSessionState.signedOut,
+        requestPushPermission: () async {
+          asks++;
+        },
+      );
+      await c.start();
+
+      await c.ensurePermissionAndRegister();
+
+      expect(asks, 1);
+      expect(registry.registerCalls, isEmpty);
+
+      await c.dispose();
+      await tokenSource.close();
+    });
+
+    test('after dispose it is a no-op', () async {
+      final tokenSource = FakePushTokenSource()..tokenToReturn = 'token-1';
+      final registry = _FakeRegistry();
+      var asks = 0;
+      final c = coordinator(
+        tokenSource: tokenSource,
+        registry: registry,
+        requestPushPermission: () async {
+          asks++;
+        },
+      );
+      await c.start();
+      expect(registry.registerCalls, hasLength(1));
+
+      await c.dispose();
+      await c.ensurePermissionAndRegister();
+
+      expect(asks, 0);
+      expect(registry.registerCalls, hasLength(1));
+
+      await tokenSource.close();
+    });
+  });
 }
