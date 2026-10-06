@@ -2356,6 +2356,12 @@ abstract class AppLocalizations {
   /// **'Intensity'**
   String get daySheetIntensityGroup;
 
+  /// The line above a pain code's 1-5 intensity chips in the day sheet. It names the code being graded and says which end of the scale is which. Matches how a grade is written to the Health app: 1 mild, 2-3 moderate, 4-5 severe.
+  ///
+  /// In en, this message translates to:
+  /// **'{tag}: 1 is mild, 5 is severe'**
+  String daySheetIntensityScale(String tag);
+
   /// The clear affordance on a pain-code intensity selector (Issue #256): removes the recorded intensity, leaving the row ungraded ('no severity recorded'), never 'low'.
   ///
   /// In en, this message translates to:

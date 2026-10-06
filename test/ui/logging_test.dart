@@ -1720,6 +1720,47 @@ void main() {
   });
 
   group('pain intensity (Issue #256)', () {
+    // Beside a 120 pt label the five levels did not fit a phone: the scale
+    // broke as "1 2 3 4" over "5 Clear" at 390 and 412 pt.
+    for (final width in [360.0, 390.0, 412.0]) {
+      testWidgets('the five levels share one line, under a label that says '
+          'which end is which, on a ${width.toInt()} pt phone', (tester) async {
+        final h = await pumpLogging(tester);
+        tester.view.physicalSize = Size(width, 844);
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+        await tester.pumpAndSettle();
+        final cramps = find.widgetWithText(FilterChip, 'Cramps');
+        await tester.ensureVisible(cramps);
+        await tester.tap(cramps);
+        await tester.pump();
+
+        final label = find.byKey(const ValueKey('pain-intensity-cramps-label'));
+        expect(
+          tester.widget<Text>(label).data,
+          'Cramps: 1 is mild, 5 is severe',
+        );
+        Finder level(int n) => find.byKey(ValueKey('pain-intensity-cramps-$n'));
+        final lines = {
+          for (var n = 1; n <= 5; n++) tester.getCenter(level(n)).dy,
+        };
+        expect(lines, hasLength(1), reason: 'the scale wrapped: $lines');
+        expect(
+          tester.getBottomLeft(label).dy,
+          lessThanOrEqualTo(tester.getTopLeft(level(1)).dy),
+          reason: 'the label sits above the scale, not beside it',
+        );
+        expect(
+          tester.getTopLeft(label).dx,
+          tester.getTopLeft(cramps).dx,
+          reason: 'the label lines up with the chips above it',
+        );
+        expect(tester.takeException(), isNull);
+        await disposeLogging(tester, h);
+      });
+    }
+
     testWidgets('grading a selected pain code writes the day pain observation '
         'carrying that intensity', (tester) async {
       final h = await pumpLogging(tester);

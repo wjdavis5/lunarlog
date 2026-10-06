@@ -2589,37 +2589,34 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
     final group = l10n.daySheetIntensityGroup;
     final current = _painIntensity[tag.code];
     return Padding(
-      padding: const EdgeInsets.only(top: LLSpace.space1),
-      child: Row(
+      padding: const EdgeInsets.only(top: LLSpace.space2),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 120,
-            child: Padding(
-              padding: const EdgeInsets.only(top: LLSpace.space3),
-              child: Text(
-                tag.display,
-                style: theme.textTheme.bodySmall,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
+          // Above the scale, not beside it. Beside it, a 120 pt label left
+          // the five levels 4 pt short on a 412 pt phone and 26 pt short on
+          // a 390 pt one, so the scale broke as "1 2 3 4" over "5 Clear".
+          // The line also says which end is which: nothing else on the
+          // sheet did.
+          Text(
+            l10n.daySheetIntensityScale(tag.display),
+            key: ValueKey('pain-intensity-${tag.code}-label'),
+            style: theme.textTheme.bodySmall,
           ),
-          Expanded(
-            // Issue #234: the reusable graded-intensity control
-            // (`lib/ui/components/intensity_selector.dart`) over the same
-            // 1-5 `_painIntensity` state — same keys
-            // (`pain-intensity-<code>-<level>`/`-clear` via [keyPrefix]),
-            // same semantics text, same busy-guard, so this swap changes
-            // no observable behaviour, only where the chip row is defined.
-            child: IntensitySelector(
-              groupLabel: group,
-              itemLabel: tag.display,
-              value: current,
-              enabled: !_busy,
-              clearLabel: l10n.daySheetIntensityClear,
-              keyPrefix: 'pain-intensity-${tag.code}',
-              onChanged: (value) => _setPainIntensity(tag.code, value),
-            ),
+          // Issue #234: the reusable graded-intensity control
+          // (`lib/ui/components/intensity_selector.dart`) over the same
+          // 1-5 `_painIntensity` state — same keys
+          // (`pain-intensity-<code>-<level>`/`-clear` via [keyPrefix]),
+          // same semantics text, same busy-guard, so this swap changes
+          // no observable behaviour, only where the chip row is defined.
+          IntensitySelector(
+            groupLabel: group,
+            itemLabel: tag.display,
+            value: current,
+            enabled: !_busy,
+            clearLabel: l10n.daySheetIntensityClear,
+            keyPrefix: 'pain-intensity-${tag.code}',
+            onChanged: (value) => _setPainIntensity(tag.code, value),
           ),
         ],
       ),
