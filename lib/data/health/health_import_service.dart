@@ -690,19 +690,23 @@ class LocalHealthImportService
   ///
   /// * no live row → insert with this platform's provenance;
   /// * same flow → no-op;
-  /// * a hand-logged day with no flow (`none`) → adopt the imported flow,
-  ///   preserving the row's tags/note/PMS;
-  /// * a day this importer previously wrote, when the store has changed
-  ///   since ([_storeChangedSince]) → adopt the store's new value;
+  /// * a day whose flow did not come from this store, with no flow
+  ///   (`none`) → adopt the imported flow, preserving the row's
+  ///   tags/note/PMS;
+  /// * a day this importer wrote, when the store says something it did
+  ///   not say last time ([_storeChangedSince]) → adopt the new value;
   /// * anything else → keep what is there ([_MergeOutcome.keptManual]):
   ///   the import never overwrites what the user typed, and that
   ///   includes a correction she made to a day it imported.
+  ///
+  /// Every row it writes carries a [_storeMark]: what the store said.
   Future<_MergeOutcome> _mergeDay(
     String profileId,
     LocalDate date,
     _DesiredSample desired,
   ) async {
     final existing = await _dayEntries.find(profileId, date);
+    final mark = _storeMark(desired);
     if (existing == null) {
       await _dayEntries.save(
         DayEntry(
@@ -712,18 +716,20 @@ class LocalHealthImportService
           tz: desired.tzName,
           flow: desired.flow,
           source: _daySource,
-          sourceId: desired.recordId,
+          sourceId: mark,
           updatedAt: _now(),
         ),
       );
       return _MergeOutcome.written;
     }
-    if (existing.flow == desired.flow) return _MergeOutcome.unchanged;
-
-    final canAdopt = existing.source == _daySource
-        ? _storeChangedSince(existing, desired)
-        : existing.flow == FlowLevel.none;
-    if (!canAdopt) return _MergeOutcome.keptManual;
+    if (existing.flow == desired.flow) {
+      await _remember(existing, desired, kept: false);
+      return _MergeOutcome.unchanged;
+    }
+    if (!_mayAdopt(existing, desired)) {
+      await _remember(existing, desired, kept: true);
+      return _MergeOutcome.keptManual;
+    }
 
     // `copyWith` preserves tags/note/PMS; provenance flips to this platform
     // so the write path never echoes this value back into the OS store.
@@ -731,10 +737,44 @@ class LocalHealthImportService
       existing.copyWith(
         flow: desired.flow,
         source: _daySource,
-        sourceId: desired.recordId,
+        sourceId: mark,
       ),
     );
     return _MergeOutcome.written;
+  }
+
+  /// What an imported row's `sourceId` holds (Issue #1559): the day's
+  /// winning record id, then `#`, then the flow the store gave for the
+  /// day. It is the import's memory of what the store last said, kept on
+  /// the row so that it syncs with it: a second phone, or the same phone
+  /// after a restore, decides the same way.
+  ///
+  /// The flow is the part the rule reads. The record id is there because
+  /// the column is the row's provenance and must stay unique per row.
+  static String _storeMark(_DesiredSample desired) =>
+      '${desired.recordId}#${desired.flow.name}';
+
+  /// The flow recorded in a [_storeMark]; null for a `sourceId` written
+  /// before the mark existed (a bare record id), or for none at all.
+  static String? _markedFlow(String? sourceId) {
+    if (sourceId == null) return null;
+    final at = sourceId.lastIndexOf('#');
+    if (at < 0) return null;
+    final flow = sourceId.substring(at + 1);
+    return FlowLevel.values.any((level) => level.name == flow) ? flow : null;
+  }
+
+  /// Whether the store's flow may replace [existing]'s.
+  ///
+  /// A row whose flow this store never supplied is hers: hand-logged,
+  /// from another import, or a row the spotting import created to hang an
+  /// observation on (this store's `source`, no `sourceId`). The import
+  /// fills such a day in only when it has no flow.
+  bool _mayAdopt(DayEntry existing, _DesiredSample desired) {
+    final imported =
+        existing.source == _daySource && existing.sourceId != null;
+    if (!imported) return existing.flow == FlowLevel.none;
+    return _storeChangedSince(existing, desired);
   }
 
   /// Whether the store's value for a day differs from [existing], a row
@@ -747,15 +787,49 @@ class LocalHealthImportService
   /// read: every Apple Health pass, and a Health Connect pass that is not
   /// changes-only. A day she cleared to `none` was refilled the same way.
   ///
-  /// The store changed when the day's winning record is a different one
-  /// (a HealthKit sample cannot be edited, so a correction there is always
-  /// a new sample), or when it is the same record and the store says it
-  /// was changed after the row was last written (Health Connect updates a
-  /// record in place). The same record, unchanged since, is her edit.
+  /// The store changed when it gives a flow other than the one it gave
+  /// when the row was last written ([_markedFlow]). Nothing else counts:
+  /// not a new record id (another app re-saving the same value, or a new
+  /// phone, gives every record a new id), and not a timestamp (any edit
+  /// to the row moves it, a tag as much as a flow).
+  ///
+  /// A row written before the mark existed has only a record id to go on.
+  /// A different record is taken as the store's news, as it always was.
+  /// The same record is her edit, unless the store says the record was
+  /// changed after the row was (Health Connect changes a record in place;
+  /// a HealthKit sample cannot be edited and sends no such time). Either
+  /// way the row gets its mark on this pass, so this branch runs once.
   static bool _storeChangedSince(DayEntry existing, _DesiredSample desired) {
+    final markedFlow = _markedFlow(existing.sourceId);
+    if (markedFlow != null) return markedFlow != desired.flow.name;
     if (existing.sourceId != desired.recordId) return true;
     final modifiedAt = desired.modifiedAt;
     return modifiedAt != null && modifiedAt.isAfter(existing.updatedAt);
+  }
+
+  /// Brings the [_storeMark] on a row this importer wrote up to date when
+  /// its flow is left as it is, so the next pass compares against what the
+  /// store says now.
+  ///
+  /// [kept] is true when her flow was kept over a different one in the
+  /// store: the row then needs the store's flow on record, or a re-saved
+  /// record would look like news. When the flows agree, a row from before
+  /// the mark is left alone while its record id still matches: rewriting
+  /// every imported day on the first pass after an update would be a
+  /// burst of writes, and of sync traffic, that changes nothing.
+  Future<void> _remember(
+    DayEntry existing,
+    _DesiredSample desired, {
+    required bool kept,
+  }) async {
+    final stored = existing.sourceId;
+    if (existing.source != _daySource || stored == null) return;
+    final markedFlow = _markedFlow(stored);
+    final upToDate = markedFlow == null
+        ? !kept && stored == desired.recordId
+        : markedFlow == desired.flow.name;
+    if (upToDate) return;
+    await _dayEntries.save(existing.copyWith(sourceId: _storeMark(desired)));
   }
 
   /// Merges one date's intermenstrual-bleeding record as a `spotting`

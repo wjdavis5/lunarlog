@@ -574,7 +574,7 @@ void main() {
       expect(row.localDate, LocalDate(2026, 9, 10));
       expect(row.flow, FlowLevel.medium);
       expect(row.source, DayEntrySource.healthkit);
-      expect(row.sourceId, 'hk-1');
+      expect(row.sourceId, 'hk-1#medium');
       expect(row.tz, _tz);
     },
   );
@@ -726,7 +726,7 @@ void main() {
     final row = dayEntries.saved.single;
     expect(row.flow, FlowLevel.heavy);
     expect(row.source, DayEntrySource.healthkit);
-    expect(row.sourceId, 'hk-3');
+    expect(row.sourceId, 'hk-3#heavy');
     // Additive merge: the row's own tags/note survive.
     expect(row.tags, ['mood']);
     expect(row.note, 'kept');
@@ -757,7 +757,7 @@ void main() {
       expect(summary.daysWritten, 1);
       final row = dayEntries.saved.single;
       expect(row.flow, FlowLevel.heavy);
-      expect(row.sourceId, 'hk-h');
+      expect(row.sourceId, 'hk-h#heavy');
     },
   );
 
@@ -811,7 +811,7 @@ void main() {
       expect(summary.daysWritten, 1);
       final row = dayEntries.saved.single;
       expect(row.flow, FlowLevel.heavy);
-      expect(row.sourceId, 'hk-new');
+      expect(row.sourceId, 'hk-new#heavy');
     },
   );
 
@@ -819,11 +819,18 @@ void main() {
   // `sourceId` when she edits it by hand, so a corrected day still looks
   // imported. The import used to put the store's value back over it on
   // every whole-history read, which on an iPhone is every import.
+  //
+  // The import now remembers what the store last said for the day, in the
+  // row's `sourceId` (`<record id>#<flow>`), and adopts only when the store
+  // says something else.
   group('a hand correction to an imported day (#1559)', () {
-    // An imported day as the day sheet leaves it after she changes the
-    // flow: her value, her edit time, the import's provenance.
-    DayEntry corrected({
+    const day = '2026-09-10';
+
+    // An imported day as the day sheet leaves it after she changes it: her
+    // flow, her edit time, and the import's provenance untouched.
+    DayEntry imported({
       required FlowLevel flow,
+      required String? sourceId,
       DayEntrySource source = DayEntrySource.healthkit,
     }) =>
         DayEntry(
@@ -834,118 +841,214 @@ void main() {
           flow: flow,
           tags: const ['cramps'],
           source: source,
-          sourceId: 'rec-1',
+          sourceId: sourceId,
           updatedAt: DateTime.utc(2026, 9, 12, 8),
         );
 
-    test('survives the same sample being read again', () async {
-      await bind();
-      dayEntries.live['2026-09-10'] = corrected(flow: FlowLevel.light);
-      source.result = HealthReadResult.samples([
-        _sample(
-          id: 'rec-1',
-          flow: HealthFlowValue.heavy,
-          startIso: '2026-09-10T04:00:00Z',
-        ),
-      ]);
-      final summary = await build().importNow();
-      expect(summary.daysKeptManual, 1);
-      expect(summary.daysWritten, 0);
-      expect(dayEntries.saved, isEmpty);
-      // And again: a second whole-history read changes nothing either.
-      await build().importNow();
-      expect(dayEntries.saved, isEmpty);
-    });
-
-    test('a day she cleared stays cleared', () async {
-      await bind();
-      dayEntries.live['2026-09-10'] = corrected(flow: FlowLevel.none);
-      source.result = HealthReadResult.samples([
-        _sample(
-          id: 'rec-1',
-          flow: HealthFlowValue.heavy,
-          startIso: '2026-09-10T04:00:00Z',
-        ),
-      ]);
-      final summary = await build().importNow();
-      expect(summary.daysKeptManual, 1);
-      expect(dayEntries.saved, isEmpty);
-    });
-
-    test('gives way to a new sample for the day (Apple Health: a '
-        'correction there is always a new sample)', () async {
-      await bind();
-      dayEntries.live['2026-09-10'] = corrected(flow: FlowLevel.light);
-      source.result = HealthReadResult.samples([
-        _sample(
-          id: 'rec-2',
-          flow: HealthFlowValue.heavy,
-          startIso: '2026-09-10T04:00:00Z',
-        ),
-      ]);
-      final summary = await build().importNow();
-      expect(summary.daysWritten, 1);
-      final row = dayEntries.saved.single;
-      expect(row.flow, FlowLevel.heavy);
-      expect(row.sourceId, 'rec-2');
-      expect(row.tags, ['cramps'], reason: 'the rest of the day is kept');
-    });
-
-    test('Health Connect: the same record changed after her edit is the '
-        'store\'s news, and is adopted', () async {
-      await bind();
-      dayEntries.live['2026-09-10'] = corrected(
-        flow: FlowLevel.light,
-        source: DayEntrySource.healthConnect,
-      );
-      source.result = HealthReadResult.samples([
-        _sample(
-          id: 'rec-1',
-          flow: HealthFlowValue.heavy,
-          startIso: '2026-09-10T04:00:00Z',
-          modifiedAt: DateTime.utc(2026, 9, 12, 9),
-        ),
-      ]);
-      final summary = await build(
-        importPlatform: HealthImportPlatform.healthConnect,
-      ).importNow();
-      expect(summary.daysWritten, 1);
-      expect(dayEntries.saved.single.flow, FlowLevel.heavy);
-    });
-
-    test('Health Connect: the same record, not changed since her edit, '
-        'leaves her value alone', () async {
-      await bind();
-      for (final modifiedAt in [
-        // Changed before her edit: what she corrected.
-        DateTime.utc(2026, 9, 11),
-        // The very instant of her edit is not after it.
-        DateTime.utc(2026, 9, 12, 8),
-      ]) {
-        dayEntries.saved.clear();
-        dayEntries.live['2026-09-10'] = corrected(
-          flow: FlowLevel.light,
-          source: DayEntrySource.healthConnect,
-        );
-        source.result = HealthReadResult.samples([
+    HealthReadResult store(
+      String id,
+      HealthFlowValue flow, {
+      DateTime? modifiedAt,
+    }) =>
+        HealthReadResult.samples([
           _sample(
-            id: 'rec-1',
-            flow: HealthFlowValue.heavy,
+            id: id,
+            flow: flow,
             startIso: '2026-09-10T04:00:00Z',
             modifiedAt: modifiedAt,
           ),
         ]);
-        final summary = await build(
-          importPlatform: HealthImportPlatform.healthConnect,
-        ).importNow();
-        expect(summary.daysKeptManual, 1, reason: '$modifiedAt');
-        expect(dayEntries.saved, isEmpty, reason: '$modifiedAt');
-      }
+
+    test('the import, her correction, and the import again, start to finish',
+        () async {
+      await bind();
+      source.result = store('rec-1', HealthFlowValue.heavy);
+      await build().importNow();
+      final written = dayEntries.live[day]!;
+      expect(written.flow, FlowLevel.heavy);
+      expect(written.sourceId, 'rec-1#heavy');
+
+      // What the day sheet saves: her flow, the row's provenance kept.
+      dayEntries.live[day] = written.copyWith(flow: FlowLevel.light);
+      dayEntries.saved.clear();
+
+      final summary = await build().importNow();
+      expect(summary.daysKeptManual, 1);
+      expect(summary.daysWritten, 0);
+      expect(dayEntries.saved, isEmpty, reason: 'nothing to write at all');
+      expect(dayEntries.live[day]!.flow, FlowLevel.light);
+    });
+
+    test('a day she cleared stays cleared', () async {
+      await bind();
+      dayEntries.live[day] =
+          imported(flow: FlowLevel.none, sourceId: 'rec-1#heavy');
+      source.result = store('rec-1', HealthFlowValue.heavy);
+      final summary = await build().importNow();
+      expect(summary.daysKeptManual, 1);
+      expect(dayEntries.saved, isEmpty);
+    });
+
+    test('a new value in the store is adopted, and the rest of the day kept',
+        () async {
+      await bind();
+      dayEntries.live[day] =
+          imported(flow: FlowLevel.light, sourceId: 'rec-1#heavy');
+      source.result = store('rec-2', HealthFlowValue.medium);
+      final summary = await build().importNow();
+      expect(summary.daysWritten, 1);
+      final row = dayEntries.saved.single;
+      expect(row.flow, FlowLevel.medium);
+      expect(row.sourceId, 'rec-2#medium');
+      expect(row.tags, ['cramps']);
+    });
+
+    // The review's first finding. The row's `updatedAt` moves on any edit,
+    // so it cannot say whether the store's change came before or after hers.
+    test('a tag added after the store changed does not hide the change',
+        () async {
+      await bind();
+      // Imported as light; the store has since changed the same record to
+      // heavy (T1); she then added a tag (the row's time is after T1).
+      dayEntries.live[day] = imported(
+        flow: FlowLevel.light,
+        sourceId: 'rec-1#light',
+        source: DayEntrySource.healthConnect,
+      );
+      source.result = store(
+        'rec-1',
+        HealthFlowValue.heavy,
+        modifiedAt: DateTime.utc(2026, 9, 12, 7),
+      );
+      final summary = await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importNow();
+      expect(summary.daysWritten, 1);
+      expect(summary.daysKeptManual, 0);
+      expect(dayEntries.saved.single.flow, FlowLevel.heavy);
+      expect(dayEntries.saved.single.sourceId, 'rec-1#heavy');
+    });
+
+    // The same value under a new record id: another app re-saving it, or
+    // a new phone, where every record has a new id.
+    test('the same value under a new record id is not news', () async {
+      await bind();
+      dayEntries.live[day] =
+          imported(flow: FlowLevel.light, sourceId: 'old-phone-id#heavy');
+      source.result = store('new-phone-id', HealthFlowValue.heavy);
+      final summary = await build().importNow();
+      expect(summary.daysKeptManual, 1);
+      expect(dayEntries.saved, isEmpty);
+    });
+
+    test('when the store comes round to her value, that becomes what it '
+        'said, so a later change in the store is still news', () async {
+      await bind();
+      dayEntries.live[day] =
+          imported(flow: FlowLevel.light, sourceId: 'rec-1#heavy');
+      source.result = store('rec-2', HealthFlowValue.light);
+      final summary = await build().importNow();
+      expect(summary.daysWritten, 0);
+      expect(summary.daysKeptManual, 0);
+      // Her flow is untouched; only the mark moved.
+      expect(dayEntries.saved.single.flow, FlowLevel.light);
+      expect(dayEntries.saved.single.sourceId, 'rec-2#light');
+
+      dayEntries.saved.clear();
+      source.result = store('rec-3', HealthFlowValue.heavy);
+      await build().importNow();
+      expect(dayEntries.saved.single.flow, FlowLevel.heavy);
+    });
+
+    group('a row written before the mark existed (a bare record id)', () {
+      test('the same record is her edit: kept, and marked on that pass',
+          () async {
+        await bind();
+        dayEntries.live[day] =
+            imported(flow: FlowLevel.light, sourceId: 'rec-1');
+        source.result = store('rec-1', HealthFlowValue.heavy);
+        final summary = await build().importNow();
+        expect(summary.daysKeptManual, 1);
+        expect(summary.daysWritten, 0);
+        // Her flow, with what the store says now on record.
+        final row = dayEntries.saved.single;
+        expect(row.flow, FlowLevel.light);
+        expect(row.sourceId, 'rec-1#heavy');
+
+        // So a re-saved record with the same value no longer looks new.
+        dayEntries.saved.clear();
+        source.result = store('rec-9', HealthFlowValue.heavy);
+        expect((await build().importNow()).daysKeptManual, 1);
+        expect(dayEntries.saved, isEmpty);
+      });
+
+      test('a different record is the store\'s news, as it always was',
+          () async {
+        await bind();
+        dayEntries.live[day] =
+            imported(flow: FlowLevel.light, sourceId: 'rec-1');
+        source.result = store('rec-2', HealthFlowValue.heavy);
+        final summary = await build().importNow();
+        expect(summary.daysWritten, 1);
+        expect(dayEntries.saved.single.sourceId, 'rec-2#heavy');
+      });
+
+      test('Health Connect: the same record changed after the row was is '
+          'the store\'s news; not changed since is her edit', () async {
+        await bind();
+        for (final (modifiedAt, adopted) in [
+          (DateTime.utc(2026, 9, 12, 9), true),
+          (DateTime.utc(2026, 9, 11), false),
+          // The very instant of her edit is not after it.
+          (DateTime.utc(2026, 9, 12, 8), false),
+        ]) {
+          dayEntries.saved.clear();
+          dayEntries.live[day] = imported(
+            flow: FlowLevel.light,
+            sourceId: 'rec-1',
+            source: DayEntrySource.healthConnect,
+          );
+          source.result = store(
+            'rec-1',
+            HealthFlowValue.heavy,
+            modifiedAt: modifiedAt,
+          );
+          final summary = await build(
+            importPlatform: HealthImportPlatform.healthConnect,
+          ).importNow();
+          final row = dayEntries.saved.single;
+          expect(row.sourceId, 'rec-1#heavy', reason: '$modifiedAt');
+          expect(
+            row.flow,
+            adopted ? FlowLevel.heavy : FlowLevel.light,
+            reason: '$modifiedAt',
+          );
+          expect(summary.daysWritten, adopted ? 1 : 0, reason: '$modifiedAt');
+        }
+      });
+
+      test('an untouched day with the same record is not rewritten, and one '
+          'whose record id changed is marked', () async {
+        await bind();
+        dayEntries.live[day] =
+            imported(flow: FlowLevel.heavy, sourceId: 'rec-1');
+        source.result = store('rec-1', HealthFlowValue.heavy);
+        expect((await build().importNow()).daysUnchanged, 1);
+        expect(dayEntries.saved, isEmpty,
+            reason: 'no burst of writes on the first pass after an update');
+
+        source.result = store('rec-2', HealthFlowValue.heavy);
+        final summary = await build().importNow();
+        expect(summary.daysUnchanged, 1);
+        expect(summary.daysWritten, 0);
+        expect(dayEntries.saved.single.flow, FlowLevel.heavy);
+        expect(dayEntries.saved.single.sourceId, 'rec-2#heavy');
+      });
     });
 
     test('a hand-logged day with no flow is still filled in', () async {
       await bind();
-      dayEntries.live['2026-09-10'] = DayEntry(
+      dayEntries.live[day] = DayEntry(
         id: 'manual-none',
         profileId: _profileId,
         localDate: LocalDate(2026, 9, 10),
@@ -954,15 +1057,39 @@ void main() {
         source: DayEntrySource.manual,
         updatedAt: DateTime.utc(2026, 9, 12, 8),
       );
-      source.result = HealthReadResult.samples([
-        _sample(
-          id: 'rec-1',
-          flow: HealthFlowValue.heavy,
-          startIso: '2026-09-10T04:00:00Z',
-        ),
-      ]);
+      source.result = store('rec-1', HealthFlowValue.heavy);
       final summary = await build().importNow();
       expect(summary.daysWritten, 1);
+      expect(dayEntries.saved.single.flow, FlowLevel.heavy);
+      expect(dayEntries.saved.single.sourceId, 'rec-1#heavy');
+    });
+
+    // A row the spotting import created to hang an observation on has this
+    // store's `source` and no `sourceId`. A flow on it is one she logged.
+    test('a flow she logged on a spotting-only imported day is hers',
+        () async {
+      await bind();
+      dayEntries.live[day] = imported(
+        flow: FlowLevel.light,
+        sourceId: null,
+        source: DayEntrySource.healthConnect,
+      );
+      source.result = store('rec-1', HealthFlowValue.heavy);
+      final summary = await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importNow();
+      expect(summary.daysKeptManual, 1);
+      expect(dayEntries.saved, isEmpty);
+
+      // With no flow of her own, the store's is taken.
+      dayEntries.live[day] = imported(
+        flow: FlowLevel.none,
+        sourceId: null,
+        source: DayEntrySource.healthConnect,
+      );
+      await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importNow();
       expect(dayEntries.saved.single.flow, FlowLevel.heavy);
     });
   });
@@ -1106,7 +1233,7 @@ void main() {
       expect(summary.daysWritten, 1);
       final row = dayEntries.saved.single;
       expect(row.source, DayEntrySource.healthConnect);
-      expect(row.sourceId, 'hc-1');
+      expect(row.sourceId, 'hc-1#medium');
       // The runner reports the platform the Settings copy names.
       expect(
         build(importPlatform: HealthImportPlatform.healthConnect).platform,
@@ -1391,7 +1518,7 @@ void main() {
       final summary = await build().importNow();
       expect(summary.pagesRead, 2);
       expect(summary.daysWritten, 1);
-      expect(dayEntries.saved.single.sourceId, 'later');
+      expect(dayEntries.saved.single.sourceId, 'later#heavy');
     });
 
     test('the highest intensity wins even when the samples land on '
@@ -1419,7 +1546,7 @@ void main() {
       final summary = await build().importNow();
       expect(summary.daysWritten, 1);
       expect(dayEntries.saved.single.flow, FlowLevel.heavy);
-      expect(dayEntries.saved.single.sourceId, 'heavy-page');
+      expect(dayEntries.saved.single.sourceId, 'heavy-page#heavy');
     });
 
     test('a repeated cursor stops the pass instead of spinning', () async {
@@ -1508,7 +1635,7 @@ void main() {
       final summary = await build().importNow();
       expect(summary.daysWritten, 1);
       expect(dayEntries.saved.single.flow, FlowLevel.heavy);
-      expect(dayEntries.saved.single.sourceId, 'iso-heavy');
+      expect(dayEntries.saved.single.sourceId, 'iso-heavy#heavy');
     });
   });
 
@@ -1566,7 +1693,7 @@ void main() {
       ]);
       final second = await build().importInBackground();
       expect(second.daysWritten, 1);
-      expect(dayEntries.saved.single.sourceId, 'bg-after-first');
+      expect(dayEntries.saved.single.sourceId, 'bg-after-first#light');
     });
 
     test('a first import that was blocked before its read never opens '
@@ -1614,7 +1741,7 @@ void main() {
       final entry = dayEntries.saved.single;
       expect(entry.flow, FlowLevel.medium);
       expect(entry.source, DayEntrySource.healthkit);
-      expect(entry.sourceId, 'bg-1');
+      expect(entry.sourceId, 'bg-1#medium');
 
       // The background-specific property: the OS permission was probed —
       // the read-side probe, once, and never the write one (Issue #1491) —
@@ -1677,7 +1804,7 @@ void main() {
 
       expect(summary.blocked, isNull);
       expect(summary.daysWritten, 1);
-      expect(dayEntries.saved.single.sourceId, 'bg-reads-only');
+      expect(dayEntries.saved.single.sourceId, 'bg-reads-only#medium');
       expect(dayEntries.saved.single.source, DayEntrySource.healthConnect);
       // Still prompt-free.
       expect(platform.bindCalls, 0);
@@ -1800,7 +1927,7 @@ void main() {
 
       expect(summary.daysWritten, 1);
       expect(dayEntries.saved.single.source, DayEntrySource.healthConnect);
-      expect(dayEntries.saved.single.sourceId, 'bg-hc-1');
+      expect(dayEntries.saved.single.sourceId, 'bg-hc-1#light');
       expect(platform.bindCalls, 0);
       expect(platform.authCalls, 0);
     });
