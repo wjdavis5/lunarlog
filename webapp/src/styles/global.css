@@ -37,11 +37,25 @@ body {
   flex-direction: column;
 }
 
+/* Tap targets (issue 1562). Anything tapped that stands on its own is at
+   least 44 px (2.75rem) tall, and at least that wide: the buttons, the
+   links that are not part of a sentence, the fields and the selects. Each
+   base class below carries the minimum itself, so a new screen that uses
+   one gets it without asking. e2e/tap-targets.spec.ts measures the result
+   at phone width.
+
+   A link has no box to draw, so its 44 px are height the eye does not see.
+   Where that height would only open a gap around the words, the link hands
+   it back as a negative margin and the words stay where they were: each
+   such place says so. */
+
+/* The name and the links are 44 px tall and carry the header's height; the
+   padding is the few pixels left over, so the header is as tall as it was. */
 .app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--ll-space-3) var(--ll-space-4);
+  padding: var(--ll-space-1) var(--ll-space-4);
   background: var(--ll-surface-container);
   border-bottom: 1px solid var(--ll-outline-variant);
 }
@@ -57,6 +71,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: var(--ll-space-2);
+  min-height: 2.75rem;
   color: inherit;
   text-decoration: none;
   border-radius: var(--ll-r-sm);
@@ -77,7 +92,14 @@ body {
   background: url('/brand-mark.png') center / contain no-repeat;
 }
 
+/* A link that stands on its own: navigation, a way back, an action in a
+   row. A link inside a sentence takes no class and stays text. */
 .nav-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  min-width: 2.75rem;
   color: var(--ll-primary);
   text-decoration: none;
   padding: var(--ll-space-1) var(--ll-space-3);
@@ -219,6 +241,8 @@ body {
 
 .button {
   font: inherit;
+  min-height: 2.75rem;
+  min-width: 2.75rem;
   padding: var(--ll-space-2) var(--ll-space-4);
   border: 1px solid var(--ll-primary);
   border-radius: var(--ll-r-full);
@@ -237,14 +261,30 @@ body {
   margin-top: var(--ll-space-4);
 }
 
+/* Rows of chips are 16 px apart, and so are two chip rows one after the
+   other (the flow levels over Spotting and PMS): see the chip's target
+   below. They were 8 px apart. */
 .chip-row {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--ll-space-2);
+  gap: var(--ll-space-4) var(--ll-space-2);
   margin-top: var(--ll-space-2);
 }
 
+.chip-row + .chip-row {
+  margin-top: var(--ll-space-4);
+}
+
+/* A chip keeps its size. The day form has dozens of them: at 44 px they
+   stop reading as chips and the form grows by most of a screen. Its
+   target is made larger instead, by a box nobody sees that reaches 8 px
+   above and below it, which with the chip's own 30 px is 46. That is half
+   the gap between rows each way, so one row's targets meet the next row's
+   and do not overlap. The app's chips are the same: drawn at 32 px, tapped
+   at 48. */
 .chip {
+  position: relative;
+  min-width: 2.75rem;
   border: 1px solid var(--ll-outline);
   background: var(--ll-surface);
   color: var(--ll-on-surface);
@@ -252,6 +292,12 @@ body {
   padding: var(--ll-space-1) var(--ll-space-3);
   font: inherit;
   cursor: pointer;
+}
+
+.chip::after {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--ll-space-2)) 0;
 }
 
 .chip-selected {
@@ -289,6 +335,7 @@ body {
 .tag-search input {
   flex: 1 1 12rem;
   min-width: 0;
+  min-height: 2.75rem;
   font: inherit;
   padding: var(--ll-space-2) var(--ll-space-3);
   border: 1px solid var(--ll-outline);
@@ -355,8 +402,10 @@ body {
   border-radius: var(--ll-r-sm);
 }
 
+/* The chips sit 8 px under the row that opens and closes the section (they
+   were flush under it): their targets reach that far up, and it must not
+   be into the row. */
 .tag-section-panel {
-  margin-top: 0;
   padding-bottom: var(--ll-space-3);
 }
 
@@ -368,6 +417,7 @@ body {
 .field-input {
   display: block;
   width: 100%;
+  min-height: 2.75rem;
   margin-top: var(--ll-space-1);
   padding: var(--ll-space-2);
   font: inherit;
@@ -411,6 +461,8 @@ body {
 
 .save-button {
   font: inherit;
+  min-height: 2.75rem;
+  min-width: 2.75rem;
   padding: var(--ll-space-2) var(--ll-space-5);
   border: none;
   border-radius: var(--ll-r-full);
@@ -453,6 +505,7 @@ body {
 .field input,
 .field select,
 .field textarea {
+  min-height: 2.75rem;
   font: inherit;
   padding: var(--ll-space-2);
   border: 1px solid var(--ll-outline);
@@ -502,6 +555,7 @@ body {
    like the form fields on the same page. It was the browser's bare select,
    a few pixels tall, beside a full-size button. */
 .row select {
+  min-height: 2.75rem;
   font: inherit;
   padding: var(--ll-space-2) var(--ll-space-3);
   border: 1px solid var(--ll-outline);
@@ -600,13 +654,8 @@ body {
   align-items: stretch;
 }
 
-.page-auth .auth-button {
-  min-height: 2.75rem;
-}
-
 .page-auth .auth-links {
   margin-top: var(--ll-space-5);
-  gap: var(--ll-space-2);
 }
 
 /* Another way in, so it is set apart from the password form by a rule
@@ -679,6 +728,8 @@ body {
 }
 
 .auth-button {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
   padding: var(--ll-space-2) var(--ll-space-4);
   border: none;
   border-radius: var(--ll-r-full);
@@ -703,14 +754,23 @@ body {
   border: 1px solid var(--ll-outline-variant);
 }
 
+/* The links under a sign-in form, one to a row. Each row is a 44 px target
+   that hands back all but one line of text, so a lone link sits where it
+   did; two of them (sign-in has "Forgot password" over "Create an account
+   instead") are 44 px apart, top to top, so their targets meet and do not
+   overlap. They were 28 px apart. */
 .auth-links {
   margin-top: var(--ll-space-3);
   display: flex;
   flex-direction: column;
-  gap: var(--ll-space-1);
+  gap: calc(2.75rem - var(--ll-type-body-medium-line-height));
 }
 
 .auth-links a {
+  display: flex;
+  align-items: center;
+  min-height: 2.75rem;
+  margin-block: calc((var(--ll-type-body-medium-line-height) - 2.75rem) / 2);
   color: var(--ll-primary);
 }
 
@@ -731,8 +791,15 @@ body {
   border: 0;
 }
 
-/* Every button in the client is fully rounded, like the app theme's. */
+/* Every button in the client is fully rounded, like the app theme's. The
+   class is also worn by links, which do not centre their label or take a
+   minimum height on their own: the flex box does both. */
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  min-width: 2.75rem;
   font: inherit;
   padding: var(--ll-space-2) var(--ll-space-4);
   border: 1px solid var(--ll-outline);
@@ -777,6 +844,16 @@ body {
   margin: 0;
 }
 
+/* A link that is a line of its own between other things ("Back to today"
+   under a page title, "Add profile" under the empty home's two lines). Its
+   44 px would open a gap above and below the words, so it hands back all
+   but one line of text. The target still reaches 12 px above and below the
+   words, into space where nothing else is tapped. */
+.page-back .nav-link,
+.card-body > .nav-link {
+  margin-block: calc((var(--ll-type-body-medium-line-height) - 2.75rem) / 2);
+}
+
 .home-switcher {
   display: flex;
   flex-wrap: wrap;
@@ -805,6 +882,7 @@ body {
 }
 
 .home-switcher-select {
+  min-height: 2.75rem;
   font: inherit;
   padding: var(--ll-space-2) var(--ll-space-3);
   border: 1px solid var(--ll-outline);
@@ -877,14 +955,16 @@ body {
   margin: 0;
 }
 
-/* The link is given more padding than a link in the row above the cards,
-   since it is a short word to hit with a thumb, and hands all of it back
-   as a negative margin: the word "Edit" ends on the card's gutter and the
-   row is no taller than the title alone. The auto margin keeps it at that
-   edge when it wraps onto a row of its own. */
+/* The link is a 44 px target like any other, since it is a short word to
+   hit with a thumb, and hands back as a negative margin everything but the
+   word itself: "Edit" ends on the card's gutter and the row is no taller
+   than the title alone. The auto margin keeps it at that edge when it
+   wraps onto a row of its own. It is positioned so that its last 4 px,
+   which lie over the first line of the list below, are still the link. */
 .home-today-log-edit {
-  padding: var(--ll-space-2) var(--ll-space-3);
-  margin: calc(-1 * var(--ll-space-2)) calc(-1 * var(--ll-space-3)) calc(-1 * var(--ll-space-2))
+  position: relative;
+  margin: calc((var(--ll-type-body-medium-line-height) - 2.75rem) / 2)
+    calc(-1 * var(--ll-space-3)) calc((var(--ll-type-body-medium-line-height) - 2.75rem) / 2)
     auto;
 }
 
@@ -945,7 +1025,8 @@ body {
 
 /* Three full-size buttons do not fit side by side on a phone, so the
    month navigation wrapped onto two rows. Smaller type and padding keep
-   it on one. */
+   it on one. They are as tall as any other button: it is their width
+   that had to give. */
 @media (max-width: 30rem) {
   .cal-nav-buttons .btn {
     padding: var(--ll-space-1) var(--ll-space-2);
@@ -1166,9 +1247,24 @@ body {
   margin-top: var(--ll-space-3);
 }
 
+/* The row that opens the legend, and the one that opens the symptom
+   layers. Each is a 44 px target that hands back all but its line of text,
+   so the card is laid out as it was; the second sits 44 px under the
+   first, top to top, so the two targets meet and do not overlap. They were
+   32 px apart. What a row opens starts 12 px under it, clear of its target
+   (it was 8 px). */
+.cal-details summary {
+  padding-block: calc((2.75rem - var(--ll-type-body-medium-line-height)) / 2);
+  margin-block: calc((var(--ll-type-body-medium-line-height) - 2.75rem) / 2);
+}
+
+.cal-details + .cal-details {
+  margin-top: calc(2.75rem - var(--ll-type-body-medium-line-height));
+}
+
 .cal-legend {
   list-style: none;
-  margin: var(--ll-space-2) 0 0;
+  margin: var(--ll-space-3) 0 0;
   padding: 0;
   display: flex;
   flex-wrap: wrap;
@@ -1251,7 +1347,7 @@ body {
 
 .cal-layer-picker {
   list-style: none;
-  margin: var(--ll-space-2) 0 0;
+  margin: var(--ll-space-3) 0 0;
   padding: 0;
   columns: 2;
   column-gap: var(--ll-space-4);
@@ -1280,6 +1376,7 @@ body {
 
 .form-row input:not([type='checkbox']),
 .form-row select {
+  min-height: 2.75rem;
   font: inherit;
   padding: var(--ll-space-2) var(--ll-space-3);
   border: 1px solid var(--ll-outline);
