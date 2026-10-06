@@ -2363,11 +2363,12 @@ void main() {
   // own prompt for "Access past data". The port's answer does not say what
   // was granted, so the service answers from what a read reaches after it.
   group('asking for past data (Issue #1573)', () {
-    test('with no bound profile nothing is asked, and the answer is no',
-        () async {
-      platform.reachesPastData = true;
-
+    test('with no bound profile nothing is asked, and the answer is still '
+        'the store\'s', () async {
       expect(await build().requestPastDataAccess(), isFalse);
+      platform.reachesPastData = true;
+      expect(await build().requestPastDataAccess(), isTrue);
+
       expect(source.pastDataRequests, isEmpty);
     });
 

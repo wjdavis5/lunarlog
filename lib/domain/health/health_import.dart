@@ -596,8 +596,9 @@ abstract interface class HealthImportRunner {
   /// Puts the store's own prompt for reading older data in front of the
   /// person, for the currently bound profile (Issue #1573;
   /// [HealthImportSource.requestPastDataAccess]), and answers whether a
-  /// read reaches that data once the prompt has gone. False as well when
-  /// nothing could be asked: no bound profile, or the guard refused.
+  /// read reaches that data once the prompt has gone. When nothing could
+  /// be asked (no bound profile, or the guard refused) the answer is still
+  /// what the store says.
   ///
   /// Call it only from her tap.
   Future<bool> requestPastDataAccess();

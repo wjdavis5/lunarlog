@@ -6,6 +6,8 @@
 /// bare async function for guardian rows — no database required.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -217,6 +219,10 @@ class _FakeImporter implements HealthImportRunner {
   /// that reads now reach the older data.
   void Function()? onPastDataGranted;
 
+  /// When set, a request does not answer until this completes: the
+  /// prompt is up.
+  Completer<void>? pastDataPrompt;
+
   @override
   Future<bool> pastDataSwitchOffered() async {
     pastDataOfferedProbes++;
@@ -227,6 +233,7 @@ class _FakeImporter implements HealthImportRunner {
   @override
   Future<bool> requestPastDataAccess() async {
     pastDataRequests++;
+    await pastDataPrompt?.future;
     if (pastDataRequestThrows) throw StateError('boom');
     if (grantsPastData) onPastDataGranted?.call();
     return grantsPastData;
@@ -2407,6 +2414,7 @@ void main() {
         probe.reachesPastData = true;
         expect(await importAndReadResult(tester), nothingToImport);
         expect(resultSettings, findsNothing);
+        expect(resultAllow, findsNothing);
       });
 
       testWidgets('Android: a result is about its own pass, and coming '
@@ -2557,6 +2565,7 @@ void main() {
           await importWith(tester, reachesPastData: true, summary: summary);
           expect(find.text(olderHint), findsNothing);
           expect(resultSettings, findsNothing);
+          expect(resultAllow, findsNothing);
           await tester.pumpWidget(const SizedBox.shrink());
         }
       });
@@ -2584,6 +2593,7 @@ void main() {
         );
         expect(find.text(olderHint), findsNothing);
         expect(resultSettings, findsNothing);
+        expect(resultAllow, findsNothing);
       });
 
       // Issue #1573. The button used to open Health Connect's first
@@ -2592,8 +2602,8 @@ void main() {
       group('the button under a result (#1573)', () {
         const stillOff = '"Access past data" is still off. You can turn it '
             'on for lunarlog in Health Connect.';
-        const recentOnly =
-            'Health Connect on this phone only shows lunarlog recent data.';
+        const recentOnly = 'Health Connect on this phone hides older data '
+            'from lunarlog, and has no setting to change that.';
 
         _ScriptedProbe switchOff() => _ScriptedProbe(
               readAccessDisclosed: true,
@@ -2737,6 +2747,104 @@ void main() {
           final other = androidImporter(broughtDaysIn);
           await importOn(tester, switchOff(), other);
           expect(other.pastDataOfferedProbes, 1);
+        });
+
+        testWidgets('while the prompt is up the button does nothing more, '
+            'and a second tap raises no second prompt', (tester) async {
+          final importer = androidImporter(broughtDaysIn)
+            ..pastDataPrompt = Completer<void>();
+          await importOn(tester, switchOff(), importer);
+
+          await tester.tap(resultAllow);
+          await tester.pump();
+          expect(
+            tester.widget<TextButton>(resultAllow).onPressed,
+            isNull,
+            reason: 'disabled while Health Connect\'s sheet is up',
+          );
+          await tester.tap(resultAllow, warnIfMissed: false);
+          await tester.pump();
+          expect(importer.pastDataRequests, 1);
+
+          importer.pastDataPrompt!.complete();
+          await tester.pumpAndSettle();
+          expect(find.text(stillOff), findsOneWidget);
+        });
+
+        testWidgets('leaving the screen while the prompt is up is harmless',
+            (tester) async {
+          final importer = androidImporter(broughtDaysIn)
+            ..grantsPastData = true
+            ..pastDataPrompt = Completer<void>();
+          await importOn(tester, switchOff(), importer);
+          await tester.tap(resultAllow);
+          await tester.pump();
+
+          await tester.pumpWidget(const SizedBox.shrink());
+          importer.pastDataPrompt!.complete();
+          await tester.pumpAndSettle();
+
+          expect(tester.takeException(), isNull);
+          expect(importer.calls, 1, reason: 'no import for a screen that is gone');
+        });
+
+        // She follows "Open Settings", turns the switch on in Health
+        // Connect, and comes back.
+        testWidgets('coming back with the switch on runs the import, and '
+            'takes the line down', (tester) async {
+          final probe = switchOff();
+          final importer = androidImporter(broughtDaysIn);
+          await importOn(tester, probe, importer);
+          await tester.tap(resultAllow);
+          await tester.pumpAndSettle();
+          expect(find.text(stillOff), findsOneWidget);
+
+          await leaveAndComeBack(tester);
+          expect(importer.calls, 1, reason: 'still off: nothing to do');
+          expect(find.text(stillOff), findsOneWidget);
+
+          probe.reachesPastData = true;
+          await leaveAndComeBack(tester);
+
+          expect(importer.calls, 2);
+          expect(find.text(stillOff), findsNothing);
+          expect(find.text(olderHint), findsNothing);
+          expect(resultSettings, findsNothing);
+
+          await leaveAndComeBack(tester);
+          expect(importer.calls, 2, reason: 'once');
+        });
+
+        // An import whose reads are off raises Health Connect's sheet, and
+        // nothing is asked from here except by a tap.
+        testWidgets('but not when reading has been switched off meanwhile',
+            (tester) async {
+          final probe = switchOff();
+          final importer = androidImporter(broughtDaysIn);
+          await importOn(tester, probe, importer);
+          await tester.tap(resultAllow);
+          await tester.pumpAndSettle();
+
+          probe
+            ..reachesPastData = true
+            ..read = HealthPermissionStatus.denied;
+          await leaveAndComeBack(tester);
+
+          expect(importer.calls, 1);
+        });
+
+        testWidgets('coming back to a result that is not waiting on the '
+            'switch runs nothing', (tester) async {
+          final probe = switchOff();
+          final importer = androidImporter(broughtDaysIn);
+          await importOn(tester, probe, importer);
+
+          probe.reachesPastData = true;
+          await leaveAndComeBack(tester);
+
+          expect(importer.calls, 1);
+          expect(resultAllow, findsOneWidget,
+              reason: 'the result describes the pass that produced it');
         });
 
         testWidgets('when it cannot tell whether there is a switch, it '

@@ -308,14 +308,20 @@ class HealthConnectAdapter(context: Context) {
     // and no request may carry a permission string this Health Connect
     // does not know. The same check, with the same fail-to-not-offer
     // rule, as [backgroundReadPermissions].
-    private fun pastDataOffered(): Boolean = try {
+    private fun pastDataOffered(): Boolean = pastDataOfferedOrNull() == true
+
+    // The same question for the screen, which has a third answer: null
+    // when the probe failed. "Cannot tell" must not be shown as "this
+    // phone has no such switch"; for a request sheet it still counts as
+    // not offered ([pastDataOffered]).
+    private fun pastDataOfferedOrNull(): Boolean? = try {
         isAvailable() &&
             HealthConnectClient.getOrCreate(contextApp).features
                 .getFeatureStatus(
                     HealthConnectFeatures.FEATURE_READ_HEALTH_DATA_HISTORY,
                 ) == HealthConnectFeatures.FEATURE_STATUS_AVAILABLE
     } catch (_: Exception) {
-        false
+        null
     }
 
     // The "Access past data" permission, only where it can be granted.
@@ -483,7 +489,11 @@ class HealthConnectAdapter(context: Context) {
                         launchPermissionRequest(
                             result,
                             askedMarker = IMPORT_REQUEST_LAUNCHED_KEY,
-                            permissions = readPermissions,
+                            permissions = HealthPermissionState.importRequestPermissions(
+                                reads = readPermissions,
+                                pastData = pastDataPermissions(),
+                                launchedBefore = importRequestLaunched(),
+                            ),
                         )
                     } catch (e: Exception) {
                         if (pendingAuthResult === result) pendingAuthResult = null
@@ -509,27 +519,41 @@ class HealthConnectAdapter(context: Context) {
                 // reads the granted set afterwards and does not trust the
                 // answer given here.
                 if (!requestGuardAllows(call.method, args, result)) return
-                if (!pastDataOffered()) {
+                val client = healthConnectClient()
+                if (client == null || !pastDataOffered()) {
                     result.success("unavailable")
                     return
                 }
-                try {
-                    launchPermissionRequest(
-                        result,
-                        askedMarker = null,
-                        permissions = pastDataPermissions(),
-                    )
-                } catch (e: Exception) {
-                    if (pendingAuthResult === result) pendingAuthResult = null
-                    result.error("writeFailed", e.message, null)
+                CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
+                    // A query that fails says nothing about what is
+                    // granted, so nothing is asked.
+                    val granted = try {
+                        client.permissionController.getGrantedPermissions()
+                    } catch (e: Exception) {
+                        emptySet()
+                    }
+                    if (!HealthPermissionState.pastDataMayAsk(granted, importReadPermissions)) {
+                        result.success("permissionDenied")
+                        return@launch
+                    }
+                    try {
+                        launchPermissionRequest(
+                            result,
+                            askedMarker = null,
+                            permissions = pastDataPermissions(),
+                        )
+                    } catch (e: Exception) {
+                        if (pendingAuthResult === result) pendingAuthResult = null
+                        result.error("writeFailed", e.message, null)
+                    }
                 }
             }
 
             "pastDataSwitchOffered" -> {
                 // Issue #1573: whether this Health Connect has the
                 // "Access past data" switch at all. Only looks: no
-                // request, no marker.
-                result.success(pastDataOffered())
+                // request, no marker. Null when it cannot tell.
+                result.success(pastDataOfferedOrNull())
             }
 
             "importPermissionStatus" -> {
@@ -1993,6 +2017,40 @@ internal object HealthPermissionState {
      */
     fun importMustAsk(granted: Set<String>, importReads: Set<String>): Boolean =
         !granted.containsAll(importReads)
+
+    /**
+     * Whether the Health sync screen's button may raise the request for
+     * "Access past data" alone (Issue #1573): only for someone the import
+     * can already read for, that is with every record read in `importReads`
+     * granted.
+     *
+     * The screen shows the button only in that state. The check is made
+     * here too so that the rule does not rest on the screen. With no record
+     * read granted and neither request ever launched, a grant on this sheet
+     * would be the first permission the app holds, and
+     * [remembersWritesAsked] would take it for proof that the write sheet
+     * had been shown.
+     */
+    fun pastDataMayAsk(granted: Set<String>, importReads: Set<String>): Boolean =
+        granted.containsAll(importReads)
+
+    /**
+     * What the import's own request asks for (Issue #1573). The first time
+     * this install raises it, everything in `reads`. After that, `reads`
+     * without "Access past data" (`pastData`): it has by then been offered
+     * on a sheet, and the way to it is the screen's button, which asks for
+     * it alone.
+     *
+     * Health Connect drops a whole request, unseen, once any permission in
+     * it has been declined twice. Left on this sheet, a past-data
+     * permission declined once here and once from the button would stop the
+     * import ever asking for a record read again.
+     */
+    fun importRequestPermissions(
+        reads: Set<String>,
+        pastData: Set<String>,
+        launchedBefore: Boolean,
+    ): Set<String> = if (launchedBefore) reads - pastData else reads
 }
 
 /**

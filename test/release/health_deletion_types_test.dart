@@ -726,23 +726,30 @@ void main() {
       );
     });
 
-    test('it passes the guard, then asks only where there is such a switch, '
-        'for the one permission', () {
+    test('it passes the guard, then asks only where there is such a switch '
+        'and the import can already read, for the one permission', () {
       final guarded = request.indexOf(
         'if (!requestGuardAllows(call.method, args, result)) return',
       );
-      final checked = request.indexOf('if (!pastDataOffered())');
+      final checked = request.indexOf('!pastDataOffered()');
+      final looked =
+          request.indexOf('permissionController.getGrantedPermissions()');
+      final decided = request.indexOf(
+        'if (!HealthPermissionState.pastDataMayAsk(granted, importReadPermissions))',
+      );
       final launched = request.indexOf('launchPermissionRequest(');
       expect(guarded, isNonNegative);
       expect(checked, greaterThan(guarded));
-      expect(launched, greaterThan(checked));
+      expect(looked, greaterThan(checked));
+      expect(decided, greaterThan(looked));
+      expect(launched, greaterThan(decided));
       expect(request, contains('result.success("unavailable")'));
+      expect(request, contains('result.success("permissionDenied")'));
       expect(request, contains('permissions = pastDataPermissions()'));
       for (final other in [
         'readPermissions',
         'allPermissions',
         'writePermissions',
-        'importReadPermissions',
         'backgroundReadPermissions',
         'getWritePermission',
         'getReadPermission',
@@ -774,7 +781,7 @@ void main() {
 
     test('whether there is a switch only looks, and is the feature check',
         () {
-      expect(offered, contains('result.success(pastDataOffered())'));
+      expect(offered, contains('result.success(pastDataOfferedOrNull())'));
       for (final forbidden in [
         'launcher',
         'requestPermissions',
@@ -788,7 +795,7 @@ void main() {
       }
       final helper = _between(
         kotlin,
-        'private fun pastDataOffered(): Boolean',
+        'private fun pastDataOfferedOrNull(): Boolean?',
         'private fun pastDataPermissions(): Set<String>',
       );
       expect(
@@ -796,19 +803,27 @@ void main() {
         contains('HealthConnectFeatures.FEATURE_READ_HEALTH_DATA_HISTORY'),
       );
       expect(helper, contains('HealthConnectFeatures.FEATURE_STATUS_AVAILABLE'));
-      // A probe that fails is "not offered": an unknown permission string
-      // must never reach a request sheet.
+      // A probe that fails is "cannot tell" for the screen, which must not
+      // then say the phone has no such switch...
       expect(
-        RegExp(r'catch \(_: Exception\) \{\s*false\s*\}').hasMatch(helper),
+        RegExp(r'catch \(_: Exception\) \{\s*null\s*\}').hasMatch(helper),
         isTrue,
       );
       expect(helper, isNot(contains('prefs.')));
+      // ...and "not offered" for a request sheet: an unknown permission
+      // string must never reach one.
+      expect(
+        kotlin,
+        contains('private fun pastDataOffered(): Boolean = '
+            'pastDataOfferedOrNull() == true'),
+      );
       // The permission set is that one string, or nothing.
       final permissions = _between(
         kotlin,
         'private fun pastDataPermissions(): Set<String>',
         'private class GuardArgs',
       );
+      expect(permissions, contains('if (pastDataOffered())'));
       expect(
         permissions,
         contains('setOf(HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY)'),
@@ -862,7 +877,18 @@ void main() {
     test('the import\'s request asks for the read set and no write '
         'permission', () {
       expect(importRequest, contains('launchPermissionRequest('));
-      expect(importRequest, contains('permissions = readPermissions'));
+      // Issue #1573: everything in the read set the first time this
+      // install raises it, and the read set without "access past data"
+      // after that (HealthPermissionState.importRequestPermissions, which
+      // the JVM tests pin).
+      expect(
+        RegExp(r'permissions = HealthPermissionState\.importRequestPermissions\(\s*'
+                r'reads = readPermissions,\s*'
+                r'pastData = pastDataPermissions\(\),\s*'
+                r'launchedBefore = importRequestLaunched\(\),\s*\)')
+            .hasMatch(importRequest),
+        isTrue,
+      );
       expect(importRequest, isNot(contains('allPermissions')));
       expect(importRequest, isNot(contains('writePermissions')));
       // And the read set is what it says: "access past data", the two
@@ -1058,12 +1084,13 @@ void main() {
         hasLength(1),
         reason: 'the import\'s marker is read in one place',
       );
-      // And that one reader has two callers: the read side's "asked", and
-      // the rule for what a granted read proves about the writes.
+      // And that one reader has three callers: the read side's "asked",
+      // the rule for what a granted read proves about the writes, and
+      // (Issue #1573) what the import's own request carries.
       expect(
         RegExp(r'[^.\w]importRequestLaunched\(\)').allMatches(kotlin),
-        hasLength(3),
-        reason: 'its definition and two calls',
+        hasLength(4),
+        reason: 'its definition and three calls',
       );
     });
   });

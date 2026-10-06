@@ -5290,12 +5290,12 @@ class AppLocalizationsEn extends AppLocalizations {
       '\"Access past data\" is still off. You can turn it on for lunarlog in Health Connect.';
 
   @override
-  String get healthSyncImportRecentDataOnly =>
-      'Health Connect on this phone only shows lunarlog recent data.';
+  String get healthSyncImportOlderDataNoSwitch =>
+      'Health Connect on this phone hides older data from lunarlog, and has no setting to change that.';
 
   @override
-  String get healthSyncImportEmptyHealthConnectRecentOnly =>
-      'Nothing to import that lunarlog can see. Health Connect on this phone only shows lunarlog recent data.';
+  String get healthSyncImportEmptyHealthConnectNoSwitch =>
+      'Nothing to import that lunarlog can see. Health Connect on this phone hides older data from lunarlog, and has no setting to change that.';
 
   @override
   String get healthSyncImportOlderDataHidden =>

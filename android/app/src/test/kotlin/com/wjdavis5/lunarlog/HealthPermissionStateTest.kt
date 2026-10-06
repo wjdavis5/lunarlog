@@ -270,6 +270,70 @@ class HealthPermissionStateTest {
         assertEquals("notAsked", status(importRequest, writesEverRequested = false))
     }
 
+    // Issue #1573: the request for "Access past data" alone.
+    @Test
+    fun `past data is asked for only when both record reads are granted`() {
+        val reads = setOf(readMenstruation, readSpotting)
+        assertTrue(HealthPermissionState.pastDataMayAsk(reads, reads))
+        assertTrue(HealthPermissionState.pastDataMayAsk(reads + writes, reads))
+        assertFalse(HealthPermissionState.pastDataMayAsk(setOf(readMenstruation), reads))
+        assertFalse(HealthPermissionState.pastDataMayAsk(emptySet(), reads))
+        assertFalse(HealthPermissionState.pastDataMayAsk(writes, reads))
+    }
+
+    // With no read granted and neither request launched, a grant of past
+    // data alone would read as proof that the write sheet had been shown.
+    // The rule above is what keeps the request from being raised then.
+    @Test
+    fun `a past data grant alone would mark the writes as asked, which is why it is never asked for alone`() {
+        val requested = writes + setOf(readMenstruation, readSpotting, readHistory)
+        assertTrue(
+            HealthPermissionState.remembersWritesAsked(
+                granted = setOf(readHistory),
+                writes = writes,
+                requested = requested,
+                importRequestLaunched = false,
+            ),
+        )
+        assertFalse(
+            HealthPermissionState.pastDataMayAsk(
+                emptySet(),
+                setOf(readMenstruation, readSpotting),
+            ),
+        )
+        // With the record reads granted the answer was already yes, so the
+        // grant changes nothing.
+        val before = setOf(readMenstruation, readSpotting)
+        for (launched in listOf(false, true)) {
+            assertEquals(
+                HealthPermissionState.remembersWritesAsked(before, writes, requested, launched),
+                HealthPermissionState.remembersWritesAsked(
+                    before + readHistory, writes, requested, launched,
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun `the import's sheet carries past data the first time it is raised and not again`() {
+        val reads = setOf(readHistory, readMenstruation, readSpotting, readBackground)
+        val pastData = setOf(readHistory)
+        assertEquals(
+            reads,
+            HealthPermissionState.importRequestPermissions(reads, pastData, launchedBefore = false),
+        )
+        assertEquals(
+            setOf(readMenstruation, readSpotting, readBackground),
+            HealthPermissionState.importRequestPermissions(reads, pastData, launchedBefore = true),
+        )
+        // A phone with no such switch has nothing to leave out.
+        val noSwitch = reads - readHistory
+        assertEquals(
+            noSwitch,
+            HealthPermissionState.importRequestPermissions(noSwitch, emptySet(), launchedBefore = true),
+        )
+    }
+
     @Test
     fun `the wire strings are the Dart HealthPermissionStatus names`() {
         assertEquals("granted", HealthPermissionState.GRANTED)

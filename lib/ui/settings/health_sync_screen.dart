@@ -280,6 +280,24 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
     unawaited(_refreshPermissionStatus());
+    unawaited(_recheckPastData());
+  }
+
+  /// Issue #1573: the result says "Access past data" is still off and
+  /// offers Health Connect's settings. If the switch is on when she comes
+  /// back, that line is no longer true, and the import she wanted is run.
+  ///
+  /// Only while reading is still allowed: an import whose reads are off
+  /// raises Health Connect's sheet, and nothing is asked from here except
+  /// by her tap. Coming back from the prompt itself does nothing, because
+  /// the line is not up until the prompt has answered ([_allowPastData]).
+  Future<void> _recheckPastData() async {
+    final probe = widget.permissionProbe;
+    if (probe == null || !_pastDataStillOff || _importing) return;
+    final reaches = await _pastDataReach(await _readSideStatus(probe));
+    if (!mounted || reaches != true || !_pastDataStillOff) return;
+    setState(() => _pastDataStillOff = false);
+    await _runImport();
   }
 
   Future<void> _refreshPermissionStatus() async {
@@ -957,7 +975,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
     // line does not name one.
     return _importPastDataOffered
         ? l10n.healthSyncImportEmptyHealthConnectOlderHidden
-        : l10n.healthSyncImportEmptyHealthConnectRecentOnly;
+        : l10n.healthSyncImportEmptyHealthConnectNoSwitch;
   }
 
   /// Whether [summary] is a whole-history read that came back empty while
@@ -990,8 +1008,8 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// ([_pastDataButton]).
   ///
   /// Where the store has no such switch at all (Issue #1573) there is no
-  /// way to offer: the line says the phone's Health Connect shows recent
-  /// data only, and no button follows.
+  /// way to offer: the line says the phone's Health Connect has no setting
+  /// for it, and no button follows.
   List<Widget> _olderDataHint(
     AppLocalizations l10n,
     HealthImportSummary summary,
@@ -1000,7 +1018,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
     // The empty whole-history line has already said it.
     final said = _olderDataHidden(summary);
     if (!_importPastDataOffered) {
-      return [if (!said) Text(l10n.healthSyncImportRecentDataOnly)];
+      return [if (!said) Text(l10n.healthSyncImportOlderDataNoSwitch)];
     }
     return [
       if (!said) Text(l10n.healthSyncImportOlderDataHidden),

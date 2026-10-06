@@ -8380,17 +8380,17 @@ abstract class AppLocalizations {
   /// **'\"Access past data\" is still off. You can turn it on for lunarlog in Health Connect.'**
   String get healthSyncImportPastDataStillOff;
 
-  /// Issue #1573: a line under an import result from a Health Connect that has no 'Access past data' switch at all (an older version). Data older than about a month before lunarlog was first allowed cannot be read there, and there is no setting to change, so no button is offered.
+  /// Issue #1573: a line under an import result from a Health Connect that has no 'Access past data' switch at all (an older version). Data from more than about a month before lunarlog was first allowed cannot be read there, and there is no setting to change, so no button is offered. 'Older data' as in healthSyncImportOlderDataHidden; not 'recent data only', which would be untrue on a phone that gave access long ago.
   ///
   /// In en, this message translates to:
-  /// **'Health Connect on this phone only shows lunarlog recent data.'**
-  String get healthSyncImportRecentDataOnly;
+  /// **'Health Connect on this phone hides older data from lunarlog, and has no setting to change that.'**
+  String get healthSyncImportOlderDataNoSwitch;
 
   /// Issue #1573: the result of an import that read everything it was allowed to and got nothing back, on a Health Connect that has no 'Access past data' switch. The same case as healthSyncImportEmptyHealthConnectOlderHidden, without naming a switch the phone does not have.
   ///
   /// In en, this message translates to:
-  /// **'Nothing to import that lunarlog can see. Health Connect on this phone only shows lunarlog recent data.'**
-  String get healthSyncImportEmptyHealthConnectRecentOnly;
+  /// **'Nothing to import that lunarlog can see. Health Connect on this phone hides older data from lunarlog, and has no setting to change that.'**
+  String get healthSyncImportEmptyHealthConnectNoSwitch;
 
   /// Issue #1557: a line under the result of an import from Health Connect that brought days in, or that asked only for what changed, while Health Connect's 'Access past data' switch was off for lunarlog. Older days may be there and were not read. Shown with an Open Settings button. The quoted name is Health Connect's own label for the switch (Android 15).
   ///
