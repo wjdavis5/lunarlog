@@ -7,17 +7,6 @@ import '../models/local_date.dart';
 import '../models/observation.dart';
 import '../models/observation_category.dart';
 
-/// Issue #1561: whether an observation the health import once wrote was
-/// deleted since. The observations-side twin of `DeletedDayEntryReader`.
-abstract interface class DeletedObservationReader {
-  /// Whether a deleted observation of [profileId] carries this provenance.
-  Future<bool> wasDeletedBySource({
-    required String profileId,
-    required ObservationSource source,
-    required String sourceId,
-  });
-}
-
 abstract interface class ObservationsRepository {
   /// Live (non-tombstoned) observations for the profile, ordered by id.
   /// Used by account export (Issue #240; `kAccountExportSchemaVersion` v3)

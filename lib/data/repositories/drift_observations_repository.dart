@@ -14,33 +14,17 @@ import 'package:lunarlog/domain/models/observation.dart' as domain;
 import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 
+import 'drift_day_entries_repository.dart' show rememberDeletedHealthImports;
 import 'mappers.dart';
 
 class DriftObservationsRepository
     implements
         ObservationsRepository,
         SpottingObservationsRangeRepository,
-        DayEntryObservationsWatchRepository,
-        DeletedObservationReader {
+        DayEntryObservationsWatchRepository {
   DriftObservationsRepository(this._storage);
 
   final ObservationsRepositoryStore _storage;
-
-  /// Issue #1561: whether the observation carrying this provenance was
-  /// deleted. The storage lookup answers live and deleted rows alike.
-  @override
-  Future<bool> wasDeletedBySource({
-    required String profileId,
-    required domain.ObservationSource source,
-    required String sourceId,
-  }) async {
-    final row = await _storage.findObservationBySource(
-      profileId: profileId,
-      source: source.toDb(),
-      sourceId: sourceId,
-    );
-    return row != null && row.deletedAt != null;
-  }
 
   /// Issue #247: alongside every persisted observation, synthesises a
   /// `category: 'spotting'` row (never written back) for any live day
@@ -165,7 +149,17 @@ class DriftObservationsRepository
       ));
 
   @override
-  Future<void> delete(String id) => _storage.softDeleteObservation(id);
+  /// Deletes the entry, and remembers the health-store record it had come
+  /// from (Issue #1561), so the next import does not bring it back.
+  @override
+  Future<void> delete(String id) async {
+    final live = await _storage.getObservationById(id);
+    await _storage.softDeleteObservation(id);
+    if (live == null || live.deletedAt != null) return;
+    await rememberDeletedHealthImports(_storage, live.profileId, [
+      (live.source, live.sourceId),
+    ]);
+  }
 }
 
 /// A never-persisted `spotting` observation standing in for a legacy

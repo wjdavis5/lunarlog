@@ -91,6 +91,7 @@ import 'dart:isolate' show Isolate;
 
 import 'package:lunarlog/domain/health/day_boundary.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
+import 'package:lunarlog/domain/health/health_import_deletions.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_policy.dart';
@@ -364,9 +365,6 @@ class LocalHealthImportService
        _deletedDays = dayEntries is DeletedDayEntryReader
            ? dayEntries as DeletedDayEntryReader
            : null,
-       _deletedObservations = observations is DeletedObservationReader
-           ? observations as DeletedObservationReader
-           : null,
        _guardiansForProfile = guardiansForProfile,
        _signedInUserId = signedInUserId,
        _today = today ?? LocalDate.today,
@@ -381,11 +379,14 @@ class LocalHealthImportService
   final DayEntriesRepository _dayEntries;
   final ObservationsRepository _observations;
 
-  /// Issue #1561: what she deleted, where the repositories can say. Null
+  /// Issue #1561: what she deleted, where the repository can say. Null
   /// for one that cannot (a test double), and the import then inserts as
   /// it always did.
   final DeletedDayEntryReader? _deletedDays;
-  final DeletedObservationReader? _deletedObservations;
+
+  /// The health-store records behind what she deleted, read once at the
+  /// start of each pass's merge ([_apply]).
+  Map<String, DateTime> _handDeleted = const {};
   final GuardiansForProfile _guardiansForProfile;
   final String? Function() _signedInUserId;
   final LocalDate Function() _today;
@@ -638,6 +639,8 @@ class LocalHealthImportService
   ) async {
     // Day-level sets, so a date whose flow merge and spotting merge land in
     // different outcomes is counted once per outcome rather than twice.
+    _handDeleted =
+        await _deletedDays?.handDeletedRecords(profileId) ?? const {};
     final writtenDays = <LocalDate>{};
     final unchangedDays = <LocalDate>{};
     final keptManualDays = <LocalDate>{};
@@ -720,13 +723,22 @@ class LocalHealthImportService
   ) async {
     final existing = await _dayEntries.find(profileId, date);
     final key = _recordKey(desired);
-    if (existing == null && await _deletedAndUnchanged(profileId, desired)) {
-      return _MergeOutcome.keptManual;
+    if (_sheDeleted(existing, desired)) {
+      // Nothing is written: not the day, and not this record's key onto
+      // a row she has logged there since.
+      return existing != null && existing.flow == desired.flow
+          ? _MergeOutcome.unchanged
+          : _MergeOutcome.keptManual;
     }
     if (existing == null) {
+      // A deleted row for this record that is not her own deletion (the
+      // imported data was removed, or the store's record has changed) is
+      // brought back in place. A second row for the same record could
+      // never sync: the server allows one per record, deleted or not.
+      final gone = await _deletedRowFor(profileId, desired);
       await _dayEntries.save(
         DayEntry(
-          id: '',
+          id: gone?.id ?? '',
           profileId: profileId,
           localDate: date,
           tz: desired.tzName,
@@ -759,26 +771,47 @@ class LocalHealthImportService
     return _MergeOutcome.written;
   }
 
-  /// Whether she deleted the day this record was imported as, and the
-  /// store's record is still the one the deleted row was written from
-  /// (Issue #1561).
+  /// Whether the store is offering a record she deleted, unchanged since
+  /// (Issue #1561). Her deletion holds for as long as the store keeps
+  /// that record; a different record for the day, or the same one changed
+  /// since, is the store's news and is imported: the rule a hand
+  /// correction follows ([_storeChangedSince]).
   ///
-  /// Deleting a day clears its content and keeps its provenance, so the
-  /// deleted row still says which record it came from. Her deletion holds
-  /// for as long as the store keeps that record; a different record for
-  /// the day, or the same one changed since, is the store's news and the
-  /// day is imported again ([_storeChangedSince], the same rule a hand
-  /// correction follows).
+  /// It is asked for a day with a live row too. She may have deleted the
+  /// imported day and then logged only a symptom on it, and the import
+  /// must not fill that day's empty flow from the record she deleted.
   ///
-  /// Without this the day came back on every whole-history read, and the
-  /// re-inserted row could not sync: the server allows one row per
-  /// record, deleted or not.
-  Future<bool> _deletedAndUnchanged(
-    String profileId,
-    _DesiredSample desired,
-  ) async {
-    final deleted = await _deletedRowFor(profileId, desired);
-    return deleted != null && !_storeChangedSince(deleted, desired);
+  /// A live row written from this very record means the deletion was
+  /// undone, and the record is hers to see again.
+  bool _sheDeleted(DayEntry? existing, _DesiredSample desired) {
+    if (_handDeleted.isEmpty) return false;
+    if (existing != null && _writtenFrom(existing, desired)) return false;
+    return _deletedUnchanged(_daySource.toDb(), desired);
+  }
+
+  /// Whether [existing] is a row this importer wrote from [desired]'s
+  /// record, at this version or an earlier one.
+  bool _writtenFrom(DayEntry existing, _DesiredSample desired) =>
+      existing.source == _daySource &&
+      (existing.sourceId == _recordKey(desired) ||
+          existing.sourceId == desired.recordId);
+
+  /// Whether [desired]'s record is among what she deleted and has not
+  /// changed since. Found by its full key, it is the same version. Found
+  /// by the bare id a Health Connect row carried before the key held a
+  /// time, it is unchanged unless the store says it changed after she
+  /// deleted it.
+  bool _deletedUnchanged(String source, _DesiredSample desired) {
+    final key = _recordKey(desired);
+    if (_handDeleted.containsKey(healthImportDeletionId(source, key))) {
+      return true;
+    }
+    if (key == desired.recordId) return false;
+    final deletedAt =
+        _handDeleted[healthImportDeletionId(source, desired.recordId)];
+    if (deletedAt == null) return false;
+    final modifiedAt = desired.modifiedAt;
+    return modifiedAt == null || !modifiedAt.isAfter(deletedAt);
   }
 
   /// The deleted row written from [desired]'s record: by its full key, or
@@ -903,12 +936,10 @@ class LocalHealthImportService
     // Issue #1561: a spotting entry she deleted stays deleted while the
     // store still holds the record it came from. Asked before anything is
     // written, so no empty day is created to hang it on either.
-    final deleted = await _deletedObservations?.wasDeletedBySource(
-      profileId: profileId,
-      source: _observationSource,
-      sourceId: sample.recordId,
+    final deleted = _handDeleted.containsKey(
+      healthImportDeletionId(_observationSource.toDb(), sample.recordId),
     );
-    if (deleted == true) return _MergeOutcome.keptManual;
+    if (deleted) return _MergeOutcome.keptManual;
     final day = await _dayEntries.find(profileId, date) ??
         await _dayEntries.save(
           DayEntry(

@@ -447,7 +447,7 @@ abstract interface class HealthDeviceStore {
 }
 
 /// The local-first imported-data purge (Issue #883).
-abstract interface class ImportedDataPurgeStore {
+abstract interface class ImportedDataPurgeStore implements AppSettingsStore {
   Future<Map<String, int>> liveImportedSourceCounts(String profileId);
   Future<void> applyLocalImportedDataPurge({
     required String profileId,
@@ -457,12 +457,16 @@ abstract interface class ImportedDataPurgeStore {
 
 /// The `day_entries` surface [DriftDayEntriesRepository] calls.
 abstract interface class DayEntriesRepositoryStore
-    implements DayEntryStore, MergeEventStore, AppSettingsStore {}
+    implements
+        DayEntryStore,
+        MergeEventStore,
+        AppSettingsStore,
+        ObservationStore {}
 
 /// The `day_entries`/`observations` surface
 /// [DriftObservationsRepository] calls.
 abstract interface class ObservationsRepositoryStore
-    implements ObservationStore, DayEntryStore {}
+    implements ObservationStore, DayEntryStore, AppSettingsStore {}
 
 /// The surface [DriftActivityFeedRepository] calls.
 abstract interface class ActivityFeedStore
