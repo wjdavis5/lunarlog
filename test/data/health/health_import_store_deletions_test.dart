@@ -1190,7 +1190,11 @@ void main() {
       store.wholeHistoryAgainPages
           .add(const HealthReadResult.unavailable());
 
-      await expectNothingRemoved(await removeOffered());
+      final summary = await removeOffered();
+
+      await expectNothingRemoved(summary);
+      expect(summary.blocked, isA<HealthPlatformUnavailable>(),
+          reason: 'what stopped it is what is reported');
     });
 
     test('that fails on a later page', () async {
@@ -1203,7 +1207,14 @@ void main() {
         const HealthReadResult.failed('the store went away'),
       ]);
 
-      await expectNothingRemoved(await removeOffered());
+      final summary = await removeOffered();
+
+      await expectNothingRemoved(summary);
+      expect(
+        summary.blocked,
+        isA<HealthPlatformFailed>()
+            .having((failed) => failed.message, 'message', 'the store went away'),
+      );
     });
 
     // An import treats a page the store would not let be read as "no

@@ -451,7 +451,8 @@ class LocalHealthImportService
   Future<void> keepDaysDeletedInStore(HealthStoreDeletedOffer offer) =>
       _queued(() => _answered(offer.recordIds));
 
-  /// Takes [recordIds] off the list: she has answered about them.
+  /// Takes [recordIds] off the list: she has said to keep what was
+  /// imported from them.
   Future<void> _answered(Set<String> recordIds) async {
     final waiting = await _binding.storeDeletedRecordIds();
     await _binding.setStoreDeletedRecordIds(waiting.difference(recordIds));
@@ -926,10 +927,11 @@ class LocalHealthImportService
   /// tell this from a day she deleted on its sheet; left in place, the
   /// note would keep the record out if the store ever offered it again.
   ///
-  /// What she agreed to comes off the list at the end, and nothing else
-  /// does: a record noted since she was asked is still on offer. If
-  /// this stops part-way, what it did not reach is still on the list
-  /// too.
+  /// The list is not written here. Once what was imported from a
+  /// record is gone no row names the record, and the trim that follows
+  /// the merge ([_trimStoreDeleted]) takes it off. A record noted since
+  /// she was asked still has its row, and stays on offer. So does what
+  /// this did not reach, if it stops part-way.
   Future<int> _removeStoreDeleted(
     String profileId,
     Set<String> offered,
@@ -960,7 +962,6 @@ class LocalHealthImportService
       await _dropEmptyHost(profileId, entry.localDate, entryDates);
     }
     await _forgetNoted(profileId, noted);
-    await _answered(agreed);
     return dates.length;
   }
 
