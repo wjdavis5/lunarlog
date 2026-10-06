@@ -799,11 +799,10 @@ class LocalHealthImportService
   }
 
   /// Reads what she deleted afresh, less the records this pass has found
-  /// live again. One of those that has been deleted again since carries a
-  /// new moment, and counts.
+  /// live again: each of those has had its turn in this pass.
   Future<void> _loadDeleted(String profileId) async {
     final read = await _deletedDays?.deletedHealthRecords(profileId);
-    _deleted = {...?read}..removeWhere((id, at) => _undone[id] == at);
+    _deleted = {...?read}..removeWhere((id, _) => _undone.containsKey(id));
   }
 
   /// Forgets the deletions this pass found undone ([_seenLive]).

@@ -1517,6 +1517,26 @@ void main() {
     );
 
     testWidgets(
+      'spotting she ticks and then unticks in one sitting is removed',
+      (tester) async {
+        final h = await pumpLogging(tester);
+
+        await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('spotting-chip')));
+        await pumpAutosave(tester);
+        final saved = await h.entries.find(h.profile.id, kToday);
+        expect(await h.observations.listForDayEntry(saved!.id), hasLength(1));
+
+        // The same sheet, never closed: nothing was loaded as ticked.
+        await tester.tap(find.byKey(const ValueKey('spotting-chip')));
+        await pumpAutosave(tester);
+        expect(await h.observations.listForDayEntry(saved.id), isEmpty);
+        await disposeLogging(tester, h);
+      },
+    );
+
+    testWidgets(
       'unticking spotting that came from the health store removes it, '
       'and the phone remembers it was removed (#1561)',
       (tester) async {
