@@ -2317,7 +2317,6 @@ void main() {
         // It does not say reading is off either: the status line above
         // says it is on.
         expect(line, isNot(contains('read access is off')));
-        expect(probe.pastDataProbes, greaterThan(0));
       });
 
       testWidgets('Android: when it cannot tell whether past data is '
@@ -2355,7 +2354,7 @@ void main() {
 
         // She turns it on in Health Connect, and imports again. The
         // adapter then reads the whole history once more (the Kotlin
-        // rule `mustRereadForPast`), and the screen asks again after
+        // rule `pastReadStep`), and the screen asks again after
         // every pass.
         probe.reachesPastData = true;
         expect(await importAndReadResult(tester), nothingToImport);
@@ -2458,6 +2457,29 @@ void main() {
         expect(resultSettings, findsNothing);
       });
 
+      testWidgets('Android: an import that brought days in has no '
+          'settings button', (tester) async {
+        await pumpAndroid(
+          tester,
+          binding: await boundBinding(),
+          permissionProbe: _ScriptedProbe(
+            readAccessDisclosed: true,
+            write: HealthPermissionStatus.granted,
+            read: HealthPermissionStatus.granted,
+            reachesPastData: false,
+          ),
+          importer: androidImporter(
+            const HealthImportSummary(
+              pagesRead: 1,
+              samplesRead: 2,
+              daysWritten: 2,
+            ),
+          ),
+        );
+        await importAndReadResult(tester);
+        expect(resultSettings, findsNothing);
+      });
+
       testWidgets('Android: the question is only asked once reading is '
           'allowed', (tester) async {
         final probe = _ScriptedProbe(
@@ -2549,6 +2571,9 @@ void main() {
 
         expect(await importAndReadResult(tester), neutralAppleHealth);
         expect(probe.readProbes, 0);
+        // Issue #1549: nor the question about past data, and no button.
+        expect(probe.pastDataProbes, 0);
+        expect(resultSettings, findsNothing);
       });
 
       testWidgets('with no permission probe wired, an empty import keeps '

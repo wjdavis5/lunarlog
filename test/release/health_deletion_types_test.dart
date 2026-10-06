@@ -488,7 +488,7 @@ void main() {
       final helperStart =
           kotlin.indexOf('private suspend fun pastDataGranted(');
       final helperEnd =
-          kotlin.indexOf('private suspend fun owesPastRead(');
+          kotlin.indexOf('private suspend fun applyPastReadStep(');
       expect(helperStart, isNonNegative);
       expect(helperEnd, greaterThan(helperStart));
       final helper = kotlin.substring(helperStart, helperEnd);
@@ -508,14 +508,37 @@ void main() {
       // Decided at the start of a pass only, never between its pages.
       expect(
         kotlin,
-        contains('if (decoded == null && owesPastRead(client, profileId)) {'),
+        contains('if (decoded == null) applyPastReadStep(client, profileId)'),
       );
-      final owed = kotlin.indexOf(
-          'if (decoded == null && owesPastRead(client, profileId)) {');
+      expect('applyPastReadStep('.allMatches(kotlin), hasLength(2),
+          reason: 'declared once and called from that one place');
+      // What it does with each answer of the rule.
+      final stepStart =
+          kotlin.indexOf('private suspend fun applyPastReadStep(');
+      final stepEnd = kotlin.indexOf('private fun guardDecision(');
+      expect(stepStart, isNonNegative);
+      expect(stepEnd, greaterThan(stepStart));
+      final step = kotlin.substring(stepStart, stepEnd);
       expect(
-        kotlin.substring(owed, owed + 200),
-        contains('prefs.edit().remove(changesTokenKey(profileId)).apply()'),
+        step,
+        matches(RegExp(
+          r'PastReadStep\.REREAD ->\s+'
+          r'prefs\.edit\(\)\.remove\(changesTokenKey\(profileId\)\)'
+          r'\.apply\(\)',
+        )),
       );
+      expect(
+        step,
+        matches(RegExp(
+          r'PastReadStep\.LOWER ->\s+prefs\.edit\(\)\s+\.putString\(\s+'
+          r'reachedPastKey\(profileId\),\s+'
+          r'HealthImportCursor\.reachedPastToWire\(false\),',
+        )),
+      );
+      expect(step, contains('PastReadStep.NONE -> Unit'));
+      // Lowering never touches the token, and a re-read never the flag.
+      expect('changesTokenKey(profileId)'.allMatches(step), hasLength(2),
+          reason: 'read once, removed once');
       // Recorded on the first page of a whole-range read, and only
       // lowered on the last: a switch turned on part-way is not "reached".
       final rangeStart =
@@ -532,29 +555,29 @@ void main() {
           reason: 'recorded before the first page is read');
       expect(
         range.substring(firstPage, firstRead),
-        contains('if (pastDataGranted(client)) REACHED_PAST else '
-            'REACHED_RECENT'),
+        contains('HealthImportCursor.reachedPastToWire('
+            'pastDataGranted(client)),'),
       );
-      expect('REACHED_PAST'.allMatches(range), hasLength(1),
-          reason: 'only the first page may say the read reached it');
+      expect(
+        'reachedPastToWire(pastDataGranted(client))'.allMatches(kotlin),
+        hasLength(1),
+        reason: 'only the first page may say the read reached it',
+      );
+      expect(kotlin, isNot(contains('reachedPastToWire(true)')));
       final minted = range.indexOf('.putString(changesTokenKey(profileId), next)');
       expect(minted, greaterThan(firstRead));
       final lowered = range.substring(minted);
       expect(lowered, contains('if (!pastDataGranted(client)) {'));
       expect(
         lowered,
-        contains('editor.putString(reachedPastKey(profileId), '
-            'REACHED_RECENT)'),
+        contains('HealthImportCursor.reachedPastToWire(false),'),
       );
       // Unbinding forgets both.
       expect(kotlin, contains('editor.remove(reachedPastKey(it))'));
-      // The rule itself is the pure function the Kotlin unit test pins.
-      expect(kotlin, contains('HealthImportCursor.mustRereadForPast('));
-      expect(
-        kotlin,
-        contains('): Boolean = tokenStored && pastDataGranted && '
-            'reachedPast != true'),
-      );
+      // The rule itself is the pure function the Kotlin unit test pins
+      // (HealthImportCursorTest), with every combination of its inputs.
+      expect(kotlin, contains('HealthImportCursor.pastReadStep('));
+      expect(kotlin, contains('HealthImportCursor.reachedPastFromWire('));
     });
 
     test('the required set is the two record reads and nothing else', () {

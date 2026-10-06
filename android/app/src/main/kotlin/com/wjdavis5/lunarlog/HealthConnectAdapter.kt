@@ -1219,10 +1219,8 @@ class HealthConnectAdapter(context: Context) {
         // Issue #1549: at the start of a pass, a whole-range read may be
         // owed although a token is stored. Dropping the token makes the
         // read below that whole-range read, and it mints a new token when
-        // it finishes. See [HealthImportCursor.mustRereadForPast].
-        if (decoded == null && owesPastRead(client, profileId)) {
-            prefs.edit().remove(changesTokenKey(profileId)).apply()
-        }
+        // it finishes. See [HealthImportCursor.pastReadStep].
+        if (decoded == null) applyPastReadStep(client, profileId)
         // A stored change token means an incremental pass: the first page
         // (no cursor) uses it, and every later changes page carries its own
         // next token in the cursor.
@@ -1324,7 +1322,7 @@ class HealthConnectAdapter(context: Context) {
                 prefs.edit()
                     .putString(
                         reachedPastKey(profileId),
-                        if (pastDataGranted(client)) REACHED_PAST else REACHED_RECENT,
+                        HealthImportCursor.reachedPastToWire(pastDataGranted(client)),
                     )
                     .apply()
             }
@@ -1372,7 +1370,10 @@ class HealthConnectAdapter(context: Context) {
                 // "Access past data" was on from its first page (recorded
                 // there) to this one. Turned on part-way does not count.
                 if (!pastDataGranted(client)) {
-                    editor.putString(reachedPastKey(profileId), REACHED_RECENT)
+                    editor.putString(
+                        reachedPastKey(profileId),
+                        HealthImportCursor.reachedPastToWire(false),
+                    )
                 }
                 editor.apply()
             }
@@ -1497,28 +1498,37 @@ class HealthConnectAdapter(context: Context) {
             false
         }
 
-    // Issue #1549: a whole-range read made while "Access past data" was
-    // off never saw the older data, and the change token it minted means
-    // every later pass asks only for what changed. So turning the switch
-    // on later imported nothing, ever. Once it is on, one more whole-range
-    // read is owed.
-    private suspend fun owesPastRead(
+    // Issue #1549, at the start of a pass. A whole-range read made while
+    // "Access past data" was off never saw the older data, and the
+    // change token it minted means every later pass asks only for what
+    // changed. So turning the switch on later imported nothing, ever.
+    // The rule is [HealthImportCursor.pastReadStep]; this only reads the
+    // three facts and does what it says. Health Connect is asked only
+    // when a token is stored: without one the pass reads the whole range
+    // anyway.
+    private suspend fun applyPastReadStep(
         client: HealthConnectClient,
         profileId: String,
-    ): Boolean {
-        if (prefs.getString(changesTokenKey(profileId), null) == null) return false
-        val reachedPast = when (prefs.getString(reachedPastKey(profileId), null)) {
-            REACHED_PAST -> true
-            REACHED_RECENT -> false
-            else -> null
-        }
-        // Asked last, and only when the answer can matter.
-        if (reachedPast == true) return false
-        return HealthImportCursor.mustRereadForPast(
+    ) {
+        if (prefs.getString(changesTokenKey(profileId), null) == null) return
+        val step = HealthImportCursor.pastReadStep(
             tokenStored = true,
-            reachedPast = reachedPast,
+            reachedPast = HealthImportCursor.reachedPastFromWire(
+                prefs.getString(reachedPastKey(profileId), null)),
             pastDataGranted = pastDataGranted(client),
         )
+        when (step) {
+            HealthImportCursor.PastReadStep.REREAD ->
+                prefs.edit().remove(changesTokenKey(profileId)).apply()
+            HealthImportCursor.PastReadStep.LOWER ->
+                prefs.edit()
+                    .putString(
+                        reachedPastKey(profileId),
+                        HealthImportCursor.reachedPastToWire(false),
+                    )
+                    .apply()
+            HealthImportCursor.PastReadStep.NONE -> Unit
+        }
     }
 
     // The native mirror of HealthSyncBinding._evaluate — same wire
@@ -1608,10 +1618,6 @@ class HealthConnectAdapter(context: Context) {
     companion object {
         const val PREFS_FILE = "lunarlog_health"
         const val BOUND_PROFILE_KEY = "lunarlog.health.boundProfileId"
-
-        // Issue #1549: the two values kept under `reachedPastKey`.
-        const val REACHED_PAST = "past"
-        const val REACHED_RECENT = "recent"
         const val CHANNEL_NAME = "lunarlog/health"
 
         // Issue #1478: set once this install has launched the Health
@@ -1889,26 +1895,66 @@ internal object HealthImportCursor {
     fun intermenstrual(token: String?): String = encode(INTERMENSTRUAL, token)
     fun changes(token: String): String = encode(CHANGES, token)
 
+    /** What the start of a pass does about "Access past data". */
+    enum class PastReadStep {
+        /** Nothing: carry on with the stored token, or without one. */
+        NONE,
+
+        /** Record that the stored token no longer stands for a read that
+         *  reached the older data. The pass itself is unchanged. */
+        LOWER,
+
+        /** Drop the stored token, so this pass reads the whole range. */
+        REREAD,
+    }
+
     /**
-     * Whether a pass must read the whole range again although a change
-     * token is stored (issue #1549).
+     * What the start of a pass does about "Access past data" (issue
+     * #1549).
      *
      * A token is minted when a whole-range read finishes, and from then on
      * a pass asks only for what changed. Health Connect hides data older
      * than 30 days before the first grant unless "Access past data" is
      * on, so a whole-range read made with it off never saw the older
      * data, and a changes-only pass never will. Once the switch is on,
-     * one more whole-range read is owed.
+     * one more whole-range read is owed ([PastReadStep.REREAD]).
      *
-     * [reachedPast] is what was recorded when the stored token was
-     * minted; null for a token minted before this was recorded, which is
-     * read as "not known to have reached it".
+     * A changes-only pass made with the switch off does not return
+     * older-dated records another app wrote since the token either, and it
+     * moves the token past them. So a token that stood for a read that
+     * reached the past stops standing for one ([PastReadStep.LOWER]),
+     * and switching it off and on again reads the whole range once more.
+     *
+     * [reachedPast] is what was recorded for the stored token; null for a
+     * token minted before this was recorded, which is read as "not known
+     * to have reached it".
      */
-    fun mustRereadForPast(
+    fun pastReadStep(
         tokenStored: Boolean,
         reachedPast: Boolean?,
         pastDataGranted: Boolean,
-    ): Boolean = tokenStored && pastDataGranted && reachedPast != true
+    ): PastReadStep = when {
+        !tokenStored -> PastReadStep.NONE
+        pastDataGranted ->
+            if (reachedPast == true) PastReadStep.NONE else PastReadStep.REREAD
+        reachedPast == true -> PastReadStep.LOWER
+        else -> PastReadStep.NONE
+    }
+
+    // The two values kept for [pastReadStep]'s `reachedPast`.
+    const val REACHED_PAST = "past"
+    const val REACHED_RECENT = "recent"
+
+    /** The stored value for [reached]. */
+    fun reachedPastToWire(reached: Boolean): String =
+        if (reached) REACHED_PAST else REACHED_RECENT
+
+    /** What a stored value says; null for none, or one not recognised. */
+    fun reachedPastFromWire(raw: String?): Boolean? = when (raw) {
+        REACHED_PAST -> true
+        REACHED_RECENT -> false
+        else -> null
+    }
 
     fun isFlow(mode: String): Boolean = mode == FLOW
     fun isIntermenstrual(mode: String): Boolean = mode == INTERMENSTRUAL
