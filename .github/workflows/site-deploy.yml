@@ -72,9 +72,12 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          # Astro 7 requires Node >= 22.12; pin the major, not the runner's
-          # default, so a runner-image change cannot move the toolchain.
-          node-version: '22'
+          # Pinned, not the runner's default, so a runner-image change
+          # cannot move the toolchain; and pinned in one place,
+          # site/.nvmrc, which site.yml reads too (issue #1602: it is 24
+          # for its npm 11, the npm that writes the lockfile). Astro 7
+          # needs Node >= 22.12 either way.
+          node-version-file: 'site/.nvmrc'
           cache: 'npm'
           cache-dependency-path: 'site/package-lock.json'
 

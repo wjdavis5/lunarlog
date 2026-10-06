@@ -96,7 +96,11 @@ universal-link routes.
   from the pinned `@fontsource/*` packages. Brand purple `#37156C`, teal
   `#00696F`; the mark is derived from `assets/branding/app_icon_1024.png`.
 - **Local dev / build.** `cd site && npm ci`, then `npm run dev` or
-  `npm run build`. `npm run build` runs `astro sync`, `astro check`, and the
+  `npm run build`. Use Node 24 (`site/.nvmrc`, which both site workflows
+  read): its npm 11 is the npm that writes `package-lock.json`, the
+  dependency bot included, and npm 10 refuses a lockfile npm 11 has
+  regenerated (issue #1602). Never regenerate the lockfile with npm 10.
+  `npm run build` runs `astro sync`, `astro check`, and the
   static build to `site/dist`. Checks: `npm run check:html` (html-validate),
   `check:links` (internal links + off-origin resources), `check:axe`
   (axe-core in system Chrome; it also fails when a page scrolls sideways

@@ -274,7 +274,7 @@ assert_contains "ci.yml runs this suite (ubuntu release-guards)" "$CI" "check-we
 assert_contains "ci.yml has a webapp job" "$CI" "name: Web app (lint, typecheck, unit, build, e2e)"
 assert_contains "the webapp job is path-gated on the detect-changes output" "$CI" "outputs.webapp"
 assert_contains "the webapp job runs the Playwright suite" "$CI" "npm run e2e"
-assert_contains "the webapp job pins Node like site/" "$CI" "node-version: '22'"
+assert_contains "the webapp job pins Node" "$CI" "node-version: '22'"
 
 # The /auth/session probe must stay in the check under test itself: if the
 # path ever stops matching fixture_path's session branch above, the two
