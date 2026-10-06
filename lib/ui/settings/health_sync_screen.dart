@@ -705,6 +705,11 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
         summary.skippedAlreadyLoggedDays,
       );
     }
+    // Issue #1557: with nothing skipped the headline read "Imported 1
+    // day, skipped 0 already logged."
+    if (summary.skippedAlreadyLoggedDays == 0) {
+      return l10n.healthSyncImportSummaryImported(summary.importedDays);
+    }
     return l10n.healthSyncImportSummaryHeadline(
       summary.importedDays,
       summary.skippedAlreadyLoggedDays,
@@ -836,10 +841,47 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// reading was allowed and the store was hiding its older data (Issue
   /// #1549). True when the store said so, and when it would not say.
   bool _olderDataHidden(HealthImportSummary summary) =>
-      summary.isEmpty &&
-      !summary.incremental &&
+      summary.isEmpty && !summary.incremental && _pastDataOff;
+
+  /// Whether the pass on screen ran with reading allowed and the store
+  /// hiding its older data: "Access past data" was off, or the store would
+  /// not say (Issue #1557). Taken when the pass finished, like everything
+  /// the result shows. Never true on an iPhone, whose read status is not
+  /// disclosed.
+  bool get _pastDataOff =>
       _importReadStatus == HealthPermissionStatus.granted &&
       _importReachedPastData != true;
+
+  /// The way to the switch, under any result of a pass that ran with it
+  /// off (Issue #1557).
+  ///
+  /// An empty whole-history result already says older data is hidden
+  /// ([_emptyImportCopy]); every other result gets the line here: a pass
+  /// that brought recent days in says nothing of the older ones it could
+  /// not see, and someone who first imported with the switch off only
+  /// ever sees "nothing new since the last import". Turning it on makes
+  /// the next import read the whole history (Issue #1549).
+  ///
+  /// The status line above offers Settings only when a permission is off,
+  /// which need not be the case here, so the result brings its own button.
+  List<Widget> _olderDataHint(
+    AppLocalizations l10n,
+    HealthImportSummary summary,
+  ) {
+    if (!_pastDataOff) return const [];
+    return [
+      if (!_olderDataHidden(summary))
+        Text(l10n.healthSyncImportOlderDataHidden),
+      Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: TextButton(
+          key: const ValueKey('health-sync-import-open-settings'),
+          onPressed: () => widget.permissionProbe?.openPermissionSettings(),
+          child: Text(l10n.healthSyncPermissionOpenSettings),
+        ),
+      ),
+    ];
+  }
 
   /// The lines for a finished pass: the blocked line, the neutral empty
   /// copy, or the stopped-early note plus the positive result lines.
@@ -853,20 +895,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
     if (summary.isEmpty) {
       return [
         Text(_emptyImportCopy(l10n, summary)),
-        // The line names a switch that lives in the health store's own
-        // settings. The status line above offers the way there only
-        // when a permission is off, which need not be the case here, so
-        // this result brings its own.
-        if (_olderDataHidden(summary))
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: TextButton(
-              key: const ValueKey('health-sync-import-open-settings'),
-              onPressed: () =>
-                  widget.permissionProbe?.openPermissionSettings(),
-              child: Text(l10n.healthSyncPermissionOpenSettings),
-            ),
-          ),
+        ..._olderDataHint(l10n, summary),
       ];
     }
     return [
@@ -875,6 +904,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       if (summary.pageLimitReached || summary.repeatedCursor)
         Text(l10n.healthSyncImportStoppedEarly),
       for (final line in _importResultLines(l10n, summary)) Text(line),
+      ..._olderDataHint(l10n, summary),
     ];
   }
 

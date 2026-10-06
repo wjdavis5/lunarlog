@@ -1009,6 +1009,17 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String healthSyncImportSummaryImported(int imported) {
+    String _temp0 = intl.Intl.pluralLogic(
+      imported,
+      locale: localeName,
+      other: '$imported days',
+      one: '1 day',
+    );
+    return 'Imported $_temp0.';
+  }
+
+  @override
   String healthSyncImportSummaryNothingNew(int skipped) {
     String _temp0 = intl.Intl.pluralLogic(
       skipped,
@@ -5239,6 +5250,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get healthSyncImportEmptyHealthConnectOlderHidden =>
       'Nothing to import that lunarlog can see. Health Connect hides older data from lunarlog unless \"Access past data\" is on for it.';
+
+  @override
+  String get healthSyncImportOlderDataHidden =>
+      'Health Connect hides older data from lunarlog unless \"Access past data\" is on for it.';
 
   @override
   String healthSyncImportNothingSinceLast(String source) {
