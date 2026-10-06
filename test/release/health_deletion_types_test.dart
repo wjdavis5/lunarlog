@@ -564,12 +564,25 @@ void main() {
         reason: 'only the first page may say the read reached it',
       );
       expect(kotlin, isNot(contains('reachedPastToWire(true)')));
-      final minted = range.indexOf('.putString(changesTokenKey(profileId), next)');
-      expect(minted, greaterThan(firstRead));
-      final lowered = range.substring(minted);
-      expect(lowered, contains('if (!pastDataGranted(client)) {'));
+      // Issue #1560: readRangePage never writes the change token directly;
+      // it returns commitToken with lowerPast determined by whether past
+      // data is granted on the last page.
+      expect(range, isNot(contains('.putString(changesTokenKey(')));
+      expect(range, contains('lowerPast = !pastDataGranted(client)'));
+      // The position is saved only upon commit, after Dart has stored the
+      // imported days into SQLite.
+      final commitStart = kotlin.indexOf('private fun commitImport(');
+      final commitEnd = kotlin.indexOf('private fun changesTokenKey(');
+      expect(commitStart, isNonNegative);
+      expect(commitEnd, greaterThan(commitStart));
+      final commit = kotlin.substring(commitStart, commitEnd);
       expect(
-        lowered,
+        commit,
+        contains('.putString(changesTokenKey(profileId), commit.token)'),
+      );
+      expect(commit, contains('if (commit.lowerPast) {'));
+      expect(
+        commit,
         contains('HealthImportCursor.reachedPastToWire(false),'),
       );
       // Unbinding forgets both.

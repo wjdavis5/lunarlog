@@ -1140,6 +1140,28 @@ class HealthConnectAdapter(context: Context) {
                 }
             }
 
+            "commitImport" -> {
+                // Issue #1560: saves the import position (the change token
+                // and reached-past state) only after Dart has successfully
+                // stored the imported days into the local database.
+                val g = GuardArgs.parse(args)
+                    ?: return result.error(
+                        "bad_args", "commitImport requires guard args", null)
+                val decision = guardDecision(storedBoundProfileId, g)
+                if (decision != "allowed") {
+                    result.success(decision)
+                    return
+                }
+                val commitToken = args?.get("commitToken") as? String
+                    ?: return result.error(
+                        "bad_args", "commitImport requires commitToken", null)
+                val commit = HealthImportCursor.decodeCommit(commitToken)
+                    ?: return result.error(
+                        "bad_args", "commitImport received malformed commitToken", null)
+                commitImport(g.profileId, commit)
+                result.success("allowed")
+            }
+
             else -> result.notImplemented()
         }
     }
@@ -1318,15 +1340,12 @@ class HealthConnectAdapter(context: Context) {
         val next = page.nextChangesToken
         if (page.hasMore && next.isNotEmpty()) {
             payload["nextCursor"] = HealthImportCursor.changes(next)
-        } else if (next.isNotEmpty()) {
-            // Last changes page: continue from the page's own next token on
-            // the NEXT pass. Best-effort: a token-write failure must not fail
-            // a pass that already read its data.
-            prefs.edit().putString(changesTokenKey(profileId), next).apply()
         } else {
-            // No next token at all: mint a fresh "now" anchor, best effort.
-            mintChangesToken(client)?.let {
-                prefs.edit().putString(changesTokenKey(profileId), it).apply()
+            // Issue #1560: the final changes page hands back the commit token
+            // so Dart can commit it after successfully merging days into storage.
+            val token = if (next.isNotEmpty()) next else mintChangesToken(client)
+            if (token != null) {
+                payload["commitToken"] = HealthImportCursor.commit(token)
             }
         }
         return payload
@@ -1400,18 +1419,14 @@ class HealthConnectAdapter(context: Context) {
             // should be incremental. Mint a "now" anchor, best effort.
             val next = mintChangesToken(client)
             if (next != null) {
-                val editor = prefs.edit()
-                    .putString(changesTokenKey(profileId), next)
-                // Issue #1549: this read reached the older data only if
+                // Issue #1549/#1560: this read reached the older data only if
                 // "Access past data" was on from its first page (recorded
                 // there) to this one. Turned on part-way does not count.
-                if (!pastDataGranted(client)) {
-                    editor.putString(
-                        reachedPastKey(profileId),
-                        HealthImportCursor.reachedPastToWire(false),
-                    )
-                }
-                editor.apply()
+                // Dart commits the token after storing the days.
+                payload["commitToken"] = HealthImportCursor.commit(
+                    next,
+                    lowerPast = !pastDataGranted(client),
+                )
             }
         }
         return payload
@@ -1513,6 +1528,19 @@ class HealthConnectAdapter(context: Context) {
             map["zoneOffsetSeconds"] = zoneOffset.totalSeconds
         }
         return map
+    }
+
+    // Issue #1560: saves the import position (the change token and
+    // reached-past state) only after Dart has stored the days.
+    private fun commitImport(profileId: String, commit: HealthImportCursor.Commit) {
+        val editor = prefs.edit().putString(changesTokenKey(profileId), commit.token)
+        if (commit.lowerPast) {
+            editor.putString(
+                reachedPastKey(profileId),
+                HealthImportCursor.reachedPastToWire(false),
+            )
+        }
+        editor.apply()
     }
 
     private fun changesTokenKey(profileId: String): String =
@@ -1920,14 +1948,53 @@ internal object HealthImportCursor {
     const val FLOW = "flow"
     const val INTERMENSTRUAL = "ib"
     const val CHANGES = "chg"
+    const val COMMIT = "commit"
 
     private const val SEPARATOR = ':'
 
     class Decoded(val mode: String, val token: String?)
 
+    // Issue #1560: opaque commit token containing the changes token to save
+    // after days are stored, and whether reachedPast should be lowered.
+    class Commit(val token: String, val lowerPast: Boolean)
+
     fun flow(token: String?): String = encode(FLOW, token)
     fun intermenstrual(token: String?): String = encode(INTERMENSTRUAL, token)
     fun changes(token: String): String = encode(CHANGES, token)
+
+    fun commit(token: String, lowerPast: Boolean = false): String {
+        val suffix = if (lowerPast) ":1" else ":0"
+        val payload = Base64.getUrlEncoder().withoutPadding()
+            .encodeToString((token + suffix).toByteArray(Charsets.UTF_8))
+        return COMMIT + SEPARATOR + payload
+    }
+
+    /** Decodes a commit token; null for anything malformed or unknown mode. */
+    fun decodeCommit(cursor: String): Commit? {
+        val index = cursor.indexOf(SEPARATOR)
+        if (index <= 0) return null
+        val mode = cursor.substring(0, index)
+        if (mode != COMMIT) return null
+        val payload = cursor.substring(index + 1)
+        if (payload.isEmpty()) return null
+        return try {
+            val decoded = String(Base64.getUrlDecoder().decode(payload), Charsets.UTF_8)
+            val lastColon = decoded.lastIndexOf(SEPARATOR)
+            if (lastColon <= 0) {
+                Commit(token = decoded, lowerPast = false)
+            } else {
+                val token = decoded.substring(0, lastColon)
+                val flag = decoded.substring(lastColon + 1)
+                if (flag == "1" || flag == "0") {
+                    Commit(token = token, lowerPast = flag == "1")
+                } else {
+                    Commit(token = decoded, lowerPast = false)
+                }
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     /** What the start of a pass does about "Access past data". */
     enum class PastReadStep {

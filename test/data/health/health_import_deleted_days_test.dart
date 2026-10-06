@@ -71,6 +71,13 @@ class _Store implements HealthImportSource {
     required DateTime end,
   }) async =>
       const HealthDeviationReadResult.unavailable();
+
+  @override
+  Future<HealthPlatformResult> commitImport(
+    HealthGuardFacts facts,
+    String commitToken,
+  ) async =>
+      const HealthPlatformResult.allowed();
 }
 
 HealthFlowSample _flow(String id, HealthFlowValue flow) {

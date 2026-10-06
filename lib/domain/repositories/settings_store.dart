@@ -119,6 +119,13 @@ abstract final class SettingsKeys {
   /// scheduling metadata — a timestamp, never health content.
   static const String healthSyncWrittenThroughMs = 'health_sync_written_through_ms';
 
+  /// The same cursor in epoch microseconds (Issue #1577), written beside
+  /// [healthSyncWrittenThroughMs] and cleared with it. A row's `updatedAt`
+  /// carries microseconds, so the millisecond value alone left the newest
+  /// row written still after the cursor. It refines the millisecond value
+  /// and counts only while the two agree: `health_write_cursor.dart`.
+  static const String healthSyncWrittenThroughUs = 'health_sync_written_through_us';
+
   /// The first-import consent marker for the device's OS health-store
   /// binding (Issue #1215): epoch milliseconds (UTC) of the completion of
   /// the one user-initiated import pass that opens this binding's
