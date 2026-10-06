@@ -372,6 +372,7 @@
   "daySheetPmsChip": "PMS",
   "daySheetPmsGroup": "PMS",
   "daySheetIntensityGroup": "Intensity",
+  "daySheetIntensityScale": "{tag}: 1 is mild, 5 is severe",
   "daySheetIntensityClear": "Clear",
   "overviewPmsBandLabel": "Estimated PMS: {range} — usually starts about {days} {days, plural, =1{day} other{days}} before your period and lasts about {length} {length, plural, =1{day} other{days}}.",
   "overviewPmsTierLabel": "PMS estimate: {tier}",

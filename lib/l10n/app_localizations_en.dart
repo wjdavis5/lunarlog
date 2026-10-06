@@ -1467,6 +1467,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get daySheetIntensityGroup => 'Intensity';
 
   @override
+  String daySheetIntensityScale(String tag) {
+    return '$tag: 1 is mild, 5 is severe';
+  }
+
+  @override
   String get daySheetIntensityClear => 'Clear';
 
   @override

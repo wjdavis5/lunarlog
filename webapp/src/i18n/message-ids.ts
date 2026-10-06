@@ -375,6 +375,7 @@ export const MESSAGE_IDS = [
   "daySheetPmsChip",
   "daySheetPmsGroup",
   "daySheetIntensityGroup",
+  "daySheetIntensityScale",
   "daySheetIntensityClear",
   "overviewPmsBandLabel",
   "overviewPmsTierLabel",
