@@ -4,6 +4,11 @@
 // Chrome through puppeteer-core, injects axe-core, and fails on any
 // violation. One process, start to finish -- no background server to leak.
 //
+// While each page is open it is also measured at two phone widths, and the
+// check fails if the page itself scrolls sideways at either. axe does not
+// look for that, and it is how the privacy policy's table went out 112 px
+// wider than a 390 px screen.
+//
 //   node scripts/check-axe.mjs
 //
 // Set `CHROME_PATH` when Chrome is not in its usual location.
@@ -114,11 +119,32 @@ const browser = await puppeteer.launch({
   args: ["--no-sandbox", "--disable-dev-shm-usage"],
 });
 
+// The widths a page must fit without scrolling sideways: a current phone
+// and the narrowest one still in use. Each is restored to the desktop
+// viewport before axe runs, so axe sees what it always saw.
+const PHONE_WIDTHS = [390, 320];
+const DESKTOP_VIEWPORT = { width: 800, height: 600 };
+
+/** How far the page scrolls sideways at `width`, in CSS pixels. */
+async function sidewaysOverflow(page, width) {
+  await page.setViewport({ width, height: 844 });
+  return await page.evaluate(() => {
+    const root = document.documentElement;
+    return root.scrollWidth - root.clientWidth;
+  });
+}
+
 const violations = [];
+const overflows = [];
 try {
   const page = await browser.newPage();
   for (const route of PAGES) {
     await page.goto(base + route, { waitUntil: "networkidle0" });
+    for (const width of PHONE_WIDTHS) {
+      const extra = await sidewaysOverflow(page, width);
+      if (extra > 0) overflows.push({ route, width, extra });
+    }
+    await page.setViewport(DESKTOP_VIEWPORT);
     await page.addScriptTag({ path: axePath });
     const result = await page.evaluate(async () => {
       return await globalThis.axe.run(document);
@@ -142,7 +168,18 @@ if (violations.length > 0) {
       console.error(`      target: ${node.target.join(" ")}`);
     }
   }
-  process.exit(1);
 }
 
-console.log(`axe check passed (${PAGES.length} page(s), zero violations).`);
+if (overflows.length > 0) {
+  console.error(`pages that scroll sideways (${overflows.length}):`);
+  for (const { route, width, extra } of overflows) {
+    console.error(`  - ${route} at ${width} px: ${extra} px too wide`);
+  }
+}
+
+if (violations.length > 0 || overflows.length > 0) process.exit(1);
+
+console.log(
+  `axe check passed (${PAGES.length} page(s), zero violations, ` +
+    `none scrolls sideways at ${PHONE_WIDTHS.join(" or ")} px).`,
+);
