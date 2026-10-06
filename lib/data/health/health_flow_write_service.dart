@@ -554,6 +554,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     // the blocked result is the typed `permissionDenied`, nothing more.
     final permission = await _platform.permissionStatus();
     if (permission == HealthPermissionStatus.denied) {
+      await _noteEveryTypeOff();
       return const HealthFlowSyncReport(
         bound: true,
         blocked: HealthPlatformResult.permissionDenied(),
@@ -652,6 +653,30 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     return (stored: stored, firstPass: earlier == null);
   }
 
+  /// Moves every write type's floor to the present, on a pass that found
+  /// write access removed altogether. Such a pass ends before it reads
+  /// which types are on, and without this what she logs meanwhile would
+  /// be sent when a type comes back, which is not what happens when only
+  /// some types are off.
+  ///
+  /// `denied` is something the store said: a status that could not be
+  /// read comes back as `unavailable`, never as this.
+  ///
+  /// Nothing is stored when nothing is stored yet. This binding has then
+  /// not run a pass on this build, and a state left here would stop its
+  /// first real pass from reading an earlier build's ledger as one
+  /// ([_adoptEarlierLedger]).
+  Future<void> _noteEveryTypeOff() async {
+    final stored = await _settings.get(SettingsKeys.healthSyncWriteState);
+    final earlier = HealthWritePassState.decode(stored);
+    if (earlier == null) return;
+    _state = earlier.withTypesOff(
+      healthWriteTypesOff(const <String>{}),
+      _rowClock(),
+    );
+    await _closeState(stored);
+  }
+
   /// Stores [_state] when the pass has changed it.
   Future<void> _closeState(String? stored) async {
     final now = _state.encode();
@@ -697,10 +722,10 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     };
     final stamped = <HealthExportLedgerEntry>[];
     for (final written in _memory.all) {
+      // A period record names an interval, not a row, so it has no
+      // version here and is left as it is.
       final version = versions[written.sourceRowId];
-      if (version == null || written.kind == HealthExportLedgerKind.period) {
-        continue;
-      }
+      if (version == null) continue;
       if (neverWritten.contains(written.recordId)) continue;
       stamped.add(HealthExportLedgerEntry(
         recordId: written.recordId,
@@ -1064,12 +1089,17 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       isBleed(entry.flow) &&
       !_isHealthStoreImport(entry.source);
 
-  /// Whether the store holds, or is about to be sent, a record for [day]:
-  /// the export ledger remembers one, or the row was saved after the
-  /// forward-only [floor] and after flow was last found switched off, so
-  /// this pass writes it if an earlier one has not.
+  /// Whether the store holds, or is about to be sent, a flow record for
+  /// [day]: the export ledger remembers one, or the row was saved after
+  /// the forward-only [floor] and after flow was last found switched off,
+  /// so this pass writes it if an earlier one has not.
+  ///
+  /// The day's flow record, not any record of its row: a discharge or an
+  /// ovulation test written from the same day while flow was off says
+  /// nothing about a period, and counting it wrote the period's dates
+  /// when flow came back though none of its days was sent.
   bool _isOrWillBeExported(DayEntry day, DateTime floor) =>
-      _memory.knowsRow(day.id) ||
+      _memory.entryOf(healthFlowRecordId(day.id)) != null ||
       (day.updatedAt.isAfter(floor) &&
           _state.admitsNew(HealthWriteTypes.menstrualFlow, day.updatedAt));
 

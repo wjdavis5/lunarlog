@@ -3158,6 +3158,94 @@ void main() {
       expect(later.ovulationTestSamplesWritten, 1);
       expect(later.basalBodyTemperatureSamplesWritten, 1);
     });
+
+    // Second review of #1595. With every type off the pass ends before it
+    // reads which types are on, and it moved no floor: a month logged with
+    // write access removed was sent when one type came back.
+    test('when write access is removed altogether, a day logged meanwhile '
+        'is not sent when a type is switched on; a day logged after that is',
+        () async {
+      await seedGranted(grant);
+      final t1 = grant.add(const Duration(hours: 1));
+      dayEntries.entries = [_entry('2026-06-02', FlowLevel.heavy, t1)];
+      clock = t1.add(const Duration(minutes: 1));
+      final service = buildService();
+      await service.syncNow();
+      expect(platform.flowWrites, hasLength(1));
+
+      // Every write permission is switched off, and she logs a day.
+      platform.permission = HealthPermissionStatus.denied;
+      final t2 = t1.add(const Duration(minutes: 2));
+      dayEntries.entries = [
+        ...dayEntries.entries,
+        _entry('2026-06-20', FlowLevel.medium, t2),
+      ];
+      clock = t2.add(const Duration(minutes: 1));
+      final off = await service.syncNow();
+      expect(off.blocked, isA<HealthPlatformPermissionDenied>());
+
+      // Menstruation comes back.
+      platform.permission = HealthPermissionStatus.writingSome;
+      platform.grantedTypes = {'menstrualFlow'};
+      clock = t2.add(const Duration(minutes: 2));
+      final back = await service.syncNow();
+      expect(back.blocked, isNull);
+      expect(back.samplesWritten, 0);
+      expect(platform.flowWrites, hasLength(1));
+
+      // A day logged from here on is written.
+      dayEntries.entries = [
+        ...dayEntries.entries,
+        _entry('2026-07-15', FlowLevel.light,
+            t2.add(const Duration(minutes: 3))),
+      ];
+      clock = t2.add(const Duration(minutes: 4));
+      final later = await service.syncNow();
+      expect(later.samplesWritten, 1);
+      expect(platform.flowWrites.last.recordId, 'entry-2026-07-15');
+    });
+
+    // A state stored by that pass would read as "this binding has run a
+    // pass on this build", and an earlier build's ledger would then never
+    // be brought into this build's form.
+    test('a binding that has run no pass on this build stores nothing when '
+        'it finds write access removed', () async {
+      await seedGranted(grant);
+      platform.permission = HealthPermissionStatus.denied;
+
+      final report = await buildService().syncNow();
+
+      expect(report.blocked, isA<HealthPlatformPermissionDenied>());
+      expect(await settings.get(SettingsKeys.healthSyncWriteState), isNull);
+    });
+
+    // Second review of #1595. A period has a record when the store holds
+    // the flow of one of its days. Any record of the day's row used to
+    // count, a discharge among them.
+    test('with menstrualFlow off, a period day whose discharge was written '
+        'gets no period record when flow is switched on', () async {
+      await seedGranted(grant);
+      platform.permission = HealthPermissionStatus.writingSome;
+      platform.grantedTypes = {'cervicalMucus'};
+      final t1 = grant.add(const Duration(hours: 1));
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.heavy, t1, tags: const ['egg_white']),
+      ];
+      clock = t1.add(const Duration(minutes: 1));
+      final service = buildService();
+
+      final off = await service.syncNow();
+      expect(off.cervicalMucusSamplesWritten, 1);
+      expect(platform.flowWrites, isEmpty);
+
+      platform.grantedTypes = {'cervicalMucus', 'menstrualFlow'};
+      clock = t1.add(const Duration(minutes: 2));
+      final back = await service.syncNow();
+      expect(back.blocked, isNull);
+      expect(back.samplesWritten, 0);
+      expect(back.periodRecordsWritten, 0);
+      expect(platform.periodWrites, isEmpty);
+    });
   });
 
   // Issue #1581. The pass used to send whatever was newer than a cursor

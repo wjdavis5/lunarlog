@@ -39,6 +39,18 @@ void main() {
       });
     });
 
+    // The clock a floor is read from can be corrected backwards.
+    test('a floor never moves back', () {
+      final later = DateTime.utc(2026, 6, 2, 12);
+      final earlier = DateTime.utc(2026, 6, 2, 11);
+      final state = const HealthWritePassState()
+          .withTypesOff(const ['menstrualFlow'], later)
+          .withTypesOff(const ['menstrualFlow', 'spotting'], earlier);
+
+      expect(state.typeFloors['menstrualFlow'], later);
+      expect(state.typeFloors['spotting'], earlier);
+    });
+
     test('moving a floor does not change the state it was made from', () {
       const empty = HealthWritePassState();
       empty.withTypesOff(['spotting'], t0);

@@ -10,9 +10,11 @@
 ///   A record of a type that was switched off when its row was saved is
 ///   not sent when the type is switched on later: forward-only holds for
 ///   each type, not only for the first grant. So every pass that finds a
-///   type off moves that type's floor to the present, and a record that
-///   has never been written is sent only when its row is newer than its
-///   type's floor. (A record the ledger already holds is another matter:
+///   type off moves that type's floor to the present (never back), and a
+///   record that has never been written is sent only when its row is
+///   newer than its type's floor. A pass that finds write access removed
+///   altogether moves every type's floor. (A record the ledger already
+///   holds is another matter:
 ///   it is in the store, and a correction to it is sent whenever its type
 ///   allows.)
 /// * **How far no-flow days have been cleared.** A day with no flow should
@@ -61,11 +63,14 @@ class HealthWritePassState {
   }
 
   /// This state with the floor of each of [types] moved to [at], because a
-  /// pass has just found them switched off.
+  /// pass has just found them switched off. A floor is never moved back:
+  /// [at] is read from a clock that can be corrected backwards, and a row
+  /// already kept out must stay out.
   HealthWritePassState withTypesOff(Iterable<String> types, DateTime at) {
     final moved = {...typeFloors};
     for (final type in types) {
-      moved[type] = at;
+      final floor = moved[type];
+      if (floor == null || at.isAfter(floor)) moved[type] = at;
     }
     return HealthWritePassState(
       typeFloors: moved,
