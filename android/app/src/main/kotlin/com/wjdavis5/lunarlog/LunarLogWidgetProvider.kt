@@ -1,8 +1,10 @@
 package com.wjdavis5.lunarlog
 
+import android.app.AlarmManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -10,7 +12,9 @@ import android.net.Uri
 import android.os.Build
 import android.view.View
 import android.widget.RemoteViews
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeParseException
 import java.time.temporal.ChronoUnit
 
@@ -33,9 +37,13 @@ import java.time.temporal.ChronoUnit
  * APPWIDGET_UPDATE on its own signals (entry writes, prediction changes,
  * profile switches). The provider additionally rolls the day count forward
  * by whole civil days since `ll_widget_as_of` (so "Day 14" stays honest
- * across days when the app hasn't run), and the daily
- * `updatePeriodMillis` re-render keeps that roll moving without ever
- * touching the network or reading anything beyond the store.
+ * across days when the app hasn't run). What makes it draw on those days
+ * (issue #1548) is an alarm it sets for just after the next local
+ * midnight, and a redraw when the clock or the time zone is changed. The
+ * daily `updatePeriodMillis` is only the backstop: it runs every 24 hours
+ * from whenever the widget was placed, so on its own the widget showed
+ * yesterday's number until that time of day came round. None of this
+ * touches the network or reads anything beyond the store.
  *
  * The two strings below pin the `home_widget` 0.8.1 plugin's internals by
  * contract — the plugin's own `HomeWidgetLaunchIntent`/`HomeWidgetPlugin`
@@ -58,6 +66,77 @@ class LunarLogWidgetProvider : AppWidgetProvider() {
         for (appWidgetId in appWidgetIds) {
             appWidgetManager.updateAppWidget(appWidgetId, views)
         }
+        // Every draw asks for the next one: the number changes at midnight.
+        scheduleMidnightRefresh(context)
+    }
+
+    override fun onEnabled(context: Context) {
+        scheduleMidnightRefresh(context)
+    }
+
+    override fun onDisabled(context: Context) {
+        cancelMidnightRefresh(context)
+    }
+
+    override fun onReceive(context: Context, intent: Intent) {
+        when (intent.action) {
+            // Midnight has passed, or the clock or the zone moved under
+            // the count: draw again from the stored as-of date.
+            ACTION_MIDNIGHT_REFRESH,
+            Intent.ACTION_TIME_CHANGED,
+            Intent.ACTION_TIMEZONE_CHANGED,
+            -> redrawAll(context)
+            else -> super.onReceive(context, intent)
+        }
+    }
+
+    /** Draws every placed widget again. With none placed, nothing is left
+     * to keep fresh, so the alarm is dropped. */
+    private fun redrawAll(context: Context) {
+        val manager = AppWidgetManager.getInstance(context)
+        val ids = manager.getAppWidgetIds(
+            ComponentName(context, LunarLogWidgetProvider::class.java),
+        )
+        if (ids.isEmpty()) {
+            cancelMidnightRefresh(context)
+            return
+        }
+        onUpdate(context, manager, ids)
+    }
+
+    private fun midnightRefreshIntent(context: Context): PendingIntent {
+        val intent = Intent(context, LunarLogWidgetProvider::class.java)
+            .setAction(ACTION_MIDNIGHT_REFRESH)
+        var flags = PendingIntent.FLAG_UPDATE_CURRENT
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            flags = flags or PendingIntent.FLAG_IMMUTABLE
+        }
+        return PendingIntent.getBroadcast(context, 0, intent, flags)
+    }
+
+    /**
+     * Asks for a redraw just after the next local midnight.
+     *
+     * `RTC`, not `RTC_WAKEUP`: the phone is not woken for it. An alarm
+     * that comes due while the phone sleeps is delivered when it next
+     * wakes, which is before anyone can look at a home screen. Inexact,
+     * within a window, so it needs no exact-alarm permission.
+     */
+    private fun scheduleMidnightRefresh(context: Context) {
+        val alarms = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+            ?: return
+        alarms.setWindow(
+            AlarmManager.RTC,
+            WidgetMidnight.nextRefreshMillis(Instant.now(), ZoneId.systemDefault()),
+            MIDNIGHT_WINDOW_MILLIS,
+            midnightRefreshIntent(context),
+        )
+    }
+
+    private fun cancelMidnightRefresh(context: Context) {
+        val alarms = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+            ?: return
+        alarms.cancel(midnightRefreshIntent(context))
     }
 
     /** The rolled-forward render values (see the class doc). */
@@ -142,6 +221,13 @@ class LunarLogWidgetProvider : AppWidgetProvider() {
     companion object {
         private const val PREFERENCES = "HomeWidgetPreferences"
         private const val LAUNCH_ACTION = "es.antonborri.home_widget.action.LAUNCH"
+
+        /** The provider's own "midnight has passed" broadcast (issue #1548). */
+        private const val ACTION_MIDNIGHT_REFRESH =
+            "com.wjdavis5.lunarlog.widget.MIDNIGHT_REFRESH"
+
+        /** How late after midnight the system may deliver that broadcast. */
+        private const val MIDNIGHT_WINDOW_MILLIS = 10 * 60 * 1000L
 
         // The payload keys — pinned to lib/domain/widget/widget_cycle_state.dart's
         // WidgetCycleStatePayload constants.

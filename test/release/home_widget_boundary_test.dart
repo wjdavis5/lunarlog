@@ -148,6 +148,45 @@ void main() {
       expect(swift, contains('Calendar(identifier: .gregorian)'));
     });
 
+    test('the Android widget asks to be redrawn just after midnight', () {
+      // Issue #1548. The count changes at midnight. The system's periodic
+      // update runs every 24 hours from whenever the widget was placed, so
+      // on its own the widget showed yesterday's number until that time of
+      // day came round.
+      // (`\r?`: on a Windows checkout the file has CRLF line endings.)
+      final onUpdate = RegExp(
+        r'override fun onUpdate\([\s\S]*?\r?\n    \}\r?\n',
+      ).firstMatch(kotlin)!.group(0)!;
+      expect(onUpdate, contains('scheduleMidnightRefresh(context)'),
+          reason: 'every draw asks for the next one');
+      expect(
+        kotlin,
+        contains('WidgetMidnight.nextRefreshMillis(Instant.now(), '
+            'ZoneId.systemDefault())'),
+      );
+      // Not a wake-up alarm: nobody is looking at a sleeping phone, and it
+      // is delivered when the phone next wakes.
+      expect(kotlin, contains('AlarmManager.RTC,'));
+      expect(kotlin, isNot(contains('AlarmManager.RTC_WAKEUP')));
+      expect(kotlin, isNot(contains('setExact')),
+          reason: 'an exact alarm needs a permission this app does not hold');
+
+      // A changed clock or time zone moves the count too.
+      for (final action in [
+        'Intent.ACTION_TIME_CHANGED',
+        'Intent.ACTION_TIMEZONE_CHANGED',
+        'ACTION_MIDNIGHT_REFRESH',
+      ]) {
+        expect(kotlin, contains('$action,'), reason: '$action redraws');
+      }
+      final receiver = RegExp(
+        r'<receiver\s+android:name="\.LunarLogWidgetProvider"[\s\S]*?</receiver>',
+      ).firstMatch(manifest)!.group(0)!;
+      expect(receiver, contains('android.intent.action.TIME_SET'));
+      expect(receiver, contains('android.intent.action.TIMEZONE_CHANGED'));
+      expect(receiver, contains('android:exported="false"'));
+    });
+
     test('the native render vocabulary stays discreet', () {
       // The user-visible strings each native side renders. If a health
       // word ever appears here, the discreet default is broken.

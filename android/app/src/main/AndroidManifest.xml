@@ -164,6 +164,12 @@
             android:label="lunarlog">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+                <!-- Issue #1548: the cycle-day count is worked out from
+                     today's date, so a changed clock or time zone has to
+                     redraw it. Both broadcasts come from the system and
+                     are among those a manifest receiver may still get. -->
+                <action android:name="android.intent.action.TIME_SET"/>
+                <action android:name="android.intent.action.TIMEZONE_CHANGED"/>
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
