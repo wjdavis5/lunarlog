@@ -360,6 +360,23 @@ class _GatedPlatform extends _FakePlatform {
   }
 }
 
+/// A [_FakePlatform] that refuses a delete naming any id in [refused] and
+/// allows every other (Issue #1581).
+class _SelectiveDeletePlatform extends _FakePlatform {
+  Set<String> refused = {};
+
+  @override
+  Future<HealthPlatformResult> deleteRecords(
+    HealthGuardFacts facts,
+    List<String> recordIds,
+  ) async {
+    deleteCalls.add(List.of(recordIds));
+    return recordIds.any(refused.contains)
+        ? const HealthPlatformResult.failed('no')
+        : const HealthPlatformResult.allowed();
+  }
+}
+
 class _FakeProfiles implements ProfilesRepository {
   Profile? profile = _profile();
 
@@ -3745,6 +3762,41 @@ void main() {
         expect(platform.deleteCalls, [
           ['entry-2026-06-10'],
         ]);
+      });
+
+      // The mark is one time for every no-flow day. A day whose known
+      // record was deleted in the same pass must not carry it past a day
+      // whose blind delete was refused.
+      test('a refused delete is asked again even when a later day was '
+          'cleared in the same pass', () async {
+        await seedGranted(grant);
+        final selective = _SelectiveDeletePlatform();
+        platform = selective;
+        dayEntries.entries = [_entry('2026-06-10', FlowLevel.medium, at(10))];
+        clock = at(11);
+        final service = buildService();
+        await service.syncNow();
+
+        // The written day is cleared, later than a second no-flow day the
+        // ledger knows nothing of, whose delete the store refuses.
+        selective.refused = {'entry-2026-06-12'};
+        dayEntries.entries = [
+          _entry('2026-06-10', FlowLevel.none, at(30)),
+          _entry('2026-06-12', FlowLevel.none, at(20)),
+        ];
+        clock = at(31);
+        final report = await service.syncNow();
+        expect(report.blocked, isA<HealthPlatformFailed>());
+        expect(report.samplesReconciled, 1);
+
+        selective.refused = {};
+        selective.deleteCalls.clear();
+        expect((await service.syncNow()).blocked, isNull);
+        // The first day rides along once more, which removes nothing:
+        // the one mark could not move past the day that was refused.
+        expect(selective.deleteCalls.single, contains('entry-2026-06-12'));
+        await service.syncNow();
+        expect(selective.deleteCalls, hasLength(1));
       });
 
       test('a delete the store refused is asked again', () async {
