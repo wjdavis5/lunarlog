@@ -220,6 +220,44 @@ void main() {
         healthRecordMatchesSkippedType('symptom-123-headache', {'bloating'}),
         isFalse,
       );
+      // What the iOS half sends when one symptom type is off: that type,
+      // and 'symptoms' beside it. A record of another symptom type was
+      // deleted, and must not read as passed over.
+      expect(
+        healthRecordMatchesSkippedType(
+          'symptom-123-headache',
+          {'acne', 'symptoms'},
+        ),
+        isFalse,
+      );
+      expect(
+        healthRecordMatchesSkippedType(
+          'symptom-123-acne',
+          {'acne', 'symptoms'},
+        ),
+        isTrue,
+      );
+      // Every mapped symptom type is told from every other one, with a
+      // day's real id (a ULID) and with one that has hyphens in it.
+      final types = kSymptomHealthKitTypeIdentifiers.values.toSet();
+      for (final entryId in ['01ARZ3NDEKTSV4RRFFQ69G5FBC', 'entry-2026-06-02']) {
+        for (final type in types) {
+          final recordId = healthSymptomRecordId(entryId, type);
+          expect(
+            healthRecordMatchesSkippedType(recordId, {type, 'symptoms'}),
+            isTrue,
+            reason: recordId,
+          );
+          expect(
+            healthRecordMatchesSkippedType(
+              recordId,
+              {...types.where((other) => other != type), 'symptoms'},
+            ),
+            isFalse,
+            reason: recordId,
+          );
+        }
+      }
       expect(
         healthRecordMatchesSkippedType('01ARZ3NDEKTSV4RRFFQ69G5FBC', {'menstrualFlow'}),
         isTrue,

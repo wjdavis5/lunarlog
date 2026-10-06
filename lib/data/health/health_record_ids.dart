@@ -92,17 +92,29 @@ Set<String> healthRecordIdsForEntry(DayEntry entry) {
   return ids;
 }
 
+/// Whether a delete that passed over [skippedTypes] may have left the
+/// symptom record [recordId] in the store.
+///
+/// HealthKit grants each symptom type on its own, and the iOS half names
+/// every one that is off, with [HealthWriteTypes.symptoms] beside them
+/// whenever any is. So the record's own type decides. Read as "all of
+/// them", that extra name kept every symptom record remembered while any
+/// one symptom type was off: a headache she unticked was deleted from
+/// Apple Health, then asked to be deleted again on every pass, and every
+/// pass reported a partial failure.
+///
+/// The type is what follows the last hyphen of the id
+/// ([healthSymptomRecordId]); no type name has one. The extra name alone,
+/// with no symptom type beside it, is a store that does not say which,
+/// and then every symptom record may still be there.
 bool _symptomRecordMatchesSkippedType(
   String recordId,
   Set<String> skippedTypes,
 ) {
-  if (skippedTypes.contains(HealthWriteTypes.symptoms)) return true;
-  final parts = recordId.split('-');
-  if (parts.length >= 3) {
-    final typeIdentifier = parts.sublist(2).join('-');
-    return skippedTypes.contains(typeIdentifier);
-  }
-  return false;
+  final type = recordId.substring(recordId.lastIndexOf('-') + 1);
+  if (skippedTypes.contains(type)) return true;
+  return skippedTypes.contains(HealthWriteTypes.symptoms) &&
+      !kSymptomHealthKitTypeIdentifiers.values.any(skippedTypes.contains);
 }
 
 /// Checks whether [recordId] belongs to one of the write types in [skippedTypes]
