@@ -115,6 +115,50 @@ void main() {
       );
     });
 
+    // Issue #1589. A later build may write a kind this one has no name
+    // for. Read as a day's record, it would be deleted from the health
+    // store as the record of a day that is gone.
+    test('a row of a kind this build does not know is not read, and stays '
+        'in the table', () async {
+      await ledger.record([_entry('entry-1')]);
+      await db.storage.upsertHealthExportLedgerRows([
+        HealthExportLedgerRowData(
+          recordId: 'later-1',
+          profileId: 'p1',
+          sourceRowId: 'something-a-later-build-knows',
+          kind: 'a_later_kind',
+          localDate: '2026-09-01',
+          exportedAt: DateTime.utc(2026, 9, 1),
+        ),
+      ]);
+
+      expect(
+        (await ledger.readForProfile('p1')).map((row) => row.recordId),
+        ['entry-1'],
+      );
+      expect(
+        (await db.storage.readHealthExportLedger('p1'))
+            .map((row) => row.recordId),
+        unorderedEquals(['entry-1', 'later-1']),
+      );
+
+      // It still goes with its profile.
+      await ledger.clearProfile('p1');
+      expect(await db.storage.readHealthExportLedger('p1'), isEmpty);
+    });
+
+    test('every kind this build writes reads back as itself', () async {
+      await ledger.record([
+        for (final kind in HealthExportLedgerKind.values)
+          _entry('record-${kind.name}', kind: kind),
+      ]);
+
+      expect(
+        {for (final row in await ledger.readForProfile('p1')) row.kind},
+        HealthExportLedgerKind.values.toSet(),
+      );
+    });
+
     test('clearProfile removes only that profile; clearAll removes everything',
         () async {
       await ledger.record([

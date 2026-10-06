@@ -20,14 +20,15 @@ class DriftHealthExportLedger implements HealthExportLedger {
     final rows = await storage.readHealthExportLedger(profileId);
     return [
       for (final row in rows)
-        HealthExportLedgerEntry(
-          recordId: row.recordId,
-          profileId: row.profileId,
-          sourceRowId: row.sourceRowId,
-          kind: _kindFromDb(row.kind),
-          localDate: row.localDate,
-          exportedAt: row.exportedAt.toUtc(),
-        ),
+        if (_kindFromDb(row.kind) case final kind?)
+          HealthExportLedgerEntry(
+            recordId: row.recordId,
+            profileId: row.profileId,
+            sourceRowId: row.sourceRowId,
+            kind: kind,
+            localDate: row.localDate,
+            exportedAt: row.exportedAt.toUtc(),
+          ),
     ];
   }
 
@@ -56,12 +57,15 @@ class DriftHealthExportLedger implements HealthExportLedger {
   @override
   Future<void> clearAll() => storage.clearHealthExportLedger();
 
-  /// An unrecognised `kind` reads as [HealthExportLedgerKind.entry] — the
-  /// fail-safe grouping (the row is still deletable by id; it simply joins
-  /// the entry diff rather than being dropped).
-  static HealthExportLedgerKind _kindFromDb(String value) =>
-      HealthExportLedgerKind.values.firstWhere(
-        (kind) => kind.name == value,
-        orElse: () => HealthExportLedgerKind.entry,
-      );
+  /// Null for a `kind` this build does not know. A later build wrote the
+  /// row, and this one leaves it and its record alone: it is not read,
+  /// so nothing here writes, deletes or forgets it. It stays in the
+  /// table for the build that knows it.
+  ///
+  /// It used to read as [HealthExportLedgerKind.entry]. That was safe
+  /// only while nothing acted on an entry record whose source row is no
+  /// live day. Since Issue #1589 the write pass deletes exactly those
+  /// from the health store.
+  static HealthExportLedgerKind? _kindFromDb(String value) =>
+      HealthExportLedgerKind.values.asNameMap()[value];
 }

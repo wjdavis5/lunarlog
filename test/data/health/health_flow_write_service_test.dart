@@ -1891,16 +1891,18 @@ void main() {
 
       await service.onUnbound();
       expect(ledger.rows, isEmpty);
+      platform.deleteCalls.clear();
 
-      // Re-bound, already granted, the remaining day now gone too: that
-      // record was written under the earlier binding, so it is left in
-      // place — what the screen says turning sync off does.
+      // Re-bound, already granted, the remaining day now gone too: its
+      // records were written under the earlier binding, so they are left
+      // in place — what the screen says turning sync off does. None of
+      // them: not the period, and not the day's own.
       await seedGranted(grant.add(const Duration(hours: 4)));
       dayEntries.entries = [];
       final report = await service.syncNow();
 
       expect(report.blocked, isNull);
-      expect(platform.periodDeleteCalls, isEmpty);
+      expect(platform.deleteCalls, isEmpty);
       expect(platform.periodWrites, hasLength(2));
     });
   });
@@ -2342,8 +2344,9 @@ void main() {
     });
 
     // Decision C.
-    test('a period whose zone cannot be resolved is left alone: no delete, '
-        'no write, no failed pass', () async {
+    test('a period whose zone cannot be resolved is left alone: its record '
+        'is neither deleted nor written again, and the pass does not fail',
+        () async {
       await seedGranted(grant);
       final service = buildService();
       final d2 = _entry('2026-06-02', FlowLevel.medium,
@@ -4346,8 +4349,8 @@ void main() {
         expect(ledger.rows, isEmpty);
       });
 
-      test('the records of a day that is still there are left alone, '
-          'however old the day', () async {
+      test('the records of a day that is still there are left alone when '
+          'another day goes', () async {
         await seedGranted(grant);
         dayEntries.entries = [
           _entry('2026-06-10', FlowLevel.medium, at(60),
@@ -4357,8 +4360,8 @@ void main() {
         final service = buildService();
         await service.syncNow();
 
-        // One day goes. The other is not looked at again (nothing about it
-        // changed), and its records must not be taken for a gone row's.
+        // One day goes. Nothing about the other changed, and its records
+        // must not be taken for a gone row's.
         dayEntries.entries = [dayEntries.entries.first];
         await service.syncNow();
 
@@ -4389,6 +4392,106 @@ void main() {
         final retried = await service.syncNow();
         expect(retried.blocked, isNull);
         expect(ledger.rows, isEmpty);
+      });
+
+      // Undo saves the same row back: the same id, a later time.
+      test('a day deleted, undone and deleted again: its record goes, is '
+          'written again, and goes again', () async {
+        const flow = 'entry-2026-06-10';
+        await seedGranted(grant);
+        dayEntries.entries = [_entry('2026-06-10', FlowLevel.medium, at(60))];
+        final service = buildService();
+        await service.syncNow();
+        expect(platform.flowWrites.map((write) => write.recordId), [flow]);
+
+        dayEntries.entries = [];
+        await service.syncNow();
+        expect(platform.deleteCalls.expand((call) => call), contains(flow));
+        expect(ledger.rows, isEmpty);
+
+        dayEntries.entries = [_entry('2026-06-10', FlowLevel.medium, at(70))];
+        await service.syncNow();
+        expect(
+          platform.flowWrites.map((write) => write.recordId),
+          [flow, flow],
+        );
+        expect(ledger.rows.map((row) => row.recordId), contains(flow));
+
+        // The tombstone path relays a row's deletion once a session. The
+        // second time, this is what removes the record.
+        platform.deleteCalls.clear();
+        dayEntries.entries = [];
+        await service.syncNow();
+        expect(platform.deleteCalls.expand((call) => call), contains(flow));
+        expect(ledger.rows, isEmpty);
+      });
+
+      // A spotting entry's record is one of two types, and the ledger
+      // does not say which. With either off, a delete may pass it over.
+      for (final off in const ['spotting', 'menstrualFlow']) {
+        test('a spotting entry that is gone while $off is off keeps its '
+            'record remembered until the type is back', () async {
+          const marker = 'spot-2026-06-12';
+          await seedGranted(grant);
+          observations.observations = [_spotting('2026-06-12', at(60))];
+          final service = buildService();
+          await service.syncNow();
+          expect(ledger.rows.map((row) => row.recordId), [marker]);
+
+          platform
+            ..permission = HealthPermissionStatus.writingSome
+            ..grantedTypes = {...everyTypeButMucus, 'cervicalMucus'}
+              .difference({off});
+          observations.observations = [];
+          await service.syncNow();
+          expect(
+            platform.deleteCalls.expand((call) => call),
+            isNot(contains(marker)),
+          );
+          expect(ledger.rows.map((row) => row.recordId), [marker]);
+
+          platform.permission = HealthPermissionStatus.granted;
+          final back = await service.syncNow();
+          expect(back.blocked, isNull);
+          expect(platform.deleteCalls.expand((call) => call), [marker]);
+          expect(ledger.rows, isEmpty);
+        });
+      }
+
+      // Another device's row for the date wins a merge: this phone's row
+      // is gone, and a row with another id is live for the same day.
+      test('a day whose row another device\'s replaced: the new row\'s '
+          'record is written and the old row\'s deleted', () async {
+        await seedGranted(grant);
+        dayEntries.entries = [_entry('2026-06-10', FlowLevel.medium, at(60))];
+        final service = buildService();
+        await service.syncNow();
+
+        dayEntries.entries = [
+          DayEntry(
+            id: 'entry-from-her-tablet',
+            profileId: _profileId,
+            localDate: LocalDate.fromIso('2026-06-10'),
+            tz: _tz,
+            flow: FlowLevel.heavy,
+            updatedAt: at(70),
+          ),
+        ];
+        final report = await service.syncNow();
+
+        expect(report.blocked, isNull);
+        expect(platform.flowWrites.last.recordId, 'entry-from-her-tablet');
+        expect(
+          platform.deleteCalls.expand((call) => call),
+          contains('entry-2026-06-10'),
+        );
+        expect(
+          [
+            for (final row in ledger.rows)
+              if (row.kind == HealthExportLedgerKind.entry) row.recordId,
+          ],
+          ['entry-from-her-tablet'],
+        );
       });
     });
 

@@ -54,9 +54,9 @@ enum HealthExportLedgerKind {
   /// it itself from this row: [HealthExportLedgerEntry.sourceRowId] is the
   /// exported interval, `<first day>/<last day>` as ISO dates, which is what
   /// a later pass compares against the episode the profile's days derive
-  /// now. An older build that does not know this kind reads it as [entry]
-  /// (`DriftHealthExportLedger`'s documented fail-safe), which is harmless:
-  /// the source row id matches no day entry.
+  /// now. A build that does not know a kind does not read its rows at all
+  /// (`DriftHealthExportLedger.readForProfile`), so it leaves the record
+  /// in the store and the row in the table.
   period,
 }
 
