@@ -89,7 +89,14 @@ class HealthExportLedgerEntry {
   /// ISO calendar date `yyyy-MM-dd` the export was for (provenance only).
   final String localDate;
 
-  /// The UTC instant the record was exported.
+  /// The version of the source row the record was written from: the
+  /// row's `updatedAt` at that moment (Issue #1581). A row whose
+  /// `updatedAt` is later than this has changed since, and its record is
+  /// due to be written again. Two exceptions. A [HealthExportLedgerKind
+  /// .period] row holds the version number the record was written with
+  /// (Issue #1478). And a row written by a build before #1581 holds the
+  /// time of the export, which is at or after the row's version, so it
+  /// reads as written.
   final DateTime exportedAt;
 }
 

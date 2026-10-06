@@ -132,4 +132,41 @@ void main() {
       );
     });
   });
+
+  // Issue #1581. The write pass stamps its forward-only floor when access
+  // is granted and compares rows with it. Rows are stamped by the storage
+  // clock (the device's, plus what sync has learned of the server's), so
+  // the floor has to be stamped by the same one.
+  group('the write pass is handed the clock rows are stamped with', () {
+    test('the composition root\'s clock follows the offset the storage '
+        'layer has learned', () {
+      const offset = Duration(minutes: 5);
+      final before = DateTime.now().toUtc();
+      expect(
+        deps.localWriteClock().difference(before).abs(),
+        lessThan(const Duration(minutes: 1)),
+      );
+
+      db.storage.setClockOffset(offset);
+      final stamped = deps.localWriteClock();
+
+      expect(stamped.isUtc, isTrue);
+      expect(
+        stamped.difference(before.add(offset)).abs(),
+        lessThan(const Duration(minutes: 1)),
+      );
+    });
+
+    test('and the app and the builder pass it through to the service', () {
+      String source(String path) => File(path).readAsStringSync();
+      expect(
+        source('lib/app.dart'),
+        contains('rowClock: _deps.localWriteClock,'),
+      );
+      expect(
+        source('lib/composition/app_dependencies.dart'),
+        contains('    rowClock: rowClock,'),
+      );
+    });
+  });
 }

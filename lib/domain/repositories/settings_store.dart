@@ -104,26 +104,29 @@ abstract final class SettingsKeys {
   /// [awaitingConfirmationEmail]'s empty-string-means-cleared convention.
   static const String healthStoreProfileId = 'health_store_profile_id';
 
-  /// The health-sync forward-only cursor (Issue #193): epoch milliseconds
-  /// (UTC) of the newest day-entry/observation write the OS health store
-  /// has been brought in line with, or unset when health sync has never
-  /// been granted on this device. Written only by
-  /// `lib/data/health/health_flow_write_service.dart`: first stamped with
-  /// the grant instant (the moment `requestWriteAuthorization` completes —
-  /// the issue's "forward-only from the moment permission is granted", so
-  /// pre-grant days are never backfilled), then advanced to the newest
-  /// processed row's `updatedAt` after a fully successful pass. Cleared
-  /// alongside [healthStoreProfileId] whenever the binding goes away (the
-  /// write coordinator calls the service's unbind path on any bound-profile
-  /// transition), so re-binding re-grants from that new moment. Device-local
-  /// scheduling metadata — a timestamp, never health content.
+  /// The health-sync forward-only floor (Issue #193): epoch milliseconds
+  /// (UTC) of the moment write access to the OS health store was granted,
+  /// or unset when it never has been on this device. Written only by
+  /// `lib/data/health/health_flow_write_service.dart`, once: stamped when
+  /// the write permission reads granted (the issue's "forward-only from the
+  /// moment permission is granted"), so a day saved before that is never
+  /// backfilled. Until Issue #1581 it was a cursor that moved to the newest
+  /// row each pass wrote, which is what the key's name says; an install
+  /// that upgrades keeps the value it had as its floor. What has been sent
+  /// is no longer read off this value but off the export ledger
+  /// (`HealthExportLedger`). Cleared alongside [healthStoreProfileId]
+  /// whenever the binding goes away (the write coordinator calls the
+  /// service's unbind path on any bound-profile transition), so re-binding
+  /// re-grants from that new moment. Device-local scheduling metadata — a
+  /// timestamp, never health content.
   static const String healthSyncWrittenThroughMs = 'health_sync_written_through_ms';
 
-  /// The same cursor in epoch microseconds (Issue #1577), written beside
+  /// The same instant in epoch microseconds (Issue #1577), written beside
   /// [healthSyncWrittenThroughMs] and cleared with it. A row's `updatedAt`
-  /// carries microseconds, so the millisecond value alone left the newest
-  /// row written still after the cursor. It refines the millisecond value
-  /// and counts only while the two agree: `health_write_cursor.dart`.
+  /// carries microseconds, so the millisecond value alone cannot say which
+  /// side of the floor a row saved in the grant's own millisecond falls
+  /// on. It refines the millisecond value and counts only while the two
+  /// agree: `health_write_cursor.dart`.
   static const String healthSyncWrittenThroughUs = 'health_sync_written_through_us';
 
   /// The first-import consent marker for the device's OS health-store
