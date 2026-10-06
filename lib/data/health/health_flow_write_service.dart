@@ -29,7 +29,10 @@
 ///   documented behavior, A3-35). A fully successful pass advances the
 ///   cursor to the newest processed row's `updatedAt`; any failure leaves
 ///   it (and the whole batch) to be retried by the next pass rather than
-///   half-skipping.
+///   half-skipping. The cursor is stored to the microsecond, the
+///   precision `updatedAt` has ([_writeCursor], Issue #1577): stored in
+///   milliseconds alone, the newest row written was still after it and
+///   was written again on every pass.
 ///
 /// **The remember-side is persisted (Issue #936).** The record ids a prior
 /// export wrote are held in the device-local [HealthExportLedger], not only
@@ -76,6 +79,7 @@ import 'package:lunarlog/domain/health/health_flow_write_service.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_policy.dart';
+import 'package:lunarlog/domain/health/health_write_cursor.dart';
 import 'package:lunarlog/domain/logging/day_sheet_reconciliation.dart'
     show gradedPainIntensitiesFrom;
 import 'package:lunarlog/domain/models/day_entry.dart';
@@ -539,10 +543,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       grantedTypes: grantedTypes,
     );
     if (outcome.failure == null && outcome.newest != null) {
-      await _settings.set(
-        SettingsKeys.healthSyncWrittenThroughMs,
-        '${outcome.newest!.millisecondsSinceEpoch}',
-      );
+      await _writeCursor(outcome.newest!);
     }
 
     return HealthFlowSyncReport(
@@ -695,11 +696,27 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// it.
   Future<DateTime> _stampCursor() async {
     final stamped = _now();
+    await _writeCursor(stamped);
+    return stamped;
+  }
+
+  /// Stores the cursor in both of its forms: the millisecond value this
+  /// path has always written, and the microsecond value beside it (Issue
+  /// #1577; why there are two is in `health_write_cursor.dart`).
+  ///
+  /// The microsecond value goes first. The millisecond value is the one
+  /// that decides, so a write cut short between the two leaves the old
+  /// cursor in force, and a new millisecond value is never read beside
+  /// a microsecond value older than it.
+  Future<void> _writeCursor(DateTime instant) async {
+    await _settings.set(
+      SettingsKeys.healthSyncWrittenThroughUs,
+      '${instant.microsecondsSinceEpoch}',
+    );
     await _settings.set(
       SettingsKeys.healthSyncWrittenThroughMs,
-      '${stamped.millisecondsSinceEpoch}',
+      '${instant.millisecondsSinceEpoch}',
     );
-    return stamped;
   }
 
   /// Builds the pass's write batch from the bound profile's day entries
@@ -1892,6 +1909,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   @override
   Future<void> onUnbound() async {
     await _settings.set(SettingsKeys.healthSyncWrittenThroughMs, '');
+    await _settings.set(SettingsKeys.healthSyncWrittenThroughUs, '');
     // Issue #930: the remembered export sets belong to one binding —
     // forward-only consent belongs to one binding too, so re-binding must
     // never diff (and delete) against the old profile's exports.
@@ -1938,6 +1956,10 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     final raw = await _settings.get(SettingsKeys.healthSyncWrittenThroughMs);
     final ms = int.tryParse(raw ?? '');
     if (ms == null) return null;
-    return DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true);
+    final exact = await _settings.get(SettingsKeys.healthSyncWrittenThroughUs);
+    return healthWriteCursorFrom(
+      milliseconds: ms,
+      microseconds: int.tryParse(exact ?? ''),
+    );
   }
 }
