@@ -81,6 +81,73 @@ void main() {
       }
     });
 
+    test('each side reads every key, not just names it', () {
+      // The test above is satisfied by a key's name appearing anywhere. The
+      // iPhone widget declared `ll_widget_as_of` and never read it, so it
+      // counted from the day the system rebuilt its timeline, not from the
+      // day the app wrote the counts.
+      const swiftNames = [
+        'state',
+        'cycleDay',
+        'daysUntilNext',
+        'canQuickLog',
+        'profileId',
+        'asOf',
+      ];
+      for (final name in swiftNames) {
+        expect(
+          RegExp('string\\(forKey: PayloadKey\\.$name\\)').hasMatch(swift),
+          isTrue,
+          reason: '$_swiftPath declares PayloadKey.$name and must read it',
+        );
+      }
+      const kotlinNames = [
+        'KEY_STATE',
+        'KEY_CYCLE_DAY',
+        'KEY_DAYS_UNTIL_NEXT',
+        'KEY_CAN_QUICK_LOG',
+        'KEY_PROFILE_ID',
+        'KEY_AS_OF',
+      ];
+      for (final name in kotlinNames) {
+        expect(kotlin, contains('prefs.getString($name,'),
+            reason: '$_kotlinPath declares $name and must read it');
+      }
+    });
+
+    test('both sides count on from the day the app wrote the counts', () {
+      // The counts are right on `ll_widget_as_of`. Either widget can be
+      // redrawn days later with the app unopened in between, and has to
+      // add the days since.
+      expect(
+        kotlin,
+        contains('daysBetween(asOf, LocalDate.now())'),
+        reason: 'Android rolls by the days since the as-of date',
+      );
+      expect(kotlin, contains('val day = baseDay + rolled'));
+
+      // iPhone: the timeline (and the snapshot) roll by the days since the
+      // as-of date, and each later entry by its own offset on top.
+      expect(swift, contains('func daysSinceAsOf('));
+      expect(
+        RegExp(r'let elapsed = daysSinceAsOf\(\s*readAsOf\(\),')
+            .hasMatch(swift),
+        isTrue,
+      );
+      expect(swift, contains('base.rolled(by: elapsed + offset)'));
+      expect(swift, isNot(contains('base.rolled(by: offset)')),
+          reason: 'counting from today shows the stored day as today\'s');
+      expect(
+        RegExp(r'readRender\(\)\.rolled\(\s*by: daysSinceAsOf\(')
+            .hasMatch(swift),
+        isTrue,
+        reason: 'the snapshot is rolled too',
+      );
+      // Read on the Gregorian calendar, whatever the phone is set to: the
+      // app wrote the date on that calendar.
+      expect(swift, contains('Calendar(identifier: .gregorian)'));
+    });
+
     test('the native render vocabulary stays discreet', () {
       // The user-visible strings each native side renders. If a health
       // word ever appears here, the discreet default is broken.

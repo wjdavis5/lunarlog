@@ -113,8 +113,42 @@ func readRender() -> WidgetRender {
         canQuickLog: canQuickLog, profileId: profileId)
 }
 
-/// Rolls a render forward by `days` whole civil days (the timeline's
-/// future entries): the day count advances; the countdown advances and
+/// The payload's as-of date, as the app wrote it: the day the stored
+/// counts were right.
+func readAsOf() -> String? {
+    UserDefaults(suiteName: appGroupId)?.string(forKey: PayloadKey.asOf)
+}
+
+/// Whole civil days from the payload's as-of date (`yyyy-MM-dd`) to
+/// `today`. Zero when the date is missing or unreadable, and zero for a
+/// date in the future: a clock set back shows the stored counts unchanged
+/// rather than counting backwards. The Android widget does the same.
+///
+/// The date is read on the Gregorian calendar whatever calendar the phone
+/// is set to, because that is the calendar the app wrote it on.
+func daysSinceAsOf(_ asOf: String?, today: Date, timeZone: TimeZone) -> Int {
+    guard let asOf = asOf else { return 0 }
+    let parts = asOf.split(separator: "-", omittingEmptySubsequences: false)
+    guard parts.count == 3,
+        let year = Int(parts[0]), let month = Int(parts[1]),
+        let day = Int(parts[2])
+    else { return 0 }
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = timeZone
+    guard
+        let start = calendar.date(
+            from: DateComponents(year: year, month: month, day: day))
+    else { return 0 }
+    let elapsed =
+        calendar.dateComponents(
+            [.day], from: start, to: calendar.startOfDay(for: today)
+        ).day ?? 0
+    return max(0, elapsed)
+}
+
+/// Rolls a render forward by `days` whole civil days (the days since the
+/// app wrote the counts, plus the timeline entry's own offset): the day
+/// count advances; the countdown advances and
 /// stops rendering once it would cross zero — the app republishes a fresh
 /// estimate long before that in any ordinary rhythm.
 extension WidgetRender {
@@ -146,8 +180,14 @@ struct Provider: TimelineProvider {
     ) {
         // Gallery previews render the neutral dash: never a real person's
         // state, not even the operator's own.
-        let render = context.isPreview ? WidgetRender.neutral : readRender()
-        completion(WidgetEntry(date: Date(), render: render))
+        let now = Date()
+        let render =
+            context.isPreview
+            ? WidgetRender.neutral
+            : readRender().rolled(
+                by: daysSinceAsOf(
+                    readAsOf(), today: now, timeZone: TimeZone.current))
+        completion(WidgetEntry(date: now, render: render))
     }
 
     func getTimeline(
@@ -155,14 +195,23 @@ struct Provider: TimelineProvider {
     ) {
         let base = readRender()
         let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let now = Date()
+        let today = calendar.startOfDay(for: now)
+        // The stored counts were right on the day the app wrote them, and
+        // that is not always today. The system rebuilds this timeline with
+        // the app unopened in between: after a restart, and when the last
+        // timeline runs out eight days on. Counting from today then showed
+        // the day the app last wrote as today's.
+        let elapsed = daysSinceAsOf(
+            readAsOf(), today: now, timeZone: calendar.timeZone)
         var entries: [WidgetEntry] = []
         for offset in 0...7 {
             let date =
                 calendar.date(byAdding: .day, value: offset, to: today)
                 ?? today
             entries.append(
-                WidgetEntry(date: date, render: base.rolled(by: offset)))
+                WidgetEntry(
+                    date: date, render: base.rolled(by: elapsed + offset)))
         }
         let refreshAfter =
             calendar.date(byAdding: .day, value: 8, to: today) ?? Date()
