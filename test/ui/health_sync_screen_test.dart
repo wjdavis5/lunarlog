@@ -215,6 +215,8 @@ class _ScriptedProbe implements HealthPermissionProbe {
     required this.write,
     this.read = HealthPermissionStatus.unavailable,
     this.readThrows = false,
+    this.reachesPastData = true,
+    this.pastDataThrows = false,
   });
 
   @override
@@ -223,8 +225,14 @@ class _ScriptedProbe implements HealthPermissionProbe {
   HealthPermissionStatus write;
   HealthPermissionStatus read;
   final bool readThrows;
+
+  /// Issue #1549: whether "Access past data" is on. On by default, so a
+  /// test that is not about it sees the store's whole history.
+  bool reachesPastData;
+  final bool pastDataThrows;
   int writeProbes = 0;
   int readProbes = 0;
+  int pastDataProbes = 0;
 
   @override
   Future<HealthPermissionStatus> permissionStatus() async {
@@ -237,6 +245,13 @@ class _ScriptedProbe implements HealthPermissionProbe {
     readProbes++;
     if (readThrows) throw StateError('boom');
     return read;
+  }
+
+  @override
+  Future<bool> importReachesPastData() async {
+    pastDataProbes++;
+    if (pastDataThrows) throw StateError('boom');
+    return reachesPastData;
   }
 
   @override
@@ -2248,6 +2263,98 @@ void main() {
         expect(line, isNot(contains('access')));
       });
 
+      // Issue #1549. "Has no period or spotting data" is a claim about the
+      // whole store. Health Connect hides data older than about a month
+      // before the first grant unless "Access past data" is on, so with
+      // it off an empty read proves nothing about what is in there.
+      const olderHidden = 'Nothing to import that lunarlog can see. Health '
+          'Connect hides older data from lunarlog unless "Access past '
+          'data" is on for it.';
+
+      testWidgets('Android: with "Access past data" off, an empty import '
+          'does not say the store is empty', (tester) async {
+        final probe = _ScriptedProbe(
+          readAccessDisclosed: true,
+          write: HealthPermissionStatus.granted,
+          read: HealthPermissionStatus.granted,
+          reachesPastData: false,
+        );
+        await pumpAndroid(
+          tester,
+          binding: await boundBinding(),
+          permissionProbe: probe,
+          importer: androidImporter(const HealthImportSummary(pagesRead: 1)),
+        );
+
+        final line = await importAndReadResult(tester);
+        expect(line, olderHidden);
+        expect(line, isNot(contains('has no period')));
+        // It does not say reading is off either: the status line above
+        // says it is on.
+        expect(line, isNot(contains('read access is off')));
+        expect(probe.pastDataProbes, greaterThan(0));
+      });
+
+      testWidgets('Android: when it cannot tell whether past data is '
+          'readable, it does not say the store is empty', (tester) async {
+        await pumpAndroid(
+          tester,
+          binding: await boundBinding(),
+          permissionProbe: _ScriptedProbe(
+            readAccessDisclosed: true,
+            write: HealthPermissionStatus.granted,
+            read: HealthPermissionStatus.granted,
+            pastDataThrows: true,
+          ),
+          importer: androidImporter(const HealthImportSummary(pagesRead: 1)),
+        );
+
+        expect(await importAndReadResult(tester), olderHidden);
+      });
+
+      testWidgets('Android: turning "Access past data" on changes what '
+          'the next empty import says', (tester) async {
+        final probe = _ScriptedProbe(
+          readAccessDisclosed: true,
+          write: HealthPermissionStatus.granted,
+          read: HealthPermissionStatus.granted,
+          reachesPastData: false,
+        );
+        await pumpAndroid(
+          tester,
+          binding: await boundBinding(),
+          permissionProbe: probe,
+          importer: androidImporter(const HealthImportSummary(pagesRead: 1)),
+        );
+        expect(await importAndReadResult(tester), olderHidden);
+
+        // She turns it on in Health Connect, and imports again. The
+        // screen asks again after every pass.
+        probe.reachesPastData = true;
+        expect(await importAndReadResult(tester), nothingToImport);
+      });
+
+      testWidgets('Android: the question is only asked once reading is '
+          'allowed', (tester) async {
+        final probe = _ScriptedProbe(
+          readAccessDisclosed: true,
+          write: HealthPermissionStatus.granted,
+          read: HealthPermissionStatus.denied,
+          reachesPastData: false,
+        );
+        await pumpAndroid(
+          tester,
+          binding: await boundBinding(),
+          permissionProbe: probe,
+          importer: androidImporter(const HealthImportSummary(pagesRead: 1)),
+        );
+
+        // Reading is not allowed, so the neutral line stands: it already
+        // says access may be the reason.
+        expect(await importAndReadResult(tester), neutralHealthConnect);
+        expect(probe.pastDataProbes, 0);
+      });
+
       testWidgets('Android: when reading is not known to be allowed, an '
           'empty whole-history import keeps the neutral line', (tester) async {
         for (final probe in [
@@ -2470,6 +2577,30 @@ void main() {
       );
 
       expect(statusLine(tester), readingOnly);
+      // Issue #1549: and, because reading is allowed, the third: whether a
+      // read reaches data from before access was first given.
+      expect(
+        permissionCalls.map((call) => call.method),
+        ['permissionStatus', 'importPermissionStatus', 'importPastDataGranted'],
+      );
+    });
+
+    testWidgets('Android: the real adapter does not ask about past data '
+        'until reading is allowed', (tester) async {
+      final HealthPermissionProbe android = createHealthPlatform(
+        TargetPlatform.android,
+        binding: HealthSyncBinding(FakeSettingsStore()),
+        minorBindingAllowed: true,
+      );
+
+      permissionResult = 'granted';
+      importPermissionResult = 'denied';
+      await pumpAndroid(
+        tester,
+        binding: await boundBinding(),
+        permissionProbe: android,
+      );
+
       expect(
         permissionCalls.map((call) => call.method),
         ['permissionStatus', 'importPermissionStatus'],

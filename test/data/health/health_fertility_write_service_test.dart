@@ -116,6 +116,10 @@ class _FakePlatform implements HealthPlatformStore {
       throw StateError('a write pass must never ask about read access');
 
   @override
+  Future<bool> importReachesPastData() =>
+      throw StateError('a write pass must never ask about read access');
+
+  @override
   Future<void> openPermissionSettings() async {}
 
   @override

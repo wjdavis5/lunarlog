@@ -240,6 +240,20 @@ abstract interface class HealthPermissionProbe {
   /// would claim a thing the store does not disclose.
   bool get readAccessDisclosed;
 
+  /// Whether the import can read data from before access was first
+  /// allowed (Issue #1549).
+  ///
+  /// Health Connect hides everything older than about a month before an
+  /// app's first grant unless its separate "Access past data" permission
+  /// is on for that app. With it off, a read that comes back empty does
+  /// not show an empty store, so the Health sync screen asks this before
+  /// it says there is nothing to import. Like [importPermissionStatus] it
+  /// only looks: no request is raised and no marker is set.
+  ///
+  /// Asked only where [readAccessDisclosed] is true. A store with no such
+  /// limit (HealthKit) answers true.
+  Future<bool> importReachesPastData();
+
   /// Opens this platform's settings screen where the operator can change
   /// the health permission: the iOS Settings app for this app, or Health
   /// Connect's permission activity on Android. Best effort.

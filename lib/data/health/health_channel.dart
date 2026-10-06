@@ -245,6 +245,26 @@ class MethodChannelHealthPlatform
       ? _probePermission(HealthChannelMethods.importPermissionStatus)
       : permissionStatus();
 
+  /// Issue #1549: whether a read reaches data from before access was
+  /// first allowed. Health Connect answers from its granted set ("Access
+  /// past data"). A store that does not disclose read access has no such
+  /// limit to report, so nothing is sent and the answer is true. A probe
+  /// that fails is "cannot tell", which is false: the caller must not
+  /// then say the store is empty.
+  @override
+  Future<bool> importReachesPastData() async {
+    if (!readAccessDisclosed) return true;
+    try {
+      final raw = await channel
+          .invokeMethod<Object?>(HealthChannelMethods.importPastDataGranted);
+      return raw == true;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   /// One unguarded permission-probe round trip, shared by the write-side
   /// and read-side probes so the two cannot drift on error handling.
   Future<HealthPermissionStatus> _probePermission(String method) async {
@@ -562,6 +582,10 @@ class UnsupportedHealthPlatform
   /// No health store, so nothing discloses anything.
   @override
   bool get readAccessDisclosed => false;
+
+  /// No health store, so there is nothing to reach.
+  @override
+  Future<bool> importReachesPastData() async => false;
 
   @override
   Future<void> openPermissionSettings() async {}

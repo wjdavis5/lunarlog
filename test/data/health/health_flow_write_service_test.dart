@@ -214,6 +214,14 @@ class _FakePlatform implements HealthPlatformStore {
     return true;
   }
 
+  /// Issue #1549: a read-side question, like the two above. Counted with
+  /// them, so the same assertions prove a write pass never asks it.
+  @override
+  Future<bool> importReachesPastData() async {
+    readAccessDisclosedReads++;
+    return true;
+  }
+
   /// Issue #1515: the import's own request. The write pass has its own
   /// ([requestWriteAuthorization]); counted so a test can prove it never
   /// raises this one instead.

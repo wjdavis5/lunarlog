@@ -72,8 +72,14 @@ String _sourceName(AppLocalizations l10n, HealthImportPlatform platform) =>
     };
 
 /// What the permission probe says: the status line's state and, where the
-/// store discloses it, the read-side answer on its own (Issue #1523).
-typedef _Access = ({HealthAccessState? state, HealthPermissionStatus? read});
+/// store discloses it, the read-side answer on its own (Issue #1523) and
+/// whether a read reaches data from before access was first allowed
+/// (Issue #1549; asked only once reading is granted, null otherwise).
+typedef _Access = ({
+  HealthAccessState? state,
+  HealthPermissionStatus? read,
+  bool? reachesPastData,
+});
 
 /// The human name of [platform]'s health store for titles and headings.
 /// Arb-backed since issue #1004, tranche 5 (`healthSyncSourceTitle*`).
@@ -215,6 +221,11 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// leave out "or read access is off" when reading is known to be on.
   HealthPermissionStatus? _readStatus;
 
+  /// Whether an import can read data from before access was first allowed
+  /// (Issue #1549). Null until reading is granted, and where the store
+  /// does not disclose read access.
+  bool? _reachesPastData;
+
   /// The store this screen is about — drives every store name and the
   /// write copy below. See [HealthSyncScreen.storePlatform] for the order.
   HealthImportPlatform get _importPlatform {
@@ -258,12 +269,15 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   }
 
   bool _sameAccess(_Access access) =>
-      access.state == _accessState && access.read == _readStatus;
+      access.state == _accessState &&
+      access.read == _readStatus &&
+      access.reachesPastData == _reachesPastData;
 
   /// Stores a fresh probe answer. Call inside `setState`.
   void _setAccess(_Access access) {
     _accessState = access.state;
     _readStatus = access.read;
+    _reachesPastData = access.reachesPastData;
   }
 
   /// Loads the bound profile id, every non-archived profile, and each
@@ -317,13 +331,23 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// the import result line (Issue #1523).
   Future<_Access> _readAccess() async {
     final probe = widget.permissionProbe;
-    if (probe == null) return (state: null, read: null);
+    if (probe == null) {
+      return (state: null, read: null, reachesPastData: null);
+    }
     try {
       final write = await probe.permissionStatus();
       final read = await _readSideStatus(probe);
-      return (state: healthAccessState(write: write, read: read), read: read);
+      return (
+        state: healthAccessState(write: write, read: read),
+        read: read,
+        reachesPastData: await _pastDataReach(probe, read),
+      );
     } catch (_) {
-      return (state: HealthAccessState.unavailable, read: null);
+      return (
+        state: HealthAccessState.unavailable,
+        read: null,
+        reachesPastData: null,
+      );
     }
   }
 
@@ -342,6 +366,23 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       return await probe.importPermissionStatus();
     } catch (_) {
       return HealthPermissionStatus.unavailable;
+    }
+  }
+
+  /// Whether a read reaches data from before access was first allowed
+  /// (Issue #1549), asked only once the store says reading is granted:
+  /// before that there is no read for it to qualify. A probe that throws
+  /// is "cannot tell", which is false, because the one thing this answer
+  /// is for is deciding whether an empty read shows an empty store.
+  Future<bool?> _pastDataReach(
+    HealthPermissionProbe probe,
+    HealthPermissionStatus? read,
+  ) async {
+    if (read != HealthPermissionStatus.granted) return null;
+    try {
+      return await probe.importReachesPastData();
+    } catch (_) {
+      return false;
     }
   }
 
@@ -782,16 +823,23 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// does say, and says it is allowed, "or read access is off" would
   /// contradict the status line on this same screen, so the line states
   /// only what is left: there is nothing from another app to import.
+  ///
+  /// That last claim needs one more fact (Issue #1549). Health Connect
+  /// hides data older than about a month before the first grant unless
+  /// "Access past data" is on, so with it off an empty read is not an
+  /// empty store, and the line says what is hidden instead.
   String _emptyImportCopy(AppLocalizations l10n, HealthImportSummary summary) {
     if (summary.incremental) {
       return l10n.healthSyncImportNothingSinceLast(
         _sourceName(l10n, _importPlatform),
       );
     }
-    if (_readStatus == HealthPermissionStatus.granted) {
-      return l10n.healthSyncImportEmptyHealthConnectReadable;
+    if (_readStatus != HealthPermissionStatus.granted) {
+      return healthImportEmptyCopy(l10n, _importPlatform);
     }
-    return healthImportEmptyCopy(l10n, _importPlatform);
+    return _reachesPastData == true
+        ? l10n.healthSyncImportEmptyHealthConnectReadable
+        : l10n.healthSyncImportEmptyHealthConnectOlderHidden;
   }
 
   /// The lines for a finished pass: the blocked line, the neutral empty

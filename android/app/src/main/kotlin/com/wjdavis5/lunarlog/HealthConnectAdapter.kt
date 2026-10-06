@@ -498,6 +498,36 @@ class HealthConnectAdapter(context: Context) {
                 }
             }
 
+            "importPastDataGranted" -> {
+                // Issue #1549: whether "Access past data" is granted.
+                // Without it Health Connect hides everything older than
+                // about a month before this app's first grant, so a read
+                // that comes back empty does not show an empty store. The
+                // Health sync screen asks this before it says there is
+                // nothing to import.
+                //
+                // Like `importPermissionStatus` it only looks: no request
+                // is raised and no asked-marker is read or set. Anything
+                // short of a clear yes is false, including a Health
+                // Connect that is missing or will not answer.
+                val client = healthConnectClient()
+                if (client == null) {
+                    result.success(false)
+                    return
+                }
+                CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
+                    try {
+                        val granted = client.permissionController.getGrantedPermissions()
+                        result.success(
+                            granted.contains(
+                                HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY,
+                            ))
+                    } catch (e: Exception) {
+                        result.success(false)
+                    }
+                }
+            }
+
             "permissionStatus" -> {
                 // Issue #959: the OS permission state for the status line on
                 // the Health sync screen. The SDK-availability check runs

@@ -875,6 +875,43 @@ void main() {
       );
     });
 
+    // Issue #1549: Health Connect hides data older than about a month
+    // before the first grant unless "Access past data" is on. The screen
+    // asks before it says an empty read means an empty store.
+    test('importReachesPastData sends its own pinned method name, with no '
+        'arguments, and only a clear yes is yes', () async {
+      nextResult = true;
+      expect(await makePlatform().importReachesPastData(), isTrue);
+      expect(calls.single.method, 'importPastDataGranted');
+      expect(calls.single.arguments, isNull);
+
+      for (final answer in <Object?>[false, null, 'granted', 1]) {
+        nextResult = answer;
+        expect(
+          await makePlatform().importReachesPastData(),
+          isFalse,
+          reason: '$answer is not a yes',
+        );
+      }
+    });
+
+    test('a platform error or a missing handler is "cannot tell", which '
+        'is no: the screen must not then call the store empty', () async {
+      nextResult = true;
+      nextError = PlatformException(code: 'anything');
+      expect(await makePlatform().importReachesPastData(), isFalse);
+      nextError = MissingPluginException();
+      expect(await makePlatform().importReachesPastData(), isFalse);
+    });
+
+    test('where the store does not disclose read access there is no such '
+        'limit to ask about: yes, and nothing is sent', () async {
+      calls.clear();
+      nextResult = false;
+      expect(await makeUndisclosed().importReachesPastData(), isTrue);
+      expect(calls, isEmpty);
+    });
+
     test('where the store does not disclose read access, the answer is the '
         'write probe\'s and the read-side method is never sent', () async {
       for (final status in HealthPermissionStatus.values) {

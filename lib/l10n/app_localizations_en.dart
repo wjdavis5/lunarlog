@@ -5237,6 +5237,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Health Connect has no period or spotting data from other apps to import.';
 
   @override
+  String get healthSyncImportEmptyHealthConnectOlderHidden =>
+      'Nothing to import that lunarlog can see. Health Connect hides older data from lunarlog unless \"Access past data\" is on for it.';
+
+  @override
   String healthSyncImportNothingSinceLast(String source) {
     return 'Nothing new in $source since the last import.';
   }
