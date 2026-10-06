@@ -483,6 +483,10 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// What this pass knows beside the floor and the ledger: each write
   /// type's own floor, and how far no-flow days have been cleared
   /// ([_openState] reads it, [_closeState] stores it).
+  ///
+  /// A pass assigns it from what is stored before it reads it, so the
+  /// value left here by one pass is never the next one's, and unbinding
+  /// has nothing to reset here: it clears what is stored.
   HealthWritePassState _state = const HealthWritePassState();
 
   /// The pass that is running, and the one waiting behind it.
@@ -513,13 +517,16 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     );
   }
 
+  /// Starts a pass and marks it as the one running until it ends.
+  ///
+  /// The handler below is the first thing registered on the pass, ahead
+  /// of the queued pass [syncNow] chains onto it, so it has run and
+  /// cleared [_running] by the time that pass starts and sets it again.
   Future<HealthFlowSyncReport> _startPass() {
     _queued = null;
     final pass = _pass();
     _running = pass;
-    return pass.whenComplete(() {
-      if (identical(_running, pass)) _running = null;
-    });
+    return pass.whenComplete(() => _running = null);
   }
 
   Future<HealthFlowSyncReport> _pass() async {
@@ -2260,7 +2267,6 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     await _settings.set(SettingsKeys.healthSyncWrittenThroughMs, '');
     await _settings.set(SettingsKeys.healthSyncWrittenThroughUs, '');
     await _settings.set(SettingsKeys.healthSyncWriteState, '');
-    _state = const HealthWritePassState();
     // Issues #930 and #936: what was written belongs to one binding,
     // exactly like the floor. A re-bind must never diff (and delete)
     // against the old profile's exports, and the rows describe a health
