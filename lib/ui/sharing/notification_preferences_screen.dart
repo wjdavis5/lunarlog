@@ -51,6 +51,11 @@ class NotificationPreferencesScreen extends StatefulWidget {
 class _NotificationPreferencesScreenState
     extends State<NotificationPreferencesScreen> {
   CaregiverAlertPreferences _prefs = CaregiverAlertPreferences.off;
+  // Issue #1628: the last value known to be saved (or loaded) - unlike
+  // [_prefs], which is updated optimistically before a save and left as is
+  // when it fails. The permission ask keys off this, so a retry after a
+  // failed off-to-on save still counts as the transition.
+  CaregiverAlertPreferences _savedPrefs = CaregiverAlertPreferences.off;
   bool _loaded = false;
   // LLA-083: an initial-load failure (as opposed to a save failure, which
   // `_timeZoneError`/the snackbar already cover) used to be swallowed --
@@ -80,6 +85,7 @@ class _NotificationPreferencesScreenState
     if (!mounted) return;
     setState(() {
       _prefs = prefs;
+      _savedPrefs = prefs;
       _loaded = true;
       _loadFailed = false;
     });
@@ -115,7 +121,7 @@ class _NotificationPreferencesScreenState
     // before the optimistic update — the in-context permission ask runs
     // only on the off-to-on transition, never on narrowing, cadence,
     // quiet-hours or retry saves while alerts stay enabled (or stay off).
-    final hadAlerts = _prefs.hasAnyAlert;
+    final hadAlerts = _savedPrefs.hasAnyAlert;
     final next = transform(_prefs);
     setState(() {
       _prefs = next;
@@ -140,6 +146,7 @@ class _NotificationPreferencesScreenState
     // Only after a successful save — and with no context use afterwards,
     // so no mounted check is needed: the ask opens the gate's own
     // system-UI window around a dialog-capable request itself.
+    _savedPrefs = next;
     if (!hadAlerts && next.hasAnyAlert) {
       await widget.ensurePushRegistration?.call();
     }
