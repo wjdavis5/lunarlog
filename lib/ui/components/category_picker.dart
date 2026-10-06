@@ -180,7 +180,10 @@ class _CategoryPickerState extends State<CategoryPicker> {
 
   Widget _searchField(ThemeData theme) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      // The space above keeps the field with the tag sections it
+      // searches, and off the flow chips that come before it on the day
+      // sheet: flush under them it read as a search of the flow levels.
+      padding: const EdgeInsets.only(top: 8, bottom: 4),
       child: Semantics(
         textField: true,
         label: widget.searchSemanticsLabel,

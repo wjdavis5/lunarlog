@@ -830,7 +830,7 @@ abstract class AppLocalizations {
   /// **'Imported, not recognised'**
   String get daySheetUnmappedImported;
 
-  /// Issue #234: visible hint text in CategoryPicker's search field above the tag chip grid.
+  /// Issue #234: the search field's placeholder in the browser version, where the field has a visible label (daySheetTagSearchSemanticsLabel) above it. The app's field has no separate label, so its hint is daySheetTagSearchSemanticsLabel itself: under the flow chips a bare "Search" read as a search of those.
   ///
   /// In en, this message translates to:
   /// **'Search'**
