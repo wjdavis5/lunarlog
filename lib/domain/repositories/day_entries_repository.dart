@@ -48,6 +48,33 @@ abstract interface class DayEntrySyncStateReader {
   Future<bool> hasBeenShared(String profileId, LocalDate date);
 }
 
+/// Issue #1561: what the health import needs to know about days she
+/// deleted. [DayEntriesRepository.find] answers for live rows only, so a
+/// deleted imported day looked like one that had never been imported, and
+/// the next whole-history read inserted it again.
+///
+/// Kept off [DayEntriesRepository] itself, like the readers above: a
+/// repository that does not implement it simply cannot answer, and the
+/// import then behaves as it did before.
+abstract interface class DeletedDayEntryReader {
+  /// The health-store records she deleted from [profileId] on this
+  /// device, each with the moment of its deletion, named
+  /// `healthImportDeletionId(source, sourceId)`. The device writes it when
+  /// she deletes a day or removes an entry. It is not a reading of deleted
+  /// rows: removing a store's imported data leaves deleted rows too, and
+  /// must not keep a later import from bringing the days back.
+  Future<Map<String, DateTime>> deletedHealthRecords(String profileId);
+
+  /// Forgets the records named in [deletedAt]: the import found each on a
+  /// live row again, so its deletion was undone. Each is forgotten only if
+  /// it still carries the moment given, which is the one the import read:
+  /// a record deleted again in the meantime is kept.
+  Future<void> forgetDeletedHealthRecords(
+    String profileId,
+    Map<String, DateTime> deletedAt,
+  );
+}
+
 abstract interface class DayEntriesRepository {
   /// Upserts the live entry for (profileId, localDate). Tag codes are
   /// validated against the domain taxonomy. The returned model carries the

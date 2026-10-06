@@ -247,7 +247,7 @@
   "healthSyncImportUpdatedDays": "Updated {count, plural, =1{1 day} other{{count} days}} from {source}.",
   "healthSyncImportAddedSpotting": "Added spotting to {count, plural, =1{1 day} other{{count} days}} from {source}.",
   "healthSyncImportAlreadyMatched": "{count, plural, =1{1 day} other{{count} days}} already matched.",
-  "healthSyncImportKeptManual": "Kept your own logged value on {count, plural, =1{1 day} other{{count} days}}.",
+  "healthSyncImportKeptManual": "Kept your own changes on {count, plural, =1{1 day} other{{count} days}}.",
   "healthSyncImportPlacedDeviceZone": "Dated {count, plural, =1{1 entry} other{{count} entries}} using the time zone of this phone.",
   "healthSyncImportSkippedNoZone": "Skipped {count, plural, =1{1 entry} other{{count} entries}} with no recorded time zone.",
   "healthSyncImportSkippedUnsupported": "Skipped {count, plural, =1{1 entry} other{{count} entries}} with no matching flow level.",

@@ -981,7 +981,7 @@ class AppLocalizationsEn extends AppLocalizations {
       other: '$count days',
       one: '1 day',
     );
-    return 'Kept your own logged value on $_temp0.';
+    return 'Kept your own changes on $_temp0.';
   }
 
   @override
