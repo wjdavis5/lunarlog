@@ -40,8 +40,10 @@ import kotlinx.coroutines.withTimeoutOrNull
  * **Why "engine alive" is the honest contract.** A WorkManager tick that
  * lands while the activity is merely backgrounded finds the engine (and
  * the Dart isolate) still running — that is the dominant case, and the
- * pull is cheap because the adapter's changes token makes every pass
- * incremental. After the process has been killed, WorkManager restarts it
+ * pull is cheap because the adapter's changes token makes nearly every
+ * pass incremental. The exceptions read the whole range: a pass after the
+ * token has expired, and the one re-read owed once "Access past data" is
+ * on (issue #1549). After the process has been killed, WorkManager restarts it
  * *without* an activity or engine; there is no Dart side to hand the pass
  * to, so the tick reports success and does nothing — the next app start
  * runs the catch-up import, exactly as the pre-#993 behavior did. Spinning

@@ -189,6 +189,16 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   bool _importFailed = false;
   HealthImportSummary? _importSummary;
 
+  /// What the store said about reading when [_importSummary]'s pass
+  /// finished (Issue #1549): whether reading was allowed, and whether a
+  /// read reached data from before access was first given. Kept with the
+  /// result and never refreshed, because the result line describes that
+  /// pass. Read from the live answers it changed under her: turning
+  /// "Access past data" on and coming back rewrote an old empty result
+  /// as "Health Connect has no…" with nothing new having been read.
+  HealthPermissionStatus? _importReadStatus;
+  bool? _importReachedPastData;
+
   /// Issue #992: the running sample count of a full-history pass, so a long
   /// import shows progress rather than a bare spinner. Null until the first
   /// page reports.
@@ -342,6 +352,21 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       return await probe.importPermissionStatus();
     } catch (_) {
       return HealthPermissionStatus.unavailable;
+    }
+  }
+
+  /// Whether a read reaches data from before access was first allowed
+  /// (Issue #1549), asked only when the store says reading is granted:
+  /// before that there is no read for it to qualify. A probe that is
+  /// absent or throws is "cannot tell", which is false, because the one
+  /// thing this answer is for is deciding whether an empty read shows an
+  /// empty store.
+  Future<bool?> _pastDataReach(HealthPermissionStatus? read) async {
+    if (read != HealthPermissionStatus.granted) return null;
+    try {
+      return await widget.permissionProbe!.importReachesPastData();
+    } catch (_) {
+      return false;
     }
   }
 
@@ -606,10 +631,13 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
         // Ignored: the snapshot is a display cache, not part of the import.
       }
       final access = await _readAccess();
+      final reachedPastData = await _pastDataReach(access.read);
       if (!mounted) return;
       setState(() {
         _importing = false;
         _importSummary = summary;
+        _importReadStatus = access.read;
+        _importReachedPastData = reachedPastData;
         _importProgress = null;
         // Issue #959: re-read the OS permission after the pass, so an
         // import that hit a revoked permission updates the status line
@@ -782,17 +810,36 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// does say, and says it is allowed, "or read access is off" would
   /// contradict the status line on this same screen, so the line states
   /// only what is left: there is nothing from another app to import.
+  ///
+  /// That last claim needs one more fact (Issue #1549). Health Connect
+  /// hides data older than 30 days before the first grant unless "Access
+  /// past data" is on, so with it off an empty read is not an empty
+  /// store, and the line says what is hidden instead ([_olderDataHidden]).
+  ///
+  /// Every answer used here is the one taken when the pass finished
+  /// ([_importReadStatus], [_importReachedPastData]), never the live one.
   String _emptyImportCopy(AppLocalizations l10n, HealthImportSummary summary) {
     if (summary.incremental) {
       return l10n.healthSyncImportNothingSinceLast(
         _sourceName(l10n, _importPlatform),
       );
     }
-    if (_readStatus == HealthPermissionStatus.granted) {
-      return l10n.healthSyncImportEmptyHealthConnectReadable;
+    if (_importReadStatus != HealthPermissionStatus.granted) {
+      return healthImportEmptyCopy(l10n, _importPlatform);
     }
-    return healthImportEmptyCopy(l10n, _importPlatform);
+    return _olderDataHidden(summary)
+        ? l10n.healthSyncImportEmptyHealthConnectOlderHidden
+        : l10n.healthSyncImportEmptyHealthConnectReadable;
   }
+
+  /// Whether [summary] is a whole-history read that came back empty while
+  /// reading was allowed and the store was hiding its older data (Issue
+  /// #1549). True when the store said so, and when it would not say.
+  bool _olderDataHidden(HealthImportSummary summary) =>
+      summary.isEmpty &&
+      !summary.incremental &&
+      _importReadStatus == HealthPermissionStatus.granted &&
+      _importReachedPastData != true;
 
   /// The lines for a finished pass: the blocked line, the neutral empty
   /// copy, or the stopped-early note plus the positive result lines.
@@ -803,7 +850,25 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
     if (summary.isBlocked) {
       return [Text(_blockedImportCopy(l10n, summary.blocked!))];
     }
-    if (summary.isEmpty) return [Text(_emptyImportCopy(l10n, summary))];
+    if (summary.isEmpty) {
+      return [
+        Text(_emptyImportCopy(l10n, summary)),
+        // The line names a switch that lives in the health store's own
+        // settings. The status line above offers the way there only
+        // when a permission is off, which need not be the case here, so
+        // this result brings its own.
+        if (_olderDataHidden(summary))
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton(
+              key: const ValueKey('health-sync-import-open-settings'),
+              onPressed: () =>
+                  widget.permissionProbe?.openPermissionSettings(),
+              child: Text(l10n.healthSyncPermissionOpenSettings),
+            ),
+          ),
+      ];
+    }
     return [
       // Issue #992: a pass stopped by the page cap or a repeated cursor says
       // so plainly rather than pretending it finished.

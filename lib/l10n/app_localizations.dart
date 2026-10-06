@@ -8299,8 +8299,14 @@ abstract class AppLocalizations {
   /// Issue #1523: the result of an import from Health Connect that read the whole history and got nothing back, when Health Connect says lunarlog is allowed to read. Replaces healthSyncImportEmptyHealthConnect in that case, because 'or that read access is off' would contradict the access line on the same screen. 'From other apps' because lunarlog never imports what it wrote itself. Android only: Apple Health never says whether reading is allowed.
   ///
   /// In en, this message translates to:
-  /// **'Health Connect has no period or spotting data from other apps to import.'**
+  /// **'Health Connect has no menstrual flow or spotting from other apps to import.'**
   String get healthSyncImportEmptyHealthConnectReadable;
+
+  /// Issue #1549: the result of an import from Health Connect that read everything it was allowed to and got nothing back, when reading is allowed but Health Connect's separate 'Access past data' permission is not granted to lunarlog. Without it Health Connect hides data older than about a month before lunarlog was first allowed, so the app cannot say the store is empty (healthSyncImportEmptyHealthConnectReadable). 'Access past data' is Health Connect's own label for that permission. The sentence is also true on a phone whose Health Connect has no such switch.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing to import that lunarlog can see. Health Connect hides older data from lunarlog unless \"Access past data\" is on for it.'**
+  String get healthSyncImportEmptyHealthConnectOlderHidden;
 
   /// Issue #1523: the result of a repeat import that asked the health store only for what changed since the previous import and got nothing back. Says nothing about access or about whether anything was ever tracked, since an earlier import already ran. {source} is the store's mid-sentence name ('Health Connect', 'the Health app').
   ///

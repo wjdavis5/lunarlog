@@ -172,6 +172,7 @@ const Map<String, List<String>> _helperCopyFileLiterals = {
     'health-sync-confirm-bind',
     'health-sync-confirm-unbind',
     'health-sync-import-summary',
+    'health-sync-import-open-settings',
     'health-sync-loading',
     'health-sync-load-error',
     'health-sync-forward-only-copy',

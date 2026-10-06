@@ -24,6 +24,7 @@
 /// | `deleteRecords` | guard + `recordIds` | result string |
 /// | `permissionStatus` | none | one of `granted` / `notAsked` / `denied` / `unavailable` |
 /// | `importPermissionStatus` (Android only) | none | one of `granted` / `notAsked` / `denied` / `unavailable` |
+/// | `importPastDataGranted` (Android only) | none | `bool` |
 /// | `openPermissionSettings` | none | `null` |
 /// | `readMenstrualFlowPage` | guard + `startMs` + `endMs` + `pageSize` + `cursor?` | a page `Map` (`samples` list + `nextCursor`), or a result string |
 /// | `readCycleDeviations` | guard + `startMs` + `endMs` + `kinds` (list of wire names) | a `List` of deviation maps, or a result string |
@@ -168,6 +169,12 @@ abstract final class HealthChannelMethods {
   /// answers the question in Dart from [permissionStatus] and this name is
   /// never sent to Swift (see `MethodChannelHealthPlatform`).
   static const importPermissionStatus = 'importPermissionStatus';
+
+  /// Whether Health Connect's "Access past data" permission is granted
+  /// (Issue #1549): a `bool`. Without it Health Connect hides data older
+  /// than about a month before the app's first grant. **Android only:**
+  /// HealthKit has no such limit, and this name is never sent to Swift.
+  static const importPastDataGranted = 'importPastDataGranted';
 
   /// The read/import method (Issue #217, paged in #992). Its success
   /// result is a page `Map` (`samples` + `nextCursor`) rather than a result
