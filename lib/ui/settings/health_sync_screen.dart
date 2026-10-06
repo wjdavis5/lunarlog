@@ -750,6 +750,8 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
         _sourceUnavailableCopy(l10n, _importPlatform),
       HealthPlatformPermissionDenied() =>
         healthImportEmptyCopy(l10n, _importPlatform),
+      HealthPlatformPartial() =>
+        healthImportEmptyCopy(l10n, _importPlatform),
       HealthPlatformFailed() => l10n.healthSyncImportBlockedFailed,
       HealthPlatformAllowed() => healthImportEmptyCopy(l10n, _importPlatform),
     };

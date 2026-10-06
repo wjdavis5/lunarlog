@@ -22,6 +22,8 @@
 /// Pure Dart (R14/R16) — no Flutter/drift imports.
 library;
 
+import 'package:lunarlog/domain/health/health_platform.dart'
+    show HealthWriteTypes;
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 
@@ -88,4 +90,46 @@ Set<String> healthRecordIdsForEntry(DayEntry entry) {
     ids.add(healthOvulationRecordId(entry.id, ovulation.healthKitResult));
   }
   return ids;
+}
+
+bool _symptomRecordMatchesSkippedType(
+  String recordId,
+  Set<String> skippedTypes,
+) {
+  if (skippedTypes.contains(HealthWriteTypes.symptoms)) return true;
+  final parts = recordId.split('-');
+  if (parts.length >= 3) {
+    final typeIdentifier = parts.sublist(2).join('-');
+    return skippedTypes.contains(typeIdentifier);
+  }
+  return false;
+}
+
+/// Checks whether [recordId] belongs to one of the write types in [skippedTypes]
+/// (Issue #1583).
+bool healthRecordMatchesSkippedType(
+  String recordId,
+  Set<String> skippedTypes, {
+  bool isSpotting = false,
+}) {
+  if (skippedTypes.isEmpty) return false;
+  if (recordId.startsWith('cervical-mucus-')) {
+    return skippedTypes.contains(HealthWriteTypes.cervicalMucus);
+  }
+  if (recordId.startsWith('ovulation-')) {
+    return skippedTypes.contains(HealthWriteTypes.ovulationTest);
+  }
+  if (recordId.startsWith('bbt-')) {
+    return skippedTypes.contains(HealthWriteTypes.basalBodyTemperature);
+  }
+  if (recordId.startsWith('period-')) {
+    return skippedTypes.contains(HealthWriteTypes.menstrualFlow);
+  }
+  if (recordId.startsWith('symptom-')) {
+    return _symptomRecordMatchesSkippedType(recordId, skippedTypes);
+  }
+  if (isSpotting) {
+    return skippedTypes.contains(HealthWriteTypes.spotting);
+  }
+  return skippedTypes.contains(HealthWriteTypes.menstrualFlow);
 }
