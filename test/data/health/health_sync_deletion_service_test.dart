@@ -709,6 +709,68 @@ void main() {
       expect(ledger.rows, isEmpty);
     });
 
+    // A spotting entry logged during her period is written as a light
+    // FLOW sample. With Menstruation off and Spotting on, the delete passes
+    // it over; counted as spotting alone, it read as gone and its ledger
+    // row was dropped, so nothing could ever remove it.
+    test(
+        'issue #1589: a deleted spotting entry whose delete passed over '
+        'menstrual flow keeps its ledger row and is asked for again',
+        () async {
+      final settings = FakeSettingsStore({
+        SettingsKeys.healthStoreProfileId: _profileId,
+      });
+      final binding = HealthSyncBinding(settings);
+      final source = _FakeTombstoneSource();
+      final deletion = _FakeDeletion();
+      final ledger = FakeHealthExportLedger();
+      const spottingId = '01ARZ3NDEKTSV4RRFFQ69G5SPT';
+      await ledger.record([
+        HealthExportLedgerEntry(
+          recordId: spottingId,
+          profileId: _profileId,
+          sourceRowId: spottingId,
+          kind: HealthExportLedgerKind.spotting,
+          localDate: '2026-09-01',
+          exportedAt: DateTime.utc(2026, 9, 1),
+        ),
+      ]);
+      final coordinator = HealthSyncTombstoneCoordinator(
+        binding: binding,
+        source: source,
+        deletionService: deletion,
+        ledger: ledger,
+        debounce: const Duration(milliseconds: 10),
+      );
+      coordinator.start();
+      addTearDown(() => coordinator.dispose());
+
+      deletion.result = const HealthSyncDeletionReport(
+        attempted: 1,
+        blocked: HealthPlatformResult.partial({'menstrualFlow'}),
+      );
+      await source.emitObservations([
+        _observation(spottingId,
+            category: 'spotting', deletedAt: DateTime.utc(2026, 9, 2)),
+      ]);
+      await _waitUntil(() => deletion.calls.isNotEmpty);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(ledger.rows.map((r) => r.recordId), [spottingId]);
+
+      deletion.result = const HealthSyncDeletionReport(
+        attempted: 1,
+        blocked: null,
+      );
+      await source.emitObservations([
+        _observation(spottingId,
+            category: 'spotting', deletedAt: DateTime.utc(2026, 9, 2)),
+      ]);
+      await _waitUntil(() => ledger.rows.isEmpty);
+      expect(ledger.rows, isEmpty);
+      expect(deletion.calls, hasLength(2));
+    });
+
     test(
         'issue #936: a ledger read failure is swallowed and the coordinator '
         'still subscribes with the live-emission memory', () async {

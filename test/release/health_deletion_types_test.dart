@@ -285,6 +285,18 @@ void main() {
         healthRecordMatchesSkippedType('01ARZ3NDEKTSV4RRFFQ69G5FBC', {'spotting'}, isSpotting: true),
         isTrue,
       );
+      // Issue #1589: a spotting entry's record is a light flow sample
+      // when its day falls inside a period, and nothing kept on the
+      // phone says which it was. Either type passed over may have left
+      // it in the store.
+      expect(
+        healthRecordMatchesSkippedType('01ARZ3NDEKTSV4RRFFQ69G5FBC', {'menstrualFlow'}, isSpotting: true),
+        isTrue,
+      );
+      expect(
+        healthRecordMatchesSkippedType('01ARZ3NDEKTSV4RRFFQ69G5FBC', {'cervicalMucus'}, isSpotting: true),
+        isFalse,
+      );
       expect(
         healthRecordMatchesSkippedType('01ARZ3NDEKTSV4RRFFQ69G5FBC', const {}),
         isFalse,
