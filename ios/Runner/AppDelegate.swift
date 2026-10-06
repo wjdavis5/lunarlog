@@ -884,8 +884,10 @@ enum HealthKitChannelHandler {
 
     case "grantedWriteTypes":
       // Issue #1555: returns the wire identifiers of authorized write types.
+      // Issue #1584: fail with unavailable if health data is not available,
+      // so caller does not assume an empty list means all types are off.
       guard HKHealthStore.isHealthDataAvailable() else {
-        result([String]())
+        result(FlutterError(code: "unavailable", message: "Health data unavailable", details: nil))
         return
       }
       var granted: [String] = []
