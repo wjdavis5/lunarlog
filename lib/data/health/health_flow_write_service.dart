@@ -1518,9 +1518,10 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   ///
   /// A record whose type is switched off is not asked for at all
   /// ([healthRecordDeletable]). The native halves pass over a type they
-  /// may not write and still answer allowed, so asking would forget a
-  /// record that is still in the store. It stays remembered, and is
-  /// removed once the type is back on.
+  /// may not write and answer partial with the skippedTypes (since #1592),
+  /// so the pre-filter only avoids a delete the store will pass over; a
+  /// record whose type was skipped stays remembered either way (_passedOver)
+  /// and is removed once the type is back on.
   ///
   /// Deleting is a health-API touch, so it goes through the same
   /// [_authorityDrift] recheck and guarded

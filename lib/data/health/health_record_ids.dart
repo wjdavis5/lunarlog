@@ -99,10 +99,12 @@ Set<String> healthRecordIdsForEntry(DayEntry entry) {
 /// type is on.
 ///
 /// Both native halves delete by record id across every type they write,
-/// pass over a type they may not write, and answer allowed all the same.
-/// So a delete sent while the record's type is off removes nothing and
-/// reads as done. The write pass asks this first and leaves such a record
-/// remembered until its type is back on.
+/// pass over a type they may not write, and answer partial with the
+/// skippedTypes (not allowed, since #1592). So a delete sent while the
+/// record's type is off removes nothing. The write pass asks this first, to
+/// avoid a delete the store will pass over, and leaves such a record
+/// remembered until its type is back on; a record whose type a delete did
+/// skip stays in the ledger the same way (_passedOver).
 ///
 /// The type is read off the id, which is how these builders made it. A
 /// spotting observation's record is the one that can be either of two
