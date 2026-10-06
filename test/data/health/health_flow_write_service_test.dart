@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/health/health_flow_write_service.dart';
 import 'package:lunarlog/data/health/health_record_ids.dart';
+import 'package:lunarlog/data/health/health_written_types.dart';
 import 'package:lunarlog/domain/episodes/episodes.dart';
 import 'package:lunarlog/domain/health/health_export_ledger.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
@@ -3183,6 +3184,12 @@ void main() {
       clock = t2.add(const Duration(minutes: 1));
       final off = await service.syncNow();
       expect(off.blocked, isA<HealthPlatformPermissionDenied>());
+      final floors = HealthWritePassState.decode(
+        await settings.get(SettingsKeys.healthSyncWriteState),
+      )!.typeFloors;
+      expect(floors.keys.toSet(), healthWriteTypesOff(const <String>{}),
+          reason: 'every write type, not flow alone');
+      expect(floors.values.toSet(), {clock});
 
       // Menstruation comes back.
       platform.permission = HealthPermissionStatus.writingSome;
@@ -3205,12 +3212,11 @@ void main() {
       expect(platform.flowWrites.last.recordId, 'entry-2026-07-15');
     });
 
-    // A state stored by that pass would read as "this binding has run a
-    // pass on this build", and an earlier build's ledger would then never
-    // be brought into this build's form.
-    test('a binding that has run no pass on this build stores nothing when '
-        'it finds write access removed', () async {
-      await seedGranted(grant);
+    // Never granted, so there is no floor yet. The grant stamps one, and
+    // it covers everything logged before it.
+    test('a binding that was never granted write access stores nothing '
+        'when it finds it refused', () async {
+      await settings.set(_bindingKey, _profileId);
       platform.permission = HealthPermissionStatus.denied;
 
       final report = await buildService().syncNow();
@@ -3562,6 +3568,71 @@ void main() {
       final edited = await buildService().syncNow();
       expect(edited.samplesWritten, 1);
       expect(edited.symptomSamplesWritten, 1);
+    });
+
+    // Third read of #1595. No binding has a stored state when this build
+    // first runs for it, so the one found with write access removed then
+    // is everyone who had removed it before updating. Its ledger is read
+    // as that build's on that pass: a state stored without doing so would
+    // tell the first real pass there was nothing left to read.
+    test('a ledger from an earlier build, found with write access removed: '
+        'it is read as one on that pass, and what she logs meanwhile is not '
+        'sent when write access comes back', () async {
+      await settings.set(_bindingKey, _profileId);
+      await settings.set(_cursorKey, '${at(10).millisecondsSinceEpoch}');
+      dayEntries.entries = [
+        _entry('2026-06-10', FlowLevel.medium, at(10)),
+      ];
+      await ledger.record([
+        HealthExportLedgerEntry(
+          recordId: 'entry-2026-06-10',
+          profileId: _profileId,
+          sourceRowId: 'entry-2026-06-10',
+          kind: HealthExportLedgerKind.entry,
+          localDate: '2026-06-10',
+          exportedAt: at(11),
+        ),
+      ]);
+      platform.permission = HealthPermissionStatus.denied;
+      clock = at(20);
+      final service = buildService();
+
+      final off = await service.syncNow();
+      expect(off.blocked, isA<HealthPlatformPermissionDenied>());
+      expect(ledger.rows.single.exportedAt, at(10),
+          reason: 're-stamped with the row\'s own time');
+      final state = HealthWritePassState.decode(
+        await settings.get(SettingsKeys.healthSyncWriteState),
+      )!;
+      expect(state.clearedThrough, at(10));
+      expect(state.typeFloors['menstrualFlow'], at(20));
+
+      // She logs a day with write access still removed.
+      dayEntries.entries = [
+        ...dayEntries.entries,
+        _entry('2026-06-25', FlowLevel.light, at(30)),
+      ];
+      clock = at(31);
+      await service.syncNow();
+
+      // Write access comes back.
+      platform.permission = HealthPermissionStatus.granted;
+      clock = at(32);
+      final back = await service.syncNow();
+      expect(back.blocked, isNull);
+      expect(back.samplesWritten, 0);
+      expect(platform.flowWrites, isEmpty,
+          reason: 'neither the day that build wrote nor the one logged '
+              'with write access removed');
+
+      dayEntries.entries = [
+        ...dayEntries.entries,
+        _entry('2026-07-20', FlowLevel.medium, at(40)),
+      ];
+      clock = at(41);
+      final later = await service.syncNow();
+      expect(later.samplesWritten, 1);
+      expect(platform.flowWrites.single.recordId, 'entry-2026-07-20');
     });
 
     // The same install: every day of the period is at or below its floor,

@@ -554,7 +554,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     // the blocked result is the typed `permissionDenied`, nothing more.
     final permission = await _platform.permissionStatus();
     if (permission == HealthPermissionStatus.denied) {
-      await _noteEveryTypeOff();
+      await _noteEveryTypeOff(bound.profile.id);
       return const HealthFlowSyncReport(
         bound: true,
         blocked: HealthPlatformResult.permissionDenied(),
@@ -662,15 +662,28 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// `denied` is something the store said: a status that could not be
   /// read comes back as `unavailable`, never as this.
   ///
-  /// Nothing is stored when nothing is stored yet. This binding has then
-  /// not run a pass on this build, and a state left here would stop its
-  /// first real pass from reading an earlier build's ledger as one
-  /// ([_adoptEarlierLedger]).
-  Future<void> _noteEveryTypeOff() async {
+  /// With nothing stored, this binding has not run a pass on this build,
+  /// and that is every binding on the day it updates. Its ledger is read
+  /// as an earlier build's here and now ([_adoptEarlierLedger], which
+  /// touches the ledger and nothing in the store): a state stored
+  /// without that would tell the first real pass the ledger was already
+  /// in this build's form. With no floor either, write access was never
+  /// granted, and nothing is stored: the grant stamps a floor that covers
+  /// everything logged before it.
+  Future<void> _noteEveryTypeOff(String profileId) async {
     final stored = await _settings.get(SettingsKeys.healthSyncWriteState);
-    final earlier = HealthWritePassState.decode(stored);
-    if (earlier == null) return;
-    _state = earlier.withTypesOff(
+    var state = HealthWritePassState.decode(stored);
+    if (state == null) {
+      final floor = await _readCursor();
+      if (floor == null) return;
+      await _adoptEarlierLedger(
+        floor,
+        await _dayEntries.listForProfile(profileId),
+        await _observations.listForProfile(profileId),
+      );
+      state = HealthWritePassState(clearedThrough: floor);
+    }
+    _state = state.withTypesOff(
       healthWriteTypesOff(const <String>{}),
       _rowClock(),
     );
