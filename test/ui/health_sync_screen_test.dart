@@ -1764,6 +1764,22 @@ void main() {
         expect(linesIn(tester, offer).first, offerTwo);
       });
 
+      // She had turned reading off, and declined the sheet the tap
+      // raised. The import's line for that is "no data, or reading is
+      // off", which would sit oddly over an offer about deleted records.
+      testWidgets('a removal that was not allowed to read says so, not '
+          'that the store has no data', (tester) async {
+        final importer = importerWith(waiting: 2)
+          ..removalSummary = const HealthImportSummary(
+            blocked: HealthPlatformPermissionDenied(),
+          );
+        await pumpBound(tester, importer);
+
+        await removeAndConfirm(tester);
+
+        expect(linesIn(tester, result), [nothingRemoved, readFailed]);
+      });
+
       // The read of everything found nothing in the store, so the
       // removal is all the pass did.
       testWidgets('a removal that read nothing still says what it removed',

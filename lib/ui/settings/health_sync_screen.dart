@@ -975,15 +975,21 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   }
 
   /// Why a pass was stopped. A removal is stopped by the same things an
-  /// import is and says the same of them, with one exception: the
-  /// import's line for a read that failed is about the import (Issue
-  /// #1594).
+  /// import is and says the same of them, with two exceptions (Issue
+  /// #1594). The import's line for a read that failed is about the
+  /// import. And its line for a read that was not allowed is the
+  /// neutral "no data, or reading is off", which under an offer that
+  /// says records were deleted reads as if nothing had been tracked.
   String _blockedPassCopy(AppLocalizations l10n, HealthPlatformResult blocked) =>
-      _lastPassRemoved && blocked is HealthPlatformFailed
+      _lastPassRemoved && _readDidNotHappen(blocked)
           ? l10n.healthSyncStoreDeletedReadFailed(
               _sourceName(l10n, _importPlatform),
             )
           : _blockedImportCopy(l10n, blocked);
+
+  static bool _readDidNotHappen(HealthPlatformResult blocked) =>
+      blocked is HealthPlatformFailed ||
+      blocked is HealthPlatformPermissionDenied;
 
   /// The copy for a pass that ended before reading — a guard refusal or a
   /// platform outcome. A [HealthPlatformPermissionDenied] deliberately
