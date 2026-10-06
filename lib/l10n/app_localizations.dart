@@ -8524,6 +8524,12 @@ abstract class AppLocalizations {
   /// **'this profile'**
   String get healthSyncUnboundProfileName;
 
+  /// Issue #1599: the result of tapping Import when the profile Health sync was tied to has gone since the screen was opened (deleted on another device, or the phone's data was wiped). Nothing was read from the health store, so none of the 'nothing to import' lines applies: those describe the store. 'Above' is the list of profiles at the top of the same screen. {source} is the health store's name.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was imported. No profile is syncing with {source} on this phone any more. Choose a profile above to sync it.'**
+  String healthSyncImportNoProfile(String source);
+
   /// Issue #1004 (tranche 5): import blocked by the binding guard.
   ///
   /// In en, this message translates to:
