@@ -616,9 +616,12 @@ class HealthConnectAdapter(context: Context) {
             }
 
             "grantedWriteTypes" -> {
+                // Issue #1555: returns the wire identifiers of authorized write types.
+                // Issue #1584: report errors rather than degrading to an empty list,
+                // so the caller fails the pass and preserves the cursor.
                 val client = healthConnectClient()
                 if (client == null) {
-                    result.success(emptyList<String>())
+                    result.error("unavailable", "Health Connect unavailable", null)
                     return
                 }
                 CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
@@ -642,7 +645,7 @@ class HealthConnectAdapter(context: Context) {
                         }
                         result.success(types)
                     } catch (e: Exception) {
-                        result.success(emptyList<String>())
+                        result.error("failed", e.message, null)
                     }
                 }
             }

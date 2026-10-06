@@ -95,6 +95,9 @@ library;
 // same declared pattern `prediction_projection_publisher.dart` uses.
 // ignore_for_file: prefer_initializing_formals
 
+import 'package:flutter/services.dart'
+    show MissingPluginException, PlatformException;
+
 import 'package:lunarlog/domain/episodes/episodes.dart';
 import 'package:lunarlog/domain/health/day_boundary.dart';
 import 'package:lunarlog/domain/health/health_export_ledger.dart';
@@ -583,7 +586,20 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       );
     }
 
-    final grantedTypes = await _resolveGrantedTypes(grant.status);
+    // Issue #1584: a failed query for which types are on says nothing
+    // about them, so the pass ends here. Since Issue #1581 that matters
+    // twice over: read as "none are on", it would also move every
+    // type's floor to the present, and what was logged before it would
+    // never be sent.
+    final resolved = await _resolveGrantedTypes(grant.status);
+    if (resolved.blocked != null) {
+      return HealthFlowSyncReport(
+        bound: true,
+        authorizationRequested: grant.grantedNow,
+        blocked: resolved.blocked,
+      );
+    }
+    final grantedTypes = resolved.types;
     final floor = grant.cursor!;
     final opened = await _openState(floor, grantedTypes);
 
@@ -820,14 +836,30 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     return (blocked: blocked, status: status);
   }
 
+  static HealthPlatformResult _grantedTypesErrorToResult(Object error) {
+    if (error is PlatformException && error.code == 'unavailable') {
+      return const HealthPlatformResult.unavailable();
+    }
+    if (error is MissingPluginException) {
+      return const HealthPlatformResult.unavailable();
+    }
+    return HealthPlatformResult.failed('grantedWriteTypes failed: $error');
+  }
+
   /// When permission is [HealthPermissionStatus.writingSome], queries the
   /// specific write types granted by the OS.
-  Future<Set<String>?> _resolveGrantedTypes(
-    HealthPermissionStatus status,
-  ) async =>
-      status == HealthPermissionStatus.writingSome
-          ? await _platform.grantedWriteTypes()
-          : null;
+  Future<({Set<String>? types, HealthPlatformResult? blocked})>
+      _resolveGrantedTypes(HealthPermissionStatus status) async {
+    if (status != HealthPermissionStatus.writingSome) {
+      return (types: null, blocked: null);
+    }
+    try {
+      final types = await _platform.grantedWriteTypes();
+      return (types: types, blocked: null);
+    } catch (e) {
+      return (types: null, blocked: _grantedTypesErrorToResult(e));
+    }
+  }
 
   /// Stamps the forward-only floor with the present moment, by the clock
   /// rows are stamped with ([_rowClock]), and returns it.

@@ -879,19 +879,31 @@ void main() {
       expect(calls.single.method, 'grantedWriteTypes');
     });
 
-    test('grantedWriteTypes degrades on non-list or errors to empty set',
+    test('grantedWriteTypes throws on non-list or channel errors (issue #1584)',
         () async {
       nextResult = 'not-a-list';
-      expect(await makePlatform().grantedWriteTypes(), isEmpty);
+      expect(
+        () => makePlatform().grantedWriteTypes(),
+        throwsA(isA<PlatformException>()),
+      );
 
       nextResult = null;
-      expect(await makePlatform().grantedWriteTypes(), isEmpty);
+      expect(
+        () => makePlatform().grantedWriteTypes(),
+        throwsA(isA<PlatformException>()),
+      );
 
       nextError = PlatformException(code: 'anything');
-      expect(await makePlatform().grantedWriteTypes(), isEmpty);
+      expect(
+        () => makePlatform().grantedWriteTypes(),
+        throwsA(isA<PlatformException>()),
+      );
 
       nextError = MissingPluginException();
-      expect(await makePlatform().grantedWriteTypes(), isEmpty);
+      expect(
+        () => makePlatform().grantedWriteTypes(),
+        throwsA(isA<MissingPluginException>()),
+      );
     });
 
     test('the unsupported platform reports unavailable and opens nothing',
