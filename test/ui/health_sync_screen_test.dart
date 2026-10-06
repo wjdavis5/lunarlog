@@ -89,6 +89,20 @@ class FakeProfilesRepository implements ProfilesRepository {
 /// A repository whose `list()` always throws — exercises `_load()`'s
 /// `catchError` handling (review fix): the loading spinner must resolve
 /// instead of spinning forever.
+/// Counts how often the screen reads the profile list, which it does
+/// once for each time it loads.
+class CountingProfilesRepository extends FakeProfilesRepository {
+  CountingProfilesRepository(super.profiles);
+
+  int lists = 0;
+
+  @override
+  Future<List<Profile>> list() {
+    lists++;
+    return super.list();
+  }
+}
+
 class ThrowingProfilesRepository implements ProfilesRepository {
   @override
   Future<Profile> create({
@@ -2455,6 +2469,38 @@ void main() {
           expect(await importAndReadResult(tester), noProfileAppleHealth);
           expectNoLineAboutTheStore();
           expect(importTile, findsNothing);
+        });
+
+        // Loading again is for the pass that found nothing bound. Any
+        // other pass leaves the screen as it is.
+        testWidgets('the screen is loaded again after that pass, and not '
+            'after one that had a profile to import into', (tester) async {
+          for (final (summary, loads) in const [
+            (HealthImportSummary(bound: false), 2),
+            (HealthImportSummary(incremental: true, pagesRead: 1), 1),
+          ]) {
+            final repository = CountingProfilesRepository(profiles);
+            await pumpScreen(
+              tester,
+              binding: await boundBinding(),
+              importer: androidImporter(summary),
+              permissionProbe: _ScriptedProbe(
+                readAccessDisclosed: true,
+                write: HealthPermissionStatus.granted,
+                read: HealthPermissionStatus.granted,
+              ),
+              profilesRepository: repository,
+              writeEnabled: true,
+              storePlatform: HealthImportPlatform.healthConnect,
+              viewport: const Size(800, 2400),
+            );
+            expect(repository.lists, 1);
+
+            await importAndReadResult(tester);
+
+            expect(repository.lists, loads, reason: '${summary.bound}');
+            await tester.pumpWidget(const SizedBox.shrink());
+          }
         });
 
         // The stored id can also outlive its profile (deleted on another
