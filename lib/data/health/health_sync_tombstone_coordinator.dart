@@ -169,6 +169,9 @@ class HealthSyncTombstoneCoordinator {
     for (final row in rows) {
       switch (row.kind) {
         case HealthExportLedgerKind.entry:
+        // Issue #1555: a removal the store has not taken yet is still a
+        // record of that day, so deleting the day relays it too.
+        case HealthExportLedgerKind.removalOwed:
           _knownEntryRecordIds
               .putIfAbsent(row.sourceRowId, () => <String>{})
               .add(row.recordId);
@@ -276,6 +279,9 @@ class HealthSyncTombstoneCoordinator {
       // LLA-019: only ids the service did not report as blocked are
       // recorded done — a refusal (transient permission/provider failure)
       // must be retried by the next change, not silently swallowed.
+      // Issue #1555: "a type these records can be in is off" is such an
+      // answer too. Nothing is marked done and the ledger keeps the rows,
+      // so the removal is tried again once that type is back on.
       if (report.blocked == null) {
         // Issue #936: the persisted ledger rows go with the successfully
         // deleted store samples, so the table does not grow forever. This

@@ -30,6 +30,16 @@
 ///   cursor to the newest processed row's `updatedAt`; any failure leaves
 ///   it (and the whole batch) to be retried by the next pass rather than
 ///   half-skipping.
+/// * **A type that is off is skipped, never a reason to stop** (Issue
+///   #1555). Both stores let each write type be allowed or declined on its
+///   own, and the pass runs whenever at least one is on
+///   ([HealthPermissionStatus.allowsWriting]). A write that answers
+///   [HealthPlatformTypeOff] is not a failure and is not counted as written;
+///   nothing is remembered for it, and the cursor moves past its row, so a
+///   type switched on later is written from then on and earlier days are
+///   not backfilled: the rule the first grant follows. A removal that
+///   answers it is not a failure either, and is not forgotten: the ledger
+///   keeps the record and a later pass tries again.
 ///
 /// **The remember-side is persisted (Issue #936).** The record ids a prior
 /// export wrote are held in the device-local [HealthExportLedger], not only
@@ -308,6 +318,28 @@ class _Batch {
   /// left alone rather than taken away.
   final List<Episode> unresolvedPeriods = [];
 
+  /// The record ids whose write answered "this type is off" in this pass
+  /// (Issue #1555). Such a record was not written, so nothing new is
+  /// remembered for it.
+  final Set<String> typeOffWrites = {};
+
+  /// A no-sample day's own record id, once the store has answered that it
+  /// holds nothing under it (the [HealthFlowNoWrite] removal was allowed).
+  final Set<String> noSampleIds = {};
+
+  /// A no-sample day's own record id whose removal answered "this type is
+  /// off" (Issue #1555): the store still holds whatever it held.
+  final Set<String> typeOffRemovals = {};
+
+  /// Whether [recordId], which its day asserts now, is remembered as in
+  /// the store after this pass. [known] is whether an earlier pass's
+  /// record is already remembered: a write that was skipped because its
+  /// type is off leaves that as it was.
+  bool remembers(String recordId, {required bool known}) =>
+      !noSampleIds.contains(recordId) &&
+      !typeOffRemovals.contains(recordId) &&
+      (known || !typeOffWrites.contains(recordId));
+
   void add(LocalDate date, String tzName, DateTime updatedAt, String recordId,
       HealthFlowWritePlan plan, Episode? containing) {
     switch (plan) {
@@ -450,6 +482,13 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// sets above. See [_reconcilePeriodRecords].
   final Map<String, _ExportedPeriod> _exportedPeriods = {};
 
+  /// Records a day entry no longer has, which the store would not let go
+  /// because their type was off (Issue #1555), by day-entry id. Persisted
+  /// as [HealthExportLedgerKind.removalOwed] rows. The entry's own diff
+  /// retries them whenever the entry is written again, and
+  /// [_retryOwedRemovals] on every other pass.
+  final Map<String, Set<String>> _owedRemovals = {};
+
   /// Runs one sync pass for the currently bound profile. Never throws —
   /// every expected failure mode is a [HealthFlowSyncReport.blocked];
   /// unexpected storage errors propagate (the coordinator's job to
@@ -495,6 +534,10 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     // exactly the first-pass grant moment the stage below performs. No
     // exception text and no health content enters the report or the logs —
     // the blocked result is the typed `permissionDenied`, nothing more.
+    //
+    // Issue #1555: `partial` does not block either. `denied` means no write
+    // type is on. With some on, the pass goes ahead and each write answers
+    // for its own type.
     final permission = await _platform.permissionStatus();
     if (permission == HealthPermissionStatus.denied) {
       return const HealthFlowSyncReport(
@@ -516,7 +559,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
 
     final grant = await _ensureForwardOnlyCursor(
       bound.facts,
-      alreadyGranted: permission == HealthPermissionStatus.granted,
+      alreadyGranted: permission.allowsWriting,
     );
     if (grant.blocked != null) {
       // A refused/denied authorization — or `unavailable` (consent was
@@ -574,23 +617,25 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// would churn; any other outcome leaves the cursor unset so the next
   /// pass retries. A non-null [GrantOutcome.blocked] always ends the pass.
   ///
-  /// [alreadyGranted] is this pass's own #959 probe answering
-  /// [HealthPermissionStatus.granted] (Issue #1478): every write is already
-  /// allowed, so the stage stamps the cursor and asks nothing. The request
-  /// is for the not-yet-asked state only. On Android it carries the read
-  /// permissions too, so asking while the writes were already granted
-  /// could raise Health Connect's sheet again — in the middle of logging a
-  /// day — for a read permission the person had just declined.
+  /// [alreadyGranted] is this pass's own #959 probe answering that writing
+  /// is allowed (Issue #1478): [HealthPermissionStatus.granted], or since
+  /// Issue #1555 [HealthPermissionStatus.partial], where some write types
+  /// are on. The person has answered, so the stage stamps the cursor and
+  /// asks nothing. The request is for the not-yet-asked state only. On
+  /// Android it carries the read permissions too, so asking while the
+  /// writes were already granted could raise Health Connect's sheet again —
+  /// in the middle of logging a day — for a read permission the person had
+  /// just declined.
   ///
   /// **An allowed request is not a grant** (Issue #1478's review). Neither
   /// native half reports the person's choice: iOS answers allowed when its
   /// sheet completes, whatever was chosen, and Android answers allowed when
   /// *any* permission was granted — the reads alone, for instance. So the
   /// status is read again after the request and the cursor is stamped only
-  /// when it says granted. Stamping on "allowed" gave someone who allowed
-  /// only the reads a cursor dated at the sheet: when they turned the
-  /// writes on weeks later, every day logged since was written at once,
-  /// days logged while write access was refused.
+  /// when it says writing is allowed. Stamping on "allowed" gave someone
+  /// who allowed only the reads a cursor dated at the sheet: when they
+  /// turned the writes on weeks later, every day logged since was written
+  /// at once, days logged while write access was refused.
   Future<({DateTime? cursor, HealthPlatformResult? blocked, bool grantedNow})>
       _ensureForwardOnlyCursor(
     HealthGuardFacts facts, {
@@ -611,13 +656,16 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     return (cursor: null, blocked: blocked, grantedNow: true);
   }
 
-  /// After an allowed authorization request: null when the write permission
-  /// is now granted, otherwise the result the pass ends with (see
+  /// After an allowed authorization request: null when writing is now
+  /// allowed (every write type, or since Issue #1555 only some of them),
+  /// otherwise the result the pass ends with (see
   /// [_ensureForwardOnlyCursor]). A permission surface that cannot answer
   /// is reported as that, not as a denial.
   Future<HealthPlatformResult?> _writesStillNotGranted() async =>
       switch (await _platform.permissionStatus()) {
-        HealthPermissionStatus.granted => null,
+        HealthPermissionStatus.granted ||
+        HealthPermissionStatus.partial =>
+          null,
         HealthPermissionStatus.unavailable =>
           const HealthPlatformResult.unavailable(),
         HealthPermissionStatus.notAsked ||
@@ -776,11 +824,19 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       isBleed(entry.flow) &&
       !_isHealthStoreImport(entry.source);
 
-  /// Whether the store holds, or is about to be sent, a record for [day]:
-  /// the export ledger remembers one from an earlier pass, or the row is
-  /// newer than the forward-only [cursor] and so is written by this one.
+  /// Whether the store holds, or is about to be sent, a flow record for
+  /// [day]: the export ledger remembers one from an earlier pass, or the
+  /// row is newer than the forward-only [cursor] and so is written by this
+  /// one.
+  ///
+  /// It is the day's own flow record that counts, not any record of the
+  /// day (Issue #1555). With the flow type off and another type on, a
+  /// bleed day can have a cervical-mucus record in the store and no flow
+  /// record; switching the flow type on later must not then write a period
+  /// for days whose flow was never written.
   bool _isOrWillBeExported(DayEntry day, DateTime cursor) =>
-      _exportedEntryRecordIds.containsKey(day.id) ||
+      (_exportedEntryRecordIds[day.id]?.contains(healthFlowRecordId(day.id)) ??
+          false) ||
       day.updatedAt.isAfter(cursor);
 
   /// [episode]'s hand-logged bleed days, first to last.
@@ -978,19 +1034,18 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// Keeps writing after a failure (one bad day must not hide the others),
   /// remembering the first failure and leaving the cursor — the next pass
   /// retries the batch rather than half-skipping (see the class doc's
-  /// forward-only note).
+  /// forward-only note). A type that is off is not a failure (Issue
+  /// #1555): each stage files that answer with the [batch] and goes on.
   Future<_BatchOutcome> _writeBatch(
     _Batch batch,
     HealthGuardFacts facts,
     String profileId,
   ) async {
-    final flow = await _writeFlowRecords(batch.pending, facts);
-    final symptoms = await _writeSymptomRecords(batch.pendingSymptoms, facts);
-    final cervical =
-        await _writeCervicalMucusRecords(batch.pendingCervicalMucus, facts);
-    final ovulation =
-        await _writeOvulationTestRecords(batch.pendingOvulation, facts);
-    final bbt = await _writeBbtRecords(batch.pendingBbt, facts);
+    final flow = await _writeFlowRecords(batch, facts);
+    final symptoms = await _writeSymptomRecords(batch, facts);
+    final cervical = await _writeCervicalMucusRecords(batch, facts);
+    final ovulation = await _writeOvulationTestRecords(batch, facts);
+    final bbt = await _writeBbtRecords(batch, facts);
     // Issue #930: after this pass's writes, reconcile away any sample a
     // PRIOR export wrote for the day/observation that no longer asserts it.
     // Runs after the writes so the remembered sets move "now" -> "after the
@@ -1041,10 +1096,15 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     _exportedEntryRecordIds.clear();
     _exportedBbtRecordIds.clear();
     _exportedPeriods.clear();
+    _owedRemovals.clear();
     for (final row in rows) {
       switch (row.kind) {
         case HealthExportLedgerKind.entry:
           _exportedEntryRecordIds
+              .putIfAbsent(row.sourceRowId, () => <String>{})
+              .add(row.recordId);
+        case HealthExportLedgerKind.removalOwed:
+          _owedRemovals
               .putIfAbsent(row.sourceRowId, () => <String>{})
               .add(row.recordId);
         case HealthExportLedgerKind.bbt:
@@ -1076,8 +1136,12 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// rewrites the same id) is left alone. Deleting is a health-API touch,
   /// so it goes through the same `_authorityDrift` recheck and guarded
   /// [HealthPlatformStore.deleteRecords] as every write — no new bypass.
-  /// Returns the first removal failure, or null when every removal was
-  /// allowed.
+  /// Returns the first removal failure, or null when no removal failed.
+  ///
+  /// A removal answered "this type is off" is not a failure (Issue #1555):
+  /// the record is kept in the ledger and tried again on a later pass. And
+  /// a record whose write got that answer is not remembered here, since it
+  /// was not written.
   Future<HealthPlatformResult?> _reconcileRemovedRecords(
     _Batch batch,
     HealthGuardFacts facts,
@@ -1085,11 +1149,13 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   ) async {
     final entryFailure =
         await _reconcileEntryRemovals(batch, facts, profileId);
+    final owedFailure = await _retryOwedRemovals(batch, facts);
     final bbtFailure = await _reconcileBbtRemovals(batch, facts);
     // Only once the BBT diff is computed: every BBT id this pass exported is
     // remembered so a LATER clear can address it.
     final bbtExports = <HealthExportLedgerEntry>[];
     for (final item in batch.pendingBbt) {
+      if (batch.typeOffWrites.contains(item.recordId)) continue;
       _exportedBbtRecordIds.add(item.recordId);
       bbtExports.add(HealthExportLedgerEntry(
         recordId: item.recordId,
@@ -1105,6 +1171,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     // observation memory from the ledger).
     final spottingExports = <HealthExportLedgerEntry>[];
     for (final export in batch.spottingExports.entries) {
+      if (batch.typeOffWrites.contains(export.value.recordId)) continue;
       spottingExports.add(HealthExportLedgerEntry(
         recordId: export.value.recordId,
         profileId: profileId,
@@ -1115,17 +1182,19 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       ));
     }
     await _ledger.record([...bbtExports, ...spottingExports]);
-    return entryFailure ?? bbtFailure;
+    return entryFailure ?? owedFailure ?? bbtFailure;
   }
 
   /// The day-entry half of [_reconcileRemovedRecords]: for every eligible
   /// entry, delete the ids it produced on a previous export but no longer
-  /// produces, then remember the current set. A delete failure leaves the
-  /// old set in place so the removal is retried on the next pass (LLA-019's
-  /// discipline), rather than being silently acknowledged. The persisted
-  /// ledger moves in lockstep: removed ids are dropped on a successful
-  /// delete, and the current set is written so the next session's diff sees
-  /// it.
+  /// produces, then remember what the store holds for it now
+  /// ([_rememberEntry]). A delete failure leaves the old set in place so
+  /// the removal is retried on the next pass (LLA-019's discipline), rather
+  /// than being silently acknowledged.
+  ///
+  /// "Previously produced" includes the removals this entry still owes
+  /// ([_owedRemovals], Issue #1555), so a pass that writes the entry again
+  /// retries them in the same delete.
   Future<HealthPlatformResult?> _reconcileEntryRemovals(
     _Batch batch,
     HealthGuardFacts facts,
@@ -1133,58 +1202,158 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   ) async {
     HealthPlatformResult? failure;
     for (final entry in batch.entryRecordIds.entries) {
-      final current = entry.value;
-      final previous = _exportedEntryRecordIds[entry.key] ?? const <String>{};
-      final removed = previous.difference(current);
-      if (removed.isNotEmpty) {
-        final drift = await _authorityDrift(facts);
-        if (drift != null) {
-          failure ??= drift;
-          continue;
-        }
-        final result = await _platform.deleteRecords(facts, removed.toList());
-        if (result is! HealthPlatformAllowed) {
-          failure ??= result;
-          continue;
-        }
-        await _ledger.removeRecordIds(removed.toList());
+      final previous = <String>{
+        ...?_exportedEntryRecordIds[entry.key],
+        ...?_owedRemovals[entry.key],
+      };
+      final removed = previous.difference(entry.value);
+      final answer = await _deleteRemoved(removed, facts);
+      final refused = _removalFailure(answer);
+      if (refused != null) {
+        failure ??= refused;
+        continue;
       }
-      _exportedEntryRecordIds[entry.key] = current;
-      await _ledger.record([
-        for (final recordId in current)
-          HealthExportLedgerEntry(
-            recordId: recordId,
-            profileId: profileId,
-            sourceRowId: entry.key,
-            kind: HealthExportLedgerKind.entry,
-            localDate: batch.entryLocalDates[entry.key] ?? '',
-            exportedAt: _now(),
-          ),
-      ]);
+      await _rememberEntry(
+        batch,
+        profileId,
+        entry.key,
+        previous: previous,
+        // The store kept every id of a delete that could not cover a type.
+        notRemoved: answer is HealthPlatformTypeOff ? removed : const {},
+      );
     }
     return failure;
+  }
+
+  /// Removes [removed] from the store, behind the same mid-pass authority
+  /// recheck as every write. Nothing to remove is allowed without a call.
+  Future<HealthPlatformResult> _deleteRemoved(
+    Set<String> removed,
+    HealthGuardFacts facts,
+  ) async {
+    if (removed.isEmpty) return const HealthPlatformResult.allowed();
+    return await _authorityDrift(facts) ??
+        await _platform.deleteRecords(facts, removed.toList());
+  }
+
+  /// What a removal's [answer] means for the pass: null unless it failed.
+  /// "This type is off" is not a failure (Issue #1555). The caller keeps
+  /// the record remembered instead, so a later pass tries again.
+  static HealthPlatformResult? _removalFailure(HealthPlatformResult answer) =>
+      answer is HealthPlatformAllowed || answer is HealthPlatformTypeOff
+          ? null
+          : answer;
+
+  /// Records what the store holds for the day entry [entryId] after this
+  /// pass, in memory and in the persisted ledger, so the next session's
+  /// diff sees it. Three sets come out of what was [previous]ly known and
+  /// what the day asserts now:
+  ///
+  /// * **kept** — what the day asserts and the store holds
+  ///   ([_Batch.remembers]): a record that was not written, because its
+  ///   type is off, is not remembered (Issue #1555);
+  /// * **owed** — what the day no longer has and the store would not let
+  ///   go: [notRemoved], and the day's own record when its removal answered
+  ///   "this type is off". Kept as [HealthExportLedgerKind.removalOwed]
+  ///   rows until a later pass removes them;
+  /// * everything else that was known is gone from the store, and is
+  ///   forgotten.
+  Future<void> _rememberEntry(
+    _Batch batch,
+    String profileId,
+    String entryId, {
+    required Set<String> previous,
+    required Set<String> notRemoved,
+  }) async {
+    final owed = {
+      ...notRemoved,
+      ...previous.intersection(batch.typeOffRemovals),
+    };
+    final kept = {
+      for (final recordId in batch.entryRecordIds[entryId]!)
+        if (batch.remembers(recordId, known: previous.contains(recordId)))
+          recordId,
+    };
+    _exportedEntryRecordIds[entryId] = kept;
+    _owedRemovals[entryId] = owed;
+    if (owed.isEmpty) _owedRemovals.remove(entryId);
+    final forgotten = previous.difference(kept).difference(owed);
+    if (forgotten.isNotEmpty) await _ledger.removeRecordIds(forgotten.toList());
+    final localDate = batch.entryLocalDates[entryId] ?? '';
+    await _ledger.record([
+      for (final recordId in kept)
+        _entryRow(profileId, entryId, recordId, localDate),
+      for (final recordId in owed)
+        _entryRow(profileId, entryId, recordId, localDate, owed: true),
+    ]);
+  }
+
+  /// One ledger row for a record derived from the day entry [entryId]:
+  /// one the store holds, or with [owed] one whose removal is still owed.
+  HealthExportLedgerEntry _entryRow(
+    String profileId,
+    String entryId,
+    String recordId,
+    String localDate, {
+    bool owed = false,
+  }) =>
+      HealthExportLedgerEntry(
+        recordId: recordId,
+        profileId: profileId,
+        sourceRowId: entryId,
+        kind: owed
+            ? HealthExportLedgerKind.removalOwed
+            : HealthExportLedgerKind.entry,
+        localDate: localDate,
+        exportedAt: _now(),
+      );
+
+  /// Tries again to remove what earlier passes could not, for every day
+  /// entry this pass did not write (Issue #1555). [_reconcileEntryRemovals]
+  /// covers the ones it did. Without this an owed removal waited for its
+  /// day to be edited again, which may never happen: the forward-only
+  /// cursor has moved past the row.
+  ///
+  /// One delete call for all of them, so a pass costs one call however
+  /// many are owed. The store removes every record whose type is on, and
+  /// answers "this type is off" while any of their types still is; they
+  /// all stay owed until it answers allowed. Returns the failure, or null.
+  Future<HealthPlatformResult?> _retryOwedRemovals(
+    _Batch batch,
+    HealthGuardFacts facts,
+  ) async {
+    final entryIds = [
+      for (final entryId in _owedRemovals.keys)
+        if (!batch.entryRecordIds.containsKey(entryId)) entryId,
+    ];
+    final owed = {for (final entryId in entryIds) ..._owedRemovals[entryId]!};
+    final answer = await _deleteRemoved(owed, facts);
+    if (answer is! HealthPlatformAllowed) return _removalFailure(answer);
+    for (final entryId in entryIds) {
+      _owedRemovals.remove(entryId);
+    }
+    if (owed.isNotEmpty) await _ledger.removeRecordIds(owed.toList());
+    return null;
   }
 
   /// The BBT half of [_reconcileRemovedRecords]: a remembered BBT record
   /// whose observation is no longer live-and-resolved (the operator cleared
   /// the reading, leaving the day itself in place) is deleted. The memory is
   /// only cleared on success, so a refusal retries; the persisted ledger
-  /// row is dropped only alongside the same successful delete.
+  /// row is dropped only alongside the same successful delete. A delete
+  /// answered "this type is off" (Issue #1555) is not a failure, and
+  /// nothing is cleared: every live BBT row is compared on every pass, so
+  /// the next pass tries again.
   Future<HealthPlatformResult?> _reconcileBbtRemovals(
     _Batch batch,
     HealthGuardFacts facts,
   ) async {
     final removed = _exportedBbtRecordIds.difference(batch.liveBbtRecordIds);
-    if (removed.isEmpty) return null;
-    final drift = await _authorityDrift(facts);
-    if (drift != null) return drift;
-    final result = await _platform.deleteRecords(facts, removed.toList());
-    if (result is HealthPlatformAllowed) {
-      _exportedBbtRecordIds.removeAll(removed);
-      await _ledger.removeRecordIds(removed.toList());
-      return null;
-    }
-    return result;
+    final answer = await _deleteRemoved(removed, facts);
+    if (answer is! HealthPlatformAllowed) return _removalFailure(answer);
+    _exportedBbtRecordIds.removeAll(removed);
+    if (removed.isNotEmpty) await _ledger.removeRecordIds(removed.toList());
+    return null;
   }
 
   /// Re-validates ownership/profile authority against the CURRENT stored
@@ -1235,6 +1404,11 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// id with no matching store sample is a documented no-op delete, so
   /// this is issued unconditionally rather than only when a prior write is
   /// known to have happened — see [_resolveNoWriteOutcome].
+  ///
+  /// Issue #1555: a write or a removal answered "this type is off" is
+  /// neither written, reconciled nor a failure. [_fileFlowAnswer] notes it
+  /// with the batch and the row still counts towards [newest], so the
+  /// cursor moves past it.
   Future<
       ({
         int written,
@@ -1242,28 +1416,25 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         HealthPlatformResult? failure,
         DateTime? newest,
       })> _writeFlowRecords(
-    List<_PendingWrite> pending,
+    _Batch batch,
     HealthGuardFacts facts,
   ) async {
     var written = 0;
     var reconciled = 0;
     HealthPlatformResult? failure;
     DateTime? newest;
-    for (final write in pending) {
+    for (final write in batch.pending) {
       final drift = await _authorityDrift(facts);
       if (drift != null) {
         failure ??= drift;
         break;
       }
-      final current = newest;
-      if (current == null || write.updatedAt.isAfter(current)) {
-        newest = write.updatedAt;
-      }
+      newest = _latest(newest, write.updatedAt);
       final result = await _resolveNoWriteOutcome(write, facts) ??
           await _sendSample(write, facts);
-      if (result is! HealthPlatformAllowed) {
-        failure ??= result;
-      } else if (write.plan is HealthFlowNoWrite) {
+      failure ??= _fileFlowAnswer(batch, write, result);
+      if (result is! HealthPlatformAllowed) continue;
+      if (write.plan is HealthFlowNoWrite) {
         reconciled++;
       } else {
         written++;
@@ -1275,6 +1446,30 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       failure: failure,
       newest: newest,
     );
+  }
+
+  /// Notes with the [batch] what the store answered for [write], which
+  /// [_rememberEntry] and the spotting ledger rows are later decided from,
+  /// and returns the answer when it is a failure.
+  ///
+  /// A type that is off is not one (Issue #1555). A sample that was not
+  /// written joins [_Batch.typeOffWrites]. A no-sample day's removal joins
+  /// [_Batch.typeOffRemovals] when it could not happen, and
+  /// [_Batch.noSampleIds] once the store has confirmed it holds nothing.
+  static HealthPlatformResult? _fileFlowAnswer(
+    _Batch batch,
+    _PendingWrite write,
+    HealthPlatformResult result,
+  ) {
+    final removal = write.plan is HealthFlowNoWrite;
+    if (result is HealthPlatformTypeOff) {
+      (removal ? batch.typeOffRemovals : batch.typeOffWrites)
+          .add(write.recordId);
+      return null;
+    }
+    if (result is! HealthPlatformAllowed) return result;
+    if (removal) batch.noSampleIds.add(write.recordId);
+    return null;
   }
 
   /// [write]'s reconciliation delete when its plan is [HealthFlowNoWrite],
@@ -1326,6 +1521,28 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     }
   }
 
+  /// Notes with the [batch] what the store answered for the write of
+  /// [recordIds], and returns the answer when it is a failure.
+  ///
+  /// Two answers leave a record out without anything having gone wrong
+  /// ([_isSkip]). When the type is off (Issue #1555) the ids also join
+  /// [_Batch.typeOffWrites]: the records were not written, so nothing is
+  /// remembered for them.
+  static HealthPlatformResult? _fileWriteAnswer(
+    _Batch batch,
+    Iterable<String> recordIds,
+    HealthPlatformResult result,
+  ) {
+    if (result is HealthPlatformTypeOff) batch.typeOffWrites.addAll(recordIds);
+    return result is HealthPlatformAllowed || _isSkip(result) ? null : result;
+  }
+
+  /// Whether [result] says a record was left out and nothing went wrong:
+  /// this platform has no such type ([HealthPlatformUnavailable]), or the
+  /// type's write permission is off ([HealthPlatformTypeOff], Issue #1555).
+  static bool _isSkip(HealthPlatformResult result) =>
+      result is HealthPlatformUnavailable || result is HealthPlatformTypeOff;
+
   /// The later of [a] and [b], or the non-null one when only one is set.
   static DateTime? _latest(DateTime? a, DateTime? b) {
     if (a == null) return b;
@@ -1375,9 +1592,11 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// changed. Health Connect keeps whichever copy of a record carries the
   /// higher version, so every write takes [_nextPeriodVersion]. A platform
   /// that answers `unavailable` has no such record type: that is not a
-  /// failure, and there is no point asking again in this pass. Stops at the
-  /// first failure, and before any store call on a mid-pass loss of
-  /// authority ([_authorityDrift]; Issue #620, LLA-023).
+  /// failure, and there is no point asking again in this pass. The same
+  /// goes for "this type is off" (Issue #1555): the period record needs the
+  /// permission the flow record needs, nothing was written, and nothing is
+  /// remembered. Stops at the first failure, and before any store call on a
+  /// mid-pass loss of authority ([_authorityDrift]; Issue #620, LLA-023).
   Future<({int written, HealthPlatformResult? failure})>
       _writeDuePeriodRecords(
     _Batch batch,
@@ -1403,7 +1622,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
           recordVersionMs: versionMs,
         ),
       );
-      if (result is HealthPlatformUnavailable) break;
+      if (_isSkip(result)) break;
       if (result is! HealthPlatformAllowed) {
         return (written: written, failure: result);
       }
@@ -1423,7 +1642,10 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// forgets it once the store has let it go. A record overlapping an
   /// episode whose zone cannot be resolved is left alone
   /// ([_Batch.unresolvedPeriods]): nothing could be written in its place.
-  /// Returns the first failure, or null.
+  /// So is one whose removal answers "this type is off" (Issue #1555): it
+  /// stays remembered, and since every remembered record is looked at on
+  /// every pass, the next pass tries again. Returns the first failure, or
+  /// null.
   Future<HealthPlatformResult?> _removeStalePeriodRecords(
     _Batch batch,
     HealthGuardFacts facts,
@@ -1432,9 +1654,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       if (batch.desiredPeriods.containsKey(recordId)) continue;
       final interval = _exportedPeriods[recordId]!.interval;
       if (_overlapsAny(interval, batch.unresolvedPeriods)) continue;
-      final drift = await _authorityDrift(facts);
-      if (drift != null) return drift;
-      final deleted = await _platform.deleteRecords(facts, [recordId]);
+      final deleted = await _deleteRemoved({recordId}, facts);
+      if (deleted is HealthPlatformTypeOff) continue;
       if (deleted is! HealthPlatformAllowed) return deleted;
       _exportedPeriods.remove(recordId);
       await _ledger.removeRecordIds([recordId]);
@@ -1504,6 +1725,14 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// retry, matching [_writeFlowRecords]. Stops outright on the same
   /// mid-pass authority drift [_writeFlowRecords] guards against.
   ///
+  /// Issue #1555: one call carries every symptom type the day has, and the
+  /// iPhone half writes the ones whose type is on. It answers "this type
+  /// is off" only when it wrote none, and then none is remembered. When it
+  /// wrote some, it does not say which, so the whole day's samples are
+  /// counted and remembered. Removing such a sample from its day later
+  /// finds nothing in the store; while its type is still off the store
+  /// cannot say so, and the removal stays owed ([_retryOwedRemovals]).
+  ///
   /// **Not done in this PR:** a symptom removed from a day entry is not
   /// reconciled away in the health store (the native delete path still
   /// queries only the flow types); see the PR's `## Not done`.
@@ -1513,21 +1742,19 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         HealthPlatformResult? failure,
         DateTime? newest,
       })> _writeSymptomRecords(
-    List<_PendingSymptomWrite> pendingSymptoms,
+    _Batch batch,
     HealthGuardFacts facts,
   ) async {
     var written = 0;
     HealthPlatformResult? failure;
     DateTime? newest;
-    for (final symptom in pendingSymptoms) {
+    for (final symptom in batch.pendingSymptoms) {
       final drift = await _authorityDrift(facts);
       if (drift != null) {
         failure ??= drift;
         break;
       }
-      if (newest == null || symptom.updatedAt.isAfter(newest)) {
-        newest = symptom.updatedAt;
-      }
+      newest = _latest(newest, symptom.updatedAt);
       final result = await _platform.writeSymptomSamples(
         HealthSymptomSamplesWrite(
           facts: facts,
@@ -1536,13 +1763,12 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
           samples: symptom.samples,
         ),
       );
-      if (result is HealthPlatformAllowed) {
-        written += symptom.samples.length;
-      } else if (result is HealthPlatformUnavailable) {
-        continue;
-      } else {
-        failure ??= result;
-      }
+      if (result is HealthPlatformAllowed) written += symptom.samples.length;
+      failure ??= _fileWriteAnswer(
+        batch,
+        symptom.samples.map((sample) => sample.recordId),
+        result,
+      );
     }
     return (written: written, failure: failure, newest: newest);
   }
@@ -1558,13 +1784,13 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         HealthPlatformResult? failure,
         DateTime? newest,
       })> _writeCervicalMucusRecords(
-    List<_PendingCervicalMucusWrite> pending,
+    _Batch batch,
     HealthGuardFacts facts,
   ) async {
     var written = 0;
     HealthPlatformResult? failure;
     DateTime? newest;
-    for (final item in pending) {
+    for (final item in batch.pendingCervicalMucus) {
       final drift = await _authorityDrift(facts);
       if (drift != null) {
         failure ??= drift;
@@ -1584,13 +1810,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
           recordVersionMs: item.recordVersionMs,
         ),
       );
-      if (result is HealthPlatformAllowed) {
-        written++;
-      } else if (result is HealthPlatformUnavailable) {
-        continue;
-      } else {
-        failure ??= result;
-      }
+      if (result is HealthPlatformAllowed) written++;
+      failure ??= _fileWriteAnswer(batch, [item.recordId], result);
     }
     return (written: written, failure: failure, newest: newest);
   }
@@ -1604,13 +1825,13 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         HealthPlatformResult? failure,
         DateTime? newest,
       })> _writeOvulationTestRecords(
-    List<_PendingOvulationWrite> pending,
+    _Batch batch,
     HealthGuardFacts facts,
   ) async {
     var written = 0;
     HealthPlatformResult? failure;
     DateTime? newest;
-    for (final item in pending) {
+    for (final item in batch.pendingOvulation) {
       final drift = await _authorityDrift(facts);
       if (drift != null) {
         failure ??= drift;
@@ -1630,13 +1851,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
           recordVersionMs: item.recordVersionMs,
         ),
       );
-      if (result is HealthPlatformAllowed) {
-        written++;
-      } else if (result is HealthPlatformUnavailable) {
-        continue;
-      } else {
-        failure ??= result;
-      }
+      if (result is HealthPlatformAllowed) written++;
+      failure ??= _fileWriteAnswer(batch, [item.recordId], result);
     }
     return (written: written, failure: failure, newest: newest);
   }
@@ -1649,13 +1865,13 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         HealthPlatformResult? failure,
         DateTime? newest,
       })> _writeBbtRecords(
-    List<_PendingBbtWrite> pending,
+    _Batch batch,
     HealthGuardFacts facts,
   ) async {
     var written = 0;
     HealthPlatformResult? failure;
     DateTime? newest;
-    for (final item in pending) {
+    for (final item in batch.pendingBbt) {
       final drift = await _authorityDrift(facts);
       if (drift != null) {
         failure ??= drift;
@@ -1677,13 +1893,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
           observedAt: _bbtObservedAt(item),
         ),
       );
-      if (result is HealthPlatformAllowed) {
-        written++;
-      } else if (result is HealthPlatformUnavailable) {
-        continue;
-      } else {
-        failure ??= result;
-      }
+      if (result is HealthPlatformAllowed) written++;
+      failure ??= _fileWriteAnswer(batch, [item.recordId], result);
     }
     return (written: written, failure: failure, newest: newest);
   }
@@ -1735,6 +1946,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     _exportedEntryRecordIds.clear();
     _exportedBbtRecordIds.clear();
     _exportedPeriods.clear();
+    _owedRemovals.clear();
     _ledgerProfileId = null;
     // Issue #936: the persisted ledger belongs to one binding, exactly like
     // the cursor — a re-bind must never diff (and delete) against the old

@@ -21,8 +21,8 @@
 /// | `writeCervicalMucus` | guard + day + `healthKitValue` + `healthConnectAppearance` + `recordId` + `recordVersionMs` | result string |
 /// | `writeOvulationTest` | guard + day + `healthKitResult` + `healthConnectResult` + `recordId` + `recordVersionMs` | result string |
 /// | `writeBasalBodyTemperature` | guard + BBT instant args + `celsius` + `healthConnectMeasurementLocation` + `recordId` + `recordVersionMs` | result string |
-/// | `deleteRecords` | guard + `recordIds` | result string |
-/// | `permissionStatus` | none | one of `granted` / `notAsked` / `denied` / `unavailable` |
+/// | `deleteRecords` | guard + `recordIds` + `healthKitTypes?` + `healthConnectTypes?` | result string |
+/// | `permissionStatus` | none | one of `granted` / `partial` / `notAsked` / `denied` / `unavailable` |
 /// | `importPermissionStatus` (Android only) | none | one of `granted` / `notAsked` / `denied` / `unavailable` |
 /// | `importPastDataGranted` (Android only) | none | `bool` |
 /// | `openPermissionSettings` | none | `null` |
@@ -93,10 +93,21 @@
 /// (`noBinding`, `profileNotBound`, `minorRequiresOwnershipTransfer`,
 /// `notOwner`) — deliberately the enum names, so the native mirrors and
 /// this file cannot drift on vocabulary; and `unavailable` /
-/// `permissionDenied` for platform outcomes. OS-level write failures
-/// cross as `FlutterError(code: "writeFailed", ...)` (a
+/// `permissionDenied` / `typeOff` for platform outcomes. OS-level write
+/// failures cross as `FlutterError(code: "writeFailed", ...)` (a
 /// [PlatformException] on the Dart side) instead, carrying the
 /// diagnostic message.
+///
+/// *A type that is off* (Issue #1555): every write handler looks at its
+/// own type's write permission before it writes and answers `typeOff`
+/// instead of attempting the write. `writeSymptomSamples` carries several
+/// types in one call, so it writes the samples whose type is on and
+/// answers `typeOff` only when none is. `deleteRecords` removes what it
+/// can and answers `typeOff` when a type the call has to cover is off:
+/// the types named in `healthKitTypes` (HealthKit case names) or
+/// `healthConnectTypes` (Health Connect record class names), which
+/// [encodeDeleteArgs] derives from the record ids, or every written type
+/// when a call names none.
 ///
 /// **Permissions (Issues #992/#993/#1211):** `READ_HEALTH_DATA_HISTORY` IS
 /// declared and requested on Android as of #992, so the user-initiated
@@ -125,6 +136,8 @@ import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_policy.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+
+import 'health_record_ids.dart';
 
 /// Method names on the `lunarlog/health` channel.
 abstract final class HealthChannelMethods {
@@ -279,6 +292,8 @@ HealthPlatformResult decodeHealthResult(Object? raw) {
       return const HealthPlatformResult.unavailable();
     case 'permissionDenied':
       return const HealthPlatformResult.permissionDenied();
+    case 'typeOff':
+      return const HealthPlatformResult.typeOff();
     default:
       final check = _checkFromWire(raw);
       if (check != null && check != HealthSyncCheck.allowed) {
@@ -566,6 +581,23 @@ Map<String, Object?> encodeGuardArgs(
         'transferredToUserId': facts.profile.transferredToUserId,
         'minorBindingAllowed': minorBindingAllowed,
       };
+
+/// The `deleteRecords` payload (Issue #1555): the record ids, and the store
+/// types those ids can be in on each platform, read back from the ids
+/// themselves (`healthStoreTypesForRecordIds`). The native half removes
+/// what it can and answers `typeOff` only when one of the named types is
+/// off. An id that is not recognised leaves both lists out, and the native
+/// half then has to cover every type it writes.
+Map<String, Object?> encodeDeleteArgs(List<String> recordIds) {
+  final types = healthStoreTypesForRecordIds(recordIds);
+  return {
+    'recordIds': recordIds,
+    if (types != null) ...{
+      'healthKitTypes': types.healthKit.toList(),
+      'healthConnectTypes': types.healthConnect.toList(),
+    },
+  };
+}
 
 /// The day-args half: every instant/offset the two platforms may need
 /// for one civil day, as UTC epoch milliseconds and offset milliseconds

@@ -58,6 +58,14 @@ enum HealthExportLedgerKind {
   /// (`DriftHealthExportLedger`'s documented fail-safe), which is harmless:
   /// the source row id matches no day entry.
   period,
+
+  /// A record derived from a day entry that the day no longer has, and
+  /// that the store would not let go because the record's type had its
+  /// write permission off (Issue #1555). The row stays, so the removal is
+  /// tried again on every later pass until the store takes it.
+  /// [HealthExportLedgerEntry.sourceRowId] is the day entry's id, as for
+  /// [entry], and an older build reads it as [entry].
+  removalOwed,
 }
 
 /// One persisted health-store export.

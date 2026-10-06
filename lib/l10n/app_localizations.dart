@@ -1528,13 +1528,25 @@ abstract class AppLocalizations {
   /// **'{source} access: writing only, so lunarlog can write but can\'t import — open Settings to change'**
   String healthSyncPermissionWritingOnly(String source);
 
+  /// Health sync screen OS-permission status line (Issue #1555), both platforms: the health store lets lunarlog write some of the types it writes and not others (each type has a switch of its own: five on Health Connect, seventeen on Apple Health). The types that are on are written; the ones that are off are left out. Before #1555 this person was told 'denied' and nothing was written. Shown with the settings deep link. On Android this is shown only when reading is not known to be off; see healthSyncPermissionWritingSomeOnly. Same shape as healthSyncPermissionDenied: state, dash, what to do.
+  ///
+  /// In en, this message translates to:
+  /// **'{source} access: some types are off, so lunarlog can\'t write everything — open Settings to change'**
+  String healthSyncPermissionWritingSome(String source);
+
+  /// Health sync screen OS-permission status line (Issue #1555), Android only: healthSyncPermissionWritingSome with reading off as well. Health Connect lets lunarlog write some of its types and does not let it read Menstruation and Spotting, so the import reads nothing. healthSyncPermissionWritingOnly keeps its meaning: every write type is on. Shown with the settings deep link. Never shown on iPhone: Apple Health does not tell an app whether it may read.
+  ///
+  /// In en, this message translates to:
+  /// **'{source} access: writing some types only, so lunarlog can\'t import and can\'t write everything — open Settings to change'**
+  String healthSyncPermissionWritingSomeOnly(String source);
+
   /// Health sync screen OS-permission status line (Issue #959): there is no health store or permission surface on this device.
   ///
   /// In en, this message translates to:
   /// **'{source} access is not available on this device.'**
   String healthSyncPermissionUnavailable(String source);
 
-  /// The deep link offered under the health-sync status line whenever that line says to open Settings: the OS permission is denied (Issue #959), or on Android one direction is on and the other is off (Issue #1515).
+  /// The deep link offered under the health-sync status line whenever that line says to open Settings: the OS permission is denied (Issue #959), on Android one direction is on and the other is off (Issue #1515), or some of the types lunarlog writes are off (Issue #1555).
   ///
   /// In en, this message translates to:
   /// **'Open Settings'**

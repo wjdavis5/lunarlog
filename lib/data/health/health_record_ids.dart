@@ -19,6 +19,11 @@
 /// path had none at all, which is exactly how an edited-away symptom could
 /// be written once and never addressed again.
 ///
+/// [healthStoreTypesForRecordId] is the third (Issue #1555): the builders
+/// read backwards, from a record id to the store types the record can be
+/// in. A delete carries those, because removing a record needs its own
+/// type's write permission and each type can be switched off by itself.
+///
 /// Pure Dart (R14/R16) — no Flutter/drift imports.
 library;
 
@@ -27,6 +32,14 @@ import 'package:lunarlog/domain/models/local_date.dart';
 
 import 'health_fertility_mapping.dart';
 import 'health_symptom_mapping.dart';
+
+// What each builder below puts in front of the source row's id. Shared with
+// [healthStoreTypesForRecordId], which reads them back.
+const String _symptomPrefix = 'symptom-';
+const String _cervicalMucusPrefix = 'cervical-mucus-';
+const String _ovulationPrefix = 'ovulation-';
+const String _bbtPrefix = 'bbt-';
+const String _periodPrefix = 'period-';
 
 /// The record id of a day's menstrual-flow / intermenstrual-bleeding sample
 /// (and of the `HealthFlowNoWrite` reconciliation delete): the day entry's
@@ -41,24 +54,120 @@ String healthSpottingRecordId(String observationId) => observationId;
 /// The record id of one `(day entry, HealthKit symptom type)` pair
 /// (Issue #238).
 String healthSymptomRecordId(String dayEntryId, String typeIdentifier) =>
-    'symptom-$dayEntryId-$typeIdentifier';
+    '$_symptomPrefix$dayEntryId-$typeIdentifier';
 
 /// The record id of a day's cervical-mucus sample (Issue #228).
 String healthCervicalMucusRecordId(String dayEntryId) =>
-    'cervical-mucus-$dayEntryId';
+    '$_cervicalMucusPrefix$dayEntryId';
 
 /// The record id of one `(day entry, HealthKit ovulation-result)` pair
 /// (Issue #228).
 String healthOvulationRecordId(String dayEntryId, String healthKitResult) =>
-    'ovulation-$dayEntryId-$healthKitResult';
+    '$_ovulationPrefix$dayEntryId-$healthKitResult';
 
 /// The record id of a basal-body-temperature observation's sample
 /// (Issue #228).
-String healthBbtRecordId(String observationId) => 'bbt-$observationId';
+String healthBbtRecordId(String observationId) => '$_bbtPrefix$observationId';
 
 /// The record id of one period episode's interval record (Issue #202).
 String healthPeriodRecordId(String profileId, LocalDate start) =>
-    'period-$profileId-${start.iso}';
+    '$_periodPrefix$profileId-${start.iso}';
+
+/// The store types a record can be in, on each platform (Issue #1555).
+///
+/// Removing a record needs its type's write permission, and each type can
+/// be switched off on its own. A delete call names these types so the
+/// native half can tell "a type this call needs is off" from "some other
+/// type is off": someone who declines a type she never logs must still
+/// have her other removals acknowledged.
+class HealthRecordStoreTypes {
+  const HealthRecordStoreTypes({
+    required this.healthKit,
+    required this.healthConnect,
+  });
+
+  /// HealthKit case names, as in `kHealthKitWrittenTypeCaseNames`. Empty
+  /// for a record HealthKit has no type for (the period record).
+  final Set<String> healthKit;
+
+  /// Health Connect record class names, as in
+  /// `kHealthConnectWrittenRecordTypes`. Empty for a record Health Connect
+  /// has no type for (every symptom).
+  final Set<String> healthConnect;
+}
+
+/// A day's own record: a flow sample or a spotting marker, whichever the
+/// day mapped to when it was written. The id does not say which, so both
+/// types count.
+const HealthRecordStoreTypes _flowStoreTypes = HealthRecordStoreTypes(
+  healthKit: {'menstrualFlow', 'intermenstrualBleeding'},
+  healthConnect: {'MenstruationFlowRecord', 'IntermenstrualBleedingRecord'},
+);
+
+/// The types of every record id that starts with a prefix of its own,
+/// except a symptom's, whose type is in the id itself.
+const Map<String, HealthRecordStoreTypes> _prefixedStoreTypes = {
+  _cervicalMucusPrefix: HealthRecordStoreTypes(
+    healthKit: {'cervicalMucusQuality'},
+    healthConnect: {'CervicalMucusRecord'},
+  ),
+  _ovulationPrefix: HealthRecordStoreTypes(
+    healthKit: {'ovulationTestResult'},
+    healthConnect: {'OvulationTestRecord'},
+  ),
+  _bbtPrefix: HealthRecordStoreTypes(
+    healthKit: {'basalBodyTemperature'},
+    healthConnect: {'BasalBodyTemperatureRecord'},
+  ),
+  _periodPrefix: HealthRecordStoreTypes(
+    healthKit: {},
+    healthConnect: {'MenstruationPeriodRecord'},
+  ),
+};
+
+/// The store types the record [recordId] can be in: the inverse of the
+/// builders above. Null when the id is not one of theirs, which a caller
+/// must read as "any type".
+///
+/// A source row's own id is a ULID and holds no dash, so an id with a dash
+/// and no known prefix is not recognised rather than taken for a day's own
+/// record. That keeps a builder added later from being read as a flow
+/// record before this function knows it.
+HealthRecordStoreTypes? healthStoreTypesForRecordId(String recordId) {
+  if (recordId.startsWith(_symptomPrefix)) return _symptomStoreTypes(recordId);
+  for (final family in _prefixedStoreTypes.entries) {
+    if (recordId.startsWith(family.key)) return family.value;
+  }
+  return recordId.contains('-') ? null : _flowStoreTypes;
+}
+
+/// A symptom record's types: the HealthKit type its id ends with, and no
+/// Health Connect type, since Health Connect has none. Null when the id
+/// does not end with a symptom type this app writes.
+HealthRecordStoreTypes? _symptomStoreTypes(String recordId) {
+  final type = recordId.substring(recordId.lastIndexOf('-') + 1);
+  if (!kSymptomHealthKitTypeIdentifiers.containsValue(type)) return null;
+  return HealthRecordStoreTypes(healthKit: {type}, healthConnect: const {});
+}
+
+/// The store types [recordIds] can be in between them, or null when any of
+/// them is not recognised ([healthStoreTypesForRecordId]).
+HealthRecordStoreTypes? healthStoreTypesForRecordIds(
+  Iterable<String> recordIds,
+) {
+  final healthKit = <String>{};
+  final healthConnect = <String>{};
+  for (final recordId in recordIds) {
+    final types = healthStoreTypesForRecordId(recordId);
+    if (types == null) return null;
+    healthKit.addAll(types.healthKit);
+    healthConnect.addAll(types.healthConnect);
+  }
+  return HealthRecordStoreTypes(
+    healthKit: healthKit,
+    healthConnect: healthConnect,
+  );
+}
 
 /// Every health-store record id one live [entry]'s tags can produce: its
 /// flow/marker id itself ([healthFlowRecordId]), plus the symptom

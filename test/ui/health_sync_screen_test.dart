@@ -2131,6 +2131,66 @@ void main() {
       }
     });
 
+    // Issue #1555. Health Connect shows five write switches and Apple
+    // Health seventeen. With any one of them off this line read "denied",
+    // beside a list in the store that showed the others on, and nothing
+    // was written. Through the real channel adapter, as each native half
+    // answers it.
+    testWidgets('some write types off: the line says so and never says '
+        'denied, on either platform, and keeps the way into Settings',
+        (tester) async {
+      const writingSome = "access: some types are off, so lunarlog can't "
+          'write everything — open Settings to change';
+      const writingSomeOnly = 'Health Connect access: writing some types '
+          "only, so lunarlog can't import and can't write everything — open "
+          'Settings to change';
+      final binding = await boundBinding();
+      for (final (read, expected) in [
+        // Reading on, or a read side that cannot answer: the writes alone.
+        ('granted', 'Health Connect $writingSome'),
+        ('unavailable', 'Health Connect $writingSome'),
+        // Reading off as well, declined or not yet asked.
+        ('denied', writingSomeOnly),
+        ('notAsked', writingSomeOnly),
+      ]) {
+        permissionResult = 'partial';
+        importPermissionResult = read;
+        await tester.pumpWidget(const SizedBox.shrink());
+        await pumpAndroid(
+          tester,
+          binding: binding,
+          permissionProbe: buildPermissionProbe(),
+        );
+
+        expect(statusLine(tester), expected, reason: 'read=$read');
+        expect(statusLine(tester), isNot(contains('denied')));
+        // "Writing only" keeps its meaning: every write type is on.
+        expect(statusLine(tester), isNot(contains('writing only')));
+        expect(find.byKey(settingsKey), findsOneWidget, reason: 'read=$read');
+      }
+
+      // An iPhone never hears the read-side question, so it has the one
+      // line whatever a Kotlin half would have answered.
+      final HealthPermissionProbe ios = createHealthPlatform(
+        TargetPlatform.iOS,
+        binding: HealthSyncBinding(FakeSettingsStore()),
+        minorBindingAllowed: true,
+      );
+      permissionCalls.clear();
+      importPermissionResult = 'denied';
+      await tester.pumpWidget(const SizedBox.shrink());
+      await pumpIphone(tester, permissionProbe: ios);
+
+      expect(statusLine(tester), 'Health app $writingSome');
+      expect(permissionCalls.map((call) => call.method), ['permissionStatus']);
+      await tester.tap(find.byKey(settingsKey));
+      await tester.pumpAndSettle();
+      expect(
+        permissionCalls.map((call) => call.method),
+        contains('openPermissionSettings'),
+      );
+    });
+
     testWidgets('Android: the line follows an answer given on Health '
         'Connect\'s own screens when the app comes back', (tester) async {
       permissionResult = 'denied';
@@ -2656,6 +2716,10 @@ void main() {
           statusLine(tester),
           switch (write) {
             HealthPermissionStatus.granted => 'Health app access: granted',
+            // Issue #1555: one of Apple's seventeen switches is off.
+            HealthPermissionStatus.partial =>
+              "Health app access: some types are off, so lunarlog can't "
+                  'write everything — open Settings to change',
             HealthPermissionStatus.notAsked =>
               'Health app access: not yet asked',
             HealthPermissionStatus.denied =>
@@ -2666,7 +2730,8 @@ void main() {
         );
         expect(
           find.byKey(settingsKey),
-          write == HealthPermissionStatus.denied
+          write == HealthPermissionStatus.denied ||
+                  write == HealthPermissionStatus.partial
               ? findsOneWidget
               : findsNothing,
         );

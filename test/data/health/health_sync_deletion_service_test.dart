@@ -267,6 +267,30 @@ void main() {
 
       expect(report.blocked, isA<HealthPlatformRefused>());
     });
+
+    // Issue #1555: removing a record needs its type's write permission.
+    // "A type these records can be in is off" is not a deletion that
+    // happened, so it is reported as blocked and the caller keeps the ids.
+    test('a delete a type that is off kept from happening is reported as '
+        'blocked', () async {
+      final platform = _RecordingPlatform()
+        ..deleteResult = const HealthPlatformResult.typeOff();
+      final binding = HealthSyncBinding(FakeSettingsStore({
+        SettingsKeys.healthStoreProfileId: _profileId,
+      }));
+      final service = LocalHealthSyncDeletionService(
+        platform: platform,
+        binding: binding,
+        profiles: _FakeProfiles(),
+        guardiansForProfile: (_) async => const [],
+        signedInUserId: () => 'u1',
+      );
+
+      final report = await service.deleteSamples([_entryId]);
+
+      expect(report.attempted, 1);
+      expect(report.blocked, isA<HealthPlatformTypeOff>());
+    });
   });
 
   group('HealthSyncTombstoneCoordinator (trigger contract)', () {
@@ -645,6 +669,83 @@ void main() {
       expect(ledger.rows, isEmpty,
           reason: 'successfully deleted records must not keep their ledger '
               'rows forever');
+    });
+
+    // Issue #1555. A deleted day's records are removed in one call. When
+    // one of their types has its write permission off, the store keeps
+    // that record, and the answer says so. The coordinator must then
+    // neither mark the ids done nor drop their ledger rows: the next
+    // change tries again, and so does the next launch.
+    test(
+        'issue #1555: a deleted day whose removal met a type that is off '
+        'keeps its ledger rows and is tried again, including a record the '
+        'write path already owed a removal for', () async {
+      final settings = FakeSettingsStore({
+        SettingsKeys.healthStoreProfileId: _profileId,
+      });
+      final binding = HealthSyncBinding(settings);
+      final source = _FakeTombstoneSource();
+      final deletion = _FakeDeletion()
+        ..result = const HealthSyncDeletionReport(
+          attempted: 2,
+          blocked: HealthPlatformResult.typeOff(),
+        );
+      final owedId = healthSymptomRecordId(_entryId, 'abdominalCramps');
+      final ledger = FakeHealthExportLedger();
+      await ledger.record([
+        HealthExportLedgerEntry(
+          recordId: _entryId,
+          profileId: _profileId,
+          sourceRowId: _entryId,
+          kind: HealthExportLedgerKind.entry,
+          localDate: '2026-09-01',
+          exportedAt: DateTime.utc(2026, 9, 1),
+        ),
+        // A symptom she had taken off the day while its type was off: the
+        // write path could not remove it and still owes that.
+        HealthExportLedgerEntry(
+          recordId: owedId,
+          profileId: _profileId,
+          sourceRowId: _entryId,
+          kind: HealthExportLedgerKind.removalOwed,
+          localDate: '2026-09-01',
+          exportedAt: DateTime.utc(2026, 9, 1),
+        ),
+      ]);
+      final coordinator = HealthSyncTombstoneCoordinator(
+        binding: binding,
+        source: source,
+        deletionService: deletion,
+        ledger: ledger,
+        debounce: const Duration(milliseconds: 10),
+      );
+      coordinator.start();
+      addTearDown(() => coordinator.dispose());
+
+      final tombstoned = [_entry(_entryId, deletedAt: DateTime.utc(2026, 9, 2))];
+      await source.emitEntries(tombstoned);
+      await _waitUntil(() => deletion.calls.isNotEmpty);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(deletion.calls, hasLength(1));
+      expect(deletion.calls.single.toSet(), {_entryId, owedId},
+          reason: 'the owed record is still a record of that day');
+      expect(
+        {for (final row in ledger.rows) row.recordId},
+        {_entryId, owedId},
+        reason: 'not removed, so not forgotten',
+      );
+
+      // The type is back on: the same ids are sent again, and this time
+      // the rows go with the records.
+      deletion.result =
+          const HealthSyncDeletionReport(attempted: 2, blocked: null);
+      await source.emitEntries(List.of(tombstoned));
+      await _waitUntil(() => ledger.rows.isEmpty);
+
+      expect(deletion.calls, hasLength(2));
+      expect(deletion.calls.last.toSet(), {_entryId, owedId});
+      expect(ledger.rows, isEmpty);
     });
 
     test(

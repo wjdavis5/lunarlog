@@ -157,27 +157,44 @@ enum HealthFlowValue {
 ///   authorization request, so the Android write path could never ask.
 ///   For the same reason the import's own request, which asks for the reads
 ///   alone, never counts as having asked for the writes (Issue #1515).
+///
+/// **Each write type is its own switch (Issue #1555).** Health Connect
+/// shows five write permissions and Apple Health seventeen, and the person
+/// may decline any of them. Some on and some off is [partial], never
+/// [denied]: answering [denied] for it stopped every write for someone who
+/// had declined a type she never logs.
 enum HealthPermissionStatus {
-  /// The write types are authorized.
+  /// Every write type is authorized.
   granted,
+
+  /// Some write types are authorized and some are not (Issue #1555). Both
+  /// stores let each type be allowed or declined on its own. The write pass
+  /// goes on: a type that is off is skipped, never a reason to stop. Only
+  /// ever a write-side answer; the read-side one is all or nothing.
+  partial,
 
   /// The OS permission sheet has not been answered yet — the first sync
   /// pass is what asks.
   notAsked,
 
-  /// The OS permission was denied (or partially denied): writes will fail
-  /// until the operator changes it in the platform's settings.
+  /// No write type is authorized, and the person has been asked: nothing
+  /// is written until the operator changes it in the platform's settings.
   denied,
 
   /// No health store / permission surface exists on this device (HealthKit
   /// absent, or Health Connect not installed or not available).
   unavailable;
 
+  /// Whether the write pass may go ahead: every write type is on, or at
+  /// least one is ([partial]).
+  bool get allowsWriting => this == granted || this == partial;
+
   /// The wire string this status is reported as on the `lunarlog/health`
   /// channel. Both native halves send exactly this closed set; the Dart
   /// codec recognizes nothing else.
   String toWire() => switch (this) {
         granted => 'granted',
+        partial => 'partial',
         notAsked => 'notAsked',
         denied => 'denied',
         unavailable => 'unavailable',
@@ -189,6 +206,7 @@ enum HealthPermissionStatus {
   /// status.
   static HealthPermissionStatus? fromWire(String? raw) => switch (raw) {
         'granted' => granted,
+        'partial' => partial,
         'notAsked' => notAsked,
         'denied' => denied,
         'unavailable' => unavailable,
@@ -225,7 +243,12 @@ abstract interface class HealthPermissionProbe {
   /// * **iOS** cannot answer this question: HealthKit never discloses read
   ///   access. So there this is [permissionStatus] — the write types — and
   ///   an iPhone that may read but not write still runs no background
-  ///   import. The Health sync screen states that condition in words.
+  ///   import. The Health sync screen states that condition in words. Some
+  ///   write types on is enough ([HealthPermissionStatus.partial] is
+  ///   answered here as [HealthPermissionStatus.granted], Issue #1555).
+  ///
+  /// Never [HealthPermissionStatus.partial]: the import's reads are allowed
+  /// or they are not.
   Future<HealthPermissionStatus> importPermissionStatus();
 
   /// Whether this device's health store tells an app which READ access it
@@ -353,6 +376,13 @@ sealed class HealthPlatformResult {
   const factory HealthPlatformResult.permissionDenied() =
       HealthPlatformPermissionDenied;
 
+  /// This record's own type is not allowed, and nothing was attempted for
+  /// it (Issue #1555). For a write: the type's write permission is off, so
+  /// the record was not written. For [HealthPlatformStore.deleteRecords]: a
+  /// type one of the ids can be in is off, so none of the ids counts as
+  /// removed. Never a failure: the caller skips the record and goes on.
+  const factory HealthPlatformResult.typeOff() = HealthPlatformTypeOff;
+
   /// The platform threw or answered with something this Dart side does
   /// not understand (including an unresolvable time zone — the write is
   /// refused rather than written at a wrong instant). [message] is
@@ -377,6 +407,10 @@ final class HealthPlatformUnavailable extends HealthPlatformResult {
 
 final class HealthPlatformPermissionDenied extends HealthPlatformResult {
   const HealthPlatformPermissionDenied();
+}
+
+final class HealthPlatformTypeOff extends HealthPlatformResult {
+  const HealthPlatformTypeOff();
 }
 
 final class HealthPlatformFailed extends HealthPlatformResult {
@@ -718,8 +752,9 @@ abstract interface class HealthPlatformStore implements HealthPermissionProbe {
   /// authorization is itself a health-API touch, so it is gated like a
   /// write). iOS's sheet has no programmatic denial answer — the OS
   /// reports completion, not the user's choice — so [allowed] there
-  /// means "the prompt completed"; a denied permission surfaces on the
-  /// first actual write as `permissionDenied`.
+  /// means "the prompt completed"; what was chosen is read back through
+  /// [HealthPermissionProbe.permissionStatus], and a type left off answers
+  /// each write of it with [HealthPlatformResult.typeOff] (Issue #1555).
   Future<HealthPlatformResult> requestWriteAuthorization(
     HealthGuardFacts facts,
   );
@@ -824,6 +859,11 @@ abstract interface class HealthPlatformStore implements HealthPermissionProbe {
   /// [HealthPlatformResult.allowed] or [HealthPlatformResult.failed] like
   /// any other write — never throws. Behind the same guard as every write
   /// (a deletion is a health-API touch, so it is gated identically).
+  ///
+  /// Removing a record needs its type's write permission (Issue #1555). The
+  /// records whose type is on are removed; when a type one of [recordIds]
+  /// can be in is off the answer is [HealthPlatformResult.typeOff], and the
+  /// caller treats every id of that call as still in the store.
   Future<HealthPlatformResult> deleteRecords(
     HealthGuardFacts facts,
     List<String> recordIds,

@@ -41,6 +41,10 @@ class HealthFlowSyncReport {
   /// authorization prompt outcome, or a failing write. Null on a fully
   /// successful pass (including a pass where every eligible day mapped to
   /// no sample). The cursor is advanced only when this is null.
+  ///
+  /// A record whose own type is switched off in the health store is
+  /// skipped, and that is not a failure (Issue #1555): this stays null and
+  /// the counts below leave the record out.
   final HealthPlatformResult? blocked;
 
   /// Days a sample/record was actually written for.

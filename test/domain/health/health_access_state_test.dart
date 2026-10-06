@@ -6,6 +6,10 @@
 /// be told "denied". The property that must never break is the other one:
 /// where the store does not disclose read access (an iPhone), the caller
 /// passes no read answer, and the two one-direction states cannot come out.
+///
+/// Issue #1555 added the write-side answer "partial": some write types on
+/// and some off. It has a state of its own on both platforms, and a second
+/// one on Android for when reading is off as well.
 library;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -13,6 +17,7 @@ import 'package:lunarlog/domain/health/health_access_state.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 
 const _granted = HealthPermissionStatus.granted;
+const _partial = HealthPermissionStatus.partial;
 const _notAsked = HealthPermissionStatus.notAsked;
 const _denied = HealthPermissionStatus.denied;
 const _unavailable = HealthPermissionStatus.unavailable;
@@ -20,6 +25,7 @@ const _unavailable = HealthPermissionStatus.unavailable;
 /// What the line said before Issue #1515: the write answer on its own.
 HealthAccessState _writeAlone(HealthPermissionStatus write) => switch (write) {
       HealthPermissionStatus.granted => HealthAccessState.granted,
+      HealthPermissionStatus.partial => HealthAccessState.writingSome,
       HealthPermissionStatus.notAsked => HealthAccessState.notAsked,
       HealthPermissionStatus.denied => HealthAccessState.denied,
       HealthPermissionStatus.unavailable => HealthAccessState.unavailable,
@@ -55,6 +61,42 @@ void main() {
       expect(
         healthAccessState(write: _granted, read: _notAsked),
         HealthAccessState.writingOnly,
+      );
+    });
+
+    // Issue #1555: she declined one of the five write types. The others are
+    // written, so the line must not say "denied".
+    test('some writes on, reads on: writing some, never denied', () {
+      expect(
+        healthAccessState(write: _partial, read: _granted),
+        HealthAccessState.writingSome,
+      );
+    });
+
+    test('some writes on, reads off: writing some types only', () {
+      expect(
+        healthAccessState(write: _partial, read: _denied),
+        HealthAccessState.writingSomeOnly,
+      );
+      expect(
+        healthAccessState(write: _partial, read: _notAsked),
+        HealthAccessState.writingSomeOnly,
+      );
+    });
+
+    test('writing only keeps its meaning: every write on, reading off', () {
+      // Some writes on is never "writing only", whatever the read side.
+      for (final read in HealthPermissionStatus.values) {
+        expect(
+          healthAccessState(write: _partial, read: read),
+          isNot(HealthAccessState.writingOnly),
+          reason: 'read=$read',
+        );
+      }
+      // And reading only still means no write at all.
+      expect(
+        healthAccessState(write: _partial, read: _granted),
+        isNot(HealthAccessState.readingOnly),
       );
     });
 
@@ -127,11 +169,22 @@ void main() {
       };
       expect(reachable, isNot(contains(HealthAccessState.readingOnly)));
       expect(reachable, isNot(contains(HealthAccessState.writingOnly)));
+      expect(reachable, isNot(contains(HealthAccessState.writingSomeOnly)));
+    });
+
+    // Issue #1555: Apple's sheet has a switch for each of the seventeen
+    // types. The state that says nothing about reading is the one an
+    // iPhone shows.
+    test('some write types on is "writing some" there too', () {
+      expect(
+        healthAccessState(write: _partial, read: null),
+        HealthAccessState.writingSome,
+      );
     });
   });
 
   group('every state is reachable and each means one thing', () {
-    test('the six states are exactly the outcomes over every pair', () {
+    test('the states are exactly the outcomes over every pair', () {
       final reachable = <HealthAccessState>{
         for (final write in HealthPermissionStatus.values)
           for (final read in <HealthPermissionStatus?>[
@@ -155,6 +208,13 @@ void main() {
             expect(write, _granted);
             expect(read, isNot(_granted));
           }
+          if (state == HealthAccessState.writingSomeOnly) {
+            expect(write, _partial);
+            expect(read, isNot(_granted));
+          }
+          if (state == HealthAccessState.writingSome) {
+            expect(write, _partial);
+          }
         }
       }
     });
@@ -166,6 +226,10 @@ void main() {
       expect(HealthAccessState.denied.changedInSettings, isTrue);
       expect(HealthAccessState.readingOnly.changedInSettings, isTrue);
       expect(HealthAccessState.writingOnly.changedInSettings, isTrue);
+      // Issue #1555: a type that is off is switched on in the store's own
+      // settings, so both partial-write states offer the link.
+      expect(HealthAccessState.writingSome.changedInSettings, isTrue);
+      expect(HealthAccessState.writingSomeOnly.changedInSettings, isTrue);
     });
 
     test('nothing to change there when granted, not yet asked or unavailable',

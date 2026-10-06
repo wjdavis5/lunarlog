@@ -381,6 +381,9 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// Connect says which reads are granted, so the line tells the two
   /// directions apart (Issue #1515): someone who allowed reading and not
   /// writing is told exactly that, not "denied".
+  ///
+  /// On both, some write types on and some off has a line of its own (Issue
+  /// #1555): the ones that are on are written, so "denied" was untrue.
   String _permissionStatusText(AppLocalizations l10n, HealthAccessState state) {
     final source = _sourceTitle(l10n, _importPlatform);
     return switch (state) {
@@ -393,6 +396,10 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
         l10n.healthSyncPermissionReadingOnly(source),
       HealthAccessState.writingOnly =>
         l10n.healthSyncPermissionWritingOnly(source),
+      HealthAccessState.writingSome =>
+        l10n.healthSyncPermissionWritingSome(source),
+      HealthAccessState.writingSomeOnly =>
+        l10n.healthSyncPermissionWritingSomeOnly(source),
     };
   }
 
@@ -686,7 +693,11 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
         _sourceUnavailableCopy(l10n, _importPlatform),
       HealthPlatformPermissionDenied() =>
         healthImportEmptyCopy(l10n, _importPlatform),
-      HealthPlatformFailed() => l10n.healthSyncImportBlockedFailed,
+      // A read never answers "this type is off" (Issue #1555, a write-side
+      // answer); it is listed so the switch stays exhaustive.
+      HealthPlatformFailed() ||
+      HealthPlatformTypeOff() =>
+        l10n.healthSyncImportBlockedFailed,
       HealthPlatformAllowed() => healthImportEmptyCopy(l10n, _importPlatform),
     };
   }

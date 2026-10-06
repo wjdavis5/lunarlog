@@ -175,8 +175,10 @@ class HealthImportPermissionStateTest {
             assertEquals("denied", writeStatus(granted, everRequested = true))
             assertEquals("denied", importStatus(granted, everRequested = true))
         }
-        // And so does a granted write, with no marker anywhere.
-        assertEquals("denied", writeStatus(setOf(writeMenstruation), everRequested = false))
+        // And so does a granted write, with no marker anywhere. For the
+        // writes one granted and another not is "partial" since issue
+        // #1555; the reads still read "denied", never "not yet asked".
+        assertEquals("partial", writeStatus(setOf(writeMenstruation), everRequested = false))
         assertEquals("denied", importStatus(setOf(writeMenstruation), everRequested = false))
     }
 

@@ -234,6 +234,8 @@
   "healthSyncPermissionDenied": "{source} access: denied — open Settings to change",
   "healthSyncPermissionReadingOnly": "{source} access: reading only, so lunarlog can import but can't write — open Settings to change",
   "healthSyncPermissionWritingOnly": "{source} access: writing only, so lunarlog can write but can't import — open Settings to change",
+  "healthSyncPermissionWritingSome": "{source} access: some types are off, so lunarlog can't write everything — open Settings to change",
+  "healthSyncPermissionWritingSomeOnly": "{source} access: writing some types only, so lunarlog can't import and can't write everything — open Settings to change",
   "healthSyncPermissionUnavailable": "{source} access is not available on this device.",
   "healthSyncPermissionOpenSettings": "Open Settings",
   "healthSyncImportUpdatedDays": "Updated {count, plural, =1{1 day} other{{count} days}} from {source}.",

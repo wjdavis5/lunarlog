@@ -306,6 +306,70 @@ void main() {
           [flowWriteRecordId, '01ARZ3NDEKTSV4RRFFQ69G5FBC']);
     });
 
+    // Issue #1555: removing a record needs its type's write permission,
+    // and each type has a switch of its own. The delete names the types
+    // its ids can be in, so the native half answers "this type is off"
+    // only for a type this call needs.
+    test('deleteRecords names the store types its ids can be in', () async {
+      await makePlatform().deleteRecords(
+        _facts(),
+        const [flowWriteRecordId, 'bbt-01ARZ3NDEKTSV4RRFFQ69G5FBC'],
+      );
+
+      final args = calls.single.arguments as Map<Object?, Object?>;
+      expect(
+        (args['healthKitTypes']! as List).toSet(),
+        {'menstrualFlow', 'intermenstrualBleeding', 'basalBodyTemperature'},
+      );
+      expect(
+        (args['healthConnectTypes']! as List).toSet(),
+        {
+          'MenstruationFlowRecord',
+          'IntermenstrualBleedingRecord',
+          'BasalBodyTemperatureRecord',
+        },
+      );
+    });
+
+    test('a symptom has no Health Connect type, and the delete says so with '
+        'an empty list rather than none', () async {
+      await makePlatform().deleteRecords(
+        _facts(),
+        const ['symptom-01ARZ3NDEKTSV4RRFFQ69G5FAV-acne'],
+      );
+
+      final args = calls.single.arguments as Map<Object?, Object?>;
+      expect(args['healthKitTypes'], ['acne']);
+      expect(args['healthConnectTypes'], isEmpty);
+      expect(args.containsKey('healthConnectTypes'), isTrue);
+    });
+
+    test('an id that is not recognised names no types at all, so the native '
+        'half covers every type it writes', () async {
+      await makePlatform().deleteRecords(
+        _facts(),
+        const [flowWriteRecordId, 'some-other-scheme'],
+      );
+
+      final args = calls.single.arguments as Map<Object?, Object?>;
+      expect(args['recordIds'], [flowWriteRecordId, 'some-other-scheme']);
+      expect(args.containsKey('healthKitTypes'), isFalse);
+      expect(args.containsKey('healthConnectTypes'), isFalse);
+    });
+
+    test('"typeOff" from either native half is its own result, for a write '
+        'and for a delete', () async {
+      nextResult = 'typeOff';
+      expect(
+        await makePlatform().writeMenstrualFlow(flowWrite),
+        isA<HealthPlatformTypeOff>(),
+      );
+      expect(
+        await makePlatform().deleteRecords(_facts(), const [flowWriteRecordId]),
+        isA<HealthPlatformTypeOff>(),
+      );
+    });
+
     test('writeIntermenstrualBleeding sends guard + day args, no flow key',
         () async {
       await makePlatform().writeIntermenstrualBleeding(
@@ -919,8 +983,43 @@ void main() {
       for (final status in HealthPermissionStatus.values) {
         calls.clear();
         nextResult = status.toWire();
-        expect(await makeUndisclosed().importPermissionStatus(), status);
+        expect(
+          await makeUndisclosed().importPermissionStatus(),
+          // Issue #1555: some write types on is enough, and the read-side
+          // answer has no "partial" of its own.
+          status == HealthPermissionStatus.partial
+              ? HealthPermissionStatus.granted
+              : status,
+        );
         expect(calls.single.method, 'permissionStatus');
+      }
+    });
+
+    // Issue #1555: on an iPhone the background import is gated on this
+    // answer, and anything but granted stops it silently. Turning off one
+    // of Apple's seventeen write switches must not do that.
+    test('an iPhone with some write types off still reads as allowed to '
+        'import, and the write probe still says partial', () async {
+      nextResult = 'partial';
+      final ios = build(TargetPlatform.iOS);
+
+      expect(await ios.importPermissionStatus(), HealthPermissionStatus.granted);
+      expect(await ios.permissionStatus(), HealthPermissionStatus.partial);
+      expect(
+        calls.map((call) => call.method),
+        everyElement('permissionStatus'),
+      );
+    });
+
+    test('with no write type on, an iPhone still runs no background import',
+        () async {
+      for (final wire in ['denied', 'notAsked', 'unavailable']) {
+        nextResult = wire;
+        expect(
+          await build(TargetPlatform.iOS).importPermissionStatus(),
+          isNot(HealthPermissionStatus.granted),
+          reason: wire,
+        );
       }
     });
 

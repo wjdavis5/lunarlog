@@ -204,6 +204,35 @@ class HealthConnectAdapter(context: Context) {
     private val writePermissions =
         writtenRecordTypes.map { HealthPermission.getWritePermission(it) }.toSet()
 
+    // Issue #1555: the same types by the names the Dart side sends with a
+    // delete (`healthConnectTypes`, from kHealthConnectWrittenRecordTypes),
+    // so a delete can say which types its records can be in. Spelled out
+    // rather than read from the classes: a release build renames them. The
+    // guard test test/release/health_type_off_test.dart holds this to
+    // exactly the types listed above.
+    private val recordTypesByName: Map<String, KClass<out Record>> = mapOf(
+        "MenstruationFlowRecord" to MenstruationFlowRecord::class,
+        "MenstruationPeriodRecord" to MenstruationPeriodRecord::class,
+        "IntermenstrualBleedingRecord" to IntermenstrualBleedingRecord::class,
+        "CervicalMucusRecord" to CervicalMucusRecord::class,
+        "OvulationTestRecord" to OvulationTestRecord::class,
+        "BasalBodyTemperatureRecord" to BasalBodyTemperatureRecord::class,
+    )
+
+    // The write permissions a delete has to hold to have covered every type
+    // its records can be in (issue #1555): the permissions of the types
+    // [names] lists, or of every type this adapter writes when the call
+    // names none or one this build does not know. Erring towards every
+    // type is the safe side: the Dart side then keeps the records
+    // remembered and asks again.
+    private fun permissionsToCover(names: List<*>?): Set<String> {
+        val named = names?.map { recordTypesByName[it as? String] }
+        if (named == null || named.any { it == null }) return writePermissions
+        return named.filterNotNull()
+            .map { HealthPermission.getWritePermission(it) }
+            .toSet()
+    }
+
     // Issue #458 (the owner's #781 read decision, already applied to iOS in
     // #217): the read/import half. Only the two user-recorded menstrual
     // types are read; the request sheet carries both sets at once, the
@@ -603,6 +632,10 @@ class HealthConnectAdapter(context: Context) {
                                 .putLong(PERMISSION_REQUESTED_KEY, installStamp)
                                 .apply()
                         }
+                        // Issue #1555: some writes granted and some not is
+                        // "partial", never "denied". Each write permission
+                        // is a switch of its own in Health Connect, and the
+                        // Dart write pass goes on when at least one is on.
                         result.success(
                             HealthPermissionState.writeStatusFor(
                                 granted = granted,
@@ -1023,8 +1056,11 @@ class HealthConnectAdapter(context: Context) {
                     result.success("allowed")
                     return
                 }
+                val toCover =
+                    permissionsToCover(args?.get("healthConnectTypes") as? List<*>)
                 CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
                     try {
+                        val granted = client.permissionController.getGrantedPermissions()
                         // connect-client 1.1.0's delete-by-identifier overload
                         // takes (recordType, recordIdsList, clientRecordIdsList)
                         // — no dataOrigin argument in this version (deletion is
@@ -1040,7 +1076,22 @@ class HealthConnectAdapter(context: Context) {
                         // orphaned. writtenRecordTypes is the same list the
                         // write-permission request uses, so a future type
                         // cannot be added to one without the other.
+                        //
+                        // Issue #1555: deleting needs the type's own write
+                        // permission, and each can be switched off on its
+                        // own. A type that is off is left out of the loop
+                        // rather than asked: a delete Health Connect
+                        // refuses is caught below, which ends the loop
+                        // before the types after it. Every type that is on
+                        // is still deleted from. The answer is "typeOff"
+                        // when a type these records can be in was left out,
+                        // and the Dart side then counts none of the ids as
+                        // removed.
                         for (recordType in writtenRecordTypes) {
+                            val permission = HealthPermission.getWritePermission(recordType)
+                            if (HealthPermissionState.typeOff(granted, setOf(permission))) {
+                                continue
+                            }
                             @Suppress("UNCHECKED_CAST")
                             val concreteType = recordType as KClass<Record>
                             client.deleteRecords(
@@ -1048,7 +1099,12 @@ class HealthConnectAdapter(context: Context) {
                                 recordIdsList = emptyList(),
                                 clientRecordIdsList = ids)
                         }
-                        result.success("allowed")
+                        result.success(
+                            if (HealthPermissionState.typeOff(granted, toCover)) {
+                                HealthPermissionState.TYPE_OFF
+                            } else {
+                                "allowed"
+                            })
                     } catch (e: SecurityException) {
                         result.success("permissionDenied")
                     } catch (e: Exception) {
@@ -1173,6 +1229,13 @@ class HealthConnectAdapter(context: Context) {
     // scope whose only job completes with the call, so there is no
     // lifecycle to manage (the scope is unreachable once its single job
     // finishes).
+    //
+    // Issue #1555: every write handler ends here, and this is where each
+    // answers for its own type. Health Connect shows the write permissions
+    // as separate switches, so the record's own permission is looked up
+    // before the write: with it off the answer is "typeOff" and nothing is
+    // attempted. The Dart write pass skips that record and goes on to the
+    // others; it used to stop every write when any one switch was off.
     private fun insert(
         client: HealthConnectClient,
         records: List<Record>,
@@ -1180,6 +1243,14 @@ class HealthConnectAdapter(context: Context) {
     ) {
         CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
             try {
+                val needed = records
+                    .map { HealthPermission.getWritePermission(it::class) }
+                    .toSet()
+                val granted = client.permissionController.getGrantedPermissions()
+                if (HealthPermissionState.typeOff(granted, needed)) {
+                    result.success(HealthPermissionState.TYPE_OFF)
+                    return@launch
+                }
                 client.insertRecords(records)
                 result.success("allowed")
             } catch (e: SecurityException) {
@@ -1705,7 +1776,9 @@ class HealthConnectAdapter(context: Context) {
  *
  * There is one decision, [statusFor], asked once for each direction over
  * that direction's own facts: [writeStatusFor] is `permissionStatus`, and
- * [importStatusFor] is `importPermissionStatus`.
+ * [importStatusFor] is `importPermissionStatus`. The write side has one
+ * answer more, `partial` (Issue #1555), decided before [statusFor] is
+ * reached.
  *
  * The wire strings are `HealthPermissionStatus`'s, defined in
  * `lib/domain/health/health_platform.dart`:
@@ -1727,6 +1800,24 @@ internal object HealthPermissionState {
     const val GRANTED = "granted"
     const val NOT_ASKED = "notAsked"
     const val DENIED = "denied"
+
+    /** Some write permissions are granted and some are not (Issue #1555). */
+    const val PARTIAL = "partial"
+
+    /**
+     * The channel result for "this record's own type is not allowed"
+     * (Issue #1555): `HealthPlatformTypeOff` on the Dart side.
+     */
+    const val TYPE_OFF = "typeOff"
+
+    /**
+     * Whether a write, or a delete, has to answer [TYPE_OFF] (Issue #1555):
+     * one of the write permissions it `needed` is not `granted`. Each write
+     * permission is a switch of its own in Health Connect, so a record is
+     * answered for by its own type's permission and no other.
+     */
+    fun typeOff(granted: Set<String>, needed: Set<String>): Boolean =
+        !granted.containsAll(needed)
 
     fun statusFor(
         granted: Set<String>,
@@ -1796,17 +1887,29 @@ internal object HealthPermissionState {
      * A read granted before the import had a request of its own is the
      * exception, and it reaches this function as `writesEverRequested`: the
      * adapter sets that marker for it ([remembersWritesAsked]).
+     *
+     * Issue #1555: the writes are separate switches, and she may decline
+     * any of them. At least one granted and at least one not is `partial`,
+     * never `denied`: the Dart write pass goes on and writes the types
+     * that are on. Answering `denied` for it stopped every write for
+     * someone who had declined Basal body temperature and nothing else.
+     * With no write granted the answer is [statusFor]'s, as before:
+     * `denied` once she has been asked, `notAsked` until then.
      */
     fun writeStatusFor(
         granted: Set<String>,
         writes: Set<String>,
         writesEverRequested: Boolean,
-    ): String = statusFor(
-        granted = granted,
-        required = writes,
-        requested = writes,
-        everRequested = writesEverRequested,
-    )
+    ): String = when {
+        granted.containsAll(writes) -> GRANTED
+        provesAsked(granted, writes) -> PARTIAL
+        else -> statusFor(
+            granted = granted,
+            required = writes,
+            requested = writes,
+            everRequested = writesEverRequested,
+        )
+    }
 
     /**
      * The `importPermissionStatus` decision (Issue #1491): may the import

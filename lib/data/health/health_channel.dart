@@ -239,11 +239,17 @@ class MethodChannelHealthPlatform
   /// Where the store does not disclose read access ([readAccessDisclosed]
   /// false — iOS) there is nothing native to ask, so this is the write-side
   /// answer: exactly the gate the background pass had on iOS before this
-  /// method existed.
+  /// method existed. Some write types on and some off still counts as
+  /// allowed there (Issue #1555): the write-side `partial` is answered as
+  /// `granted`, so declining one type does not stop the background import.
   @override
-  Future<HealthPermissionStatus> importPermissionStatus() => readAccessDisclosed
-      ? _probePermission(HealthChannelMethods.importPermissionStatus)
-      : permissionStatus();
+  Future<HealthPermissionStatus> importPermissionStatus() async {
+    if (readAccessDisclosed) {
+      return _probePermission(HealthChannelMethods.importPermissionStatus);
+    }
+    final write = await permissionStatus();
+    return write.allowsWriting ? HealthPermissionStatus.granted : write;
+  }
 
   /// Issue #1549: whether a read reaches data from before access was
   /// first allowed. Health Connect answers from its granted set ("Access
@@ -458,7 +464,7 @@ class MethodChannelHealthPlatform
       _invokeGuarded(
         HealthChannelMethods.deleteRecords,
         facts,
-        payloadArgs: () => {'recordIds': recordIds},
+        payloadArgs: () => encodeDeleteArgs(recordIds),
       );
 
   /// The read/import half (Issue #217, paged in #992): the same guard

@@ -864,13 +864,21 @@ void main() {
         reason: 'HealthPermissionState.remembersWritesAsked changed shape — '
             'update HealthPermissionStateTest.kt and this guard together',
       );
+      // Issue #1555: some writes granted and some not is "partial", decided
+      // on the writes alone and before the asked-marker is looked at. With
+      // no write granted the answer is statusFor's, unchanged: the marker
+      // rules of #1478 and #1515 above still tell "denied" from "not yet
+      // asked".
       expect(
         RegExp(
           r'fun writeStatusFor\(\s*granted: Set<String>,\s*'
           r'writes: Set<String>,\s*writesEverRequested: Boolean,\s*\)'
-          r': String = statusFor\(\s*granted = granted,\s*'
+          r': String = when \{\s*'
+          r'granted\.containsAll\(writes\) -> GRANTED\s*'
+          r'provesAsked\(granted, writes\) -> PARTIAL\s*'
+          r'else -> statusFor\(\s*granted = granted,\s*'
           r'required = writes,\s*requested = writes,\s*'
-          r'everRequested = writesEverRequested,\s*\)',
+          r'everRequested = writesEverRequested,\s*\)\s*\}',
         ).hasMatch(kotlin),
         isTrue,
         reason: 'HealthPermissionState.writeStatusFor changed shape — '

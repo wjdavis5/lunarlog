@@ -255,6 +255,18 @@ void main() {
       );
     });
 
+    // Issue #1555: each native write and delete handler answers for its
+    // own type. The string is pinned on the Kotlin side by
+    // HealthPermissionStateTest and on both by
+    // test/release/health_type_off_test.dart.
+    test('"typeOff" decodes to its own variant, not to a failure or a '
+        'denial', () {
+      final decoded = decodeHealthResult('typeOff');
+      expect(decoded, isA<HealthPlatformTypeOff>());
+      expect(decoded, isNot(isA<HealthPlatformFailed>()));
+      expect(decoded, isNot(isA<HealthPlatformPermissionDenied>()));
+    });
+
     test('every HealthSyncCheck deny name round-trips to refused(check)',
         () {
       for (final check in HealthSyncCheck.values) {
@@ -729,6 +741,8 @@ void main() {
   group('HealthPermissionStatus wire values (Issue #959)', () {
     test('toWire pins the exact strings the native halves send', () {
       expect(HealthPermissionStatus.granted.toWire(), 'granted');
+      // Issue #1555: some write types on and some off.
+      expect(HealthPermissionStatus.partial.toWire(), 'partial');
       expect(HealthPermissionStatus.notAsked.toWire(), 'notAsked');
       expect(HealthPermissionStatus.denied.toWire(), 'denied');
       expect(HealthPermissionStatus.unavailable.toWire(), 'unavailable');
@@ -744,10 +758,25 @@ void main() {
       expect(HealthPermissionStatus.fromWire(null), isNull);
     });
 
+    test('writing is allowed with every type on or with some on, and in '
+        'no other state (Issue #1555)', () {
+      expect(
+        {
+          for (final status in HealthPermissionStatus.values)
+            if (status.allowsWriting) status,
+        },
+        {HealthPermissionStatus.granted, HealthPermissionStatus.partial},
+      );
+    });
+
     test('decodeHealthPermissionStatus maps unknown shapes to unavailable', () {
       expect(
         decodeHealthPermissionStatus('granted'),
         HealthPermissionStatus.granted,
+      );
+      expect(
+        decodeHealthPermissionStatus('partial'),
+        HealthPermissionStatus.partial,
       );
       expect(
         decodeHealthPermissionStatus('notAsked'),

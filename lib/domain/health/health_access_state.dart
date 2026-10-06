@@ -17,22 +17,30 @@
 /// therefore passes `read: null` wherever
 /// [HealthPermissionProbe.readAccessDisclosed] is false, and with a null
 /// read answer this function can only return what the write answer says —
-/// [HealthAccessState.readingOnly] and [HealthAccessState.writingOnly] are
-/// unreachable. That is how an iPhone is kept out of the two new states: by
-/// the platform fact, never by comparing the two answers.
+/// [HealthAccessState.readingOnly], [HealthAccessState.writingOnly] and
+/// [HealthAccessState.writingSomeOnly] are unreachable. That is how an
+/// iPhone is kept out of the states that speak of reading: by the platform
+/// fact, never by comparing the two answers.
+///
+/// **Some write types on and some off is its own state (Issue #1555).**
+/// Both stores let each write type be allowed or declined on its own, and
+/// the write pass writes the ones that are on. The line used to say
+/// "denied" for that, beside a list in the store that showed most of the
+/// switches on.
 library;
 
 import 'health_platform.dart';
 
 /// The state the Health sync screen's status line shows.
 enum HealthAccessState {
-  /// Writing is allowed, and reading is not known to be off.
+  /// Every write type is allowed, and reading is not known to be off.
   granted,
 
   /// Nothing has been answered yet for the writes, and reading is not on.
   notAsked,
 
-  /// Writing was asked for and is not allowed, and reading is not on.
+  /// Writing was asked for and no write type is allowed, and reading is
+  /// not on.
   denied,
 
   /// There is no health store, or its permission surface cannot answer.
@@ -43,14 +51,30 @@ enum HealthAccessState {
   /// discloses read access (Health Connect).
   readingOnly,
 
-  /// Writing is allowed and reading is not: logged days are written, and
-  /// the import cannot read. Only where the store discloses read access.
-  writingOnly;
+  /// Every write type is allowed and reading is not: logged days are
+  /// written, and the import cannot read. Only where the store discloses
+  /// read access.
+  writingOnly,
+
+  /// Some write types are allowed and some are not, and reading is not
+  /// known to be off (Issue #1555): the types that are on are written, the
+  /// others are left out. On either platform.
+  writingSome,
+
+  /// Some write types are allowed and some are not, and reading is off:
+  /// [writingSome], and the import cannot read. Only where the store
+  /// discloses read access.
+  writingSomeOnly;
 
   /// Whether the way to change this state is the platform's own settings
   /// screen, so the status line says so and the screen offers the link.
   bool get changedInSettings => switch (this) {
-        denied || readingOnly || writingOnly => true,
+        denied ||
+        readingOnly ||
+        writingOnly ||
+        writingSome ||
+        writingSomeOnly =>
+          true,
         granted || notAsked || unavailable => false,
       };
 }
@@ -72,6 +96,9 @@ HealthAccessState healthAccessState({
   if (write == HealthPermissionStatus.granted && _knownOff(read)) {
     return HealthAccessState.writingOnly;
   }
+  if (write == HealthPermissionStatus.partial && _knownOff(read)) {
+    return HealthAccessState.writingSomeOnly;
+  }
   return _writeAlone(write);
 }
 
@@ -84,6 +111,7 @@ bool _knownOff(HealthPermissionStatus? status) =>
 
 HealthAccessState _writeAlone(HealthPermissionStatus write) => switch (write) {
       HealthPermissionStatus.granted => HealthAccessState.granted,
+      HealthPermissionStatus.partial => HealthAccessState.writingSome,
       HealthPermissionStatus.notAsked => HealthAccessState.notAsked,
       HealthPermissionStatus.denied => HealthAccessState.denied,
       HealthPermissionStatus.unavailable => HealthAccessState.unavailable,

@@ -818,34 +818,35 @@ enum HealthKitChannelHandler {
       // write sample types (`writtenSampleTypes`, the same list the
       // authorization sheet and deleteRecords use): HealthKit's read
       // authorization is opaque by Apple's design, so a denied read must
-      // never be reported as a refusal here. `.sharingDenied` is the only
-      // denial that maps to "denied"; a partial grant (some types denied)
-      // reports denied, because writes to those types will fail.
+      // never be reported as a refusal here.
+      //
+      // Issue #1555: Apple's sheet has a switch for each of these types,
+      // and the person may turn any of them off. Some authorized and some
+      // denied is "partial", never "denied": the Dart write pass goes on
+      // and each write below answers for its own type. Answering "denied"
+      // for it stopped every write for someone who had turned off one
+      // type, Acne for instance. The rule is `writeStatus`.
       guard HKHealthStore.isHealthDataAvailable() else {
         result("unavailable")
         return
       }
-      var denied = false
-      var notAsked = false
+      var authorized = 0
+      var denied = 0
       for type in writtenSampleTypes {
         switch store.authorizationStatus(for: type) {
         case .sharingDenied:
-          denied = true
-        case .notDetermined:
-          notAsked = true
+          denied += 1
         case .sharingAuthorized:
+          authorized += 1
+        case .notDetermined:
           break
         @unknown default:
           break
         }
       }
-      if denied {
-        result("denied")
-      } else if notAsked {
-        result("notAsked")
-      } else {
-        result("granted")
-      }
+      result(
+        writeStatus(
+          authorized: authorized, denied: denied, total: writtenSampleTypes.count))
 
     case "openPermissionSettings":
       // Issue #959: the settings deep link offered when the status line is
@@ -1210,6 +1211,9 @@ enum HealthKitChannelHandler {
         badArgs(result, "deleteRecords requires recordIds")
         return
       }
+      // Issue #1555: the types these records can be in, named by the Dart
+      // side from the record ids; every written type when it names none.
+      let toCover = typesToCover(args?["healthKitTypes"] as? [String])
       Task {
         do {
           let predicate = HKQuery.predicateForObjects(
@@ -1223,8 +1227,20 @@ enum HealthKitChannelHandler {
           // overload, so both calls below go through the standard
           // callback-based APIs wrapped in continuations (`HKSampleQuery` +
           // `store.execute(_:)`, and `store.delete(_:withCompletion:)`).
+          //
+          // Issue #1555: deleting a sample needs its type's own write
+          // (share) authorization, and each type can be turned off on its
+          // own. A type that is off is left out of the query rather than
+          // asked. Every type that is on is still queried and deleted
+          // from. The answer is "typeOff" when a type these records can be
+          // in was left out, and the Dart side then counts none of the ids
+          // as removed. Before this a type that was off was queried like
+          // the rest, and when that query found nothing the answer was
+          // "allowed": the Dart side then forgot a sample this call could
+          // not have removed.
           var toDelete: [HKSample] = []
           for sampleType in writtenSampleTypes {
+            guard mayWrite(sampleType) else { continue }
             toDelete.append(
               contentsOf: try await querySamples(
                 ofType: sampleType,
@@ -1233,7 +1249,7 @@ enum HealthKitChannelHandler {
           if !toDelete.isEmpty {
             try await delete(toDelete)
           }
-          result("allowed")
+          result(toCover.allSatisfy(mayWrite) ? "allowed" : "typeOff")
         } catch {
           result(
             FlutterError(
@@ -1377,6 +1393,58 @@ enum HealthKitChannelHandler {
 
   private static var basalBodyTemperatureType: HKQuantityType {
     HKObjectType.quantityType(forIdentifier: .basalBodyTemperature)!
+  }
+
+  /// Whether lunarlog may write (and so remove) samples of `type` (Issue
+  /// #1555): its share authorization is `.sharingAuthorized`. Asked per
+  /// type because Apple's sheet has a switch for each. This is the write
+  /// (share) status only; HealthKit never discloses read access.
+  private static func mayWrite(_ type: HKSampleType) -> Bool {
+    store.authorizationStatus(for: type) == .sharingAuthorized
+  }
+
+  /// The `permissionStatus` answer (Issue #1555) for `total` written
+  /// types, of which `authorized` are `.sharingAuthorized` and `denied`
+  /// are `.sharingDenied`; the rest are not determined yet.
+  ///
+  ///  * every type authorized: "granted";
+  ///  * none denied, some not determined: "notAsked", as before;
+  ///  * at least one authorized and at least one denied: "partial";
+  ///  * none authorized and at least one denied: "denied".
+  static func writeStatus(authorized: Int, denied: Int, total: Int) -> String {
+    if authorized == total { return "granted" }
+    if denied == 0 { return "notAsked" }
+    return authorized > 0 ? "partial" : "denied"
+  }
+
+  /// The written types a `deleteRecords` call has to cover (Issue #1555):
+  /// the ones `names` lists, as `HKCategoryTypeIdentifier` /
+  /// `HKQuantityTypeIdentifier` case names (`menstrualFlow`,
+  /// `basalBodyTemperature`), or every written type when the call names
+  /// none or one this build does not know. Erring towards every type is
+  /// the safe side: the Dart side then keeps the records remembered and
+  /// asks again.
+  private static func typesToCover(_ names: [String]?) -> [HKSampleType] {
+    guard let names else { return writtenSampleTypes }
+    var types: [HKSampleType] = []
+    for name in names {
+      guard
+        let type = writtenSampleTypes.first(where: { caseName(of: $0) == name })
+      else { return writtenSampleTypes }
+      types.append(type)
+    }
+    return types
+  }
+
+  /// The Swift case name of a sample type's identifier:
+  /// `HKCategoryTypeIdentifierMenstrualFlow` is `menstrualFlow`.
+  static func caseName(of type: HKSampleType) -> String {
+    var name = type.identifier
+    for prefix in ["HKCategoryTypeIdentifier", "HKQuantityTypeIdentifier"]
+    where name.hasPrefix(prefix) {
+      name.removeFirst(prefix.count)
+    }
+    return name.prefix(1).lowercased() + name.dropFirst()
   }
 
   /// Builds an HKQuantitySample for Basal Body Temperature (Issue #228, #920).
@@ -1653,10 +1721,23 @@ enum HealthKitChannelHandler {
     }
   }
 
+  /// Saves `samples`, each write handler's last step, and where each
+  /// answers for its own type (Issue #1555). Apple's sheet has a switch
+  /// for every type, so a sample is saved only when its own type is
+  /// authorized. A sample whose type is off is dropped and the rest are
+  /// saved: `writeSymptomSamples` carries up to twelve types in one call.
+  /// With every sample dropped the answer is "typeOff" and nothing is
+  /// attempted. The Dart write pass skips that record and goes on; it used
+  /// to stop every write when any one type was off.
   private static func save(_ samples: [HKSample], result: @escaping FlutterResult) {
+    let allowed = samples.filter { mayWrite($0.sampleType) }
+    guard !allowed.isEmpty else {
+      result("typeOff")
+      return
+    }
     Task {
       do {
-        _ = try await store.save(samples)
+        _ = try await store.save(allowed)
         result("allowed")
       } catch {
         result(

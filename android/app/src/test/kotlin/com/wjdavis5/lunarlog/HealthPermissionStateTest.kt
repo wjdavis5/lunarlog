@@ -23,6 +23,11 @@ import org.junit.Test
  * import's sheet is no evidence that a write permission was ever shown, and
  * answering "denied" for it would put the write path back in the trap
  * above.
+ *
+ * #1555: Health Connect shows the write permissions as separate switches,
+ * and switching any one of them off used to read "denied" and stop every
+ * write. Some granted and some not is "partial": the Dart write pass goes
+ * on, and each write and delete answers for its own type ([typeOff]).
  */
 class HealthPermissionStateTest {
 
@@ -86,23 +91,128 @@ class HealthPermissionStateTest {
         )
     }
 
+    // Issue #1555. Before it, any missing write read "denied", and the Dart
+    // write pass stops on "denied" before it writes anything.
     @Test
-    fun `a missing write permission is denied even with every read granted`() {
+    fun `one write switched off is partial, not denied`() {
+        // The person the issue is about: she allowed Menstruation and
+        // declined another type, on the sheet or later in Health Connect.
+        assertEquals("partial", status(setOf(writeMenstruation), writesEverRequested = true))
+        assertEquals("partial", status(setOf(writeSpotting), writesEverRequested = true))
         assertEquals(
-            "denied",
+            "partial",
             status(setOf(writeMenstruation) + importRequest, writesEverRequested = true),
         )
     }
 
     @Test
-    fun `one write granted proves she was asked for the writes, flag or no flag`() {
+    fun `one write granted is partial, flag or no flag`() {
         // A write switched on in Health Connect's settings, or on the sheet
         // of a build older than the flag: a decision about the writes was
-        // made, so the missing one is a denial.
+        // made, so this is never "not yet asked". With the others off it
+        // is partial.
         assertEquals(
-            "denied",
+            "partial",
             status(setOf(writeMenstruation), writesEverRequested = false),
         )
+    }
+
+    @Test
+    fun `the write status for every combination of writes, reads and the flag`() {
+        // Five write permissions, as Health Connect has. What is granted of
+        // them decides the answer; a granted read never does, and the flag
+        // matters only when no write is granted.
+        val five = setOf(
+            writeMenstruation,
+            writeSpotting,
+            "android.permission.health.WRITE_CERVICAL_MUCUS",
+            "android.permission.health.WRITE_OVULATION_TEST",
+            "android.permission.health.WRITE_BASAL_BODY_TEMPERATURE",
+        )
+        val subsets = (0 until (1 shl five.size)).map { mask ->
+            five.filterIndexed { index, _ -> mask and (1 shl index) != 0 }.toSet()
+        }
+        assertEquals(32, subsets.size)
+        for (grantedWrites in subsets) {
+            for (reads in listOf(emptySet(), setOf(readMenstruation), importRequest)) {
+                for (asked in listOf(false, true)) {
+                    val expected = when {
+                        grantedWrites.size == five.size -> "granted"
+                        grantedWrites.isNotEmpty() -> "partial"
+                        asked -> "denied"
+                        else -> "notAsked"
+                    }
+                    assertEquals(
+                        "writes $grantedWrites, reads $reads, asked $asked",
+                        expected,
+                        HealthPermissionState.writeStatusFor(
+                            granted = grantedWrites + reads,
+                            writes = five,
+                            writesEverRequested = asked,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `no write granted is denied or not yet asked, exactly as before`() {
+        // The two asked-marker rules (#1478, #1515) are untouched: with no
+        // write granted the answer is the one statusFor always gave.
+        for (granted in listOf(emptySet(), importRequest, setOf(readHistory))) {
+            for (asked in listOf(false, true)) {
+                assertEquals(
+                    HealthPermissionState.statusFor(
+                        granted = granted,
+                        required = writes,
+                        requested = writes,
+                        everRequested = asked,
+                    ),
+                    status(granted, asked),
+                )
+            }
+        }
+        assertEquals("denied", status(emptySet(), writesEverRequested = true))
+        assertEquals("notAsked", status(emptySet(), writesEverRequested = false))
+    }
+
+    // Issue #1555: each write and each delete answers for its own type.
+    @Test
+    fun `a write whose own permission is granted is not off, whatever else is`() {
+        assertFalse(HealthPermissionState.typeOff(setOf(writeMenstruation), setOf(writeMenstruation)))
+        assertFalse(
+            HealthPermissionState.typeOff(
+                setOf(writeMenstruation) + importRequest,
+                setOf(writeMenstruation),
+            ),
+        )
+        assertFalse(HealthPermissionState.typeOff(writes, setOf(writeSpotting)))
+    }
+
+    @Test
+    fun `a write whose own permission is missing is off, whatever else is granted`() {
+        assertTrue(HealthPermissionState.typeOff(emptySet(), setOf(writeMenstruation)))
+        assertTrue(HealthPermissionState.typeOff(setOf(writeSpotting), setOf(writeMenstruation)))
+        // A read of the same type is not a write of it.
+        assertTrue(HealthPermissionState.typeOff(importRequest, setOf(writeMenstruation)))
+    }
+
+    @Test
+    fun `a delete is off when any type its records can be in is off`() {
+        // A day's own record is a flow record or a spotting record, and the
+        // id does not say which, so a delete of it has to cover both.
+        assertFalse(HealthPermissionState.typeOff(writes, writes))
+        assertTrue(HealthPermissionState.typeOff(setOf(writeMenstruation), writes))
+        assertTrue(HealthPermissionState.typeOff(setOf(writeSpotting), writes))
+        assertTrue(HealthPermissionState.typeOff(emptySet(), writes))
+    }
+
+    @Test
+    fun `a delete that needs no type of this store is never off`() {
+        // A symptom record has no Health Connect type at all.
+        assertFalse(HealthPermissionState.typeOff(emptySet(), emptySet()))
+        assertFalse(HealthPermissionState.typeOff(setOf(writeMenstruation), emptySet()))
     }
 
     // Issue #1515. Before it, any granted permission proved "asked", which
@@ -249,13 +359,13 @@ class HealthPermissionStateTest {
 
     @Test
     fun `the write status is the one decision over the writes alone`() {
-        // writeStatusFor is statusFor with the writes as both what is
-        // required and what counts as proof of having been asked.
+        // Apart from "partial" (some writes granted, above), writeStatusFor
+        // is statusFor with the writes as both what is required and what
+        // counts as proof of having been asked.
         for (writesEverRequested in listOf(false, true)) {
             for (granted in listOf(
                 emptySet(),
                 writes,
-                setOf(writeMenstruation),
                 importRequest,
                 writeRequest,
             )) {
@@ -277,5 +387,12 @@ class HealthPermissionStateTest {
         assertEquals("granted", HealthPermissionState.GRANTED)
         assertEquals("notAsked", HealthPermissionState.NOT_ASKED)
         assertEquals("denied", HealthPermissionState.DENIED)
+        assertEquals("partial", HealthPermissionState.PARTIAL)
+    }
+
+    @Test
+    fun `the type-off answer is the Dart channel result string`() {
+        // decodeHealthResult in health_channel_codec.dart reads exactly this.
+        assertEquals("typeOff", HealthPermissionState.TYPE_OFF)
     }
 }

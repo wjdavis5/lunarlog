@@ -82,6 +82,27 @@ void main() {
       expect(bbt.sourceRowId, 'obs-1');
     });
 
+    // Issue #1555: a removal the store would not take, because the
+    // record's type was off, is kept as a kind of its own so a later
+    // session tries again. A record that is written again turns back into
+    // an ordinary row: one row per record id.
+    test('an owed removal survives the round trip as its own kind, and is '
+        'replaced when the record is written again', () async {
+      await ledger.record([
+        _entry('symptom-entry-1-acne', kind: HealthExportLedgerKind.removalOwed),
+      ]);
+
+      final owed = (await ledger.readForProfile('p1')).single;
+      expect(owed.kind, HealthExportLedgerKind.removalOwed);
+      expect(owed.sourceRowId, 'entry-1');
+
+      await ledger.record([_entry('symptom-entry-1-acne')]);
+
+      final rows = await ledger.readForProfile('p1');
+      expect(rows, hasLength(1));
+      expect(rows.single.kind, HealthExportLedgerKind.entry);
+    });
+
     test('record upserts by record id (no duplicate rows)', () async {
       await ledger.record([_entry('entry-1', localDate: '2026-09-01')]);
       await ledger.record([_entry('entry-1', localDate: '2026-09-02')]);
