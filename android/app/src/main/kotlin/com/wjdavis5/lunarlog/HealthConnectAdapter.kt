@@ -492,7 +492,7 @@ class HealthConnectAdapter(context: Context) {
                             permissions = HealthPermissionState.importRequestPermissions(
                                 reads = readPermissions,
                                 pastData = pastDataPermissions(),
-                                launchedBefore = importRequestLaunched(),
+                                launchedBefore = permissionEverRequested(),
                             ),
                         )
                     } catch (e: Exception) {
@@ -2035,11 +2035,12 @@ internal object HealthPermissionState {
         granted.containsAll(importReads)
 
     /**
-     * What the import's own request asks for (Issue #1573). The first time
-     * this install raises it, everything in `reads`. After that, `reads`
-     * without "Access past data" (`pastData`): it has by then been offered
-     * on a sheet, and the way to it is the screen's button, which asks for
-     * it alone.
+     * What the import's own request asks for (Issue #1573). Everything in
+     * `reads` when this install has raised neither of its two sheets
+     * before (`launchedBefore` false). After that, `reads` without "Access
+     * past data" (`pastData`): both sheets carry it, so it has by then
+     * been offered, and the way to it is the screen's button, which asks
+     * for it alone.
      *
      * Health Connect drops a whole request, unseen, once any permission in
      * it has been declined twice. Left on this sheet, a past-data

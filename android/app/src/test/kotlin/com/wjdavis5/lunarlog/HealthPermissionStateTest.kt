@@ -315,7 +315,7 @@ class HealthPermissionStateTest {
     }
 
     @Test
-    fun `the import's sheet carries past data the first time it is raised and not again`() {
+    fun `the import's sheet carries past data only when neither sheet has been raised before`() {
         val reads = setOf(readHistory, readMenstruation, readSpotting, readBackground)
         val pastData = setOf(readHistory)
         assertEquals(

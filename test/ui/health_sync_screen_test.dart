@@ -2833,6 +2833,55 @@ void main() {
           expect(importer.calls, 1);
         });
 
+        // A result belongs to the binding that produced it. Left up
+        // across a change of profile, a return to the screen imported the
+        // whole history into a profile nobody had tapped Import for.
+        testWidgets('choosing the profile again takes the result down, and '
+            'coming back then runs nothing', (tester) async {
+          final probe = switchOff();
+          final importer = androidImporter(broughtDaysIn);
+          await importOn(tester, probe, importer);
+          await tester.tap(resultAllow);
+          await tester.pumpAndSettle();
+          expect(find.text(stillOff), findsOneWidget);
+
+          await tester.tap(
+            find.byKey(const ValueKey('health-sync-profile-eligible')),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const ValueKey('health-sync-confirm-bind')));
+          await tester.pumpAndSettle();
+
+          expect(find.byKey(const ValueKey('health-sync-import-summary')),
+              findsNothing);
+          expect(find.text(stillOff), findsNothing);
+          expect(resultAllow, findsNothing);
+
+          probe.reachesPastData = true;
+          await leaveAndComeBack(tester);
+          expect(importer.calls, 1);
+        });
+
+        testWidgets('so does stopping the sync', (tester) async {
+          final probe = switchOff();
+          final importer = androidImporter(broughtDaysIn);
+          await importOn(tester, probe, importer);
+          await tester.tap(resultAllow);
+          await tester.pumpAndSettle();
+
+          await tester.tap(find.byKey(const ValueKey('health-sync-unbind-tile')));
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find.byKey(const ValueKey('health-sync-confirm-unbind')),
+          );
+          await tester.pumpAndSettle();
+
+          probe.reachesPastData = true;
+          await leaveAndComeBack(tester);
+          expect(importer.calls, 1);
+          expect(find.text(stillOff), findsNothing);
+        });
+
         testWidgets('coming back to a result that is not waiting on the '
             'switch runs nothing', (tester) async {
           final probe = switchOff();

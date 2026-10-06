@@ -877,15 +877,16 @@ void main() {
     test('the import\'s request asks for the read set and no write '
         'permission', () {
       expect(importRequest, contains('launchPermissionRequest('));
-      // Issue #1573: everything in the read set the first time this
-      // install raises it, and the read set without "access past data"
-      // after that (HealthPermissionState.importRequestPermissions, which
-      // the JVM tests pin).
+      // Issue #1573: everything in the read set when this install has
+      // raised neither sheet before, and the read set without "access past
+      // data" after that, since both sheets carry it
+      // (HealthPermissionState.importRequestPermissions, which the JVM
+      // tests pin).
       expect(
         RegExp(r'permissions = HealthPermissionState\.importRequestPermissions\(\s*'
                 r'reads = readPermissions,\s*'
                 r'pastData = pastDataPermissions\(\),\s*'
-                r'launchedBefore = importRequestLaunched\(\),\s*\)')
+                r'launchedBefore = permissionEverRequested\(\),\s*\)')
             .hasMatch(importRequest),
         isTrue,
       );
@@ -1084,13 +1085,12 @@ void main() {
         hasLength(1),
         reason: 'the import\'s marker is read in one place',
       );
-      // And that one reader has three callers: the read side's "asked",
-      // the rule for what a granted read proves about the writes, and
-      // (Issue #1573) what the import's own request carries.
+      // And that one reader has two callers: the read side's "asked", and
+      // the rule for what a granted read proves about the writes.
       expect(
         RegExp(r'[^.\w]importRequestLaunched\(\)').allMatches(kotlin),
-        hasLength(4),
-        reason: 'its definition and three calls',
+        hasLength(3),
+        reason: 'its definition and two calls',
       );
     });
   });

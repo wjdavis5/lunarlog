@@ -289,11 +289,16 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   ///
   /// Only while reading is still allowed: an import whose reads are off
   /// raises Health Connect's sheet, and nothing is asked from here except
-  /// by her tap. Coming back from the prompt itself does nothing, because
-  /// the line is not up until the prompt has answered ([_allowPastData]).
+  /// by her tap. Coming back from the prompt itself changes nothing: the
+  /// line is not up until the prompt has answered ([_allowPastData]), and
+  /// after a decline the switch is found off. And only for a result that
+  /// is still on screen, which a change of profile takes down
+  /// ([_dropImportResult]).
   Future<void> _recheckPastData() async {
     final probe = widget.permissionProbe;
-    if (probe == null || !_pastDataStillOff || _importing) return;
+    if (probe == null || _importSummary == null || !_pastDataStillOff) {
+      return;
+    }
     final reaches = await _pastDataReach(await _readSideStatus(probe));
     if (!mounted || reaches != true || !_pastDataStillOff) return;
     setState(() => _pastDataStillOff = false);
@@ -622,6 +627,8 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
           ),
         ),
       );
+    } else {
+      setState(_dropImportResult);
     }
     await _load();
   }
@@ -683,11 +690,19 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
     if (!confirmed || !mounted) return;
     await widget.binding.unbind();
     if (!mounted) return;
-    setState(() {
-      _importSummary = null;
-      _importFailed = false;
-    });
+    setState(_dropImportResult);
     await _load();
+  }
+
+  /// Takes the last import's result down, with everything that hangs on
+  /// it. A result belongs to the binding that produced it: left up across
+  /// a change of profile, its button would ask for the older data, and a
+  /// return to the screen would import it, into a profile nobody had
+  /// tapped Import for (the review of Issue #1573).
+  void _dropImportResult() {
+    _importSummary = null;
+    _importFailed = false;
+    _pastDataStillOff = false;
   }
 
   /// The bound profile's display name, or a neutral stand-in when the bound
