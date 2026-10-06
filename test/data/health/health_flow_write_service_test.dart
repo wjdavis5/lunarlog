@@ -632,66 +632,130 @@ void main() {
       expect(platform.flowWrites.last.flow, HealthFlowValue.heavy);
     });
 
-    // Issue #1577. A row's `updatedAt` carries microseconds and the cursor
-    // is stored in milliseconds. Compared exactly, the newest row a pass
-    // wrote was still after the cursor by its microseconds, and was sent
-    // to the health store again on every pass. Every other time in this
-    // file is a whole second, which is why none of them noticed.
-    test('a pass with nothing changed writes nothing, although the newest '
-        'row was saved between two milliseconds', () async {
+    // Issue #1577. A row's `updatedAt` carries microseconds, and the cursor
+    // was stored in whole milliseconds: the newest row a pass wrote was
+    // still after it, by its microseconds, and went to the health store
+    // again on every pass. Every other time in this file is a whole second,
+    // which is why none of them noticed.
+    group('the cursor keeps the microseconds a row carries (#1577)', () {
+      const usKey = SettingsKeys.healthSyncWrittenThroughUs;
       final grant = DateTime.utc(2026, 6, 1, 12);
-      await seedGranted(grant);
       final savedAt = grant.add(const Duration(hours: 2, microseconds: 455));
-      final spottedAt = grant.add(const Duration(hours: 1, microseconds: 217));
-      dayEntries.entries = [
-        _entry('2026-06-02', FlowLevel.medium, savedAt),
-        _entry('2026-06-20', FlowLevel.none, spottedAt),
-      ];
-      observations.observations = [_spotting('2026-06-20', spottedAt)];
-      final service = buildService();
 
-      final first = await service.syncNow();
-      expect(first.blocked, isNull);
-      expect(platform.flowWrites, hasLength(1));
-      expect(platform.markerWrites, hasLength(1));
-      expect(await settings.get(_cursorKey),
-          '${savedAt.millisecondsSinceEpoch}');
+      test('a pass with nothing changed writes nothing', () async {
+        await seedGranted(grant);
+        dayEntries.entries = [_entry('2026-06-02', FlowLevel.medium, savedAt)];
+        final service = buildService();
 
-      // The same service, and then a new one, as after a restart.
-      for (final again in [service, buildService()]) {
-        final report = await again.syncNow();
-        expect(report.blocked, isNull);
-        expect(report.samplesWritten, 0);
+        expect((await service.syncNow()).blocked, isNull);
         expect(platform.flowWrites, hasLength(1));
+        final periodWrites = platform.periodWrites.length;
+        expect(await settings.get(_cursorKey),
+            '${savedAt.millisecondsSinceEpoch}');
+        expect(await settings.get(usKey), '${savedAt.microsecondsSinceEpoch}');
+
+        // The same service, and then a new one, as after a restart.
+        for (final again in [service, buildService()]) {
+          final report = await again.syncNow();
+          expect(report.blocked, isNull);
+          expect(report.samplesWritten, 0);
+          expect(platform.flowWrites, hasLength(1));
+          expect(platform.periodWrites, hasLength(periodWrites));
+        }
+      });
+
+      test('nor is a spotting entry or a temperature, when one of them is '
+          'the newest row', () async {
+        await seedGranted(grant);
+        final earlier = grant.add(const Duration(hours: 1));
+        dayEntries.entries = [
+          _entry('2026-06-20', FlowLevel.none, earlier),
+          _entry('2026-06-21', FlowLevel.none, earlier),
+        ];
+        observations.observations = [
+          _spotting('2026-06-20', savedAt),
+          _bbt('2026-06-21', 36.6, savedAt.add(const Duration(microseconds: 7))),
+        ];
+        final recorder = _BbtRecordingPlatform();
+        platform = recorder;
+        final service = buildService();
+
+        expect((await service.syncNow()).blocked, isNull);
+        expect(recorder.markerWrites, hasLength(1));
+        expect(recorder.bbtWrites, hasLength(1));
+
+        for (final again in [service, buildService()]) {
+          expect((await again.syncNow()).blocked, isNull);
+          expect(recorder.markerWrites, hasLength(1));
+          expect(recorder.bbtWrites, hasLength(1));
+        }
+      });
+
+      // Deciding in whole milliseconds would also have stopped the repeat,
+      // and would have lost this row: the app itself saves a day and the
+      // entry on it a fraction of a millisecond apart.
+      test('a row saved later in the same millisecond is still written',
+          () async {
+        await seedGranted(grant);
+        dayEntries.entries = [_entry('2026-06-20', FlowLevel.none, savedAt)];
+        final service = buildService();
+        expect((await service.syncNow()).blocked, isNull);
+        expect(platform.markerWrites, isEmpty);
+        expect(await settings.get(usKey), '${savedAt.microsecondsSinceEpoch}');
+
+        observations.observations = [
+          _spotting(
+            '2026-06-20',
+            savedAt.add(const Duration(microseconds: 300)),
+          ),
+        ];
+        expect((await service.syncNow()).blocked, isNull);
         expect(platform.markerWrites, hasLength(1));
-      }
+      });
 
-      // An edit one millisecond later is after the cursor, and is written.
-      dayEntries.entries = [
-        _entry('2026-06-02', FlowLevel.heavy,
-            savedAt.add(const Duration(milliseconds: 1))),
-        _entry('2026-06-20', FlowLevel.none, spottedAt),
-      ];
-      await service.syncNow();
-      expect(platform.flowWrites, hasLength(2));
-      expect(platform.flowWrites.last.flow, HealthFlowValue.heavy);
-      expect(platform.markerWrites, hasLength(1));
-    });
+      test('a cursor an earlier build stored, in milliseconds alone, sends '
+          'the newest row once more and then no more', () async {
+        await settings.set(_bindingKey, _profileId);
+        await settings.set(_cursorKey, '${savedAt.millisecondsSinceEpoch}');
+        dayEntries.entries = [_entry('2026-06-02', FlowLevel.medium, savedAt)];
 
-    // The other side of deciding in whole milliseconds, stated so that it
-    // is a choice and not an accident: a row stamped inside the cursor's
-    // own millisecond is not after it.
-    test('a row stamped within the cursor\'s own millisecond is not after '
-        'it', () async {
-      final grant = DateTime.utc(2026, 6, 1, 12);
-      await seedGranted(grant);
-      dayEntries.entries = [
-        _entry('2026-06-02', FlowLevel.medium,
-            grant.add(const Duration(microseconds: 900))),
-      ];
-      final report = await buildService().syncNow();
-      expect(report.samplesWritten, 0);
-      expect(platform.flowWrites, isEmpty);
+        expect((await buildService().syncNow()).blocked, isNull);
+        expect(platform.flowWrites, hasLength(1));
+        expect(await settings.get(usKey), '${savedAt.microsecondsSinceEpoch}');
+
+        expect((await buildService().syncNow()).blocked, isNull);
+        expect(platform.flowWrites, hasLength(1));
+      });
+
+      test('the millisecond value decides when the two disagree, so a row '
+          'can be written again and never skipped', () async {
+        await seedGranted(grant);
+        dayEntries.entries = [_entry('2026-06-02', FlowLevel.medium, savedAt)];
+        expect((await buildService().syncNow()).blocked, isNull);
+        expect(platform.flowWrites, hasLength(1));
+
+        // Something rewrites the old key alone, back to the grant: the
+        // microsecond value now names another millisecond and is ignored.
+        await settings.set(_cursorKey, '${grant.millisecondsSinceEpoch}');
+        expect((await buildService().syncNow()).blocked, isNull);
+        expect(platform.flowWrites, hasLength(2));
+
+        // And a value that is not a number is ignored the same way.
+        await settings.set(_cursorKey, '${grant.millisecondsSinceEpoch}');
+        await settings.set(usKey, 'not a number');
+        expect((await buildService().syncNow()).blocked, isNull);
+        expect(platform.flowWrites, hasLength(3));
+      });
+
+      test('unbinding clears both forms', () async {
+        await seedGranted(grant);
+        dayEntries.entries = [_entry('2026-06-02', FlowLevel.medium, savedAt)];
+        final service = buildService();
+        await service.syncNow();
+        await service.onUnbound();
+        expect(await settings.get(_cursorKey), '');
+        expect(await settings.get(usKey), '');
+      });
     });
 
     test('a failed write leaves the cursor (and the failing day) to retry',
