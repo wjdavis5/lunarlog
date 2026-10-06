@@ -3466,6 +3466,131 @@ void main() {
       expect(platform.flowWrites, isEmpty);
     });
 
+    test('a ledger from an earlier build: a no-flow day saved after the '
+        'floor has its flow record asked for once more', () async {
+      await settings.set(_bindingKey, _profileId);
+      await settings.set(_cursorKey, '${at(10).millisecondsSinceEpoch}');
+      // Written as a period day, then cleared; the earlier build's pass for
+      // the cleared day had not gone through.
+      dayEntries.entries = [_entry('2026-06-20', FlowLevel.none, at(20))];
+      await ledger.record([
+        HealthExportLedgerEntry(
+          recordId: 'entry-2026-06-20',
+          profileId: _profileId,
+          sourceRowId: 'entry-2026-06-20',
+          kind: HealthExportLedgerKind.entry,
+          localDate: '2026-06-20',
+          exportedAt: at(15),
+        ),
+      ]);
+
+      await buildService().syncNow();
+
+      expect(platform.deleteCalls, [
+        ['entry-2026-06-20'],
+      ]);
+      expect(ledger.rows, isEmpty);
+      await buildService().syncNow();
+      expect(platform.deleteCalls, hasLength(1));
+    });
+
+    // A row at or before the floor that this device wrote stays looked
+    // after. Its record can stop being wanted without the row changing.
+    test('a spotting entry an earlier build wrote, from before the floor, is '
+        'taken out when its day is given a flow', () async {
+      await settings.set(_bindingKey, _profileId);
+      await settings.set(_cursorKey, '${at(10).millisecondsSinceEpoch}');
+      dayEntries.entries = [_entry('2026-06-08', FlowLevel.none, at(5))];
+      observations.observations = [_spotting('2026-06-08', at(5))];
+      await ledger.record([
+        HealthExportLedgerEntry(
+          recordId: 'spot-2026-06-08',
+          profileId: _profileId,
+          sourceRowId: 'spot-2026-06-08',
+          kind: HealthExportLedgerKind.spotting,
+          localDate: '2026-06-08',
+          exportedAt: at(6),
+        ),
+      ]);
+      final service = buildService();
+      await service.syncNow();
+      expect(platform.markerWrites, isEmpty);
+      expect(platform.deleteCalls, isEmpty);
+
+      dayEntries.entries = [_entry('2026-06-08', FlowLevel.medium, at(20))];
+      clock = at(21);
+      await service.syncNow();
+
+      expect(platform.flowWrites.single.recordId, 'entry-2026-06-08');
+      expect(platform.deleteCalls, [
+        ['spot-2026-06-08'],
+      ]);
+    });
+
+    test('a spotting entry saved again while spotting is off waits, and is '
+        'sent when spotting is back on', () async {
+      await seedGranted(grant);
+      dayEntries.entries = [_entry('2026-06-10', FlowLevel.none, at(10))];
+      observations.observations = [_spotting('2026-06-10', at(10))];
+      clock = at(11);
+      final service = buildService();
+      await service.syncNow();
+      expect(platform.markerWrites, hasLength(1));
+
+      platform.permission = HealthPermissionStatus.writingSome;
+      platform.grantedTypes = {'menstrualFlow'};
+      observations.observations = [_spotting('2026-06-10', at(20))];
+      clock = at(21);
+      expect((await service.syncNow()).blocked, isNull);
+      expect(platform.markerWrites, hasLength(1));
+
+      platform.grantedTypes = {'menstrualFlow', 'spotting'};
+      clock = at(22);
+      await service.syncNow();
+      expect(platform.markerWrites, hasLength(2));
+      expect(
+        platform.markerWrites.last.recordVersionMs,
+        at(20).millisecondsSinceEpoch,
+      );
+    });
+
+    // A type's floor is compared with the times rows carry, so it is
+    // stamped by the clock that stamps rows.
+    test('a type\'s floor is stamped by the clock rows are stamped with',
+        () async {
+      await seedGranted(grant);
+      // The phone runs five minutes ahead of the server.
+      const ahead = Duration(minutes: 5);
+      final service = LocalHealthFlowWriteService(
+        platform: platform,
+        binding: HealthSyncBinding(settings),
+        minorBindingAllowed: false,
+        profiles: profiles,
+        dayEntries: dayEntries,
+        observations: observations,
+        settings: settings,
+        ledger: ledger,
+        guardiansForProfile: (_) async => [_ownerRow()],
+        signedInUserId: () => _ownerId,
+        now: () => clock,
+        rowClock: () => clock.subtract(ahead),
+      );
+      platform.permission = HealthPermissionStatus.writingSome;
+      platform.grantedTypes = {'spotting'};
+      clock = at(60);
+      await service.syncNow();
+
+      // Flow is switched on, and a day is saved a minute later. The
+      // storage layer stamps it five minutes behind the device's clock.
+      platform.permission = HealthPermissionStatus.granted;
+      dayEntries.entries = [
+        _entry('2026-06-10', FlowLevel.medium, at(61).subtract(ahead)),
+      ];
+      clock = at(62);
+
+      expect((await service.syncNow()).samplesWritten, 1);
+    });
+
     test('the earlier ledger is re-stamped once: the pass leaves a note that '
         'it has been, and unbinding clears it', () async {
       await seedGranted(grant);

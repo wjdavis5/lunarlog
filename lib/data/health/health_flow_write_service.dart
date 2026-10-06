@@ -653,8 +653,11 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   ///   written as it now is, and takes its own `updatedAt`;
   /// * a row after it was still owed, or its pass had failed, and takes
   ///   [floor], which leaves it due;
-  /// * the flow record of a day with no flow was never written (that build
-  ///   asked for it to be deleted instead), and is dropped.
+  /// * the flow record of a day with no flow is dropped: that build asked
+  ///   for it to be deleted instead of writing it. If the day was saved
+  ///   after [floor], so that the delete may not have gone through, it is
+  ///   asked for again by [_clearUnknownFlowRecords], like any no-flow day
+  ///   the ledger knows nothing of.
   ///
   /// Doing this twice changes nothing but to send again what was saved
   /// after the floor, so it is safe to repeat if the stored state is lost.
@@ -669,8 +672,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     };
     final neverWritten = <String>{
       for (final entry in entries)
-        if (!isBleed(entry.flow) && !entry.updatedAt.isAfter(floor))
-          healthFlowRecordId(entry.id),
+        if (!isBleed(entry.flow)) healthFlowRecordId(entry.id),
     };
     final stamped = <HealthExportLedgerEntry>[];
     for (final written in _memory.all) {
