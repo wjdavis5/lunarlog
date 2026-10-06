@@ -546,6 +546,16 @@ body {
   min-width: 0;
 }
 
+/* A row asking for confirmation: the question takes the row's full width
+   and its buttons sit together under it, at the start of the line. */
+.row-confirming {
+  justify-content: flex-start;
+}
+
+.row-confirming .row-main {
+  flex-basis: 100%;
+}
+
 .row-title {
   margin: 0;
   font-weight: var(--ll-type-title-medium-font-weight, 500);

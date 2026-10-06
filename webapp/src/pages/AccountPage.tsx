@@ -328,8 +328,10 @@ function SignInMethodsCard(props: {
             const label = t(labelId);
             const linkable = provider !== 'email';
             const linked = provider === 'email' || providers.includes(provider);
+            const confirming = props.confirmingRemove === provider;
+            const confirmId = `account-remove-${provider}-confirm`;
             return (
-              <li className="row" key={provider}>
+              <li className={confirming ? 'row row-confirming' : 'row'} key={provider}>
                 <div className="row-main">
                   <span className="row-title">{label}</span>
                   {/* "Sign in to this account another way." invites adding a
@@ -339,13 +341,23 @@ function SignInMethodsCard(props: {
                   {!linked ? (
                     <span className="row-sub">{t('accountSectionLinkSubtitle')}</span>
                   ) : null}
+                  {/* What removing means sits in the row being removed, right
+                      above its two buttons. It used to follow the whole list,
+                      under the rows of the other methods. */}
+                  {confirming ? (
+                    <span className="row-sub" id={confirmId}>
+                      {t('accountSectionRemoveTitle', { provider: label })}{' '}
+                      {t('accountSectionRemoveBody', { provider: label })}
+                    </span>
+                  ) : null}
                 </div>
                 {linked && linkable ? (
-                  props.confirmingRemove === provider ? (
+                  confirming ? (
                     <>
                       <button
                         type="button"
                         className="button danger"
+                        aria-describedby={confirmId}
                         disabled={props.unlinkPending}
                         onClick={() => props.onUnlink(provider)}
                       >
@@ -387,20 +399,6 @@ function SignInMethodsCard(props: {
             );
           })}
         </ul>
-        {props.confirmingRemove !== null ? (
-          <p className="row-sub">
-            {t('accountSectionRemoveTitle', {
-              provider: t(
-                providerLabelId(props.confirmingRemove) ?? 'accountProviderLabelEmail',
-              ),
-            })}{' '}
-            {t('accountSectionRemoveBody', {
-              provider: t(
-                providerLabelId(props.confirmingRemove) ?? 'accountProviderLabelEmail',
-              ),
-            })}
-          </p>
-        ) : null}
       </div>
     </section>
   );

@@ -201,8 +201,23 @@ describe('AccountPage (issue #1256)', () => {
         messages['accountSectionRemoveProvider'].replace('{provider}', 'Google'),
       ),
     );
-    expect(await screen.findByText(messages['accountSectionRemove'])).toBeDefined();
-    fireEvent.click(screen.getByText(messages['accountSectionRemove']));
+    const remove = await screen.findByText(messages['accountSectionRemove']);
+    // What removing means is in the row being removed, with its buttons,
+    // and the Remove button is described by it. It used to follow the whole
+    // list, under the other methods' rows.
+    const row = remove.closest('li');
+    expect(row).not.toBeNull();
+    const question = messages['accountSectionRemoveTitle'].replace('{provider}', 'Google');
+    const explanation = Array.from(row!.querySelectorAll('.row-sub')).find((node) =>
+      (node.textContent ?? '').includes(question),
+    );
+    expect(explanation).toBeDefined();
+    expect(explanation!.textContent).toContain(
+      messages['accountSectionRemoveBody'].replace('{provider}', 'Google'),
+    );
+    expect(remove.getAttribute('aria-describedby')).toBe(explanation!.id);
+    expect(screen.getAllByText(question, { exact: false })).toHaveLength(1);
+    fireEvent.click(remove);
 
     await waitFor(() => expect(authMocks.unlinkIdentity).toHaveBeenCalledWith('google'));
     // The methods list refreshes after an unlink (the initial load plus the
