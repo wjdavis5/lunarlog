@@ -3,7 +3,9 @@
      updatePeriodMillis only re-runs LunarLogWidgetProvider.onUpdate, which
      rolls the stored day count forward — it never fetches anything; all
      real freshness comes from the app's own data-change signals
-     (WidgetStatePublisher). -->
+     (WidgetStatePublisher). It runs every 24 hours from whenever the
+     widget was placed, not at midnight, so it is only the backstop: the
+     provider sets its own alarm for just after midnight (issue #1548). -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="180dp"
     android:minHeight="110dp"
