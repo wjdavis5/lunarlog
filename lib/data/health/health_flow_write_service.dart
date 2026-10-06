@@ -637,14 +637,19 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// Stores the cursor in both of its forms: the millisecond value this
   /// path has always written, and the microsecond value beside it (Issue
   /// #1577; why there are two is in `health_write_cursor.dart`).
+  ///
+  /// The microsecond value goes first. The millisecond value is the one
+  /// that decides, so a write cut short between the two leaves the old
+  /// cursor in force, and a new millisecond value is never read beside
+  /// a microsecond value older than it.
   Future<void> _writeCursor(DateTime instant) async {
-    await _settings.set(
-      SettingsKeys.healthSyncWrittenThroughMs,
-      '${instant.millisecondsSinceEpoch}',
-    );
     await _settings.set(
       SettingsKeys.healthSyncWrittenThroughUs,
       '${instant.microsecondsSinceEpoch}',
+    );
+    await _settings.set(
+      SettingsKeys.healthSyncWrittenThroughMs,
+      '${instant.millisecondsSinceEpoch}',
     );
   }
 

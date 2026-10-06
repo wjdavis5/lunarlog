@@ -10,10 +10,11 @@
 /// It is now stored twice: in milliseconds, under the key it always had,
 /// and in microseconds beside it. The millisecond value stays the one that
 /// decides which instant is meant. The microsecond value refines it, and
-/// counts only while the two agree, so anything that writes the old key
-/// alone (an earlier build, a write cut short between the two keys) is
-/// read as it always was: the start of that millisecond. That reading can
-/// only write a row again; it can never skip one.
+/// counts only while it names an instant inside that millisecond. When
+/// the two name different milliseconds (an earlier build moved the old
+/// key on, or a write was cut short between the two) the cursor is read
+/// as it always was: the start of the millisecond. That reading can only
+/// write a row again; it can never skip one.
 library;
 
 /// The cursor instant for its two stored forms. [microseconds] is used

@@ -747,6 +747,27 @@ void main() {
         expect(platform.flowWrites, hasLength(3));
       });
 
+      // On main the grant pass left a row saved a moment before the grant
+      // alone, and every later pass read the cursor back as the start of
+      // its millisecond and wrote it: a backfill of something logged
+      // before write access was given.
+      test('a row saved in the grant\'s millisecond, before the grant, is '
+          'never written', () async {
+        await settings.set(_bindingKey, _profileId);
+        clock = grant.add(const Duration(microseconds: 500));
+        dayEntries.entries = [
+          _entry('2026-06-02', FlowLevel.medium,
+              grant.add(const Duration(microseconds: 200))),
+        ];
+
+        expect((await buildService().syncNow()).blocked, isNull);
+        expect(await settings.get(usKey), '${clock.microsecondsSinceEpoch}');
+        expect(platform.flowWrites, isEmpty);
+
+        expect((await buildService().syncNow()).blocked, isNull);
+        expect(platform.flowWrites, isEmpty);
+      });
+
       test('unbinding clears both forms', () async {
         await seedGranted(grant);
         dayEntries.entries = [_entry('2026-06-02', FlowLevel.medium, savedAt)];
