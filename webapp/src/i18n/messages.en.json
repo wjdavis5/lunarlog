@@ -1398,6 +1398,7 @@
   "healthSyncDenyNotOwnerSignedOut": "Sign in and sync once so this device can confirm you own this profile.",
   "healthSyncDenyNotOwner": "You are not this profile's owner — only its accepted primary guardian can bind health sync.",
   "healthSyncUnboundProfileName": "this profile",
+  "healthSyncImportNoProfile": "Nothing was imported. No profile is syncing with {source} on this phone any more. Choose a profile above to sync it.",
   "healthSyncImportBlockedRefused": "This profile can't import from {source} right now.",
   "healthSyncImportBlockedFailed": "Couldn't finish the import. Please try again.",
   "importApplyFailure": "Could not finish the import. Nothing was written — please try again.",

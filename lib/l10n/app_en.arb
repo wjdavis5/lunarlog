@@ -6960,6 +6960,15 @@
     "@healthSyncUnboundProfileName": {
       "description": "Issue #1004 (tranche 5): neutral stand-in when the bound profile id no longer resolves."
     },
+    "healthSyncImportNoProfile": "Nothing was imported. No profile is syncing with {source} on this phone any more. Choose a profile above to sync it.",
+    "@healthSyncImportNoProfile": {
+      "description": "Issue #1599: the result of tapping Import when the profile Health sync was tied to has gone since the screen was opened (deleted on another device, or the phone's data was wiped). Nothing was read from the health store, so none of the 'nothing to import' lines applies: those describe the store. 'Above' is the list of profiles at the top of the same screen. {source} is the health store's name.",
+      "placeholders": {
+        "source": {
+          "type": "String"
+        }
+      }
+    },
     "healthSyncImportBlockedRefused": "This profile can't import from {source} right now.",
     "@healthSyncImportBlockedRefused": {
       "description": "Issue #1004 (tranche 5): import blocked by the binding guard.",

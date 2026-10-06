@@ -829,10 +829,24 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
         // (and offers the settings link) without leaving the screen.
         _setAccess(access);
       });
-      _announceResult(summary);
+      _showResult(summary);
     } catch (_) {
       _importThrew(startedUnder);
     }
+  }
+
+  /// Brings a finished pass's result into view.
+  ///
+  /// A pass that found no bound profile read nothing (Issue #1599). The
+  /// screen learns the binding when it loads and does not watch it, so
+  /// the profile can go while the screen is open: deleted on another
+  /// device, or with the phone's data. The result then says so
+  /// ([_importSummaryChildren]), and the screen is loaded again so that
+  /// what it shows as chosen is what is chosen now.
+  void _showResult(HealthImportSummary summary) {
+    if (summary.bound) return _announceResult(summary);
+    _revealResult();
+    unawaited(_load());
   }
 
   /// Issue #1017: bring the result into view and, for a completed pass that
@@ -1126,10 +1140,23 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
 
   /// The lines for a finished pass: the blocked line, the neutral empty
   /// copy, or the stopped-early note plus the positive result lines.
+  ///
+  /// A pass that found no bound profile comes first (Issue #1599). It
+  /// read nothing, so it has no counts and would otherwise fall through
+  /// to the empty copy, which describes the health store: "Health
+  /// Connect has no menstrual flow or spotting from other apps to
+  /// import", about a store nobody looked at.
   List<Widget> _importSummaryChildren(
     AppLocalizations l10n,
     HealthImportSummary summary,
   ) {
+    if (!summary.bound) {
+      return [
+        Text(
+          l10n.healthSyncImportNoProfile(_sourceName(l10n, _importPlatform)),
+        ),
+      ];
+    }
     if (summary.isBlocked) {
       return [Text(_blockedImportCopy(l10n, summary.blocked!))];
     }

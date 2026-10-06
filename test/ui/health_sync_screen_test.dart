@@ -89,6 +89,20 @@ class FakeProfilesRepository implements ProfilesRepository {
 /// A repository whose `list()` always throws — exercises `_load()`'s
 /// `catchError` handling (review fix): the loading spinner must resolve
 /// instead of spinning forever.
+/// Counts how often the screen reads the profile list, which it does
+/// once for each time it loads.
+class CountingProfilesRepository extends FakeProfilesRepository {
+  CountingProfilesRepository(super.profiles);
+
+  int lists = 0;
+
+  @override
+  Future<List<Profile>> list() {
+    lists++;
+    return super.list();
+  }
+}
+
 class ThrowingProfilesRepository implements ProfilesRepository {
   @override
   Future<Profile> create({
@@ -2372,6 +2386,154 @@ void main() {
 
       _FakeImporter androidImporter(HealthImportSummary summary) =>
           _FakeImporter(summary, platform: HealthImportPlatform.healthConnect);
+
+      // Issue #1599. The screen learns which profile is bound when it
+      // loads and does not watch it. With the profile gone since, the
+      // import reads nothing, and its result used to be the line for an
+      // empty store: a statement about a store nobody had looked at.
+      group('Issue #1599 no profile is bound any more', () {
+        const noProfileHealthConnect = 'Nothing was imported. No profile is '
+            'syncing with Health Connect on this phone any more. Choose a '
+            'profile above to sync it.';
+        const noProfileAppleHealth = 'Nothing was imported. No profile is '
+            'syncing with the Health app on this phone any more. Choose a '
+            'profile above to sync it.';
+        final importTile = find.byKey(const ValueKey('health-sync-import-tile'));
+        final unbindTile = find.byKey(const ValueKey('health-sync-unbind-tile'));
+
+        void expectNoLineAboutTheStore() {
+          for (final line in [
+            nothingNew,
+            nothingToImport,
+            neutralHealthConnect,
+            neutralAppleHealth,
+          ]) {
+            expect(find.text(line), findsNothing, reason: line);
+          }
+          expect(find.textContaining('older data'), findsNothing);
+          expect(resultAllow, findsNothing);
+          expect(resultSettings, findsNothing);
+          expect(find.byType(SnackBar), findsNothing);
+        }
+
+        testWidgets('Android: the result says so, says nothing about what '
+            'Health Connect holds, and the screen shows nothing chosen',
+            (tester) async {
+          final binding = await boundBinding();
+          await pumpAndroid(
+            tester,
+            binding: binding,
+            // Reading allowed and older data hidden: what gave the "nothing
+            // to import" line and the button under it.
+            permissionProbe: _ScriptedProbe(
+              readAccessDisclosed: true,
+              write: HealthPermissionStatus.granted,
+              read: HealthPermissionStatus.granted,
+              reachesPastData: false,
+            ),
+            importer: androidImporter(const HealthImportSummary(bound: false)),
+          );
+          expect(importTile, findsOneWidget);
+          // The binding goes away behind the open screen.
+          await binding.unbind();
+
+          expect(await importAndReadResult(tester), noProfileHealthConnect);
+          expectNoLineAboutTheStore();
+          // Loaded again: nothing is chosen now, so there is nothing to
+          // import into and nothing to stop.
+          expect(importTile, findsNothing);
+          expect(unbindTile, findsNothing);
+          expect(
+            find.byKey(const ValueKey('health-sync-profile-eligible')),
+            findsOneWidget,
+          );
+        });
+
+        testWidgets('iPhone: the same, naming the Health app', (tester) async {
+          final binding = await boundBinding();
+          await pumpScreen(
+            tester,
+            binding: binding,
+            importer: _FakeImporter(const HealthImportSummary(bound: false)),
+            permissionProbe: _ScriptedProbe(
+              readAccessDisclosed: false,
+              write: HealthPermissionStatus.granted,
+              read: HealthPermissionStatus.granted,
+            ),
+            writeEnabled: true,
+            storePlatform: HealthImportPlatform.appleHealth,
+            viewport: const Size(800, 2400),
+          );
+          await binding.unbind();
+
+          expect(await importAndReadResult(tester), noProfileAppleHealth);
+          expectNoLineAboutTheStore();
+          expect(importTile, findsNothing);
+        });
+
+        // Loading again is for the pass that found nothing bound. Any
+        // other pass leaves the screen as it is.
+        testWidgets('the screen is loaded again after that pass, and not '
+            'after one that had a profile to import into', (tester) async {
+          for (final (summary, loads) in const [
+            (HealthImportSummary(bound: false), 2),
+            (HealthImportSummary(incremental: true, pagesRead: 1), 1),
+          ]) {
+            final repository = CountingProfilesRepository(profiles);
+            await pumpScreen(
+              tester,
+              binding: await boundBinding(),
+              importer: androidImporter(summary),
+              permissionProbe: _ScriptedProbe(
+                readAccessDisclosed: true,
+                write: HealthPermissionStatus.granted,
+                read: HealthPermissionStatus.granted,
+              ),
+              profilesRepository: repository,
+              writeEnabled: true,
+              storePlatform: HealthImportPlatform.healthConnect,
+              viewport: const Size(800, 2400),
+            );
+            expect(repository.lists, 1);
+
+            await importAndReadResult(tester);
+
+            expect(repository.lists, loads, reason: '${summary.bound}');
+            await tester.pumpWidget(const SizedBox.shrink());
+          }
+        });
+
+        // The stored id can also outlive its profile (deleted on another
+        // device). The binding still names one, so the tiles stay; the
+        // result is the same line.
+        testWidgets('a binding whose profile is gone: the same line, and '
+            'choosing a profile takes it down', (tester) async {
+          await pumpAndroid(
+            tester,
+            binding: await boundBinding(),
+            permissionProbe: _ScriptedProbe(
+              readAccessDisclosed: true,
+              write: HealthPermissionStatus.granted,
+              read: HealthPermissionStatus.granted,
+            ),
+            importer: androidImporter(const HealthImportSummary(bound: false)),
+          );
+
+          expect(await importAndReadResult(tester), noProfileHealthConnect);
+          expectNoLineAboutTheStore();
+          expect(importTile, findsOneWidget);
+
+          await tester.tap(
+            find.byKey(const ValueKey('health-sync-profile-eligible')),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find.byKey(const ValueKey('health-sync-confirm-bind')),
+          );
+          await tester.pumpAndSettle();
+          expect(find.text(noProfileHealthConnect), findsNothing);
+        });
+      });
 
       testWidgets('Android: a repeat import with nothing new says so, and '
           'says nothing about access', (tester) async {

@@ -5390,6 +5390,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get healthSyncUnboundProfileName => 'this profile';
 
   @override
+  String healthSyncImportNoProfile(String source) {
+    return 'Nothing was imported. No profile is syncing with $source on this phone any more. Choose a profile above to sync it.';
+  }
+
+  @override
   String healthSyncImportBlockedRefused(String source) {
     return 'This profile can\'t import from $source right now.';
   }

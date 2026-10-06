@@ -1401,6 +1401,7 @@ export const MESSAGE_IDS = [
   "healthSyncDenyNotOwnerSignedOut",
   "healthSyncDenyNotOwner",
   "healthSyncUnboundProfileName",
+  "healthSyncImportNoProfile",
   "healthSyncImportBlockedRefused",
   "healthSyncImportBlockedFailed",
   "importApplyFailure",
