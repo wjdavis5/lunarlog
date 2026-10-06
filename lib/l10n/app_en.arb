@@ -1303,6 +1303,15 @@
       }
     }
   },
+  "healthSyncImportSummaryImported": "Imported {imported, plural, =1{1 day} other{{imported} days}}.",
+  "@healthSyncImportSummaryImported": {
+    "description": "Health import completion headline (Issue #1557) for a pass that imported days and skipped none. The headline with a skipped count read 'Imported 1 day, skipped 0 already logged.'",
+    "placeholders": {
+      "imported": {
+        "type": "int"
+      }
+    }
+  },
   "healthSyncImportSummaryNothingNew": "Nothing new — {skipped, plural, =1{1 day} other{{skipped} days}} already logged.",
   "@healthSyncImportSummaryNothingNew": {
     "description": "Health import completion headline (Issue #1017) for a pass that imported no days: says plainly that nothing was new because the days were already logged, rather than the pre-#1017 'Imported 0 days'.",
@@ -6786,6 +6795,10 @@
     "healthSyncImportEmptyHealthConnectOlderHidden": "Nothing to import that lunarlog can see. Health Connect hides older data from lunarlog unless \"Access past data\" is on for it.",
     "@healthSyncImportEmptyHealthConnectOlderHidden": {
       "description": "Issue #1549: the result of an import from Health Connect that read everything it was allowed to and got nothing back, when reading is allowed but Health Connect's separate 'Access past data' permission is not granted to lunarlog. Without it Health Connect hides data older than about a month before lunarlog was first allowed, so the app cannot say the store is empty (healthSyncImportEmptyHealthConnectReadable). 'Access past data' is Health Connect's own label for that permission. The sentence is also true on a phone whose Health Connect has no such switch."
+    },
+    "healthSyncImportOlderDataHidden": "Health Connect hides older data from lunarlog unless \"Access past data\" is on for it.",
+    "@healthSyncImportOlderDataHidden": {
+      "description": "Issue #1557: a line under the result of an import from Health Connect that brought days in, or that asked only for what changed, while Health Connect's 'Access past data' switch was off for lunarlog. Older days may be there and were not read. Shown with an Open Settings button. The quoted name is Health Connect's own label for the switch (Android 15)."
     },
     "healthSyncImportNothingSinceLast": "Nothing new in {source} since the last import.",
     "@healthSyncImportNothingSinceLast": {

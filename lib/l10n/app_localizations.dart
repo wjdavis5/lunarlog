@@ -1588,6 +1588,12 @@ abstract class AppLocalizations {
   /// **'Imported {imported, plural, =1{1 day} other{{imported} days}}, skipped {skipped, plural, =1{1 already logged} other{{skipped} already logged}}.'**
   String healthSyncImportSummaryHeadline(int imported, int skipped);
 
+  /// Health import completion headline (Issue #1557) for a pass that imported days and skipped none. The headline with a skipped count read 'Imported 1 day, skipped 0 already logged.'
+  ///
+  /// In en, this message translates to:
+  /// **'Imported {imported, plural, =1{1 day} other{{imported} days}}.'**
+  String healthSyncImportSummaryImported(int imported);
+
   /// Health import completion headline (Issue #1017) for a pass that imported no days: says plainly that nothing was new because the days were already logged, rather than the pre-#1017 'Imported 0 days'.
   ///
   /// In en, this message translates to:
@@ -8307,6 +8313,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Nothing to import that lunarlog can see. Health Connect hides older data from lunarlog unless \"Access past data\" is on for it.'**
   String get healthSyncImportEmptyHealthConnectOlderHidden;
+
+  /// Issue #1557: a line under the result of an import from Health Connect that brought days in, or that asked only for what changed, while Health Connect's 'Access past data' switch was off for lunarlog. Older days may be there and were not read. Shown with an Open Settings button. The quoted name is Health Connect's own label for the switch (Android 15).
+  ///
+  /// In en, this message translates to:
+  /// **'Health Connect hides older data from lunarlog unless \"Access past data\" is on for it.'**
+  String get healthSyncImportOlderDataHidden;
 
   /// Issue #1523: the result of a repeat import that asked the health store only for what changed since the previous import and got nothing back. Says nothing about access or about whether anything was ever tracked, since an earlier import already ran. {source} is the store's mid-sentence name ('Health Connect', 'the Health app').
   ///

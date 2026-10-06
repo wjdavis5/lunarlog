@@ -1076,7 +1076,8 @@ void main() {
       expect(
         find.descendant(
           of: summary,
-          matching: find.text('Imported 2 days, skipped 0 already logged.'),
+          // Issue #1557: with nothing skipped it says only what came in.
+          matching: find.text('Imported 2 days.'),
         ),
         findsOneWidget,
       );
@@ -2437,46 +2438,142 @@ void main() {
         expect(probe.settingsOpened, 1);
       });
 
-      testWidgets('Android: no other result carries the settings button',
-          (tester) async {
+      // Issue #1557. The line and the button used to appear on one result
+      // only, the empty whole-history one. Someone whose first import
+      // brought recent days in was told nothing about the older ones, and
+      // someone who had imported with the switch off only ever saw "nothing
+      // new since the last import".
+      const olderHint =
+          'Health Connect hides older data from lunarlog unless '
+          '"Access past data" is on for it.';
+
+      Future<void> importWith(
+        WidgetTester tester, {
+        required bool? reachesPastData,
+        required HealthImportSummary summary,
+        HealthPermissionStatus read = HealthPermissionStatus.granted,
+      }) async {
         await pumpAndroid(
           tester,
           binding: await boundBinding(),
           permissionProbe: _ScriptedProbe(
             readAccessDisclosed: true,
             write: HealthPermissionStatus.granted,
-            read: HealthPermissionStatus.granted,
-            reachesPastData: false,
+            read: read,
+            reachesPastData: reachesPastData ?? false,
+            pastDataThrows: reachesPastData == null,
           ),
-          importer: androidImporter(
-            const HealthImportSummary(incremental: true, pagesRead: 1),
-          ),
+          importer: androidImporter(summary),
         );
-        // A repeat import with nothing new: nothing is hidden from it.
-        expect(await importAndReadResult(tester), nothingNew);
+        await importAndReadResult(tester);
+      }
+
+      const broughtDaysIn = HealthImportSummary(
+        pagesRead: 1,
+        samplesRead: 2,
+        daysWritten: 2,
+      );
+      const nothingSince = HealthImportSummary(incremental: true, pagesRead: 1);
+
+      testWidgets('Android: an import that brought days in with the switch '
+          'off says older data is hidden, and offers Settings',
+          (tester) async {
+        await importWith(tester,
+            reachesPastData: false, summary: broughtDaysIn);
+        // In the result, and announced in the snackbar as well.
+        expect(find.text('Imported 2 days.'), findsWidgets);
+        expect(find.text(olderHint), findsOneWidget);
+        expect(resultSettings, findsOneWidget);
+      });
+
+      testWidgets('Android: a repeat import with the switch off says so too',
+          (tester) async {
+        await importWith(tester, reachesPastData: false, summary: nothingSince);
+        expect(find.text(nothingNew), findsOneWidget);
+        expect(find.text(olderHint), findsOneWidget);
+        expect(resultSettings, findsOneWidget);
+      });
+
+      testWidgets('Android: when it cannot tell, it says the same',
+          (tester) async {
+        await importWith(tester, reachesPastData: null, summary: broughtDaysIn);
+        expect(find.text(olderHint), findsOneWidget);
+        expect(resultSettings, findsOneWidget);
+      });
+
+      testWidgets('Android: with the switch on, no result carries the line or '
+          'the button', (tester) async {
+        for (final summary in [broughtDaysIn, nothingSince]) {
+          await importWith(tester, reachesPastData: true, summary: summary);
+          expect(find.text(olderHint), findsNothing);
+          expect(resultSettings, findsNothing);
+          await tester.pumpWidget(const SizedBox.shrink());
+        }
+      });
+
+      testWidgets('Android: the empty whole-history result says it once, in '
+          'its own sentence', (tester) async {
+        await importWith(
+          tester,
+          reachesPastData: false,
+          summary: const HealthImportSummary(pagesRead: 1),
+        );
+        expect(find.text(olderHidden), findsOneWidget);
+        expect(find.text(olderHint), findsNothing);
+        expect(resultSettings, findsOneWidget);
+      });
+
+      testWidgets('Android: reading not allowed gets neither: the status '
+          'line already says what is off', (tester) async {
+        await importWith(
+          tester,
+          reachesPastData: false,
+          summary: broughtDaysIn,
+          read: HealthPermissionStatus.denied,
+        );
+        expect(find.text(olderHint), findsNothing);
         expect(resultSettings, findsNothing);
       });
 
-      testWidgets('Android: an import that brought days in has no '
-          'settings button', (tester) async {
+      testWidgets('Android: the button under a result opens Settings',
+          (tester) async {
+        final probe = _ScriptedProbe(
+          readAccessDisclosed: true,
+          write: HealthPermissionStatus.granted,
+          read: HealthPermissionStatus.granted,
+          reachesPastData: false,
+        );
         await pumpAndroid(
           tester,
           binding: await boundBinding(),
-          permissionProbe: _ScriptedProbe(
-            readAccessDisclosed: true,
-            write: HealthPermissionStatus.granted,
-            read: HealthPermissionStatus.granted,
-            reachesPastData: false,
-          ),
-          importer: androidImporter(
-            const HealthImportSummary(
-              pagesRead: 1,
-              samplesRead: 2,
-              daysWritten: 2,
-            ),
-          ),
+          permissionProbe: probe,
+          importer: androidImporter(broughtDaysIn),
         );
         await importAndReadResult(tester);
+        await tester.tap(resultSettings);
+        await tester.pump();
+        expect(probe.settingsOpened, 1);
+      });
+
+      testWidgets('iPhone: an import that brought days in has no such line',
+          (tester) async {
+        await pumpScreen(
+          tester,
+          binding: await boundBinding(),
+          importer: _FakeImporter(broughtDaysIn),
+          permissionProbe: _ScriptedProbe(
+            readAccessDisclosed: false,
+            write: HealthPermissionStatus.granted,
+            read: HealthPermissionStatus.granted,
+          ),
+          writeEnabled: true,
+          storePlatform: HealthImportPlatform.appleHealth,
+          viewport: const Size(800, 2400),
+        );
+        await importAndReadResult(tester);
+        // In the result, and announced in the snackbar as well.
+        expect(find.text('Imported 2 days.'), findsWidgets);
+        expect(find.textContaining('Access past data'), findsNothing);
         expect(resultSettings, findsNothing);
       });
 
