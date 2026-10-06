@@ -862,7 +862,8 @@ void main() {
     addTearDown(coordinator.dispose);
 
     expect(permissionState.value, NotificationAvailability.denied);
-    await coordinator.requestPermission();
+    expect(await coordinator.requestPermission(),
+        NotificationAvailability.available);
 
     expect(scheduler.requestPermissionCalls, 1);
     expect(permissionState.value, NotificationAvailability.available);
@@ -886,7 +887,10 @@ void main() {
     addTearDown(coordinator.dispose);
 
     final cancelsBefore = scheduler.cancelCalls;
-    await coordinator.requestPermission();
+    // Issue #1627: the answer is returned so the caller can skip the push ask
+    // after a refusal.
+    expect(await coordinator.requestPermission(),
+        NotificationAvailability.denied);
     await pumpEventQueue();
 
     expect(permissionState.value, NotificationAvailability.denied);
@@ -910,7 +914,7 @@ void main() {
     final started = coordinator.start();
     addTearDown(coordinator.dispose);
 
-    await coordinator.requestPermission();
+    expect(await coordinator.requestPermission(), isNull);
     expect(scheduler.requestPermissionCalls, 0,
         reason: 'start() has not finished initializing yet');
 
