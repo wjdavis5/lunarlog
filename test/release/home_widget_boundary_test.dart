@@ -187,6 +187,59 @@ void main() {
       expect(receiver, contains('android:exported="false"'));
     });
 
+    test('the Android Log button is a quiet pill with a full-size touch '
+        'target', () {
+      final layout = readRepoFile(
+          'android/app/src/main/res/layout/lunarlog_widget.xml');
+      final button = RegExp(r'<Button[\s\S]*?/>').firstMatch(layout)!.group(0)!;
+      // It was a stock grey button in capitals, about 24dp tall to touch.
+      // It is the one control on the widget that records something.
+      expect(button, contains('android:id="@+id/widget_quick_log"'));
+      expect(button,
+          contains('android:background="@drawable/lunarlog_widget_log_pill"'));
+      expect(button, contains('android:textAllCaps="false"'));
+      expect(button, contains('android:minHeight="48dp"'));
+      expect(button, contains('android:minWidth="64dp"'));
+      // The pill is inset inside that height, so it looks 32dp tall.
+      final pill = readRepoFile(
+          'android/app/src/main/res/drawable/lunarlog_widget_log_pill.xml');
+      expect(pill, contains('android:insetTop="8dp"'));
+      expect(pill, contains('android:insetBottom="8dp"'));
+    });
+
+    test('the Android widget picker shows a sample, and it stays discreet',
+        () {
+      final info = readRepoFile(
+          'android/app/src/main/res/xml/lunarlog_widget_info.xml');
+      expect(info,
+          contains('android:previewLayout="@layout/lunarlog_widget_preview"'),
+          reason: 'without a preview the picker shows a blank card');
+      expect(info, contains('android:description="@string/widget_description"'));
+
+      // The sample is fixed text: it has no ids for the provider to fill,
+      // so it can never carry anyone's stored state.
+      final preview = readRepoFile(
+          'android/app/src/main/res/layout/lunarlog_widget_preview.xml');
+      expect(preview, isNot(contains('android:id=')));
+      expect(preview, contains('@string/widget_preview_title'));
+
+      // Every string the widget and its picker entry can show is free of
+      // health words, the same rule as the rendered copy.
+      final strings = readRepoFile(
+          'android/app/src/main/res/values/widget_strings.xml');
+      final values = RegExp(r'<string name="[^"]+">([^<]*)</string>')
+          .allMatches(strings)
+          .map((m) => m.group(1)!)
+          .toList();
+      expect(values, containsAll(['Day 14', '≈7 d', 'Log']));
+      for (final value in values) {
+        for (final word in _healthWords) {
+          expect(value.toLowerCase(), isNot(contains(word)),
+              reason: 'a widget string must not carry "$word" ("$value")');
+        }
+      }
+    });
+
     test('the native render vocabulary stays discreet', () {
       // The user-visible strings each native side renders. If a health
       // word ever appears here, the discreet default is broken.
