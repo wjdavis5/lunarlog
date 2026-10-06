@@ -162,6 +162,7 @@ class _FakeSource implements HealthImportSource {
     required DateTime end,
     required int pageSize,
     String? cursor,
+    bool wholeHistory = false,
   }) async {
     lastStart = start;
     lastEnd = end;

@@ -228,6 +228,7 @@ sealed class HealthReadResult {
     String? nextCursor,
     String? commitToken,
     bool incremental,
+    List<String> deletedRecordIds,
   }) = HealthReadSamples;
 
   /// No health store exists on this device.
@@ -255,9 +256,21 @@ final class HealthReadSamples extends HealthReadResult {
     this.nextCursor,
     this.commitToken,
     this.incremental = false,
+    this.deletedRecordIds = const [],
   });
 
   final List<HealthFlowSample> samples;
+
+  /// The ids of records the store says were deleted since the previous
+  /// import (Issue #1594): Health Connect's `DeletionChange`s, which carry
+  /// an id and nothing else. Only an [incremental] page has any. A record
+  /// that a whole-history read does not return is not in this list and
+  /// says nothing: with "Access past data" off the store hides what it
+  /// still holds.
+  ///
+  /// An id deleted and written again within one page is not listed, and
+  /// an id written and then deleted is listed and has no sample.
+  final List<String> deletedRecordIds;
 
   /// True when this page came from a read that asked the store only for
   /// what changed since the bound profile's previous import (Issue #1523):
@@ -355,7 +368,16 @@ abstract interface class HealthImportSource {
     required DateTime end,
     required int pageSize,
     String? cursor,
+    bool wholeHistory = false,
   });
+
+  // [wholeHistory] (Issue #1594): with no [cursor], start over from a
+  // read of everything the store holds, dropping any stored position, so
+  // that the pass does not ask only for what changed. The import asks
+  // for it before it takes out a day whose record was deleted: the
+  // store may hold another record for that day, and a changes-only read
+  // never returns a record that did not change. Ignored with a cursor,
+  // and on a store whose every pass reads everything (HealthKit).
 
   /// Reads Apple's four computed cycle-deviation category types whose
   /// interval intersects `[start]`–`[end]` (absolute instants) for the
@@ -439,6 +461,7 @@ class HealthImportSummary {
     this.pageLimitReached = false,
     this.repeatedCursor = false,
     this.incremental = false,
+    this.daysRemoved = 0,
   });
 
   /// False when no profile is bound to this device — the import action is
@@ -514,6 +537,13 @@ class HealthImportSummary {
   /// store holds nothing or that reading is off.
   final bool incremental;
 
+  /// Days whose imported flow or spotting entry was taken out because the
+  /// store said its record was deleted and she asked for it (Issue #1594;
+  /// [HealthImportRunner.removeDaysDeletedInStore]). A day that carried
+  /// anything of hers kept its row and lost only what was imported. Zero
+  /// for every other pass: an import removes nothing by itself.
+  final int daysRemoved;
+
   /// Whether the pass ended before any read could run.
   bool get isBlocked => blocked != null;
 
@@ -530,8 +560,10 @@ class HealthImportSummary {
   /// Whether the store returned no usable samples at all — the neutral
   /// "nothing came back" state. Never phrased as "nothing was tracked" or
   /// "permission denied".
-  bool get isEmpty =>
-      !isBlocked &&
+  bool get isEmpty => !isBlocked && daysRemoved == 0 && _readNothing;
+
+  /// No sample came back and no day was touched by one.
+  bool get _readNothing =>
       samplesRead == 0 &&
       daysWritten == 0 &&
       daysUnchanged == 0 &&
@@ -602,6 +634,57 @@ abstract interface class HealthImportRunner {
   ///
   /// Call it only from her tap.
   Future<bool> requestPastDataAccess();
+
+  /// The imported days the store has said were deleted, for the
+  /// currently bound profile (Issue #1594). Empty with no bound profile.
+  /// Nothing is written by asking.
+  ///
+  /// An import notes such days and removes none of them. A record goes
+  /// from a health store for more than one reason: she took back a day
+  /// logged by mistake in another app, or she cleared out that app, or
+  /// the store, after moving to lunarlog, or an app trims what it keeps
+  /// there. Nothing in a deletion says which, and following the wrong
+  /// kind would take her history away on every device she syncs to. So
+  /// the screen shows the count and asks.
+  Future<HealthStoreDeletedOffer> daysDeletedInStore();
+
+  /// Takes out what was imported from the records of [offer], because
+  /// she asked (Issue #1594). Only those: a deletion the store reports
+  /// after the offer was read, this pass's own reads included, is one
+  /// she has not been shown, and stays on offer.
+  ///
+  /// Everything the store holds is read again first, so a day the store
+  /// still has another record for keeps a value; when that read does not
+  /// reach its end, nothing is removed and the days stay on offer. The
+  /// summary's [HealthImportSummary.daysRemoved] says how many days
+  /// were touched.
+  ///
+  /// Call it only from her tap. Guarded and prompted like [importNow].
+  Future<HealthImportSummary> removeDaysDeletedInStore(
+    HealthStoreDeletedOffer offer, {
+    void Function(HealthImportProgress progress)? onProgress,
+  });
+
+  /// Leaves the days of [offer] as they are and stops offering them
+  /// (Issue #1594). They are ordinary imported days from then on.
+  Future<void> keepDaysDeletedInStore(HealthStoreDeletedOffer offer);
+}
+
+/// The days the health store has said were deleted, as she is shown
+/// them (Issue #1594): how many, and which of the store's records they
+/// were imported from. Both of her answers are about exactly these
+/// records.
+class HealthStoreDeletedOffer {
+  const HealthStoreDeletedOffer({this.days = 0, this.recordIds = const {}});
+
+  /// How many days carry something imported from [recordIds].
+  final int days;
+
+  /// The health store's ids of the deleted records. Ids only, and
+  /// nothing the screen reads.
+  final Set<String> recordIds;
+
+  bool get isEmpty => days == 0;
 }
 
 /// The seam the platform background triggers drive (Issue #993): the same

@@ -493,6 +493,7 @@ class MethodChannelHealthPlatform
     required DateTime end,
     required int pageSize,
     String? cursor,
+    bool wholeHistory = false,
   }) async {
     final check = await _guardCheck(facts);
     if (!check.isAllowed) return HealthReadResult.refused(check);
@@ -506,6 +507,7 @@ class MethodChannelHealthPlatform
             end,
             pageSize: pageSize,
             cursor: cursor,
+            wholeHistory: wholeHistory,
           ),
         },
       );
@@ -734,6 +736,7 @@ class UnsupportedHealthPlatform
     required DateTime end,
     required int pageSize,
     String? cursor,
+    bool wholeHistory = false,
   }) async =>
       const HealthReadResult.unavailable();
 

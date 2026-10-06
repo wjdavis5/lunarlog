@@ -61,6 +61,7 @@ class _Store implements HealthImportSource {
     required DateTime end,
     required int pageSize,
     String? cursor,
+    bool wholeHistory = false,
   }) async =>
       HealthReadResult.samples(samples);
 

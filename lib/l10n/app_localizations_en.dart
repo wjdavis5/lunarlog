@@ -974,6 +974,88 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String healthSyncImportRemovedDays(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          'Removed what was imported for $count days: their records were deleted in $source.',
+      one:
+          'Removed what was imported for 1 day: its record was deleted in $source.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String healthSyncStoreDeletedOffer(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          'Records lunarlog imported for $count days were deleted in $source.',
+      one: 'A record lunarlog imported for 1 day was deleted in $source.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String healthSyncStoreDeletedDetail(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'They may have been removed in the app they came from, or that app\'s data may have been cleared. You can remove what was imported for those days, or keep it.',
+      one: 'It may have been removed in the app it came from, or that app\'s data may have been cleared. You can remove what was imported for that day, or keep it.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get healthSyncStoreDeletedKeep => 'Keep';
+
+  @override
+  String get healthSyncStoreDeletedRemove => 'Remove from lunarlog';
+
+  @override
+  String healthSyncStoreDeletedConfirmTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Remove what was imported for $count days?',
+      one: 'Remove what was imported for 1 day?',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String healthSyncStoreDeletedConfirmBody(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'The imported flow or spotting comes off those days, here and on every device this profile syncs to. Tags, notes and other entries stay. This cannot be undone.',
+      one: 'The imported flow or spotting comes off that day, here and on every device this profile syncs to. Tags, notes and other entries stay. This cannot be undone.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get healthSyncStoreDeletedConfirmCancel => 'Cancel';
+
+  @override
+  String get healthSyncStoreDeletedConfirmAction => 'Remove';
+
+  @override
+  String get healthSyncStoreDeletedNothingRemoved => 'Nothing was removed.';
+
+  @override
+  String healthSyncStoreDeletedReadFailed(String source) {
+    return 'lunarlog could not read everything in $source. Please try again.';
+  }
+
+  @override
+  String get healthSyncStoreDeletedRemoveFailed =>
+      'Could not finish removing. Please try again.';
+
+  @override
   String healthSyncImportKeptManual(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
@@ -5314,7 +5396,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String healthSyncImportNothingSinceLast(String source) {
-    return 'Nothing new in $source since the last import.';
+    return 'Nothing new to import from $source since the last import.';
   }
 
   @override

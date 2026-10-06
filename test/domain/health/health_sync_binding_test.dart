@@ -851,4 +851,112 @@ void main() {
       expect(await binding.hasCompletedFirstImport(), isFalse);
     });
   });
+
+  // Issue #1594: the records the store has said were deleted, kept until
+  // she says whether the days they were imported to should go.
+  group('records the store deleted (issue #1594)', () {
+    const key = SettingsKeys.healthImportStoreDeletedRecordIds;
+
+    Future<HealthSyncCheck> bindA({String id = 'a'}) => binding.bind(
+          profile: _profile(id: id),
+          signedInUserId: 'u1',
+          ownerUserId: 'u1',
+          minorBindingAllowed: false,
+        );
+
+    test('nothing is waiting until something is stored', () async {
+      expect(await binding.storeDeletedRecordIds(), isEmpty);
+    });
+
+    test('what is stored reads back, whatever order it was given in',
+        () async {
+      await binding.setStoreDeletedRecordIds({'rec-2', 'rec-1'});
+
+      expect(await binding.storeDeletedRecordIds(), {'rec-1', 'rec-2'});
+      expect(await settings.get(key), '["rec-1","rec-2"]');
+    });
+
+    test('a new list replaces the old one', () async {
+      await binding.setStoreDeletedRecordIds({'rec-1', 'rec-2'});
+      await binding.setStoreDeletedRecordIds({'rec-3'});
+
+      expect(await binding.storeDeletedRecordIds(), {'rec-3'});
+    });
+
+    test('an empty list clears what was stored', () async {
+      await binding.setStoreDeletedRecordIds({'rec-1'});
+      await binding.setStoreDeletedRecordIds(const {});
+
+      expect(await binding.storeDeletedRecordIds(), isEmpty);
+      expect(await settings.get(key), '');
+    });
+
+    test('nothing is written when the list is as it was', () async {
+      final writes = <String?>[];
+      final watching = settings.watch(key).skip(1).listen(writes.add);
+      addTearDown(watching.cancel);
+
+      await binding.setStoreDeletedRecordIds(const {});
+      await binding.setStoreDeletedRecordIds({'rec-1', 'rec-2'});
+      await binding.setStoreDeletedRecordIds({'rec-2', 'rec-1'});
+      await binding.setStoreDeletedRecordIds(const {});
+      await binding.setStoreDeletedRecordIds(const {});
+      await pumpEventQueue();
+
+      expect(writes, ['["rec-1","rec-2"]', '']);
+    });
+
+    test('unbind clears the list with the binding', () async {
+      await bindA();
+      await binding.setStoreDeletedRecordIds({'rec-1'});
+
+      await binding.unbind();
+
+      expect(await binding.storeDeletedRecordIds(), isEmpty);
+    });
+
+    test('binding again clears it, same profile or another', () async {
+      await bindA();
+      await binding.setStoreDeletedRecordIds({'rec-1'});
+      await bindA();
+      expect(await binding.storeDeletedRecordIds(), isEmpty,
+          reason: 'the days belonged to the old binding');
+
+      await binding.setStoreDeletedRecordIds({'rec-2'});
+      await bindA(id: 'b');
+      expect(await binding.storeDeletedRecordIds(), isEmpty);
+    });
+
+    test('a refused bind leaves the list alone', () async {
+      await bindA();
+      await binding.setStoreDeletedRecordIds({'rec-1'});
+
+      final decision = await binding.bind(
+        profile: _profile(id: 'minor', birthYear: 2015),
+        signedInUserId: 'u1',
+        ownerUserId: 'u1',
+        minorBindingAllowed: false,
+      );
+
+      expect(decision.isAllowed, isFalse);
+      expect(await binding.storeDeletedRecordIds(), {'rec-1'});
+    });
+
+    for (final (stored, what) in [
+      ('junk', 'text that is not JSON'),
+      ('{"rec-1":true}', 'JSON that is not a list'),
+      ('"rec-1"', 'a bare string'),
+    ]) {
+      test('$what reads as nothing waiting', () async {
+        await settings.set(key, stored);
+        expect(await binding.storeDeletedRecordIds(), isEmpty);
+      });
+    }
+
+    test('entries that are not record ids are left out', () async {
+      await settings.set(key, '["rec-1",7,null,"","rec-2","rec-1"]');
+
+      expect(await binding.storeDeletedRecordIds(), {'rec-1', 'rec-2'});
+    });
+  });
 }

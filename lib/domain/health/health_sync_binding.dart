@@ -44,6 +44,8 @@
 /// directory.
 library;
 
+import 'dart:convert';
+
 import '../models/profile.dart';
 import '../repositories/settings_store.dart';
 import 'health_sync_policy.dart';
@@ -280,6 +282,7 @@ class HealthSyncBinding {
     if (!decision.isAllowed) return decision;
     await _settings.set(SettingsKeys.healthStoreProfileId, profile.id);
     await _clearFirstImportMarker();
+    await setStoreDeletedRecordIds(const {});
     return HealthSyncCheck.allowed;
   }
 
@@ -289,6 +292,38 @@ class HealthSyncBinding {
   Future<void> unbind() async {
     await _settings.set(SettingsKeys.healthStoreProfileId, '');
     await _clearFirstImportMarker();
+    await setStoreDeletedRecordIds(const {});
+  }
+
+  /// The health-store records the store has said were deleted and that
+  /// an imported row here was written from, waiting for her answer
+  /// (Issue #1594). Empty when nothing is stored or what is stored cannot
+  /// be read: the offer is then simply not made.
+  Future<Set<String>> storeDeletedRecordIds() async {
+    final raw =
+        await _settings.get(SettingsKeys.healthImportStoreDeletedRecordIds);
+    if (raw == null || raw.isEmpty) return const {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const {};
+      return {
+        for (final id in decoded)
+          if (id is String && id.isNotEmpty) id,
+      };
+    } on FormatException {
+      return const {};
+    }
+  }
+
+  /// Replaces [storeDeletedRecordIds]. They belong to the current
+  /// binding, so `bind`/`unbind` clear them. Nothing is written when
+  /// nothing is stored and [ids] is empty.
+  Future<void> setStoreDeletedRecordIds(Set<String> ids) async {
+    final stored =
+        await _settings.get(SettingsKeys.healthImportStoreDeletedRecordIds);
+    final next = ids.isEmpty ? '' : jsonEncode(ids.toList()..sort());
+    if ((stored ?? '') == next) return;
+    await _settings.set(SettingsKeys.healthImportStoreDeletedRecordIds, next);
   }
 
   /// Whether the first user-initiated import has completed for the current

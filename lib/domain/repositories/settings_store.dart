@@ -153,6 +153,18 @@ abstract final class SettingsKeys {
   static const String healthImportFirstPassCompletedMs =
       'health_import_first_pass_completed_ms';
 
+  /// The ids of health-store records the store has said were deleted and
+  /// that an imported row on this phone was written from (Issue #1594): a
+  /// JSON list of strings, or unset. The import never removes such a row
+  /// by itself. It keeps the ids here until she answers the Health sync
+  /// screen's offer to remove those days, or until the rows stop naming
+  /// the records. Written only through `HealthSyncBinding`, and cleared
+  /// with the binding by `bind`/`unbind`: the ids belong to this phone's
+  /// health store and to the profile bound to it. Device-local, never
+  /// synced. Record ids only: no date, no flow, nothing about a day.
+  static const String healthImportStoreDeletedRecordIds =
+      'health_import_store_deleted_record_ids';
+
   /// Per-profile local reminder configuration (Issue #136, R10/R11), as
   /// the JSON document `encodeReminderConfigs` produces: a versioned map
   /// of profile id -> `ReminderConfig` JSON. Device-local **by design**

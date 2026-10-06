@@ -1606,6 +1606,78 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 day} other{{count} days}} already matched.'**
   String healthSyncImportAlreadyMatched(int count);
 
+  /// Health import summary (Issue #1594): days lunarlog had imported and has now taken out at her request, after the health store reported that their records were deleted. Says 'what was imported', not 'the day': a day that carried anything of hers (a tag, a note, an entry) is still there and lost only the imported flow, and where only a spotting entry was imported only that went. {source} is the health store's name.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Removed what was imported for 1 day: its record was deleted in {source}.} other{Removed what was imported for {count} days: their records were deleted in {source}.}}'**
+  String healthSyncImportRemovedDays(int count, String source);
+
+  /// Health sync screen (Issue #1594): the health store has reported that records lunarlog imported from were deleted. lunarlog removes nothing on that report alone, because a record goes for more than one reason (a day taken back in the other app; that app, or the whole store, cleared out after moving to lunarlog), so it says how many days and asks. It says a record was deleted, not that the day is gone from the store: the store may hold another record for the same day. {source} is the health store's name.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{A record lunarlog imported for 1 day was deleted in {source}.} other{Records lunarlog imported for {count} days were deleted in {source}.}}'**
+  String healthSyncStoreDeletedOffer(int count, String source);
+
+  /// Health sync screen (Issue #1594): under healthSyncStoreDeletedOffer, the two reasons a record goes and the two choices.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{It may have been removed in the app it came from, or that app\'s data may have been cleared. You can remove what was imported for that day, or keep it.} other{They may have been removed in the app they came from, or that app\'s data may have been cleared. You can remove what was imported for those days, or keep it.}}'**
+  String healthSyncStoreDeletedDetail(int count);
+
+  /// Health sync screen (Issue #1594): the button that leaves the days as they are and stops offering them.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep'**
+  String get healthSyncStoreDeletedKeep;
+
+  /// Health sync screen (Issue #1594): the button that opens the confirmation for taking out what was imported for the days on offer.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove from lunarlog'**
+  String get healthSyncStoreDeletedRemove;
+
+  /// Health sync screen (Issue #1594): title of the confirmation before the removal. The count is the one the offer showed.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Remove what was imported for 1 day?} other{Remove what was imported for {count} days?}}'**
+  String healthSyncStoreDeletedConfirmTitle(int count);
+
+  /// Health sync screen (Issue #1594): body of the confirmation. Says what goes (the imported flow or spotting, including a flow she corrected by hand on an imported day), what stays (tags, notes, other entries), that it reaches every device, and that there is no undo.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{The imported flow or spotting comes off that day, here and on every device this profile syncs to. Tags, notes and other entries stay. This cannot be undone.} other{The imported flow or spotting comes off those days, here and on every device this profile syncs to. Tags, notes and other entries stay. This cannot be undone.}}'**
+  String healthSyncStoreDeletedConfirmBody(int count);
+
+  /// Health sync screen (Issue #1594): leaves the confirmation without removing anything. The offer stays.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get healthSyncStoreDeletedConfirmCancel;
+
+  /// Health sync screen (Issue #1594): the confirming button of the removal confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get healthSyncStoreDeletedConfirmAction;
+
+  /// Health sync screen (Issue #1594): first line of the result of a removal that was stopped before it removed anything. The line after it says what stopped it.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was removed.'**
+  String get healthSyncStoreDeletedNothingRemoved;
+
+  /// Health sync screen (Issue #1594): under healthSyncStoreDeletedNothingRemoved, when the read of everything in the store that precedes a removal did not reach its end. Other reasons (the profile may not use the store, the store is unavailable) use the import's own lines. {source} is the health store's name.
+  ///
+  /// In en, this message translates to:
+  /// **'lunarlog could not read everything in {source}. Please try again.'**
+  String healthSyncStoreDeletedReadFailed(String source);
+
+  /// Health sync screen (Issue #1594): the result of a removal that failed unexpectedly part-way. It does not say nothing was removed, because some days may have been.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not finish removing. Please try again.'**
+  String get healthSyncStoreDeletedRemoveFailed;
+
   /// Health import summary: days where the store's value differed from what she has and hers was kept. That is a flow she logged or corrected by hand, a day she cleared, and a day or a spotting entry she deleted (Issues #1559, #1561).
   ///
   /// In en, this message translates to:
@@ -8407,7 +8479,7 @@ abstract class AppLocalizations {
   /// Issue #1523: the result of a repeat import that asked the health store only for what changed since the previous import and got nothing back. Says nothing about access or about whether anything was ever tracked, since an earlier import already ran. {source} is the store's mid-sentence name ('Health Connect', 'the Health app').
   ///
   /// In en, this message translates to:
-  /// **'Nothing new in {source} since the last import.'**
+  /// **'Nothing new to import from {source} since the last import.'**
   String healthSyncImportNothingSinceLast(String source);
 
   /// Issue #1521: heading on the health sync screen, below the profile choice and the Import action, over the paragraphs about what lunarlog writes to the health store and how values are mapped. A subject, not a promise of a complete list: on an iPhone the paragraphs under it describe how values are written, not every type that is.
