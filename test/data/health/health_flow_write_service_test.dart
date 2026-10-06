@@ -2934,6 +2934,100 @@ void main() {
     });
 
     test(
+        'with menstrualFlow off, a pass leaves no ledger row for the day, and turning it on later writes no period record for that episode (issue #1585)',
+        () async {
+      await seedGranted(grant);
+      platform.permission = HealthPermissionStatus.writingSome;
+      platform.grantedTypes = {'spotting'};
+      final t1 = grant.add(const Duration(hours: 1));
+      final t5 = grant.add(const Duration(hours: 5));
+      dayEntries.entries = [
+        _entry('2026-06-01', FlowLevel.medium, t1),
+        _entry('2026-06-02', FlowLevel.heavy, grant.add(const Duration(hours: 2))),
+        _entry('2026-06-03', FlowLevel.heavy, grant.add(const Duration(hours: 3))),
+        _entry('2026-06-04', FlowLevel.medium, grant.add(const Duration(hours: 4))),
+        _entry('2026-06-05', FlowLevel.light, t5),
+      ];
+
+      final report1 = await buildService().syncNow();
+
+      expect(report1.blocked, isNull);
+      expect(report1.samplesWritten, 0);
+      expect(report1.periodRecordsWritten, 0);
+      expect(platform.flowWrites, isEmpty);
+      expect(platform.periodWrites, isEmpty);
+      expect(await ledger.readForProfile(_profileId), isEmpty);
+      expect(await settings.get(_cursorKey), '${t5.millisecondsSinceEpoch}');
+
+      // Turn menstrualFlow on. The days are now behind the cursor, and neither
+      // memory nor ledger recorded them as exported.
+      platform.grantedTypes = {'menstrualFlow', 'spotting'};
+      final report2 = await buildService().syncNow();
+
+      expect(report2.blocked, isNull);
+      expect(report2.samplesWritten, 0);
+      expect(report2.periodRecordsWritten, 0);
+      expect(platform.periodWrites, isEmpty);
+
+      // Verify a fresh relaunch also sees no ledger rows and writes no period.
+      final report3 = await buildService().syncNow();
+      expect(report3.periodRecordsWritten, 0);
+      expect(platform.periodWrites, isEmpty);
+    });
+
+    test(
+        'when BBT is off, no ledger row is saved for BBT observations (issue #1585)',
+        () async {
+      await seedGranted(grant);
+      platform.permission = HealthPermissionStatus.writingSome;
+      platform.grantedTypes = {'menstrualFlow'};
+      final t1 = grant.add(const Duration(hours: 1));
+      observations.observations = [
+        _bbt('2026-06-03', 36.6, t1),
+      ];
+
+      final report = await buildService().syncNow();
+
+      expect(report.blocked, isNull);
+      expect(report.basalBodyTemperatureSamplesWritten, 0);
+      final rows = await ledger.readForProfile(_profileId);
+      expect(rows.where((r) => r.kind == HealthExportLedgerKind.bbt), isEmpty);
+
+      // Clearing the observation does not attempt to delete the unexported record.
+      observations.observations = [];
+      await buildService().syncNow();
+      expect(platform.deleteCalls, isEmpty);
+    });
+
+    test(
+        'when day has flow and symptoms, but flow is off, only symptom is saved to ledger and turning flow on writes no period (issue #1585)',
+        () async {
+      await seedGranted(grant);
+      platform.permission = HealthPermissionStatus.writingSome;
+      platform.grantedTypes = {'symptoms'};
+      final t1 = grant.add(const Duration(hours: 1));
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium, t1, tags: const ['cramps']),
+      ];
+
+      final report1 = await buildService().syncNow();
+
+      expect(report1.blocked, isNull);
+      expect(report1.samplesWritten, 0);
+      expect(report1.symptomSamplesWritten, 1);
+      expect(report1.periodRecordsWritten, 0);
+      final rows = await ledger.readForProfile(_profileId);
+      expect(rows, hasLength(1));
+      expect(rows.single.recordId, startsWith('symptom-'));
+
+      // Turning flow on does not generate a period record for the day whose flow was never exported.
+      platform.grantedTypes = {'menstrualFlow', 'symptoms'};
+      final report2 = await buildService().syncNow();
+      expect(report2.periodRecordsWritten, 0);
+      expect(platform.periodWrites, isEmpty);
+    });
+
+    test(
         'a platform whose grantedWriteTypes throws leaves the cursor where it was (issue #1584)',
         () async {
       await seedGranted(grant);
