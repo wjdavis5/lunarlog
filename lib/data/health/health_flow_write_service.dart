@@ -29,7 +29,8 @@
 ///   documented behavior, A3-35). A fully successful pass advances the
 ///   cursor to the newest processed row's `updatedAt`; any failure leaves
 ///   it (and the whole batch) to be retried by the next pass rather than
-///   half-skipping.
+///   half-skipping. "After" is decided in whole milliseconds, the unit
+///   the cursor is stored in ([_afterCursor], Issue #1577).
 ///
 /// **The remember-side is persisted (Issue #936).** The record ids a prior
 /// export wrote are held in the device-local [HealthExportLedger], not only
@@ -781,7 +782,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// newer than the forward-only [cursor] and so is written by this one.
   bool _isOrWillBeExported(DayEntry day, DateTime cursor) =>
       _exportedEntryRecordIds.containsKey(day.id) ||
-      day.updatedAt.isAfter(cursor);
+      _afterCursor(day.updatedAt, cursor);
 
   /// [episode]'s hand-logged bleed days, first to last.
   static List<DayEntry> _handLoggedDaysOf(
@@ -1748,7 +1749,19 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// after the cursor, and must not have come *from* a health store (see
   /// the class doc's one-way note).
   bool _isEligible(DateTime updatedAt, Object? source, DateTime cursor) =>
-      updatedAt.isAfter(cursor) && !_isHealthStoreImport(source);
+      _afterCursor(updatedAt, cursor) && !_isHealthStoreImport(source);
+
+  /// Whether a row last written at [updatedAt] is after the forward-only
+  /// [cursor], in whole milliseconds: the unit the cursor is stored in.
+  ///
+  /// Issue #1577. A row's `updatedAt` carries microseconds. Compared
+  /// exactly, the newest row a pass wrote was still after the cursor that
+  /// pass then stored, by those microseconds, so it was written to the
+  /// health store again on every pass until a newer row took its place.
+  /// Health Connect marks a record saved again as modified, changed or
+  /// not.
+  static bool _afterCursor(DateTime updatedAt, DateTime cursor) =>
+      updatedAt.millisecondsSinceEpoch > cursor.millisecondsSinceEpoch;
 
   /// Whether [source] marks a row that came *from* an OS health store (a
   /// day entry or an observation the import wrote) rather than one lunarlog
