@@ -72,6 +72,9 @@ library;
 // same declared pattern `prediction_projection_publisher.dart` uses.
 // ignore_for_file: prefer_initializing_formals
 
+import 'package:flutter/services.dart'
+    show MissingPluginException, PlatformException;
+
 import 'package:lunarlog/domain/episodes/episodes.dart';
 import 'package:lunarlog/domain/health/day_boundary.dart';
 import 'package:lunarlog/domain/health/health_export_ledger.dart';
@@ -533,7 +536,15 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       );
     }
 
-    final grantedTypes = await _resolveGrantedTypes(grant.status);
+    final resolved = await _resolveGrantedTypes(grant.status);
+    if (resolved.blocked != null) {
+      return HealthFlowSyncReport(
+        bound: true,
+        authorizationRequested: grant.grantedNow,
+        blocked: resolved.blocked,
+      );
+    }
+    final grantedTypes = resolved.types;
 
     final batch = await _collectBatch(bound.profile.id, grant.cursor!);
     final outcome = await _writeBatch(
@@ -683,14 +694,30 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     return (blocked: blocked, status: status);
   }
 
+  static HealthPlatformResult _grantedTypesErrorToResult(Object error) {
+    if (error is PlatformException && error.code == 'unavailable') {
+      return const HealthPlatformResult.unavailable();
+    }
+    if (error is MissingPluginException) {
+      return const HealthPlatformResult.unavailable();
+    }
+    return HealthPlatformResult.failed('grantedWriteTypes failed: $error');
+  }
+
   /// When permission is [HealthPermissionStatus.writingSome], queries the
   /// specific write types granted by the OS.
-  Future<Set<String>?> _resolveGrantedTypes(
-    HealthPermissionStatus status,
-  ) async =>
-      status == HealthPermissionStatus.writingSome
-          ? await _platform.grantedWriteTypes()
-          : null;
+  Future<({Set<String>? types, HealthPlatformResult? blocked})>
+      _resolveGrantedTypes(HealthPermissionStatus status) async {
+    if (status != HealthPermissionStatus.writingSome) {
+      return (types: null, blocked: null);
+    }
+    try {
+      final types = await _platform.grantedWriteTypes();
+      return (types: types, blocked: null);
+    } catch (e) {
+      return (types: null, blocked: _grantedTypesErrorToResult(e));
+    }
+  }
 
   /// Stamps the forward-only cursor with the current instant and returns
   /// it.
@@ -1284,6 +1311,17 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         }
         final result = await _platform.deleteRecords(facts, removed.toList());
         if (result is! HealthPlatformAllowed) {
+          if (result is HealthPlatformPartial) {
+            final skipped = result.skippedTypes;
+            final deletedIds = removed
+                .where((id) => !healthRecordMatchesSkippedType(id, skipped))
+                .toList();
+            if (deletedIds.isNotEmpty) {
+              await _ledger.removeRecordIds(deletedIds);
+              _exportedEntryRecordIds[entry.key] =
+                  previous.difference(deletedIds.toSet());
+            }
+          }
           failure ??= result;
           continue;
         }
@@ -1319,7 +1357,10 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     final drift = await _authorityDrift(facts);
     if (drift != null) return drift;
     final result = await _platform.deleteRecords(facts, removed.toList());
-    if (result is HealthPlatformAllowed) {
+    final bbtSkipped = result is HealthPlatformPartial &&
+        result.skippedTypes.contains(HealthWriteTypes.basalBodyTemperature);
+    if (result is HealthPlatformAllowed ||
+        (result is HealthPlatformPartial && !bbtSkipped)) {
       _exportedBbtRecordIds.removeAll(removed);
       await _ledger.removeRecordIds(removed.toList());
       return null;
@@ -1389,6 +1430,21 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     return true;
   }
 
+  static bool _isWriteResultAllowed(
+    HealthPlatformResult result,
+    _PendingWrite write,
+  ) {
+    if (result is HealthPlatformAllowed) return true;
+    if (result is HealthPlatformPartial) {
+      return !healthRecordMatchesSkippedType(
+        write.recordId,
+        result.skippedTypes,
+        isSpotting: write.plan is HealthFlowIntermenstrualMarker,
+      );
+    }
+    return false;
+  }
+
   Future<
       ({
         int written,
@@ -1421,7 +1477,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       }
       final result = await _resolveNoWriteOutcome(write, facts) ??
           await _sendSample(write, facts);
-      if (result is! HealthPlatformAllowed) {
+      if (!_isWriteResultAllowed(result, write)) {
         failure ??= result;
       } else if (write.plan is HealthFlowNoWrite) {
         reconciled++;
@@ -1599,7 +1655,12 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       final drift = await _authorityDrift(facts);
       if (drift != null) return drift;
       final deleted = await _platform.deleteRecords(facts, [recordId]);
-      if (deleted is! HealthPlatformAllowed) return deleted;
+      final periodSkipped = deleted is HealthPlatformPartial &&
+          deleted.skippedTypes.contains(HealthWriteTypes.menstrualFlow);
+      if (deleted is! HealthPlatformAllowed &&
+          (deleted is! HealthPlatformPartial || periodSkipped)) {
+        return deleted;
+      }
       _exportedPeriods.remove(recordId);
       await _ledger.removeRecordIds([recordId]);
     }

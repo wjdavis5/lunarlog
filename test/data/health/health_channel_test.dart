@@ -311,6 +311,19 @@ void main() {
           [flowWriteRecordId, '01ARZ3NDEKTSV4RRFFQ69G5FBC']);
     });
 
+    test('deleteRecords decodes partial map result (issue #1583)', () async {
+      nextResult = {
+        'status': 'partial',
+        'skippedTypes': ['cervicalMucus'],
+      };
+      final result = await makePlatform().deleteRecords(
+        _facts(),
+        const [flowWriteRecordId],
+      );
+      expect(result, isA<HealthPlatformPartial>());
+      expect((result as HealthPlatformPartial).skippedTypes, {'cervicalMucus'});
+    });
+
     test('writeIntermenstrualBleeding sends guard + day args, no flow key',
         () async {
       await makePlatform().writeIntermenstrualBleeding(
@@ -876,19 +889,31 @@ void main() {
       expect(calls.single.method, 'grantedWriteTypes');
     });
 
-    test('grantedWriteTypes degrades on non-list or errors to empty set',
+    test('grantedWriteTypes throws on non-list or channel errors (issue #1584)',
         () async {
       nextResult = 'not-a-list';
-      expect(await makePlatform().grantedWriteTypes(), isEmpty);
+      expect(
+        () => makePlatform().grantedWriteTypes(),
+        throwsA(isA<PlatformException>()),
+      );
 
       nextResult = null;
-      expect(await makePlatform().grantedWriteTypes(), isEmpty);
+      expect(
+        () => makePlatform().grantedWriteTypes(),
+        throwsA(isA<PlatformException>()),
+      );
 
       nextError = PlatformException(code: 'anything');
-      expect(await makePlatform().grantedWriteTypes(), isEmpty);
+      expect(
+        () => makePlatform().grantedWriteTypes(),
+        throwsA(isA<PlatformException>()),
+      );
 
       nextError = MissingPluginException();
-      expect(await makePlatform().grantedWriteTypes(), isEmpty);
+      expect(
+        () => makePlatform().grantedWriteTypes(),
+        throwsA(isA<MissingPluginException>()),
+      );
     });
 
     test('the unsupported platform reports unavailable and opens nothing',

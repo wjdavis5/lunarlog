@@ -1287,8 +1287,76 @@ void main() {
 
       expect(
         find.textContaining('Added spotting to 2 days from Health Connect.'),
+        findsWidgets,
+      );
+      // No day was imported and none was skipped, so there is no headline:
+      // "Imported 0 days." stood above this line before.
+      expect(find.textContaining('Imported 0'), findsNothing);
+      expect(find.textContaining('Nothing new'), findsNothing);
+
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('an import that adds spotting and no day leads with the '
+        'spotting, then says the days were already logged', (tester) async {
+      final importer = _FakeImporter(
+        const HealthImportSummary(
+          samplesRead: 5,
+          spottingDaysWritten: 1,
+          daysUnchanged: 2,
+          daysKeptManual: 2,
+        ),
+        platform: HealthImportPlatform.healthConnect,
+      );
+      final binding = await boundBinding(FakeSettingsStore());
+      await pumpScreen(tester, binding: binding, importer: importer);
+
+      await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
+      await tester.pumpAndSettle();
+
+      final summary = find.byKey(const ValueKey('health-sync-import-summary'));
+      final lines = [
+        for (final text in tester.widgetList<Text>(
+          find.descendant(of: summary, matching: find.byType(Text)),
+        ))
+          text.data,
+      ];
+      const added = 'Added spotting to 1 day from Health Connect.';
+      const alreadyLogged = '4 days were already logged.';
+      expect(lines, containsAllInOrder([added, alreadyLogged]));
+      expect(lines, contains('Kept your own changes on 2 days.'));
+      expect(find.textContaining('Imported 0'), findsNothing);
+      expect(find.textContaining('Nothing new'), findsNothing);
+      // The announcement is the result's first line.
+      expect(
+        find.descendant(of: find.byType(SnackBar), matching: find.text(added)),
         findsOneWidget,
       );
+
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('one day already logged reads in the singular', (tester) async {
+      final importer = _FakeImporter(
+        const HealthImportSummary(
+          samplesRead: 2,
+          spottingDaysWritten: 1,
+          daysUnchanged: 1,
+        ),
+        platform: HealthImportPlatform.healthConnect,
+      );
+      final binding = await boundBinding(FakeSettingsStore());
+      await pumpScreen(tester, binding: binding, importer: importer);
+
+      await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('1 day was already logged.'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
     });
 
     testWidgets('a throwing runner renders the generic failure line',

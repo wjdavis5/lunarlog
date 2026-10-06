@@ -231,19 +231,19 @@ class MethodChannelHealthPlatform
       _probePermission(HealthChannelMethods.permissionStatus);
 
   /// The set of authorized write types (Issue #1555). Unguarded like
-  /// [permissionStatus]. A missing handler or error degrades to an empty set.
+  /// [permissionStatus]. Throws on channel error or unexpected response so
+  /// callers halt the pass and preserve the cursor (Issue #1584).
   @override
   Future<Set<String>> grantedWriteTypes() async {
-    try {
-      final raw = await channel
-          .invokeMethod<Object?>(HealthChannelMethods.grantedWriteTypes);
-      if (raw is List) {
-        return raw.whereType<String>().toSet();
-      }
-      return const <String>{};
-    } on Exception {
-      return const <String>{};
+    final raw = await channel
+        .invokeMethod<Object?>(HealthChannelMethods.grantedWriteTypes);
+    if (raw is List) {
+      return raw.whereType<String>().toSet();
     }
+    throw PlatformException(
+      code: 'invalid_result',
+      message: 'grantedWriteTypes returned unexpected result: $raw',
+    );
   }
 
   /// The OS permission state for what the import reads (Issue #1491) —

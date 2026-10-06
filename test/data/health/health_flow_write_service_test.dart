@@ -9,6 +9,7 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/health/health_flow_write_service.dart';
 import 'package:lunarlog/data/health/health_record_ids.dart';
@@ -193,10 +194,14 @@ class _FakePlatform implements HealthPlatformStore {
 
   Set<String> grantedTypes = const {};
   int grantedWriteTypesCalls = 0;
+  Object? grantedWriteTypesError;
 
   @override
   Future<Set<String>> grantedWriteTypes() async {
     grantedWriteTypesCalls++;
+    if (grantedWriteTypesError != null) {
+      throw grantedWriteTypesError!;
+    }
     return grantedTypes;
   }
 
@@ -996,6 +1001,29 @@ void main() {
       );
     });
 
+    test(
+        'a partial reconciliation delete with flow skipped blocks the '
+        'pass and leaves the cursor for retry (issue #1583)',
+        () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      platform.deleteResult =
+          const HealthPlatformResult.partial({'menstrualFlow'});
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.none,
+            grant.add(const Duration(hours: 1))),
+      ];
+
+      final report = await buildService().syncNow();
+
+      expect(report.blocked, isA<HealthPlatformPartial>());
+      expect(
+        await settings.get(_cursorKey),
+        '${grant.millisecondsSinceEpoch}',
+        reason: 'a partial reconciliation with skipped flow must not advance cursor',
+      );
+    });
+
     test('superHeavy is written as heavy (the documented collapse)',
         () async {
       final grant = DateTime.utc(2026, 6, 1, 12);
@@ -1508,6 +1536,30 @@ void main() {
       platform.deleteResult = const HealthPlatformPermissionDenied();
       final refused = await service.syncNow();
       expect(refused.blocked, isA<HealthPlatformPermissionDenied>());
+      expect(periodRow('period-$_profileId-2026-06-02'), isNotNull);
+
+      platform.deleteResult = const HealthPlatformAllowed();
+      final retried = await service.syncNow();
+      expect(retried.blocked, isNull);
+      expect(platform.deleteCalls, hasLength(2));
+      expect(periodRow('period-$_profileId-2026-06-02'), isNull);
+    });
+
+    test('a partial delete with menstrualFlow skipped keeps the period record '
+        'remembered and is retried (issue #1583)', () async {
+      await seedGranted(grant);
+      final service = buildService();
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1))),
+      ];
+      await service.syncNow();
+
+      dayEntries.entries = [];
+      platform.deleteResult =
+          const HealthPlatformResult.partial({'menstrualFlow'});
+      final partial = await service.syncNow();
+      expect(partial.blocked, isA<HealthPlatformPartial>());
       expect(periodRow('period-$_profileId-2026-06-02'), isNotNull);
 
       platform.deleteResult = const HealthPlatformAllowed();
@@ -2573,6 +2625,38 @@ void main() {
           reason: 'the same removal is retried, not silently acknowledged');
     });
 
+    test('a partial delete with the removed type skipped leaves the record in '
+        'the ledger and retries next pass (issue #1583)', () async {
+      await seedGranted(grant);
+      final service = buildService();
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1)),
+            tags: const ['cramps']),
+      ];
+      await service.syncNow();
+      final exportedCursor = await settings.get(_cursorKey);
+
+      platform.deleteResult =
+          const HealthPlatformResult.partial({'symptoms'});
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 3)),
+            tags: const []),
+      ];
+      final blocked = await service.syncNow();
+      expect(blocked.blocked, isA<HealthPlatformPartial>());
+      expect(platform.deleteCalls, hasLength(1));
+      expect(await settings.get(_cursorKey), exportedCursor,
+          reason: 'a failed removal must not advance the cursor');
+
+      platform.deleteResult = const HealthPlatformAllowed();
+      final retried = await service.syncNow();
+      expect(retried.blocked, isNull);
+      expect(platform.deleteCalls, hasLength(2),
+          reason: 'the same removal is retried, not silently acknowledged');
+    });
+
     test('the remembered set advances with the write, so a repeated '
         'cramp-free save deletes nothing a second time', () async {
       await seedGranted(grant);
@@ -2847,6 +2931,78 @@ void main() {
       expect(report.ovulationTestSamplesWritten, 0);
       expect(report.basalBodyTemperatureSamplesWritten, 0);
       expect(await settings.get(_cursorKey), '${t2.millisecondsSinceEpoch}');
+    });
+
+    test(
+        'a platform whose grantedWriteTypes throws leaves the cursor where it was (issue #1584)',
+        () async {
+      await seedGranted(grant);
+      platform.permission = HealthPermissionStatus.writingSome;
+      platform.grantedWriteTypesError = Exception('health connect failure');
+      final t1 = grant.add(const Duration(hours: 1));
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium, t1),
+      ];
+
+      final report = await buildService().syncNow();
+
+      expect(report.blocked, isA<HealthPlatformFailed>());
+      expect(
+        await settings.get(_cursorKey),
+        '${grant.millisecondsSinceEpoch}',
+        reason: 'a failed types query must not advance the cursor',
+      );
+      expect(report.samplesWritten, 0);
+      expect(platform.flowWrites, isEmpty);
+    });
+
+    test(
+        'grantedWriteTypes unavailable error stops pass with unavailable result (issue #1584)',
+        () async {
+      await seedGranted(grant);
+      platform.permission = HealthPermissionStatus.writingSome;
+      platform.grantedWriteTypesError = PlatformException(
+        code: 'unavailable',
+        message: 'Health Connect unavailable',
+      );
+      final t1 = grant.add(const Duration(hours: 1));
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium, t1),
+      ];
+
+      final report = await buildService().syncNow();
+
+      expect(report.blocked, isA<HealthPlatformUnavailable>());
+      expect(
+        await settings.get(_cursorKey),
+        '${grant.millisecondsSinceEpoch}',
+        reason: 'an unavailable types query must not advance the cursor',
+      );
+      expect(report.samplesWritten, 0);
+      expect(platform.flowWrites, isEmpty);
+    });
+
+    test(
+        'grantedWriteTypes MissingPluginException stops pass with unavailable result (issue #1584)',
+        () async {
+      await seedGranted(grant);
+      platform.permission = HealthPermissionStatus.writingSome;
+      platform.grantedWriteTypesError = MissingPluginException();
+      final t1 = grant.add(const Duration(hours: 1));
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium, t1),
+      ];
+
+      final report = await buildService().syncNow();
+
+      expect(report.blocked, isA<HealthPlatformUnavailable>());
+      expect(
+        await settings.get(_cursorKey),
+        '${grant.millisecondsSinceEpoch}',
+        reason: 'MissingPluginException must not advance the cursor',
+      );
+      expect(report.samplesWritten, 0);
+      expect(platform.flowWrites, isEmpty);
     });
   });
 

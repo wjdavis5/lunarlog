@@ -275,7 +275,43 @@ void main() {
       );
     });
 
-    test('a non-string result is a failed result', () {
+    test('map result with partial status decodes to HealthPlatformPartial (issue #1583)', () {
+      final decoded = decodeHealthResult({
+        'status': 'partial',
+        'skippedTypes': ['cervicalMucus', 'ovulationTest'],
+      });
+      expect(decoded, isA<HealthPlatformPartial>());
+      expect((decoded as HealthPlatformPartial).skippedTypes, {
+        'cervicalMucus',
+        'ovulationTest',
+      });
+    });
+
+    test('map result with string status delegates to status string', () {
+      expect(
+        decodeHealthResult({'status': 'allowed'}),
+        isA<HealthPlatformAllowed>(),
+      );
+      expect(
+        decodeHealthResult({'status': 'permissionDenied'}),
+        isA<HealthPlatformPermissionDenied>(),
+      );
+    });
+
+    test('map result with non-string status is a failed result', () {
+      expect(
+        decodeHealthResult({'status': 123}),
+        isA<HealthPlatformFailed>(),
+      );
+    });
+
+    test('map result with partial status and missing skippedTypes decodes to empty set', () {
+      final decoded = decodeHealthResult({'status': 'partial'});
+      expect(decoded, isA<HealthPlatformPartial>());
+      expect((decoded as HealthPlatformPartial).skippedTypes, isEmpty);
+    });
+
+    test('a non-string and non-map result is a failed result', () {
       final decoded = decodeHealthResult(7);
       expect(decoded, isA<HealthPlatformFailed>());
     });

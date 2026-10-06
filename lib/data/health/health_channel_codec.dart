@@ -285,6 +285,31 @@ const Map<HealthSymptomSeverity, int> kHealthSymptomSeverityAppleRawValue = {
   HealthSymptomSeverity.severe: 4,
 };
 
+HealthPlatformResult _decodeHealthResultMap(Map raw) {
+  final status = raw['status'];
+  if (status == 'partial') {
+    final skippedRaw = raw['skippedTypes'];
+    final skippedTypes = (skippedRaw is List)
+        ? skippedRaw.whereType<String>().toSet()
+        : const <String>{};
+    return HealthPlatformResult.partial(skippedTypes);
+  }
+  if (status is String) {
+    return decodeHealthResult(status);
+  }
+  return HealthPlatformResult.failed(
+    'unexpected channel map result: $raw',
+  );
+}
+
+HealthPlatformResult _decodeRefusedOrFailed(String raw) {
+  final check = _checkFromWire(raw);
+  if (check != null && check != HealthSyncCheck.allowed) {
+    return HealthPlatformResult.refused(check);
+  }
+  return HealthPlatformResult.failed('unknown channel result: $raw');
+}
+
 /// Parses a result string into the typed [HealthPlatformResult]. Total:
 /// never throws; an unrecognized string becomes
 /// `HealthPlatformResult.failed` (a protocol error — e.g. a newer native
@@ -292,25 +317,20 @@ const Map<HealthSymptomSeverity, int> kHealthSymptomSeverityAppleRawValue = {
 /// `allowed` (a native bug) likewise degrades to `failed` rather than
 /// read as success.
 HealthPlatformResult decodeHealthResult(Object? raw) {
+  if (raw is Map) {
+    return _decodeHealthResultMap(raw);
+  }
   if (raw is! String) {
     return HealthPlatformResult.failed(
       'unexpected channel result (${raw.runtimeType}): $raw',
     );
   }
-  switch (raw) {
-    case 'allowed':
-      return const HealthPlatformResult.allowed();
-    case 'unavailable':
-      return const HealthPlatformResult.unavailable();
-    case 'permissionDenied':
-      return const HealthPlatformResult.permissionDenied();
-    default:
-      final check = _checkFromWire(raw);
-      if (check != null && check != HealthSyncCheck.allowed) {
-        return HealthPlatformResult.refused(check);
-      }
-      return HealthPlatformResult.failed('unknown channel result: $raw');
-  }
+  return switch (raw) {
+    'allowed' => const HealthPlatformResult.allowed(),
+    'unavailable' => const HealthPlatformResult.unavailable(),
+    'permissionDenied' => const HealthPlatformResult.permissionDenied(),
+    _ => _decodeRefusedOrFailed(raw),
+  };
 }
 
 HealthSyncCheck? _checkFromWire(String raw) {
