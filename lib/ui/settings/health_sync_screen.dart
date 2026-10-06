@@ -204,6 +204,20 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   HealthPermissionStatus? _importReadStatus;
   bool? _importReachedPastData;
 
+  /// Whether the store has a switch for older data at all (Issue #1573),
+  /// taken with the two answers above. An older Health Connect has none,
+  /// and the result must not then name one.
+  bool _importPastDataOffered = true;
+
+  /// The request for older data was raised from this result and the
+  /// switch is still off (Issue #1573): she declined, or Health Connect
+  /// dropped the request without showing it, which it does once a
+  /// permission has been declined twice. What is left is its settings.
+  bool _pastDataStillOff = false;
+
+  /// The store's prompt for older data is up.
+  bool _askingForPastData = false;
+
   /// Issue #992: the running sample count of a full-history pass, so a long
   /// import shows progress rather than a bare spinner. Null until the first
   /// page reports.
@@ -420,6 +434,43 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
     } catch (_) {
       return false;
     }
+  }
+
+  /// Whether the store has a switch for older data at all (Issue #1573),
+  /// asked only when a read ran without reaching that data ([reached]
+  /// false). An importer that is absent or throws is "cannot tell", which
+  /// is yes: the result then names the switch and offers the way to it, as
+  /// it did before this could be asked.
+  Future<bool> _pastDataSwitchOffered(bool? reached) async {
+    if (reached != false) return true;
+    try {
+      return await widget.importer!.pastDataSwitchOffered();
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Issue #1573: raises the store's own prompt for older data, from her
+  /// tap on the button under a result. With the switch on, the next import
+  /// reads the whole history (Issue #1549), which is what she asked for,
+  /// so it is run. With it still off, the result says so and offers the
+  /// store's settings ([_pastDataButton]).
+  Future<void> _allowPastData() async {
+    final importer = widget.importer;
+    if (importer == null || _askingForPastData) return;
+    setState(() => _askingForPastData = true);
+    var granted = false;
+    try {
+      granted = await importer.requestPastDataAccess();
+    } catch (_) {
+      // Left as not granted: the settings route is offered instead.
+    }
+    if (!mounted) return;
+    setState(() {
+      _askingForPastData = false;
+      _pastDataStillOff = !granted;
+    });
+    if (granted) await _runImport();
   }
 
   /// Issue #959: the status line copy. The source name is the store this
@@ -677,6 +728,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       _importFailed = false;
       _importSummary = null;
       _importProgress = null;
+      _pastDataStillOff = false;
     });
     try {
       final summary = await importer.importNow(
@@ -696,12 +748,14 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       }
       final access = await _readAccess();
       final reachedPastData = await _pastDataReach(access.read);
+      final pastDataOffered = await _pastDataSwitchOffered(reachedPastData);
       if (!mounted) return;
       setState(() {
         _importing = false;
         _importSummary = summary;
         _importReadStatus = access.read;
         _importReachedPastData = reachedPastData;
+        _importPastDataOffered = pastDataOffered;
         _importProgress = null;
         // Issue #959: re-read the OS permission after the pass, so an
         // import that hit a revoked permission updates the status line
@@ -896,9 +950,14 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
     if (_importReadStatus != HealthPermissionStatus.granted) {
       return healthImportEmptyCopy(l10n, _importPlatform);
     }
-    return _olderDataHidden(summary)
+    if (!_olderDataHidden(summary)) {
+      return l10n.healthSyncImportEmptyHealthConnectReadable;
+    }
+    // Issue #1573: where the store has no switch for older data, the
+    // line does not name one.
+    return _importPastDataOffered
         ? l10n.healthSyncImportEmptyHealthConnectOlderHidden
-        : l10n.healthSyncImportEmptyHealthConnectReadable;
+        : l10n.healthSyncImportEmptyHealthConnectRecentOnly;
   }
 
   /// Whether [summary] is a whole-history read that came back empty while
@@ -927,24 +986,51 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// the next import read the whole history (Issue #1549).
   ///
   /// The status line above offers Settings only when a permission is off,
-  /// which need not be the case here, so the result brings its own button.
+  /// which need not be the case here, so the result brings its own button
+  /// ([_pastDataButton]).
+  ///
+  /// Where the store has no such switch at all (Issue #1573) there is no
+  /// way to offer: the line says the phone's Health Connect shows recent
+  /// data only, and no button follows.
   List<Widget> _olderDataHint(
     AppLocalizations l10n,
     HealthImportSummary summary,
   ) {
     if (!_pastDataOff) return const [];
+    // The empty whole-history line has already said it.
+    final said = _olderDataHidden(summary);
+    if (!_importPastDataOffered) {
+      return [if (!said) Text(l10n.healthSyncImportRecentDataOnly)];
+    }
     return [
-      if (!_olderDataHidden(summary))
-        Text(l10n.healthSyncImportOlderDataHidden),
+      if (!said) Text(l10n.healthSyncImportOlderDataHidden),
+      if (_pastDataStillOff) Text(l10n.healthSyncImportPastDataStillOff),
       Align(
         alignment: AlignmentDirectional.centerStart,
-        child: TextButton(
-          key: const ValueKey('health-sync-import-open-settings'),
-          onPressed: () => widget.permissionProbe?.openPermissionSettings(),
-          child: Text(l10n.healthSyncPermissionOpenSettings),
-        ),
+        child: _pastDataButton(l10n),
       ),
     ];
+  }
+
+  /// The way to the switch (Issue #1573). First the store's own prompt for
+  /// that one permission, one tap from here: lunarlog may not open its own
+  /// page in Health Connect, so the settings route starts at Health
+  /// Connect's first screen, three taps from the switch. Once a request
+  /// has come back with the switch still off, asking again would be
+  /// dropped or unwelcome, and the settings route is what is left.
+  Widget _pastDataButton(AppLocalizations l10n) {
+    if (_pastDataStillOff) {
+      return TextButton(
+        key: const ValueKey('health-sync-import-open-settings'),
+        onPressed: () => widget.permissionProbe?.openPermissionSettings(),
+        child: Text(l10n.healthSyncPermissionOpenSettings),
+      );
+    }
+    return TextButton(
+      key: const ValueKey('health-sync-import-allow-past-data'),
+      onPressed: _askingForPastData ? null : _allowPastData,
+      child: Text(l10n.healthSyncImportAllowPastData),
+    );
   }
 
   /// The lines for a finished pass: the blocked line, the neutral empty

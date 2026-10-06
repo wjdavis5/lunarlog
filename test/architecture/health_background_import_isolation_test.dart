@@ -43,6 +43,8 @@ const List<String> _forbiddenWriteSurface = [
   'deleteRecords',
   'requestWriteAuthorization',
   'requestImportAuthorization',
+  // Issue #1573: the prompt for past data, raised only by a tap.
+  'requestPastDataAccess',
   'bindProfile',
   'unbindProfile',
 ];

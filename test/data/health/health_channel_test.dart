@@ -217,6 +217,11 @@ void main() {
         await platform.requestImportAuthorization(notOwnerFacts),
         HealthSyncCheck.notOwner,
       );
+      // Issue #1573: and so is the request for past data alone.
+      expectRefusedWithoutInvocation(
+        await platform.requestPastDataAccess(notOwnerFacts),
+        HealthSyncCheck.notOwner,
+      );
       expectRefusedWithoutInvocation(
         await platform.writeIntermenstrualBleeding(
           HealthIntermenstrualBleedingWrite(
@@ -539,6 +544,11 @@ void main() {
         await platform.requestImportAuthorization(_facts()),
         isA<HealthPlatformUnavailable>(),
       );
+      expect(
+        await platform.requestPastDataAccess(_facts()),
+        isA<HealthPlatformUnavailable>(),
+      );
+      expect(await platform.pastDataSwitchOffered(), isFalse);
       expect(calls, isEmpty, reason: 'no channel exists to call');
       await platform.unbindProfile(); // completes without throwing
     });
@@ -1129,6 +1139,87 @@ void main() {
       calls.clear();
       await build(TargetPlatform.android).requestImportAuthorization(_facts());
       expect(calls.single.method, 'requestImportAuthorization');
+    });
+
+    // Issue #1573: Health Connect's prompt for "Access past data" alone,
+    // and whether this phone's Health Connect has that switch at all.
+    group('past data (Issue #1573)', () {
+      test('the request sends its own pinned method name with the guard '
+          'args, and decodes like every guarded call', () async {
+        final result = await makePlatform().requestPastDataAccess(_facts());
+
+        expect(result, isA<HealthPlatformAllowed>());
+        expect(calls.single.method, 'requestPastDataAccess');
+        expect(
+          (calls.single.arguments as Map<Object?, Object?>)['profileId'],
+          'p1',
+        );
+
+        nextResult = 'unavailable';
+        expect(
+          await makePlatform().requestPastDataAccess(_facts()),
+          isA<HealthPlatformUnavailable>(),
+        );
+      });
+
+      test('where the store has no such limit nothing is sent, and there is '
+          'nothing to ask for', () async {
+        expect(
+          await makeUndisclosed().requestPastDataAccess(_facts()),
+          isA<HealthPlatformUnavailable>(),
+        );
+        expect(await makeUndisclosed().pastDataSwitchOffered(), isFalse);
+        expect(calls, isEmpty);
+      });
+
+      test('whether there is a switch sends its own pinned method name, '
+          'with no arguments, and only a clear no is no', () async {
+        nextResult = false;
+        expect(await makePlatform().pastDataSwitchOffered(), isFalse);
+        expect(calls.single.method, 'pastDataSwitchOffered');
+        expect(calls.single.arguments, isNull);
+
+        for (final answer in <Object?>[true, null, 'yes', 0]) {
+          nextResult = answer;
+          expect(
+            await makePlatform().pastDataSwitchOffered(),
+            isTrue,
+            reason: '$answer is not a no',
+          );
+        }
+      });
+
+      test('a platform error or a missing handler is "cannot tell", which '
+          'is yes: the screen then offers the way it always did', () async {
+        nextResult = false;
+        nextError = PlatformException(code: 'anything');
+        expect(await makePlatform().pastDataSwitchOffered(), isTrue);
+        nextError = MissingPluginException();
+        expect(await makePlatform().pastDataSwitchOffered(), isTrue);
+      });
+
+      test('the iOS adapter sends Swift neither; the Android adapter sends '
+          'Kotlin both', () async {
+        HealthImportSource source(TargetPlatform platform) =>
+            createHealthImportSource(
+              platform,
+              binding: HealthSyncBinding(
+                FakeSettingsStore({SettingsKeys.healthStoreProfileId: 'p1'}),
+              ),
+              minorBindingAllowed: true,
+            );
+
+        await source(TargetPlatform.iOS).requestPastDataAccess(_facts());
+        await source(TargetPlatform.iOS).pastDataSwitchOffered();
+        expect(calls, isEmpty);
+
+        await source(TargetPlatform.android).requestPastDataAccess(_facts());
+        await source(TargetPlatform.android).pastDataSwitchOffered();
+        expect(
+          calls.map((call) => call.method),
+          ['requestPastDataAccess', 'pastDataSwitchOffered'],
+        );
+      });
     });
 
     test('the platform fact is readable through the probe the screen holds',

@@ -388,6 +388,34 @@ abstract interface class HealthImportSource {
     HealthGuardFacts facts,
     String commitToken,
   );
+
+  /// Whether this phone's store has a switch for reading data from before
+  /// access was first allowed (Issue #1573).
+  ///
+  /// An older Health Connect has none. It only ever shows an app recent
+  /// data, `HealthPermissionProbe.importReachesPastData` is false there
+  /// for good, and naming "Access past data" would send the person looking
+  /// for a switch her phone does not have. Only looks: no request is
+  /// raised and no marker is set. A store with no such limit (HealthKit)
+  /// has no switch either, and answers false.
+  Future<bool> pastDataSwitchOffered();
+
+  /// Raises the store's own prompt for the one permission that lets a read
+  /// reach data from before access was first allowed (Issue #1573): Health
+  /// Connect's "Access past data". Guarded like every other health-API
+  /// touch, and raised only by a tap on the Health sync screen.
+  ///
+  /// It asks for nothing else, so it says nothing about the writes or the
+  /// record reads, and on Android neither asked-marker is touched.
+  ///
+  /// The answer does not say whether the permission is now on. Health
+  /// Connect drops a request without showing it once a permission in it has
+  /// been declined twice, and answers the same as for a sheet that was
+  /// declined. Ask `HealthPermissionProbe.importReachesPastData`
+  /// afterwards. Where there is no such switch
+  /// ([pastDataSwitchOffered] false) the answer is
+  /// [HealthPlatformResult.unavailable] and nothing is raised.
+  Future<HealthPlatformResult> requestPastDataAccess(HealthGuardFacts facts);
 }
 
 /// What one user-initiated import pass did, in counts a summary can render
@@ -558,6 +586,21 @@ abstract interface class HealthImportRunner {
   Future<HealthImportSummary> importNow({
     void Function(HealthImportProgress progress)? onProgress,
   });
+
+  /// Whether this phone's store has a switch for reading older data at all
+  /// (Issue #1573; [HealthImportSource.pastDataSwitchOffered]). The screen
+  /// asks it when a pass ran without reaching that data, to choose between
+  /// offering the way to the switch and saying there is none.
+  Future<bool> pastDataSwitchOffered();
+
+  /// Puts the store's own prompt for reading older data in front of the
+  /// person, for the currently bound profile (Issue #1573;
+  /// [HealthImportSource.requestPastDataAccess]), and answers whether a
+  /// read reaches that data once the prompt has gone. False as well when
+  /// nothing could be asked: no bound profile, or the guard refused.
+  ///
+  /// Call it only from her tap.
+  Future<bool> requestPastDataAccess();
 }
 
 /// The seam the platform background triggers drive (Issue #993): the same

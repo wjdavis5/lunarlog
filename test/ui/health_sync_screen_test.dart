@@ -203,6 +203,34 @@ class _FakeImporter implements HealthImportRunner {
     calls++;
     return summary;
   }
+
+  /// Issue #1573: whether the store has an "Access past data" switch at
+  /// all, and what a request for it ends in.
+  bool pastDataOffered = true;
+  bool pastDataOfferedThrows = false;
+  bool grantsPastData = false;
+  bool pastDataRequestThrows = false;
+  int pastDataOfferedProbes = 0;
+  int pastDataRequests = 0;
+
+  /// Run when a request is granted, so a test can make the probe answer
+  /// that reads now reach the older data.
+  void Function()? onPastDataGranted;
+
+  @override
+  Future<bool> pastDataSwitchOffered() async {
+    pastDataOfferedProbes++;
+    if (pastDataOfferedThrows) throw StateError('boom');
+    return pastDataOffered;
+  }
+
+  @override
+  Future<bool> requestPastDataAccess() async {
+    pastDataRequests++;
+    if (pastDataRequestThrows) throw StateError('boom');
+    if (grantsPastData) onPastDataGranted?.call();
+    return grantsPastData;
+  }
 }
 
 /// A scripted [HealthPermissionProbe] for the Issue #1515 status line: each
@@ -281,6 +309,12 @@ class _ThrowingImporter implements HealthImportRunner {
     void Function(HealthImportProgress progress)? onProgress,
   }) async =>
       throw StateError('boom');
+
+  @override
+  Future<bool> pastDataSwitchOffered() async => true;
+
+  @override
+  Future<bool> requestPastDataAccess() async => false;
 }
 
 void main() {
@@ -2235,6 +2269,10 @@ void main() {
           .data!;
       final resultSettings =
           find.byKey(const ValueKey('health-sync-import-open-settings'));
+      // Issue #1573: the button a result brings first raises Health
+      // Connect's own prompt. Settings is what is left after it.
+      final resultAllow =
+          find.byKey(const ValueKey('health-sync-import-allow-past-data'));
 
       Future<void> leaveAndComeBack(WidgetTester tester) async {
         tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
@@ -2439,12 +2477,12 @@ void main() {
         );
         expect(resultSettings, findsNothing);
 
+        expect(resultAllow, findsNothing);
+
         expect(await importAndReadResult(tester), olderHidden);
-        expect(resultSettings, findsOneWidget);
-        await tester.ensureVisible(resultSettings);
-        await tester.tap(resultSettings);
-        await tester.pumpAndSettle();
-        expect(probe.settingsOpened, 1);
+        expect(resultAllow, findsOneWidget);
+        expect(resultSettings, findsNothing);
+        expect(probe.settingsOpened, 0);
       });
 
       // Issue #1557. The line and the button used to appear on one result
@@ -2485,14 +2523,15 @@ void main() {
       const nothingSince = HealthImportSummary(incremental: true, pagesRead: 1);
 
       testWidgets('Android: an import that brought days in with the switch '
-          'off says older data is hidden, and offers Settings',
+          'off says older data is hidden, and offers to allow it',
           (tester) async {
         await importWith(tester,
             reachesPastData: false, summary: broughtDaysIn);
         // In the result, and announced in the snackbar as well.
         expect(find.text('Imported 2 days.'), findsWidgets);
         expect(find.text(olderHint), findsOneWidget);
-        expect(resultSettings, findsOneWidget);
+        expect(resultAllow, findsOneWidget);
+        expect(resultSettings, findsNothing);
       });
 
       testWidgets('Android: a repeat import with the switch off says so too',
@@ -2500,14 +2539,16 @@ void main() {
         await importWith(tester, reachesPastData: false, summary: nothingSince);
         expect(find.text(nothingNew), findsOneWidget);
         expect(find.text(olderHint), findsOneWidget);
-        expect(resultSettings, findsOneWidget);
+        expect(resultAllow, findsOneWidget);
+        expect(resultSettings, findsNothing);
       });
 
       testWidgets('Android: when it cannot tell, it says the same',
           (tester) async {
         await importWith(tester, reachesPastData: null, summary: broughtDaysIn);
         expect(find.text(olderHint), findsOneWidget);
-        expect(resultSettings, findsOneWidget);
+        expect(resultAllow, findsOneWidget);
+        expect(resultSettings, findsNothing);
       });
 
       testWidgets('Android: with the switch on, no result carries the line or '
@@ -2529,7 +2570,8 @@ void main() {
         );
         expect(find.text(olderHidden), findsOneWidget);
         expect(find.text(olderHint), findsNothing);
-        expect(resultSettings, findsOneWidget);
+        expect(resultAllow, findsOneWidget);
+        expect(resultSettings, findsNothing);
       });
 
       testWidgets('Android: reading not allowed gets neither: the status '
@@ -2544,24 +2586,168 @@ void main() {
         expect(resultSettings, findsNothing);
       });
 
-      testWidgets('Android: the button under a result opens Settings',
-          (tester) async {
-        final probe = _ScriptedProbe(
-          readAccessDisclosed: true,
-          write: HealthPermissionStatus.granted,
-          read: HealthPermissionStatus.granted,
-          reachesPastData: false,
-        );
-        await pumpAndroid(
-          tester,
-          binding: await boundBinding(),
-          permissionProbe: probe,
-          importer: androidImporter(broughtDaysIn),
-        );
-        await importAndReadResult(tester);
-        await tester.tap(resultSettings);
-        await tester.pump();
-        expect(probe.settingsOpened, 1);
+      // Issue #1573. The button used to open Health Connect's first
+      // screen, three taps from the switch. It now raises Health Connect's
+      // own prompt for that one permission.
+      group('the button under a result (#1573)', () {
+        const stillOff = '"Access past data" is still off. You can turn it '
+            'on for lunarlog in Health Connect.';
+        const recentOnly =
+            'Health Connect on this phone only shows lunarlog recent data.';
+
+        _ScriptedProbe switchOff() => _ScriptedProbe(
+              readAccessDisclosed: true,
+              write: HealthPermissionStatus.granted,
+              read: HealthPermissionStatus.granted,
+              reachesPastData: false,
+            );
+
+        Future<void> importOn(
+          WidgetTester tester,
+          _ScriptedProbe probe,
+          _FakeImporter importer,
+        ) async {
+          await pumpAndroid(
+            tester,
+            binding: await boundBinding(),
+            permissionProbe: probe,
+            importer: importer,
+          );
+          await importAndReadResult(tester);
+        }
+
+        testWidgets('asks Health Connect, and a grant runs the import again',
+            (tester) async {
+          final probe = switchOff();
+          final importer = androidImporter(broughtDaysIn)
+            ..grantsPastData = true
+            ..onPastDataGranted = () => probe.reachesPastData = true;
+          await importOn(tester, probe, importer);
+          expect(find.text('Allow access to past data'), findsOneWidget);
+          expect(importer.pastDataRequests, 0,
+              reason: 'nothing is asked until she taps');
+
+          await tester.tap(resultAllow);
+          await tester.pumpAndSettle();
+
+          expect(importer.pastDataRequests, 1);
+          expect(importer.calls, 2,
+              reason: 'the import she asked the older data for');
+          expect(find.text(olderHint), findsNothing);
+          expect(resultAllow, findsNothing);
+          expect(resultSettings, findsNothing);
+          expect(probe.settingsOpened, 0);
+        });
+
+        testWidgets('when the switch is still off afterwards, it says so and '
+            'offers Settings', (tester) async {
+          final probe = switchOff();
+          final importer = androidImporter(broughtDaysIn);
+          await importOn(tester, probe, importer);
+
+          await tester.tap(resultAllow);
+          await tester.pumpAndSettle();
+
+          expect(importer.pastDataRequests, 1);
+          expect(importer.calls, 1, reason: 'no import: nothing changed');
+          expect(find.text(olderHint), findsOneWidget);
+          expect(find.text(stillOff), findsOneWidget);
+          expect(resultAllow, findsNothing,
+              reason: 'asking again would be dropped, or unwelcome');
+          await tester.tap(resultSettings);
+          await tester.pump();
+          expect(probe.settingsOpened, 1);
+        });
+
+        testWidgets('a request that fails ends the same way', (tester) async {
+          final probe = switchOff();
+          final importer = androidImporter(broughtDaysIn)
+            ..pastDataRequestThrows = true;
+          await importOn(tester, probe, importer);
+
+          await tester.tap(resultAllow);
+          await tester.pumpAndSettle();
+
+          expect(find.text(stillOff), findsOneWidget);
+          expect(resultSettings, findsOneWidget);
+          expect(importer.calls, 1);
+        });
+
+        testWidgets('a new import starts over with the prompt', (tester) async {
+          final probe = switchOff();
+          final importer = androidImporter(broughtDaysIn);
+          await importOn(tester, probe, importer);
+          await tester.tap(resultAllow);
+          await tester.pumpAndSettle();
+          expect(resultSettings, findsOneWidget);
+
+          await importAndReadResult(tester);
+
+          expect(find.text(stillOff), findsNothing);
+          expect(resultAllow, findsOneWidget);
+          expect(resultSettings, findsNothing);
+        });
+
+        testWidgets('on a Health Connect with no such switch, it names none '
+            'and offers nothing', (tester) async {
+          final importer = androidImporter(broughtDaysIn)
+            ..pastDataOffered = false;
+          await importOn(tester, switchOff(), importer);
+
+          expect(find.text(recentOnly), findsOneWidget);
+          expect(find.textContaining('Access past data'), findsNothing);
+          expect(resultAllow, findsNothing);
+          expect(resultSettings, findsNothing);
+        });
+
+        testWidgets('and its empty whole-history result names none either',
+            (tester) async {
+          final importer =
+              androidImporter(const HealthImportSummary(pagesRead: 1))
+                ..pastDataOffered = false;
+          await pumpAndroid(
+            tester,
+            binding: await boundBinding(),
+            permissionProbe: switchOff(),
+            importer: importer,
+          );
+
+          expect(
+            await importAndReadResult(tester),
+            'Nothing to import that lunarlog can see. $recentOnly',
+          );
+          expect(find.text(recentOnly), findsNothing,
+              reason: 'said once, in the result line');
+          expect(find.textContaining('Access past data'), findsNothing);
+          expect(resultAllow, findsNothing);
+        });
+
+        testWidgets('whether there is a switch is asked only when a read did '
+            'not reach the older data', (tester) async {
+          final reaches = _ScriptedProbe(
+            readAccessDisclosed: true,
+            write: HealthPermissionStatus.granted,
+            read: HealthPermissionStatus.granted,
+          );
+          final importer = androidImporter(broughtDaysIn);
+          await importOn(tester, reaches, importer);
+          expect(importer.pastDataOfferedProbes, 0);
+
+          await tester.pumpWidget(const SizedBox.shrink());
+          final other = androidImporter(broughtDaysIn);
+          await importOn(tester, switchOff(), other);
+          expect(other.pastDataOfferedProbes, 1);
+        });
+
+        testWidgets('when it cannot tell whether there is a switch, it '
+            'offers the prompt', (tester) async {
+          final importer = androidImporter(broughtDaysIn)
+            ..pastDataOfferedThrows = true;
+          await importOn(tester, switchOff(), importer);
+
+          expect(find.text(olderHint), findsOneWidget);
+          expect(resultAllow, findsOneWidget);
+        });
       });
 
       testWidgets('iPhone: an import that brought days in has no such line',
@@ -2584,6 +2770,7 @@ void main() {
         expect(find.text('Imported 2 days.'), findsWidgets);
         expect(find.textContaining('Access past data'), findsNothing);
         expect(resultSettings, findsNothing);
+        expect(resultAllow, findsNothing);
       });
 
       testWidgets('Android: the question is only asked once reading is '

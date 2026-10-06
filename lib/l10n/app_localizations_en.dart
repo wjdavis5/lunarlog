@@ -5283,6 +5283,21 @@ class AppLocalizationsEn extends AppLocalizations {
       'Nothing to import that lunarlog can see. Health Connect hides older data from lunarlog unless \"Access past data\" is on for it.';
 
   @override
+  String get healthSyncImportAllowPastData => 'Allow access to past data';
+
+  @override
+  String get healthSyncImportPastDataStillOff =>
+      '\"Access past data\" is still off. You can turn it on for lunarlog in Health Connect.';
+
+  @override
+  String get healthSyncImportRecentDataOnly =>
+      'Health Connect on this phone only shows lunarlog recent data.';
+
+  @override
+  String get healthSyncImportEmptyHealthConnectRecentOnly =>
+      'Nothing to import that lunarlog can see. Health Connect on this phone only shows lunarlog recent data.';
+
+  @override
   String get healthSyncImportOlderDataHidden =>
       'Health Connect hides older data from lunarlog unless \"Access past data\" is on for it.';
 

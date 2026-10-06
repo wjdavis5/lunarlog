@@ -646,8 +646,8 @@ void main() {
       // Factoring the two record reads out must not have dropped either
       // from what is requested.
       expect(
-        RegExp(r'private\s+val\s+readPermissions\s*=\s*setOf\(\s*'
-                r'HealthPermission\.PERMISSION_READ_HEALTH_DATA_HISTORY,\s*\)'
+        RegExp(r'private\s+val\s+readPermissions\s*=\s*'
+                r'pastDataPermissions\(\)'
                 r'\s*\+\s*importReadPermissions\s*\+\s*backgroundReadPermissions\(\)')
             .hasMatch(kotlin),
         isTrue,
@@ -701,6 +701,129 @@ void main() {
     });
   });
 
+  // Issue #1573: the Health sync screen's button raises Health Connect's
+  // own prompt for "Access past data" and nothing else. These guards keep
+  // that request to the one permission, keep it from setting either
+  // asked-marker (it carries no write and neither record read, so what it
+  // was answered proves nothing about them), and keep "is there such a
+  // switch" a question that only looks.
+  group('Android: the request for past data asks for that alone (#1573)', () {
+    late String kotlin;
+    late String request;
+    late String offered;
+
+    setUpAll(() {
+      kotlin = _stripLineComments(readRepoFile(_adapterPath));
+      request = _between(
+        kotlin,
+        '"requestPastDataAccess" ->',
+        '"pastDataSwitchOffered" ->',
+      );
+      offered = _between(
+        kotlin,
+        '"pastDataSwitchOffered" ->',
+        '"importPermissionStatus" ->',
+      );
+    });
+
+    test('it passes the guard, then asks only where there is such a switch, '
+        'for the one permission', () {
+      final guarded = request.indexOf(
+        'if (!requestGuardAllows(call.method, args, result)) return',
+      );
+      final checked = request.indexOf('if (!pastDataOffered())');
+      final launched = request.indexOf('launchPermissionRequest(');
+      expect(guarded, isNonNegative);
+      expect(checked, greaterThan(guarded));
+      expect(launched, greaterThan(checked));
+      expect(request, contains('result.success("unavailable")'));
+      expect(request, contains('permissions = pastDataPermissions()'));
+      for (final other in [
+        'readPermissions',
+        'allPermissions',
+        'writePermissions',
+        'importReadPermissions',
+        'backgroundReadPermissions',
+        'getWritePermission',
+        'getReadPermission',
+      ]) {
+        expect(request, isNot(contains(other)), reason: other);
+      }
+    });
+
+    test('it sets neither asked-marker', () {
+      expect(request, contains('askedMarker = null'));
+      expect(request, isNot(contains('PERMISSION_REQUESTED_KEY')));
+      expect(request, isNot(contains('IMPORT_REQUEST_LAUNCHED_KEY')));
+      expect(request, isNot(contains('prefs.')));
+      // And the launcher writes a marker only when it is given one.
+      final launcher = _between(
+        kotlin,
+        'private fun launchPermissionRequest(',
+        'private fun insert(',
+      );
+      expect(launcher, contains('askedMarker: String?,'));
+      expect(
+        RegExp(r'if \(askedMarker != null\) \{\s*'
+                r'prefs\.edit\(\)\.putLong\(askedMarker, installStamp\)\.apply\(\)'
+                r'\s*\}\s*launcher\.launch\(permissions\)')
+            .hasMatch(launcher),
+        isTrue,
+      );
+    });
+
+    test('whether there is a switch only looks, and is the feature check',
+        () {
+      expect(offered, contains('result.success(pastDataOffered())'));
+      for (final forbidden in [
+        'launcher',
+        'requestPermissions',
+        'launchPermissionRequest',
+        '.launch(',
+        'prefs.',
+        'PERMISSION_REQUESTED_KEY',
+        'IMPORT_REQUEST_LAUNCHED_KEY',
+      ]) {
+        expect(offered, isNot(contains(forbidden)), reason: forbidden);
+      }
+      final helper = _between(
+        kotlin,
+        'private fun pastDataOffered(): Boolean',
+        'private fun pastDataPermissions(): Set<String>',
+      );
+      expect(
+        helper,
+        contains('HealthConnectFeatures.FEATURE_READ_HEALTH_DATA_HISTORY'),
+      );
+      expect(helper, contains('HealthConnectFeatures.FEATURE_STATUS_AVAILABLE'));
+      // A probe that fails is "not offered": an unknown permission string
+      // must never reach a request sheet.
+      expect(
+        RegExp(r'catch \(_: Exception\) \{\s*false\s*\}').hasMatch(helper),
+        isTrue,
+      );
+      expect(helper, isNot(contains('prefs.')));
+      // The permission set is that one string, or nothing.
+      final permissions = _between(
+        kotlin,
+        'private fun pastDataPermissions(): Set<String>',
+        'private class GuardArgs',
+      );
+      expect(
+        permissions,
+        contains('setOf(HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY)'),
+      );
+      expect(permissions, contains('emptySet()'));
+      expect(permissions, isNot(contains('getWritePermission')));
+    });
+
+    test('Swift has neither call: HealthKit has no such limit', () {
+      final swift = readRepoFile('ios/Runner/AppDelegate.swift');
+      expect(swift, isNot(contains('requestPastDataAccess')));
+      expect(swift, isNot(contains('pastDataSwitchOffered')));
+    });
+  });
+
   // Issue #1515: the import asks through a request of its own. Someone who
   // let lunarlog read from Health Connect and not write to it used to be
   // shown the write permissions again on every tap of Import, because the
@@ -722,10 +845,12 @@ void main() {
         '"requestWriteAuthorization" ->',
         '"requestImportAuthorization" ->',
       );
+      // Up to the next handler, which since Issue #1573 is the request
+      // for past data.
       importRequest = _between(
         kotlin,
         '"requestImportAuthorization" ->',
-        '"importPermissionStatus" ->',
+        '"requestPastDataAccess" ->',
       );
       writeStatus = _between(
         kotlin,
@@ -745,8 +870,8 @@ void main() {
       // from no write permission. (The #1491 group pins the two record
       // reads themselves.)
       expect(
-        RegExp(r'private\s+val\s+readPermissions\s*=\s*setOf\(\s*'
-                r'HealthPermission\.PERMISSION_READ_HEALTH_DATA_HISTORY,\s*\)'
+        RegExp(r'private\s+val\s+readPermissions\s*=\s*'
+                r'pastDataPermissions\(\)'
                 r'\s*\+\s*importReadPermissions\s*\+\s*backgroundReadPermissions\(\)'
                 r'\s*\n')
             .hasMatch(kotlin),
@@ -761,6 +886,12 @@ void main() {
       );
       expect(backgroundReads, isNot(contains('getWritePermission')));
       expect(backgroundReads, isNot(contains('writePermissions')));
+      // Issue #1573: "access past data" comes from a helper of its own,
+      // which is inside the slice above.
+      expect(
+        backgroundReads,
+        contains('private fun pastDataPermissions(): Set<String>'),
+      );
     });
 
     test('the write path\'s request is unchanged: everything, on one sheet',
@@ -824,9 +955,10 @@ void main() {
       expect(launcher, contains('launcher.launch(permissions)'));
       expect(
         'launchPermissionRequest('.allMatches(kotlin),
-        hasLength(3),
-        reason: 'the declaration and the two requests: nothing else raises '
-            'a Health Connect sheet',
+        hasLength(4),
+        reason: 'the declaration, the two requests, and the request for '
+            'past data (Issue #1573): nothing else raises a Health '
+            'Connect sheet',
       );
     });
 

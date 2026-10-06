@@ -244,9 +244,12 @@ class HealthConnectAdapter(context: Context) {
     // lunarlog read and not write used to get the write permissions put in
     // front of her again on every tap of Import, because the import asked
     // through the one request that carried everything.
-    private val readPermissions = setOf(
-        HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY,
-    ) + importReadPermissions + backgroundReadPermissions()
+    //
+    // Issue #1573: "Access past data" rides the sheet only where this
+    // phone's Health Connect has that switch ([pastDataPermissions]), for
+    // the reason given at [backgroundReadPermissions].
+    private val readPermissions =
+        pastDataPermissions() + importReadPermissions + backgroundReadPermissions()
 
     // What the WRITE path asks for (requestWriteAuthorization): the writes,
     // with the reads beside them on the same sheet. That request is raised
@@ -297,6 +300,31 @@ class HealthConnectAdapter(context: Context) {
     } catch (_: Exception) {
         emptySet()
     }
+
+    // Whether this phone's Health Connect has the "Access past data"
+    // switch at all (Issue #1573). Where it does not, the permission can
+    // never be granted and the answer to "is it on" is always no, so the
+    // Health sync screen must not name a switch the phone does not have,
+    // and no request may carry a permission string this Health Connect
+    // does not know. The same check, with the same fail-to-not-offer
+    // rule, as [backgroundReadPermissions].
+    private fun pastDataOffered(): Boolean = try {
+        isAvailable() &&
+            HealthConnectClient.getOrCreate(contextApp).features
+                .getFeatureStatus(
+                    HealthConnectFeatures.FEATURE_READ_HEALTH_DATA_HISTORY,
+                ) == HealthConnectFeatures.FEATURE_STATUS_AVAILABLE
+    } catch (_: Exception) {
+        false
+    }
+
+    // The "Access past data" permission, only where it can be granted.
+    private fun pastDataPermissions(): Set<String> =
+        if (pastDataOffered()) {
+            setOf(HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY)
+        } else {
+            emptySet()
+        }
 
     // The guard-args half of every guarded call (mirrors
     // encodeGuardArgs in health_channel_codec.dart). StandardMessageCodec
@@ -462,6 +490,46 @@ class HealthConnectAdapter(context: Context) {
                         result.error("writeFailed", e.message, null)
                     }
                 }
+            }
+
+            "requestPastDataAccess" -> {
+                // Issue #1573: Health Connect's own prompt for the one
+                // permission that lets a read reach data from before
+                // lunarlog was first allowed ("Access past data"), raised
+                // only by a tap on the Health sync screen. The app cannot
+                // open its own page in Health Connect (that intent is
+                // refused to it), so before this the way to the switch
+                // was Health Connect's first screen and three more taps.
+                //
+                // It carries no write and neither record read, so neither
+                // asked-marker is set (#1478, #1515): what this sheet was
+                // answered says nothing about either of them. Health
+                // Connect drops a request, showing nothing, once a
+                // permission in it has been declined twice; the caller
+                // reads the granted set afterwards and does not trust the
+                // answer given here.
+                if (!requestGuardAllows(call.method, args, result)) return
+                if (!pastDataOffered()) {
+                    result.success("unavailable")
+                    return
+                }
+                try {
+                    launchPermissionRequest(
+                        result,
+                        askedMarker = null,
+                        permissions = pastDataPermissions(),
+                    )
+                } catch (e: Exception) {
+                    if (pendingAuthResult === result) pendingAuthResult = null
+                    result.error("writeFailed", e.message, null)
+                }
+            }
+
+            "pastDataSwitchOffered" -> {
+                // Issue #1573: whether this Health Connect has the
+                // "Access past data" switch at all. Only looks: no
+                // request, no marker.
+                result.success(pastDataOffered())
             }
 
             "importPermissionStatus" -> {
@@ -1198,11 +1266,12 @@ class HealthConnectAdapter(context: Context) {
     // Shared by the write path's request and the import's (issue #1515) so
     // the two cannot drift on the one-prompt-at-a-time rule or on
     // remembering before launching; they differ only in which permissions
-    // they ask for and which asked-marker they set. Call only after
-    // [requestGuardAllows].
+    // they ask for and which asked-marker they set. The request for past
+    // data alone (issue #1573) sets none: [askedMarker] is null. Call only
+    // after [requestGuardAllows].
     private fun launchPermissionRequest(
         result: MethodChannel.Result,
-        askedMarker: String,
+        askedMarker: String?,
         permissions: Set<String>,
     ) {
         // One prompt at a time: a second request while the sheet is
@@ -1222,7 +1291,9 @@ class HealthConnectAdapter(context: Context) {
             // the status reports "notAsked" only until this is set,
             // and a request that is interrupted (the process dies
             // behind the sheet) has still been asked.
-            prefs.edit().putLong(askedMarker, installStamp).apply()
+            if (askedMarker != null) {
+                prefs.edit().putLong(askedMarker, installStamp).apply()
+            }
             launcher.launch(permissions)
         }
     }

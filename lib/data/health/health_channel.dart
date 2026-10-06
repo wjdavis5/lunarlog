@@ -588,6 +588,37 @@ class MethodChannelHealthPlatform
       payloadArgs: () => {'commitToken': commitToken},
     );
   }
+
+  /// Issue #1573: whether this phone's Health Connect has the "Access past
+  /// data" switch. A store that does not disclose read access has no such
+  /// limit and no such switch, so nothing is sent and the answer is false.
+  /// A probe that fails is "cannot tell", which is true here: the screen
+  /// then names the switch and offers the way to it, as it did before it
+  /// could ask.
+  @override
+  Future<bool> pastDataSwitchOffered() async {
+    if (!readAccessDisclosed) return false;
+    try {
+      final raw = await channel
+          .invokeMethod<Object?>(HealthChannelMethods.pastDataSwitchOffered);
+      return raw != false;
+    } on PlatformException {
+      return true;
+    } on MissingPluginException {
+      return true;
+    }
+  }
+
+  /// Issue #1573: Health Connect's prompt for "Access past data" alone,
+  /// guarded like every other health-API touch. Never sent to Swift, which
+  /// has no such limit to lift.
+  @override
+  Future<HealthPlatformResult> requestPastDataAccess(
+    HealthGuardFacts facts,
+  ) async {
+    if (!readAccessDisclosed) return const HealthPlatformResult.unavailable();
+    return _invokeGuarded(HealthChannelMethods.requestPastDataAccess, facts);
+  }
 }
 
 /// The default [HealthPlatformStore] for platforms with no native half
@@ -718,6 +749,16 @@ class UnsupportedHealthPlatform
   Future<HealthPlatformResult> commitImport(
     HealthGuardFacts facts,
     String commitToken,
+  ) async =>
+      const HealthPlatformResult.unavailable();
+
+  /// No health store, so no switch.
+  @override
+  Future<bool> pastDataSwitchOffered() async => false;
+
+  @override
+  Future<HealthPlatformResult> requestPastDataAccess(
+    HealthGuardFacts facts,
   ) async =>
       const HealthPlatformResult.unavailable();
 }

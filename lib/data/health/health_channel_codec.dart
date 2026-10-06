@@ -29,6 +29,8 @@
 /// | `openPermissionSettings` | none | `null` |
 /// | `readMenstrualFlowPage` | guard + `startMs` + `endMs` + `pageSize` + `cursor?` | a page `Map` (`samples` list + `nextCursor`), or a result string |
 /// | `commitImport` (Android only) | guard + `commitToken` | result string |
+/// | `pastDataSwitchOffered` (Android only) | none | `bool` |
+/// | `requestPastDataAccess` (Android only) | guard args | result string |
 /// | `readCycleDeviations` | guard + `startMs` + `endMs` + `kinds` (list of wire names) | a `List` of deviation maps, or a result string |
 ///
 /// *Page result* (`readMenstrualFlowPage`, Issue #992): a `Map` with
@@ -193,6 +195,16 @@ abstract final class HealthChannelMethods {
   /// **Android only:** Health Connect saves its changes token and reached-past
   /// flag upon commit; HealthKit does not track position this way.
   static const commitImport = 'commitImport';
+
+  /// Whether this phone's Health Connect has the "Access past data"
+  /// switch at all (Issue #1573): a `bool`. **Android only**, and it only
+  /// looks.
+  static const pastDataSwitchOffered = 'pastDataSwitchOffered';
+
+  /// Health Connect's own prompt for "Access past data" and nothing
+  /// else (Issue #1573), raised by a tap on the Health sync screen.
+  /// **Android only:** HealthKit has no such limit.
+  static const requestPastDataAccess = 'requestPastDataAccess';
 
   /// The computed cycle-deviation read (Issue #799). Its success result is
   /// a `List` of deviation maps rather than a result string — see

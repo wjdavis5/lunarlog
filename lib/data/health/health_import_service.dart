@@ -456,6 +456,21 @@ class LocalHealthImportService
   }
 
   @override
+  Future<bool> pastDataSwitchOffered() => _source.pastDataSwitchOffered();
+
+  /// Issue #1573. The port's own guard decides whether anything may be
+  /// asked; what it answers is not used, because it does not say what was
+  /// granted (see [HealthImportSource.requestPastDataAccess]). What counts
+  /// is whether a read reaches the older data once the prompt has gone.
+  @override
+  Future<bool> requestPastDataAccess() async {
+    final bound = await _resolveBound();
+    if (bound == null) return false;
+    await _source.requestPastDataAccess(bound.facts);
+    return _platform.importReachesPastData();
+  }
+
+  @override
   Future<HealthImportSummary> importInBackground() async {
     final bound = await _resolveBound();
     if (bound == null) return const HealthImportSummary(bound: false);

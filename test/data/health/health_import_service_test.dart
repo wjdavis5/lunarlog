@@ -88,6 +88,13 @@ class _FakePlatform implements HealthPlatformStore {
       HealthPermissionStatus.granted;
   int importPermissionStatusCalls = 0;
 
+  /// Issue #1549: whether a read reaches data from before access was
+  /// first allowed ("Access past data").
+  bool reachesPastData = false;
+
+  @override
+  Future<bool> importReachesPastData() async => reachesPastData;
+
   @override
   Future<HealthPlatformResult> bindProfile(HealthGuardFacts facts) async {
     bindCalls++;
@@ -192,6 +199,27 @@ class _FakeSource implements HealthImportSource {
     commitCalls++;
     committedTokens.add(commitToken);
     return const HealthPlatformResult.allowed();
+  }
+
+  /// Issue #1573: whether the store has an "Access past data" switch, each
+  /// request raised for it, and what the port answers.
+  bool pastDataOffered = true;
+  final List<HealthGuardFacts> pastDataRequests = [];
+  HealthPlatformResult pastDataResult = const HealthPlatformResult.allowed();
+
+  /// Run while the prompt is up, to play the person's answer.
+  void Function()? onPastDataRequest;
+
+  @override
+  Future<bool> pastDataSwitchOffered() async => pastDataOffered;
+
+  @override
+  Future<HealthPlatformResult> requestPastDataAccess(
+    HealthGuardFacts facts,
+  ) async {
+    pastDataRequests.add(facts);
+    onPastDataRequest?.call();
+    return pastDataResult;
   }
 }
 
@@ -2328,6 +2356,54 @@ void main() {
       expect(dayEntries.saved.single.sourceId, 'bg-hc-1');
       expect(platform.bindCalls, 0);
       expect(platform.authCalls, 0);
+    });
+  });
+
+  // Issue #1573: the Health sync screen's button raises Health Connect's
+  // own prompt for "Access past data". The port's answer does not say what
+  // was granted, so the service answers from what a read reaches after it.
+  group('asking for past data (Issue #1573)', () {
+    test('with no bound profile nothing is asked, and the answer is no',
+        () async {
+      platform.reachesPastData = true;
+
+      expect(await build().requestPastDataAccess(), isFalse);
+      expect(source.pastDataRequests, isEmpty);
+    });
+
+    test('the prompt is raised for the bound profile, and a grant is yes',
+        () async {
+      await bind();
+      source.onPastDataRequest = () => platform.reachesPastData = true;
+
+      expect(await build().requestPastDataAccess(), isTrue);
+      expect(source.pastDataRequests.single.profile.id, _profileId);
+      expect(platform.authCalls, 0,
+          reason: 'neither of the two other requests is raised');
+    });
+
+    test('the port answering allowed is not a grant: Health Connect drops a '
+        'twice-declined request and answers the same', () async {
+      await bind();
+      source.pastDataResult = const HealthPlatformResult.allowed();
+
+      expect(await build().requestPastDataAccess(), isFalse);
+      expect(source.pastDataRequests, hasLength(1));
+    });
+
+    test('and the port answering no is not a refusal, if a read reaches the '
+        'older data all the same', () async {
+      await bind();
+      source.pastDataResult = const HealthPlatformResult.permissionDenied();
+      platform.reachesPastData = true;
+
+      expect(await build().requestPastDataAccess(), isTrue);
+    });
+
+    test('whether there is a switch at all is the store\'s answer', () async {
+      expect(await build().pastDataSwitchOffered(), isTrue);
+      source.pastDataOffered = false;
+      expect(await build().pastDataSwitchOffered(), isFalse);
     });
   });
 
