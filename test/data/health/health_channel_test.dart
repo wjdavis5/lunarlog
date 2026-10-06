@@ -603,6 +603,7 @@ void main() {
 
     Future<HealthReadResult> page({
       String? cursor,
+      bool wholeHistory = false,
       MethodChannelHealthPlatform? platform,
     }) =>
         (platform ?? makePlatform()).readMenstrualFlowPage(
@@ -611,6 +612,7 @@ void main() {
           end: end,
           pageSize: kHealthImportPageSize,
           cursor: cursor,
+          wholeHistory: wholeHistory,
         );
 
     test('a denied read refuses with zero channel invocations', () async {
@@ -655,6 +657,22 @@ void main() {
       await page();
       final args = calls.single.arguments as Map<Object?, Object?>;
       expect(args.containsKey('cursor'), isFalse);
+      expect(args.containsKey('wholeHistory'), isFalse);
+    });
+
+    // Issue #1594.
+    test('asking for the whole history crosses the channel, and the '
+        'records a page says were deleted come back', () async {
+      nextResult = <String, Object?>{
+        'samples': <Object?>[],
+        'incremental': true,
+        'deletedRecordIds': ['rec-9'],
+      };
+      final result = await page(wholeHistory: true);
+
+      final args = calls.single.arguments as Map<Object?, Object?>;
+      expect(args['wholeHistory'], isTrue);
+      expect((result as HealthReadSamples).deletedRecordIds, ['rec-9']);
     });
 
     test('a platform unavailable error maps to HealthReadUnavailable', () async {

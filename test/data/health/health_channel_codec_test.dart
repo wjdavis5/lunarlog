@@ -357,6 +357,17 @@ void main() {
         cursor: 'opaque-cursor',
       );
       expect(withCursor['cursor'], 'opaque-cursor');
+      // Issue #1594: sent only when asked for, so that an ordinary read
+      // looks to the native half exactly as it did.
+      expect(args.containsKey('wholeHistory'), isFalse);
+      expect(withCursor.containsKey('wholeHistory'), isFalse);
+      final startingOver = encodeReadWindowArgs(
+        DateTime.utc(2026, 8, 16),
+        DateTime.utc(2026, 9, 17),
+        pageSize: kHealthImportPageSize,
+        wholeHistory: true,
+      );
+      expect(startingOver['wholeHistory'], isTrue);
     });
 
     test('a page Map decodes the samples and the next cursor (Issue #992)',
@@ -421,6 +432,46 @@ void main() {
         'samples': <Object?>[],
       }) as HealthReadSamples;
       expect(noCommit.commitToken, isNull);
+    });
+
+    test('Issue #1594: a page names the records the store says were '
+        'deleted, and an entry that is not an id is dropped', () {
+      List<String> deleted(Map<String, Object?> page) =>
+          (decodeHealthReadResult(page) as HealthReadSamples)
+              .deletedRecordIds;
+
+      expect(
+        deleted({
+          'samples': <Object?>[],
+          'incremental': true,
+          'deletedRecordIds': ['rec-1', 'rec-2'],
+        }),
+        ['rec-1', 'rec-2'],
+      );
+      // Absent on every page that reports none, and on every iPhone page.
+      expect(deleted({'samples': <Object?>[]}), isEmpty);
+      expect(
+        deleted({'samples': <Object?>[], 'deletedRecordIds': null}),
+        isEmpty,
+      );
+      expect(
+        deleted({'samples': <Object?>[], 'deletedRecordIds': 'rec-1'}),
+        isEmpty,
+        reason: 'not a list',
+      );
+      expect(
+        deleted({
+          'samples': <Object?>[],
+          'deletedRecordIds': ['rec-1', 7, null, '', 'rec-2'],
+        }),
+        ['rec-1', 'rec-2'],
+      );
+      // The legacy bare list names none.
+      expect(
+        (decodeHealthReadResult(<Object?>[]) as HealthReadSamples)
+            .deletedRecordIds,
+        isEmpty,
+      );
     });
 
     test('Issue #1523: a page says whether it is only what changed since '

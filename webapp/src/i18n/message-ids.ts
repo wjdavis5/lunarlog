@@ -250,6 +250,8 @@ export const MESSAGE_IDS = [
   "healthSyncImportUpdatedDays",
   "healthSyncImportAddedSpotting",
   "healthSyncImportAlreadyMatched",
+  "healthSyncImportRemovedDays",
+  "healthSyncImportKeptDeleted",
   "healthSyncImportKeptManual",
   "healthSyncImportPlacedDeviceZone",
   "healthSyncImportSkippedNoZone",

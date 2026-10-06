@@ -92,6 +92,23 @@ const int kHealthImportMaxPages = 1000;
 /// date.
 const int kHealthImportEarliestYear = 1970;
 
+/// The most imported days one pass takes out because the store says
+/// their records were deleted (Issue #1594).
+///
+/// A record deleted in the app it came from takes its imported day with
+/// it: that is a correction made over there, and the copy here was only
+/// ever the store's. A store that reports many deletions at once is a
+/// different thing: someone clearing out Health Connect, or an old app's
+/// data, after moving to lunarlog. Following that would empty her history
+/// here, and nothing in a deletion says which of the two it is. So a pass
+/// follows the store only up to this many days. Past it, nothing is
+/// removed and the result says how many days were kept
+/// ([HealthImportSummary.storeDeletionsKept]); she can delete them here
+/// herself.
+///
+/// Ten covers a period logged by mistake and taken back.
+const int kHealthImportMaxMirroredDeletions = 10;
+
 /// Which OS health-store record a [HealthFlowSample] came from. The shared
 /// import pipeline handles both of Android's read data types; iOS currently
 /// produces only [menstrualFlow] (#217's read set is the single menstrual
@@ -228,6 +245,7 @@ sealed class HealthReadResult {
     String? nextCursor,
     String? commitToken,
     bool incremental,
+    List<String> deletedRecordIds,
   }) = HealthReadSamples;
 
   /// No health store exists on this device.
@@ -255,9 +273,21 @@ final class HealthReadSamples extends HealthReadResult {
     this.nextCursor,
     this.commitToken,
     this.incremental = false,
+    this.deletedRecordIds = const [],
   });
 
   final List<HealthFlowSample> samples;
+
+  /// The ids of records the store says were deleted since the previous
+  /// import (Issue #1594): Health Connect's `DeletionChange`s, which carry
+  /// an id and nothing else. Only an [incremental] page has any. A record
+  /// that a whole-history read does not return is not in this list and
+  /// says nothing: with "Access past data" off the store hides what it
+  /// still holds.
+  ///
+  /// An id deleted and written again within one page is not listed, and
+  /// an id written and then deleted is listed and has no sample.
+  final List<String> deletedRecordIds;
 
   /// True when this page came from a read that asked the store only for
   /// what changed since the bound profile's previous import (Issue #1523):
@@ -355,7 +385,16 @@ abstract interface class HealthImportSource {
     required DateTime end,
     required int pageSize,
     String? cursor,
+    bool wholeHistory = false,
   });
+
+  // [wholeHistory] (Issue #1594): with no [cursor], start over from a
+  // read of everything the store holds, dropping any stored position, so
+  // that the pass does not ask only for what changed. The import asks
+  // for it after it has taken out a day whose record was deleted: the
+  // store may hold another record for that day, and a changes-only read
+  // never returns a record that did not change. Ignored with a cursor,
+  // and on a store whose every pass reads everything (HealthKit).
 
   /// Reads Apple's four computed cycle-deviation category types whose
   /// interval intersects `[start]`–`[end]` (absolute instants) for the
@@ -439,6 +478,8 @@ class HealthImportSummary {
     this.pageLimitReached = false,
     this.repeatedCursor = false,
     this.incremental = false,
+    this.daysRemoved = 0,
+    this.storeDeletionsKept = 0,
   });
 
   /// False when no profile is bound to this device — the import action is
@@ -514,6 +555,16 @@ class HealthImportSummary {
   /// store holds nothing or that reading is off.
   final bool incremental;
 
+  /// Days whose imported flow or spotting entry was taken out because the
+  /// store said its record was deleted (Issue #1594). A day that carried
+  /// anything of hers kept its row and lost only what was imported.
+  final int daysRemoved;
+
+  /// Imported days the store said were deleted and the pass left alone,
+  /// because there were more than [kHealthImportMaxMirroredDeletions] of
+  /// them. Zero when the pass followed the store.
+  final int storeDeletionsKept;
+
   /// Whether the pass ended before any read could run.
   bool get isBlocked => blocked != null;
 
@@ -540,7 +591,9 @@ class HealthImportSummary {
       samplesFromRecordedZone == 0 &&
       samplesFromDeviceZone == 0 &&
       samplesWithoutZone == 0 &&
-      samplesUnsupported == 0;
+      samplesUnsupported == 0 &&
+      daysRemoved == 0 &&
+      storeDeletionsKept == 0;
 }
 
 /// A mid-pass progress tick (Issue #992): how far a running import has

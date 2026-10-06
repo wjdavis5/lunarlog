@@ -1381,6 +1381,110 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    // Issue #1594: a record deleted in the app it came from takes its
+    // imported day out, and the result says so.
+    group('Issue #1594 days the store deleted', () {
+      const removedOne =
+          'Removed 1 day whose record was deleted in Health Connect.';
+      const removedTwo =
+          'Removed 2 days whose records were deleted in Health Connect.';
+      const kept = '11 days you imported were deleted in Health Connect. '
+          'lunarlog kept them: it removes no more than 10 at a time on its '
+          'own. You can delete them here yourself.';
+
+      Future<List<String?>> resultLines(
+        WidgetTester tester,
+        HealthImportSummary summary,
+      ) async {
+        await pumpScreen(
+          tester,
+          binding: await boundBinding(FakeSettingsStore()),
+          importer: _FakeImporter(
+            summary,
+            platform: HealthImportPlatform.healthConnect,
+          ),
+        );
+        await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
+        await tester.pumpAndSettle();
+        return [
+          for (final text in tester.widgetList<Text>(
+            find.descendant(
+              of: find.byKey(const ValueKey('health-sync-import-summary')),
+              matching: find.byType(Text),
+            ),
+          ))
+            text.data,
+        ];
+      }
+
+      Future<void> letTheSnackBarGo(WidgetTester tester) async {
+        await tester.pump(const Duration(seconds: 5));
+        await tester.pumpAndSettle();
+      }
+
+      testWidgets('a pass that only removed a day says that, and is not '
+          'described as empty', (tester) async {
+        final lines = await resultLines(
+          tester,
+          const HealthImportSummary(incremental: true, daysRemoved: 1),
+        );
+
+        expect(lines, [removedOne]);
+        expect(
+          find.descendant(
+            of: find.byType(SnackBar),
+            matching: find.text(removedOne),
+          ),
+          findsOneWidget,
+        );
+        await letTheSnackBarGo(tester);
+      });
+
+      testWidgets('what was removed leads when no day was imported, and '
+          'the days already here follow', (tester) async {
+        final lines = await resultLines(
+          tester,
+          const HealthImportSummary(
+            samplesRead: 8,
+            daysUnchanged: 8,
+            daysRemoved: 2,
+          ),
+        );
+
+        expect(lines, [removedTwo, '8 days were already logged.']);
+        expect(find.textContaining('Nothing new'), findsNothing);
+        await letTheSnackBarGo(tester);
+      });
+
+      testWidgets('with a day imported, that leads and the removal follows',
+          (tester) async {
+        final lines = await resultLines(
+          tester,
+          const HealthImportSummary(
+            samplesRead: 1,
+            daysWritten: 1,
+            daysRemoved: 1,
+          ),
+        );
+
+        expect(lines, ['Imported 1 day.', removedOne]);
+        await letTheSnackBarGo(tester);
+      });
+
+      // More than lunarlog follows at once: nothing was removed.
+      testWidgets('days the store deleted and lunarlog kept are named, with '
+          'the limit', (tester) async {
+        final lines = await resultLines(
+          tester,
+          const HealthImportSummary(incremental: true, storeDeletionsKept: 11),
+        );
+
+        expect(lines, [kept]);
+        expect(find.textContaining('Nothing new'), findsNothing);
+        await letTheSnackBarGo(tester);
+      });
+    });
+
     testWidgets('a throwing runner renders the generic failure line',
         (tester) async {
       final binding = await boundBinding(FakeSettingsStore());

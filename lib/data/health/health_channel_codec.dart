@@ -27,7 +27,7 @@
 /// | `importPermissionStatus` (Android only) | none | one of `granted` / `notAsked` / `denied` / `unavailable` |
 /// | `importPastDataGranted` (Android only) | none | `bool` |
 /// | `openPermissionSettings` | none | `null` |
-/// | `readMenstrualFlowPage` | guard + `startMs` + `endMs` + `pageSize` + `cursor?` | a page `Map` (`samples` list + `nextCursor`), or a result string |
+/// | `readMenstrualFlowPage` | guard + `startMs` + `endMs` + `pageSize` + `cursor?` + `wholeHistory?` | a page `Map` (`samples` list + `nextCursor`), or a result string |
 /// | `commitImport` (Android only) | guard + `commitToken` | result string |
 /// | `pastDataSwitchOffered` (Android only) | none | `bool` |
 /// | `requestPastDataAccess` (Android only) | guard args | result string |
@@ -39,7 +39,10 @@
 /// stream is exhausted. An optional Android-only `'incremental'` boolean
 /// (Issue #1523) is true on a page read through Health Connect's change
 /// token, that is, a page of what changed since the profile's previous
-/// import; it is absent on a full-history page and Swift never sends it. A
+/// import; it is absent on a full-history page and Swift never sends it.
+/// Such a page may also carry `'deletedRecordIds'` (Issue #1594), a `List`
+/// of the ids of records deleted since that import; an entry that is not
+/// a non-empty string is dropped. A
 /// bare `List` is also still accepted by
 /// [decodeHealthReadResult] as a legacy single-page/exhausted success, so a
 /// result-string protocol error is never silently read as data.
@@ -406,8 +409,18 @@ HealthReadResult _decodeReadPage(Map<Object?, Object?> raw) {
     // Only a literal true counts: absent, null, or any other value is a
     // full-history page.
     incremental: raw['incremental'] == true,
+    deletedRecordIds: _decodeDeletedRecordIds(raw['deletedRecordIds']),
   );
 }
+
+/// The ids a page says were deleted (Issue #1594). Anything that is not a
+/// list is no ids, and an entry that is not a non-empty string is
+/// dropped: an id is all a deletion is, so a malformed one names nothing.
+List<String> _decodeDeletedRecordIds(Object? raw) => [
+      if (raw is List)
+        for (final id in raw)
+          if (id is String && id.isNotEmpty) id,
+    ];
 
 /// The result-String branch of [decodeHealthReadResult] (`unavailable` /
 /// `permissionDenied` / a deny name).
@@ -436,6 +449,7 @@ HealthReadResult _decodeSampleList(
   String? nextCursor,
   String? commitToken,
   bool incremental = false,
+  List<String> deletedRecordIds = const [],
 }) {
   if (raw is! List) return HealthReadResult.failed('samples is not a list');
   final samples = <HealthFlowSample>[];
@@ -451,6 +465,7 @@ HealthReadResult _decodeSampleList(
     nextCursor: nextCursor,
     commitToken: commitToken,
     incremental: incremental,
+    deletedRecordIds: deletedRecordIds,
   );
 }
 
@@ -512,17 +527,21 @@ DateTime? _optionalInstant(Object? raw) {
 /// in any zone today is returned); the precise civil-date filter happens in
 /// Dart against the sample's own zone. `pageSize` is always sent so both
 /// native halves use the Dart-declared value, and `cursor` rides as a plain
-/// optional string (absent/null on the first page).
+/// optional string (absent/null on the first page). `wholeHistory` (Issue
+/// #1594) is sent only when true: it asks a store that keeps a position
+/// between passes to drop it and read everything again.
 Map<String, Object?> encodeReadWindowArgs(
   DateTime start,
   DateTime end, {
   required int pageSize,
   String? cursor,
+  bool wholeHistory = false,
 }) => {
       'startMs': start.millisecondsSinceEpoch,
       'endMs': end.millisecondsSinceEpoch,
       'pageSize': pageSize,
       'cursor': ?cursor,
+      if (wholeHistory) 'wholeHistory': true,
     };
 
 /// The args half of `readCycleDeviations` (Issue #799): the same absolute

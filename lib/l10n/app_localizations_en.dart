@@ -974,6 +974,22 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String healthSyncImportRemovedDays(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Removed $count days whose records were deleted in $source.',
+      one: 'Removed 1 day whose record was deleted in $source.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String healthSyncImportKeptDeleted(int count, int limit, String source) {
+    return '$count days you imported were deleted in $source. lunarlog kept them: it removes no more than $limit at a time on its own. You can delete them here yourself.';
+  }
+
+  @override
   String healthSyncImportKeptManual(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,

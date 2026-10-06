@@ -894,8 +894,9 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// them with different verbs, so they are gone. When nothing was imported,
   /// say so plainly instead of "Imported 0 days".
   ///
-  /// Null when there is nothing for it to say: the pass added spotting,
-  /// imported no day and skipped none.
+  /// Null when there is nothing for it to say: the pass added spotting
+  /// or followed a deletion in the store ([_otherNews]), imported no day
+  /// and skipped none.
   String? _completedSummaryHeadline(
     AppLocalizations l10n,
     HealthImportSummary summary,
@@ -905,7 +906,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       return _noDayImportedHeadline(
         l10n,
         skipped,
-        spottingAdded: summary.spottingDaysWritten > 0,
+        otherNews: _hasOtherNews(summary),
       );
     }
     // Issue #1557: with nothing skipped the headline read "Imported 1
@@ -921,13 +922,14 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// headline read "Imported 0 days, skipped 4 already logged" above a line
   /// saying spotting was added. So the spotting line leads
   /// ([_importResultLines]) and this says only what happened to the days,
-  /// or nothing when none was skipped.
+  /// or nothing when none was skipped. The same goes for a pass that
+  /// removed days, or kept days the store had deleted (Issue #1594).
   static String? _noDayImportedHeadline(
     AppLocalizations l10n,
     int skipped, {
-    required bool spottingAdded,
+    required bool otherNews,
   }) {
-    if (!spottingAdded) return l10n.healthSyncImportSummaryNothingNew(skipped);
+    if (!otherNews) return l10n.healthSyncImportSummaryNothingNew(skipped);
     if (skipped == 0) return null;
     return l10n.healthSyncImportSummaryAlreadyLogged(skipped);
   }
@@ -945,18 +947,16 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   ) {
     final source = _sourceName(l10n, _importPlatform);
     final headline = _completedSummaryHeadline(l10n, summary);
-    final spotting = summary.spottingDaysWritten > 0
-        ? l10n.healthSyncImportAddedSpotting(summary.spottingDaysWritten, source)
-        : null;
-    // What was added comes first. When a day was imported that is the
-    // headline; when only spotting was, it is the spotting line.
-    final spottingLeads = summary.importedDays == 0;
+    final news = _otherNews(l10n, summary, source);
+    // What changed comes first. When a day was imported that is the
+    // headline; when none was, it is what else the pass did.
+    final newsLeads = summary.importedDays == 0;
     return [
-      if (spottingLeads && spotting != null) spotting,
+      if (newsLeads) ...news,
       // Issue #992/#1017: one completion headline, then only the detail
       // lines that add information the headline does not already carry.
       ?headline,
-      if (!spottingLeads && spotting != null) spotting,
+      if (!newsLeads) ...news,
       if (summary.daysKeptManual > 0)
         l10n.healthSyncImportKeptManual(summary.daysKeptManual),
       if (summary.samplesWithoutZone > 0) ...[
@@ -968,6 +968,36 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
         l10n.healthSyncImportSkippedUnsupported(summary.samplesUnsupported),
     ];
   }
+
+  /// What a pass did beside importing days: spotting it added, days it
+  /// took out because the store said their records were deleted, and days
+  /// it kept although the store said so, because there were too many to
+  /// follow (Issue #1594).
+  static List<String> _otherNews(
+    AppLocalizations l10n,
+    HealthImportSummary summary,
+    String source,
+  ) => [
+        if (summary.spottingDaysWritten > 0)
+          l10n.healthSyncImportAddedSpotting(
+            summary.spottingDaysWritten,
+            source,
+          ),
+        if (summary.daysRemoved > 0)
+          l10n.healthSyncImportRemovedDays(summary.daysRemoved, source),
+        if (summary.storeDeletionsKept > 0)
+          l10n.healthSyncImportKeptDeleted(
+            summary.storeDeletionsKept,
+            kHealthImportMaxMirroredDeletions,
+            source,
+          ),
+      ];
+
+  /// Whether [_otherNews] has anything to say.
+  static bool _hasOtherNews(HealthImportSummary summary) =>
+      summary.spottingDaysWritten > 0 ||
+      summary.daysRemoved > 0 ||
+      summary.storeDeletionsKept > 0;
 
   /// Issue #1017: scrolls the result block into view after a pass finishes,
   /// so the tap that started it cannot look like it did nothing. Deferred to

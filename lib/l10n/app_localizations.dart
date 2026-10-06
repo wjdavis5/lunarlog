@@ -1606,6 +1606,18 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 day} other{{count} days}} already matched.'**
   String healthSyncImportAlreadyMatched(int count);
 
+  /// Health import summary (Issue #1594): days lunarlog had imported and has now taken out, because the app they came from deleted their records from the health store. A day that carried anything of hers kept its row and lost only the imported flow, and is counted here too. {source} is the health store's name.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Removed 1 day whose record was deleted in {source}.} other{Removed {count} days whose records were deleted in {source}.}}'**
+  String healthSyncImportRemovedDays(int count, String source);
+
+  /// Health import summary (Issue #1594): the health store reported more deleted records than lunarlog follows in one go, so it removed none of those days. That many at once is more likely someone clearing out the health store after moving to lunarlog than a correction, and following it would empty her history here. {count} is always more than {limit}. {source} is the health store's name.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} days you imported were deleted in {source}. lunarlog kept them: it removes no more than {limit} at a time on its own. You can delete them here yourself.'**
+  String healthSyncImportKeptDeleted(int count, int limit, String source);
+
   /// Health import summary: days where the store's value differed from what she has and hers was kept. That is a flow she logged or corrected by hand, a day she cleared, and a day or a spotting entry she deleted (Issues #1559, #1561).
   ///
   /// In en, this message translates to:

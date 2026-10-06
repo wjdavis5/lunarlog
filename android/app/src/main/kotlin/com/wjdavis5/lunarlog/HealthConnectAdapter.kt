@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.HealthConnectFeatures
 import androidx.health.connect.client.PermissionController
+import androidx.health.connect.client.changes.DeletionChange
 import androidx.health.connect.client.changes.UpsertionChange
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.BasalBodyTemperatureRecord
@@ -1220,12 +1221,14 @@ class HealthConnectAdapter(context: Context) {
                         null)
                 }
                 val cursor = args?.get("cursor") as? String
+                // Issue #1594: only a literal true starts over.
+                val wholeHistory = args?.get("wholeHistory") == true
                 CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
                     try {
                         result.success(
                             readSamples(
                                 client, g.profileId, startMs, endMs, pageSize,
-                                cursor))
+                                cursor, wholeHistory))
                     } catch (e: SecurityException) {
                         // Read permission revoked or never granted on this
                         // install — distinct from a read failure. The Dart
@@ -1372,8 +1375,20 @@ class HealthConnectAdapter(context: Context) {
         endMs: Long,
         pageSize: Int,
         cursor: String?,
+        wholeHistory: Boolean = false,
     ): Map<String, Any> {
         val decoded = cursor?.let { HealthImportCursor.decode(it) }
+        // Issue #1594: Dart asks for everything again when it is about to
+        // take out a day whose record was deleted, because another record
+        // for that day may still be here and a changes page never returns
+        // a record that did not change. Dropping the token makes the read
+        // below a whole-range one. It stays dropped until that read's
+        // last page is committed, so a pass that ends early is followed
+        // by another whole-range read, not by a changes read that has
+        // forgotten the deletion.
+        if (HealthImportCursor.startsOver(decoded != null, wholeHistory)) {
+            prefs.edit().remove(changesTokenKey(profileId)).apply()
+        }
         // Issue #1549: at the start of a pass, a whole-range read may be
         // owed although a token is stored. Dropping the token makes the
         // read below that whole-range read, and it mints a new token when
@@ -1422,14 +1437,23 @@ class HealthConnectAdapter(context: Context) {
     ): Map<String, Any> {
         val start = Instant.ofEpochMilli(startMs)
         val end = Instant.ofEpochMilli(endMs)
-        val records = LinkedHashMap<String, Record>()
+        // Issue #1594: a deletion is reported too. It used to be passed
+        // over, so a day removed in the app it came from stayed in
+        // lunarlog for good.
+        val fold = HealthChangeFold<Record>()
         for (change in page.changes) {
-            if (change is UpsertionChange) {
-                records[change.record.metadata.id] = change.record
+            when (change) {
+                is UpsertionChange ->
+                    fold.upsert(change.record.metadata.id, change.record)
+                is DeletionChange -> fold.delete(change.recordId)
             }
         }
         val payload = mutableMapOf<String, Any>(
-            "samples" to records.values.mapNotNull { sampleFor(it, start, end) },
+            "samples" to fold.records.mapNotNull { sampleFor(it, start, end) },
+            // The ids alone: a deletion carries nothing else, not even the
+            // record's type. This app's own deleted writes are among them
+            // and match nothing Dart imported.
+            "deletedRecordIds" to fold.deletedIds,
             // Issue #1523: this page holds only what changed since the
             // profile's previous import. Dart uses it to say "nothing new
             // since the last import" for an empty pass, where it used to
@@ -2099,6 +2123,34 @@ internal object HealthPermissionState {
 }
 
 /**
+ * Issue #1594: what one page of Health Connect changes leaves standing.
+ * The changes come in the order they happened, so the last word on an id
+ * wins: a record written and then deleted is gone and has no sample, and
+ * one deleted and then written again is there and is not reported as
+ * deleted. Free of Health Connect types so that it runs on the JVM.
+ */
+internal class HealthChangeFold<T> {
+    private val upserted = LinkedHashMap<String, T>()
+    private val deleted = LinkedHashSet<String>()
+
+    fun upsert(id: String, value: T) {
+        deleted.remove(id)
+        upserted[id] = value
+    }
+
+    fun delete(id: String) {
+        upserted.remove(id)
+        deleted.add(id)
+    }
+
+    /** What was written and not deleted afterwards, in first-seen order. */
+    val records: Collection<T> get() = upserted.values
+
+    /** The ids deleted and not written again afterwards. */
+    val deletedIds: List<String> get() = deleted.toList()
+}
+
+/**
  * The opaque paging cursor codec for the #992 full-history read.
  *
  * A cursor is `<mode>:<base64url token>`, where the mode names which stage
@@ -2119,6 +2171,15 @@ internal object HealthPermissionState {
  * JVM, mirroring the Swift `cursorString`/`decodeCursorData` pair.
  */
 internal object HealthImportCursor {
+    /**
+     * Issue #1594: whether a page request drops the stored change token
+     * and reads the whole range. Only the first page of a pass can (a
+     * request with a cursor is in the middle of a read), and only when
+     * Dart asked.
+     */
+    fun startsOver(hasCursor: Boolean, wholeHistory: Boolean): Boolean =
+        wholeHistory && !hasCursor
+
     const val FLOW = "flow"
     const val INTERMENSTRUAL = "ib"
     const val CHANGES = "chg"
