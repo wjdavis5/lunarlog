@@ -198,11 +198,19 @@ class _FakeImporter implements HealthImportRunner {
   final HealthImportPlatform platform;
   int calls = 0;
 
+  /// When set, an import does not finish until this completes, and
+  /// throws [importError] then if that is set.
+  Completer<void>? importGate;
+  Object? importError;
+
   @override
   Future<HealthImportSummary> importNow({
     void Function(HealthImportProgress progress)? onProgress,
   }) async {
     calls++;
+    await importGate?.future;
+    final error = importError;
+    if (error != null) throw error;
     return summary;
   }
 
@@ -2928,6 +2936,61 @@ void main() {
           probe.reachesPastData = true;
           await leaveAndComeBack(tester);
           expect(importer.calls, 1);
+        });
+
+        // The profile tiles stay live while an import runs, and the pass
+        // cannot be called back.
+        testWidgets('an import still running when the profile is chosen '
+            'again does not put its result up afterwards', (tester) async {
+          for (final error in <Object?>[null, StateError('storage')]) {
+            final importer = androidImporter(broughtDaysIn)
+              ..importGate = Completer<void>()
+              ..importError = error;
+            await pumpAndroid(
+              tester,
+              binding: await boundBinding(),
+              permissionProbe: switchOff(),
+              importer: importer,
+            );
+            await tester.tap(
+              find.byKey(const ValueKey('health-sync-import-tile')),
+            );
+            await tester.pump();
+
+            // No pumpAndSettle while the import runs: its progress bar
+            // never settles.
+            Future<void> pumpThrough() async {
+              await tester.pump();
+              await tester.pump(const Duration(milliseconds: 500));
+            }
+
+            await tester.tap(
+              find.byKey(const ValueKey('health-sync-profile-eligible')),
+            );
+            await pumpThrough();
+            await tester.tap(
+              find.byKey(const ValueKey('health-sync-confirm-bind')),
+            );
+            await pumpThrough();
+            importer.importGate!.complete();
+            await tester.pumpAndSettle();
+
+            expect(
+              find.byKey(const ValueKey('health-sync-import-summary')),
+              findsNothing,
+              reason: '$error',
+            );
+            expect(resultAllow, findsNothing);
+
+            // And the screen is ready for an import under the new binding.
+            importer
+              ..importGate = null
+              ..importError = null;
+            await importAndReadResult(tester);
+            expect(importer.calls, 2);
+            expect(resultAllow, findsOneWidget);
+            await tester.pumpWidget(const SizedBox.shrink());
+          }
         });
 
         testWidgets('so does stopping the sync', (tester) async {

@@ -218,6 +218,12 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// The store's prompt for older data is up.
   bool _askingForPastData = false;
 
+  /// How many times the result has been taken down for a change of
+  /// profile ([_dropImportResult]). An import that began before the
+  /// latest of them ran under another binding, and its result is not
+  /// shown ([_abandoned]).
+  int _bindingChanges = 0;
+
   /// Issue #992: the running sample count of a full-history pass, so a long
   /// import shows progress rather than a bare spinner. Null until the first
   /// page reports.
@@ -703,6 +709,33 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
     _importSummary = null;
     _importFailed = false;
     _pastDataStillOff = false;
+    _bindingChanges++;
+  }
+
+  /// Whether the profile was changed while an import was running
+  /// ([startedUnder] is [_bindingChanges] as the import found it). Its
+  /// result belongs to the binding it ran under, so it is not shown, and
+  /// the screen is left ready for a new import. The profile tiles stay
+  /// live during an import, and the pass cannot be called back.
+  bool _abandoned(int startedUnder) {
+    if (startedUnder == _bindingChanges) return false;
+    setState(() {
+      _importing = false;
+      _importProgress = null;
+    });
+    return true;
+  }
+
+  /// An import threw something its runner does not classify: the generic
+  /// failure line, unless the profile has changed since it began.
+  void _importThrew(int startedUnder) {
+    if (!mounted || _abandoned(startedUnder)) return;
+    setState(() {
+      _importing = false;
+      _importProgress = null;
+      _importFailed = true;
+    });
+    _revealResult();
   }
 
   /// The bound profile's display name, or a neutral stand-in when the bound
@@ -763,6 +796,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       _importProgress = null;
       _pastDataStillOff = false;
     });
+    final startedUnder = _bindingChanges;
     try {
       final summary = await importer.importNow(
         onProgress: (progress) {
@@ -782,7 +816,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       final access = await _readAccess();
       final reachedPastData = await _pastDataReach(access.read);
       final pastDataOffered = await _pastDataSwitchOffered(reachedPastData);
-      if (!mounted) return;
+      if (!mounted || _abandoned(startedUnder)) return;
       setState(() {
         _importing = false;
         _importSummary = summary;
@@ -797,13 +831,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       });
       _announceResult(summary);
     } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _importing = false;
-        _importProgress = null;
-        _importFailed = true;
-      });
-      _revealResult();
+      _importThrew(startedUnder);
     }
   }
 
