@@ -2824,7 +2824,11 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
                   onToggle: _toggleTag,
                   recentCodes: _tagRecents,
                   enabled: !_busy,
-                  searchHint: l10n.daySheetTagSearchHint,
+                  // The field says what it searches, in the words a
+                  // screen reader already hears. It sits right under the
+                  // flow chips, and a bare "Search" there read as a
+                  // search of those.
+                  searchHint: l10n.daySheetTagSearchSemanticsLabel,
                   searchSemanticsLabel: l10n.daySheetTagSearchSemanticsLabel,
                   clearSearchTooltip: l10n.daySheetTagSearchClearTooltip,
                   recentLabel: l10n.daySheetTagRecentLabel,

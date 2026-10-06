@@ -4257,6 +4257,34 @@ void main() {
   });
 
 group('CategoryPicker integration (Issue #234)', () {
+  testWidgets('the search field says what it searches, and stands clear of '
+      'the flow chips above it', (tester) async {
+    final h = await pumpLogging(tester);
+
+    await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+    await tester.pumpAndSettle();
+
+    // It sits right under the flow chips. A bare "Search" there read as a
+    // search of the flow levels.
+    final search = find.byKey(const ValueKey('category-picker-search'));
+    final field = tester.widget<TextField>(search);
+    expect(field.decoration?.hintText, 'Search tags');
+    // The same words a screen reader hears for it.
+    expect(find.bySemanticsLabel('Search tags'), findsWidgets);
+
+    // The PMS chip closes the flow section, right above the field.
+    final lastFlowChip = find.byKey(const ValueKey('pms-chip'));
+    expect(lastFlowChip, findsOneWidget);
+    expect(
+      tester.getRect(search).top - tester.getRect(lastFlowChip).bottom,
+      greaterThanOrEqualTo(8),
+      reason: 'the field belongs with the tag sections below it',
+    );
+
+    await dismissDaySheet(tester);
+    await disposeLogging(tester, h);
+  });
+
   testWidgets('the search field filters the taxonomy grid in the real '
       'day sheet', (tester) async {
     final h = await pumpLogging(tester);
