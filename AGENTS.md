@@ -107,7 +107,28 @@ universal-link routes.
   nosniff, deny-by-default Permissions-Policy). Workers Static Assets applies
   them to asset responses; the `run_worker_first` routes
   (`/.well-known/*`, `/invite*`) are worker-generated and keep the headers
-  `site/worker/index.ts` sets.
+  `site/worker/index.ts` sets. `_headers` does not reach them, so the
+  invitation page gets the same set from the Worker, with a
+  Content-Security-Policy of its own: nothing allowed, then the page's one
+  inline script and one inline style admitted by hash (computed from the
+  markup being served), and `Cache-Control: ... no-transform`. Both exist
+  because Cloudflare's proxy injects its Web Analytics script into the
+  zone's HTML (issue #1139): the site's pages refuse it through `_headers`,
+  and until the Worker sent a policy the invitation page, the one whose
+  address carries a redeemable code, refused nothing: the tag was injected
+  there with nothing to stop it. `check-links-deploy.sh` asserts the page's
+  headers after each deploy, and that the two hashes in its policy are the
+  hashes of the script and style actually delivered (anything that rewrote
+  the page on its way out would have the browser refuse the page's own
+  script); a new Worker-generated HTML route needs the same treatment.
+  Three things about that branch: it reads the built page with redirects
+  followed, because the asset layer answers `/invite.html` with a redirect
+  to `/invite` (left at `manual`, production served the Worker's inline
+  fallback page every time and the built file never); it serves the
+  fallback when the read fails or throws; and it turns CRLF into LF before
+  hashing and serving, because a browser hashes an inline block that way.
+  The blocks are found with a pattern, not a parser, so both pages are held
+  to exactly one `<script>` and one `<style>`, counted on the raw text.
 - **Deploy.** `.github/workflows/site-deploy.yml` (renamed from
   `links-deploy.yml`) builds `site/` and runs `wrangler@4.20.0` from `site/`
   with `assets.directory: "./dist"`, then

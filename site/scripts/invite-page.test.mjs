@@ -52,3 +52,66 @@ test("no web-app button until #1258 serves /invite on app.lunarlog.app", () => {
   assert.doesNotMatch(landing, /app\.lunarlog\.app/);
   assert.doesNotMatch(landing, /web app/);
 });
+
+/** [html] with its comments taken out, cut on their delimiters. */
+function withoutHtmlComments(html) {
+  let kept = "";
+  let at = 0;
+  for (;;) {
+    const open = html.indexOf("<!--", at);
+    if (open === -1) return kept + html.slice(at);
+    kept += html.slice(at, open);
+    const close = html.indexOf("-->", open + 4);
+    if (close === -1) return kept;
+    at = close + 3;
+  }
+}
+
+test("the page's script and style are ones the Worker's policy covers", () => {
+  // site/worker/index.ts sends this page a Content-Security-Policy that
+  // allows nothing and then admits the page's own inline script and style
+  // by hash. It finds them as bare `<script>` and `<style>` blocks. A tag
+  // with an attribute, a second block of either kind, or any resource the
+  // page would have to fetch is one the policy would refuse on the live
+  // page, so each has to be a deliberate change there too.
+  const withoutComments = withoutHtmlComments(landing);
+  const tags = (name) => [
+    ...withoutComments.matchAll(new RegExp(`<${name}\\b[^>]*>`, "gi")),
+  ].map((match) => match[0]);
+  assert.deepEqual(tags("script"), ["<script>"]);
+  assert.deepEqual(tags("style"), ["<style>"]);
+  for (const name of ["link", "img", "iframe", "object", "embed", "form"]) {
+    assert.deepEqual(tags(name), [], `the page has no <${name}>`);
+  }
+  // Nothing in the style reaches for a file either.
+  assert.doesNotMatch(withoutComments, /url\(|@import/);
+
+  // The Worker finds the two blocks with a pattern on the raw text,
+  // comments and all. A second mention of either tag anywhere, the page's
+  // long opening comment included, could make it hash the wrong span and
+  // have the page's own block refused. So: one of each, on the raw text.
+  // Counted without regard to case: `<SCRIPT>` is a script to a browser
+  // and nothing to the Worker's pattern.
+  for (const tag of ["<script", "</script", "<style", "</style"]) {
+    assert.equal(landing.toLowerCase().split(tag).length - 1, 1, `exactly one ${tag}`);
+  }
+});
+
+test("the Worker sends this page the same Permissions-Policy as the rest of the site", async () => {
+  // `_headers` gives every other page its Permissions-Policy and does not
+  // reach this one, so the Worker carries a copy. This is what keeps the
+  // copy the same.
+  const headers = await readFile(path.join(siteDir, "public", "_headers"), "utf8");
+  const worker = await readFile(path.join(siteDir, "worker", "index.ts"), "utf8");
+
+  const sitePolicy = /^\s*Permissions-Policy:\s*(.+?)\s*$/m.exec(headers)?.[1];
+  assert.ok(sitePolicy, "_headers has a Permissions-Policy line");
+
+  const declaration = /export const INVITE_PERMISSIONS_POLICY =([\s\S]*?);/.exec(worker)?.[1];
+  assert.ok(declaration, "index.ts declares INVITE_PERMISSIONS_POLICY");
+  const workerPolicy = [...declaration.matchAll(/"([^"]*)"/g)]
+    .map((part) => part[1])
+    .join("");
+
+  assert.equal(workerPolicy, sitePolicy);
+});

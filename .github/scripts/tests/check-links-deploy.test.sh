@@ -81,6 +81,40 @@ EOF
     done
 }
 
+# good_invite_headers -- the header block a correct /invite answers with:
+# what the Worker's invite branch writes (site/worker/index.ts). The cases
+# under "The /invite branch fails closed" each take one line out of it or
+# change one, so each refusal has exactly one cause. The two hashes are
+# the real SHA-256 of the script and style in good_invite_body, worked out
+# apart from the script under test (Python's hashlib), so the page and its
+# policy agree the way a correct deploy's do.
+good_invite_headers() {
+  cat <<'EOF'
+HTTP/2 200
+date: Fri, 26 Sep 2026 12:00:00 GMT
+content-type: text/html; charset=utf-8
+cache-control: public, max-age=300, no-transform
+content-security-policy: default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; script-src 'sha256-SlyhoHn5sY56V7MUM1lH9jxOMndWjx2GvPDyJZAcghU='; style-src 'sha256-BeV07h7Or3rliDJdB74kikp/Q+Xuz7ktQCSkE5C72Vk='; upgrade-insecure-requests
+permissions-policy: accelerometer=(), camera=(), microphone=()
+referrer-policy: no-referrer
+strict-transport-security: max-age=63072000; includeSubDomains; preload
+x-content-type-options: nosniff
+x-frame-options: DENY
+EOF
+}
+
+# good_invite_body -- the page that goes with good_invite_headers: one bare
+# inline style and one bare inline script, the shape of the real page.
+good_invite_body() {
+  cat <<'EOF'
+<!DOCTYPE html><html><head><style>
+body { margin: 0; }
+</style></head><body>Join a lunarlog profile<script>
+(function () { var a = 1; })();
+</script></body></html>
+EOF
+}
+
 # make_fixtures DIR -- a settled, correct set of live response header and
 # body dumps. The HTML routes carry .body fixtures for issue #1139's beacon
 # assertion; the JSON routes are never body-checked. Also lays down the
@@ -111,17 +145,8 @@ content-type: application/json; charset=utf-8
 cache-control: public, max-age=3600
 x-content-type-options: nosniff
 EOF
-  cat >"$dir/invite.headers" <<'EOF'
-HTTP/2 200
-date: Fri, 26 Sep 2026 12:00:00 GMT
-content-type: text/html; charset=utf-8
-referrer-policy: no-referrer
-x-content-type-options: nosniff
-cache-control: public, max-age=300
-EOF
-  cat >"$dir/invite.body" <<'EOF'
-<!DOCTYPE html><html><body>Join a lunarlog profile</body></html>
-EOF
+  good_invite_headers >"$dir/invite.headers"
+  good_invite_body >"$dir/invite.body"
   cat >"$dir/privacy.headers" <<'EOF'
 HTTP/2 307
 date: Fri, 26 Sep 2026 12:00:00 GMT
@@ -324,39 +349,123 @@ assert_contains "the missing AASA nosniff is named" "$LAST_LOG" "x-content-type-
 # --- The /invite branch fails closed ----------------------------------------
 
 make_fixtures "$WORK/invite-plain"
-cat >"$WORK/invite-plain/invite.headers" <<'EOF'
-HTTP/2 200
-content-type: text/plain
-referrer-policy: no-referrer
-x-content-type-options: nosniff
-cache-control: public, max-age=300
-EOF
+good_invite_headers | sed 's|^content-type: .*|content-type: text/plain|' \
+  >"$WORK/invite-plain/invite.headers"
 run_case "$WORK/invite-plain"
 assert_exit "a non-HTML invite refuses" 1
 assert_contains "the invite URL is named" "$LAST_LOG" "/invite"
 
 make_fixtures "$WORK/invite-no-referrer"
-cat >"$WORK/invite-no-referrer/invite.headers" <<'EOF'
-HTTP/2 200
-content-type: text/html; charset=utf-8
-x-content-type-options: nosniff
-cache-control: public, max-age=300
-EOF
+good_invite_headers | grep -v '^referrer-policy:' \
+  >"$WORK/invite-no-referrer/invite.headers"
 run_case "$WORK/invite-no-referrer"
 assert_exit "an invite without Referrer-Policy refuses" 1
 assert_contains "the missing Referrer-Policy is named" "$LAST_LOG" "referrer-policy"
 
 make_fixtures "$WORK/invite-cache"
-cat >"$WORK/invite-cache/invite.headers" <<'EOF'
-HTTP/2 200
-content-type: text/html; charset=utf-8
-referrer-policy: no-referrer
-x-content-type-options: nosniff
-cache-control: public, max-age=0, must-revalidate
-EOF
+good_invite_headers \
+  | sed 's|^cache-control: .*|cache-control: public, max-age=0, must-revalidate|' \
+  >"$WORK/invite-cache/invite.headers"
 run_case "$WORK/invite-cache"
 assert_exit "the static-asset cache header on /invite refuses" 1
 assert_contains "the cache-control mismatch is named" "$LAST_LOG" "cache-control"
+
+# The page the Worker produces is the one `_headers` does not reach, so each
+# header `_headers` gives the rest of the site has to be asserted here or a
+# deploy can drop it unseen. This is how the page came to have no
+# Content-Security-Policy at all while the proxy was injecting an analytics
+# script into it.
+
+make_fixtures "$WORK/invite-transformable"
+good_invite_headers | sed 's|^cache-control: .*|cache-control: public, max-age=300|' \
+  >"$WORK/invite-transformable/invite.headers"
+run_case "$WORK/invite-transformable"
+assert_exit "an /invite the proxy may rewrite refuses" 1
+assert_contains "the missing no-transform is named" "$LAST_LOG" "no-transform"
+
+make_fixtures "$WORK/invite-no-csp"
+good_invite_headers | grep -v '^content-security-policy:' \
+  >"$WORK/invite-no-csp/invite.headers"
+run_case "$WORK/invite-no-csp"
+assert_exit "an /invite with no Content-Security-Policy refuses" 1
+assert_contains "the missing policy is named" "$LAST_LOG" "missing content-security-policy"
+
+make_fixtures "$WORK/invite-site-csp"
+good_invite_headers \
+  | sed "s|^content-security-policy: .*|content-security-policy: default-src 'self'; frame-ancestors 'none'; script-src 'self'|" \
+  >"$WORK/invite-site-csp/invite.headers"
+run_case "$WORK/invite-site-csp"
+assert_exit "an /invite carrying the site's policy, not its own, refuses" 1
+assert_contains "the deny-by-default policy is asked for" "$LAST_LOG" "default-src 'none'"
+assert_contains "the script hash is asked for" "$LAST_LOG" "script-src 'sha256-"
+
+# One directive or header gone at a time, the rest of the policy intact.
+for gone in "frame-ancestors 'none'" "base-uri 'none'" "form-action 'none'"; do
+  name="invite-no-${gone%% *}"
+  make_fixtures "$WORK/$name"
+  good_invite_headers | sed "s|$gone; ||" >"$WORK/$name/invite.headers"
+  run_case "$WORK/$name"
+  assert_exit "an /invite whose policy has lost $gone refuses" 1
+  assert_contains "the lost directive is named ($gone)" "$LAST_LOG" "$gone"
+done
+
+make_fixtures "$WORK/invite-no-style-hash"
+good_invite_headers | sed "s|style-src 'sha256-[^;]*;|style-src 'none';|" \
+  >"$WORK/invite-no-style-hash/invite.headers"
+run_case "$WORK/invite-no-style-hash"
+assert_exit "an /invite whose policy admits no style refuses" 1
+assert_contains "the style hash is asked for" "$LAST_LOG" "style-src 'sha256-"
+
+make_fixtures "$WORK/invite-no-permissions-policy"
+good_invite_headers | grep -v '^permissions-policy:' \
+  >"$WORK/invite-no-permissions-policy/invite.headers"
+run_case "$WORK/invite-no-permissions-policy"
+assert_exit "an /invite with no Permissions-Policy refuses" 1
+assert_contains "the missing header is named" "$LAST_LOG" "missing permissions-policy"
+
+# The hashes in the header have to be the hashes of the page delivered.
+# Here the page's script was rewritten on the way out and its style left
+# alone: the header still names the script that was sent.
+make_fixtures "$WORK/invite-script-rewritten"
+good_invite_body | sed 's|var a = 1;|var a = 2;|' >"$WORK/invite-script-rewritten/invite.body"
+run_case "$WORK/invite-script-rewritten"
+assert_exit "an /invite whose script is not the one its policy names refuses" 1
+assert_contains "the script mismatch is named" "$LAST_LOG" "script-src hash in content-security-policy is not the hash of the <script> delivered"
+assert_not_contains "the untouched style is not blamed" "$LAST_LOG" "style-src hash in content-security-policy"
+
+make_fixtures "$WORK/invite-style-rewritten"
+good_invite_body | sed 's|margin: 0;|margin: 1px;|' >"$WORK/invite-style-rewritten/invite.body"
+run_case "$WORK/invite-style-rewritten"
+assert_exit "an /invite whose style is not the one its policy names refuses" 1
+assert_contains "the style mismatch is named" "$LAST_LOG" "style-src hash in content-security-policy is not the hash of the <style> delivered"
+
+# A page that reaches the browser with CRLF is hashed by the browser as
+# LF, so the check reads it the same way and does not cry wolf.
+make_fixtures "$WORK/invite-crlf"
+good_invite_body | sed 's|$|\r|' >"$WORK/invite-crlf/invite.body"
+run_case "$WORK/invite-crlf"
+assert_exit "an /invite delivered with CRLF still matches its policy" 0
+
+make_fixtures "$WORK/invite-no-script"
+printf '<!DOCTYPE html><html><head><style>\nbody { margin: 0; }\n</style></head><body>Join</body></html>\n' \
+  >"$WORK/invite-no-script/invite.body"
+run_case "$WORK/invite-no-script"
+assert_exit "an /invite delivered without its script refuses" 1
+assert_contains "the missing block is named" "$LAST_LOG" "no inline <script> block"
+
+make_fixtures "$WORK/invite-framable"
+good_invite_headers | grep -v '^x-frame-options:' \
+  >"$WORK/invite-framable/invite.headers"
+run_case "$WORK/invite-framable"
+assert_exit "an /invite that can be framed refuses" 1
+assert_contains "the missing frame header is named" "$LAST_LOG" "x-frame-options"
+
+make_fixtures "$WORK/invite-no-hsts"
+good_invite_headers | grep -v '^strict-transport-security:' \
+  >"$WORK/invite-no-hsts/invite.headers"
+run_case "$WORK/invite-no-hsts"
+assert_exit "an /invite without HSTS refuses" 1
+assert_contains "the missing transport header is named" "$LAST_LOG" "strict-transport-security"
 
 # --- The store privacy URL fails closed (issue #1157) ------------------------
 

@@ -104,6 +104,116 @@ export const INVITE_FALLBACK_HTML = `<!DOCTYPE html>
 </html>
 `;
 
+/**
+ * The deny-by-default Permissions-Policy the rest of the site sends
+ * (`site/public/_headers`). `site/scripts/invite-page.test.mjs` fails when
+ * the two differ.
+ */
+export const INVITE_PERMISSIONS_POLICY =
+  "accelerometer=(), autoplay=(), camera=(), display-capture=(), encrypted-media=(), " +
+  "fullscreen=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), " +
+  "payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), " +
+  "sync-xhr=(), usb=(), xr-spatial-tracking=()";
+
+/** The bodies of the bare inline `<tag>` blocks in [html]. */
+function inlineBlocks(html: string, tag: "script" | "style"): string[] {
+  const blocks: string[] = [];
+  const pattern = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, "g");
+  for (const match of html.matchAll(pattern)) blocks.push(match[1]);
+  return blocks;
+}
+
+/** `'sha256-...'` of one inline block, as a Content-Security-Policy source. */
+async function hashSource(block: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(block));
+  return `'sha256-${btoa(String.fromCharCode(...new Uint8Array(digest)))}'`;
+}
+
+/**
+ * The Content-Security-Policy for an invitation page whose markup is [html].
+ *
+ * The page loads nothing: it has one inline style and one inline script and
+ * no other resource. So the policy allows nothing, then admits exactly those
+ * inline blocks by their hashes, taken from the markup being served so they
+ * cannot go stale. A script, a style, an image, a frame, a form target or a
+ * `<base>` added to the page after the Worker has answered has no hash and
+ * no allowance here, and the browser refuses it. (A policy cannot refuse a
+ * plain link or a `<meta>` refresh; nothing adds those.)
+ *
+ * That matters because something does get added. Cloudflare's proxy injects
+ * its Web Analytics script into HTML it serves for the zone. The site's
+ * pages refuse it through `_headers`; this page is produced by the Worker,
+ * which `_headers` does not reach, so until this policy existed the tag was
+ * injected, and nothing stopped it running, on the one page whose address
+ * carries a redeemable code.
+ *
+ * The blocks are found with a pattern, not an HTML parser. A page that
+ * mentioned `<script>` or `<style>` anywhere else (in a comment, say) would
+ * have the wrong span hashed and its own block refused, so both pages are
+ * held to exactly one of each tag, counted on the raw text
+ * (`index.test.ts`, `site/scripts/invite-page.test.mjs`).
+ */
+export async function inviteContentSecurityPolicy(html: string): Promise<string> {
+  const scripts = await Promise.all(inlineBlocks(html, "script").map(hashSource));
+  const styles = await Promise.all(inlineBlocks(html, "style").map(hashSource));
+  return [
+    "default-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-ancestors 'none'",
+    `script-src ${scripts.join(" ") || "'none'"}`,
+    `style-src ${styles.join(" ") || "'none'"}`,
+    "upgrade-insecure-requests",
+  ].join("; ");
+}
+
+/**
+ * The invitation page, with the headers `_headers` gives every other page
+ * of the site and its own policy ([inviteContentSecurityPolicy]).
+ *
+ * `no-transform` asks the proxy not to rewrite the page at all, which is
+ * how the analytics tag reached it. Cloudflare documents that for a
+ * response from an origin; whether it holds for one a Worker produces is
+ * not relied on. The policy is what is relied on. HEAD gets the same
+ * headers and no body.
+ */
+async function inviteResponse(html: string, method: string): Promise<Response> {
+  return new Response(method === "HEAD" ? null : html, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "public, max-age=300, no-transform",
+      "Content-Security-Policy": await inviteContentSecurityPolicy(html),
+      "Permissions-Policy": INVITE_PERMISSIONS_POLICY,
+      "Referrer-Policy": "no-referrer",
+      "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
+    },
+  });
+}
+
+/**
+ * The built `invite.html`, or null when the assets cannot supply it. Always
+ * read with GET, whatever the visitor's method: a HEAD needs the markup too,
+ * for the hashes in its policy.
+ */
+async function builtInvitePage(assets: Fetcher, request: Request): Promise<string | null> {
+  const url = new URL("/invite.html", request.url);
+  // `follow`, said out loud. The asset layer answers `/invite.html` with a
+  // redirect to its own address for that file (`/invite`), and the page is
+  // behind it. Left to `manual`, the redirect is all this ever saw and the
+  // built page was never served.
+  const response = await assets.fetch(
+    new Request(url.toString(), { method: "GET", redirect: "follow" }),
+  );
+  if (response.status !== 200) return null;
+  // A browser turns CRLF into LF before it hashes an inline block, so a
+  // page that reached the assets with CRLF would have its own script and
+  // style refused. Serve, and hash, the LF text.
+  return (await response.text()).replace(/\r\n?/g, "\n");
+}
+
 export function handleRequest(request: Request, env: Env): Promise<Response> | Response {
   const url = new URL(request.url);
   const pathname = url.pathname;
@@ -155,44 +265,15 @@ export function handleRequest(request: Request, env: Env): Promise<Response> | R
       return new Response("Method Not Allowed", { status: 405 });
     }
 
-    if (env.ASSETS) {
-      const inviteAssetUrl = new URL("/invite.html", request.url);
-      return env.ASSETS.fetch(new Request(inviteAssetUrl.toString(), request)).then(
-        (assetRes) => {
-          if (assetRes.status === 200) {
-            const headers = new Headers(assetRes.headers);
-            headers.set("Content-Type", "text/html; charset=utf-8");
-            headers.set("Referrer-Policy", "no-referrer");
-            headers.set("X-Content-Type-Options", "nosniff");
-            headers.set("Cache-Control", "public, max-age=300");
-            return new Response(request.method === "HEAD" ? null : assetRes.body, {
-              status: 200,
-              headers,
-            });
-          }
-          // Fallback if asset fetch wasn't 200
-          return new Response(request.method === "HEAD" ? null : INVITE_FALLBACK_HTML, {
-            status: 200,
-            headers: {
-              "Content-Type": "text/html; charset=utf-8",
-              "Referrer-Policy": "no-referrer",
-              "X-Content-Type-Options": "nosniff",
-              "Cache-Control": "public, max-age=300",
-            },
-          });
-        },
-      );
-    }
-
-    return new Response(request.method === "HEAD" ? null : INVITE_FALLBACK_HTML, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/html; charset=utf-8",
-        "Referrer-Policy": "no-referrer",
-        "X-Content-Type-Options": "nosniff",
-        "Cache-Control": "public, max-age=300",
-      },
-    });
+    // The built page when the assets have it, the inline fallback otherwise,
+    // and the fallback too when reading the assets throws: an invitation
+    // must not become an error page because a file could not be read.
+    // Either way the Worker writes the headers: `_headers` does not reach a
+    // response the Worker produces.
+    const built = env.ASSETS
+      ? builtInvitePage(env.ASSETS, request).catch(() => null)
+      : Promise.resolve(null);
+    return built.then((html) => inviteResponse(html ?? INVITE_FALLBACK_HTML, request.method));
   }
 
   // 5. Default / fall-through to static assets or 404
