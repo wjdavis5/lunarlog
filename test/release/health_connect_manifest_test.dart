@@ -191,7 +191,10 @@ void main() {
       final adapter =
           readRepoFile('android/app/src/main/kotlin/com/wjdavis5/lunarlog/'
               'HealthConnectAdapter.kt');
-      expect(adapter, contains('readPermissions = setOf('));
+      // Issue #1573: "access past data" joins the set only where this
+      // phone's Health Connect has that switch.
+      expect(adapter, contains('private val readPermissions ='));
+      expect(adapter, contains('pastDataPermissions() + importReadPermissions'));
       expect(adapter, contains('getReadPermission('));
       expect(adapter, contains('PERMISSION_READ_HEALTH_DATA_HISTORY'));
       // The write path's authorization sheet carries write + read together
