@@ -667,6 +667,46 @@ void main() {
       expect(build(TargetPlatform.android), isA<AndroidHealthChannel>());
       expect(build(TargetPlatform.windows), isA<UnsupportedHealthPlatform>());
     });
+
+    group('commitImport (Issue #1560)', () {
+      test('invokes commitImport channel method on Android when allowed', () async {
+        final platform = makePlatform();
+        final result = await platform.commitImport(_facts(), 'commit-token-123');
+        expect(result, isA<HealthPlatformAllowed>());
+        expect(calls, hasLength(1));
+        expect(calls.single.method, 'commitImport');
+        final args = calls.single.arguments as Map<Object?, Object?>;
+        expect(args['profileId'], 'p1');
+        expect(args['commitToken'], 'commit-token-123');
+      });
+
+      test('is a no-op returning allowed on iOS without channel calls', () async {
+        final platform = MethodChannelHealthPlatform(
+          binding: HealthSyncBinding(FakeSettingsStore({
+            SettingsKeys.healthStoreProfileId: 'p1',
+          })),
+          minorBindingAllowed: true,
+          readAccessDisclosed: false,
+        );
+        final result = await platform.commitImport(_facts(), 'commit-token-123');
+        expect(result, isA<HealthPlatformAllowed>());
+        expect(calls, isEmpty);
+      });
+
+      test('refuses without channel calls when guard fails', () async {
+        final platform = makePlatform(seed: {});
+        final result = await platform.commitImport(_facts(), 'commit-token-123');
+        expect(result, isA<HealthPlatformRefused>());
+        expect((result as HealthPlatformRefused).check, HealthSyncCheck.noBinding);
+        expect(calls, isEmpty);
+      });
+
+      test('returns unavailable on UnsupportedHealthPlatform', () async {
+        const platform = UnsupportedHealthPlatform();
+        final result = await platform.commitImport(_facts(), 'commit-token-123');
+        expect(result, isA<HealthPlatformUnavailable>());
+      });
+    });
   });
 
   // Issue #799: the computed cycle-deviation read — the same guard ordering

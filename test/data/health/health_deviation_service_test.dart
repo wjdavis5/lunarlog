@@ -73,6 +73,13 @@ class _FakeSource implements HealthImportSource {
     String? cursor,
   }) async =>
       const HealthReadResult.unavailable();
+
+  @override
+  Future<HealthPlatformResult> commitImport(
+    HealthGuardFacts facts,
+    String commitToken,
+  ) async =>
+      const HealthPlatformResult.allowed();
 }
 
 class _FakeProfiles implements ProfilesRepository {

@@ -218,12 +218,15 @@ sealed class HealthReadResult {
 
   /// The query ran; [samples] is what the store returned (possibly empty).
   /// [nextCursor] is the opaque page cursor for the *next* page, or null
-  /// when this was the last page. [incremental] is true when the store was
+  /// when this was the last page. [commitToken] is the opaque commit token
+  /// returned on the final page of a pass (Issue #1560) to save the read
+  /// position after days are stored. [incremental] is true when the store was
   /// asked only for what changed since the previous import (see
   /// [HealthReadSamples.incremental]).
   const factory HealthReadResult.samples(
     List<HealthFlowSample> samples, {
     String? nextCursor,
+    String? commitToken,
     bool incremental,
   }) = HealthReadSamples;
 
@@ -250,6 +253,7 @@ final class HealthReadSamples extends HealthReadResult {
   const HealthReadSamples(
     this.samples, {
     this.nextCursor,
+    this.commitToken,
     this.incremental = false,
   });
 
@@ -272,6 +276,13 @@ final class HealthReadSamples extends HealthReadResult {
   /// same field, and this service only ever compares one cursor to the
   /// next to prove progress (see [HealthImportRunner]).
   final String? nextCursor;
+
+  /// Issue #1560: the opaque commit token returned with the last page of a
+  /// read pass (null on intermediate pages, or on platforms that need no
+  /// commit like iOS). Returned to the platform via
+  /// [HealthImportSource.commitImport] only after all pages have been
+  /// successfully stored in the local database.
+  final String? commitToken;
 }
 
 final class HealthReadUnavailable extends HealthReadResult {
@@ -366,6 +377,17 @@ abstract interface class HealthImportSource {
     required DateTime start,
     required DateTime end,
   });
+
+  /// Issue #1560: commits the import position (the change token and
+  /// reached-past state on Android) after the imported days have been
+  /// successfully merged into local storage.
+  ///
+  /// On platforms where the store manages its own cursor or needs no commit
+  /// (iOS HealthKit), this is a no-op that answers allowed.
+  Future<HealthPlatformResult> commitImport(
+    HealthGuardFacts facts,
+    String commitToken,
+  );
 }
 
 /// What one user-initiated import pass did, in counts a summary can render
