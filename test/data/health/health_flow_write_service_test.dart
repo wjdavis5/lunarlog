@@ -3261,6 +3261,45 @@ void main() {
       expect(edited.samplesWritten, 1);
       expect(edited.symptomSamplesWritten, 1);
     });
+
+    // The same install: every day of the period is at or below its floor,
+    // so only the ledger says those days are in the store. Without that,
+    // the period no longer counts as written and its record is deleted.
+    test('a ledger from an earlier build: a period whose days it wrote '
+        'keeps its record', () async {
+      await settings.set(_bindingKey, _profileId);
+      await settings.set(_cursorKey, '${at(11).millisecondsSinceEpoch}');
+      dayEntries.entries = [
+        _entry('2026-06-10', FlowLevel.medium, at(10)),
+        _entry('2026-06-11', FlowLevel.medium, at(11)),
+      ];
+      await ledger.record([
+        for (final day in ['2026-06-10', '2026-06-11'])
+          HealthExportLedgerEntry(
+            recordId: 'entry-$day',
+            profileId: _profileId,
+            sourceRowId: 'entry-$day',
+            kind: HealthExportLedgerKind.entry,
+            localDate: day,
+            exportedAt: at(12),
+          ),
+        HealthExportLedgerEntry(
+          recordId: 'period-$_profileId-2026-06-10',
+          profileId: _profileId,
+          sourceRowId: '2026-06-10/2026-06-11',
+          kind: HealthExportLedgerKind.period,
+          localDate: '2026-06-10',
+          exportedAt: at(12),
+        ),
+      ]);
+
+      final report = await buildService().syncNow();
+
+      expect(report.blocked, isNull);
+      expect(platform.deleteCalls, isEmpty);
+      expect(platform.periodWrites, isEmpty);
+      expect(platform.flowWrites, isEmpty);
+    });
   });
 
   // Sanity pin on the bleed-day set the service derives from: keeps the
