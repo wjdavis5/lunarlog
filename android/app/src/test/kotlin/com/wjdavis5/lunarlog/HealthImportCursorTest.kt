@@ -18,6 +18,51 @@ import org.junit.Test
  */
 class HealthImportCursorTest {
 
+    // Issue #1549: turning "Access past data" on after the first import
+    // imported nothing, because the first whole-range read had minted a
+    // change token and every later pass asked only for what changed.
+
+    @Test
+    fun `a whole-range read is owed once past data is granted after a read that could not reach it`() {
+        assertTrue(
+            HealthImportCursor.mustRereadForPast(
+                tokenStored = true, reachedPast = false, pastDataGranted = true))
+    }
+
+    @Test
+    fun `a token minted before this was recorded is not known to have reached it`() {
+        assertTrue(
+            HealthImportCursor.mustRereadForPast(
+                tokenStored = true, reachedPast = null, pastDataGranted = true))
+    }
+
+    @Test
+    fun `nothing is owed while past data is still off`() {
+        for (reached in listOf(null, false, true)) {
+            assertFalse(
+                HealthImportCursor.mustRereadForPast(
+                    tokenStored = true, reachedPast = reached, pastDataGranted = false))
+        }
+    }
+
+    @Test
+    fun `nothing is owed when the last whole-range read already reached it`() {
+        assertFalse(
+            HealthImportCursor.mustRereadForPast(
+                tokenStored = true, reachedPast = true, pastDataGranted = true))
+    }
+
+    @Test
+    fun `with no token the next read is the whole range anyway`() {
+        for (reached in listOf(null, false, true)) {
+            for (granted in listOf(false, true)) {
+                assertFalse(
+                    HealthImportCursor.mustRereadForPast(
+                        tokenStored = false, reachedPast = reached, pastDataGranted = granted))
+            }
+        }
+    }
+
     @Test
     fun `changes cursor round-trips its token`() {
         val cursor = HealthImportCursor.changes("abc123+/=")

@@ -273,6 +273,13 @@ void main() {
           isNot(contains('importPermissionStatus')),
           reason: '$path gates writes; a read permission must not stop one',
         );
+        // Issue #1549: nor the other read-side question.
+        expect(
+          _stripComments(_read(path)),
+          isNot(contains('importReachesPastData')),
+          reason: '$path gates writes; how far back a read reaches is '
+              'nothing to it',
+        );
       }
       // And the write pass still has its own gate.
       expect(

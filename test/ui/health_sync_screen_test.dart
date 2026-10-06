@@ -254,8 +254,12 @@ class _ScriptedProbe implements HealthPermissionProbe {
     return reachesPastData;
   }
 
+  int settingsOpened = 0;
+
   @override
-  Future<void> openPermissionSettings() async {}
+  Future<void> openPermissionSettings() async {
+    settingsOpened++;
+  }
 }
 
 /// A runner that throws, for the unexpected-failure line.
@@ -2194,8 +2198,8 @@ void main() {
     // changed, so an empty answer means nothing changed.
     group('Issue #1523 an import that brings nothing back', () {
       const nothingNew = 'Nothing new in Health Connect since the last import.';
-      const nothingToImport = 'Health Connect has no period or spotting data '
-          'from other apps to import.';
+      const nothingToImport = 'Health Connect has no menstrual flow or '
+          'spotting from other apps to import.';
       final neutralHealthConnect = healthImportEmptyCopy(
         AppLocalizationsEn(),
         HealthImportPlatform.healthConnect,
@@ -2205,17 +2209,34 @@ void main() {
         HealthImportPlatform.appleHealth,
       );
 
+      // The result line is the summary's first text. A result that says
+      // older data is hidden has a button under it.
+      String resultLine(WidgetTester tester) => tester
+          .widget<Text>(
+            find
+                .descendant(
+                  of: find.byKey(
+                    const ValueKey('health-sync-import-summary'),
+                  ),
+                  matching: find.byType(Text),
+                )
+                .first,
+          )
+          .data!;
+      final resultSettings =
+          find.byKey(const ValueKey('health-sync-import-open-settings'));
+
+      Future<void> leaveAndComeBack(WidgetTester tester) async {
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        tester.binding
+            .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        await tester.pumpAndSettle();
+      }
+
       Future<String> importAndReadResult(WidgetTester tester) async {
         await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
         await tester.pumpAndSettle();
-        return tester
-            .widget<Text>(
-              find.descendant(
-                of: find.byKey(const ValueKey('health-sync-import-summary')),
-                matching: find.byType(Text),
-              ),
-            )
-            .data!;
+        return resultLine(tester);
       }
 
       _FakeImporter androidImporter(HealthImportSummary summary) =>
@@ -2286,9 +2307,13 @@ void main() {
           importer: androidImporter(const HealthImportSummary(pagesRead: 1)),
         );
 
+        // Not asked when the screen opens: it is a question about a read.
+        expect(probe.pastDataProbes, 0);
+
         final line = await importAndReadResult(tester);
         expect(line, olderHidden);
-        expect(line, isNot(contains('has no period')));
+        expect(line, isNot(contains('has no')));
+        expect(probe.pastDataProbes, 1);
         // It does not say reading is off either: the status line above
         // says it is on.
         expect(line, isNot(contains('read access is off')));
@@ -2329,9 +2354,108 @@ void main() {
         expect(await importAndReadResult(tester), olderHidden);
 
         // She turns it on in Health Connect, and imports again. The
-        // screen asks again after every pass.
+        // adapter then reads the whole history once more (the Kotlin
+        // rule `mustRereadForPast`), and the screen asks again after
+        // every pass.
         probe.reachesPastData = true;
         expect(await importAndReadResult(tester), nothingToImport);
+        expect(resultSettings, findsNothing);
+      });
+
+      testWidgets('Android: a result is about its own pass, and coming '
+          'back from Settings does not rewrite it', (tester) async {
+        final probe = _ScriptedProbe(
+          readAccessDisclosed: true,
+          write: HealthPermissionStatus.granted,
+          read: HealthPermissionStatus.granted,
+          reachesPastData: false,
+        );
+        await pumpAndroid(
+          tester,
+          binding: await boundBinding(),
+          permissionProbe: probe,
+          importer: androidImporter(const HealthImportSummary(pagesRead: 1)),
+        );
+        expect(await importAndReadResult(tester), olderHidden);
+
+        // She follows the line: turns "Access past data" on and comes
+        // back. Nothing new has been read, so the result must not turn
+        // into "Health Connect has no…".
+        probe.reachesPastData = true;
+        await leaveAndComeBack(tester);
+        expect(resultLine(tester), olderHidden);
+      });
+
+      testWidgets('Android: a pass that ran while reading was off is not '
+          'rewritten when reading is turned on', (tester) async {
+        final probe = _ScriptedProbe(
+          readAccessDisclosed: true,
+          write: HealthPermissionStatus.granted,
+          read: HealthPermissionStatus.denied,
+        );
+        await pumpAndroid(
+          tester,
+          binding: await boundBinding(),
+          permissionProbe: probe,
+          importer: androidImporter(const HealthImportSummary(pagesRead: 1)),
+        );
+        expect(await importAndReadResult(tester), neutralHealthConnect);
+
+        probe.read = HealthPermissionStatus.granted;
+        await leaveAndComeBack(tester);
+        // That pass read nothing because it was not allowed to. It says
+        // nothing about what the store holds.
+        expect(resultLine(tester), neutralHealthConnect);
+      });
+
+      testWidgets('Android: the line that names the switch brings the way '
+          'to it, even when no permission is off', (tester) async {
+        // Reading and writing both allowed: the status line offers no
+        // settings link, because nothing there is off.
+        final probe = _ScriptedProbe(
+          readAccessDisclosed: true,
+          write: HealthPermissionStatus.granted,
+          read: HealthPermissionStatus.granted,
+          reachesPastData: false,
+        );
+        await pumpAndroid(
+          tester,
+          binding: await boundBinding(),
+          permissionProbe: probe,
+          importer: androidImporter(const HealthImportSummary(pagesRead: 1)),
+        );
+        expect(
+          find.byKey(const ValueKey('health-sync-open-settings')),
+          findsNothing,
+        );
+        expect(resultSettings, findsNothing);
+
+        expect(await importAndReadResult(tester), olderHidden);
+        expect(resultSettings, findsOneWidget);
+        await tester.ensureVisible(resultSettings);
+        await tester.tap(resultSettings);
+        await tester.pumpAndSettle();
+        expect(probe.settingsOpened, 1);
+      });
+
+      testWidgets('Android: no other result carries the settings button',
+          (tester) async {
+        await pumpAndroid(
+          tester,
+          binding: await boundBinding(),
+          permissionProbe: _ScriptedProbe(
+            readAccessDisclosed: true,
+            write: HealthPermissionStatus.granted,
+            read: HealthPermissionStatus.granted,
+            reachesPastData: false,
+          ),
+          importer: androidImporter(
+            const HealthImportSummary(incremental: true, pagesRead: 1),
+          ),
+        );
+        // A repeat import with nothing new: nothing is hidden from it.
+        expect(await importAndReadResult(tester), nothingNew);
+        expect(resultSettings, findsNothing);
       });
 
       testWidgets('Android: the question is only asked once reading is '
@@ -2577,30 +2701,8 @@ void main() {
       );
 
       expect(statusLine(tester), readingOnly);
-      // Issue #1549: and, because reading is allowed, the third: whether a
-      // read reaches data from before access was first given.
-      expect(
-        permissionCalls.map((call) => call.method),
-        ['permissionStatus', 'importPermissionStatus', 'importPastDataGranted'],
-      );
-    });
-
-    testWidgets('Android: the real adapter does not ask about past data '
-        'until reading is allowed', (tester) async {
-      final HealthPermissionProbe android = createHealthPlatform(
-        TargetPlatform.android,
-        binding: HealthSyncBinding(FakeSettingsStore()),
-        minorBindingAllowed: true,
-      );
-
-      permissionResult = 'granted';
-      importPermissionResult = 'denied';
-      await pumpAndroid(
-        tester,
-        binding: await boundBinding(),
-        permissionProbe: android,
-      );
-
+      // Issue #1549: and not the third, about past data. That one is
+      // asked when an import finishes, not when the screen opens.
       expect(
         permissionCalls.map((call) => call.method),
         ['permissionStatus', 'importPermissionStatus'],

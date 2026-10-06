@@ -6779,7 +6779,7 @@
     "@healthSyncImportEmptyHealthConnect": {
       "description": "Issue #1004 (tranche 5): neutral no-data import copy (Health Connect)."
     },
-    "healthSyncImportEmptyHealthConnectReadable": "Health Connect has no period or spotting data from other apps to import.",
+    "healthSyncImportEmptyHealthConnectReadable": "Health Connect has no menstrual flow or spotting from other apps to import.",
     "@healthSyncImportEmptyHealthConnectReadable": {
       "description": "Issue #1523: the result of an import from Health Connect that read the whole history and got nothing back, when Health Connect says lunarlog is allowed to read. Replaces healthSyncImportEmptyHealthConnect in that case, because 'or that read access is off' would contradict the access line on the same screen. 'From other apps' because lunarlog never imports what it wrote itself. Android only: Apple Health never says whether reading is allowed."
     },

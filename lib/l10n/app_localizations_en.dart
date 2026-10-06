@@ -5234,7 +5234,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get healthSyncImportEmptyHealthConnectReadable =>
-      'Health Connect has no period or spotting data from other apps to import.';
+      'Health Connect has no menstrual flow or spotting from other apps to import.';
 
   @override
   String get healthSyncImportEmptyHealthConnectOlderHidden =>

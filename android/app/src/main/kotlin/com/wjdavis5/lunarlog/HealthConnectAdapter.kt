@@ -381,7 +381,10 @@ class HealthConnectAdapter(context: Context) {
                 val editor = prefs.edit().remove(BOUND_PROFILE_KEY)
                 // Drop the profile's incremental read anchor too, so a later
                 // re-bind starts from a clean backfill (Issue #458).
-                storedBoundProfileId?.let { editor.remove(changesTokenKey(it)) }
+                storedBoundProfileId?.let {
+                    editor.remove(changesTokenKey(it))
+                    editor.remove(reachedPastKey(it))
+                }
                 editor.apply()
                 // Issue #993: an unbound device stops being woken for
                 // background imports. Best-effort; the Dart-side guard
@@ -516,15 +519,7 @@ class HealthConnectAdapter(context: Context) {
                     return
                 }
                 CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
-                    try {
-                        val granted = client.permissionController.getGrantedPermissions()
-                        result.success(
-                            granted.contains(
-                                HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY,
-                            ))
-                    } catch (e: Exception) {
-                        result.success(false)
-                    }
+                    result.success(pastDataGranted(client))
                 }
             }
 
@@ -1221,6 +1216,13 @@ class HealthConnectAdapter(context: Context) {
         cursor: String?,
     ): Map<String, Any> {
         val decoded = cursor?.let { HealthImportCursor.decode(it) }
+        // Issue #1549: at the start of a pass, a whole-range read may be
+        // owed although a token is stored. Dropping the token makes the
+        // read below that whole-range read, and it mints a new token when
+        // it finishes. See [HealthImportCursor.mustRereadForPast].
+        if (decoded == null && owesPastRead(client, profileId)) {
+            prefs.edit().remove(changesTokenKey(profileId)).apply()
+        }
         // A stored change token means an incremental pass: the first page
         // (no cursor) uses it, and every later changes page carries its own
         // next token in the cursor.
@@ -1315,6 +1317,17 @@ class HealthConnectAdapter(context: Context) {
         val end = Instant.ofEpochMilli(endMs)
         val filter = TimeRangeFilter.between(start, end)
         if (HealthImportCursor.isFlow(mode)) {
+            if (token == null) {
+                // Issue #1549: the first page of a whole-range read.
+                // Record now whether it can see data from before access
+                // was first given; the last page may only lower this.
+                prefs.edit()
+                    .putString(
+                        reachedPastKey(profileId),
+                        if (pastDataGranted(client)) REACHED_PAST else REACHED_RECENT,
+                    )
+                    .apply()
+            }
             val response = client.readRecords(
                 ReadRecordsRequest(
                     MenstruationFlowRecord::class,
@@ -1353,9 +1366,15 @@ class HealthConnectAdapter(context: Context) {
             // should be incremental. Mint a "now" anchor, best effort.
             val next = mintChangesToken(client)
             if (next != null) {
-                prefs.edit()
+                val editor = prefs.edit()
                     .putString(changesTokenKey(profileId), next)
-                    .apply()
+                // Issue #1549: this read reached the older data only if
+                // "Access past data" was on from its first page (recorded
+                // there) to this one. Turned on part-way does not count.
+                if (!pastDataGranted(client)) {
+                    editor.putString(reachedPastKey(profileId), REACHED_RECENT)
+                }
+                editor.apply()
             }
         }
         return payload
@@ -1453,6 +1472,55 @@ class HealthConnectAdapter(context: Context) {
     private fun changesTokenKey(profileId: String): String =
         "lunarlog.health.changesToken.$profileId"
 
+    // Issue #1549: whether the whole-range read that minted the stored
+    // change token was made with "Access past data" granted from its
+    // first page to its last. Absent for a token minted before this was
+    // recorded. Written on the first page, so it can be present with no
+    // token (a read that did not finish); nothing reads it then.
+    //
+    // Unlike the asked-markers it is not stamped with the install: carried
+    // to another phone it travels with the change token it describes, and
+    // that token is not the new phone's, so the first pass there throws
+    // it away, reads the whole range and records this again.
+    private fun reachedPastKey(profileId: String): String =
+        "lunarlog.health.fullReadReachedPast.$profileId"
+
+    // Whether "Access past data" (READ_HEALTH_DATA_HISTORY) is granted.
+    // Without it Health Connect hides everything older than 30 days before
+    // this app's first grant. Only looks: no request, no marker. A Health
+    // Connect that will not answer is a no.
+    private suspend fun pastDataGranted(client: HealthConnectClient): Boolean =
+        try {
+            client.permissionController.getGrantedPermissions()
+                .contains(HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY)
+        } catch (e: Exception) {
+            false
+        }
+
+    // Issue #1549: a whole-range read made while "Access past data" was
+    // off never saw the older data, and the change token it minted means
+    // every later pass asks only for what changed. So turning the switch
+    // on later imported nothing, ever. Once it is on, one more whole-range
+    // read is owed.
+    private suspend fun owesPastRead(
+        client: HealthConnectClient,
+        profileId: String,
+    ): Boolean {
+        if (prefs.getString(changesTokenKey(profileId), null) == null) return false
+        val reachedPast = when (prefs.getString(reachedPastKey(profileId), null)) {
+            REACHED_PAST -> true
+            REACHED_RECENT -> false
+            else -> null
+        }
+        // Asked last, and only when the answer can matter.
+        if (reachedPast == true) return false
+        return HealthImportCursor.mustRereadForPast(
+            tokenStored = true,
+            reachedPast = reachedPast,
+            pastDataGranted = pastDataGranted(client),
+        )
+    }
+
     // The native mirror of HealthSyncBinding._evaluate — same wire
     // strings the Dart codec decodes. `boundProfileId` comes from
     // SharedPreferences for write/authorization calls, and from the
@@ -1540,6 +1608,10 @@ class HealthConnectAdapter(context: Context) {
     companion object {
         const val PREFS_FILE = "lunarlog_health"
         const val BOUND_PROFILE_KEY = "lunarlog.health.boundProfileId"
+
+        // Issue #1549: the two values kept under `reachedPastKey`.
+        const val REACHED_PAST = "past"
+        const val REACHED_RECENT = "recent"
         const val CHANNEL_NAME = "lunarlog/health"
 
         // Issue #1478: set once this install has launched the Health
@@ -1816,6 +1888,27 @@ internal object HealthImportCursor {
     fun flow(token: String?): String = encode(FLOW, token)
     fun intermenstrual(token: String?): String = encode(INTERMENSTRUAL, token)
     fun changes(token: String): String = encode(CHANGES, token)
+
+    /**
+     * Whether a pass must read the whole range again although a change
+     * token is stored (issue #1549).
+     *
+     * A token is minted when a whole-range read finishes, and from then on
+     * a pass asks only for what changed. Health Connect hides data older
+     * than 30 days before the first grant unless "Access past data" is
+     * on, so a whole-range read made with it off never saw the older
+     * data, and a changes-only pass never will. Once the switch is on,
+     * one more whole-range read is owed.
+     *
+     * [reachedPast] is what was recorded when the stored token was
+     * minted; null for a token minted before this was recorded, which is
+     * read as "not known to have reached it".
+     */
+    fun mustRereadForPast(
+        tokenStored: Boolean,
+        reachedPast: Boolean?,
+        pastDataGranted: Boolean,
+    ): Boolean = tokenStored && pastDataGranted && reachedPast != true
 
     fun isFlow(mode: String): Boolean = mode == FLOW
     fun isIntermenstrual(mode: String): Boolean = mode == INTERMENSTRUAL

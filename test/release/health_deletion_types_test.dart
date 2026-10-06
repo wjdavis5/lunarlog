@@ -451,11 +451,110 @@ void main() {
     setUpAll(() {
       kotlin = _stripLineComments(readRepoFile(_adapterPath));
       final start = kotlin.indexOf('"importPermissionStatus" ->');
-      final end = kotlin.indexOf('"permissionStatus" ->');
+      final end = kotlin.indexOf('"importPastDataGranted" ->');
       expect(start, isNonNegative);
       expect(end, greaterThan(start),
-          reason: 'the read-side handler sits just above permissionStatus');
+          reason: 'the read-side handler sits just above '
+              'importPastDataGranted');
       handler = kotlin.substring(start, end);
+    });
+
+    // Issue #1549: the question "is Access past data on" has a handler
+    // of its own, between the two.
+    test('importPastDataGranted only looks: one answer from the granted '
+        'set, no request, no marker read or set', () {
+      final start = kotlin.indexOf('"importPastDataGranted" ->');
+      final end = kotlin.indexOf('"permissionStatus" ->');
+      expect(start, isNonNegative);
+      expect(end, greaterThan(start));
+      final pastData = kotlin.substring(start, end);
+
+      expect(pastData, contains('healthConnectClient()'));
+      expect(pastData, contains('result.success(false)'));
+      expect(pastData, contains('result.success(pastDataGranted(client))'));
+      for (final forbidden in [
+        'launcher',
+        'requestPermissions',
+        '.launch(',
+        'prefs.',
+        'permissionEverRequested',
+        'PERMISSION_REQUESTED_KEY',
+        'IMPORT_REQUEST_LAUNCHED_KEY',
+      ]) {
+        expect(pastData, isNot(contains(forbidden)), reason: forbidden);
+      }
+
+      // The helper it answers through: the granted set and nothing else.
+      final helperStart =
+          kotlin.indexOf('private suspend fun pastDataGranted(');
+      final helperEnd =
+          kotlin.indexOf('private suspend fun owesPastRead(');
+      expect(helperStart, isNonNegative);
+      expect(helperEnd, greaterThan(helperStart));
+      final helper = kotlin.substring(helperStart, helperEnd);
+      expect(helper, contains('permissionController.getGrantedPermissions()'));
+      expect(
+        helper,
+        contains('HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY'),
+      );
+      expect(helper, isNot(contains('prefs.')));
+    });
+
+    // Issue #1549: turning "Access past data" on after the first import
+    // used to import nothing, ever: the first whole-range read minted a
+    // change token, and every later pass asked only for what changed.
+    test('a whole-range read is owed once Access past data is on, and the '
+        'adapter remembers whether its last one reached that far', () {
+      // Decided at the start of a pass only, never between its pages.
+      expect(
+        kotlin,
+        contains('if (decoded == null && owesPastRead(client, profileId)) {'),
+      );
+      final owed = kotlin.indexOf(
+          'if (decoded == null && owesPastRead(client, profileId)) {');
+      expect(
+        kotlin.substring(owed, owed + 200),
+        contains('prefs.edit().remove(changesTokenKey(profileId)).apply()'),
+      );
+      // Recorded on the first page of a whole-range read, and only
+      // lowered on the last: a switch turned on part-way is not "reached".
+      final rangeStart =
+          kotlin.indexOf('private suspend fun readRangePage(');
+      final rangeEnd =
+          kotlin.indexOf('private suspend fun mintChangesToken(');
+      expect(rangeStart, isNonNegative);
+      expect(rangeEnd, greaterThan(rangeStart));
+      final range = kotlin.substring(rangeStart, rangeEnd);
+      final firstPage = range.indexOf('if (token == null) {');
+      final firstRead = range.indexOf('client.readRecords(');
+      expect(firstPage, isNonNegative);
+      expect(firstRead, greaterThan(firstPage),
+          reason: 'recorded before the first page is read');
+      expect(
+        range.substring(firstPage, firstRead),
+        contains('if (pastDataGranted(client)) REACHED_PAST else '
+            'REACHED_RECENT'),
+      );
+      expect('REACHED_PAST'.allMatches(range), hasLength(1),
+          reason: 'only the first page may say the read reached it');
+      final minted = range.indexOf('.putString(changesTokenKey(profileId), next)');
+      expect(minted, greaterThan(firstRead));
+      final lowered = range.substring(minted);
+      expect(lowered, contains('if (!pastDataGranted(client)) {'));
+      expect(
+        lowered,
+        contains('editor.putString(reachedPastKey(profileId), '
+            'REACHED_RECENT)'),
+      );
+      // Unbinding forgets both.
+      expect(kotlin, contains('editor.remove(reachedPastKey(it))'));
+      // The rule itself is the pure function the Kotlin unit test pins.
+      expect(kotlin, contains('HealthImportCursor.mustRereadForPast('));
+      expect(
+        kotlin,
+        contains('): Boolean = tokenStored && pastDataGranted && '
+            'reachedPast != true'),
+      );
     });
 
     test('the required set is the two record reads and nothing else', () {

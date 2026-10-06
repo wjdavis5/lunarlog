@@ -72,14 +72,8 @@ String _sourceName(AppLocalizations l10n, HealthImportPlatform platform) =>
     };
 
 /// What the permission probe says: the status line's state and, where the
-/// store discloses it, the read-side answer on its own (Issue #1523) and
-/// whether a read reaches data from before access was first allowed
-/// (Issue #1549; asked only once reading is granted, null otherwise).
-typedef _Access = ({
-  HealthAccessState? state,
-  HealthPermissionStatus? read,
-  bool? reachesPastData,
-});
+/// store discloses it, the read-side answer on its own (Issue #1523).
+typedef _Access = ({HealthAccessState? state, HealthPermissionStatus? read});
 
 /// The human name of [platform]'s health store for titles and headings.
 /// Arb-backed since issue #1004, tranche 5 (`healthSyncSourceTitle*`).
@@ -195,6 +189,16 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   bool _importFailed = false;
   HealthImportSummary? _importSummary;
 
+  /// What the store said about reading when [_importSummary]'s pass
+  /// finished (Issue #1549): whether reading was allowed, and whether a
+  /// read reached data from before access was first given. Kept with the
+  /// result and never refreshed, because the result line describes that
+  /// pass. Read from the live answers it changed under her: turning
+  /// "Access past data" on and coming back rewrote an old empty result
+  /// as "Health Connect has no…" with nothing new having been read.
+  HealthPermissionStatus? _importReadStatus;
+  bool? _importReachedPastData;
+
   /// Issue #992: the running sample count of a full-history pass, so a long
   /// import shows progress rather than a bare spinner. Null until the first
   /// page reports.
@@ -220,11 +224,6 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// wired. Kept so the line for an import that brought nothing back can
   /// leave out "or read access is off" when reading is known to be on.
   HealthPermissionStatus? _readStatus;
-
-  /// Whether an import can read data from before access was first allowed
-  /// (Issue #1549). Null until reading is granted, and where the store
-  /// does not disclose read access.
-  bool? _reachesPastData;
 
   /// The store this screen is about — drives every store name and the
   /// write copy below. See [HealthSyncScreen.storePlatform] for the order.
@@ -269,15 +268,12 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   }
 
   bool _sameAccess(_Access access) =>
-      access.state == _accessState &&
-      access.read == _readStatus &&
-      access.reachesPastData == _reachesPastData;
+      access.state == _accessState && access.read == _readStatus;
 
   /// Stores a fresh probe answer. Call inside `setState`.
   void _setAccess(_Access access) {
     _accessState = access.state;
     _readStatus = access.read;
-    _reachesPastData = access.reachesPastData;
   }
 
   /// Loads the bound profile id, every non-archived profile, and each
@@ -331,23 +327,13 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// the import result line (Issue #1523).
   Future<_Access> _readAccess() async {
     final probe = widget.permissionProbe;
-    if (probe == null) {
-      return (state: null, read: null, reachesPastData: null);
-    }
+    if (probe == null) return (state: null, read: null);
     try {
       final write = await probe.permissionStatus();
       final read = await _readSideStatus(probe);
-      return (
-        state: healthAccessState(write: write, read: read),
-        read: read,
-        reachesPastData: await _pastDataReach(probe, read),
-      );
+      return (state: healthAccessState(write: write, read: read), read: read);
     } catch (_) {
-      return (
-        state: HealthAccessState.unavailable,
-        read: null,
-        reachesPastData: null,
-      );
+      return (state: HealthAccessState.unavailable, read: null);
     }
   }
 
@@ -370,17 +356,15 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   }
 
   /// Whether a read reaches data from before access was first allowed
-  /// (Issue #1549), asked only once the store says reading is granted:
-  /// before that there is no read for it to qualify. A probe that throws
-  /// is "cannot tell", which is false, because the one thing this answer
-  /// is for is deciding whether an empty read shows an empty store.
-  Future<bool?> _pastDataReach(
-    HealthPermissionProbe probe,
-    HealthPermissionStatus? read,
-  ) async {
+  /// (Issue #1549), asked only when the store says reading is granted:
+  /// before that there is no read for it to qualify. A probe that is
+  /// absent or throws is "cannot tell", which is false, because the one
+  /// thing this answer is for is deciding whether an empty read shows an
+  /// empty store.
+  Future<bool?> _pastDataReach(HealthPermissionStatus? read) async {
     if (read != HealthPermissionStatus.granted) return null;
     try {
-      return await probe.importReachesPastData();
+      return await widget.permissionProbe!.importReachesPastData();
     } catch (_) {
       return false;
     }
@@ -647,10 +631,13 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
         // Ignored: the snapshot is a display cache, not part of the import.
       }
       final access = await _readAccess();
+      final reachedPastData = await _pastDataReach(access.read);
       if (!mounted) return;
       setState(() {
         _importing = false;
         _importSummary = summary;
+        _importReadStatus = access.read;
+        _importReachedPastData = reachedPastData;
         _importProgress = null;
         // Issue #959: re-read the OS permission after the pass, so an
         // import that hit a revoked permission updates the status line
@@ -825,22 +812,34 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// only what is left: there is nothing from another app to import.
   ///
   /// That last claim needs one more fact (Issue #1549). Health Connect
-  /// hides data older than about a month before the first grant unless
-  /// "Access past data" is on, so with it off an empty read is not an
-  /// empty store, and the line says what is hidden instead.
+  /// hides data older than 30 days before the first grant unless "Access
+  /// past data" is on, so with it off an empty read is not an empty
+  /// store, and the line says what is hidden instead ([_olderDataHidden]).
+  ///
+  /// Every answer used here is the one taken when the pass finished
+  /// ([_importReadStatus], [_importReachedPastData]), never the live one.
   String _emptyImportCopy(AppLocalizations l10n, HealthImportSummary summary) {
     if (summary.incremental) {
       return l10n.healthSyncImportNothingSinceLast(
         _sourceName(l10n, _importPlatform),
       );
     }
-    if (_readStatus != HealthPermissionStatus.granted) {
+    if (_importReadStatus != HealthPermissionStatus.granted) {
       return healthImportEmptyCopy(l10n, _importPlatform);
     }
-    return _reachesPastData == true
-        ? l10n.healthSyncImportEmptyHealthConnectReadable
-        : l10n.healthSyncImportEmptyHealthConnectOlderHidden;
+    return _olderDataHidden(summary)
+        ? l10n.healthSyncImportEmptyHealthConnectOlderHidden
+        : l10n.healthSyncImportEmptyHealthConnectReadable;
   }
+
+  /// Whether [summary] is a whole-history read that came back empty while
+  /// reading was allowed and the store was hiding its older data (Issue
+  /// #1549). True when the store said so, and when it would not say.
+  bool _olderDataHidden(HealthImportSummary summary) =>
+      summary.isEmpty &&
+      !summary.incremental &&
+      _importReadStatus == HealthPermissionStatus.granted &&
+      _importReachedPastData != true;
 
   /// The lines for a finished pass: the blocked line, the neutral empty
   /// copy, or the stopped-early note plus the positive result lines.
@@ -851,7 +850,25 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
     if (summary.isBlocked) {
       return [Text(_blockedImportCopy(l10n, summary.blocked!))];
     }
-    if (summary.isEmpty) return [Text(_emptyImportCopy(l10n, summary))];
+    if (summary.isEmpty) {
+      return [
+        Text(_emptyImportCopy(l10n, summary)),
+        // The line names a switch that lives in the health store's own
+        // settings. The status line above offers the way there only
+        // when a permission is off, which need not be the case here, so
+        // this result brings its own.
+        if (_olderDataHidden(summary))
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton(
+              key: const ValueKey('health-sync-import-open-settings'),
+              onPressed: () =>
+                  widget.permissionProbe?.openPermissionSettings(),
+              child: Text(l10n.healthSyncPermissionOpenSettings),
+            ),
+          ),
+      ];
+    }
     return [
       // Issue #992: a pass stopped by the page cap or a repeated cursor says
       // so plainly rather than pretending it finished.

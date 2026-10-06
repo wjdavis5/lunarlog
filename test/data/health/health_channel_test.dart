@@ -496,6 +496,8 @@ void main() {
     test('the unsupported platform fails cleanly, never crashes', () async {
       const platform = UnsupportedHealthPlatform();
       expect(await platform.isAvailable(), isFalse);
+      // Issue #1549: no store, so no read reaches anything.
+      expect(await platform.importReachesPastData(), isFalse);
       expect(
         await platform.writeMenstrualFlow(flowWrite),
         isA<HealthPlatformUnavailable>(),
