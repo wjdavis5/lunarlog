@@ -215,7 +215,6 @@ class FirebasePushTokenSource implements PushTokenSource {
     // system-UI window whenever the dialog can appear — see
     // [askPermission].
     // Issue #174: without this, iOS silently drops the banner of a push
-    // Issue #174: without this, iOS silently drops the banner of a push
     // arriving while the app is foregrounded (the pre-iOS-10 default is to
     // present nothing) — a caregiver alert landing while the recipient has
     // the app open just vanished. alert/badge/sound: the same presentation
@@ -255,11 +254,24 @@ class FirebasePushTokenSource implements PushTokenSource {
       _permissionGate.guard(() => runPushPermissionAsk(
             isAndroid:
                 isAndroid ?? defaultTargetPlatform == TargetPlatform.android,
-            currentState: currentState ?? _currentPermissionState,
-            request: request ?? _requestPermission,
+            currentState: currentState ?? _initializedCurrentPermissionState,
+            request: request ?? _initializedRequestPermission,
             androidDenials: _androidDenials,
             duringSystemUi: duringSystemUi,
           ));
+
+  // Issue #1630: the production plugin calls wait for Firebase to be
+  // initialized, as [currentToken] does - the ask is now reached from a tap,
+  // not from inside [_initialize], so nothing else orders it after init.
+  Future<PushPermissionState> _initializedCurrentPermissionState() async {
+    await _ensureInitialized();
+    return _currentPermissionState();
+  }
+
+  Future<PushPermissionState> _initializedRequestPermission() async {
+    await _ensureInitialized();
+    return _requestPermission();
+  }
 
   static Future<PushPermissionState> _currentPermissionState() async =>
       pushPermissionStateOf(
