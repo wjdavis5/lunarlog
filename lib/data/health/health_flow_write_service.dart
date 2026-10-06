@@ -46,9 +46,26 @@
 /// bleed day, a row stamped by a clock a few seconds behind the one that
 /// stamped the cursor, or an edit made while its type was switched off.
 /// The floor is still stored to the microsecond ([_writeCursor], Issue
-/// #1577). An install that upgrades keeps the cursor it had as its floor,
-/// and its ledger rows carry the time of the export instead of the row's
-/// version; that time is at or after the version, so they read as written.
+/// #1577).
+///
+/// **Forward-only holds for each write type** ([HealthWritePassState]).
+/// Access is given type by type. A record of a type that was switched
+/// off when its row was saved has never been written, and is not sent
+/// when the type is switched on later: every pass that finds a type off
+/// moves that type's own floor to the present. A record the ledger
+/// already holds is different. It is in the store, so a correction to
+/// its row made while the type was off is sent once the type is back,
+/// instead of the store keeping the old value.
+///
+/// **An install that upgrades** keeps the cursor it had as its floor.
+/// Its ledger was written by a build that listed every record a row
+/// could produce, written or not, with the time of the pass; the first
+/// pass of this build re-stamps it from the rows themselves
+/// ([LocalHealthFlowWriteService._adoptEarlierLedger]).
+///
+/// **One pass at a time.** A request that arrives while a pass is
+/// running gets the next pass, which starts when that one ends
+/// ([LocalHealthFlowWriteService.syncNow]).
 ///
 /// **The guard is not re-implemented here.** Every write goes through the
 /// port, whose implementations evaluate `HealthSyncBinding.canWrite` first
@@ -86,6 +103,7 @@ import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_policy.dart';
 import 'package:lunarlog/domain/health/health_write_cursor.dart';
+import 'package:lunarlog/domain/health/health_write_pass_state.dart';
 import 'package:lunarlog/domain/logging/day_sheet_reconciliation.dart'
     show gradedPainIntensitiesFrom;
 import 'package:lunarlog/domain/models/day_entry.dart';
@@ -106,10 +124,11 @@ import 'health_fertility_mapping.dart';
 import 'health_flow_mapping.dart';
 import 'health_record_ids.dart';
 import 'health_symptom_mapping.dart';
+import 'health_written_types.dart';
 
 /// One due flow or spotting record, before it is sent to the port.
 class _PendingWrite {
-  const _PendingWrite({
+  _PendingWrite({
     required this.date,
     required this.tzName,
     required this.plan,
@@ -117,7 +136,8 @@ class _PendingWrite {
     required this.recordId,
     required this.updatedAt,
     required this.kind,
-  });
+    DateTime? storeVersion,
+  }) : storeVersion = storeVersion ?? updatedAt;
 
   final LocalDate date;
   final String tzName;
@@ -144,7 +164,13 @@ class _PendingWrite {
   /// Whether the row is a day entry or a spotting observation.
   final HealthExportLedgerKind kind;
 
-  int get recordVersionMs => updatedAt.millisecondsSinceEpoch;
+  /// The version the store is given for the record. The row's own
+  /// `updatedAt`, except for a spotting entry, whose record comes and
+  /// goes with its day's flow while its own row stays as it was (see
+  /// [LocalHealthFlowWriteService._collectSpotting]).
+  final DateTime storeVersion;
+
+  int get recordVersionMs => storeVersion.millisecondsSinceEpoch;
 }
 
 /// The longest period episode this service writes as one interval record
@@ -300,6 +326,11 @@ class _Batch {
   /// touched.
   final Map<String, Set<String>> desiredByRow = {};
 
+  /// The flow record ids of no-flow days the ledger knows nothing of and
+  /// that have not been asked for yet, with each day's `updatedAt`
+  /// ([LocalHealthFlowWriteService._clearUnknownFlowRecords]).
+  final Map<String, DateTime> unknownFlowRecords = {};
+
   /// Every live, exportable BBT observation's record id this pass, whether
   /// or not it is due — the "still present" side of the BBT diff. A
   /// remembered id absent from this set is a reading the operator cleared
@@ -326,8 +357,9 @@ class _Batch {
     String recordId,
     HealthFlowWritePlan plan,
     Episode? containing,
-    HealthExportLedgerKind kind,
-  ) {
+    HealthExportLedgerKind kind, {
+    DateTime? storeVersion,
+  }) {
     pending.add(_PendingWrite(
       date: date,
       tzName: tzName,
@@ -342,6 +374,7 @@ class _Batch {
       recordId: recordId,
       updatedAt: updatedAt,
       kind: kind,
+      storeVersion: storeVersion,
     ));
   }
 }
@@ -432,6 +465,15 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// after it, and that day was never sent.
   final DateTime Function() _rowClock;
 
+  /// What this pass knows beside the floor and the ledger: each write
+  /// type's own floor, and how far no-flow days have been cleared
+  /// ([_openState] reads it, [_closeState] stores it).
+  HealthWritePassState _state = const HealthWritePassState();
+
+  /// The pass that is running, and the one waiting behind it.
+  Future<HealthFlowSyncReport>? _running;
+  Future<HealthFlowSyncReport>? _queued;
+
   /// Runs one sync pass for the currently bound profile. Never throws —
   /// every expected failure mode is a [HealthFlowSyncReport.blocked];
   /// unexpected storage errors propagate (the coordinator's job to
@@ -439,8 +481,33 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// rather than swallowing protocol errors. Decomposed into one private
   /// method per stage (resolve → guard → grant → collect → write) so each
   /// stays under the quality gate's CRAP ceiling.
+  ///
+  /// One pass at a time (Issue #1581). Two passes side by side would each
+  /// decide from the ledger before the other had written to it, and send
+  /// the same records twice. A request that arrives while a pass is
+  /// running is answered by the next pass, which starts when that one
+  /// ends and so sees whatever was saved in the meantime; any number of
+  /// such requests share that one pass.
   @override
-  Future<HealthFlowSyncReport> syncNow() async {
+  Future<HealthFlowSyncReport> syncNow() {
+    final running = _running;
+    if (running == null) return _startPass();
+    return _queued ??= running.then(
+      (_) => _startPass(),
+      onError: (Object _) => _startPass(),
+    );
+  }
+
+  Future<HealthFlowSyncReport> _startPass() {
+    _queued = null;
+    final pass = _pass();
+    _running = pass;
+    return pass.whenComplete(() {
+      if (identical(_running, pass)) _running = null;
+    });
+  }
+
+  Future<HealthFlowSyncReport> _pass() async {
     final bound = await _resolveBound();
     if (bound == null) {
       return const HealthFlowSyncReport(bound: false);
@@ -512,14 +579,21 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     }
 
     final grantedTypes = await _resolveGrantedTypes(grant.status);
+    final floor = grant.cursor!;
+    final opened = await _openState(floor, grantedTypes);
 
-    final batch = await _collectBatch(bound.profile.id, grant.cursor!);
+    final batch = await _collectBatch(
+      bound.profile.id,
+      floor,
+      adoptEarlierLedger: opened.firstPass,
+    );
     final outcome = await _writeBatch(
       batch,
       bound.facts,
       bound.profile.id,
       grantedTypes: grantedTypes,
     );
+    await _closeState(opened.stored);
 
     return HealthFlowSyncReport(
       bound: true,
@@ -535,6 +609,87 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       daysWithoutSample: batch.withoutSample,
       samplesReconciled: outcome.removed,
     );
+  }
+
+  /// Reads [_state] for this pass and moves the floor of every write type
+  /// that is switched off to the present (see [HealthWritePassState]).
+  ///
+  /// `firstPass` is true when nothing is stored: this binding has not run
+  /// a pass on this build, so its ledger may be in the form an earlier
+  /// build wrote ([_adoptEarlierLedger]). No-flow days then start out
+  /// cleared through [floor]: a row is not looked at before it anyway, and
+  /// the earlier build asked for every such day up to where its cursor
+  /// stood.
+  Future<({String? stored, bool firstPass})> _openState(
+    DateTime floor,
+    Set<String>? grantedTypes,
+  ) async {
+    final stored = await _settings.get(SettingsKeys.healthSyncWriteState);
+    final earlier = HealthWritePassState.decode(stored);
+    _state = (earlier ?? HealthWritePassState(clearedThrough: floor))
+        .withTypesOff(healthWriteTypesOff(grantedTypes), _rowClock());
+    return (stored: stored, firstPass: earlier == null);
+  }
+
+  /// Stores [_state] when the pass has changed it.
+  Future<void> _closeState(String? stored) async {
+    final now = _state.encode();
+    if (now != stored) {
+      await _settings.set(SettingsKeys.healthSyncWriteState, now);
+    }
+  }
+
+  /// Brings a ledger written by a build before Issue #1581 into this
+  /// build's form, on the first pass a binding runs here.
+  ///
+  /// That build listed, under each row it looked at, every record the row
+  /// could produce, whether or not it was written, stamped with the time
+  /// of the pass by the device's clock. Read as it stands, a write that
+  /// failed on that build's last pass would count as done, and on a phone
+  /// whose clock trails the server every row would look newer than its
+  /// record and be sent again. So each row is stamped from the row itself:
+  ///
+  /// * a row at or before [floor] (where that build's cursor stood) was
+  ///   written as it now is, and takes its own `updatedAt`;
+  /// * a row after it was still owed, or its pass had failed, and takes
+  ///   [floor], which leaves it due;
+  /// * the flow record of a day with no flow was never written (that build
+  ///   asked for it to be deleted instead), and is dropped.
+  ///
+  /// Doing this twice changes nothing but to send again what was saved
+  /// after the floor, so it is safe to repeat if the stored state is lost.
+  Future<void> _adoptEarlierLedger(
+    DateTime floor,
+    List<DayEntry> entries,
+    List<Observation> observationRows,
+  ) async {
+    final versions = <String, DateTime>{
+      for (final entry in entries) entry.id: entry.updatedAt,
+      for (final row in observationRows) row.id: row.updatedAt,
+    };
+    final neverWritten = <String>{
+      for (final entry in entries)
+        if (!isBleed(entry.flow) && !entry.updatedAt.isAfter(floor))
+          healthFlowRecordId(entry.id),
+    };
+    final stamped = <HealthExportLedgerEntry>[];
+    for (final written in _memory.all) {
+      final version = versions[written.sourceRowId];
+      if (version == null || written.kind == HealthExportLedgerKind.period) {
+        continue;
+      }
+      if (neverWritten.contains(written.recordId)) continue;
+      stamped.add(HealthExportLedgerEntry(
+        recordId: written.recordId,
+        profileId: written.profileId,
+        sourceRowId: written.sourceRowId,
+        kind: written.kind,
+        localDate: written.localDate,
+        exportedAt: version.isAfter(floor) ? floor : version,
+      ));
+    }
+    await _memory.forget(neverWritten.where((id) => _memory.entryOf(id) != null));
+    await _memory.remember(stamped);
   }
 
   /// The bound profile plus its guard facts, or null when health sync is
@@ -703,9 +858,16 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// `health_symptom_mapping.dart`, and — Issue #228 —
   /// `health_fertility_mapping.dart`, plus the period interval records the
   /// store should hold (Issue #202 — see [_collectPeriods]).
-  Future<_Batch> _collectBatch(String profileId, DateTime floor) async {
+  Future<_Batch> _collectBatch(
+    String profileId,
+    DateTime floor, {
+    bool adoptEarlierLedger = false,
+  }) async {
     final entries = await _dayEntries.listForProfile(profileId);
     final observationRows = await _observations.listForProfile(profileId);
+    if (adoptEarlierLedger) {
+      await _adoptEarlierLedger(floor, entries, observationRows);
+    }
     final pain = _indexPain(observationRows);
     final bleedDays = bleedDatesOf(entries);
     final episodes = deriveEpisodes(bleedDays);
@@ -724,6 +886,9 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       observationRows: observationRows,
       bleedDays: bleedDays,
       episodes: episodes,
+      dayVersions: {
+        for (final entry in entries) entry.localDate: entry.updatedAt,
+      },
       batch: batch,
       floor: floor,
     );
@@ -769,7 +934,13 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       // it out here is what gets it deleted.
       desired.remove(flowId);
       batch.withoutSample++;
-    } else if (_isDue(flowId, entry.updatedAt)) {
+      // And if the ledger knows of none, one may still be there from an
+      // earlier binding or an earlier install, whose ledger is gone.
+      if (_memory.entryOf(flowId) == null &&
+          _state.notYetCleared(entry.updatedAt)) {
+        batch.unknownFlowRecords[flowId] = entry.updatedAt;
+      }
+    } else if (_isDue(flowId, entry.updatedAt, _writeTypeOf(plan))) {
       batch.add(
         entry.localDate,
         entry.tz,
@@ -855,10 +1026,12 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
 
   /// Whether the store holds, or is about to be sent, a record for [day]:
   /// the export ledger remembers one, or the row was saved after the
-  /// forward-only [floor], so this pass writes it if an earlier one has
-  /// not.
+  /// forward-only [floor] and after flow was last found switched off, so
+  /// this pass writes it if an earlier one has not.
   bool _isOrWillBeExported(DayEntry day, DateTime floor) =>
-      _memory.knowsRow(day.id) || day.updatedAt.isAfter(floor);
+      _memory.knowsRow(day.id) ||
+      (day.updatedAt.isAfter(floor) &&
+          _state.admitsNew(HealthWriteTypes.menstrualFlow, day.updatedAt));
 
   /// [episode]'s hand-logged bleed days, first to last.
   static List<DayEntry> _handLoggedDaysOf(
@@ -896,12 +1069,20 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     required List<Observation> observationRows,
     required Set<LocalDate> bleedDays,
     required List<Episode> episodes,
+    required Map<LocalDate, DateTime> dayVersions,
     required _Batch batch,
     required DateTime floor,
   }) {
     for (final row in observationRows) {
       if (row.category == ObservationCategory.spotting) {
-        _collectSpotting(row, bleedDays, episodes, batch, floor);
+        _collectSpotting(
+          row,
+          bleedDays,
+          episodes,
+          dayVersions[row.localDate],
+          batch,
+          floor,
+        );
       }
       // Issue #930: every *live* exportable BBT row counts as present,
       // whether or not it is due, so an unchanged reading is never mistaken
@@ -925,10 +1106,17 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// both changes of mind right. A marker written before the day was given
   /// a flow is taken out; and when a flow is cleared, the spotting entry
   /// under it, which nothing has touched, is written.
+  ///
+  /// That second write is of a record the store has held and let go, for
+  /// a row that has not changed. A store may refuse a record it has seen
+  /// at the same version, so the version it is given is the later of the
+  /// row's own time and its day's ([dayVersion]): the day changed each
+  /// time the record came or went.
   void _collectSpotting(
     Observation row,
     Set<LocalDate> bleedDays,
     List<Episode> episodes,
+    DateTime? dayVersion,
     _Batch batch,
     DateTime floor,
   ) {
@@ -940,18 +1128,30 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     }
     final recordId = healthSpottingRecordId(row.id);
     batch.desiredByRow[row.id] = {recordId};
-    if (!_isDue(recordId, row.updatedAt)) return;
     final containing = _containing(episodes, row.localDate);
+    final plan = mapSpottingToHealthWrite(inPeriodEpisode: containing != null);
+    if (!_isDue(recordId, row.updatedAt, _writeTypeOf(plan))) return;
     batch.add(
       row.localDate,
       row.tz,
       row.updatedAt,
       recordId,
-      mapSpottingToHealthWrite(inPeriodEpisode: containing != null),
+      plan,
       containing,
       HealthExportLedgerKind.spotting,
+      storeVersion: _later(row.updatedAt, dayVersion),
     );
   }
+
+  /// The write type a flow or spotting record is stored as.
+  static String _writeTypeOf(HealthFlowWritePlan plan) =>
+      plan is HealthFlowIntermenstrualMarker
+          ? HealthWriteTypes.spotting
+          : HealthWriteTypes.menstrualFlow;
+
+  /// The later of [a] and [b], or [a] when there is no [b].
+  static DateTime _later(DateTime a, DateTime? b) =>
+      b != null && b.isAfter(a) ? b : a;
 
   /// Resolves one in-scope day entry's fertility tags (Issue #228) into
   /// the writes that are due: its cervical-mucus appearance (at most one —
@@ -964,7 +1164,12 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     final cervical = resolveCervicalMucus(entry.tags);
     final cervicalId = healthCervicalMucusRecordId(entry.id);
     return (
-      cervicalMucus: cervical == null || !_isDue(cervicalId, entry.updatedAt)
+      cervicalMucus: cervical == null ||
+              !_isDue(
+                cervicalId,
+                entry.updatedAt,
+                HealthWriteTypes.cervicalMucus,
+              )
           ? null
           : _PendingCervicalMucusWrite(
               entryId: entry.id,
@@ -979,6 +1184,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
           if (_isDue(
             healthOvulationRecordId(entry.id, result.healthKitResult),
             entry.updatedAt,
+            HealthWriteTypes.ovulationTest,
           ))
             _PendingOvulationWrite(
               entryId: entry.id,
@@ -1004,7 +1210,13 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     final resolved = resolveBasalBodyTemperature(row);
     if (resolved == null) return null;
     final recordId = healthBbtRecordId(row.id);
-    if (!_isDue(recordId, row.updatedAt)) return null;
+    if (!_isDue(
+      recordId,
+      row.updatedAt,
+      HealthWriteTypes.basalBodyTemperature,
+    )) {
+      return null;
+    }
     return _PendingBbtWrite(
       observationId: row.id,
       date: row.localDate,
@@ -1034,6 +1246,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         if (_isDue(
           healthSymptomRecordId(entry.id, symptom.typeIdentifier),
           entry.updatedAt,
+          symptom.typeIdentifier,
         ))
           HealthSymptomSample(
             healthKitTypeIdentifier: symptom.typeIdentifier,
@@ -1228,7 +1441,41 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         failure ??= refused;
       }
     }
-    return (removed: removed, failure: failure);
+    final unclear = await _clearUnknownFlowRecords(batch, facts, grantedTypes);
+    return (removed: removed, failure: failure ?? unclear);
+  }
+
+  /// Asks the store to delete the flow record of each no-flow day the
+  /// ledger knows nothing of, once (Issue #619, LLA-024; kept by Issue
+  /// #1581).
+  ///
+  /// The ledger says what this binding wrote. A record written under an
+  /// earlier binding, or by an install whose data is gone, is still in the
+  /// store and is in no ledger, so a day she has since cleared would keep
+  /// its flow there. The record's id is the day's own, so the delete can
+  /// be sent without knowing: a delete of an id the store does not hold is
+  /// a no-op. It is sent once for each save of such a day
+  /// ([HealthWritePassState.clearedThrough]), which is what every build
+  /// before this one did, and not at all while flow is switched off.
+  /// Returns what stopped it, or null.
+  Future<HealthPlatformResult?> _clearUnknownFlowRecords(
+    _Batch batch,
+    HealthGuardFacts facts,
+    Set<String>? grantedTypes,
+  ) async {
+    final unknown = batch.unknownFlowRecords;
+    if (unknown.isEmpty ||
+        !_canWriteType(grantedTypes, HealthWriteTypes.menstrualFlow)) {
+      return null;
+    }
+    final drift = await _authorityDrift(facts);
+    if (drift != null) return drift;
+    final result = await _platform.deleteRecords(facts, unknown.keys.toList());
+    if (result is! HealthPlatformAllowed) return result;
+    for (final version in unknown.values) {
+      _state = _state.withClearedThrough(version);
+    }
+    return null;
   }
 
   /// The records to delete, one list for each row that has any, and one
@@ -1835,6 +2082,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   Future<void> onUnbound() async {
     await _settings.set(SettingsKeys.healthSyncWrittenThroughMs, '');
     await _settings.set(SettingsKeys.healthSyncWrittenThroughUs, '');
+    await _settings.set(SettingsKeys.healthSyncWriteState, '');
+    _state = const HealthWritePassState();
     // Issues #930 and #936: what was written belongs to one binding,
     // exactly like the floor. A re-bind must never diff (and delete)
     // against the old profile's exports, and the rows describe a health
@@ -1859,9 +2108,18 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       (updatedAt.isAfter(floor) || _memory.knowsRow(rowId));
 
   /// Whether [recordId] has to be sent: the store does not hold it for its
-  /// row as it stands at [version].
-  bool _isDue(String recordId, DateTime version) =>
-      !_memory.holds(recordId, version);
+  /// row as it stands at [version], and it may be sent.
+  ///
+  /// A record the store holds at an older version may always be: it is
+  /// there already, and what it says is out of date. One that has never
+  /// been written may be only if its row was saved after its [type] was
+  /// last found switched off ([HealthWritePassState.admitsNew]): what was
+  /// logged while a type was off stays out when the type is switched on.
+  bool _isDue(String recordId, DateTime version, String type) {
+    if (_memory.holds(recordId, version)) return false;
+    return _memory.entryOf(recordId) != null ||
+        _state.admitsNew(type, version);
+  }
 
   /// Whether [source] marks a row that came *from* an OS health store (a
   /// day entry or an observation the import wrote) rather than one lunarlog

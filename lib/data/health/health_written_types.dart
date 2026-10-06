@@ -21,6 +21,8 @@
 /// Pure Dart (R14/R16) — no Flutter/drift imports.
 library;
 
+import 'package:lunarlog/domain/health/health_platform.dart'
+    show HealthWriteTypes;
 import 'package:lunarlog/domain/health/health_type_registry.dart';
 
 import 'health_symptom_mapping.dart';
@@ -85,3 +87,29 @@ Set<String> _healthKitCaseNames(String prefix) => {
 
 String _lowerFirst(String value) =>
     value.isEmpty ? value : value[0].toLowerCase() + value.substring(1);
+
+/// Every write type that is switched off, given what the store says is
+/// switched on (Issue #1581). [granted] is
+/// `HealthPlatformStore.grantedWriteTypes`' answer, or null when every
+/// type is on, and the names are the ones it uses: the five
+/// [HealthWriteTypes] the write pass names itself, and one for each
+/// symptom type, which HealthKit grants one by one (all of them at once
+/// reads as [HealthWriteTypes.symptoms]).
+Set<String> healthWriteTypesOff(Set<String>? granted) {
+  if (granted == null) return const {};
+  const named = [
+    HealthWriteTypes.menstrualFlow,
+    HealthWriteTypes.spotting,
+    HealthWriteTypes.cervicalMucus,
+    HealthWriteTypes.ovulationTest,
+    HealthWriteTypes.basalBodyTemperature,
+  ];
+  final everySymptom = granted.contains(HealthWriteTypes.symptoms);
+  return {
+    for (final type in named)
+      if (!granted.contains(type)) type,
+    if (!everySymptom)
+      for (final type in kSymptomHealthKitTypeIdentifiers.values)
+        if (!granted.contains(type)) type,
+  };
+}

@@ -65,6 +65,9 @@ class HealthExportMemory {
   Set<String> recordIdsOf(String sourceRowId) =>
       {...?_bySourceRow[sourceRowId]};
 
+  /// Every remembered record.
+  List<HealthExportLedgerEntry> get all => _byRecord.values.toList();
+
   /// Every remembered record of [kind].
   List<HealthExportLedgerEntry> ofKind(HealthExportLedgerKind kind) => [
         for (final entry in _byRecord.values)

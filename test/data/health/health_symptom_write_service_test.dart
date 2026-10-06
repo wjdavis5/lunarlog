@@ -88,12 +88,16 @@ class _FakePlatform implements HealthPlatformStore {
   @override
   Future<bool> isAvailable() async => true;
 
-  @override
-  Future<HealthPermissionStatus> permissionStatus() async =>
-      HealthPermissionStatus.granted;
+  /// Issue #1555: HealthKit grants symptom types one by one. Granted in
+  /// full unless a test says otherwise.
+  HealthPermissionStatus permission = HealthPermissionStatus.granted;
+  Set<String> grantedTypes = const {};
 
   @override
-  Future<Set<String>> grantedWriteTypes() async => const {};
+  Future<HealthPermissionStatus> permissionStatus() async => permission;
+
+  @override
+  Future<Set<String>> grantedWriteTypes() async => grantedTypes;
 
   // Issue #1491: the read-side probe is the background import's alone. A
   // write pass that read it would be gating writes on a read permission.
@@ -236,6 +240,7 @@ void main() {
   // decides what is sent, so one shared by the whole file made a later
   // test's day read as already written.
   late FakeHealthExportLedger ledger;
+  late DateTime clock;
 
   LocalHealthFlowWriteService buildService() => LocalHealthFlowWriteService(
     platform: platform,
@@ -248,7 +253,7 @@ void main() {
     guardiansForProfile: (_) async => [_ownerRow()],
     signedInUserId: () => _ownerId,
     ledger: ledger,
-    now: () => DateTime.utc(2026, 6, 1, 12),
+    now: () => clock,
   );
 
   final grant = DateTime.utc(2026, 6, 1, 12);
@@ -259,6 +264,7 @@ void main() {
   }
 
   setUp(() {
+    clock = DateTime.utc(2026, 6, 1, 12);
     ledger = FakeHealthExportLedger();
     platform = _FakePlatform();
     settings = FakeSettingsStore();
@@ -450,7 +456,8 @@ void main() {
   });
 
   test(
-    'a failing symptom write blocks the pass and leaves the cursor',
+    'a failing symptom write is reported, and its samples are not '
+    'remembered as written',
     () async {
       await seedGranted();
       platform.symptomResult = const HealthPlatformPermissionDenied();
@@ -465,11 +472,66 @@ void main() {
       final report = await buildService().syncNow();
 
       expect(report.blocked, isA<HealthPlatformPermissionDenied>());
+      expect(report.symptomSamplesWritten, 0);
       expect(
-        await settings.get(_cursorKey),
-        '${grant.millisecondsSinceEpoch}',
-        reason: 'a failed symptom write must not advance the cursor',
+        ledger.rows.map((row) => row.recordId),
+        isNot(contains('symptom-entry-2026-06-02-abdominalCramps')),
       );
+    },
+  );
+
+  // Issue #1581, with #1555: HealthKit grants symptom types one by one.
+  test(
+    'with one symptom type off, only the samples sent are remembered, and '
+    'the other is not sent when its type is switched on later',
+    () async {
+      await seedGranted();
+      platform.permission = HealthPermissionStatus.writingSome;
+      platform.grantedTypes = {'menstrualFlow', 'headache'};
+      final saved = grant.add(const Duration(hours: 1));
+      dayEntries.entries = [
+        _entry(
+          '2026-06-02',
+          tags: const ['cramps', 'headache'],
+          updatedAt: saved,
+        ),
+      ];
+      clock = saved.add(const Duration(minutes: 1));
+      final service = buildService();
+
+      final report = await service.syncNow();
+
+      expect(report.symptomSamplesWritten, 1);
+      expect(
+        platform.symptomWrites.single.samples
+            .map((sample) => sample.healthKitTypeIdentifier),
+        ['headache'],
+      );
+      final remembered = ledger.rows.map((row) => row.recordId);
+      expect(remembered, contains('symptom-entry-2026-06-02-headache'));
+      expect(
+        remembered,
+        isNot(contains('symptom-entry-2026-06-02-abdominalCramps')),
+      );
+
+      // Cramps was logged while its type was off: it stays out.
+      platform.permission = HealthPermissionStatus.granted;
+      clock = saved.add(const Duration(minutes: 2));
+      final after = await service.syncNow();
+      expect(after.symptomSamplesWritten, 0);
+      expect(platform.symptomWrites, hasLength(1));
+
+      // Saved again with the type on, both go: one is new, one is newer.
+      dayEntries.entries = [
+        _entry(
+          '2026-06-02',
+          tags: const ['cramps', 'headache'],
+          updatedAt: saved.add(const Duration(minutes: 3)),
+        ),
+      ];
+      clock = saved.add(const Duration(minutes: 4));
+      final later = await service.syncNow();
+      expect(later.symptomSamplesWritten, 2);
     },
   );
 

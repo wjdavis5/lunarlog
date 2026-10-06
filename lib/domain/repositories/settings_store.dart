@@ -129,6 +129,15 @@ abstract final class SettingsKeys {
   /// agree: `health_write_cursor.dart`.
   static const String healthSyncWrittenThroughUs = 'health_sync_written_through_us';
 
+  /// What the health write pass keeps between passes beside the floor and
+  /// the export ledger (Issue #1581): a floor for each write type that
+  /// has been found switched off, and how far no-flow days have been
+  /// cleared. Type names and times only, encoded by
+  /// `HealthWritePassState` (`lib/domain/health/health_write_pass_state
+  /// .dart`). Written only by the write service and cleared with
+  /// [healthSyncWrittenThroughMs].
+  static const String healthSyncWriteState = 'health_sync_write_state';
+
   /// The first-import consent marker for the device's OS health-store
   /// binding (Issue #1215): epoch milliseconds (UTC) of the completion of
   /// the one user-initiated import pass that opens this binding's

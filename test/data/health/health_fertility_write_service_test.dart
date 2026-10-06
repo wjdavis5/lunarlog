@@ -528,8 +528,8 @@ void main() {
     );
   });
 
-  test('a failing fertility write blocks the pass and leaves the cursor',
-      () async {
+  test('a failing fertility write is reported, not remembered, and sent '
+      'again on the next pass', () async {
     await seedGranted();
     platform.fertilityResult = const HealthPlatformPermissionDenied();
     dayEntries.entries = [
@@ -539,14 +539,46 @@ void main() {
         updatedAt: grant.add(const Duration(hours: 1)),
       ),
     ];
+    observations.observations = [
+      _bbt('2026-06-02', updatedAt: grant.add(const Duration(hours: 1))),
+    ];
+    final service = buildService();
+
+    final report = await service.syncNow();
+
+    expect(report.blocked, isA<HealthPlatformPermissionDenied>());
+    expect(report.cervicalMucusSamplesWritten, 0);
+    expect(report.basalBodyTemperatureSamplesWritten, 0);
+    expect(ledger.rows, isEmpty,
+        reason: 'a write the store refused is not remembered');
+
+    platform.fertilityResult = const HealthPlatformAllowed();
+    final retried = await service.syncNow();
+    expect(retried.blocked, isNull);
+    expect(retried.cervicalMucusSamplesWritten, 1);
+    expect(retried.basalBodyTemperatureSamplesWritten, 1);
+    expect(platform.cervicalWrites, hasLength(2));
+    expect(platform.bbtWrites, hasLength(2));
+  });
+
+  test('a platform that answers unavailable is not remembered as written '
+      'either, and is asked once a pass', () async {
+    await seedGranted();
+    platform.fertilityResult = const HealthPlatformUnavailable();
+    dayEntries.entries = [
+      for (final day in ['2026-06-02', '2026-06-03'])
+        _entry(
+          day,
+          tags: const ['creamy'],
+          updatedAt: grant.add(const Duration(hours: 1)),
+        ),
+    ];
 
     final report = await buildService().syncNow();
 
-    expect(report.blocked, isA<HealthPlatformPermissionDenied>());
-    expect(
-      await settings.get(_cursorKey),
-      '${grant.millisecondsSinceEpoch}',
-      reason: 'a failed fertility write must not advance the cursor',
-    );
+    expect(report.blocked, isNull);
+    expect(platform.cervicalWrites, hasLength(1),
+        reason: 'the answer would be the same for the second day');
+    expect(ledger.rows, isEmpty);
   });
 }

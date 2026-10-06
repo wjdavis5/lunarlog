@@ -17,6 +17,7 @@ import 'package:lunarlog/domain/health/health_export_ledger.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_policy.dart';
+import 'package:lunarlog/domain/health/health_write_pass_state.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -342,6 +343,23 @@ class _BbtRecordingPlatform extends _FakePlatform {
   }
 }
 
+/// A [_FakePlatform] whose flow write does not answer until [release] is
+/// called, to hold a pass open (Issue #1581).
+class _GatedPlatform extends _FakePlatform {
+  final Completer<void> _gate = Completer<void>();
+
+  void release() => _gate.complete();
+
+  @override
+  Future<HealthPlatformResult> writeMenstrualFlow(
+    HealthMenstrualFlowWrite write,
+  ) async {
+    flowWrites.add(write);
+    await _gate.future;
+    return const HealthPlatformResult.allowed();
+  }
+}
+
 class _FakeProfiles implements ProfilesRepository {
   Profile? profile = _profile();
 
@@ -372,6 +390,9 @@ class _FlakyProfiles implements ProfilesRepository {
 
 class _FakeDayEntries implements DayEntriesRepository {
   List<DayEntry> entries = const [];
+
+  /// Thrown by the next [listForProfile], once.
+  Object? failNextList;
   // Issue #548: a per-test fake with no close() call — the test process is
   // short-lived and nothing in this file ever emits on it, so there is no
   // real leak to guard against.
@@ -379,7 +400,14 @@ class _FakeDayEntries implements DayEntriesRepository {
   final _changes = StreamController<List<DayEntry>>.broadcast();
 
   @override
-  Future<List<DayEntry>> listForProfile(String profileId) async => entries;
+  Future<List<DayEntry>> listForProfile(String profileId) async {
+    final failure = failNextList;
+    if (failure != null) {
+      failNextList = null;
+      throw failure;
+    }
+    return entries;
+  }
 
   @override
   Stream<List<DayEntry>> watchForProfile(
@@ -741,11 +769,11 @@ void main() {
 
       // An install that upgrades from the moving cursor. Its floor is where
       // the cursor stood, in milliseconds alone, which is a little before
-      // the newest row that build wrote. The ledger says the row was
-      // written, at the time of the export (how those builds stamped it),
-      // so it is not sent again.
-      test('a cursor an earlier build stored, in milliseconds alone, does '
-          'not send the row that build wrote', () async {
+      // the newest row that build wrote. A row after the floor is how one
+      // that build still owed looks, so it is sent once more, as it was on
+      // every pass before #1577, and then no more.
+      test('a cursor an earlier build stored, in milliseconds alone, sends '
+          'the newest row once more and then no more', () async {
         await settings.set(_bindingKey, _profileId);
         await settings.set(_cursorKey, '${savedAt.millisecondsSinceEpoch}');
         dayEntries.entries = [_entry('2026-06-02', FlowLevel.medium, savedAt)];
@@ -761,7 +789,10 @@ void main() {
         ]);
 
         expect((await buildService().syncNow()).blocked, isNull);
-        expect(platform.flowWrites, isEmpty);
+        expect(platform.flowWrites, hasLength(1));
+
+        expect((await buildService().syncNow()).blocked, isNull);
+        expect(platform.flowWrites, hasLength(1));
       });
 
       test('and a row that build had not written is sent once', () async {
@@ -956,8 +987,8 @@ void main() {
       expect(write.flow, HealthFlowValue.heavy);
     });
 
-    test('none and notBleeding produce no sample, and no delete either: '
-        'nothing was written for them', () async {
+    test('none and notBleeding produce no sample, and each is asked to be '
+        'deleted once, in case an earlier binding wrote it', () async {
       final grant = DateTime.utc(2026, 6, 1, 12);
       await seedGranted(grant);
       dayEntries.entries = [
@@ -966,19 +997,28 @@ void main() {
         _entry('2026-06-03', FlowLevel.notBleeding,
             grant.add(const Duration(hours: 2))),
       ];
+      final service = buildService();
 
-      final report = await buildService().syncNow();
+      final report = await service.syncNow();
 
       expect(report.samplesWritten, 0);
       expect(report.daysWithoutSample, 2);
       expect(platform.flowWrites, isEmpty);
       expect(platform.markerWrites, isEmpty);
-      // Issue #1581: the ledger says what is in the store, so a day that
-      // never had a record there is not asked to give one up. Before, every
-      // such day sent a delete, on the pass after each save.
+      // Issue #1581: nothing says these were ever in the store, so they do
+      // not count as taken out of it, and nothing is remembered. The delete
+      // is sent blind, once, as it always was (issue #619, LLA-024).
       expect(report.samplesReconciled, 0);
-      expect(platform.deleteCalls, isEmpty);
+      expect(platform.deleteCalls, [
+        ['entry-2026-06-02', 'entry-2026-06-03'],
+      ]);
       expect(ledger.rows, isEmpty);
+
+      // Not on every pass: before #1581 it was sent again whenever the day
+      // was saved, and after it a pass looks at these days every time.
+      await service.syncNow();
+      await buildService().syncNow();
+      expect(platform.deleteCalls, hasLength(1));
     });
 
     test(
@@ -2837,12 +2877,12 @@ void main() {
       expect(platform.flowWrites, hasLength(1));
     });
 
-    // Issue #1581. These three used to end by checking that the cursor
-    // had moved past the rows that were passed over, which meant they were
-    // never sent, and an edit made while a type was off was lost. Now a
-    // record waits for its type.
-    test('when menstrualFlow is off, flow and period writes wait, and are '
-        'sent once it is back on', () async {
+    // Issue #1581. Forward-only holds for each type: what was logged
+    // while a type was off stays out when the type is switched on, as it
+    // did when a cursor moved past it. What changed is the other case,
+    // further down: a correction to a record already in the store.
+    test('when menstrualFlow is off, a day logged meanwhile is not sent when '
+        'it is switched on; a day logged after that is', () async {
       await seedGranted(grant);
       platform.permission = HealthPermissionStatus.writingSome;
       platform.grantedTypes = {'spotting'};
@@ -2850,6 +2890,7 @@ void main() {
       dayEntries.entries = [
         _entry('2026-06-02', FlowLevel.heavy, t1),
       ];
+      clock = t1.add(const Duration(minutes: 1));
       final service = buildService();
 
       final report = await service.syncNow();
@@ -2862,20 +2903,36 @@ void main() {
       expect(ledger.rows, isEmpty,
           reason: 'nothing is remembered as written that was not');
 
+      // Switched on. The day was logged while it was off.
       platform.permission = HealthPermissionStatus.granted;
+      clock = t1.add(const Duration(minutes: 2));
       final after = await service.syncNow();
-      expect(after.samplesWritten, 1);
-      expect(after.periodRecordsWritten, 1);
-      expect(platform.flowWrites.single.recordId, 'entry-2026-06-02');
+      expect(after.samplesWritten, 0);
+      expect(after.periodRecordsWritten, 0,
+          reason: 'nor does that period get a record');
+      expect(platform.flowWrites, isEmpty);
+      expect(platform.periodWrites, isEmpty);
+
+      // A day logged from here on is written, with its own period.
+      dayEntries.entries = [
+        ...dayEntries.entries,
+        _entry('2026-06-20', FlowLevel.medium,
+            t1.add(const Duration(minutes: 3))),
+      ];
+      clock = t1.add(const Duration(minutes: 4));
+      final later = await service.syncNow();
+      expect(later.samplesWritten, 1);
+      expect(platform.flowWrites.single.recordId, 'entry-2026-06-20');
+      expect(platform.periodWrites.single.start, LocalDate.fromIso('2026-06-20'));
     });
 
     test('an edit made while its type is off is sent when the type is back '
-        'on', () async {
+        'on: the store already has the record, and it is out of date',
+        () async {
       await seedGranted(grant);
-      dayEntries.entries = [
-        _entry('2026-06-02', FlowLevel.heavy,
-            grant.add(const Duration(hours: 1))),
-      ];
+      final t1 = grant.add(const Duration(hours: 1));
+      dayEntries.entries = [_entry('2026-06-02', FlowLevel.heavy, t1)];
+      clock = t1.add(const Duration(minutes: 1));
       final service = buildService();
       await service.syncNow();
       expect(platform.flowWrites.single.flow, HealthFlowValue.heavy);
@@ -2885,14 +2942,16 @@ void main() {
       platform.grantedTypes = {'spotting'};
       dayEntries.entries = [
         _entry('2026-06-02', FlowLevel.light,
-            grant.add(const Duration(hours: 2))),
+            t1.add(const Duration(minutes: 2))),
       ];
+      clock = t1.add(const Duration(minutes: 3));
       await service.syncNow();
       await service.syncNow();
       expect(platform.flowWrites, hasLength(1));
 
       // Back on: the store is brought up to what she logged.
       platform.permission = HealthPermissionStatus.granted;
+      clock = t1.add(const Duration(minutes: 4));
       final after = await service.syncNow();
       expect(after.samplesWritten, 1);
       expect(platform.flowWrites.last.flow, HealthFlowValue.light);
@@ -2902,8 +2961,9 @@ void main() {
       );
     });
 
-    test('when spotting is off, spotting marker writes wait while flow '
-        'writes succeed', () async {
+    test('when spotting is off, a spotting entry logged meanwhile is not '
+        'sent when it is switched on, while flow is written throughout',
+        () async {
       await seedGranted(grant);
       platform.permission = HealthPermissionStatus.writingSome;
       platform.grantedTypes = {'menstrualFlow'};
@@ -2915,6 +2975,7 @@ void main() {
       observations.observations = [
         _spotting('2026-06-03', t2),
       ];
+      clock = t2.add(const Duration(minutes: 1));
       final service = buildService();
 
       final report = await service.syncNow();
@@ -2925,27 +2986,39 @@ void main() {
       expect(platform.markerWrites, isEmpty);
 
       platform.grantedTypes = {'menstrualFlow', 'spotting'};
+      clock = t2.add(const Duration(minutes: 2));
       final after = await service.syncNow();
-      expect(after.samplesWritten, 1);
-      expect(platform.markerWrites.single.recordId, 'spot-2026-06-03');
+      expect(after.samplesWritten, 0);
+      expect(platform.markerWrites, isEmpty);
+
+      observations.observations = [
+        ...observations.observations,
+        _spotting('2026-06-10', t2.add(const Duration(minutes: 3))),
+      ];
+      clock = t2.add(const Duration(minutes: 4));
+      final later = await service.syncNow();
+      expect(later.samplesWritten, 1);
+      expect(platform.markerWrites.single.recordId, 'spot-2026-06-10');
       expect(platform.flowWrites, hasLength(1),
           reason: 'the day that was written is not sent again');
     });
 
-    test('when BBT, cervical mucus, and ovulation are off, those writes '
-        'wait while flow succeeds', () async {
+    test('when BBT, cervical mucus, and ovulation are off, what was logged '
+        'meanwhile is not sent when they are switched on; a later save of '
+        'the day is', () async {
       await seedGranted(grant);
       platform.permission = HealthPermissionStatus.writingSome;
       platform.grantedTypes = {'menstrualFlow'};
       final t1 = grant.add(const Duration(hours: 1));
       final t2 = grant.add(const Duration(hours: 2));
+      const tags = ['egg_white', 'ovulation_positive'];
       dayEntries.entries = [
-        _entry('2026-06-02', FlowLevel.medium, t1,
-            tags: const ['egg_white', 'ovulation_positive']),
+        _entry('2026-06-02', FlowLevel.medium, t1, tags: tags),
       ];
       observations.observations = [
         _bbt('2026-06-03', 36.6, t2),
       ];
+      clock = t2.add(const Duration(minutes: 1));
       final service = buildService();
 
       final report = await service.syncNow();
@@ -2957,11 +3030,24 @@ void main() {
       expect(report.basalBodyTemperatureSamplesWritten, 0);
 
       platform.permission = HealthPermissionStatus.granted;
+      clock = t2.add(const Duration(minutes: 2));
       final after = await service.syncNow();
       expect(after.samplesWritten, 0);
-      expect(after.cervicalMucusSamplesWritten, 1);
-      expect(after.ovulationTestSamplesWritten, 1);
-      expect(after.basalBodyTemperatureSamplesWritten, 1);
+      expect(after.cervicalMucusSamplesWritten, 0);
+      expect(after.ovulationTestSamplesWritten, 0);
+      expect(after.basalBodyTemperatureSamplesWritten, 0);
+
+      // She saves the day and the reading again, with the types on.
+      final t3 = t2.add(const Duration(minutes: 3));
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium, t3, tags: tags),
+      ];
+      observations.observations = [_bbt('2026-06-03', 36.7, t3)];
+      clock = t3.add(const Duration(minutes: 1));
+      final later = await service.syncNow();
+      expect(later.cervicalMucusSamplesWritten, 1);
+      expect(later.ovulationTestSamplesWritten, 1);
+      expect(later.basalBodyTemperatureSamplesWritten, 1);
     });
   });
 
@@ -3090,6 +3176,8 @@ void main() {
       await service.syncNow();
       expect(platform.markerWrites, hasLength(1));
 
+      platform.deleteCalls.clear();
+
       dayEntries.entries = [_entry('2026-06-10', FlowLevel.medium, at(20))];
       final report = await service.syncNow();
       expect(platform.flowWrites.single.recordId, 'entry-2026-06-10');
@@ -3102,6 +3190,18 @@ void main() {
       dayEntries.entries = [_entry('2026-06-10', FlowLevel.none, at(30))];
       await service.syncNow();
       expect(platform.markerWrites, hasLength(2));
+      // The store has held this record and let it go, and the spotting
+      // row itself has not changed. It is given a later version than
+      // before, the day's, so the store cannot take it for one it has
+      // already seen.
+      expect(
+        platform.markerWrites.last.recordVersionMs,
+        at(30).millisecondsSinceEpoch,
+      );
+      expect(
+        platform.markerWrites.first.recordVersionMs,
+        at(10).millisecondsSinceEpoch,
+      );
     });
 
     test('a row that maps to no sample is counted on every pass', () async {
@@ -3111,7 +3211,8 @@ void main() {
 
       expect((await service.syncNow()).daysWithoutSample, 1);
       expect((await service.syncNow()).daysWithoutSample, 1);
-      expect(platform.deleteCalls, isEmpty);
+      expect(platform.deleteCalls, hasLength(1),
+          reason: 'asked to be deleted once, not on every pass');
     });
 
     test('a record waiting for its type does not send the row\'s other '
@@ -3177,6 +3278,7 @@ void main() {
       final service = buildService();
       await service.syncNow();
       expect(platform.markerWrites, hasLength(1));
+      platform.deleteCalls.clear();
 
       platform.permission = HealthPermissionStatus.writingSome;
       platform.grantedTypes = {'menstrualFlow'};
@@ -3245,13 +3347,16 @@ void main() {
       expect(report.blocked, isNull);
       expect(report.symptomSamplesWritten, 0);
       expect(platform.flowWrites, isEmpty);
-      expect(platform.deleteCalls, [
-        ['entry-2026-06-10'],
-      ]);
+      // That build asked for the day's flow record to be deleted when it
+      // looked at the day, so there is nothing to ask the store: the name
+      // is dropped from the ledger.
+      expect(platform.deleteCalls, isEmpty);
       expect(ledger.rows.map((row) => row.recordId), [symptomId]);
+      expect(ledger.rows.single.exportedAt, at(10),
+          reason: 're-stamped with the row\'s own time');
 
       await buildService().syncNow();
-      expect(platform.deleteCalls, hasLength(1));
+      expect(platform.deleteCalls, isEmpty);
 
       // And an edit to that day, later, is sent.
       dayEntries.entries = [
@@ -3299,6 +3404,273 @@ void main() {
       expect(platform.deleteCalls, isEmpty);
       expect(platform.periodWrites, isEmpty);
       expect(platform.flowWrites, isEmpty);
+    });
+
+    // That build filed a row's records whether or not the write went
+    // through, and held its cursor when one did not. So a row after the
+    // floor was still owed.
+    test('a ledger from an earlier build: a row that build still owed is '
+        'sent, whatever its ledger says', () async {
+      await settings.set(_bindingKey, _profileId);
+      await settings.set(_cursorKey, '${at(10).millisecondsSinceEpoch}');
+      dayEntries.entries = [
+        _entry('2026-06-10', FlowLevel.medium, at(10)),
+        _entry('2026-06-20', FlowLevel.medium, at(20)),
+      ];
+      await ledger.record([
+        for (final day in ['2026-06-10', '2026-06-20'])
+          HealthExportLedgerEntry(
+            recordId: 'entry-$day',
+            profileId: _profileId,
+            sourceRowId: 'entry-$day',
+            kind: HealthExportLedgerKind.entry,
+            localDate: day,
+            exportedAt: at(21),
+          ),
+      ]);
+
+      final report = await buildService().syncNow();
+
+      expect(report.samplesWritten, 1);
+      expect(platform.flowWrites.single.recordId, 'entry-2026-06-20');
+      expect(
+        ledger.rows
+            .singleWhere((row) => row.recordId == 'entry-2026-06-20')
+            .exportedAt,
+        at(20),
+      );
+    });
+
+    // The earlier build stamped the ledger with the device's clock at the
+    // time of the pass. On a phone whose clock trails the server that is
+    // before the time the storage layer gave the row.
+    test('a ledger from an earlier build: a stamp older than the row does '
+        'not send a written row again', () async {
+      await settings.set(_bindingKey, _profileId);
+      await settings.set(_cursorKey, '${at(10).millisecondsSinceEpoch}');
+      dayEntries.entries = [_entry('2026-06-10', FlowLevel.medium, at(10))];
+      await ledger.record([
+        HealthExportLedgerEntry(
+          recordId: 'entry-2026-06-10',
+          profileId: _profileId,
+          sourceRowId: 'entry-2026-06-10',
+          kind: HealthExportLedgerKind.entry,
+          localDate: '2026-06-10',
+          exportedAt: at(9),
+        ),
+      ]);
+
+      await buildService().syncNow();
+      await buildService().syncNow();
+
+      expect(platform.flowWrites, isEmpty);
+    });
+
+    test('the earlier ledger is re-stamped once: the pass leaves a note that '
+        'it has been, and unbinding clears it', () async {
+      await seedGranted(grant);
+      expect(await settings.get(SettingsKeys.healthSyncWriteState), isNull);
+      final service = buildService();
+
+      await service.syncNow();
+
+      final stored = await settings.get(SettingsKeys.healthSyncWriteState);
+      expect(HealthWritePassState.decode(stored), isNotNull);
+      expect(HealthWritePassState.decode(stored)!.clearedThrough, grant);
+
+      await service.onUnbound();
+      expect(await settings.get(SettingsKeys.healthSyncWriteState), '');
+    });
+
+    // The ledger says what this binding wrote. A record written under an
+    // earlier binding is in the store and in no ledger.
+    group('a no-flow day the ledger knows nothing of', () {
+      Future<LocalHealthFlowWriteService> boundAgainAfterWriting() async {
+        await seedGranted(grant);
+        dayEntries.entries = [_entry('2026-06-10', FlowLevel.medium, at(10))];
+        clock = at(11);
+        final service = buildService();
+        await service.syncNow();
+        expect(platform.flowWrites, hasLength(1));
+        await service.onUnbound();
+        expect(ledger.rows, isEmpty);
+        await seedGranted(at(20));
+        platform.deleteCalls.clear();
+        return service;
+      }
+
+      test('cleared after binding again, it is asked to be deleted once',
+          () async {
+        final service = await boundAgainAfterWriting();
+        dayEntries.entries = [_entry('2026-06-10', FlowLevel.none, at(30))];
+        clock = at(31);
+
+        final report = await service.syncNow();
+
+        expect(report.blocked, isNull);
+        expect(platform.deleteCalls, [
+          ['entry-2026-06-10'],
+        ]);
+        await service.syncNow();
+        await buildService().syncNow();
+        expect(platform.deleteCalls, hasLength(1));
+      });
+
+      test('not while flow is switched off, and then once it is back on',
+          () async {
+        final service = await boundAgainAfterWriting();
+        platform.permission = HealthPermissionStatus.writingSome;
+        platform.grantedTypes = {'spotting'};
+        dayEntries.entries = [_entry('2026-06-10', FlowLevel.none, at(30))];
+        clock = at(31);
+
+        expect((await service.syncNow()).blocked, isNull);
+        expect(platform.deleteCalls, isEmpty);
+
+        platform.permission = HealthPermissionStatus.granted;
+        clock = at(32);
+        await service.syncNow();
+        expect(platform.deleteCalls, [
+          ['entry-2026-06-10'],
+        ]);
+      });
+
+      test('a delete the store refused is asked again', () async {
+        final service = await boundAgainAfterWriting();
+        dayEntries.entries = [_entry('2026-06-10', FlowLevel.none, at(30))];
+        clock = at(31);
+        platform.deleteResult = const HealthPlatformResult.failed('no');
+
+        expect((await service.syncNow()).blocked, isA<HealthPlatformFailed>());
+
+        platform.deleteResult = const HealthPlatformAllowed();
+        expect((await service.syncNow()).blocked, isNull);
+        expect(platform.deleteCalls, hasLength(2));
+        await service.syncNow();
+        expect(platform.deleteCalls, hasLength(2));
+      });
+    });
+
+    test('a temperature whose type is off is not asked to be deleted, and '
+        'is once the type is back on', () async {
+      await seedGranted(grant);
+      dayEntries.entries = [_entry('2026-06-10', FlowLevel.medium, at(10))];
+      observations.observations = [_bbt('2026-06-10', 36.6, at(10))];
+      clock = at(11);
+      final service = buildService();
+      expect((await service.syncNow()).basalBodyTemperatureSamplesWritten, 1);
+
+      // The type is switched off, and she clears the reading.
+      platform.permission = HealthPermissionStatus.writingSome;
+      platform.grantedTypes = {'menstrualFlow', 'spotting'};
+      observations.observations = [];
+      clock = at(21);
+      expect((await service.syncNow()).blocked, isNull);
+      expect(platform.deleteCalls, isEmpty);
+
+      platform.permission = HealthPermissionStatus.granted;
+      clock = at(22);
+      await service.syncNow();
+      expect(platform.deleteCalls, [
+        [healthBbtRecordId('obs-bbt-2026-06-10')],
+      ]);
+    });
+
+    // Never written back, whatever the ledger says: a row lunarlog wrote
+    // and the import later took over has a health store as its source.
+    test('a row that came from the health store is left alone even when the '
+        'ledger knows it', () async {
+      await seedGranted(grant);
+      dayEntries.entries = [_entry('2026-06-10', FlowLevel.medium, at(10))];
+      clock = at(11);
+      final service = buildService();
+      await service.syncNow();
+      expect(platform.flowWrites, hasLength(1));
+      final periodWrites = platform.periodWrites.length;
+
+      dayEntries.entries = [
+        _entry('2026-06-10', FlowLevel.none, at(20),
+            source: DayEntrySource.healthConnect),
+      ];
+      clock = at(21);
+      await service.syncNow();
+
+      expect(platform.flowWrites, hasLength(1));
+      expect(platform.periodWrites, hasLength(periodWrites));
+      expect(
+        platform.deleteCalls.expand((ids) => ids),
+        isNot(contains('entry-2026-06-10')),
+      );
+      expect(
+        ledger.rows.map((row) => row.recordId),
+        contains('entry-2026-06-10'),
+      );
+    });
+
+    // Two passes side by side would each decide from the ledger before the
+    // other had written to it.
+    group('one pass at a time', () {
+      late _GatedPlatform gated;
+
+      setUp(() async {
+        await seedGranted(grant);
+        gated = _GatedPlatform();
+        platform = gated;
+        dayEntries.entries = [_entry('2026-06-10', FlowLevel.medium, at(10))];
+      });
+
+      test('requests that arrive during a pass share the next one, and '
+          'nothing is sent twice', () async {
+        final service = buildService();
+
+        final first = service.syncNow();
+        final second = service.syncNow();
+        final third = service.syncNow();
+        expect(identical(second, third), isTrue);
+        expect(identical(first, second), isFalse);
+        await pumpEventQueue();
+        expect(gated.flowWrites, hasLength(1), reason: 'only one has begun');
+
+        gated.release();
+        expect((await first).samplesWritten, 1);
+        expect((await second).samplesWritten, 0);
+        expect(gated.flowWrites, hasLength(1));
+      });
+
+      test('the next pass sees what was saved while the first ran', () async {
+        final service = buildService();
+        final first = service.syncNow();
+        await pumpEventQueue();
+
+        dayEntries.entries = [
+          ...dayEntries.entries,
+          _entry('2026-06-20', FlowLevel.light, at(20)),
+        ];
+        final second = service.syncNow();
+        gated.release();
+
+        expect((await first).samplesWritten, 1);
+        expect((await second).samplesWritten, 1);
+        expect(gated.flowWrites.last.recordId, 'entry-2026-06-20');
+
+        // And with nothing running, a request starts its own pass.
+        final third = service.syncNow();
+        expect(identical(third, second), isFalse);
+        expect((await third).samplesWritten, 0);
+      });
+
+      test('a pass that throws does not hold up the one behind it', () async {
+        final service = buildService();
+        dayEntries.failNextList = StateError('storage');
+
+        final first = service.syncNow();
+        final second = service.syncNow();
+        gated.release();
+
+        await expectLater(first, throwsStateError);
+        expect((await second).samplesWritten, 1);
+        expect((await service.syncNow()).samplesWritten, 0);
+      });
     });
   });
 
