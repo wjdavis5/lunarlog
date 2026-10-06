@@ -427,10 +427,6 @@ HealthFlowSample? _decodeFlowSample(Object? entry) {
     return null;
   }
   final offsetSeconds = (entry['zoneOffsetSeconds'] as num?)?.toInt();
-  // Issue #1559: optional, and sent by Health Connect alone. Anything but
-  // a number is read as absent: without it the import keeps what is there.
-  final rawModifiedAt = entry['modifiedAtMs'];
-  final modifiedAtMs = rawModifiedAt is num ? rawModifiedAt.toInt() : null;
   return HealthFlowSample(
     recordId: recordId,
     kind: kind,
@@ -442,10 +438,18 @@ HealthFlowSample? _decodeFlowSample(Object? entry) {
         offsetSeconds == null ? null : Duration(seconds: offsetSeconds),
     offsetInferred: entry['zoneOffsetInferred'] as bool? ?? false,
     externalUuid: entry['externalUuid'] as String?,
-    modifiedAt: modifiedAtMs == null
-        ? null
-        : DateTime.fromMillisecondsSinceEpoch(modifiedAtMs, isUtc: true),
+    modifiedAt: _optionalInstant(entry['modifiedAtMs']),
   );
+}
+
+/// The instant an optional epoch-millisecond wire value names (Issue
+/// #1559: `modifiedAtMs`, which Health Connect alone sends). Anything but
+/// a number is read as absent, and without it the import keeps what is
+/// there. Kept out of [_decodeFlowSample] so that function stays under
+/// the per-method complexity gate.
+DateTime? _optionalInstant(Object? raw) {
+  if (raw is! num) return null;
+  return DateTime.fromMillisecondsSinceEpoch(raw.toInt(), isUtc: true);
 }
 
 /// The window-args half of `readMenstrualFlowPage` (Issue #992): the
