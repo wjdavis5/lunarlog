@@ -4298,38 +4298,162 @@ void main() {
         expect(platform.deleteCalls, hasLength(1));
       });
 
-      // A spotting entry's record is a marker, or a light flow sample when
-      // the day falls inside a period, and the ledger does not say which.
-      test('a spotting entry\'s record stays remembered when either of its '
-          'two types was passed over', () async {
+      // When a spotting record's ledger row has no summary (written by an
+      // earlier build before Issue #1591), what type was written is unknown,
+      // so either type being passed over keeps it remembered.
+      test('a spotting entry\'s record with no summary stays remembered '
+          'when either of its two types was passed over', () async {
         for (final skipped in ['menstrualFlow', 'spotting']) {
           ledger = FakeHealthExportLedger();
           settings = FakeSettingsStore();
           platform = _FakePlatform();
           await seedGranted(grant);
-          dayEntries.entries = [_entry('2026-06-10', FlowLevel.none, at(10))];
-          observations.observations = [_spotting('2026-06-10', at(10))];
-          clock = at(11);
-          final service = buildService();
-          await service.syncNow();
-          expect(platform.markerWrites, hasLength(1));
-
-          // The day is given a flow, so the marker should go.
+          await ledger.record([
+            HealthExportLedgerEntry(
+              profileId: _profileId,
+              recordId: 'spot-obs-1',
+              sourceRowId: 'obs-1',
+              kind: HealthExportLedgerKind.spotting,
+              localDate: '2026-06-10',
+              exportedAt: at(10),
+              payloadSummary: null,
+            ),
+          ]);
+          // The observation is gone, so the spotting record is an orphan.
+          observations.observations = [];
+          dayEntries.entries = [];
           platform.deleteResult = HealthPlatformResult.partial({skipped});
-          dayEntries.entries = [
-            _entry('2026-06-10', FlowLevel.medium, at(20)),
-          ];
           clock = at(21);
+          final service = buildService();
           final report = await service.syncNow();
 
           expect(report.blocked, isA<HealthPlatformPartial>(),
               reason: skipped);
           expect(
             ledger.rows.map((row) => row.recordId),
-            contains('spot-2026-06-10'),
+            contains('spot-obs-1'),
             reason: skipped,
           );
         }
+      });
+
+      // Issue #1644: with a known payload summary, only a skip of the type
+      // actually written counts as passed over; skipping the other type lets
+      // the delete through and forgets the record.
+      test('a spotting marker with menstrualFlow skipped is deleted and '
+          'forgotten, but stays remembered when spotting was skipped (issue #1644)',
+          () async {
+        // 1. menstrualFlow skipped: delete succeeds and record is forgotten.
+        ledger = FakeHealthExportLedger();
+        settings = FakeSettingsStore();
+        platform = _FakePlatform();
+        await seedGranted(grant);
+        observations.observations = [_spotting('2026-06-10', at(10))];
+        clock = at(11);
+        var service = buildService();
+        await service.syncNow();
+        expect(platform.markerWrites, hasLength(1));
+        expect(ledger.rows.single.payloadSummary, 'marker');
+
+        platform.deleteResult =
+            const HealthPlatformResult.partial({'menstrualFlow'});
+        observations.observations = [];
+        clock = at(21);
+        var report = await service.syncNow();
+
+        expect(report.blocked, isNull);
+        expect(report.samplesReconciled, 1);
+        expect(ledger.rows, isEmpty);
+        expect(platform.deleteCalls, hasLength(1));
+
+        // Subsequent pass sends nothing.
+        await service.syncNow();
+        expect(platform.deleteCalls, hasLength(1));
+
+        // 2. spotting skipped: record stays remembered and failure is reported.
+        ledger = FakeHealthExportLedger();
+        settings = FakeSettingsStore();
+        platform = _FakePlatform();
+        await seedGranted(grant);
+        observations.observations = [_spotting('2026-06-10', at(10))];
+        clock = at(11);
+        service = buildService();
+        await service.syncNow();
+        expect(platform.markerWrites, hasLength(1));
+
+        platform.deleteResult =
+            const HealthPlatformResult.partial({'spotting'});
+        observations.observations = [];
+        clock = at(21);
+        report = await service.syncNow();
+
+        expect(report.blocked, isA<HealthPlatformPartial>());
+        expect(
+          ledger.rows.map((row) => row.recordId),
+          contains('spot-2026-06-10'),
+        );
+      });
+
+      test('a spotting flow sample with spotting skipped is deleted and '
+          'forgotten, but stays remembered when menstrualFlow was skipped',
+          () async {
+        // 1. spotting skipped: flow sample delete succeeds and is forgotten.
+        ledger = FakeHealthExportLedger();
+        settings = FakeSettingsStore();
+        platform = _FakePlatform();
+        await seedGranted(grant);
+        dayEntries.entries = [
+          _entry('2026-06-09', FlowLevel.medium, at(10)),
+          _entry('2026-06-11', FlowLevel.medium, at(10)),
+        ];
+        observations.observations = [_spotting('2026-06-10', at(10))];
+        clock = at(11);
+        var service = buildService();
+        await service.syncNow();
+        expect(
+          ledger.rows
+              .firstWhere((r) => r.recordId == 'spot-2026-06-10')
+              .payloadSummary,
+          startsWith('flow:'),
+        );
+
+        platform.deleteResult =
+            const HealthPlatformResult.partial({'spotting'});
+        observations.observations = [];
+        clock = at(21);
+        var report = await service.syncNow();
+
+        expect(report.blocked, isNull);
+        expect(
+          ledger.rows.map((r) => r.recordId),
+          isNot(contains('spot-2026-06-10')),
+        );
+
+        // 2. menstrualFlow skipped: flow sample stays remembered.
+        ledger = FakeHealthExportLedger();
+        settings = FakeSettingsStore();
+        platform = _FakePlatform();
+        await seedGranted(grant);
+        dayEntries.entries = [
+          _entry('2026-06-09', FlowLevel.medium, at(10)),
+          _entry('2026-06-11', FlowLevel.medium, at(10)),
+        ];
+        observations.observations = [_spotting('2026-06-10', at(10))];
+        clock = at(11);
+        service = buildService();
+        await service.syncNow();
+
+        platform.deleteResult =
+            const HealthPlatformResult.partial({'menstrualFlow'});
+        observations.observations = [];
+        clock = at(21);
+        report = await service.syncNow();
+
+        expect(report.blocked, isA<HealthPlatformPartial>());
+        expect(
+          ledger.rows.map((r) => r.recordId),
+          contains('spot-2026-06-10'),
+        );
       });
     });
 

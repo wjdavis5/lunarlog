@@ -285,10 +285,8 @@ void main() {
         healthRecordMatchesSkippedType('01ARZ3NDEKTSV4RRFFQ69G5FBC', {'spotting'}, isSpotting: true),
         isTrue,
       );
-      // Issue #1589: a spotting entry's record is a light flow sample
-      // when its day falls inside a period, and nothing kept on the
-      // phone says which it was. Either type passed over may have left
-      // it in the store.
+      // Issue #1589: a spotting entry's record without summary may be either
+      // type, so either type passed over leaves it remembered.
       expect(
         healthRecordMatchesSkippedType('01ARZ3NDEKTSV4RRFFQ69G5FBC', {'menstrualFlow'}, isSpotting: true),
         isTrue,
@@ -296,6 +294,44 @@ void main() {
       expect(
         healthRecordMatchesSkippedType('01ARZ3NDEKTSV4RRFFQ69G5FBC', {'cervicalMucus'}, isSpotting: true),
         isFalse,
+      );
+      // Issue #1644: with a known payload summary, only the record's own
+      // written type counts as passed over.
+      expect(
+        healthRecordMatchesSkippedType(
+          '01ARZ3NDEKTSV4RRFFQ69G5FBC',
+          {'spotting'},
+          isSpotting: true,
+          payloadSummary: 'marker',
+        ),
+        isTrue,
+      );
+      expect(
+        healthRecordMatchesSkippedType(
+          '01ARZ3NDEKTSV4RRFFQ69G5FBC',
+          {'menstrualFlow'},
+          isSpotting: true,
+          payloadSummary: 'marker',
+        ),
+        isFalse,
+      );
+      expect(
+        healthRecordMatchesSkippedType(
+          '01ARZ3NDEKTSV4RRFFQ69G5FBC',
+          {'spotting'},
+          isSpotting: true,
+          payloadSummary: 'flow:light:0',
+        ),
+        isFalse,
+      );
+      expect(
+        healthRecordMatchesSkippedType(
+          '01ARZ3NDEKTSV4RRFFQ69G5FBC',
+          {'menstrualFlow'},
+          isSpotting: true,
+          payloadSummary: 'flow:light:0',
+        ),
+        isTrue,
       );
       expect(
         healthRecordMatchesSkippedType('01ARZ3NDEKTSV4RRFFQ69G5FBC', const {}),

@@ -196,10 +196,18 @@ bool _symptomRecordMatchesSkippedType(
 
 /// Checks whether [recordId] belongs to one of the write types in [skippedTypes]
 /// (Issue #1583).
+///
+/// For a spotting record ([isSpotting]), [payloadSummary] indicates whether it
+/// was written as an intermenstrual marker or a flow sample inside a period
+/// (Issue #1591, Issue #1644). If [payloadSummary] is known, only a skip of that
+/// specific type indicates the record may still be in the store. If [payloadSummary]
+/// is null (written by an earlier build), either type being passed over may have
+/// left the record in the store.
 bool healthRecordMatchesSkippedType(
   String recordId,
   Set<String> skippedTypes, {
   bool isSpotting = false,
+  String? payloadSummary,
 }) {
   if (skippedTypes.isEmpty) return false;
   if (recordId.startsWith('cervical-mucus-')) {
@@ -217,14 +225,13 @@ bool healthRecordMatchesSkippedType(
   if (recordId.startsWith('symptom-')) {
     return _symptomRecordMatchesSkippedType(recordId, skippedTypes);
   }
-  // Issue #1589: a spotting entry's record is an intermenstrual marker,
-  // or a light flow sample when its day falls inside a period, and
-  // nothing kept on the phone says which it was. So it may still be in
-  // the store when either type was passed over. Checked against
-  // spotting alone, a spotting entry deleted during a period with flow
-  // switched off was counted as gone, and its light flow sample stayed.
-  if (isSpotting && skippedTypes.contains(HealthWriteTypes.spotting)) {
-    return true;
+  if (isSpotting) {
+    return switch (flowPayloadSummaryWasMarker(payloadSummary)) {
+      true => skippedTypes.contains(HealthWriteTypes.spotting),
+      false => skippedTypes.contains(HealthWriteTypes.menstrualFlow),
+      null => skippedTypes.contains(HealthWriteTypes.spotting) ||
+          skippedTypes.contains(HealthWriteTypes.menstrualFlow),
+    };
   }
   return skippedTypes.contains(HealthWriteTypes.menstrualFlow);
 }
