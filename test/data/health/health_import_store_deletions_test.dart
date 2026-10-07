@@ -457,6 +457,23 @@ void main() {
       expect(await binding.storeDeletedRecordIds(), isEmpty);
     });
 
+    test('a spotting entry whose record was replaced takes the new one, and is '
+        'not offered (#1621)', () async {
+      await imported([_spotting('spot-11', 11)]);
+      store
+        ..delete('spot-11')
+        ..write(_spotting('spot-11b', 11));
+
+      await import.importNow();
+
+      expect(
+        (await entriesOn(11)).map((entry) => entry.sourceId),
+        ['spot-11b'],
+      );
+      expect(await onOffer(), 0);
+      expect(await binding.storeDeletedRecordIds(), isEmpty);
+    });
+
     test('a record that comes back under the same id is no longer offered',
         () async {
       await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
