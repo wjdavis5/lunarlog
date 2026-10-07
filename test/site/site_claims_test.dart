@@ -582,9 +582,7 @@ void main() {
     // fixture render (webapp/e2e/browser-home-capture.spec.ts) at build
     // time. The site test pins the wiring as well as the figure: the
     // capture must run in both site workflows, before the Astro build.
-    test('the browser CTA is backed by a capture of the web client itself '
-        '(issue #1431)', () {
-      final home = File(pages['/']!).readAsStringSync();
+    void verifyBrowserFigureWiring(String home) {
       final blocks = RegExp(r'<Screenshot[^>]*?>', dotAll: true)
           .allMatches(home)
           .map((match) => match.group(0)!)
@@ -618,6 +616,17 @@ void main() {
       expect(cite, greaterThan(0), reason: 'the figure carries a cite');
       expect(figureEnd, greaterThan(blockIndex),
           reason: 'the figure closes');
+
+      // Issue #1657: verify cite belongs directly to this figure and doesn't
+      // skip across intervening screenshots, earlier figures, or section boundaries.
+      final preamble = home.substring(cite, blockIndex);
+      expect(preamble, isNot(contains('<Screenshot')),
+          reason: 'the cite belongs directly to the browser figure, with no intervening screenshots');
+      expect(preamble, isNot(contains('</figure>')),
+          reason: 'the cite comment sits within the same figure boundary');
+      expect(preamble, isNot(contains('<section')),
+          reason: 'no section boundary sits between the cite and the browser figure');
+
       final figureRegion = home.substring(cite, figureEnd);
       expect(flat(figureRegion), contains('the React web client'));
       expect(figureRegion, contains('browser-home-capture.spec.ts'));
@@ -632,12 +641,59 @@ void main() {
       final guard = home.lastIndexOf('browserLive && (', blockIndex);
       expect(guard, greaterThan(0),
           reason: 'the browser figure is guarded by browserLive');
+
+      // Issue #1657: allow whitespace when checking if the guard closed early.
+      // In Astro formatting, `)\n  }` closes the JSX block across lines.
       expect(
         home.substring(guard, blockIndex),
-        isNot(contains(')}')),
+        isNot(matches(RegExp(r'\)\s*\}'))),
         reason: 'the browser figure sits inside the browserLive guard — '
             'unconditional rendering puts the button-label caption into '
             'the down build',
+      );
+      final afterFigure = home.substring(
+        figureEnd,
+        home.indexOf('<section', figureEnd),
+      );
+      expect(
+        afterFigure,
+        matches(RegExp(r'\)\s*\}')),
+        reason: 'the browserLive guard closes after the figure',
+      );
+    }
+
+    test('the browser CTA is backed by a capture of the web client itself '
+        '(issue #1431)', () {
+      final home = File(pages['/']!).readAsStringSync();
+      verifyBrowserFigureWiring(home);
+    });
+
+    test('the browser figure guard assertion catches an early close with whitespace or missing cite (issue #1657)', () {
+      final validHome = File(pages['/']!).readAsStringSync();
+
+      // Negative case 1: the guard closes on separate lines before the figure.
+      // Prior to issue #1657, `contains(')}')` failed to detect `)\n  }`.
+      final earlyClosed = validHome.replaceFirst(
+        'browserLive && (',
+        'browserLive && (\n    )\n  }',
+      );
+      expect(
+        () => verifyBrowserFigureWiring(earlyClosed),
+        throwsA(isA<TestFailure>()),
+        reason: 'closing the guard before the figure must fail the test',
+      );
+
+      // Negative case 2: the cite comment is removed.
+      // Prior to issue #1657, `lastIndexOf('<!-- cite:')` fell back to the
+      // preceding section's cite and passed silently.
+      final missingCite = validHome.replaceFirst(
+        RegExp(r'<!-- cite: webapp/e2e/browser-home-capture\.spec\.ts[^>]*?-->'),
+        '',
+      );
+      expect(
+        () => verifyBrowserFigureWiring(missingCite),
+        throwsA(isA<TestFailure>()),
+        reason: 'omitting the browser figure cite comment must fail the test',
       );
     });
 
