@@ -11,6 +11,7 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/data/health/health_flow_mapping.dart';
 import 'package:lunarlog/data/health/health_flow_write_service.dart';
 import 'package:lunarlog/data/health/health_record_ids.dart';
 import 'package:lunarlog/data/health/health_written_types.dart';
@@ -5309,8 +5310,9 @@ void main() {
         ['spot-2026-06-10'],
       ]);
       expect(
-        ledger.rows.any((row) => row.recordId == 'spot-2026-06-10'),
-        isFalse,
+        ledger.rows.singleWhere((row) => row.recordId == 'spot-2026-06-10')
+            .payloadSummary,
+        flowPayloadSummaryGone,
       );
 
       platform.writeResults = [];
@@ -5352,9 +5354,10 @@ void main() {
         ['spot-2026-06-10'],
       ]);
       expect(
-        ledger.rows.any((row) => row.recordId == 'spot-2026-06-10'),
-        isFalse,
-        reason: 'the deleted marker was forgotten so a reverted plan is due',
+        ledger.rows.singleWhere((row) => row.recordId == 'spot-2026-06-10')
+            .payloadSummary,
+        flowPayloadSummaryGone,
+        reason: 'the deleted marker was marked gone so a reverted plan is due',
       );
 
       // Before the retry, she removes the surrounding flow days.
@@ -5369,6 +5372,176 @@ void main() {
         ledger.rows.singleWhere((row) => row.recordId == 'spot-2026-06-10')
             .payloadSummary,
         'marker',
+      );
+    });
+
+    test('a spotting type swap whose write fails keeps an entry saved '
+        'before the floor in scope and writes the new type on retry '
+        '(issue #1670)', () async {
+      await seedGranted(grant);
+      // Floor stands at at(10); spotting entry is from before the floor (at(5)).
+      await settings.set(_cursorKey, '${at(10).millisecondsSinceEpoch}');
+      observations.observations = [_spotting('2026-06-10', at(5))];
+      await ledger.record([
+        HealthExportLedgerEntry(
+          recordId: 'spot-2026-06-10',
+          profileId: _profileId,
+          sourceRowId: 'spot-2026-06-10',
+          kind: HealthExportLedgerKind.spotting,
+          localDate: '2026-06-10',
+          exportedAt: at(5),
+          payloadSummary: 'marker',
+        ),
+      ]);
+      final service = buildService();
+
+      dayEntries.entries = [
+        _entry('2026-06-09', FlowLevel.heavy, at(11)),
+        _entry('2026-06-11', FlowLevel.medium, at(11)),
+      ];
+      // The swap-delete goes through; the light sample's write is refused.
+      platform.writeResults = [
+        const HealthPlatformAllowed(), // 06-09 heavy
+        const HealthPlatformAllowed(), // 06-11 medium
+        const HealthPlatformResult.failed('no'), // 06-10 swap write
+      ];
+      final refused = await service.syncNow();
+      expect(refused.blocked, isA<HealthPlatformFailed>());
+      expect(platform.deleteCalls, [
+        ['spot-2026-06-10'],
+      ]);
+      expect(
+        ledger.rows.singleWhere((row) => row.recordId == 'spot-2026-06-10')
+            .payloadSummary,
+        flowPayloadSummaryGone,
+      );
+
+      // On retry, the entry is still in scope because the ledger knows the row,
+      // despite its updatedAt being before the floor.
+      platform.writeResults = [];
+      final retried = await service.syncNow();
+      expect(retried.blocked, isNull);
+      expect(platform.deleteCalls, hasLength(1));
+      expect(platform.flowWrites.last.recordId, 'spot-2026-06-10');
+      expect(platform.flowWrites.last.flow, HealthFlowValue.light);
+      expect(
+        ledger.rows.singleWhere((row) => row.recordId == 'spot-2026-06-10')
+            .payloadSummary,
+        'flow:light:0',
+      );
+    });
+
+    test('a spotting type swap whose write fails keeps an entry saved '
+        'before the floor in scope and writes the marker if the day '
+        'reverts before retry (issue #1670)', () async {
+      await seedGranted(grant);
+      await settings.set(_cursorKey, '${at(10).millisecondsSinceEpoch}');
+      observations.observations = [_spotting('2026-06-10', at(5))];
+      await ledger.record([
+        HealthExportLedgerEntry(
+          recordId: 'spot-2026-06-10',
+          profileId: _profileId,
+          sourceRowId: 'spot-2026-06-10',
+          kind: HealthExportLedgerKind.spotting,
+          localDate: '2026-06-10',
+          exportedAt: at(5),
+          payloadSummary: 'marker',
+        ),
+      ]);
+      final service = buildService();
+
+      dayEntries.entries = [
+        _entry('2026-06-09', FlowLevel.heavy, at(11)),
+        _entry('2026-06-11', FlowLevel.medium, at(11)),
+      ];
+      platform.writeResults = [
+        const HealthPlatformAllowed(),
+        const HealthPlatformAllowed(),
+        const HealthPlatformResult.failed('transient'),
+      ];
+      final refused = await service.syncNow();
+      expect(refused.blocked, isA<HealthPlatformFailed>());
+      expect(platform.deleteCalls, [
+        ['spot-2026-06-10'],
+      ]);
+      expect(
+        ledger.rows.singleWhere((row) => row.recordId == 'spot-2026-06-10')
+            .payloadSummary,
+        flowPayloadSummaryGone,
+      );
+
+      // Surrounding flow days removed; plan reverts to marker.
+      dayEntries.entries = [];
+      platform.writeResults = [];
+      final retried = await service.syncNow();
+      expect(retried.blocked, isNull);
+      expect(platform.markerWrites, hasLength(1));
+      expect(platform.markerWrites.last.recordId, 'spot-2026-06-10');
+      expect(
+        ledger.rows.singleWhere((row) => row.recordId == 'spot-2026-06-10')
+            .payloadSummary,
+        'marker',
+      );
+    });
+
+    test('a spotting type swap whose write fails writes on retry even '
+        'when the new type\'s floor is set after the entry (issue #1670)',
+        () async {
+      await seedGranted(grant);
+      observations.observations = [_spotting('2026-06-10', at(5))];
+      await ledger.record([
+        HealthExportLedgerEntry(
+          recordId: 'spot-2026-06-10',
+          profileId: _profileId,
+          sourceRowId: 'spot-2026-06-10',
+          kind: HealthExportLedgerKind.spotting,
+          localDate: '2026-06-10',
+          exportedAt: at(5),
+          payloadSummary: 'marker',
+        ),
+      ]);
+      // Menstrual flow type floor stands at at(8), after the entry's at(5).
+      final passState = HealthWritePassState(
+        typeFloors: {HealthWriteTypes.menstrualFlow: at(8)},
+      );
+      await settings.set(
+        SettingsKeys.healthSyncWriteState,
+        passState.encode(),
+      );
+      final service = buildService();
+
+      dayEntries.entries = [
+        _entry('2026-06-09', FlowLevel.heavy, at(9)),
+        _entry('2026-06-11', FlowLevel.medium, at(10)),
+      ];
+      // The swap-delete goes through; the light sample's write is refused.
+      platform.writeResults = [
+        const HealthPlatformAllowed(), // 06-09 heavy
+        const HealthPlatformAllowed(), // 06-11 medium
+        const HealthPlatformResult.failed('no'), // 06-10 swap write
+      ];
+      final refused = await service.syncNow();
+      expect(refused.blocked, isA<HealthPlatformFailed>());
+      expect(platform.deleteCalls, [
+        ['spot-2026-06-10'],
+      ]);
+      expect(
+        ledger.rows.singleWhere((row) => row.recordId == 'spot-2026-06-10')
+            .payloadSummary,
+        flowPayloadSummaryGone,
+      );
+
+      // On retry, admitsNew is not consulted because the record is remembered
+      // in the ledger (not a brand new record). The light flow sample is written.
+      platform.writeResults = [];
+      final retried = await service.syncNow();
+      expect(retried.blocked, isNull);
+      expect(platform.flowWrites.last.recordId, 'spot-2026-06-10');
+      expect(platform.flowWrites.last.flow, HealthFlowValue.light);
+      expect(
+        ledger.rows.singleWhere((row) => row.recordId == 'spot-2026-06-10')
+            .payloadSummary,
+        'flow:light:0',
       );
     });
 

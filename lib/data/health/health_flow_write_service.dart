@@ -2000,11 +2000,12 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// way; a delete that went through is reported in [removed], and counts
   /// as a record taken out of the store.
   ///
-  /// Once the delete succeeds, the ledger row is forgotten immediately
-  /// (Issue #1642): the store no longer holds the old record, so if the
-  /// subsequent write fails and the day later reverts to the old type,
-  /// the next pass sees the record as unwritten and re-sends it rather
-  /// than incorrectly matching the old summary.
+  /// Once the delete succeeds, the ledger row is re-stamped with
+  /// [flowPayloadSummaryGone] (Issues #1642, #1670): the store no longer holds
+  /// the old record, so if the subsequent write fails, the row remains in
+  /// scope for future passes, [HealthWritePassState.admitsNew] is not
+  /// consulted, and the record stays due on whichever type the day wants next
+  /// rather than incorrectly matching the old summary.
   Future<({bool proceed, bool removed, HealthPlatformResult? failure})>
       _clearReplacedType(
     _PendingWrite write,
@@ -2012,12 +2013,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     Set<String>? grantedTypes,
   ) async {
     final written = _memory.entryOf(write.recordId);
-    final wasMarker = flowPayloadSummaryWasMarker(written?.payloadSummary);
-    final isMarker = write.plan is HealthFlowIntermenstrualMarker;
-    final isSpotting = write.kind == HealthExportLedgerKind.spotting ||
-        written?.kind == HealthExportLedgerKind.spotting;
-    final unknownSpotting = isSpotting && written != null && wasMarker == null;
-    if (!unknownSpotting && (wasMarker == null || wasMarker == isMarker)) {
+    if (!_needsTypeSwapDelete(written, write)) {
       return (proceed: true, removed: false, failure: null);
     }
     if (!healthRecordDeletable(written, grantedTypes)) {
@@ -2028,8 +2024,28 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     if (gone == null || gone.isEmpty) {
       return (proceed: false, removed: false, failure: result);
     }
-    await _memory.forget(gone);
+    await _memory.remember([
+      written!.copyWith(payloadSummary: flowPayloadSummaryGone),
+    ]);
     return (proceed: true, removed: true, failure: null);
+  }
+
+  /// Whether [write] replaces an existing record in the store of the other
+  /// type under the same id, needing a delete first.
+  static bool _needsTypeSwapDelete(
+    HealthExportLedgerEntry? written,
+    _PendingWrite write,
+  ) {
+    if (written == null || written.payloadSummary == flowPayloadSummaryGone) {
+      return false;
+    }
+    final wasMarker = flowPayloadSummaryWasMarker(written.payloadSummary);
+    if (wasMarker == null) {
+      return write.kind == HealthExportLedgerKind.spotting ||
+          written.kind == HealthExportLedgerKind.spotting;
+    }
+    final isMarker = write.plan is HealthFlowIntermenstrualMarker;
+    return wasMarker != isMarker;
   }
 
   /// Sends [write]'s menstrual-flow or intermenstrual-bleeding sample.
