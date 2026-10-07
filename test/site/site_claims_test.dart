@@ -621,6 +621,24 @@ void main() {
       final figureRegion = home.substring(cite, figureEnd);
       expect(flat(figureRegion), contains('the React web client'));
       expect(figureRegion, contains('browser-home-capture.spec.ts'));
+      // Up-variant only, like the button it backs (issue #1482): the
+      // source guards the figure behind browserLive, so the down build
+      // drops it — a caption quoting the button's label in the down
+      // build is exactly what check-web-app-down.mjs reads as "the
+      // button is still there". The guard must still be open at the
+      // block, i.e. the figure sits inside the conditional expression.
+      // (The hero's ternary reads `browserLive ?`, so `browserLive &&`
+      // names this guard and only this guard.)
+      final guard = home.lastIndexOf('browserLive && (', blockIndex);
+      expect(guard, greaterThan(0),
+          reason: 'the browser figure is guarded by browserLive');
+      expect(
+        home.substring(guard, blockIndex),
+        isNot(contains(')}')),
+        reason: 'the browser figure sits inside the browserLive guard — '
+            'unconditional rendering puts the button-label caption into '
+            'the down build',
+      );
     });
 
     test('the site workflows capture the web client before the site build '
