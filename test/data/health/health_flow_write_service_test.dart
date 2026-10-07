@@ -5861,4 +5861,132 @@ void main() {
       expect(platform.flowWrites, hasLength(1));
     });
   });
+
+  // Issue #1643: a correction re-send writes the store at a raised version
+  // but the row's updatedAt did not change. The ledger must remember the
+  // written version sent to the store, so a later offline edit stamped
+  // between the row's original updatedAt and the correction's store version
+  // is not dropped by the health store.
+  group('issue #1643: written store version is remembered in export ledger', () {
+    final grant = DateTime.utc(2026, 6, 1, 12);
+    DateTime at(int minutes) => grant.add(Duration(minutes: minutes));
+
+    test('an offline edit stamped earlier than a previous correction re-send '
+        'is written with a store version above the correction', () async {
+      await seedGranted(grant);
+      // Tuesday logged at +1h.
+      final tuesdayT1 = at(60);
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.heavy, tuesdayT1),
+      ];
+      final service = buildService();
+      await service.syncNow();
+      final tuesdayFirstWrite = platform.flowWrites.single;
+      expect(tuesdayFirstWrite.cycleStart, isTrue);
+      expect(tuesdayFirstWrite.recordVersionMs,
+          tuesdayT1.millisecondsSinceEpoch);
+
+      // Tuesday's ledger remembers both exportedAt and writtenVersion.
+      var tuesdayRow = ledger.rows
+          .singleWhere((r) => r.recordId == 'entry-2026-06-02');
+      expect(tuesdayRow.exportedAt, tuesdayT1);
+      expect(tuesdayRow.storeVersion, tuesdayT1);
+
+      // Monday is added at +2h; Tuesday's row is untouched.
+      final mondayT2 = at(120);
+      clock = mondayT2;
+      dayEntries.entries = [
+        _entry('2026-06-01', FlowLevel.light, mondayT2),
+        _entry('2026-06-02', FlowLevel.heavy, tuesdayT1),
+      ];
+      final report = await service.syncNow();
+      expect(report.samplesWritten, 2);
+
+      final tuesdayCorrectionWrite = platform.flowWrites
+          .where((w) => w.date.iso == '2026-06-02')
+          .last;
+      expect(tuesdayCorrectionWrite.cycleStart, isFalse);
+      expect(tuesdayCorrectionWrite.recordVersionMs,
+          mondayT2.millisecondsSinceEpoch);
+
+      tuesdayRow = ledger.rows
+          .singleWhere((r) => r.recordId == 'entry-2026-06-02');
+      expect(tuesdayRow.exportedAt, tuesdayT1,
+          reason: 'row updatedAt is still T1');
+      expect(tuesdayRow.writtenVersion, mondayT2,
+          reason: 'store was written at T2');
+      expect(tuesdayRow.storeVersion, mondayT2);
+
+      // Tuesday is edited offline at +90m (between T1 and T2).
+      final tuesdayT3 = at(90);
+      clock = at(180);
+      dayEntries.entries = [
+        _entry('2026-06-01', FlowLevel.light, mondayT2),
+        _entry('2026-06-02', FlowLevel.light, tuesdayT3),
+      ];
+      final editReport = await service.syncNow();
+      expect(editReport.samplesWritten, 1);
+
+      final tuesdayEditWrite = platform.flowWrites
+          .where((w) => w.date.iso == '2026-06-02')
+          .last;
+      expect(tuesdayEditWrite.flow, HealthFlowValue.light);
+      expect(tuesdayEditWrite.recordVersionMs,
+          greaterThan(tuesdayCorrectionWrite.recordVersionMs),
+          reason: 'must write above T2 so HealthKit/Health Connect accepts it');
+
+      tuesdayRow = ledger.rows
+          .singleWhere((r) => r.recordId == 'entry-2026-06-02');
+      expect(tuesdayRow.exportedAt, tuesdayT3);
+      expect(
+        tuesdayRow.storeVersion,
+        DateTime.fromMillisecondsSinceEpoch(
+            tuesdayEditWrite.recordVersionMs,
+            isUtc: true),
+      );
+    });
+
+    test('a second correction after clock is moved backwards writes '
+        'above the previously written store version', () async {
+      await seedGranted(grant);
+      final tuesdayT1 = at(60);
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.heavy, tuesdayT1),
+      ];
+      final service = buildService();
+      await service.syncNow();
+
+      // Monday is added at +2h; Tuesday is corrected.
+      final mondayT2 = at(120);
+      clock = mondayT2;
+      dayEntries.entries = [
+        _entry('2026-06-01', FlowLevel.light, mondayT2),
+        _entry('2026-06-02', FlowLevel.heavy, tuesdayT1),
+      ];
+      await service.syncNow();
+      final tuesdayCorrection1 = platform.flowWrites
+          .where((w) => w.date.iso == '2026-06-02')
+          .last;
+      expect(tuesdayCorrection1.recordVersionMs,
+          mondayT2.millisecondsSinceEpoch);
+
+      // Now clock moves backward (e.g. at(30)) and Monday is deleted.
+      // Tuesday becomes cycleStart: true again.
+      clock = at(30);
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.heavy, tuesdayT1),
+      ];
+      final report = await service.syncNow();
+      expect(report.samplesWritten, 1);
+
+      final tuesdayCorrection2 = platform.flowWrites
+          .where((w) => w.date.iso == '2026-06-02')
+          .last;
+      expect(tuesdayCorrection2.cycleStart, isTrue);
+      expect(tuesdayCorrection2.recordVersionMs,
+          greaterThan(tuesdayCorrection1.recordVersionMs),
+          reason:
+              'clock move backward cannot write lower than previous store version');
+    });
+  });
 }

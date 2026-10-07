@@ -490,7 +490,9 @@ test.describe('signed in', () => {
     test.skip(!(await buildIsConfigured(page)), 'unconfigured build (fork); runs in CI');
     await page.goto(`/profile/${PROFILE_ID}/notes`);
     await expect(
-      page.getByRole('button', { name: message('careNotesAddButton'), exact: true }),
+      page
+        .getByRole('region', { name: message('careNotesSectionTitle') })
+        .getByRole('button', { name: message('careNotesAddButton'), exact: true }),
     ).toBeVisible();
     const measured = await measureControls(page);
     expect(measured.held).toBeGreaterThanOrEqual(10);

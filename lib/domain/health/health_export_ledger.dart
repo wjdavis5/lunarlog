@@ -73,6 +73,7 @@ class HealthExportLedgerEntry {
     required this.localDate,
     required this.exportedAt,
     this.payloadSummary,
+    this.writtenVersion,
   });
 
   /// The platform external id this device wrote (Health Connect
@@ -112,6 +113,15 @@ class HealthExportLedgerEntry {
   /// more so the store is corrected.
   final String? payloadSummary;
 
+  /// The version given to the health store when writing the sample
+  /// (Issue #1643). Null for rows written before #1643, for which the
+  /// written version was [exportedAt].
+  final DateTime? writtenVersion;
+
+  /// The version the health store holds this record at: [writtenVersion]
+  /// when known, otherwise [exportedAt].
+  DateTime get storeVersion => writtenVersion ?? exportedAt;
+
   HealthExportLedgerEntry copyWith({
     String? recordId,
     String? profileId,
@@ -120,6 +130,7 @@ class HealthExportLedgerEntry {
     String? localDate,
     DateTime? exportedAt,
     String? payloadSummary,
+    DateTime? writtenVersion,
   }) =>
       HealthExportLedgerEntry(
         recordId: recordId ?? this.recordId,
@@ -129,6 +140,7 @@ class HealthExportLedgerEntry {
         localDate: localDate ?? this.localDate,
         exportedAt: exportedAt ?? this.exportedAt,
         payloadSummary: payloadSummary ?? this.payloadSummary,
+        writtenVersion: writtenVersion ?? this.writtenVersion,
       );
 }
 
