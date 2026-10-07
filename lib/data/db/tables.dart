@@ -1143,7 +1143,9 @@ class HealthSyncState extends Table {
 /// `row_codec.dart` cannot see it, and the account export never reads it.
 ///
 /// Ids and provenance only ([recordId]/[sourceRowId]/[kind]/[localDate]) —
-/// no flow level, tag, note, or measurement ever reaches this table.
+/// no flow level, tag, note, or measurement ever reaches this table. (Since
+/// #1591 [payloadSummary] adds a type name and a boolean about what the
+/// written record said — the shape of the export, never its content.)
 /// Rows are removed once their record is deleted from the store, and
 /// cleared per profile on profile/account deletion or outright on unbind.
 @DataClassName('HealthExportLedgerRowData')
@@ -1169,6 +1171,14 @@ class HealthExportLedger extends Table {
 
   /// The UTC instant the record was exported.
   DateTimeColumn get exportedAt => dateTime().named('exported_at')();
+
+  /// Issue #1591: a short summary of what the written record says that
+  /// *other* rows decide — for a flow or spotting record the type written
+  /// and, for a flow sample, the cycle-start flag (`flow:light:1`,
+  /// `marker`). Null for a kind with no such payload, and for a row
+  /// written before the column existed, which reads as "what it says is
+  /// unknown" and is sent once more so the store is corrected.
+  TextColumn get payloadSummary => text().named('payload_summary').nullable()();
 
   @override
   Set<Column> get primaryKey => {recordId};

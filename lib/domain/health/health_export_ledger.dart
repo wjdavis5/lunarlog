@@ -25,6 +25,9 @@
 /// **Ids and provenance only — no health values.** A record id embeds an
 /// entry id and a type name, the same shape already crossing the platform
 /// channel; no flow level, tag, note, or measurement is ever stored here.
+/// (Since #1591 [HealthExportLedgerEntry.payloadSummary] adds a type name
+/// and a boolean about what the written record said — the shape of the
+/// export, never its content.)
 ///
 /// Pure Dart (R14/R16): the drift-backed implementation lives in
 /// `lib/data/repositories/`, wired through `app_dependencies.dart`.
@@ -69,6 +72,7 @@ class HealthExportLedgerEntry {
     required this.kind,
     required this.localDate,
     required this.exportedAt,
+    this.payloadSummary,
   });
 
   /// The platform external id this device wrote (Health Connect
@@ -98,6 +102,15 @@ class HealthExportLedgerEntry {
   /// time of the export, which is at or after the row's version, so it
   /// reads as written.
   final DateTime exportedAt;
+
+  /// A short summary of what the written record says that *other* rows
+  /// decide (Issue #1591) — for a flow or spotting record the type written
+  /// and, for a flow sample, the cycle-start flag (`flow:light:1`,
+  /// `marker`; see `flowPayloadSummary` in `health_flow_mapping.dart`).
+  /// Null for a kind with no such payload, and for a row written before
+  /// #1591: read as "what it says is unknown", which sends the record once
+  /// more so the store is corrected.
+  final String? payloadSummary;
 }
 
 /// The read/write port for the device-local health-store export ledger.

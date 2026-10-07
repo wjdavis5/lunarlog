@@ -28,6 +28,7 @@ class DriftHealthExportLedger implements HealthExportLedger {
             kind: kind,
             localDate: row.localDate,
             exportedAt: row.exportedAt.toUtc(),
+            payloadSummary: row.payloadSummary,
           ),
     ];
   }
@@ -43,6 +44,7 @@ class DriftHealthExportLedger implements HealthExportLedger {
             kind: entry.kind.name,
             localDate: entry.localDate,
             exportedAt: entry.exportedAt.toUtc(),
+            payloadSummary: entry.payloadSummary,
           ),
       ]);
 

@@ -29,6 +29,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 
 import 'health_fertility_mapping.dart';
+import 'health_flow_mapping.dart' show flowPayloadSummaryWasMarker;
 import 'health_symptom_mapping.dart';
 
 /// The record id of a day's menstrual-flow / intermenstrual-bleeding sample
@@ -109,10 +110,11 @@ Set<String> healthRecordIdsForEntry(DayEntry entry) {
 /// The type is read off the id, which is how these builders made it. A
 /// spotting observation's record is the one that can be either of two
 /// types — an intermenstrual marker, or a light flow sample when the day
-/// falls inside a period — and the ledger does not say which it was, so
-/// it needs both. Nothing is known about a record the ledger does not
-/// hold ([written] null), and deleting an id the store does not have is
-/// harmless.
+/// falls inside a period. Since Issue #1591 the ledger's
+/// [HealthExportLedgerEntry.payloadSummary] says which it was, and only
+/// that type's switch is waited for ([flowPayloadSummaryWasMarker]); a
+/// row written before then carries no summary, and keeps the old reading
+/// of needing both.
 bool healthRecordDeletable(
   HealthExportLedgerEntry? written,
   Set<String>? granted,
@@ -124,11 +126,23 @@ bool healthRecordDeletable(
     HealthExportLedgerKind.bbt =>
       granted.contains(HealthWriteTypes.basalBodyTemperature),
     HealthExportLedgerKind.spotting =>
-      granted.contains(HealthWriteTypes.menstrualFlow) &&
-          granted.contains(HealthWriteTypes.spotting),
+      _spottingRecordDeletable(written.payloadSummary, granted),
     HealthExportLedgerKind.entry => _entryRecordDeletable(written, granted),
   };
 }
+
+/// [healthRecordDeletable] for a spotting record. Since Issue #1591 the
+/// ledger's [HealthExportLedgerEntry.payloadSummary] says which of the two
+/// types the record was written as, and only that type's switch is waited
+/// for ([flowPayloadSummaryWasMarker]); a row written before then carries
+/// no summary, and keeps the old reading of needing both.
+bool _spottingRecordDeletable(String? payloadSummary, Set<String> granted) =>
+    switch (flowPayloadSummaryWasMarker(payloadSummary)) {
+      true => granted.contains(HealthWriteTypes.spotting),
+      false => granted.contains(HealthWriteTypes.menstrualFlow),
+      null => granted.contains(HealthWriteTypes.menstrualFlow) &&
+          granted.contains(HealthWriteTypes.spotting),
+    };
 
 /// [healthRecordDeletable] for a record written from a day entry.
 bool _entryRecordDeletable(

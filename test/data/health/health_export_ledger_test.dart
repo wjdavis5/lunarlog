@@ -31,6 +31,7 @@ HealthExportLedgerEntry _entry(
   String sourceRowId = 'entry-1',
   HealthExportLedgerKind kind = HealthExportLedgerKind.entry,
   String localDate = '2026-09-01',
+  String? payloadSummary,
 }) =>
     HealthExportLedgerEntry(
       recordId: recordId,
@@ -39,6 +40,7 @@ HealthExportLedgerEntry _entry(
       kind: kind,
       localDate: localDate,
       exportedAt: DateTime.utc(2026, 9, 1),
+      payloadSummary: payloadSummary,
     );
 
 void main() {
@@ -191,8 +193,29 @@ void main() {
           'kind',
           'local_date',
           'exported_at',
+          // Issue #1591: what the written record said that other rows
+          // decide. Nullable; null is the pre-#1591 "unknown" reading.
+          'payload_summary',
         },
       );
+    });
+
+    // Issue #1591: a record is re-sent when what it said no longer
+    // matches what its row now produces, so what it said must survive a
+    // round trip.
+    test('payloadSummary round-trips, null included', () async {
+      await ledger.record([
+        _entry('entry-1', payloadSummary: 'flow:light:1'),
+        _entry('entry-2', payloadSummary: 'marker'),
+      ]);
+      await ledger.record([_entry('entry-3')]);
+
+      final rows = {
+        for (final row in await ledger.readForProfile('p1')) row.recordId: row,
+      };
+      expect(rows['entry-1']!.payloadSummary, 'flow:light:1');
+      expect(rows['entry-2']!.payloadSummary, 'marker');
+      expect(rows['entry-3']!.payloadSummary, isNull);
     });
   });
 
