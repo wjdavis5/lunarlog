@@ -222,15 +222,17 @@ let configuredProbe: boolean | null = null;
 /**
  * True when the build carries Supabase config (the app signs in at all).
  *
- * It waits for the signed-in home rather than reading the page once. The
- * signed-out welcome is also what a configured build shows for the moment
- * it takes the session to be restored, so a single look straight after
- * the load sometimes caught it and reported "unconfigured": the test was
- * then skipped, not failed, and nothing said so (about one run in three
- * skipped a test here). An unconfigured build never leaves the welcome,
+ * CI workflows pass `LUNARLOG_APP_CONFIGURED` ("true" or "false") based on
+ * secret presence (issue #1662). When set, we avoid the 5s probe so that a
+ * slow web app start does not quietly skip capture and cause a missing figure.
+ * When unset (local test runs), it falls back to probing whether the signed-in
+ * home appears within 5 seconds. An unconfigured build never leaves the welcome,
  * so there the wait runs out, once per worker.
  */
 export async function buildIsConfigured(page: Page): Promise<boolean> {
+  if (process.env.LUNARLOG_APP_CONFIGURED !== undefined) {
+    return process.env.LUNARLOG_APP_CONFIGURED === 'true';
+  }
   if (configuredProbe !== null) return configuredProbe;
   await installSignedInFacade(page);
   await page.goto('/');

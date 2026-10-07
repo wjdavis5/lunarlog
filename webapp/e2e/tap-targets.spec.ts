@@ -236,10 +236,14 @@ let configuredProbe: boolean | null = null;
 
 /**
  * True when the build carries Supabase config, so the app signs in at all.
+ * When `LUNARLOG_APP_CONFIGURED` is set, respect it without probing (issue #1662).
  * A fork's build does not, and never leaves the welcome: there the wait
  * runs out, once per worker, and the signed-in tests skip.
  */
 async function buildIsConfigured(page: Page): Promise<boolean> {
+  if (process.env.LUNARLOG_APP_CONFIGURED !== undefined) {
+    return process.env.LUNARLOG_APP_CONFIGURED === 'true';
+  }
   if (configuredProbe !== null) return configuredProbe;
   await page.goto('/');
   configuredProbe = await page

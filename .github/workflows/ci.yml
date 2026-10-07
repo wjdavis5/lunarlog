@@ -882,6 +882,8 @@ jobs:
       - name: E2E (Playwright smoke + axe + nothing-stored guard)
         if: steps.check_run.outputs.run == 'true'
         working-directory: webapp
+        env:
+          LUNARLOG_APP_CONFIGURED: ${{ secrets.SUPABASE_URL != '' && 'true' || 'false' }}
         run: npm run e2e
 
   db-tests:

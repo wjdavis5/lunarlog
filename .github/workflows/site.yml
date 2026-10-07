@@ -161,6 +161,7 @@ jobs:
         working-directory: webapp
         env:
           LUNARLOG_BROWSER_CAPTURE_OUT: ${{ github.workspace }}/site/public/screenshots
+          LUNARLOG_APP_CONFIGURED: ${{ secrets.SUPABASE_URL != '' && 'true' || 'false' }}
         run: npx playwright test e2e/browser-home-capture.spec.ts
 
       - name: Build and type-check the site
