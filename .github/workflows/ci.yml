@@ -1248,8 +1248,9 @@ jobs:
     # Issue #1278: the test step below grew to 30 minutes (two 750s-bounded
     # attempts plus a reboot between them -- see its own comment), so the same
     # arithmetic is 20 + 30 + ~6 of checkout / Flutter setup / cache restore /
-    # boot = ~56, under this raised cap.
-    timeout-minutes: 60
+    # boot = ~56, under this raised cap. Issue #1610 added the Swift channel
+    # unit-test step (RunnerTests, 15m): 20 + 30 + 15 + ~6 = 71, under 75.
+    timeout-minutes: 75
     steps:
       - name: Check if iOS Simulator tests should run
         id: check_run
@@ -1464,6 +1465,28 @@ jobs:
 
           echo "Running integration tests on simulator $SIM_UDID (attempt 2)..."
           run_suite
+
+      - name: Run the Swift channel unit tests on the simulator
+        # Issue #1610: ios/RunnerTests/RunnerTests.swift is the Runner
+        # scheme's test target (the XCTest home of the HealthKitChannelHandler
+        # tests since #916/#992), but nothing ran it -- the codec's raw-value
+        # tables and, now, the import-anchor handling and page shape were
+        # pinned only from the Dart side. One xcodebuild test on the
+        # simulator this job has already booted runs the whole target; the
+        # app build above warmed the DerivedData tree, so this compiles the
+        # test bundle on top of an existing build. Simulator destinations
+        # need no code signing.
+        if: steps.check_run.outputs.run == 'true'
+        timeout-minutes: 15
+        env:
+          SIM_UDID: ${{ steps.sim.outputs.udid }}
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -destination "id=$SIM_UDID" \
+            -quiet
 
       - name: Shut down simulator
         if: steps.check_run.outputs.run == 'true' && always()

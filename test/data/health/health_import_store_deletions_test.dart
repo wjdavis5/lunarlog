@@ -248,13 +248,15 @@ class _HookedDays implements DayEntriesRepository, DeletedDayEntryReader {
       throw UnimplementedError('${invocation.memberName}');
 }
 
-/// A flow record on September [day] 2026, local midnight at UTC-4. Health
-/// Connect changes a record in place, so it carries when it last did.
+/// A flow record on September [day] 2026, local midnight at UTC-4, last
+/// changed at [modifiedAt] when its store changes a record in place (Health
+/// Connect); null where a sample cannot be edited (Apple Health), so the
+/// record id is the row's whole key.
 HealthFlowSample _flow(
   String id,
   int day,
   HealthFlowValue flow, {
-  int modifiedHour = 12,
+  DateTime? modifiedAt,
 }) {
   final start = DateTime.utc(2026, 9, day, 4);
   return HealthFlowSample(
@@ -263,7 +265,7 @@ HealthFlowSample _flow(
     start: start,
     end: start.add(const Duration(hours: 23, minutes: 59, seconds: 59)),
     offset: const Duration(hours: -4),
-    modifiedAt: DateTime.utc(2026, 9, day, modifiedHour),
+    modifiedAt: modifiedAt,
   );
 }
 
@@ -278,9 +280,28 @@ HealthFlowSample _spotting(String id, int day) {
   );
 }
 
+/// The `day_entries.source` rows imported from [platform] carry — mirrors
+/// `LocalHealthImportService`'s private getter (Issue #1610: the deletion
+/// rules hold on both stores, so the suite runs once per platform).
+DayEntrySource _daySourceOf(HealthImportPlatform platform) =>
+    platform == HealthImportPlatform.healthConnect
+        ? DayEntrySource.healthConnect
+        : DayEntrySource.healthkit;
+
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
 
+  for (final platform in HealthImportPlatform.values) {
+    runSuite(platform);
+  }
+}
+
+/// The whole deletion suite over [platform]: the same rules on Health
+/// Connect and on Apple Health. The two stores differ in two ways the
+/// suite shapes itself around — the provenance stamped on imported rows,
+/// and whether a record can be changed in place (an Apple Health sample
+/// carries no last-changed time, so its id is the row's whole key).
+void runSuite(HealthImportPlatform platform) {
   late LunarLogDatabase db;
   late DriftDayEntriesRepository days;
   late DriftObservationsRepository observations;
@@ -291,11 +312,29 @@ void main() {
 
   LocalDate sept(int day) => LocalDate(2026, 9, day);
 
+  /// A flow record on September [day] 2026, shaped for [platform]:
+  /// [modifiedHour] names when Health Connect last changed the record, and
+  /// an Apple Health sample carries no such time.
+  HealthFlowSample flow(
+    String id,
+    int day,
+    HealthFlowValue value, {
+    int modifiedHour = 12,
+  }) =>
+      _flow(
+        id,
+        day,
+        value,
+        modifiedAt: platform == HealthImportPlatform.healthConnect
+            ? DateTime.utc(2026, 9, day, modifiedHour)
+            : null,
+      );
+
   /// The import service over the test's database, reading and writing
   /// days through [dayEntries].
   LocalHealthImportService serviceOver(DayEntriesRepository dayEntries) =>
       LocalHealthImportService(
-        importPlatform: HealthImportPlatform.healthConnect,
+        importPlatform: platform,
         platform: _Platform(),
         source: store,
         binding: binding,
@@ -382,8 +421,8 @@ void main() {
   group('an import that finds a record was deleted', () {
     test('removes nothing: the day stays, and is offered', () async {
       await imported([
-        _flow('rec-10', 10, HealthFlowValue.heavy),
-        _flow('rec-11', 11, HealthFlowValue.medium),
+        flow('rec-10', 10, HealthFlowValue.heavy),
+        flow('rec-11', 11, HealthFlowValue.medium),
       ]);
 
       final summary = await deletedInStore(['rec-10']);
@@ -400,7 +439,7 @@ void main() {
 
     test('the store says so once; the days stay on offer over later imports '
         'and a new service', () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
       await deletedInStore(['rec-10']);
 
       await import.importNow();
@@ -411,7 +450,7 @@ void main() {
     });
 
     test('a background pass notes them too, and removes nothing', () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
       store.delete('rec-10');
 
       await import.importInBackground();
@@ -422,7 +461,7 @@ void main() {
 
     test('only the records a row here was imported from are kept on the '
         'list', () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
 
       await deletedInStore(['rec-10', 'one-of-lunarlogs-own-writes']);
 
@@ -431,7 +470,7 @@ void main() {
 
     test('a deleted record nothing was imported from is not offered, and '
         'nothing is stored', () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
 
       await deletedInStore(['one-of-lunarlogs-own-writes']);
 
@@ -442,16 +481,22 @@ void main() {
     // An app that edits by deleting a record and writing a new one.
     test('a day whose record was replaced takes the new one, and is not '
         'offered', () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
       store
         ..delete('rec-10')
-        ..write(_flow('rec-10b', 10, HealthFlowValue.light));
+        ..write(flow('rec-10b', 10, HealthFlowValue.light));
 
       final summary = await import.importNow();
 
       final day = (await dayOn(10))!;
       expect(day.flow, FlowLevel.light);
-      expect(day.sourceId, startsWith('rec-10b@'));
+      if (platform == HealthImportPlatform.healthConnect) {
+        expect(day.sourceId, startsWith('rec-10b@'));
+      } else {
+        expect(day.sourceId, 'rec-10b',
+            reason: 'a HealthKit sample cannot be edited, '
+                'so the id is the row\'s whole key');
+      }
       expect(summary.daysWritten, 1);
       expect(await onOffer(), 0);
       expect(await binding.storeDeletedRecordIds(), isEmpty);
@@ -459,20 +504,26 @@ void main() {
 
     test('a record that comes back under the same id is no longer offered',
         () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
       await deletedInStore(['rec-10']);
       expect(await onOffer(), 1);
 
-      store.write(_flow('rec-10', 10, HealthFlowValue.medium, modifiedHour: 18));
+      store.write(flow('rec-10', 10, HealthFlowValue.medium, modifiedHour: 18));
       await import.importNow();
 
       expect(await onOffer(), 0);
-      expect((await dayOn(10))!.flow, FlowLevel.medium);
+      if (platform == HealthImportPlatform.healthConnect) {
+        expect((await dayOn(10))!.flow, FlowLevel.medium);
+      } else {
+        // An Apple Health sample cannot change: the same id back means the
+        // same sample, and the day keeps the value it was imported with.
+        expect((await dayOn(10))!.flow, FlowLevel.heavy);
+      }
     });
 
     test('a day she deletes herself meanwhile is no longer offered',
         () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
       await deletedInStore(['rec-10']);
 
       await days.delete(_profileId, sept(10));
@@ -483,7 +534,7 @@ void main() {
     test('a spotting entry and a flow on the same day are one day',
         () async {
       await imported([
-        _flow('rec-11', 11, HealthFlowValue.light),
+        flow('rec-11', 11, HealthFlowValue.light),
         _spotting('spot-11', 11),
       ]);
 
@@ -493,7 +544,7 @@ void main() {
     });
 
     test('Keep clears the offer and leaves the days', () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
       await deletedInStore(['rec-10']);
 
       await keepOffered();
@@ -506,7 +557,7 @@ void main() {
 
     test('choosing a profile again, or stopping the sync, clears the offer',
         () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
       await deletedInStore(['rec-10']);
 
       await binding.unbind();
@@ -517,8 +568,8 @@ void main() {
     test('a record a whole-history read does not return is not a deleted '
         'record', () async {
       await imported([
-        _flow('rec-10', 10, HealthFlowValue.heavy),
-        _flow('rec-11', 11, HealthFlowValue.medium),
+        flow('rec-10', 10, HealthFlowValue.heavy),
+        flow('rec-11', 11, HealthFlowValue.medium),
       ]);
       // Hidden, as with "Access past data" off: gone from what a read
       // returns, and no deletion reported.
@@ -532,7 +583,7 @@ void main() {
     });
 
     test('only a changes page can say a record was deleted', () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
       store
         ..hasPosition = false
         ..deletedOnWholeHistoryPage = const ['rec-10'];
@@ -546,7 +597,7 @@ void main() {
     test('a record deleted on one page and written again on a later one is '
         'in the store: its day takes the new value and is not offered',
         () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
       store.changePages.addAll([
         HealthReadResult.samples(
           const [],
@@ -555,7 +606,7 @@ void main() {
           nextCursor: 'page-2',
         ),
         HealthReadResult.samples(
-          [_flow('rec-10', 10, HealthFlowValue.medium, modifiedHour: 18)],
+          [flow('rec-10', 10, HealthFlowValue.medium, modifiedHour: 18)],
           incremental: true,
           commitToken: 'changes',
         ),
@@ -563,8 +614,15 @@ void main() {
 
       await import.importNow();
 
-      expect((await dayOn(10))!.flow, FlowLevel.medium);
       expect(await onOffer(), 0);
+      if (platform == HealthImportPlatform.healthConnect) {
+        expect((await dayOn(10))!.flow, FlowLevel.medium);
+      } else {
+        // An Apple Health sample cannot change, so "written again" is the
+        // same sample: the ordering still clears the offer, and the day
+        // keeps the value it was imported with.
+        expect((await dayOn(10))!.flow, FlowLevel.heavy);
+      }
       expect(store.requests, [(null, false), ('page-2', false)]);
     });
 
@@ -572,10 +630,10 @@ void main() {
     // deletion is read, so what was gathered cannot be used.
     test('a record written on one page and deleted on a later one is not '
         'imported: everything is read again', () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
       store.changePages.addAll([
         HealthReadResult.samples(
-          [_flow('rec-20', 20, HealthFlowValue.medium)],
+          [flow('rec-20', 20, HealthFlowValue.medium)],
           incremental: true,
           nextCursor: 'page-2',
         ),
@@ -601,14 +659,14 @@ void main() {
     test('reading everything again for that removes nothing that is on '
         'offer', () async {
       await imported([
-        _flow('rec-10', 10, HealthFlowValue.heavy),
-        _flow('rec-11', 11, HealthFlowValue.medium),
+        flow('rec-10', 10, HealthFlowValue.heavy),
+        flow('rec-11', 11, HealthFlowValue.medium),
       ]);
       await deletedInStore(['rec-11']);
       expect(await onOffer(), 1);
       store.changePages.addAll([
         HealthReadResult.samples(
-          [_flow('rec-20', 20, HealthFlowValue.medium)],
+          [flow('rec-20', 20, HealthFlowValue.medium)],
           incremental: true,
           nextCursor: 'page-2',
         ),
@@ -633,8 +691,8 @@ void main() {
     test('takes the day out, after everything has been read again',
         () async {
       await imported([
-        _flow('rec-10', 10, HealthFlowValue.heavy),
-        _flow('rec-11', 11, HealthFlowValue.medium),
+        flow('rec-10', 10, HealthFlowValue.heavy),
+        flow('rec-11', 11, HealthFlowValue.medium),
       ]);
       await deletedInStore(['rec-10']);
       store.requests.clear();
@@ -657,7 +715,7 @@ void main() {
 
     test('with nothing on offer it is an import that reads everything, and '
         'removes nothing', () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
 
       final summary = await removeOffered();
 
@@ -667,14 +725,14 @@ void main() {
 
     test('is not remembered as a day she deleted, so the same record is '
         'imported if the store offers it again', () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
       await deletedInStore(['rec-10']);
       await removeOffered();
       expect(await dayOn(10), isNull);
       expect(await days.deletedHealthRecords(_profileId), isEmpty);
 
       // The same record, unchanged: a remembered deletion would keep it out.
-      store.write(_flow('rec-10', 10, HealthFlowValue.heavy));
+      store.write(flow('rec-10', 10, HealthFlowValue.heavy));
       await import.importNow();
 
       expect((await dayOn(10))!.flow, FlowLevel.heavy);
@@ -683,8 +741,8 @@ void main() {
     test('a day she deleted herself is still remembered afterwards',
         () async {
       await imported([
-        _flow('rec-10', 10, HealthFlowValue.heavy),
-        _flow('rec-11', 11, HealthFlowValue.medium),
+        flow('rec-10', 10, HealthFlowValue.heavy),
+        flow('rec-11', 11, HealthFlowValue.medium),
       ]);
       await days.delete(_profileId, sept(11));
       final hers = await days.deletedHealthRecords(_profileId);
@@ -699,7 +757,7 @@ void main() {
 
     test('leaves the day when it carries a tag of hers, and takes only the '
         'flow', () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
       await days.save((await dayOn(10))!.copyWith(tags: const ['cramps']));
       await deletedInStore(['rec-10']);
 
@@ -721,7 +779,7 @@ void main() {
       ('a private note it cannot see', (day) => day.copyWith(notePrivate: true)),
     ]) {
       test('leaves the day when it carries $what', () async {
-        await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+        await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
         await days.save(change((await dayOn(10))!));
         await deletedInStore(['rec-10']);
 
@@ -732,7 +790,7 @@ void main() {
     }
 
     test('leaves the day when it carries an entry of hers', () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
       final day = (await dayOn(10))!;
       await observations.save(
         Observation(
@@ -756,12 +814,12 @@ void main() {
     });
 
     test('a day left with no flow takes one from the store again', () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
       await days.save((await dayOn(10))!.copyWith(tags: const ['cramps']));
       await deletedInStore(['rec-10']);
       await removeOffered();
 
-      store.write(_flow('rec-10b', 10, HealthFlowValue.light));
+      store.write(flow('rec-10b', 10, HealthFlowValue.light));
       await import.importNow();
 
       final day = (await dayOn(10))!;
@@ -774,8 +832,8 @@ void main() {
     test('when the store holds another record for the day, the day takes '
         'that one\'s value', () async {
       await imported([
-        _flow('rec-heavy', 10, HealthFlowValue.heavy),
-        _flow('rec-light', 10, HealthFlowValue.light),
+        flow('rec-heavy', 10, HealthFlowValue.heavy),
+        flow('rec-light', 10, HealthFlowValue.light),
       ]);
       expect((await dayOn(10))!.flow, FlowLevel.heavy);
       await deletedInStore(['rec-heavy']);
@@ -789,7 +847,7 @@ void main() {
 
     test('a day she corrected after importing it goes too: it still names '
         'the record', () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
       await days.save((await dayOn(10))!.copyWith(flow: FlowLevel.light));
       await deletedInStore(['rec-10']);
       expect(await onOffer(), 1);
@@ -800,7 +858,7 @@ void main() {
     });
 
     test('a day she logged herself is never touched', () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
       await days.save(
         DayEntry(
           id: '',
@@ -822,7 +880,7 @@ void main() {
     // id alone, with no time after it.
     test('a day an earlier build imported, which names its record by the id '
         'alone, is found and goes', () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
       await days.save((await dayOn(10))!.copyWith(sourceId: 'rec-10'));
       await deletedInStore(['rec-10']);
       expect(await onOffer(), 1);
@@ -834,17 +892,22 @@ void main() {
     });
 
     // The time comes after the LAST @ of a row's key.
-    test('a record id with an @ in it is matched whole', () async {
-      await imported([_flow('rec@10', 10, HealthFlowValue.heavy)]);
+    // A Health Connect row's key carries the time after the LAST @ of the
+    // record id. An Apple Health sample UUID never carries an @, so there
+    // is nothing for the strip to do there: the rule is Health Connect's.
+    if (platform == HealthImportPlatform.healthConnect) {
+      test('a record id with an @ in it is matched whole', () async {
+        await imported([flow('rec@10', 10, HealthFlowValue.heavy)]);
 
-      await deletedInStore(['rec']);
-      expect(await onOffer(), 0);
+        await deletedInStore(['rec']);
+        expect(await onOffer(), 0);
 
-      await deletedInStore(['rec@10']);
-      expect(await onOffer(), 1);
-      await removeOffered();
-      expect(await dayOn(10), isNull);
-    });
+        await deletedInStore(['rec@10']);
+        expect(await onOffer(), 1);
+        await removeOffered();
+        expect(await dayOn(10), isNull);
+      });
+    }
 
     // Deleting a day takes every entry on its date with it, whichever row
     // the entry hangs on. So the day is looked at by date.
@@ -880,7 +943,7 @@ void main() {
           .write(
         DayEntriesCompanion(deletedAt: Value(DateTime.utc(2026, 9, 10, 14))),
       );
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
       final day = (await dayOn(10))!;
       expect(day.id, isNot(earlier.id));
       expect(await entriesOn(10), isEmpty, reason: 'not on the live row');
@@ -902,7 +965,7 @@ void main() {
     // row, or one from another kind of store.
     test('a day from another source that carries the same id is not this '
         'store\'s: it is not offered and not touched', () async {
-      await imported([_flow('rec-11', 11, HealthFlowValue.medium)]);
+      await imported([flow('rec-11', 11, HealthFlowValue.medium)]);
       await days.save(
         DayEntry(
           id: '',
@@ -927,7 +990,7 @@ void main() {
       const count = 12;
       await imported([
         for (var day = 1; day <= count; day++)
-          _flow('rec-$day', day, HealthFlowValue.medium),
+          flow('rec-$day', day, HealthFlowValue.medium),
       ]);
       await deletedInStore([for (var day = 1; day <= count; day++) 'rec-$day']);
       expect(await onOffer(), count);
@@ -943,7 +1006,7 @@ void main() {
     // The whole history is read between finding the row and removing it.
     test('a day whose row names another record by the time it is to be '
         'removed is left as it is', () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
       await deletedInStore(['rec-10']);
       final row = (await dayOn(10))!;
       store.onWholeHistoryAgain = () async {
@@ -962,7 +1025,7 @@ void main() {
     // day's turn: the narrowest place a save can land.
     test('a day that takes another record in the middle of the removal is '
         'left as it is, and is not counted', () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
       await deletedInStore(['rec-10']);
       final hooked = _HookedDays(days)
         ..beforeNextFind = () async {
@@ -987,7 +1050,7 @@ void main() {
     // that lands on a day after that lands on the day's live row.
     test('an entry that lands on a day in the middle of the removal is not '
         'deleted with it: the day stays, without the flow', () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
       await deletedInStore(['rec-10']);
       final hooked = _HookedDays(days)
         ..beforeNextFind = () async {
@@ -1017,7 +1080,7 @@ void main() {
 
     test('a day she deletes herself while the store is being read again is '
         'hers: it is not counted, and stays remembered', () async {
-      await imported([_flow('rec-10', 10, HealthFlowValue.heavy)]);
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
       await deletedInStore(['rec-10']);
       store.onWholeHistoryAgain = () => days.delete(_profileId, sept(10));
 
@@ -1031,9 +1094,9 @@ void main() {
     test('only the first page of the second read asks for the whole history',
         () async {
       await imported([
-        _flow('rec-10', 10, HealthFlowValue.heavy),
-        _flow('rec-11', 11, HealthFlowValue.medium),
-        _flow('rec-12', 12, HealthFlowValue.light),
+        flow('rec-10', 10, HealthFlowValue.heavy),
+        flow('rec-11', 11, HealthFlowValue.medium),
+        flow('rec-12', 12, HealthFlowValue.light),
       ]);
       await deletedInStore(['rec-10']);
       store
@@ -1059,8 +1122,8 @@ void main() {
   group('she answers about what she was shown', () {
     Future<HealthStoreDeletedOffer> shownOneDay() async {
       await imported([
-        _flow('rec-10', 10, HealthFlowValue.heavy),
-        _flow('rec-11', 11, HealthFlowValue.medium),
+        flow('rec-10', 10, HealthFlowValue.heavy),
+        flow('rec-11', 11, HealthFlowValue.medium),
       ]);
       await deletedInStore(['rec-10']);
       final offer = await import.daysDeletedInStore();
@@ -1128,7 +1191,7 @@ void main() {
     test('a record that is back in the store by the time she says Remove '
         'is not removed', () async {
       final offer = await shownOneDay();
-      store.write(_flow('rec-10', 10, HealthFlowValue.heavy));
+      store.write(flow('rec-10', 10, HealthFlowValue.heavy));
 
       final summary = await import.removeDaysDeletedInStore(offer);
 
@@ -1142,7 +1205,7 @@ void main() {
         () async {
       final offer = await shownOneDay();
       store.onWholeHistoryAgain = () async {
-        store.records['rec-10'] = _flow('rec-10', 10, HealthFlowValue.heavy);
+        store.records['rec-10'] = flow('rec-10', 10, HealthFlowValue.heavy);
       };
 
       final summary = await import.removeDaysDeletedInStore(offer);
@@ -1200,8 +1263,8 @@ void main() {
   group('a removal whose read of everything does not finish', () {
     Future<void> offered() async {
       await imported([
-        _flow('rec-10', 10, HealthFlowValue.heavy),
-        _flow('rec-11', 11, HealthFlowValue.medium),
+        flow('rec-10', 10, HealthFlowValue.heavy),
+        flow('rec-11', 11, HealthFlowValue.medium),
       ]);
       await deletedInStore(['rec-10']);
       store.commits.clear();
@@ -1233,7 +1296,7 @@ void main() {
       await offered();
       store.wholeHistoryAgainPages.addAll([
         HealthReadResult.samples(
-          [_flow('rec-11', 11, HealthFlowValue.medium)],
+          [flow('rec-11', 11, HealthFlowValue.medium)],
           nextCursor: 'page-2',
         ),
         const HealthReadResult.failed('the store went away'),
@@ -1255,7 +1318,7 @@ void main() {
       await offered();
       store.wholeHistoryAgainPages.addAll([
         HealthReadResult.samples(
-          [_flow('rec-11', 11, HealthFlowValue.medium)],
+          [flow('rec-11', 11, HealthFlowValue.medium)],
           nextCursor: 'page-2',
         ),
         const HealthReadResult.permissionDenied(),
@@ -1317,7 +1380,7 @@ void main() {
       await offered();
       store.changePages.addAll([
         HealthReadResult.samples(
-          [_flow('rec-20', 20, HealthFlowValue.medium)],
+          [flow('rec-20', 20, HealthFlowValue.medium)],
           incremental: true,
           nextCursor: 'page-2',
         ),
@@ -1422,7 +1485,7 @@ void main() {
 
     test('goes and leaves the day when the day has a flow', () async {
       await imported([
-        _flow('rec-11', 11, HealthFlowValue.light),
+        flow('rec-11', 11, HealthFlowValue.light),
         _spotting('spot-11', 11),
       ]);
       await deletedInStore(['spot-11']);
@@ -1447,7 +1510,7 @@ void main() {
     test('with the flow record of the same day deleted too, the day goes',
         () async {
       await imported([
-        _flow('rec-11', 11, HealthFlowValue.light),
+        flow('rec-11', 11, HealthFlowValue.light),
         _spotting('spot-11', 11),
       ]);
       await deletedInStore(['spot-11', 'rec-11']);
@@ -1461,7 +1524,7 @@ void main() {
     test('a flow record deleted leaves the day while its imported spotting '
         'entry is still in the store', () async {
       await imported([
-        _flow('rec-11', 11, HealthFlowValue.light),
+        flow('rec-11', 11, HealthFlowValue.light),
         _spotting('spot-11', 11),
       ]);
       await deletedInStore(['rec-11']);
@@ -1480,14 +1543,14 @@ void main() {
       (
         'that names a record still in the store',
         (day) => day.copyWith(
-              source: DayEntrySource.healthConnect,
+              source: _daySourceOf(platform),
               sourceId: 'rec-other@1',
             ),
       ),
       (
         'of this store\'s that she has since given a flow',
         (day) => day.copyWith(
-              source: DayEntrySource.healthConnect,
+              source: _daySourceOf(platform),
               flow: FlowLevel.light,
             ),
       ),
@@ -1523,7 +1586,7 @@ void main() {
 
     test('a spotting entry from another source that carries the same id is '
         'not offered and not touched', () async {
-      await imported([_flow('rec-11', 11, HealthFlowValue.light)]);
+      await imported([flow('rec-11', 11, HealthFlowValue.light)]);
       final day = (await dayOn(11))!;
       await observations.save(
         Observation(

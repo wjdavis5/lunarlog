@@ -99,4 +99,203 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(sample.metadata?[HKMetadataKeySyncIdentifier] as? String, "bbt-record-1")
     XCTAssertEqual(sample.metadata?[HKMetadataKeySyncVersion] as? NSNumber, 123456)
   }
+
+  // MARK: - Issue #1610: the stored import anchor and the page shape
+  //
+  // `HKQueryAnchor` has no public initializer (the #992 tests say the same),
+  // so the one shape below that needs a decodable anchor — a stored payload
+  // decoding to an incremental first page, and a real page's nextCursor /
+  // commitToken round-trip — cannot be constructed here. Everything the
+  // decision and the payload assembly do around that gap is.
+
+  private let anchorProfileA = "test-profile-a-1610"
+  private let anchorProfileB = "test-profile-b-1610"
+
+  override func tearDownWithError() throws {
+    UserDefaults.standard.removeObject(
+      forKey: HealthKitChannelHandler.importAnchorKey(anchorProfileA))
+    UserDefaults.standard.removeObject(
+      forKey: HealthKitChannelHandler.importAnchorKey(anchorProfileB))
+    try super.tearDownWithError()
+  }
+
+  /// The anchor is stored per bound profile: two profiles never share a
+  /// position, and dropping one leaves the other alone.
+  func testImportAnchorIsStoredAndDroppedPerProfile() {
+    let keyA = HealthKitChannelHandler.importAnchorKey(anchorProfileA)
+    let keyB = HealthKitChannelHandler.importAnchorKey(anchorProfileB)
+    XCTAssertNotEqual(keyA, keyB)
+
+    HealthKitChannelHandler.storeImportAnchor(anchorProfileA, "payload-a")
+    HealthKitChannelHandler.storeImportAnchor(anchorProfileB, "payload-b")
+    XCTAssertEqual(HealthKitChannelHandler.storedImportAnchor(anchorProfileA), "payload-a")
+    XCTAssertEqual(HealthKitChannelHandler.storedImportAnchor(anchorProfileB), "payload-b")
+
+    HealthKitChannelHandler.dropStoredImportAnchor(anchorProfileA)
+    XCTAssertNil(HealthKitChannelHandler.storedImportAnchor(anchorProfileA))
+    XCTAssertEqual(HealthKitChannelHandler.storedImportAnchor(anchorProfileB), "payload-b")
+  }
+
+  /// A first page with nothing stored reads everything: not an incremental
+  /// page, and it stores nothing.
+  func testStartingPageWithNoStoredAnchorReadsEverything() {
+    let page = HealthKitChannelHandler.startingPage(
+      profileId: anchorProfileA, cursor: nil, wholeHistory: false)
+    XCTAssertNil(page.anchor)
+    XCTAssertFalse(page.incremental)
+    XCTAssertNil(HealthKitChannelHandler.storedImportAnchor(anchorProfileA))
+  }
+
+  /// `wholeHistory: true` on a first page drops the stored anchor — even a
+  /// corrupt one — and reads everything. This is what makes a pass that
+  /// ends early be followed by another whole read: the position stays gone
+  /// until a commit re-establishes it.
+  func testStartingPageWholeHistoryDropsTheStoredAnchor() {
+    HealthKitChannelHandler.storeImportAnchor(anchorProfileA, "garbage")
+    let page = HealthKitChannelHandler.startingPage(
+      profileId: anchorProfileA, cursor: nil, wholeHistory: true)
+    XCTAssertNil(page.anchor)
+    XCTAssertFalse(page.incremental)
+    XCTAssertNil(
+      HealthKitChannelHandler.storedImportAnchor(anchorProfileA),
+      "the stored position must be gone, not merely ignored")
+  }
+
+  /// A stored payload this build cannot read is no position: the read
+  /// starts over as a full read, and the wreck is dropped so the next
+  /// commit writes a fresh one.
+  func testStartingPageCorruptStoredAnchorReadsEverythingAndIsDropped() {
+    HealthKitChannelHandler.storeImportAnchor(anchorProfileA, "garbage")
+    let page = HealthKitChannelHandler.startingPage(
+      profileId: anchorProfileA, cursor: nil, wholeHistory: false)
+    XCTAssertNil(page.anchor)
+    XCTAssertFalse(page.incremental)
+    XCTAssertNil(HealthKitChannelHandler.storedImportAnchor(anchorProfileA))
+  }
+
+  /// A later page whose cursor this build cannot read starts over as a full
+  /// read too — and touches no stored anchor on the way.
+  func testStartingPageMalformedCursorReadsEverything() {
+    HealthKitChannelHandler.storeImportAnchor(anchorProfileA, "stored-but-unread")
+    let page = HealthKitChannelHandler.startingPage(
+      profileId: anchorProfileA, cursor: "not-a-payload", wholeHistory: false)
+    XCTAssertNil(page.anchor)
+    XCTAssertFalse(page.incremental)
+    XCTAssertEqual(
+      HealthKitChannelHandler.storedImportAnchor(anchorProfileA),
+      "stored-but-unread",
+      "the cursor branch decides only the page; it must not touch storage")
+  }
+
+  /// A nil anchor serializes to nothing: no cursor is ever fabricated
+  /// without an anchor, so a page HealthKit gave no anchor for advances no
+  /// position.
+  func testAnchorPayloadOfNilAnchorIsNil() {
+    XCTAssertNil(HealthKitChannelHandler.encodeAnchorPayload(nil, incremental: true))
+    XCTAssertNil(HealthKitChannelHandler.encodeAnchorPayload(nil, incremental: false))
+  }
+
+  /// Every unreadable payload decodes to nil — "no position" — never a
+  /// crash: absent, not base64, base64 of non-JSON, JSON without an anchor,
+  /// and JSON whose archived anchor is not an `HKQueryAnchor`.
+  func testAnchorPayloadRejectsMalformedAndForeignPayloads() {
+    XCTAssertNil(HealthKitChannelHandler.decodeAnchorPayload(nil))
+    XCTAssertNil(HealthKitChannelHandler.decodeAnchorPayload(""))
+    XCTAssertNil(HealthKitChannelHandler.decodeAnchorPayload("***not-base64***"))
+
+    func payloadJson(_ json: String) -> String {
+      HealthKitChannelHandler.encodeCursorData(Data(json.utf8))
+    }
+    XCTAssertNil(HealthKitChannelHandler.decodeAnchorPayload(payloadJson("not json")))
+    XCTAssertNil(
+      HealthKitChannelHandler.decodeAnchorPayload(payloadJson(#"{"incremental": true}"#)))
+    XCTAssertNil(
+      HealthKitChannelHandler.decodeAnchorPayload(
+        payloadJson(#"{"anchor": "***not-base64***", "incremental": true}"#)))
+    // Valid base64 of a non-anchor archive: the unarchive gate.
+    let notAnAnchor = HealthKitChannelHandler.encodeCursorData(Data([0x00, 0x01, 0x02]))
+    XCTAssertNil(
+      HealthKitChannelHandler.decodeAnchorPayload(
+        payloadJson("{\"anchor\": \"\(notAnAnchor)\", \"incremental\": true}")))
+  }
+
+  /// The page shape: a short page with no anchor to carry has no cursor and
+  /// no commit token, and a full-history page carries no deletion keys.
+  func testPagePayloadShortFullHistoryPageCarriesOnlySamples() {
+    let payload = HealthKitChannelHandler.pagePayload(
+      samples: [],
+      deletedObjects: [],
+      newAnchor: nil,
+      pageSize: 500,
+      incremental: false)
+    XCTAssertEqual(payload["samples"] as? [[String: Any]], [])
+    XCTAssertNil(payload["nextCursor"])
+    XCTAssertNil(payload["commitToken"])
+    XCTAssertNil(payload["incremental"])
+    XCTAssertNil(payload["deletedRecordIds"])
+  }
+
+  /// An incremental page says so and carries the deleted ids — an empty
+  /// list when HealthKit reported none — even on the empty page that means
+  /// the store has nothing new. (`HKDeletedObject` has no public
+  /// initializer, so a populated deleted-objects list cannot be constructed
+  /// here; the UUID mapping is the one line between the query and the wire,
+  /// and the Dart end-to-end suite covers the consumption side.)
+  func testPagePayloadIncrementalPageCarriesTheDeletionKeys() {
+    let payload = HealthKitChannelHandler.pagePayload(
+      samples: [],
+      deletedObjects: [],
+      newAnchor: nil,
+      pageSize: 500,
+      incremental: true)
+    XCTAssertEqual(payload["samples"] as? [[String: Any]], [])
+    XCTAssertEqual(payload["incremental"] as? Bool, true)
+    XCTAssertEqual(payload["deletedRecordIds"] as? [String], [])
+    XCTAssertNil(payload["nextCursor"])
+    XCTAssertNil(payload["commitToken"])
+  }
+
+  /// A full page (raw count reaching `pageSize`) with no anchor still
+  /// fabricates no cursor: the page shape may claim more pages, but only
+  /// with an anchor to resume from.
+  func testPagePayloadFullPageWithoutAnchorCarriesNoCursor() {
+    let sample = HKCategorySample(
+      type: HKObjectType.categoryType(forIdentifier: .menstrualFlow)!,
+      value: 4,
+      start: Date(timeIntervalSince1970: 1_784_016_000),
+      end: Date(timeIntervalSince1970: 1_784_101_599))
+    let payload = HealthKitChannelHandler.pagePayload(
+      samples: [sample],
+      deletedObjects: [],
+      newAnchor: nil,
+      pageSize: 1,
+      incremental: false)
+    XCTAssertEqual((payload["samples"] as? [[String: Any]])?.count, 1)
+    XCTAssertNil(payload["nextCursor"])
+    XCTAssertNil(payload["commitToken"])
+  }
+
+  /// An imported row's `sourceId` on iPhone is the sample's UUID, and the
+  /// deletion reports must match it as-is — so a page's sample `recordId`
+  /// must be exactly the sample UUID, with the flow intensity wire name the
+  /// codec parses.
+  func testPagePayloadSampleRecordIdIsTheSampleUuid() {
+    let sample = HKCategorySample(
+      type: HKObjectType.categoryType(forIdentifier: .menstrualFlow)!,
+      value: 4,
+      start: Date(timeIntervalSince1970: 1_784_016_000),
+      end: Date(timeIntervalSince1970: 1_784_101_599))
+    let payload = HealthKitChannelHandler.pagePayload(
+      samples: [sample],
+      deletedObjects: [],
+      newAnchor: nil,
+      pageSize: 500,
+      incremental: false)
+    let samples = payload["samples"] as? [[String: Any]]
+    XCTAssertEqual(samples?.count, 1)
+    XCTAssertEqual(samples?.first?["recordId"] as? String, sample.uuid.uuidString)
+    XCTAssertEqual(samples?.first?["flow"] as? String, "heavy")
+    XCTAssertNotNil(samples?.first?["startMs"])
+    XCTAssertNotNil(samples?.first?["endMs"])
+  }
 }
