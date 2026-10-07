@@ -260,10 +260,11 @@ grep -q "^BEACON_MUST_BE_ABSENT=" "$SCRIPT" || {
 
 DEPLOY_WF="$(cat "$DEPLOY_WORKFLOW")"
 assert_contains "webapp-deploy.yml exists and runs the check" "$DEPLOY_WF" "check-webapp-staging.sh"
-# Issue #1405: the one-shot retirement deletes every zone DNS record for the
-# hostname, so it must stop running once the hostname serves the Worker.
-assert_contains "the retirement step is skipped once the cutover probe says done" "$DEPLOY_WF" "steps.cutover.outputs.done != 'true'"
-assert_contains "the cutover probe recognises the Worker by its own CSP directive" "$DEPLOY_WF" "require-trusted-types-for"
+# Issue #1405: the cutover has landed (app.lunarlog.app serves the Worker),
+# so the one-shot probe and retirement steps are deleted, not gated. Either
+# one coming back must fail this suite.
+assert_not_contains "the one-shot retirement step stays deleted" "$DEPLOY_WF" "Retire the Flutter Pages project"
+assert_not_contains "the cutover probe step stays deleted" "$DEPLOY_WF" "steps.cutover.outputs.done"
 assert_contains "the deploy passes the resolved staging URL" "$DEPLOY_WF" "WEBAPP_STAGING_BASE_URL"
 assert_contains "the deploy is gated on the Cloudflare credentials" "$DEPLOY_WF" "CLOUDFLARE_API_TOKEN"
 assert_contains "the deploy builds with the Supabase defines" "$DEPLOY_WF" "VITE_SUPABASE_URL"
@@ -274,7 +275,7 @@ assert_contains "ci.yml runs this suite (ubuntu release-guards)" "$CI" "check-we
 assert_contains "ci.yml has a webapp job" "$CI" "name: Web app (lint, typecheck, unit, build, e2e)"
 assert_contains "the webapp job is path-gated on the detect-changes output" "$CI" "outputs.webapp"
 assert_contains "the webapp job runs the Playwright suite" "$CI" "npm run e2e"
-assert_contains "the webapp job pins Node like site/" "$CI" "node-version: '22'"
+assert_contains "the webapp job pins Node" "$CI" "node-version: '22'"
 
 # The /auth/session probe must stay in the check under test itself: if the
 # path ever stops matching fixture_path's session branch above, the two

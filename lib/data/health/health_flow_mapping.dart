@@ -148,6 +148,38 @@ HealthFlowWritePlan mapSpottingToHealthWrite({
         ? const HealthFlowMenstrualSample(HealthFlowValue.light)
         : const HealthFlowIntermenstrualMarker();
 
+/// The export ledger's payload summary of the record [plan] writes
+/// (Issue #1591): what it says that *other* days decide, in one short
+/// string the ledger stores beside the record. A `menstrualFlow` sample
+/// is summarised as `flow:<value>:<cycle-start flag>` (`flow:light:1` —
+/// a light sample marked as the cycle's first day); an intermenstrual
+/// marker as `marker`. Null for [HealthFlowNoWrite]: a day that writes
+/// no sample is never in the ledger. Whatever the summary depends on —
+/// the episode a day falls inside, the flag the episode's first day
+/// carries — comes from other rows, which is why a change to those rows
+/// must make the record due again ([flowPayloadSummaryWasMarker]'s
+/// readers compare it).
+String? flowPayloadSummary(HealthFlowWritePlan plan, {required bool cycleStart}) =>
+    switch (plan) {
+      HealthFlowNoWrite() => null,
+      HealthFlowMenstrualSample(:final value) =>
+        'flow:${value.name}:${cycleStart ? 1 : 0}',
+      HealthFlowIntermenstrualMarker() => 'marker',
+    };
+
+/// Whether [summary] says the record was written as an intermenstrual
+/// bleeding marker rather than a menstrual-flow sample (Issue #1591).
+/// Null when the ledger does not say: a row written before #1591 carries
+/// no summary, and a shape this build did not write is unknown to it.
+/// Unknown keeps the conservative pre-#1591 reading wherever the two
+/// types behave differently.
+bool? flowPayloadSummaryWasMarker(String? summary) {
+  if (summary == null) return null;
+  if (summary == 'marker') return true;
+  if (summary.startsWith('flow:')) return false;
+  return null;
+}
+
 /// The inverse direction (Issue #217): a health-store flow value read back
 /// into lunarlog's [FlowLevel]. `unspecified` has no lunarlog equivalent —
 /// the app always knows which value it means — so it returns null and the

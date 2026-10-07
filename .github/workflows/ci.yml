@@ -1174,6 +1174,12 @@ jobs:
       - name: Build iOS (unsigned)
         # Unsigned: a PR from a fork cannot read signing secrets, and this
         # only needs to prove the app still compiles for a device.
+        # Bounded retry (issue #1615): `flutter build ios` shells out to
+        # xcodebuild, whose SwiftPM resolution downloads binary-target
+        # archives (sentry-cocoa xcframeworks) from github.com release
+        # assets with no retry of its own -- a transient HTTP 500 there
+        # failed this step on main with no code change involved. The build
+        # is idempotent, so retrying only costs time on a genuine break.
         if: steps.check_run.outputs.run == 'true'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -1188,7 +1194,9 @@ jobs:
           FCM_IOS_API_KEY: ${{ secrets.FCM_IOS_API_KEY }}
           FCM_IOS_APP_ID: ${{ secrets.FCM_IOS_APP_ID }}
         run: |
-          flutter build ios --release --no-codesign \
+          attempt=1
+          max_attempts=3
+          until flutter build ios --release --no-codesign \
             --dart-define=SUPABASE_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY" \
             --dart-define=SENTRY_DSN="$SENTRY_DSN" \
@@ -1200,7 +1208,15 @@ jobs:
             --dart-define=FCM_ANDROID_APP_ID="$FCM_ANDROID_APP_ID" \
             --dart-define=FCM_IOS_API_KEY="$FCM_IOS_API_KEY" \
             --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID" \
-            --dart-define=LUNARLOG_LINK_DOMAIN="lunarlog.app"
+            --dart-define=LUNARLOG_LINK_DOMAIN="lunarlog.app"; do
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "::error::iOS build failed after $attempt attempt(s)."
+              exit 1
+            fi
+            echo "iOS build failed (attempt $attempt/$max_attempts); retrying in 60s..."
+            attempt=$((attempt + 1))
+            sleep 60
+          done
 
   ios-simulator:
     # GitHub-hosted macOS image (Xcode + iOS Simulator runtimes preinstalled),
@@ -1232,8 +1248,9 @@ jobs:
     # Issue #1278: the test step below grew to 30 minutes (two 750s-bounded
     # attempts plus a reboot between them -- see its own comment), so the same
     # arithmetic is 20 + 30 + ~6 of checkout / Flutter setup / cache restore /
-    # boot = ~56, under this raised cap.
-    timeout-minutes: 60
+    # boot = ~56, under this raised cap. Issue #1610 added the Swift channel
+    # unit-test step (RunnerTests, 15m): 20 + 30 + 15 + ~6 = 71, under 75.
+    timeout-minutes: 75
     steps:
       - name: Check if iOS Simulator tests should run
         id: check_run
@@ -1352,6 +1369,38 @@ jobs:
           xcrun simctl boot "$udid" || true
           xcrun simctl bootstatus "$udid" -b
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      - name: Run the Swift channel unit tests on the simulator
+        # Issue #1610: ios/RunnerTests/RunnerTests.swift is the Runner
+        # scheme's test target (the XCTest home of the HealthKitChannelHandler
+        # tests since #916/#992), but nothing ran it -- the codec's raw-value
+        # tables and, now, the import-anchor handling and page shape were
+        # pinned only from the Dart side. One xcodebuild test on the
+        # simulator this job has already booted runs the whole target; the
+        # app build above warmed the DerivedData tree, so this compiles the
+        # test bundle on top of an existing build. Simulator destinations
+        # need no code signing.
+        #
+        # Deliberately BEFORE the integration tests: the integration build
+        # (`flutter test integration_test/...`) records a now-deleted
+        # flutter_test_listener temp file as its kernel entrypoint in the
+        # shared DerivedData, and an xcodebuild test that runs after it
+        # fails in the Runner target's Run Script phase re-reading that
+        # entrypoint (kernel_snapshot_program: No such file or directory --
+        # run 37568557173). Running against the "Build the app" step's
+        # state is the same build-then-test sequence the lab Mac mini
+        # verified this suite with.
+        if: steps.check_run.outputs.run == 'true'
+        timeout-minutes: 15
+        env:
+          SIM_UDID: ${{ steps.sim.outputs.udid }}
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -destination "id=$SIM_UDID" \
+            -quiet
 
       - name: Run integration tests on the simulator
         # Issue #121: this step used to be scoped with a --name filter to

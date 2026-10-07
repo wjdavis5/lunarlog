@@ -25,6 +25,9 @@
 /// **Ids and provenance only — no health values.** A record id embeds an
 /// entry id and a type name, the same shape already crossing the platform
 /// channel; no flow level, tag, note, or measurement is ever stored here.
+/// (Since #1591 [HealthExportLedgerEntry.payloadSummary] adds a type name
+/// and a boolean about what the written record said — the shape of the
+/// export, never its content.)
 ///
 /// Pure Dart (R14/R16): the drift-backed implementation lives in
 /// `lib/data/repositories/`, wired through `app_dependencies.dart`.
@@ -54,9 +57,9 @@ enum HealthExportLedgerKind {
   /// it itself from this row: [HealthExportLedgerEntry.sourceRowId] is the
   /// exported interval, `<first day>/<last day>` as ISO dates, which is what
   /// a later pass compares against the episode the profile's days derive
-  /// now. An older build that does not know this kind reads it as [entry]
-  /// (`DriftHealthExportLedger`'s documented fail-safe), which is harmless:
-  /// the source row id matches no day entry.
+  /// now. A build that does not know a kind does not read its rows at all
+  /// (`DriftHealthExportLedger.readForProfile`), so it leaves the record
+  /// in the store and the row in the table.
   period,
 }
 
@@ -69,6 +72,7 @@ class HealthExportLedgerEntry {
     required this.kind,
     required this.localDate,
     required this.exportedAt,
+    this.payloadSummary,
   });
 
   /// The platform external id this device wrote (Health Connect
@@ -89,8 +93,24 @@ class HealthExportLedgerEntry {
   /// ISO calendar date `yyyy-MM-dd` the export was for (provenance only).
   final String localDate;
 
-  /// The UTC instant the record was exported.
+  /// The version of the source row the record was written from: the
+  /// row's `updatedAt` at that moment (Issue #1581). A row whose
+  /// `updatedAt` is later than this has changed since, and its record is
+  /// due to be written again. Two exceptions. A [HealthExportLedgerKind
+  /// .period] row holds the version number the record was written with
+  /// (Issue #1478). And a row written by a build before #1581 holds the
+  /// time of the export, which is at or after the row's version, so it
+  /// reads as written.
   final DateTime exportedAt;
+
+  /// A short summary of what the written record says that *other* rows
+  /// decide (Issue #1591) — for a flow or spotting record the type written
+  /// and, for a flow sample, the cycle-start flag (`flow:light:1`,
+  /// `marker`; see `flowPayloadSummary` in `health_flow_mapping.dart`).
+  /// Null for a kind with no such payload, and for a row written before
+  /// #1591: read as "what it says is unknown", which sends the record once
+  /// more so the store is corrected.
+  final String? payloadSummary;
 }
 
 /// The read/write port for the device-local health-store export ledger.

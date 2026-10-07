@@ -37,6 +37,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:lunarlog/app_lifecycle.dart' show EnsurePushRegistrationCallback;
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/health/health_deviation.dart';
@@ -706,6 +707,11 @@ class _CaregiverAlertsTilesState extends State<_CaregiverAlertsTiles> {
                       builder: (_) => NotificationPreferencesScreen(
                         profile: profile,
                         preferencesService: service,
+                        ensurePushRegistration:
+                            Provider.of<EnsurePushRegistrationCallback?>(
+                          context,
+                          listen: false,
+                        )?.call,
                       ),
                     ),
                   ),

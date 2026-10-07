@@ -493,6 +493,7 @@ class MethodChannelHealthPlatform
     required DateTime end,
     required int pageSize,
     String? cursor,
+    bool wholeHistory = false,
   }) async {
     final check = await _guardCheck(facts);
     if (!check.isAllowed) return HealthReadResult.refused(check);
@@ -506,6 +507,7 @@ class MethodChannelHealthPlatform
             end,
             pageSize: pageSize,
             cursor: cursor,
+            wholeHistory: wholeHistory,
           ),
         },
       );
@@ -577,17 +579,12 @@ class MethodChannelHealthPlatform
   Future<HealthPlatformResult> commitImport(
     HealthGuardFacts facts,
     String commitToken,
-  ) async {
-    if (!readAccessDisclosed) {
-      // iOS HealthKit does not track position via commit tokens.
-      return const HealthPlatformResult.allowed();
-    }
-    return _invokeGuarded(
-      HealthChannelMethods.commitImport,
-      facts,
-      payloadArgs: () => {'commitToken': commitToken},
-    );
-  }
+  ) =>
+      _invokeGuarded(
+        HealthChannelMethods.commitImport,
+        facts,
+        payloadArgs: () => {'commitToken': commitToken},
+      );
 
   /// Issue #1573: whether this phone's Health Connect has the "Access past
   /// data" switch. A store that does not disclose read access has no such
@@ -734,6 +731,7 @@ class UnsupportedHealthPlatform
     required DateTime end,
     required int pageSize,
     String? cursor,
+    bool wholeHistory = false,
   }) async =>
       const HealthReadResult.unavailable();
 

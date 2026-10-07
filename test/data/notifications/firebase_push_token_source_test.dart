@@ -14,12 +14,13 @@
 /// so each device reset attached another generation that a single
 /// notification tap would reach.
 ///
-/// Issue #1425 adds [pushPermissionStateOf] and the launch-time permission
-/// ask, `askPermission`, run through the real class with fakes for its two
+/// Issue #1425 adds [pushPermissionStateOf] and the permission ask,
+/// `askPermission`, run through the real class with fakes for its two
 /// plugin calls: it still queues on the shared permission gate, opens the
 /// system-UI window only for its own request, and counts its Android
 /// refusals where the real scheduler's "Turn on reminders" path reads
-/// them.
+/// them. Issue #1444 moves the ask in context (no launch-time request);
+/// the wiring these tests pin is unchanged, only the caller is.
 library;
 
 import 'dart:async';
@@ -282,7 +283,7 @@ void main() {
     });
   });
 
-  group('askPermission -- the launch-time ask (issue #1425)', () {
+  group('askPermission -- the in-context ask (issues #1425, #1444)', () {
     // The real FirebasePushTokenSource, with fakes in place of the two
     // plugin calls only: the queueing on the shared permission gate, the
     // window and the refusal count are this class's own wiring.
@@ -316,11 +317,11 @@ void main() {
           .setMockMethodCallHandler(localNotifications, null);
     });
 
-    /// One launch: a fresh source over [store] (as after a process
+    /// One in-context ask: a fresh source over [store] (as after a process
     /// restart) making its ask, with the platform at [state] beforehand
     /// and the operator's answer leaving it at [answer]. Returns how many
     /// requests were made.
-    Future<int> launch(
+    Future<int> ask(
       FakeSettingsStore store, {
       required PushPermissionState state,
       required PushPermissionState answer,
@@ -406,7 +407,7 @@ void main() {
       ]);
     });
 
-    test('a launch whose permission is already settled makes no request '
+    test('an ask whose permission is already settled makes no request '
         'and opens no window', () async {
       final events = <String>[];
       final window = _RecordingWindow(events);
@@ -434,14 +435,14 @@ void main() {
       final store = FakeSettingsStore();
       const key = SettingsKeys.androidNotificationDeniedAttempts;
 
-      await launch(
+      await ask(
         store,
         state: PushPermissionState.undetermined,
         answer: PushPermissionState.refused,
       );
       expect(await store.get(key), '1');
 
-      await launch(
+      await ask(
         store,
         state: PushPermissionState.refused,
         answer: PushPermissionState.granted,
@@ -453,10 +454,10 @@ void main() {
         'opens settings instead of making a dead request', () async {
       final store = FakeSettingsStore();
 
-      // Launch 1: the first dialog, refused. Launch 2: the second, refused
+      // Ask 1: the first dialog, refused. Ask 2: the second, refused
       // -- Android will show no third.
       expect(
-        await launch(
+        await ask(
           store,
           state: PushPermissionState.undetermined,
           answer: PushPermissionState.refused,
@@ -464,16 +465,16 @@ void main() {
         1,
       );
       expect(
-        await launch(
+        await ask(
           store,
           state: PushPermissionState.refused,
           answer: PushPermissionState.refused,
         ),
         1,
       );
-      // Launch 3: nothing left to ask.
+      // Ask 3: nothing left to ask.
       expect(
-        await launch(
+        await ask(
           store,
           state: PushPermissionState.refused,
           answer: PushPermissionState.refused,
@@ -485,7 +486,7 @@ void main() {
       await tapTurnOnReminders(store);
 
       expect(schedulerCalls, contains('openAppNotificationSettings'),
-          reason: 'the dialogs were spent at launch; settings is the only '
+          reason: 'the dialogs were spent in context; settings is the only '
               'path back to "on"');
       expect(schedulerCalls, isNot(contains('requestNotificationsPermission')),
           reason: 'the pre-fix bug: push registration\'s refusals went '
@@ -496,7 +497,7 @@ void main() {
     test('after one refused push ask the tap still asks -- Android has a '
         'dialog left -- and a refusal there is the last', () async {
       final store = FakeSettingsStore();
-      await launch(
+      await ask(
         store,
         state: PushPermissionState.undetermined,
         answer: PushPermissionState.refused,
@@ -507,17 +508,17 @@ void main() {
       expect(schedulerCalls, isNot(contains('openAppNotificationSettings')));
 
       // The tap's own refusal took the shared count to the line: push
-      // registration's next launch asks nothing, and the next tap opens
-      // settings.
+      // registration's next in-context ask asks nothing, and the next tap
+      // opens settings.
       expect(
-        await launch(
+        await ask(
           store,
           state: PushPermissionState.refused,
           answer: PushPermissionState.refused,
         ),
         0,
         reason: 'the count is one count: the tap\'s refusal stops the '
-            'launch-time ask too',
+            'in-context ask too',
       );
       await tapTurnOnReminders(store);
       expect(schedulerCalls, contains('openAppNotificationSettings'));
@@ -525,16 +526,16 @@ void main() {
     });
 
     test('an older build\'s uncounted dialog is caught up at the next '
-        'launch, so the first tap still opens settings', () async {
+        'ask, so the first tap still opens settings', () async {
       // A pre-#1425 build spent both dialogs in a single launch (push
       // registration's ask, then the scheduler's own) and counted only the
-      // scheduler's. This build's first launch asks once more -- the OS
-      // drops the request and reports it refused -- and that brings the
-      // count to the line before the hint is ever tapped.
+      // scheduler's. This build's first in-context ask asks once more --
+      // the OS drops the request and reports it refused -- and that brings
+      // the count to the line before the hint is ever tapped.
       final store = FakeSettingsStore(
           {SettingsKeys.androidNotificationDeniedAttempts: '1'});
 
-      await launch(
+      await ask(
         store,
         state: PushPermissionState.refused,
         answer: PushPermissionState.refused,

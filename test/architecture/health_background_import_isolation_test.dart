@@ -433,7 +433,10 @@ void main() {
       // and releases it only when its own steps have fully settled.
       expect(service, contains('Future<void> _passTail'));
       expect(service, contains('final previous = _passTail;'));
-      expect(service, contains('_runPassSteps(bound, onProgress)'));
+      expect(
+        service,
+        contains('_runPassSteps(bound, onProgress, remove: remove)'),
+      );
       expect(service, contains('.whenComplete(released.complete)'));
 
       // Both entry points funnel through the serialized _runPass —

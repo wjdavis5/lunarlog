@@ -570,4 +570,150 @@ void main() {
     );
     expect(alertOnLog.value, isTrue);
   });
+
+  group('in-context push-permission ask (issue #1444)', () {
+    Future<void> pumpScreen(
+      WidgetTester tester,
+      NotificationPreferencesService service, {
+      void Function()? onEnsure,
+    }) async {
+      await tester.pumpWidget(MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: NotificationPreferencesScreen(
+          profile: _profile(),
+          preferencesService: service,
+          ensurePushRegistration: onEnsure == null
+              ? null
+              : () async {
+                  onEnsure();
+                },
+        ),
+      ));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('turning the entry alert on from all-off drives the ask once',
+        (tester) async {
+      final service = FakeNotificationPreferencesService();
+      var asks = 0;
+      await pumpScreen(tester, service, onEnsure: () => asks++);
+
+      await tester.tap(find.byKey(const ValueKey('alert-on-log-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(service.stored['profile-1']?.alertOnLog, isTrue);
+      expect(asks, 1);
+    });
+
+    testWidgets('an ahead-of-time opt-in from all-off drives the ask',
+        (tester) async {
+      final service = FakeNotificationPreferencesService();
+      var asks = 0;
+      await pumpScreen(tester, service, onEnsure: () => asks++);
+
+      await _scrollTo(
+          tester, find.byKey(const ValueKey('alert-period-soon-toggle')));
+      await tester.tap(find.byKey(const ValueKey('alert-period-soon-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(service.stored['profile-1']?.aheadOfTimeAlerts.periodSoon, isTrue);
+      expect(asks, 1);
+    });
+
+    testWidgets('a missed-entry threshold from off drives the ask',
+        (tester) async {
+      final service = FakeNotificationPreferencesService();
+      var asks = 0;
+      await pumpScreen(tester, service, onEnsure: () => asks++);
+
+      await _scrollTo(tester,
+          find.byKey(const ValueKey('missed-entry-threshold-dropdown')));
+      await tester.tap(
+          find.byKey(const ValueKey('missed-entry-threshold-dropdown')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('2 days').last);
+      await tester.pumpAndSettle();
+
+      expect(service.stored['profile-1']?.missedEntryThreshold,
+          MissedEntryThreshold.twoDays);
+      expect(asks, 1);
+    });
+
+    testWidgets('narrowing and cadence changes while enabled do not re-ask',
+        (tester) async {
+      final service = FakeNotificationPreferencesService()
+        ..seed('profile-1', const CaregiverAlertPreferences(alertOnLog: true));
+      var asks = 0;
+      await pumpScreen(tester, service, onEnsure: () => asks++);
+
+      await tester.tap(
+          find.byKey(const ValueKey('alert-cycle-start-only-toggle')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('log-cadence-dropdown')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Daily digest').last);
+      await tester.pumpAndSettle();
+
+      expect(asks, 0);
+    });
+
+    testWidgets('turning everything back off does not ask', (tester) async {
+      final service = FakeNotificationPreferencesService()
+        ..seed('profile-1', const CaregiverAlertPreferences(alertOnLog: true));
+      var asks = 0;
+      await pumpScreen(tester, service, onEnsure: () => asks++);
+
+      await tester.tap(find.byKey(const ValueKey('alert-on-log-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(service.stored['profile-1']?.alertOnLog, isFalse);
+      expect(asks, 0);
+    });
+
+    testWidgets('a failed save does not ask', (tester) async {
+      final delegate = FakeNotificationPreferencesService();
+      final service = _FailingOnceService(delegate);
+      var asks = 0;
+      await pumpScreen(tester, service, onEnsure: () => asks++);
+
+      await tester.tap(find.byKey(const ValueKey('alert-on-log-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(asks, 0);
+      expect(find.byType(SnackBar), findsOneWidget);
+    });
+
+    testWidgets(
+        'a successful save after a failed off-to-on save still asks once (#1628)',
+        (tester) async {
+      final delegate = FakeNotificationPreferencesService();
+      final service = _FailingOnceService(delegate);
+      var asks = 0;
+      await pumpScreen(tester, service, onEnsure: () => asks++);
+
+      await tester.tap(find.byKey(const ValueKey('alert-on-log-toggle')));
+      await tester.pumpAndSettle();
+      expect(asks, 0);
+
+      // The optimistic value is still on screen; a further change saves it.
+      await _scrollTo(
+          tester, find.byKey(const ValueKey('alert-period-soon-toggle')));
+      await tester.tap(find.byKey(const ValueKey('alert-period-soon-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(delegate.stored['profile-1']?.alertOnLog, isTrue);
+      expect(asks, 1);
+    });
+
+    testWidgets('without the callback toggles just save', (tester) async {
+      final service = FakeNotificationPreferencesService();
+      await pumpScreen(tester, service);
+
+      await tester.tap(find.byKey(const ValueKey('alert-on-log-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(service.stored['profile-1']?.alertOnLog, isTrue);
+    });
+  });
 }

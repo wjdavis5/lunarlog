@@ -159,6 +159,7 @@ class AppDependencies {
     required this.healthSyncAnchors,
     required this.healthSyncTombstoneSource,
     required this.healthExportLedger,
+    required this.localWriteClock,
     required this.accountExportWriter,
     required this.fhirBundleWriter,
     required this.csvExportWriter,
@@ -228,6 +229,13 @@ class AppDependencies {
   /// synced to the server; the drift `health_export_ledger` table's domain
   /// contract. Seeds both health-store deletion paths across app restarts.
   final HealthExportLedger healthExportLedger;
+
+  /// The clock a local write is stamped with: the device's, plus what
+  /// the sync engine has learned of how far it is from the server's
+  /// (Issue #1581). The health write pass stamps its forward-only floor
+  /// with it, so the floor and the rows it is compared with are timed
+  /// by one clock.
+  final DateTime Function() localWriteClock;
 
   final AccountExportWriter accountExportWriter;
   final FhirBundleWriter fhirBundleWriter;
@@ -399,6 +407,7 @@ AppDependencies buildAppDependencies({
     healthSyncAnchors: DriftHealthSyncStateRepository(storage),
     healthSyncTombstoneSource: DriftHealthSyncTombstoneSource(storage),
     healthExportLedger: DriftHealthExportLedger(storage),
+    localWriteClock: () => DateTime.now().toUtc().add(storage.clockOffset),
     accountExportWriter: PlatformAccountExportWriter(
       remoteSource: builtAccountExportRemoteSource,
     ),
@@ -756,6 +765,7 @@ HealthFlowWriteCoordinator? buildHealthFlowWriteCoordinator({
   required String? Function() signedInUserId,
   required bool minorBindingAllowed,
   required HealthExportLedger ledger,
+  DateTime Function()? rowClock,
 }) {
   if (!_healthWritesOnThisPlatform()) return null;
   final binding = HealthSyncBinding(settings);
@@ -765,6 +775,7 @@ HealthFlowWriteCoordinator? buildHealthFlowWriteCoordinator({
     minorBindingAllowed: minorBindingAllowed,
   );
   final service = LocalHealthFlowWriteService(
+    rowClock: rowClock,
     platform: platform,
     binding: binding,
     minorBindingAllowed: minorBindingAllowed,
@@ -1009,7 +1020,10 @@ RealtimeSyncCoordinator buildRealtimeSyncCoordinator({
 /// `resolvePushDeviceId`) and owns `start()`/`dispose()`.
 ///
 /// Issue #1425: [settings] and [duringSystemUi] go to the token source —
-/// see [buildPushTokenSource].
+/// see [buildPushTokenSource]. Issue #1444: the source's permission ask no
+/// longer runs at launch; the coordinator drives it in context instead
+/// (`ensurePermissionAndRegister`), ahead of the token read, so the iOS
+/// permission/APNs ordering is unchanged.
 PushRegistrationCoordinator buildPushRegistrationCoordinator({
   required SupabaseClient client,
   required String deviceId,
@@ -1019,30 +1033,36 @@ PushRegistrationCoordinator buildPushRegistrationCoordinator({
   required void Function(String profileId)? onTap,
   required SettingsStore settings,
   required SystemUiWindow? duringSystemUi,
-}) => PushRegistrationCoordinator(
-  tokenSource: buildPushTokenSource(
+}) {
+  final tokenSource = buildPushTokenSource(
     settings: settings,
     duringSystemUi: duringSystemUi,
-  ),
-  registry: SupabasePushDeviceRegistry(client: client),
-  deviceId: deviceId,
-  platform: platform,
-  authStates: authStates,
-  currentAuthState: currentAuthState,
-  onTap: onTap,
-);
+  );
+  return PushRegistrationCoordinator(
+    tokenSource: tokenSource,
+    requestPushPermission: tokenSource.askPermission,
+    registry: SupabasePushDeviceRegistry(client: client),
+    deviceId: deviceId,
+    platform: platform,
+    authStates: authStates,
+    currentAuthState: currentAuthState,
+    onTap: onTap,
+  );
+}
 
 /// Constructs the Firebase-backed push token source (issue #1425), split
 /// out of [buildPushRegistrationCoordinator] so its wiring is testable
 /// without a Supabase client.
 ///
-/// The source makes its permission ask at launch. [duringSystemUi] is the
-/// app gate's system-UI window (`GateController.duringSystemUi`): the ask
-/// opens it around a request that can present the system dialog, so the
-/// gate does not re-lock the app behind that dialog. [settings] is where
-/// the Android refusal count lives — the same store the scheduler built by
-/// [buildAppDependencies] reads it from, so a refusal at launch is one the
-/// "Turn on reminders" tap knows about.
+/// The source makes no permission ask on its own since issue #1444 —
+/// initialization is silent. [duringSystemUi] is the app gate's
+/// system-UI window (`GateController.duringSystemUi`): the in-context ask
+/// (`PushRegistrationCoordinator.ensurePermissionAndRegister`) opens it
+/// around a request that can present the system dialog, so the gate does
+/// not re-lock the app behind that dialog. [settings] is where the
+/// Android refusal count lives — the same store the scheduler built by
+/// [buildAppDependencies] reads it from, so a refusal in context is one
+/// the "Turn on reminders" tap knows about.
 FirebasePushTokenSource buildPushTokenSource({
   required SettingsStore settings,
   required SystemUiWindow? duringSystemUi,

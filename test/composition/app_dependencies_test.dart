@@ -19,6 +19,7 @@ import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
+import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/export/account_export.dart';
 import 'package:lunarlog/domain/export/account_export_remote_source.dart';
 import 'package:lunarlog/domain/export/account_export_writer.dart';
@@ -58,6 +59,7 @@ import 'package:provider/provider.dart';
 import '../support/fake_auth_service.dart';
 import '../support/fake_feedback_service.dart';
 import '../support/fake_notification_preferences_service.dart';
+import '../support/fake_supabase_client.dart';
 import '../support/fake_reminder_scheduler.dart';
 import '../support/fake_sync_engine.dart';
 
@@ -193,7 +195,7 @@ void main() {
       duringSystemUi: window,
     );
 
-    // The launch-time ask, with fakes for the two plugin calls only: a
+    // The in-context ask, with fakes for the two plugin calls only: a
     // never-asked Android permission, refused.
     await source.askPermission(
       isAndroid: true,
@@ -209,6 +211,27 @@ void main() {
       reason: 'and its refusal landed in the store the scheduler built by '
           'buildAppDependencies reads the same count from',
     );
+  });
+
+  test('issue #1444: buildPushRegistrationCoordinator wires the token '
+      'source\'s in-context ask into the coordinator', () async {
+    final coordinator = buildPushRegistrationCoordinator(
+      client: FakeSupabaseClient(),
+      deviceId: 'device-1',
+      platform: 'android',
+      authStates: const Stream<AuthSessionState>.empty(),
+      currentAuthState: () => AuthSessionState.signedOut,
+      onTap: (_) {},
+      settings: buildCompositionSettingsStore(db),
+      duringSystemUi: null,
+    );
+
+    // Construction only: driving ensurePermissionAndRegister here would
+    // reach the real plugin-bound ask. The ask-then-register contract it
+    // wires is pinned against fakes in
+    // push_registration_coordinator_test.dart.
+    expect(coordinator, isNotNull);
+    await coordinator.dispose();
   });
 
   test('R16: buildAppDependencies wires currentUserIdProvider into the import '

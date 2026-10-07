@@ -29,8 +29,8 @@ abstract final class SettingsKeys {
   /// `POST_NOTIFICATIONS` when the app asked for it (Issue #168). Two
   /// things ask, and both count here because Android's two dialogs are
   /// spent whoever asked: the "Turn on reminders" tap, and — on a
-  /// push-configured build — push registration's ask at launch. The key
-  /// has one owner, `AndroidNotificationDenials`
+  /// push-configured build — push registration's in-context ask (issue
+  /// #1444). The key has one owner, `AndroidNotificationDenials`
   /// (`lib/domain/notifications/`); nothing else reads or writes it. The
   /// scheduler's `initialize()` no longer asks at startup (issue #1425),
   /// so it no longer counts a refusal there either. A count written by an
@@ -104,27 +104,39 @@ abstract final class SettingsKeys {
   /// [awaitingConfirmationEmail]'s empty-string-means-cleared convention.
   static const String healthStoreProfileId = 'health_store_profile_id';
 
-  /// The health-sync forward-only cursor (Issue #193): epoch milliseconds
-  /// (UTC) of the newest day-entry/observation write the OS health store
-  /// has been brought in line with, or unset when health sync has never
-  /// been granted on this device. Written only by
-  /// `lib/data/health/health_flow_write_service.dart`: first stamped with
-  /// the grant instant (the moment `requestWriteAuthorization` completes —
-  /// the issue's "forward-only from the moment permission is granted", so
-  /// pre-grant days are never backfilled), then advanced to the newest
-  /// processed row's `updatedAt` after a fully successful pass. Cleared
-  /// alongside [healthStoreProfileId] whenever the binding goes away (the
-  /// write coordinator calls the service's unbind path on any bound-profile
-  /// transition), so re-binding re-grants from that new moment. Device-local
-  /// scheduling metadata — a timestamp, never health content.
+  /// The health-sync forward-only floor (Issue #193): epoch milliseconds
+  /// (UTC) of the moment write access to the OS health store was granted,
+  /// or unset when it never has been on this device. Written only by
+  /// `lib/data/health/health_flow_write_service.dart`, once: stamped when
+  /// the write permission reads granted (the issue's "forward-only from the
+  /// moment permission is granted"), so a day saved before that is never
+  /// backfilled. Until Issue #1581 it was a cursor that moved to the newest
+  /// row each pass wrote, which is what the key's name says; an install
+  /// that upgrades keeps the value it had as its floor. What has been sent
+  /// is no longer read off this value but off the export ledger
+  /// (`HealthExportLedger`). Cleared alongside [healthStoreProfileId]
+  /// whenever the binding goes away (the write coordinator calls the
+  /// service's unbind path on any bound-profile transition), so re-binding
+  /// re-grants from that new moment. Device-local scheduling metadata — a
+  /// timestamp, never health content.
   static const String healthSyncWrittenThroughMs = 'health_sync_written_through_ms';
 
-  /// The same cursor in epoch microseconds (Issue #1577), written beside
+  /// The same instant in epoch microseconds (Issue #1577), written beside
   /// [healthSyncWrittenThroughMs] and cleared with it. A row's `updatedAt`
-  /// carries microseconds, so the millisecond value alone left the newest
-  /// row written still after the cursor. It refines the millisecond value
-  /// and counts only while the two agree: `health_write_cursor.dart`.
+  /// carries microseconds, so the millisecond value alone cannot say which
+  /// side of the floor a row saved in the grant's own millisecond falls
+  /// on. It refines the millisecond value and counts only while the two
+  /// agree: `health_write_cursor.dart`.
   static const String healthSyncWrittenThroughUs = 'health_sync_written_through_us';
+
+  /// What the health write pass keeps between passes beside the floor and
+  /// the export ledger (Issue #1581): a floor for each write type that
+  /// has been found switched off, and how far no-flow days have been
+  /// cleared. Type names and times only, encoded by
+  /// `HealthWritePassState` (`lib/domain/health/health_write_pass_state
+  /// .dart`). Written only by the write service and cleared with
+  /// [healthSyncWrittenThroughMs].
+  static const String healthSyncWriteState = 'health_sync_write_state';
 
   /// The first-import consent marker for the device's OS health-store
   /// binding (Issue #1215): epoch milliseconds (UTC) of the completion of
@@ -140,6 +152,18 @@ abstract final class SettingsKeys {
   /// metadata — a timestamp, never health content.
   static const String healthImportFirstPassCompletedMs =
       'health_import_first_pass_completed_ms';
+
+  /// The ids of health-store records the store has said were deleted and
+  /// that an imported row on this phone was written from (Issue #1594): a
+  /// JSON list of strings, or unset. The import never removes such a row
+  /// by itself. It keeps the ids here until she answers the Health sync
+  /// screen's offer to remove those days, or until the rows stop naming
+  /// the records. Written only through `HealthSyncBinding`, and cleared
+  /// with the binding by `bind`/`unbind`: the ids belong to this phone's
+  /// health store and to the profile bound to it. Device-local, never
+  /// synced. Record ids only: no date, no flow, nothing about a day.
+  static const String healthImportStoreDeletedRecordIds =
+      'health_import_store_deleted_record_ids';
 
   /// Per-profile local reminder configuration (Issue #136, R10/R11), as
   /// the JSON document `encodeReminderConfigs` produces: a versioned map

@@ -22,12 +22,14 @@
 /// Pure Dart (R14/R16) — no Flutter/drift imports.
 library;
 
+import 'package:lunarlog/domain/health/health_export_ledger.dart';
 import 'package:lunarlog/domain/health/health_platform.dart'
     show HealthWriteTypes;
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 
 import 'health_fertility_mapping.dart';
+import 'health_flow_mapping.dart' show flowPayloadSummaryWasMarker;
 import 'health_symptom_mapping.dart';
 
 /// The record id of a day's menstrual-flow / intermenstrual-bleeding sample
@@ -92,17 +94,104 @@ Set<String> healthRecordIdsForEntry(DayEntry entry) {
   return ids;
 }
 
+/// Whether a delete of the record [written] is sure to reach it, given the
+/// write types switched on in the health store (Issue #1581). [granted] is
+/// `HealthPlatformStore.grantedWriteTypes`' answer, or null when every
+/// type is on.
+///
+/// Both native halves delete by record id across every type they write,
+/// pass over a type they may not write, and answer partial with the
+/// skippedTypes (not allowed, since #1592). So a delete sent while the
+/// record's type is off removes nothing. The write pass asks this first, to
+/// avoid a delete the store will pass over, and leaves such a record
+/// remembered until its type is back on; a record whose type a delete did
+/// skip stays in the ledger the same way (_passedOver).
+///
+/// The type is read off the id, which is how these builders made it. A
+/// spotting observation's record is the one that can be either of two
+/// types — an intermenstrual marker, or a light flow sample when the day
+/// falls inside a period. Since Issue #1591 the ledger's
+/// [HealthExportLedgerEntry.payloadSummary] says which it was, and only
+/// that type's switch is waited for ([flowPayloadSummaryWasMarker]); a
+/// row written before then carries no summary, and keeps the old reading
+/// of needing both.
+bool healthRecordDeletable(
+  HealthExportLedgerEntry? written,
+  Set<String>? granted,
+) {
+  if (written == null || granted == null) return true;
+  return switch (written.kind) {
+    HealthExportLedgerKind.period =>
+      granted.contains(HealthWriteTypes.menstrualFlow),
+    HealthExportLedgerKind.bbt =>
+      granted.contains(HealthWriteTypes.basalBodyTemperature),
+    HealthExportLedgerKind.spotting =>
+      _spottingRecordDeletable(written.payloadSummary, granted),
+    HealthExportLedgerKind.entry => _entryRecordDeletable(written, granted),
+  };
+}
+
+/// [healthRecordDeletable] for a spotting record. Since Issue #1591 the
+/// ledger's [HealthExportLedgerEntry.payloadSummary] says which of the two
+/// types the record was written as, and only that type's switch is waited
+/// for ([flowPayloadSummaryWasMarker]); a row written before then carries
+/// no summary, and keeps the old reading of needing both.
+bool _spottingRecordDeletable(String? payloadSummary, Set<String> granted) =>
+    switch (flowPayloadSummaryWasMarker(payloadSummary)) {
+      true => granted.contains(HealthWriteTypes.spotting),
+      false => granted.contains(HealthWriteTypes.menstrualFlow),
+      null => granted.contains(HealthWriteTypes.menstrualFlow) &&
+          granted.contains(HealthWriteTypes.spotting),
+    };
+
+/// [healthRecordDeletable] for a record written from a day entry.
+bool _entryRecordDeletable(
+  HealthExportLedgerEntry written,
+  Set<String> granted,
+) {
+  final recordId = written.recordId;
+  final entryId = written.sourceRowId;
+  if (recordId == healthFlowRecordId(entryId)) {
+    return granted.contains(HealthWriteTypes.menstrualFlow);
+  }
+  if (recordId == healthCervicalMucusRecordId(entryId)) {
+    return granted.contains(HealthWriteTypes.cervicalMucus);
+  }
+  final symptomPrefix = healthSymptomRecordId(entryId, '');
+  if (recordId.startsWith(symptomPrefix)) {
+    return granted.contains(HealthWriteTypes.symptoms) ||
+        granted.contains(recordId.substring(symptomPrefix.length));
+  }
+  if (recordId.startsWith(healthOvulationRecordId(entryId, ''))) {
+    return granted.contains(HealthWriteTypes.ovulationTest);
+  }
+  // Not a shape this file builds: nothing to hold it back on.
+  return true;
+}
+
+/// Whether a delete that passed over [skippedTypes] may have left the
+/// symptom record [recordId] in the store.
+///
+/// HealthKit grants each symptom type on its own, and the iOS half names
+/// every one that is off, with [HealthWriteTypes.symptoms] beside them
+/// whenever any is. So the record's own type decides. Read as "all of
+/// them", that extra name kept every symptom record remembered while any
+/// one symptom type was off: a headache she unticked was deleted from
+/// Apple Health, then asked to be deleted again on every pass, and every
+/// pass reported a partial failure.
+///
+/// The type is what follows the last hyphen of the id
+/// ([healthSymptomRecordId]); no type name has one. The extra name alone,
+/// with no symptom type beside it, is a store that does not say which,
+/// and then every symptom record may still be there.
 bool _symptomRecordMatchesSkippedType(
   String recordId,
   Set<String> skippedTypes,
 ) {
-  if (skippedTypes.contains(HealthWriteTypes.symptoms)) return true;
-  final parts = recordId.split('-');
-  if (parts.length >= 3) {
-    final typeIdentifier = parts.sublist(2).join('-');
-    return skippedTypes.contains(typeIdentifier);
-  }
-  return false;
+  final type = recordId.substring(recordId.lastIndexOf('-') + 1);
+  if (skippedTypes.contains(type)) return true;
+  return skippedTypes.contains(HealthWriteTypes.symptoms) &&
+      !kSymptomHealthKitTypeIdentifiers.values.any(skippedTypes.contains);
 }
 
 /// Checks whether [recordId] belongs to one of the write types in [skippedTypes]
@@ -128,8 +217,14 @@ bool healthRecordMatchesSkippedType(
   if (recordId.startsWith('symptom-')) {
     return _symptomRecordMatchesSkippedType(recordId, skippedTypes);
   }
-  if (isSpotting) {
-    return skippedTypes.contains(HealthWriteTypes.spotting);
+  // Issue #1589: a spotting entry's record is an intermenstrual marker,
+  // or a light flow sample when its day falls inside a period, and
+  // nothing kept on the phone says which it was. So it may still be in
+  // the store when either type was passed over. Checked against
+  // spotting alone, a spotting entry deleted during a period with flow
+  // switched off was counted as gone, and its light flow sample stayed.
+  if (isSpotting && skippedTypes.contains(HealthWriteTypes.spotting)) {
+    return true;
   }
   return skippedTypes.contains(HealthWriteTypes.menstrualFlow);
 }

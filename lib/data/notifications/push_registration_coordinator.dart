@@ -35,6 +35,7 @@ class PushRegistrationCoordinator {
     required AuthSessionState Function() currentAuthState,
     void Function(String profileId)? onTap,
     BreadcrumbLog? breadcrumbLog,
+    Future<void> Function()? requestPushPermission,
   })  : _tokenSource = tokenSource,
         _registry = registry,
         _deviceId = deviceId,
@@ -42,7 +43,8 @@ class PushRegistrationCoordinator {
         _authStates = authStates,
         _currentAuthState = currentAuthState,
         _onTap = onTap,
-        _breadcrumbLog = breadcrumbLog ?? defaultBreadcrumbLog;
+        _breadcrumbLog = breadcrumbLog ?? defaultBreadcrumbLog,
+        _requestPushPermission = requestPushPermission;
 
   static const int kMaxConsecutiveRegistrationFailures = 3;
 
@@ -54,6 +56,13 @@ class PushRegistrationCoordinator {
   final AuthSessionState Function() _currentAuthState;
   final void Function(String profileId)? _onTap;
   final BreadcrumbLog _breadcrumbLog;
+
+  /// The in-context notification-permission ask (issue #1444) — in
+  /// production `FirebasePushTokenSource.askPermission`, which probes the
+  /// OS state first and opens the gate's system-UI window only around a
+  /// request that can present the dialog (issue #1425). Null in harnesses
+  /// that predate the ask, where there is no permission step to run.
+  final Future<void> Function()? _requestPushPermission;
 
   int _consecutiveRegistrationFailures = 0;
 
@@ -165,6 +174,28 @@ class PushRegistrationCoordinator {
     } catch (error) {
       _breadcrumbLog.record('push', error.runtimeType.toString());
     }
+  }
+
+  /// The in-context permission ask plus registration (issue #1444): asks
+  /// first, then registers the token the grant makes available — that
+  /// order is what keeps the iOS permission/APNs sequencing correct
+  /// (permission before `getToken()`, which returns null without it).
+  /// Best-effort throughout: a throwing ask is logged and registration is
+  /// still attempted (a null token simply skips it), and a refusal just
+  /// leaves this device unregistered until the next in-context ask.
+  /// A no-op while disposed.
+  Future<void> ensurePermissionAndRegister() async {
+    if (_disposed) return;
+    final request = _requestPushPermission;
+    if (request != null) {
+      try {
+        await request();
+      } catch (error) {
+        _breadcrumbLog.record('push', error.runtimeType.toString());
+      }
+    }
+    if (_disposed) return;
+    await _registerCurrentToken();
   }
 
   /// Explicit, best-effort removal of this device's registration (#1

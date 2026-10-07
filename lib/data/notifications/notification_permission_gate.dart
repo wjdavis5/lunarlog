@@ -2,22 +2,26 @@
 /// racing: [FirebasePushTokenSource] (`FirebaseMessaging.instance
 /// .requestPermission()`) and [FlutterLocalNotificationsScheduler]
 /// (`AndroidFlutterLocalNotificationsPlugin.requestNotificationsPermission()`
-/// / Darwin's `requestAlertPermission`) both fire, unawaited, at database
+/// / Darwin's `requestAlertPermission`) both fired, unawaited, at database
 /// open on a `hasPush` build — `LunarLogRootState._startPushRegistration`
 /// (`lib/app_root.dart`) and `_LunarLogAppState._scheduleReminderStart`
 /// (`lib/app.dart`) are two independent widgets with no ordering
-/// relationship between them.
+/// relationship between them. Since issues #1425/#1444 neither fires at
+/// database open any more (both ask only in context), but the race the
+/// gate closes is unchanged: either side can still land while the other
+/// side's request is pending.
 ///
 /// **Since then** the scheduler has stopped asking at database open on
 /// both platforms (Darwin `requestAlertPermission: false`, issue #863; the
 /// Android `requestNotificationsPermission()` call removed from
 /// `initialize()`, issue #1425): its only request is now the user-triggered
-/// "Turn on reminders" tap. [FirebasePushTokenSource]'s request still fires
-/// at database open on a `hasPush` build, so the two can still overlap (a
-/// tap while that request is pending) and both still go through this gate.
-/// That launch-time ask opens the app gate's system-UI window *inside* its
-/// turn on this queue, never around it, so the window is not held open
-/// while the ask is only waiting behind another request.
+/// "Turn on reminders" tap. [FirebasePushTokenSource]'s own request moved
+/// in context too (issue #1444 — the Today hint's grant completing
+/// registration, or a guardian turning an alert on), so the two can still
+/// overlap (a tap landing while a guardian's ask is pending) and both
+/// still go through this gate. An ask opens the app gate's system-UI
+/// window *inside* its turn on this queue, never around it, so the window
+/// is not held open while the ask is only waiting behind another request.
 ///
 /// **Decision (issue #287):** neither side is designated the sole owner —
 /// which of the two actually runs first is genuine start-up timing, not

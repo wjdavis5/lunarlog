@@ -770,6 +770,7 @@ class _LunarLogAppState extends State<LunarLogApp>
       signedInUserId: () => confirmedHealthSyncUserId(_authController),
       minorBindingAllowed: AppConfig.healthSyncMinorBindingAllowed,
       ledger: _deps.healthExportLedger,
+      rowClock: _deps.localWriteClock,
     );
     if (coordinator == null) return;
     _healthFlowCoordinator = coordinator;
@@ -1178,14 +1179,14 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// appear is the user-triggered [_requestNotificationPermission], which
   /// keeps its window.
   ///
-  /// One launch-time dialog remains, and it is not this method's to
-  /// cover: on a push-configured build `FirebasePushTokenSource` still
-  /// makes its own permission ask at database open
-  /// (`LunarLogRootState._startPushRegistration`) — a separate call path.
-  /// The old window here overlapped it only by accident of timing, when
-  /// `initialize()` happened to queue behind it in the shared
-  /// `NotificationPermissionGate`; that ask now opens the gate's window
-  /// itself, around its own request, whenever the dialog can appear.
+  /// No launch-time dialog remains anywhere in this method's path (issue
+  /// #1444): on a push-configured build `FirebasePushTokenSource`
+  /// initializes silently at database open
+  /// (`LunarLogRootState._startPushRegistration`) — its permission ask
+  /// moved in context, to [_requestNotificationPermission] (the Today
+  /// hint, which also completes push registration) and the Notifications
+  /// screen's alert toggles. That ask opens the gate's window itself,
+  /// around its own request, whenever the dialog can appear.
   Future<void> _startReminders(ReminderCoordinator coordinator) =>
       coordinator.start(onLaunchFromNotification: _handleReminderLaunch);
 
@@ -1212,15 +1213,30 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// real departure does — without this a denial (or even a grant) could
   /// be read as the operator having left and re-lock the app right after
   /// they tapped the hint.
+  ///
+  /// Issue #1444: granting here also completes push registration on a
+  /// push-configured build — the same in-context ask the Notifications
+  /// screen's alert toggles drive, run after the local request. Each ask
+  /// probes first and opens its own window only around a request that can
+  /// present the dialog, so a grant on the first leaves the second a
+  /// no-dialog no-op; sequential, never nested.
   Future<void> _requestNotificationPermission() async {
     final coordinator = _coordinator;
     if (coordinator == null) return;
     final gate = context.read<GateController?>();
+    final NotificationAvailability? answer;
     if (gate != null) {
-      await gate.duringSystemUi(coordinator.requestPermission);
+      answer = await gate.duringSystemUi(coordinator.requestPermission);
     } else {
-      await coordinator.requestPermission();
+      answer = await coordinator.requestPermission();
     }
+    if (!mounted) return;
+    // Issue #1627: only a grant chains the push ask. After a refusal the push
+    // ask would raise Android's dialog a second time straight away (the shared
+    // refusal count is still below 2), spending both asks on one tap.
+    if (answer != NotificationAvailability.available) return;
+    final ensurePush = context.read<EnsurePushRegistrationCallback?>();
+    if (ensurePush != null) await ensurePush();
   }
 
   /// AS10: a signed-in session (the confirmation link opened on this

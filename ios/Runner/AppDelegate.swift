@@ -197,6 +197,33 @@ enum HealthKitChannelHandler {
   static let channelName = "lunarlog/health"
   static let boundProfileKey = "lunarlog.health.boundProfileId"
 
+  /// Issue #1610: the per-profile key of the stored import position — the
+  /// `HKQueryAnchor` the last finished pass ended on. HealthKit reports
+  /// deleted objects only relative to an anchor, so the anchor has to
+  /// survive from one pass to the next: a page read from it is an
+  /// incremental page, and it is what turns "a sample deleted in Apple
+  /// Health" into a report Dart can act on. Stored in UserDefaults (a
+  /// profile ULID and an opaque anchor archive, not health data) and
+  /// committed only after Dart has stored the days (`commitImport`, the
+  /// Issue #1560 shape HealthConnectAdapter.kt's `changesTokenKey` uses);
+  /// cleared with the binding (the `unbind` case), so a later re-bind
+  /// starts from a clean full read.
+  static func importAnchorKey(_ profileId: String) -> String {
+    "lunarlog.health.importAnchor.\(profileId)"
+  }
+
+  static func storedImportAnchor(_ profileId: String) -> String? {
+    UserDefaults.standard.string(forKey: importAnchorKey(profileId))
+  }
+
+  static func storeImportAnchor(_ profileId: String, _ payload: String) {
+    UserDefaults.standard.set(payload, forKey: importAnchorKey(profileId))
+  }
+
+  static func dropStoredImportAnchor(_ profileId: String) {
+    UserDefaults.standard.removeObject(forKey: importAnchorKey(profileId))
+  }
+
   /// One HKHealthStore for the process (Apple recommends sharing an
   /// instance; creating it is safe even where HealthKit is unavailable,
   /// which is what the `unavailable` early-returns below are for).
@@ -779,6 +806,14 @@ enum HealthKitChannelHandler {
       result("allowed")
 
     case "unbind":
+      // Issue #1610: the bound profile's import position goes with the
+      // binding, so a later re-bind starts from a clean full read
+      // (mirrors the Kotlin half's unbind dropping the change token).
+      // Read before the bound id itself is removed — it is the key the
+      // anchor is stored under.
+      if let bound = storedBoundProfileId {
+        dropStoredImportAnchor(bound)
+      }
       UserDefaults.standard.removeObject(forKey: boundProfileKey)
       // Issue #993: an unbound device stops being woken for background
       // imports. Best-effort; the Dart-side guard refuses an unbound pass
@@ -1349,11 +1384,13 @@ enum HealthKitChannelHandler {
 
     case "readMenstrualFlowPage":
       // Issue #217 (#781's read decision), paged for full history in Issue
-      // #992. Guarded identically to a write (the device-binding decision is
-      // the same), then one page of an `HKAnchoredObjectQuery`. Success
-      // returns a Map of `{samples, nextCursor?}` (StandardMessageCodec),
-      // not a result string; authorization opacity means a denied read
-      // arrives here as a page with an empty samples list, never an error.
+      // #992; the stored-anchor incremental pass and the deletion reports
+      // are Issue #1610. Guarded identically to a write (the device-binding
+      // decision is the same), then one page of an `HKAnchoredObjectQuery`.
+      // Success returns a Map of `{samples, nextCursor?, commitToken?,
+      // incremental?, deletedRecordIds?}` (StandardMessageCodec), not a
+      // result string; authorization opacity means a denied read arrives
+      // here as a page with an empty samples list, never an error.
       guard let g = args.flatMap(GuardArgs.init) else {
         badArgs(result, "readMenstrualFlowPage requires guard args")
         return
@@ -1377,13 +1414,18 @@ enum HealthKitChannelHandler {
         return
       }
       let cursor = args?["cursor"] as? String
+      // Issue #1610: only a literal true starts over (the same parse the
+      // Kotlin half makes).
+      let wholeHistory = (args?["wholeHistory"] as? Bool) == true
       Task {
         do {
           let payload = try await readMenstrualFlowPage(
+            profileId: g.profileId,
             start: Date(timeIntervalSince1970: Double(startMs) / 1000.0),
             end: Date(timeIntervalSince1970: Double(endMs) / 1000.0),
             cursor: cursor,
-            pageSize: pageSize)
+            pageSize: pageSize,
+            wholeHistory: wholeHistory)
           result(payload)
         } catch {
           result(
@@ -1393,6 +1435,32 @@ enum HealthKitChannelHandler {
               details: nil))
         }
       }
+
+    case "commitImport":
+      // Issue #1610 (the Issue #1560 shape): stores the import position —
+      // the anchor the final read page handed back — only after Dart has
+      // successfully stored the imported days into the local database. A
+      // pass that ended early never commits, so the pages nobody read are
+      // read again. No health API is touched (a UserDefaults write), so
+      // there is no availability gate here, matching the Kotlin half.
+      guard let g = args.flatMap(GuardArgs.init) else {
+        badArgs(result, "commitImport requires guard args")
+        return
+      }
+      let decision = guardDecision(boundProfileId: storedBoundProfileId, g)
+      guard decision == "allowed" else {
+        result(decision)
+        return
+      }
+      guard
+        let commitToken = args?["commitToken"] as? String,
+        decodeAnchorPayload(commitToken) != nil
+      else {
+        badArgs(result, "commitImport requires commitToken")
+        return
+      }
+      storeImportAnchor(g.profileId, commitToken)
+      result("allowed")
 
     case "readCycleDeviations":
       // Issue #799 (deferred from #217): Apple's four computed cycle-deviation
@@ -1507,16 +1575,20 @@ enum HealthKitChannelHandler {
   }
 
   /// Reads ONE page of menstrual-flow samples in `[start, end]` (Issues
-  /// #217/#992) and returns the `{samples, nextCursor?}` map Dart's
-  /// `decodeHealthReadResult` parses.
+  /// #217/#992) and returns the page map Dart's `decodeHealthReadResult`
+  /// parses.
   ///
-  /// **Paging.** An `HKAnchoredObjectQuery` seeded with the opaque `cursor`
-  /// anchor returns at most `pageSize` samples and a new anchor. A full page
-  /// means there may be more, so the new anchor is serialized into
-  /// `nextCursor`; a short (or empty) page means the query is exhausted and
-  /// no cursor is sent — the property the Dart loop relies on to terminate.
-  /// Because the anchor advances HealthKit's own cursor, re-running the same
-  /// request can never return the same page.
+  /// **The pass's starting point (Issue #1610).** On a pass's first page
+  /// (`cursor == nil`) the profile's stored anchor — if one is committed —
+  /// is where the read starts, which makes the whole pass an incremental
+  /// one: every page of it reports what was deleted since the last import.
+  /// `wholeHistory: true` on a first page drops the stored anchor and reads
+  /// from the beginning instead (mirroring HealthImportCursor.startsOver
+  /// and the Kotlin half's token drop); the position is rebuilt only when
+  /// that read's last page is committed, so a pass that ends early is
+  /// followed by another whole-history read. A later page starts from the
+  /// anchor its cursor carries. Anything unreadable starts over the same
+  /// way a full read does, never a crash.
   ///
   /// **Echo prevention is mandatory here.** A sample lunarlog itself wrote
   /// (#193) comes back with `sourceRevision.source.bundleIdentifier` equal to
@@ -1538,32 +1610,121 @@ enum HealthKitChannelHandler {
   /// `zoneOffsetSeconds` and flagged `zoneOffsetInferred`, so Dart places the
   /// row and reports it honestly as inferred from this phone's zone.
   static func readMenstrualFlowPage(
+    profileId: String,
     start: Date,
     end: Date,
     cursor: String?,
-    pageSize: Int
+    pageSize: Int,
+    wholeHistory: Bool
   ) async throws -> [String: Any] {
+    let startPage = startingPage(
+      profileId: profileId, cursor: cursor, wholeHistory: wholeHistory)
     let predicate = HKQuery.predicateForSamples(
       withStart: start, end: end, options: [])
     let page = try await anchoredQuery(
       ofType: menstrualFlowType,
       predicate: predicate,
-      anchor: decodeAnchor(cursor),
+      anchor: startPage.anchor,
       limit: pageSize)
-    let ownBundleId = Bundle.main.bundleIdentifier
-    var samples: [[String: Any]] = []
-    for case let sample as HKCategorySample in page.samples {
+    return pagePayload(
+      samples: page.samples,
+      deletedObjects: page.deletedObjects,
+      newAnchor: page.newAnchor,
+      pageSize: pageSize,
+      incremental: startPage.incremental,
+      ownBundleId: Bundle.main.bundleIdentifier)
+  }
+
+  /// Where a read starts: the cursor's anchor on a later page, or — on a
+  /// pass's first page — the profile's stored anchor, which makes the whole
+  /// pass an incremental one (see [readMenstrualFlowPage]). Pure decision,
+  /// unit-testable; the one shape it cannot reach without a real
+  /// `HKQueryAnchor` (no public initializer) is the stored-anchor decode
+  /// succeeding, the same constraint the #992 cursor tests document.
+  static func startingPage(
+    profileId: String,
+    cursor: String?,
+    wholeHistory: Bool
+  ) -> (anchor: HKQueryAnchor?, incremental: Bool) {
+    if let cursor {
+      guard let decoded = decodeAnchorPayload(cursor) else {
+        return (nil, false)
+      }
+      return (decoded.anchor, decoded.incremental)
+    }
+    if wholeHistory {
+      // The whole-history read starts over and stays over until its last
+      // page is committed: the stored position would otherwise make the
+      // next pass a changes pass, and a changes read never returns a
+      // record that did not change.
+      dropStoredImportAnchor(profileId)
+      return (nil, false)
+    }
+    guard let stored = storedImportAnchor(profileId) else {
+      return (nil, false)
+    }
+    guard let decoded = decodeAnchorPayload(stored) else {
+      // A position this build cannot read is no position: drop it so the
+      // next commit writes a fresh one instead of leaving the wreck.
+      dropStoredImportAnchor(profileId)
+      return (nil, false)
+    }
+    return (decoded.anchor, true)
+  }
+
+  /// One page's wire payload from its raw query results — pure, so the
+  /// shape is unit-testable without a live `HKHealthStore`.
+  ///
+  /// **Paging.** A full page (raw sample count reaching `pageSize`) means
+  /// HealthKit may have more waiting behind the new anchor, so the anchor
+  /// rides `nextCursor` — with the pass's mode inside it, so the mode is
+  /// one answer for all of a pass's pages. A short (or empty) page means
+  /// the anchored query is exhausted: no cursor — the property the Dart
+  /// loop relies on to terminate — and, Issue #1560's shape, the anchor
+  /// rides `commitToken` for Dart to commit only after the days are stored
+  /// (`commitImport`). A page whose anchor cannot be serialized carries
+  /// neither, so the position is simply not advanced.
+  ///
+  /// **Deletions (Issue #1610).** An incremental page carries
+  /// `incremental: true` and every deleted object's UUID as
+  /// `deletedRecordIds`: `HKDeletedObject` carries a UUID, and an imported
+  /// row's `sourceId` on iPhone is the sample's UUID, so they match as they
+  /// are. A full-history page never carries them, matching Health Connect:
+  /// a whole read is the store's answer to "what is here", and only a
+  /// changes page reports what went.
+  ///
+  /// [ownBundleId] is this app's bundle identifier in production — the
+  /// echo filter below must know whom to drop — and is injected rather
+  /// than read from `Bundle.main` here so a test can construct a sample
+  /// (whose default source is always the running app) and name another
+  /// app, or nil, in its place.
+  static func pagePayload(
+    samples: [HKSample],
+    deletedObjects: [HKDeletedObject],
+    newAnchor: HKQueryAnchor?,
+    pageSize: Int,
+    incremental: Bool,
+    ownBundleId: String?
+  ) -> [String: Any] {
+    var sampleMaps: [[String: Any]] = []
+    for case let sample as HKCategorySample in samples {
       if let entry = samplePayload(sample, ownBundleId: ownBundleId) {
-        samples.append(entry)
+        sampleMaps.append(entry)
       }
     }
-    var payload: [String: Any] = ["samples": samples]
-    // A full page means HealthKit may have more waiting behind the new
-    // anchor; a short page means the anchored query is exhausted.
-    if page.samples.count >= pageSize,
-      let next = cursorString(for: page.newAnchor)
-    {
-      payload["nextCursor"] = next
+    var payload: [String: Any] = ["samples": sampleMaps]
+    if incremental {
+      payload["incremental"] = true
+      payload["deletedRecordIds"] = deletedObjects.map { $0.uuid.uuidString }
+    }
+    guard
+      let anchorPayload = encodeAnchorPayload(
+        newAnchor, incremental: incremental)
+    else { return payload }
+    if samples.count >= pageSize {
+      payload["nextCursor"] = anchorPayload
+    } else {
+      payload["commitToken"] = anchorPayload
     }
     return payload
   }
@@ -1667,6 +1828,43 @@ enum HealthKitChannelHandler {
     return encodeCursorData(data)
   }
 
+  // MARK: - Issue #1610: the anchor + pass-mode payload
+
+  /// Serializes a page's anchor and whether its pass is an incremental one
+  /// into the opaque string Dart passes back as the next page's cursor, and
+  /// the same shape `commitImport` stores as the profile's position. The
+  /// cursor lives only inside one pass (Dart holds it in memory between
+  /// pages) and the stored payload only until the next commit, so there is
+  /// no legacy shape to keep reading.
+  static func encodeAnchorPayload(
+    _ anchor: HKQueryAnchor?, incremental: Bool
+  ) -> String? {
+    guard let anchorString = cursorString(for: anchor) else { return nil }
+    let json: [String: Any] = [
+      "anchor": anchorString,
+      "incremental": incremental,
+    ]
+    guard let data = try? JSONSerialization.data(withJSONObject: json) else {
+      return nil
+    }
+    return encodeCursorData(data)
+  }
+
+  /// The inverse of [encodeAnchorPayload]; nil when the payload is absent,
+  /// malformed, or its archived anchor is not one this build understands —
+  /// treated as "no position" everywhere it is consulted, never a crash.
+  static func decodeAnchorPayload(
+    _ payload: String?
+  ) -> (anchor: HKQueryAnchor?, incremental: Bool)? {
+    guard let data = decodeCursorData(payload) else { return nil }
+    guard
+      let json = try? JSONSerialization.jsonObject(with: data)
+        as? [String: Any],
+      let anchor = decodeAnchor(json["anchor"] as? String)
+    else { return nil }
+    return (anchor, (json["incremental"] as? Bool) == true)
+  }
+
   /// Base64 without line wrapping — separated from the anchor archive so the
   /// codec's round-trip is unit-testable without an `HKQueryAnchor`, which
   /// has no public initializer.
@@ -1689,27 +1887,39 @@ enum HealthKitChannelHandler {
       ofClass: HKQueryAnchor.self, from: data)
   }
 
-  /// Runs one `HKAnchoredObjectQuery` over `store` and awaits its page.
-  /// HealthKit has no async overload, so the callback-based query is bridged
-  /// through a `withCheckedThrowingContinuation`.
+  /// Runs one `HKAnchoredObjectQuery` over `store` and awaits its page —
+  /// the samples, the deleted objects (Issue #1610: the deletions since the
+  /// query's anchor, what turns "a sample deleted in Apple Health" into a
+  /// report), and the anchor for the next page. HealthKit has no async
+  /// overload, so the callback-based query is bridged through a
+  /// `withCheckedThrowingContinuation`.
   private static func anchoredQuery(
     ofType sampleType: HKSampleType,
     predicate: NSPredicate?,
     anchor: HKQueryAnchor?,
     limit: Int
-  ) async throws -> (samples: [HKSample], newAnchor: HKQueryAnchor?) {
+  ) async throws -> (
+    samples: [HKSample],
+    deletedObjects: [HKDeletedObject],
+    newAnchor: HKQueryAnchor?
+  ) {
     try await withCheckedThrowingContinuation {
-      (continuation: CheckedContinuation<([HKSample], HKQueryAnchor?), Error>) in
+      (
+        continuation: CheckedContinuation<
+          ([HKSample], [HKDeletedObject], HKQueryAnchor?), Error
+        >
+      ) in
       let query = HKAnchoredObjectQuery(
         type: sampleType,
         predicate: predicate,
         anchor: anchor,
         limit: limit
-      ) { _, samples, _, newAnchor, error in
+      ) { _, samples, deletedObjects, newAnchor, error in
         if let error {
           continuation.resume(throwing: error)
         } else {
-          continuation.resume(returning: (samples ?? [], newAnchor))
+          continuation.resume(
+            returning: (samples ?? [], deletedObjects ?? [], newAnchor))
         }
       }
       store.execute(query)

@@ -15,6 +15,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/app_lifecycle.dart' show EnsurePushRegistrationCallback;
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
 import 'package:lunarlog/domain/profiles/profile_erasure_service.dart';
@@ -39,6 +40,11 @@ Future<void>? openManageGuardians(BuildContext context, Profile profile) {
       Provider.of<OwnershipTransferService?>(context, listen: false);
   final notificationPreferences =
       Provider.of<NotificationPreferencesService?>(context, listen: false);
+  // Issue #1444: the in-context push-permission ask the Notifications
+  // screen drives when a guardian turns an alert on. Null where push was
+  // never started — the screen then just saves.
+  final ensurePushRegistration =
+      Provider.of<EnsurePushRegistrationCallback?>(context, listen: false);
   return Navigator.of(context).push<void>(
     buildNamedRoute<void>(
       name: kRouteManageGuardiansScreen,
@@ -60,6 +66,7 @@ Future<void>? openManageGuardians(BuildContext context, Profile profile) {
                 )
                 ?.publishNow(profileId),
         notificationPreferencesService: notificationPreferences,
+        ensurePushRegistration: ensurePushRegistration?.call,
         activityRepository:
             Provider.of<ActivityFeedRepository?>(context, listen: false),
       ),

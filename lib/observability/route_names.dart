@@ -125,6 +125,12 @@ const String kRouteHealthSyncBindDialog = 'HealthSyncBindDialog';
 /// down, rather than a bare tap.
 const String kRouteHealthSyncUnbindDialog = 'HealthSyncUnbindDialog';
 
+/// `lib/ui/settings/health_sync_screen.dart` (Issue #1594): the
+/// confirmation before what was imported is taken off the days whose
+/// record the health store deleted.
+const String kRouteHealthSyncStoreDeletedDialog =
+    'HealthSyncStoreDeletedDialog';
+
 /// `lib/ui/sharing/accept_invite_sheet.dart` — pushed by `lib/app.dart` when
 /// an invite deep link (`lunarlog://invite?code=...`) resolves for a
 /// signed-in recipient (issue #182: previously an unnamed
@@ -302,6 +308,7 @@ const Set<String> kSentryRouteNames = {
   kRouteHealthSyncScreen,
   kRouteHealthSyncBindDialog,
   kRouteHealthSyncUnbindDialog,
+  kRouteHealthSyncStoreDeletedDialog,
   kRouteAcceptInviteSheet,
   kRouteClaimProfileSheet,
   kRouteTransferOwnershipScreen,

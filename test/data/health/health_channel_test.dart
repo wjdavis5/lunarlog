@@ -603,6 +603,7 @@ void main() {
 
     Future<HealthReadResult> page({
       String? cursor,
+      bool wholeHistory = false,
       MethodChannelHealthPlatform? platform,
     }) =>
         (platform ?? makePlatform()).readMenstrualFlowPage(
@@ -611,6 +612,7 @@ void main() {
           end: end,
           pageSize: kHealthImportPageSize,
           cursor: cursor,
+          wholeHistory: wholeHistory,
         );
 
     test('a denied read refuses with zero channel invocations', () async {
@@ -655,6 +657,22 @@ void main() {
       await page();
       final args = calls.single.arguments as Map<Object?, Object?>;
       expect(args.containsKey('cursor'), isFalse);
+      expect(args.containsKey('wholeHistory'), isFalse);
+    });
+
+    // Issue #1594.
+    test('asking for the whole history crosses the channel, and the '
+        'records a page says were deleted come back', () async {
+      nextResult = <String, Object?>{
+        'samples': <Object?>[],
+        'incremental': true,
+        'deletedRecordIds': ['rec-9'],
+      };
+      final result = await page(wholeHistory: true);
+
+      final args = calls.single.arguments as Map<Object?, Object?>;
+      expect(args['wholeHistory'], isTrue);
+      expect((result as HealthReadSamples).deletedRecordIds, ['rec-9']);
     });
 
     test('a platform unavailable error maps to HealthReadUnavailable', () async {
@@ -703,7 +721,9 @@ void main() {
         expect(args['commitToken'], 'commit-token-123');
       });
 
-      test('is a no-op returning allowed on iOS without channel calls', () async {
+      // Issue #1610: HealthKit tracks its position too now — the stored
+      // HKQueryAnchor — so iOS crosses the channel the same way.
+      test('invokes commitImport channel method on iOS when allowed', () async {
         final platform = MethodChannelHealthPlatform(
           binding: HealthSyncBinding(FakeSettingsStore({
             SettingsKeys.healthStoreProfileId: 'p1',
@@ -711,9 +731,13 @@ void main() {
           minorBindingAllowed: true,
           readAccessDisclosed: false,
         );
-        final result = await platform.commitImport(_facts(), 'commit-token-123');
+        final result = await platform.commitImport(_facts(), 'anchor-token-9');
         expect(result, isA<HealthPlatformAllowed>());
-        expect(calls, isEmpty);
+        expect(calls, hasLength(1));
+        expect(calls.single.method, 'commitImport');
+        final args = calls.single.arguments as Map<Object?, Object?>;
+        expect(args['profileId'], 'p1');
+        expect(args['commitToken'], 'anchor-token-9');
       });
 
       test('refuses without channel calls when guard fails', () async {

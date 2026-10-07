@@ -648,8 +648,12 @@ class ReminderCoordinator with WidgetsBindingObserver {
   /// so a resume racing this request can't let a stale answer win, and
   /// republishes through the same [_setAvailability] seam so the hint
   /// reacts immediately rather than waiting for the next app resume.
-  Future<void> requestPermission() async {
-    if (_disposed || !_started) return;
+  ///
+  /// Returns the OS's answer even when a fresher resume probe won the race
+  /// and this result was not applied (issue #1627: the caller decides whether
+  /// to chain the push ask from it), or null when nothing was asked.
+  Future<NotificationAvailability?> requestPermission() async {
+    if (_disposed || !_started) return null;
     final generation = ++_permissionProbeGeneration;
     // In practice, the OS permission dialog this awaits is itself a real
     // app-lifecycle event (backgrounded, then resumed) even though
@@ -664,9 +668,12 @@ class ReminderCoordinator with WidgetsBindingObserver {
     // and letting this one win instead would occasionally overwrite it
     // with an answer read a moment earlier.
     final availability = await _scheduler.requestPermission();
-    if (_disposed || generation != _permissionProbeGeneration) return;
+    if (_disposed || generation != _permissionProbeGeneration) {
+      return availability;
+    }
     _setAvailability(availability);
     _scheduleReplan();
+    return availability;
   }
 
   Future<void> dispose() async {

@@ -149,7 +149,10 @@ while IFS= read -r file; do
     # release-guards suites -- otherwise it merges green (release_guards=
     # false skips the suite) and the next unrelated .github/** PR goes red
     # on an assertion it never touched (issue #1317's failure class).
-    site/package.json|site/public/_headers)
+    # Issue #1602 added two more reads to that suite: site/.nvmrc (the
+    # Node pin both site workflows read) and site/package-lock.json (it
+    # must hold nothing npm 11 would prune).
+    site/package.json|site/public/_headers|site/.nvmrc|site/package-lock.json)
       edge_functions=true
       release_guards=true
       ;;

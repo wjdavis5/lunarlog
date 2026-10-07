@@ -3,12 +3,14 @@
 ///
 /// Two things ask Android for `POST_NOTIFICATIONS`: the "Turn on
 /// reminders" tap (`FlutterLocalNotificationsScheduler.requestPermission`)
-/// and, on a push-configured build, push registration's ask at launch
-/// (`FirebasePushTokenSource`). Android shows its dialog twice in total,
-/// whoever asked, so both must feed one count — a refusal either of them
-/// did not record leaves the "Turn on reminders" hint re-asking into
-/// silence instead of opening settings (issue #1425). Every read and
-/// write of the key goes through this class; nothing else touches it.
+/// and, on a push-configured build, push registration's in-context ask
+/// (`FirebasePushTokenSource`, via
+/// `PushRegistrationCoordinator.ensurePermissionAndRegister`). Android
+/// shows its dialog twice in total, whoever asked, so both must feed one
+/// count — a refusal either of them did not record leaves the "Turn on
+/// reminders" hint re-asking into silence instead of opening settings
+/// (issue #1425). Every read and write of the key goes through this
+/// class; nothing else touches it.
 ///
 /// Pure Dart over the [SettingsStore] contract, so the transitions are
 /// unit-tested directly rather than riding inside either plugin-bound

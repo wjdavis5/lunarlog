@@ -341,6 +341,13 @@ site_pkg_output="$(run_detect "site/package.json")"
 assert_contains "site/package.json sets release_guards=true" "$site_pkg_output" "release_guards=true"
 assert_contains "site/package.json keeps edge_functions=true" "$site_pkg_output" "edge_functions=true"
 
+# Issue #1602: the same suite reads the Node pin and the lockfile.
+for site_input in "site/.nvmrc" "site/package-lock.json"; do
+  site_input_output="$(run_detect "$site_input")"
+  assert_contains "$site_input sets release_guards=true" "$site_input_output" "release_guards=true"
+  assert_contains "$site_input keeps edge_functions=true" "$site_input_output" "edge_functions=true"
+done
+
 plist_output="$(run_detect "ios/ExportOptions-ci.plist")"
 assert_contains "ExportOptions-ci.plist sets release_guards=true" "$plist_output" "release_guards=true"
 assert_contains "ExportOptions-ci.plist keeps app_flutter=true" "$plist_output" "app_flutter=true"
