@@ -86,6 +86,9 @@ class _FakePlatform implements HealthPlatformStore {
   final List<HealthMenstrualFlowWrite> flowWrites = [];
 
   @override
+  bool writesCycleStart = true;
+
+  @override
   Future<bool> isAvailable() async => true;
 
   /// Issue #1555: HealthKit grants symptom types one by one. Granted in

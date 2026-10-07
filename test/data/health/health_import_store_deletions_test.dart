@@ -38,6 +38,9 @@ const _ownerId = 'owner-user';
 
 class _Platform implements HealthPlatformStore {
   @override
+  bool writesCycleStart = true;
+
+  @override
   Future<HealthPlatformResult> bindProfile(HealthGuardFacts facts) async =>
       const HealthPlatformAllowed();
 

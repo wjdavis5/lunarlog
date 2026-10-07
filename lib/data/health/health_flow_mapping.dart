@@ -152,18 +152,26 @@ HealthFlowWritePlan mapSpottingToHealthWrite({
 /// (Issue #1591): what it says that *other* days decide, in one short
 /// string the ledger stores beside the record. A `menstrualFlow` sample
 /// is summarised as `flow:<value>:<cycle-start flag>` (`flow:light:1` —
-/// a light sample marked as the cycle's first day); an intermenstrual
-/// marker as `marker`. Null for [HealthFlowNoWrite]: a day that writes
-/// no sample is never in the ledger. Whatever the summary depends on —
-/// the episode a day falls inside, the flag the episode's first day
-/// carries — comes from other rows, which is why a change to those rows
-/// must make the record due again ([flowPayloadSummaryWasMarker]'s
-/// readers compare it).
-String? flowPayloadSummary(HealthFlowWritePlan plan, {required bool cycleStart}) =>
+/// a light sample marked as the cycle's first day) on a platform that
+/// writes cycle-start metadata (iOS / HealthKit), and as `flow:<value>`
+/// (`flow:light`) on a platform that does not (Android / Health Connect,
+/// Issue #1645). An intermenstrual marker is summarised as `marker` on
+/// both platforms. Null for [HealthFlowNoWrite]: a day that writes no
+/// sample is never in the ledger. Whatever the summary depends on — the
+/// episode a day falls inside, the flag the episode's first day carries
+/// — comes from other rows, which is why a change to those rows must make
+/// the record due again ([flowPayloadSummaryWasMarker]'s readers compare it).
+String? flowPayloadSummary(
+  HealthFlowWritePlan plan, {
+  bool? cycleStart,
+  bool writesCycleStart = true,
+}) =>
     switch (plan) {
       HealthFlowNoWrite() => null,
       HealthFlowMenstrualSample(:final value) =>
-        'flow:${value.name}:${cycleStart ? 1 : 0}',
+        (!writesCycleStart || cycleStart == null)
+            ? 'flow:${value.name}'
+            : 'flow:${value.name}:${cycleStart ? 1 : 0}',
       HealthFlowIntermenstrualMarker() => 'marker',
     };
 

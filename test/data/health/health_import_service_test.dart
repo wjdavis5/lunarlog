@@ -61,6 +61,9 @@ List<ProfileGuardian> _owners() => [
 ];
 
 class _FakePlatform implements HealthPlatformStore {
+  @override
+  bool writesCycleStart = true;
+
   HealthPlatformResult bindResult = const HealthPlatformAllowed();
   HealthPlatformResult authResult = const HealthPlatformAllowed();
   int bindCalls = 0;

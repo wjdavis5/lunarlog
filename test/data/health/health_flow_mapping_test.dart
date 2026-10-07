@@ -231,10 +231,45 @@ void main() {
       );
     });
 
-    test('a marker summarises as marker, whatever the flag', () {
+    test('a flow sample on a platform that does not write cycleStart leaves '
+        'out the flag (issue #1645)', () {
+      expect(
+        flowPayloadSummary(
+          const HealthFlowMenstrualSample(HealthFlowValue.light),
+          cycleStart: true,
+          writesCycleStart: false,
+        ),
+        'flow:light',
+      );
+      expect(
+        flowPayloadSummary(
+          const HealthFlowMenstrualSample(HealthFlowValue.heavy),
+          cycleStart: false,
+          writesCycleStart: false,
+        ),
+        'flow:heavy',
+      );
+      expect(
+        flowPayloadSummary(
+          const HealthFlowMenstrualSample(HealthFlowValue.medium),
+          writesCycleStart: false,
+        ),
+        'flow:medium',
+      );
+    });
+
+    test('a marker summarises as marker, whatever the flag or platform', () {
       expect(
         flowPayloadSummary(const HealthFlowIntermenstrualMarker(),
             cycleStart: false),
+        'marker',
+      );
+      expect(
+        flowPayloadSummary(
+          const HealthFlowIntermenstrualMarker(),
+          cycleStart: true,
+          writesCycleStart: false,
+        ),
         'marker',
       );
     });
@@ -242,12 +277,18 @@ void main() {
     test('a plan that writes nothing summarises to nothing', () {
       expect(flowPayloadSummary(const HealthFlowNoWrite(), cycleStart: true),
           isNull);
+      expect(
+        flowPayloadSummary(const HealthFlowNoWrite(), writesCycleStart: false),
+        isNull,
+      );
     });
 
-    test('wasMarker reads the two shapes and refuses to guess', () {
+    test('wasMarker reads the shapes and refuses to guess', () {
       expect(flowPayloadSummaryWasMarker('marker'), isTrue);
       expect(flowPayloadSummaryWasMarker('flow:light:0'), isFalse);
       expect(flowPayloadSummaryWasMarker('flow:heavy:1'), isFalse);
+      expect(flowPayloadSummaryWasMarker('flow:light'), isFalse);
+      expect(flowPayloadSummaryWasMarker('flow:heavy'), isFalse);
       // Unknown is unknown: a row written before #1591, and a shape a
       // later build wrote, both keep the conservative reading.
       expect(flowPayloadSummaryWasMarker(null), isNull);
