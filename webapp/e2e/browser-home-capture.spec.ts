@@ -2,7 +2,13 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 
-import { installSignedInFacade, json, loggedSnapshot, messages } from './fixtures';
+import {
+  buildIsConfigured,
+  installSignedInFacade,
+  json,
+  loggedSnapshot,
+  messages,
+} from './fixtures';
 
 /**
  * The marketing site's browser CTA figure (issue #1431): a capture of the
@@ -20,9 +26,9 @@ import { installSignedInFacade, json, loggedSnapshot, messages } from './fixture
  * the page's layout: the <img> carries width/height attributes). Light
  * only: the light theme is the only one the home page's figure asks for.
  *
- * The build must be configured (`VITE_SUPABASE_*` non-empty, as this
- * repo's CI builds it): an unconfigured app never leaves the signed-out
- * welcome, and the readiness waits below fail rather than capture that.
+ * The suite self-skips on an unconfigured build (`VITE_SUPABASE_*` empty,
+ * as on forks and Dependabot): an unconfigured app never leaves the
+ * signed-out welcome, and `buildIsConfigured(page)` detects that (issue #1655).
  */
 const OUT_DIR = process.env.LUNARLOG_BROWSER_CAPTURE_OUT;
 
@@ -36,6 +42,7 @@ test.describe('the browser CTA capture (issue #1431)', () => {
       !OUT_DIR,
       'set LUNARLOG_BROWSER_CAPTURE_OUT to capture (the site workflows set it)',
     );
+    test.skip(!(await buildIsConfigured(page)), 'unconfigured build (fork or dependabot)');
 
     // "Today" is a day the fixtures have rows for, whatever day CI runs
     // on — the same pin the "what is logged today" suite uses.

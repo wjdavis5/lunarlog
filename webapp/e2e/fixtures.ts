@@ -216,3 +216,30 @@ export function loggedSnapshot(subject: boolean) {
     })),
   };
 }
+
+let configuredProbe: boolean | null = null;
+
+/**
+ * True when the build carries Supabase config (the app signs in at all).
+ *
+ * It waits for the signed-in home rather than reading the page once. The
+ * signed-out welcome is also what a configured build shows for the moment
+ * it takes the session to be restored, so a single look straight after
+ * the load sometimes caught it and reported "unconfigured": the test was
+ * then skipped, not failed, and nothing said so (about one run in three
+ * skipped a test here). An unconfigured build never leaves the welcome,
+ * so there the wait runs out, once per worker.
+ */
+export async function buildIsConfigured(page: Page): Promise<boolean> {
+  if (configuredProbe !== null) return configuredProbe;
+  await installSignedInFacade(page);
+  await page.goto('/');
+  configuredProbe = await page
+    .getByLabel(messages['webHomeProfileSwitcherLabel'] ?? 'Profile')
+    .waitFor({ state: 'visible', timeout: 5_000 })
+    .then(
+      () => true,
+      () => false,
+    );
+  return configuredProbe;
+}
