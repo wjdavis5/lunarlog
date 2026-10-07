@@ -298,20 +298,18 @@ class RunnerTests: XCTestCase {
   /// A sample this app wrote comes back with the app's own bundle id as its
   /// source, and the page must drop it: re-importing our own writes would
   /// duplicate every entry and loop the write and read directions (#193's
-  /// mandatory echo prevention). Naming another app keeps the sample.
-  ///
-  /// The drop direction needs the in-memory sample's source to carry a
-  /// bundle id; a source without one cannot be matched by the filter at
-  /// all, so there the kept half alone is assertable.
+  /// mandatory echo prevention). Naming another app keeps the sample. The
+  /// drop is pinned by naming the in-memory sample's own source bundle id
+  /// (a non-optional String on every HKSource): whatever the test host's
+  /// source is named, the filter's equality decision is what is under test.
   func testPagePayloadDropsThisAppsOwnWrites() {
     let sample = Self.menstrualFlowSample()
     let otherApp = pagePayloadCount(
       sample, ownBundleId: "com.another.health-app")
     XCTAssertEqual(otherApp, 1, "another app's bundle id keeps the sample")
-    if let ownBundle = sample.sourceRevision.source.bundleIdentifier {
-      let dropped = pagePayloadCount(sample, ownBundleId: ownBundle)
-      XCTAssertEqual(dropped, 0, "the app's own bundle id drops the sample")
-    }
+    let ownSource = pagePayloadCount(
+      sample, ownBundleId: sample.sourceRevision.source.bundleIdentifier)
+    XCTAssertEqual(ownSource, 0, "the sample's own source drops the sample")
   }
 
   /// One in-memory menstrual-flow sample: `HKMetadataKeyMenstrualCycleStart`
