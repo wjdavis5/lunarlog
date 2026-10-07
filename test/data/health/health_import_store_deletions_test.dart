@@ -603,16 +603,33 @@ void runSuite(HealthImportPlatform platform) {
       expect(await onOffer(), 0);
     });
 
-    test('only a changes page can say a record was deleted', () async {
-      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
-      store
-        ..hasPosition = false
-        ..deletedOnWholeHistoryPage = const ['rec-10'];
+    if (platform == HealthImportPlatform.healthConnect) {
+      test('only a changes page can say a record was deleted', () async {
+        await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
+        store
+          ..hasPosition = false
+          ..deletedOnWholeHistoryPage = const ['rec-10'];
 
-      await import.importNow();
+        await import.importNow();
 
-      expect(await onOffer(), 0);
-    });
+        expect(await onOffer(), 0);
+      });
+    } else {
+      // Issue #1651: on Apple Health, HealthKit's anchored query reports
+      // deletions even when no anchor has been stored yet (the initial read
+      // after upgrade).
+      test('a non-incremental page reports deletions on Apple Health (#1651)',
+          () async {
+        await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
+        store
+          ..hasPosition = false
+          ..deletedOnWholeHistoryPage = const ['rec-10'];
+
+        await import.importNow();
+
+        expect(await onOffer(), 1);
+      });
+    }
 
     // Pages come in the order things happened.
     test('a record deleted on one page and written again on a later one is '

@@ -1685,13 +1685,13 @@ enum HealthKitChannelHandler {
   /// (`commitImport`). A page whose anchor cannot be serialized carries
   /// neither, so the position is simply not advanced.
   ///
-  /// **Deletions (Issue #1610).** An incremental page carries
-  /// `incremental: true` and every deleted object's UUID as
-  /// `deletedRecordIds`: `HKDeletedObject` carries a UUID, and an imported
-  /// row's `sourceId` on iPhone is the sample's UUID, so they match as they
-  /// are. A full-history page never carries them, matching Health Connect:
-  /// a whole read is the store's answer to "what is here", and only a
-  /// changes page reports what went.
+  /// **Deletions (Issue #1610, #1651).** Every page carries every deleted
+  /// object's UUID as `deletedRecordIds`: `HKDeletedObject` carries a UUID,
+  /// and an imported row's `sourceId` on iPhone is the sample's UUID, so they
+  /// match as they are. (Issue #1651: sent on non-incremental pages too,
+  /// because HealthKit's anchored query reports deletions from before an
+  /// upgrade when no anchor is stored yet.) An incremental page also carries
+  /// `incremental: true`.
   ///
   /// [ownBundleId] is this app's bundle identifier in production — the
   /// echo filter below must know whom to drop — and is injected rather
@@ -1715,8 +1715,8 @@ enum HealthKitChannelHandler {
     var payload: [String: Any] = ["samples": sampleMaps]
     if incremental {
       payload["incremental"] = true
-      payload["deletedRecordIds"] = deletedObjects.map { $0.uuid.uuidString }
     }
+    payload["deletedRecordIds"] = deletedObjects.map { $0.uuid.uuidString }
     guard
       let anchorPayload = encodeAnchorPayload(
         newAnchor, incremental: incremental)
