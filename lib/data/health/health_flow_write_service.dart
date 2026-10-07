@@ -786,11 +786,12 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// Doing this twice changes nothing but to send again what was saved
   /// after the floor, so it is safe to repeat if the stored state is lost.
   ///
-  /// The re-stamped rows carry no payload summary: what the earlier build
-  /// wrote is unknown to this one, so Issue #1591's rule sends each flow
-  /// or spotting record once more — which is what lets the first pass on
-  /// an upgraded phone correct a cycle-start flag an earlier build wrote
-  /// wrong — and stamps the summary of what it sent.
+  /// The re-stamped rows carry no payload summary when written by an
+  /// earlier build (what the earlier build wrote is unknown to this one,
+  /// so Issue #1591's rule sends each flow or spotting record once more —
+  /// which is what lets the first pass on an upgraded phone correct a
+  /// cycle-start flag an earlier build wrote wrong — and stamps the summary
+  /// of what it sent); a summary already known is preserved (Issue #1641).
   Future<void> _adoptEarlierLedger(
     DateTime floor,
     List<DayEntry> entries,
@@ -818,6 +819,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         kind: written.kind,
         localDate: written.localDate,
         exportedAt: version.isAfter(floor) ? floor : version,
+        payloadSummary: written.payloadSummary,
       ));
     }
     await _memory.forget(neverWritten.where((id) => _memory.entryOf(id) != null));
@@ -1925,6 +1927,12 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// in the store under one id, so the old one goes first — a delete
   /// after the write would take the new record out with the old.
   ///
+  /// When an earlier build wrote a spotting record without a summary
+  /// (Issue #1641), what type was written in the store is unknown. The store
+  /// may hold the other type under the same record id (a delete of an id
+  /// the store does not hold is a no-op), so deleting first clears the way
+  /// under the same [healthRecordDeletable] wait.
+  ///
   /// When the old type's write switch is off, the delete would be passed
   /// over and the old record would stay beside the new one for good (the
   /// ledger would then say the new type, and nothing would look at the
@@ -1950,7 +1958,10 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     final written = _memory.entryOf(write.recordId);
     final wasMarker = flowPayloadSummaryWasMarker(written?.payloadSummary);
     final isMarker = write.plan is HealthFlowIntermenstrualMarker;
-    if (wasMarker == null || wasMarker == isMarker) {
+    final isSpotting = write.kind == HealthExportLedgerKind.spotting ||
+        written?.kind == HealthExportLedgerKind.spotting;
+    final unknownSpotting = isSpotting && written != null && wasMarker == null;
+    if (!unknownSpotting && (wasMarker == null || wasMarker == isMarker)) {
       return (proceed: true, removed: false, failure: null);
     }
     if (!healthRecordDeletable(written, grantedTypes)) {
