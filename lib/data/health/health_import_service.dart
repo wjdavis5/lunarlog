@@ -744,7 +744,7 @@ class LocalHealthImportService
     void Function(HealthImportProgress progress)? onProgress, {
     bool wholeHistory = false,
   }) async {
-    final accumulator = _Accumulator();
+    final accumulator = _Accumulator(platform: _importPlatform);
     String? cursor;
     String? commitToken;
     var finished = false;
@@ -1583,6 +1583,9 @@ String _recordIdOf(String? key) {
 /// earlier one: flow keeps the highest intensity, spotting keeps the first
 /// record seen.
 class _Accumulator {
+  _Accumulator({required this.platform});
+
+  final HealthImportPlatform platform;
   final Map<LocalDate, _DesiredSample> flowDays = {};
   final Map<LocalDate, _SpottingSample> spottingDays = {};
   int recordedZone = 0;
@@ -1617,13 +1620,19 @@ class _Accumulator {
   /// Takes a page's news about deletions. Pages come in the order things
   /// happened, so a record this page holds is in the store whatever an
   /// earlier page said, and one it lists as deleted is gone whatever an
-  /// earlier page held. Only a changes page can say a record was
-  /// deleted: a whole-history page that lacks a record says nothing.
+  /// earlier page held.
+  ///
+  /// On Health Connect (Android), only a changes page can report deletions:
+  /// a whole-history page that lacks a record says nothing. On Apple Health
+  /// (iOS, Issue #1651), the initial anchored query also reports deletions
+  /// accumulated before the first anchor was committed.
   void noteDeleted(HealthReadSamples read) {
     for (final sample in read.samples) {
       liveRecordIds.add(sample.recordId);
     }
-    if (!read.incremental) return;
+    if (!read.incremental && platform != HealthImportPlatform.appleHealth) {
+      return;
+    }
     for (final id in read.deletedRecordIds) {
       if (liveRecordIds.remove(id)) heldDeletedSample = true;
       deletedRecordIds.add(id);

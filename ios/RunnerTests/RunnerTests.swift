@@ -220,8 +220,9 @@ class RunnerTests: XCTestCase {
   }
 
   /// The page shape: a short page with no anchor to carry has no cursor and
-  /// no commit token, and a full-history page carries no deletion keys.
-  func testPagePayloadShortFullHistoryPageCarriesOnlySamples() {
+  /// no commit token, and carries deletedRecordIds (Issue #1651: HealthKit
+  /// reports deletions even on non-incremental initial queries).
+  func testPagePayloadShortFullHistoryPageCarriesDeletedRecordIds() {
     let payload = HealthKitChannelHandler.pagePayload(
       samples: [],
       deletedObjects: [],
@@ -233,7 +234,7 @@ class RunnerTests: XCTestCase {
     XCTAssertNil(payload["nextCursor"])
     XCTAssertNil(payload["commitToken"])
     XCTAssertNil(payload["incremental"])
-    XCTAssertNil(payload["deletedRecordIds"])
+    XCTAssertEqual(payload["deletedRecordIds"] as? [String], [])
   }
 
   /// An incremental page says so and carries the deleted ids — an empty
