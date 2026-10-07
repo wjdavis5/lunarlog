@@ -14,6 +14,7 @@ HealthExportLedgerEntry _written(
   String recordId, {
   String sourceRowId = _entryId,
   HealthExportLedgerKind kind = HealthExportLedgerKind.entry,
+  String? payloadSummary,
 }) =>
     HealthExportLedgerEntry(
       recordId: recordId,
@@ -22,6 +23,7 @@ HealthExportLedgerEntry _written(
       kind: kind,
       localDate: '2026-06-02',
       exportedAt: DateTime.utc(2026, 6, 2),
+      payloadSummary: payloadSummary,
     );
 
 /// Every write type but [off].
@@ -103,9 +105,9 @@ void main() {
     );
   });
 
-  // A spotting observation is written as an intermenstrual marker, or as a
-  // light flow sample when the day falls inside a period, and the ledger
-  // does not say which.
+  // A spotting observation is written as an intermenstrual marker, or as
+  // a light flow sample when the day falls inside a period. A row written
+  // before #1591 carries no summary of which it was, so it needs both.
   test('a spotting entry\'s record needs both flow and spotting', () {
     expect(
       healthRecordDeletable(spotting, _allBut(HealthWriteTypes.spotting)),
@@ -121,6 +123,45 @@ void main() {
         HealthWriteTypes.spotting,
       }),
       isTrue,
+    );
+  });
+
+  // Since #1591 the ledger's payload summary says which type the record
+  // was written as, and only that type's switch holds its removal back.
+  test('a spotting record whose written type is known waits for its own '
+      'type alone', () {
+    final marker = _written(
+      healthSpottingRecordId(_observationId),
+      sourceRowId: _observationId,
+      kind: HealthExportLedgerKind.spotting,
+      payloadSummary: 'marker',
+    );
+    final flowSample = _written(
+      healthSpottingRecordId(_observationId),
+      sourceRowId: _observationId,
+      kind: HealthExportLedgerKind.spotting,
+      payloadSummary: 'flow:light:0',
+    );
+    // A marker is a spotting-type record.
+    expect(
+      healthRecordDeletable(marker, {HealthWriteTypes.spotting}),
+      isTrue,
+    );
+    expect(
+      healthRecordDeletable(marker, _allBut(HealthWriteTypes.spotting)),
+      isFalse,
+    );
+    // A light flow sample inside a period is a flow-type record.
+    expect(
+      healthRecordDeletable(flowSample, {HealthWriteTypes.menstrualFlow}),
+      isTrue,
+    );
+    expect(
+      healthRecordDeletable(
+        flowSample,
+        _allBut(HealthWriteTypes.menstrualFlow),
+      ),
+      isFalse,
     );
   });
 

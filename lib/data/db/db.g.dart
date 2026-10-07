@@ -12302,6 +12302,17 @@ class $HealthExportLedgerTable extends HealthExportLedger
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _payloadSummaryMeta = const VerificationMeta(
+    'payloadSummary',
+  );
+  @override
+  late final GeneratedColumn<String> payloadSummary = GeneratedColumn<String>(
+    'payload_summary',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     recordId,
@@ -12310,6 +12321,7 @@ class $HealthExportLedgerTable extends HealthExportLedger
     kind,
     localDate,
     exportedAt,
+    payloadSummary,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -12374,6 +12386,15 @@ class $HealthExportLedgerTable extends HealthExportLedger
     } else if (isInserting) {
       context.missing(_exportedAtMeta);
     }
+    if (data.containsKey('payload_summary')) {
+      context.handle(
+        _payloadSummaryMeta,
+        payloadSummary.isAcceptableOrUnknown(
+          data['payload_summary']!,
+          _payloadSummaryMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -12410,6 +12431,10 @@ class $HealthExportLedgerTable extends HealthExportLedger
         DriftSqlType.dateTime,
         data['${effectivePrefix}exported_at'],
       )!,
+      payloadSummary: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payload_summary'],
+      ),
     );
   }
 
@@ -12442,6 +12467,14 @@ class HealthExportLedgerRowData extends DataClass
 
   /// The UTC instant the record was exported.
   final DateTime exportedAt;
+
+  /// Issue #1591: a short summary of what the written record says that
+  /// *other* rows decide — for a flow or spotting record the type written
+  /// and, for a flow sample, the cycle-start flag (`flow:light:1`,
+  /// `marker`). Null for a kind with no such payload, and for a row
+  /// written before the column existed, which reads as "what it says is
+  /// unknown" and is sent once more so the store is corrected.
+  final String? payloadSummary;
   const HealthExportLedgerRowData({
     required this.recordId,
     required this.profileId,
@@ -12449,6 +12482,7 @@ class HealthExportLedgerRowData extends DataClass
     required this.kind,
     required this.localDate,
     required this.exportedAt,
+    this.payloadSummary,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -12459,6 +12493,9 @@ class HealthExportLedgerRowData extends DataClass
     map['kind'] = Variable<String>(kind);
     map['local_date'] = Variable<String>(localDate);
     map['exported_at'] = Variable<DateTime>(exportedAt);
+    if (!nullToAbsent || payloadSummary != null) {
+      map['payload_summary'] = Variable<String>(payloadSummary);
+    }
     return map;
   }
 
@@ -12470,6 +12507,9 @@ class HealthExportLedgerRowData extends DataClass
       kind: Value(kind),
       localDate: Value(localDate),
       exportedAt: Value(exportedAt),
+      payloadSummary: payloadSummary == null && nullToAbsent
+          ? const Value.absent()
+          : Value(payloadSummary),
     );
   }
 
@@ -12485,6 +12525,7 @@ class HealthExportLedgerRowData extends DataClass
       kind: serializer.fromJson<String>(json['kind']),
       localDate: serializer.fromJson<String>(json['localDate']),
       exportedAt: serializer.fromJson<DateTime>(json['exportedAt']),
+      payloadSummary: serializer.fromJson<String?>(json['payloadSummary']),
     );
   }
   @override
@@ -12497,6 +12538,7 @@ class HealthExportLedgerRowData extends DataClass
       'kind': serializer.toJson<String>(kind),
       'localDate': serializer.toJson<String>(localDate),
       'exportedAt': serializer.toJson<DateTime>(exportedAt),
+      'payloadSummary': serializer.toJson<String?>(payloadSummary),
     };
   }
 
@@ -12507,6 +12549,7 @@ class HealthExportLedgerRowData extends DataClass
     String? kind,
     String? localDate,
     DateTime? exportedAt,
+    Value<String?> payloadSummary = const Value.absent(),
   }) => HealthExportLedgerRowData(
     recordId: recordId ?? this.recordId,
     profileId: profileId ?? this.profileId,
@@ -12514,6 +12557,9 @@ class HealthExportLedgerRowData extends DataClass
     kind: kind ?? this.kind,
     localDate: localDate ?? this.localDate,
     exportedAt: exportedAt ?? this.exportedAt,
+    payloadSummary: payloadSummary.present
+        ? payloadSummary.value
+        : this.payloadSummary,
   );
   HealthExportLedgerRowData copyWithCompanion(
     HealthExportLedgerCompanion data,
@@ -12529,6 +12575,9 @@ class HealthExportLedgerRowData extends DataClass
       exportedAt: data.exportedAt.present
           ? data.exportedAt.value
           : this.exportedAt,
+      payloadSummary: data.payloadSummary.present
+          ? data.payloadSummary.value
+          : this.payloadSummary,
     );
   }
 
@@ -12540,7 +12589,8 @@ class HealthExportLedgerRowData extends DataClass
           ..write('sourceRowId: $sourceRowId, ')
           ..write('kind: $kind, ')
           ..write('localDate: $localDate, ')
-          ..write('exportedAt: $exportedAt')
+          ..write('exportedAt: $exportedAt, ')
+          ..write('payloadSummary: $payloadSummary')
           ..write(')'))
         .toString();
   }
@@ -12553,6 +12603,7 @@ class HealthExportLedgerRowData extends DataClass
     kind,
     localDate,
     exportedAt,
+    payloadSummary,
   );
   @override
   bool operator ==(Object other) =>
@@ -12563,7 +12614,8 @@ class HealthExportLedgerRowData extends DataClass
           other.sourceRowId == this.sourceRowId &&
           other.kind == this.kind &&
           other.localDate == this.localDate &&
-          other.exportedAt == this.exportedAt);
+          other.exportedAt == this.exportedAt &&
+          other.payloadSummary == this.payloadSummary);
 }
 
 class HealthExportLedgerCompanion
@@ -12574,6 +12626,7 @@ class HealthExportLedgerCompanion
   final Value<String> kind;
   final Value<String> localDate;
   final Value<DateTime> exportedAt;
+  final Value<String?> payloadSummary;
   final Value<int> rowid;
   const HealthExportLedgerCompanion({
     this.recordId = const Value.absent(),
@@ -12582,6 +12635,7 @@ class HealthExportLedgerCompanion
     this.kind = const Value.absent(),
     this.localDate = const Value.absent(),
     this.exportedAt = const Value.absent(),
+    this.payloadSummary = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   HealthExportLedgerCompanion.insert({
@@ -12591,6 +12645,7 @@ class HealthExportLedgerCompanion
     required String kind,
     required String localDate,
     required DateTime exportedAt,
+    this.payloadSummary = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : recordId = Value(recordId),
        profileId = Value(profileId),
@@ -12605,6 +12660,7 @@ class HealthExportLedgerCompanion
     Expression<String>? kind,
     Expression<String>? localDate,
     Expression<DateTime>? exportedAt,
+    Expression<String>? payloadSummary,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -12614,6 +12670,7 @@ class HealthExportLedgerCompanion
       if (kind != null) 'kind': kind,
       if (localDate != null) 'local_date': localDate,
       if (exportedAt != null) 'exported_at': exportedAt,
+      if (payloadSummary != null) 'payload_summary': payloadSummary,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -12625,6 +12682,7 @@ class HealthExportLedgerCompanion
     Value<String>? kind,
     Value<String>? localDate,
     Value<DateTime>? exportedAt,
+    Value<String?>? payloadSummary,
     Value<int>? rowid,
   }) {
     return HealthExportLedgerCompanion(
@@ -12634,6 +12692,7 @@ class HealthExportLedgerCompanion
       kind: kind ?? this.kind,
       localDate: localDate ?? this.localDate,
       exportedAt: exportedAt ?? this.exportedAt,
+      payloadSummary: payloadSummary ?? this.payloadSummary,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -12659,6 +12718,9 @@ class HealthExportLedgerCompanion
     if (exportedAt.present) {
       map['exported_at'] = Variable<DateTime>(exportedAt.value);
     }
+    if (payloadSummary.present) {
+      map['payload_summary'] = Variable<String>(payloadSummary.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -12674,6 +12736,7 @@ class HealthExportLedgerCompanion
           ..write('kind: $kind, ')
           ..write('localDate: $localDate, ')
           ..write('exportedAt: $exportedAt, ')
+          ..write('payloadSummary: $payloadSummary, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -20764,6 +20827,7 @@ typedef $$HealthExportLedgerTableCreateCompanionBuilder =
       required String kind,
       required String localDate,
       required DateTime exportedAt,
+      Value<String?> payloadSummary,
       Value<int> rowid,
     });
 typedef $$HealthExportLedgerTableUpdateCompanionBuilder =
@@ -20774,6 +20838,7 @@ typedef $$HealthExportLedgerTableUpdateCompanionBuilder =
       Value<String> kind,
       Value<String> localDate,
       Value<DateTime> exportedAt,
+      Value<String?> payloadSummary,
       Value<int> rowid,
     });
 
@@ -20813,6 +20878,11 @@ class $$HealthExportLedgerTableFilterComposer
 
   ColumnFilters<DateTime> get exportedAt => $composableBuilder(
     column: $table.exportedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get payloadSummary => $composableBuilder(
+    column: $table.payloadSummary,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -20855,6 +20925,11 @@ class $$HealthExportLedgerTableOrderingComposer
     column: $table.exportedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get payloadSummary => $composableBuilder(
+    column: $table.payloadSummary,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$HealthExportLedgerTableAnnotationComposer
@@ -20885,6 +20960,11 @@ class $$HealthExportLedgerTableAnnotationComposer
 
   GeneratedColumn<DateTime> get exportedAt => $composableBuilder(
     column: $table.exportedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get payloadSummary => $composableBuilder(
+    column: $table.payloadSummary,
     builder: (column) => column,
   );
 }
@@ -20935,6 +21015,7 @@ class $$HealthExportLedgerTableTableManager
                 Value<String> kind = const Value.absent(),
                 Value<String> localDate = const Value.absent(),
                 Value<DateTime> exportedAt = const Value.absent(),
+                Value<String?> payloadSummary = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => HealthExportLedgerCompanion(
                 recordId: recordId,
@@ -20943,6 +21024,7 @@ class $$HealthExportLedgerTableTableManager
                 kind: kind,
                 localDate: localDate,
                 exportedAt: exportedAt,
+                payloadSummary: payloadSummary,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -20953,6 +21035,7 @@ class $$HealthExportLedgerTableTableManager
                 required String kind,
                 required String localDate,
                 required DateTime exportedAt,
+                Value<String?> payloadSummary = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => HealthExportLedgerCompanion.insert(
                 recordId: recordId,
@@ -20961,6 +21044,7 @@ class $$HealthExportLedgerTableTableManager
                 kind: kind,
                 localDate: localDate,
                 exportedAt: exportedAt,
+                payloadSummary: payloadSummary,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

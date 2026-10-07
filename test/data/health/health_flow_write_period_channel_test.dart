@@ -207,8 +207,14 @@ void main() {
   // PRIVACY section 4: a background import pass never writes anything to
   // the health store, and the site says lunarlog never writes its imports
   // back. A period record is derived data, so that has to hold for it too.
-  test('an import that lands bleed days beside an exported period makes no '
-      'call that touches the store', () async {
+  // The cycle-start flag is derived the same way, but from every bleed day
+  // the derivation sees — imported days included — so when an import moves
+  // the episode's first day, the one thing that does change in the store
+  // is the flag on the hand-logged sample that stopped being first
+  // (issue #1591).
+  test('an import that lands bleed days beside an exported period '
+      'reshapes no period record, and corrects only the cycle-start flag',
+      () async {
     final own = [
       _logged('2026-06-03', grant.add(const Duration(hours: 1))),
       _logged('2026-06-04', grant.add(const Duration(hours: 2))),
@@ -228,9 +234,16 @@ void main() {
     final report = await service.syncNow();
 
     expect(report.blocked, isNull);
-    expect(storeCalls(), isEmpty,
-        reason: 'no write and no delete: the period still says '
-            '06-03..06-04');
-    expect(methods(), everyElement(anyOf('permissionStatus', 'bind')));
+    // 06-03 stops being the episode's first day, so its sample is
+    // re-written with the flag false — the rows themselves, which came
+    // from the import, are never echoed back.
+    expect(storeCalls(), ['writeMenstrualFlow']);
+    final flowArgs = calls
+        .lastWhere((call) => call.method == 'writeMenstrualFlow')
+        .arguments as Map<Object?, Object?>;
+    expect(flowArgs['cycleStart'], isFalse);
+    expect(methods(), isNot(contains('writeMenstrualPeriod')),
+        reason: 'the period still says 06-03..06-04');
+    expect(methods(), isNot(contains('deleteRecords')));
   });
 }

@@ -2092,7 +2092,8 @@ void main() {
 
     // Decision A: an import can never start, extend or reshape a period.
     test('an import that adds bleed days around an exported period changes '
-        'nothing in the store', () async {
+        'no period record, and moves the cycle-start flag off the old first '
+        'day (#1591)', () async {
       await seedGranted(grant);
       final service = buildService();
       final own = [
@@ -2116,7 +2117,17 @@ void main() {
       final report = await service.syncNow();
 
       expect(report.blocked, isNull);
-      expect(platform.flowWrites, hasLength(flowWrites));
+      // The flag follows the episode, and the episode the flag derives
+      // from includes imported days (episodes.dart, the same derivation
+      // the spotting rule uses) — so the imported 06-02 is now the
+      // episode's first day, and the hand-logged 06-03 sample stops
+      // saying it is one. Since #1591 a change made through *other* rows
+      // is sent: 06-03 is re-written with the flag false, at a raised
+      // version, and 06-04 — whose own summary is unchanged — is not.
+      expect(platform.flowWrites, hasLength(flowWrites + 1));
+      final rewrite = platform.flowWrites.last;
+      expect(rewrite.date.iso, '2026-06-03');
+      expect(rewrite.cycleStart, isFalse);
       expect(platform.periodWrites, hasLength(periodWrites),
           reason: 'the written period still says 06-03..06-04');
       expect(platform.deleteCalls, isEmpty);
@@ -3782,10 +3793,24 @@ void main() {
       clock = at(32);
       final back = await service.syncNow();
       expect(back.blocked, isNull);
-      expect(back.samplesWritten, 0);
-      expect(platform.flowWrites, isEmpty,
-          reason: 'neither the day that build wrote nor the one logged '
-              'with write access removed');
+      // The 06-10 day was written by the earlier build, which recorded
+      // nothing about what its record said; issue #1591 reads that as
+      // unknown and sends it once, with its cycle-start flag. The 06-25
+      // day logged with write access removed is a different matter: it
+      // was never written, and its type's floor keeps it out.
+      expect(back.samplesWritten, 1);
+      expect(platform.flowWrites.single.recordId, 'entry-2026-06-10');
+      expect(
+        ledger.rows
+            .singleWhere((row) => row.recordId == 'entry-2026-06-10')
+            .payloadSummary,
+        'flow:medium:1',
+        reason: 'the re-send stamps what it said',
+      );
+      clock = at(33);
+      await service.syncNow();
+      expect(platform.flowWrites, hasLength(1),
+          reason: 'the #1591 re-send is once, not on every pass');
 
       dayEntries.entries = [
         ...dayEntries.entries,
@@ -3794,7 +3819,7 @@ void main() {
       clock = at(41);
       final later = await service.syncNow();
       expect(later.samplesWritten, 1);
-      expect(platform.flowWrites.single.recordId, 'entry-2026-07-20');
+      expect(platform.flowWrites.last.recordId, 'entry-2026-07-20');
     });
 
     // The same install: every day of the period is at or below its floor,
@@ -3832,8 +3857,20 @@ void main() {
 
       expect(report.blocked, isNull);
       expect(platform.deleteCalls, isEmpty);
-      expect(platform.periodWrites, isEmpty);
-      expect(platform.flowWrites, isEmpty);
+      expect(platform.periodWrites, isEmpty,
+          reason: 'the remembered interval is the episode there is');
+      // The days were written by a build that recorded nothing about what
+      // its records said (#1591): both are sent once — 06-10 as the
+      // episode's first day, 06-11 not — and the summary each re-send
+      // stamps keeps them quiet after that.
+      expect(platform.flowWrites, hasLength(2));
+      final flags = {
+        for (final write in platform.flowWrites) write.date.iso: write.cycleStart,
+      };
+      expect(flags['2026-06-10'], isTrue);
+      expect(flags['2026-06-11'], isFalse);
+      await buildService().syncNow();
+      expect(platform.flowWrites, hasLength(2));
     });
 
     // That build filed a row's records whether or not the write went
@@ -3861,8 +3898,15 @@ void main() {
 
       final report = await buildService().syncNow();
 
-      expect(report.samplesWritten, 1);
-      expect(platform.flowWrites.single.recordId, 'entry-2026-06-20');
+      expect(report.blocked, isNull);
+      // 06-20 was still owed and is sent; 06-10 was written by the
+      // earlier build, which recorded nothing about what its record said,
+      // so #1591 sends it once as well (as the episode's first day).
+      expect(report.samplesWritten, 2);
+      expect(
+        platform.flowWrites.map((write) => write.recordId),
+        contains('entry-2026-06-20'),
+      );
       expect(
         ledger.rows
             .singleWhere((row) => row.recordId == 'entry-2026-06-20')
@@ -3874,8 +3918,8 @@ void main() {
     // The earlier build stamped the ledger with the device's clock at the
     // time of the pass. On a phone whose clock trails the server that is
     // before the time the storage layer gave the row.
-    test('a ledger from an earlier build: a stamp older than the row does '
-        'not send a written row again', () async {
+    test('a ledger from an earlier build: a stamp older than the row sends '
+        'the written row once (#1591), then no more', () async {
       await settings.set(_bindingKey, _profileId);
       await settings.set(_cursorKey, '${at(10).millisecondsSinceEpoch}');
       dayEntries.entries = [_entry('2026-06-10', FlowLevel.medium, at(10))];
@@ -3891,9 +3935,15 @@ void main() {
       ]);
 
       await buildService().syncNow();
+      // What the record said is unknown (#1591): sent once, with its
+      // cycle-start flag, and the summary the re-send stamps keeps it
+      // quiet from then on.
+      expect(platform.flowWrites, hasLength(1));
+      expect(platform.flowWrites.single.cycleStart, isTrue);
+      await buildService().syncNow();
       await buildService().syncNow();
 
-      expect(platform.flowWrites, isEmpty);
+      expect(platform.flowWrites, hasLength(1));
     });
 
     test('a ledger from an earlier build: a no-flow day saved after the '
@@ -3944,7 +3994,10 @@ void main() {
       ]);
       final service = buildService();
       await service.syncNow();
-      expect(platform.markerWrites, isEmpty);
+      // What that build's record said is unknown (#1591), so the entry is
+      // sent once, as the marker it is now (no bleed day near it), and
+      // the summary stamped keeps it quiet after.
+      expect(platform.markerWrites, hasLength(1));
       expect(platform.deleteCalls, isEmpty);
 
       dayEntries.entries = [_entry('2026-06-08', FlowLevel.medium, at(20))];
@@ -4426,24 +4479,39 @@ void main() {
         expect(ledger.rows, isEmpty);
       });
 
-      // A spotting entry's record is one of two types, and the ledger
-      // does not say which. With either off, a delete may pass it over.
+      // A spotting entry's record is one of two types. A row written by
+      // this build says which it was (#1591) and only that type's switch
+      // holds its removal back; a row written before the summary existed
+      // says nothing, so with either type off a delete may pass it over
+      // and it waits.
       for (final off in const ['spotting', 'menstrualFlow']) {
-        test('a spotting entry that is gone while $off is off keeps its '
-            'record remembered until the type is back', () async {
+        test('a pre-#1591 spotting entry that is gone while $off is off '
+            'keeps its record remembered until the type is back', () async {
           const marker = 'spot-2026-06-12';
           await seedGranted(grant);
           observations.observations = [_spotting('2026-06-12', at(60))];
-          final service = buildService();
-          await service.syncNow();
+          await buildService().syncNow();
           expect(ledger.rows.map((row) => row.recordId), [marker]);
+          // Wind the ledger row back to what a build before #1591 wrote:
+          // no summary of which type the record was. A fresh service
+          // reads it, the way a relaunched process would.
+          await ledger.record([
+            HealthExportLedgerEntry(
+              recordId: marker,
+              profileId: _profileId,
+              sourceRowId: marker,
+              kind: HealthExportLedgerKind.spotting,
+              localDate: '2026-06-12',
+              exportedAt: at(60),
+            ),
+          ]);
 
           platform
             ..permission = HealthPermissionStatus.writingSome
             ..grantedTypes = {...everyTypeButMucus, 'cervicalMucus'}
               .difference({off});
           observations.observations = [];
-          await service.syncNow();
+          await buildService().syncNow();
           expect(
             platform.deleteCalls.expand((call) => call),
             isNot(contains(marker)),
@@ -4451,12 +4519,36 @@ void main() {
           expect(ledger.rows.map((row) => row.recordId), [marker]);
 
           platform.permission = HealthPermissionStatus.granted;
-          final back = await service.syncNow();
+          final back = await buildService().syncNow();
           expect(back.blocked, isNull);
           expect(platform.deleteCalls.expand((call) => call), [marker]);
           expect(ledger.rows, isEmpty);
         });
       }
+
+      // The summary says which type the record was written as, so the
+      // other type's switch no longer holds its removal back (#1591).
+      test('a spotting entry written as a marker whose row is gone is '
+          'deleted with spotting on, even while menstrualFlow is off',
+          () async {
+        const marker = 'spot-2026-06-12';
+        await seedGranted(grant);
+        observations.observations = [_spotting('2026-06-12', at(60))];
+        final service = buildService();
+        await service.syncNow();
+        expect(ledger.rows.single.payloadSummary, 'marker');
+
+        platform
+          ..permission = HealthPermissionStatus.writingSome
+          ..grantedTypes = {...everyTypeButMucus, 'cervicalMucus'}
+            .difference({'menstrualFlow'});
+        observations.observations = [];
+        final report = await service.syncNow();
+
+        expect(report.blocked, isNull);
+        expect(platform.deleteCalls.expand((call) => call), [marker]);
+        expect(ledger.rows, isEmpty);
+      });
 
       // Another device's row for the date wins a merge: this phone's row
       // is gone, and a row with another id is live for the same day.
@@ -4760,5 +4852,363 @@ void main() {
     ];
     expect(bleedDatesOf(entries).map((d) => d.iso).toList(),
         ['2026-06-01']);
+  });
+
+  // Issue #1591: what a record says is decided partly by *other* days —
+  // the cycle-start flag by which day starts the period, a spotting
+  // record's type by whether its day falls inside one — so the ledger
+  // remembers a summary of what each written record said, and a record
+  // whose summary differs from what its row now produces is sent again
+  // at a raised version, without its own row ever changing.
+  group('issue #1591: another day changing what a record should say', () {
+    final grant = DateTime.utc(2026, 6, 1, 12);
+    DateTime at(int minutes) => grant.add(Duration(minutes: minutes));
+
+    test('logging the day before a written period day moves the '
+        'cycle-start flag to it, and the old first day is corrected',
+        () async {
+      await seedGranted(grant);
+      // She logs Tuesday.
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.heavy,
+            grant.add(const Duration(hours: 1))),
+      ];
+      final service = buildService();
+      await service.syncNow();
+      expect(platform.flowWrites.single.cycleStart, isTrue);
+      final tuesdayFirstWrite = platform.flowWrites.single;
+      expect(
+        ledger.rows.singleWhere((row) => row.recordId == 'entry-2026-06-02')
+            .payloadSummary,
+        'flow:heavy:1',
+      );
+
+      // The next day she adds Monday, which she forgot. Monday is the
+      // period's first day now, and Tuesday's own row has not changed.
+      dayEntries.entries = [
+        _entry('2026-06-01', FlowLevel.light,
+            grant.add(const Duration(hours: 2))),
+        _entry('2026-06-02', FlowLevel.heavy,
+            grant.add(const Duration(hours: 1))),
+      ];
+      final report = await service.syncNow();
+
+      expect(report.blocked, isNull);
+      expect(report.samplesWritten, 2);
+      final monday =
+          platform.flowWrites.singleWhere((w) => w.date.iso == '2026-06-01');
+      final tuesday = platform.flowWrites
+          .where((w) => w.date.iso == '2026-06-02')
+          .last;
+      expect(monday.cycleStart, isTrue);
+      expect(tuesday.cycleStart, isFalse);
+      // The correction carries a version above the one the store already
+      // holds for Tuesday, or it would keep the old copy.
+      expect(tuesday.recordVersionMs,
+          greaterThan(tuesdayFirstWrite.recordVersionMs));
+      expect(
+        ledger.rows.singleWhere((row) => row.recordId == 'entry-2026-06-02')
+            .payloadSummary,
+        'flow:heavy:0',
+      );
+
+      // And that is the end of it: the third pass sends nothing.
+      await service.syncNow();
+      expect(platform.flowWrites, hasLength(3));
+    });
+
+    test('deleting the day before moves the cycle-start flag back, and '
+        'its record goes with the day', () async {
+      await seedGranted(grant);
+      dayEntries.entries = [
+        _entry('2026-06-01', FlowLevel.light,
+            grant.add(const Duration(hours: 1))),
+        _entry('2026-06-02', FlowLevel.heavy,
+            grant.add(const Duration(hours: 2))),
+      ];
+      final service = buildService();
+      await service.syncNow();
+      expect(
+        platform.flowWrites.singleWhere((w) => w.date.iso == '2026-06-01')
+            .cycleStart,
+        isTrue,
+      );
+      final writesBefore = platform.flowWrites.length;
+
+      // She deletes Monday. Tuesday's row has not changed, and it is the
+      // period's first day again.
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.heavy,
+            grant.add(const Duration(hours: 2))),
+      ];
+      final report = await service.syncNow();
+
+      expect(report.blocked, isNull);
+      final tuesday = platform.flowWrites.last;
+      expect(tuesday.date.iso, '2026-06-02');
+      expect(tuesday.cycleStart, isTrue);
+      expect(tuesday.recordVersionMs,
+          greaterThan(platform.flowWrites.first.recordVersionMs));
+      expect(
+        platform.deleteCalls.expand((call) => call),
+        contains('entry-2026-06-01'),
+        reason: 'the deleted day\'s record is taken out',
+      );
+      final entryRows = ledger.rows
+          .where((row) => row.kind == HealthExportLedgerKind.entry)
+          .toList();
+      expect(entryRows.map((row) => row.recordId), ['entry-2026-06-02']);
+      expect(entryRows.single.payloadSummary, 'flow:heavy:1');
+
+      await service.syncNow();
+      expect(platform.flowWrites, hasLength(writesBefore + 1));
+    });
+
+    test('a spotting entry whose day moves into a period is re-sent as a '
+        'light flow sample, and the marker is taken out first', () async {
+      await seedGranted(grant);
+      // Spotting outside any period: an intermenstrual marker.
+      observations.observations = [_spotting('2026-06-10', at(5))];
+      final service = buildService();
+      await service.syncNow();
+      expect(platform.markerWrites.single.recordId, 'spot-2026-06-10');
+      final markerWrite = platform.markerWrites.single;
+      expect(
+        ledger.rows.singleWhere((row) => row.recordId == 'spot-2026-06-10')
+            .payloadSummary,
+        'marker',
+      );
+
+      // Bleed days appear around it; the spotting day is inside the
+      // period now. Its own row has not changed.
+      dayEntries.entries = [
+        _entry('2026-06-09', FlowLevel.heavy, at(6)),
+        _entry('2026-06-11', FlowLevel.medium, at(7)),
+      ];
+      final report = await service.syncNow();
+
+      expect(report.blocked, isNull);
+      expect(platform.markerWrites, hasLength(1),
+          reason: 'no second marker is written');
+      // Both types share the one record id, so the old one goes before
+      // the new one is written — a delete after the write would take the
+      // new record out with the old.
+      expect(platform.deleteCalls, [
+        ['spot-2026-06-10'],
+      ]);
+      final inside = platform.flowWrites.last;
+      expect(inside.recordId, 'spot-2026-06-10');
+      expect(inside.flow, HealthFlowValue.light);
+      expect(inside.cycleStart, isFalse);
+      expect(inside.recordVersionMs,
+          greaterThan(markerWrite.recordVersionMs));
+      expect(
+        ledger.rows.singleWhere((row) => row.recordId == 'spot-2026-06-10')
+            .payloadSummary,
+        'flow:light:0',
+      );
+
+      final writesAfterSwap = platform.flowWrites.length;
+      await service.syncNow();
+      expect(platform.flowWrites, hasLength(writesAfterSwap));
+      expect(platform.deleteCalls, hasLength(1));
+    });
+
+    test('a spotting entry whose day stops being in a period is re-sent '
+        'as a marker, and the light flow sample is taken out first',
+        () async {
+      await seedGranted(grant);
+      dayEntries.entries = [
+        _entry('2026-06-09', FlowLevel.heavy, at(5)),
+        _entry('2026-06-11', FlowLevel.medium, at(6)),
+      ];
+      observations.observations = [_spotting('2026-06-10', at(7))];
+      final service = buildService();
+      await service.syncNow();
+      final inside = platform.flowWrites
+          .singleWhere((write) => write.recordId == 'spot-2026-06-10');
+      expect(inside.flow, HealthFlowValue.light);
+      expect(
+        ledger.rows.singleWhere((row) => row.recordId == 'spot-2026-06-10')
+            .payloadSummary,
+        'flow:light:0',
+      );
+
+      // The period's first day goes. The spotting day is outside any
+      // period now; its own row has not changed.
+      dayEntries.entries = [
+        _entry('2026-06-11', FlowLevel.medium, at(6)),
+      ];
+      final report = await service.syncNow();
+
+      expect(report.blocked, isNull);
+      // The swap-delete is the pass's first delete; taking the removed
+      // day's and the old episode's records out follows it.
+      expect(platform.deleteCalls.first, ['spot-2026-06-10']);
+      final marker = platform.markerWrites.single;
+      expect(marker.recordId, 'spot-2026-06-10');
+      expect(marker.recordVersionMs, greaterThan(inside.recordVersionMs));
+      expect(
+        ledger.rows.singleWhere((row) => row.recordId == 'spot-2026-06-10')
+            .payloadSummary,
+        'marker',
+      );
+
+      final deletesAfterSwap = platform.deleteCalls.length;
+      await service.syncNow();
+      expect(platform.markerWrites, hasLength(1));
+      expect(platform.deleteCalls, hasLength(deletesAfterSwap));
+    });
+
+    test('a summary-only re-send waits when the replaced type is switched '
+        'off, and goes once it is back', () async {
+      await seedGranted(grant);
+      observations.observations = [_spotting('2026-06-10', at(5))];
+      final service = buildService();
+      await service.syncNow();
+      expect(platform.markerWrites, hasLength(1));
+
+      // Spotting is switched off when the spotting day moves into a
+      // period. The marker cannot be taken out while its type is off —
+      // the delete would be passed over and the old record would stay
+      // beside the new one for good — so the swap waits.
+      platform
+        ..permission = HealthPermissionStatus.writingSome
+        ..grantedTypes = {'menstrualFlow'};
+      dayEntries.entries = [
+        _entry('2026-06-09', FlowLevel.heavy, at(6)),
+        _entry('2026-06-11', FlowLevel.medium, at(7)),
+      ];
+      clock = at(8);
+      final waiting = await service.syncNow();
+      expect(waiting.blocked, isNull);
+      expect(platform.markerWrites, hasLength(1));
+      expect(
+        platform.flowWrites.map((write) => write.recordId),
+        ['entry-2026-06-09', 'entry-2026-06-11'],
+        reason: 'the two bleed days go out; the spotting swap waits',
+      );
+      expect(platform.deleteCalls, isEmpty);
+      expect(
+        ledger.rows.singleWhere((row) => row.recordId == 'spot-2026-06-10')
+            .payloadSummary,
+        'marker',
+        reason: 'still what the store holds',
+      );
+
+      // Spotting is back on: the marker goes out first, then the light
+      // flow sample is written.
+      platform
+        ..permission = HealthPermissionStatus.granted
+        ..grantedTypes = const {};
+      clock = at(9);
+      final swapped = await service.syncNow();
+      expect(swapped.blocked, isNull);
+      expect(platform.deleteCalls, [
+        ['spot-2026-06-10'],
+      ]);
+      expect(platform.flowWrites.last.recordId, 'spot-2026-06-10');
+      expect(platform.flowWrites.last.flow, HealthFlowValue.light);
+      expect(
+        ledger.rows.singleWhere((row) => row.recordId == 'spot-2026-06-10')
+            .payloadSummary,
+        'flow:light:0',
+      );
+    });
+
+    test('a failed write after a successful swap-delete is retried whole '
+        'on the next pass', () async {
+      await seedGranted(grant);
+      observations.observations = [_spotting('2026-06-10', at(5))];
+      final service = buildService();
+      await service.syncNow();
+      expect(platform.markerWrites, hasLength(1));
+
+      dayEntries.entries = [
+        _entry('2026-06-09', FlowLevel.heavy, at(6)),
+        _entry('2026-06-11', FlowLevel.medium, at(7)),
+      ];
+      // The swap-delete goes through; the light sample's write is
+      // refused. The ledger still remembers the marker, so the next pass
+      // tries the whole swap again instead of a record remembered as
+      // written that is in neither type.
+      platform.writeResults = [
+        const HealthPlatformAllowed(), // 06-09 heavy
+        const HealthPlatformAllowed(), // 06-11 medium
+        const HealthPlatformResult.failed('no'),
+      ];
+      final refused = await service.syncNow();
+      expect(refused.blocked, isA<HealthPlatformFailed>());
+      expect(platform.deleteCalls, [
+        ['spot-2026-06-10'],
+      ]);
+      expect(
+        ledger.rows.singleWhere((row) => row.recordId == 'spot-2026-06-10')
+            .payloadSummary,
+        'marker',
+      );
+
+      platform.writeResults = [];
+      final retried = await service.syncNow();
+      expect(retried.blocked, isNull);
+      expect(platform.deleteCalls, hasLength(2));
+      expect(platform.flowWrites.last.recordId, 'spot-2026-06-10');
+      expect(platform.flowWrites.last.flow, HealthFlowValue.light);
+      expect(
+        ledger.rows.singleWhere((row) => row.recordId == 'spot-2026-06-10')
+            .payloadSummary,
+        'flow:light:0',
+      );
+    });
+
+    test('a record a build before this one wrote is sent once more, and '
+        'the summary it stamps keeps it quiet after', () async {
+      await seedGranted(grant);
+      // The wrong cycle start is already out there: Tuesday was written
+      // as the first day by a build that recorded no summary, and Monday
+      // has since been added.
+      dayEntries.entries = [
+        _entry('2026-06-01', FlowLevel.light,
+            grant.add(const Duration(hours: 1))),
+        _entry('2026-06-02', FlowLevel.heavy,
+            grant.add(const Duration(hours: 2))),
+      ];
+      await ledger.record([
+        HealthExportLedgerEntry(
+          recordId: 'entry-2026-06-02',
+          profileId: _profileId,
+          sourceRowId: 'entry-2026-06-02',
+          kind: HealthExportLedgerKind.entry,
+          localDate: '2026-06-02',
+          exportedAt: grant.add(const Duration(hours: 2)),
+        ),
+      ]);
+      final service = buildService();
+
+      final report = await service.syncNow();
+
+      expect(report.blocked, isNull);
+      final tuesday =
+          platform.flowWrites.singleWhere((w) => w.date.iso == '2026-06-02');
+      expect(tuesday.cycleStart, isFalse,
+          reason: 'the correction: Monday is the first day now');
+      expect(tuesday.recordVersionMs,
+          greaterThan(grant.add(const Duration(hours: 2)).millisecondsSinceEpoch),
+          reason: 'the store holds the record at the old version');
+      // Monday was never written, so it is sent as it stands.
+      expect(
+        platform.flowWrites.singleWhere((w) => w.date.iso == '2026-06-01')
+            .cycleStart,
+        isTrue,
+      );
+      expect(
+        ledger.rows.singleWhere((row) => row.recordId == 'entry-2026-06-02')
+            .payloadSummary,
+        'flow:heavy:0',
+      );
+
+      await service.syncNow();
+      expect(platform.flowWrites, hasLength(2));
+    });
   });
 }

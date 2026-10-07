@@ -308,8 +308,15 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   ///   non-subject guardian). NOT NULL DEFAULT FALSE, so the one `addColumn`
   ///   is also the whole backfill: nothing was private before the flag
   ///   existed.
+  /// * 32 — `health_export_ledger.payload_summary` (Issue #1591, the
+  ///   nullable short summary of what a written record says that *other*
+  ///   rows decide — a flow record's cycle-start flag, a spotting record's
+  ///   written type). Nullable with no backfill, deliberately: a row
+  ///   written before the column existed reads as "what it says is
+  ///   unknown", which is exactly what sends the record once more so the
+  ///   second cycle start already out there in Apple Health is corrected.
   @override
-  int get schemaVersion => 31;
+  int get schemaVersion => 32;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -378,7 +385,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// `profile_tag_registry`, `sync_state.cursor_profile_tag_registry`,
   /// `profile_tag_registry.profile_id_index`. Issue #170 adds
   /// `day_entry_history`, `sync_state.cursor_day_entry_history`,
-  /// `day_entry_history.profile_changed_at_index`. Every version step
+  /// `day_entry_history.profile_changed_at_index`. Issue #1591 adds
+  /// `health_export_ledger.payload_summary`. Every version step
   /// also reports its own `schema_version.v<N>` label (Issue #637,
   /// LLA-015) right after `PRAGMA user_version` advances inside that
   /// same step's transaction — a hook that throws there proves the
@@ -622,6 +630,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV30(m, from);
     // Issue #849's v31 step, same shape again.
     await _upgradeToV31(m, from);
+    // Issue #1591's v32 step, same shape again.
+    await _upgradeToV32(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -1338,6 +1348,32 @@ class LunarLogDatabase extends _$LunarLogDatabase {
         await migrationStepHook?.call('day_entries.note_private');
       }
       await _advanceSchemaVersion(31);
+    });
+  }
+
+  /// The v32 upgrade step (Issue #1591): the nullable `payload_summary`
+  /// column on the device-local `health_export_ledger`. Same standalone-
+  /// method shape as [_upgradeToV31] (`health_export_ledger` has existed
+  /// since v27 on every device that has it at all, so the addColumn is
+  /// always safe regardless of `from`; the same `_hasColumn` (LLA-015)
+  /// real-schema guard the sibling column steps use covers a schema
+  /// reconstructed by something other than a real `onCreate`).
+  ///
+  /// Nullable with no backfill, deliberately: a pre-#1591 row reads as
+  /// null, and the write pass reads a null summary on a record whose
+  /// payload depends on other days as "what it says is unknown — send it
+  /// once more", which is what corrects the two cycle starts a day apart
+  /// that builds before this one could leave in Apple Health. One extra
+  /// write per remembered flow/spotting record on the first pass after the
+  /// upgrade, then the summary is stamped and the record goes quiet again.
+  Future<void> _upgradeToV32(Migrator m, int from) async {
+    if (from >= 32) return;
+    await transaction(() async {
+      if (!await _hasColumn('health_export_ledger', 'payload_summary')) {
+        await m.addColumn(healthExportLedger, healthExportLedger.payloadSummary);
+        await migrationStepHook?.call('health_export_ledger.payload_summary');
+      }
+      await _advanceSchemaVersion(32);
     });
   }
 }

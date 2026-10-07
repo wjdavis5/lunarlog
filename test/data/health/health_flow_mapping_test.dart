@@ -209,4 +209,49 @@ void main() {
       );
     });
   });
+
+  // Issue #1591: what the export ledger remembers about a written
+  // record's cross-row payload — the type, and for a flow sample the
+  // cycle-start flag — in one short string, and how it is read back.
+  group('flowPayloadSummary', () {
+    test('a flow sample summarises its value and its cycle-start flag', () {
+      expect(
+        flowPayloadSummary(
+          const HealthFlowMenstrualSample(HealthFlowValue.light),
+          cycleStart: true,
+        ),
+        'flow:light:1',
+      );
+      expect(
+        flowPayloadSummary(
+          const HealthFlowMenstrualSample(HealthFlowValue.heavy),
+          cycleStart: false,
+        ),
+        'flow:heavy:0',
+      );
+    });
+
+    test('a marker summarises as marker, whatever the flag', () {
+      expect(
+        flowPayloadSummary(const HealthFlowIntermenstrualMarker(),
+            cycleStart: false),
+        'marker',
+      );
+    });
+
+    test('a plan that writes nothing summarises to nothing', () {
+      expect(flowPayloadSummary(const HealthFlowNoWrite(), cycleStart: true),
+          isNull);
+    });
+
+    test('wasMarker reads the two shapes and refuses to guess', () {
+      expect(flowPayloadSummaryWasMarker('marker'), isTrue);
+      expect(flowPayloadSummaryWasMarker('flow:light:0'), isFalse);
+      expect(flowPayloadSummaryWasMarker('flow:heavy:1'), isFalse);
+      // Unknown is unknown: a row written before #1591, and a shape a
+      // later build wrote, both keep the conservative reading.
+      expect(flowPayloadSummaryWasMarker(null), isNull);
+      expect(flowPayloadSummaryWasMarker('a-later-builds-shape'), isNull);
+    });
+  });
 }
