@@ -1252,7 +1252,11 @@ jobs:
     # arithmetic is 20 + 30 + ~6 of checkout / Flutter setup / cache restore /
     # boot = ~56, under this raised cap. Issue #1610 added the Swift channel
     # unit-test step (RunnerTests, 15m): 20 + 30 + 15 + ~6 = 71, under 75.
-    timeout-minutes: 75
+    # Issue #1666: on a cold cache without warmed RunnerTests, SPM resolution,
+    # compilation and test execution take ~11-15m, timing out at 15m.
+    # Raised the step timeout to 20m and the job cap to 80m (20 build + 30
+    # integration + 20 Swift + 6 overhead = 76 <= 80).
+    timeout-minutes: 80
     steps:
       - name: Check if iOS Simulator tests should run
         id: check_run
@@ -1279,6 +1283,20 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
+
+      - name: Cache Swift Package Manager dependencies
+        # Issue #1666: shares the SPM package cache seeded by the device build
+        # so GoogleSignIn, Sentry, Firebase, etc. do not re-fetch on cold simulator runs.
+        if: steps.check_run.outputs.run == 'true'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            .build
+            ios/.build
+          key: ${{ runner.os }}-spm-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
 
       - name: Cache Xcode build products
         # The simulator debug build of the whole app (Xcode products and
@@ -1392,8 +1410,14 @@ jobs:
         # run 37568557173). Running against the "Build the app" step's
         # state is the same build-then-test sequence the lab Mac mini
         # verified this suite with.
+        #
+        # Issue #1666: -parallel-testing-enabled NO prevents xcodebuild from
+        # spawning and booting an APFS clone simulator (which takes 5+ minutes
+        # on hosted macOS runners), running directly on the simulator booted
+        # in the previous step. The timeout is raised to 20m to comfortably
+        # cover cold builds when the test target has not been cached.
         if: steps.check_run.outputs.run == 'true'
-        timeout-minutes: 15
+        timeout-minutes: 20
         env:
           SIM_UDID: ${{ steps.sim.outputs.udid }}
         run: |
@@ -1402,6 +1426,7 @@ jobs:
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
             -destination "id=$SIM_UDID" \
+            -parallel-testing-enabled NO \
             -quiet
 
       - name: Run integration tests on the simulator
