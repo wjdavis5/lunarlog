@@ -227,7 +227,8 @@ class RunnerTests: XCTestCase {
       deletedObjects: [],
       newAnchor: nil,
       pageSize: 500,
-      incremental: false)
+      incremental: false,
+      ownBundleId: nil)
     XCTAssertEqual((payload["samples"] as? [[String: Any]])?.count, 0)
     XCTAssertNil(payload["nextCursor"])
     XCTAssertNil(payload["commitToken"])
@@ -247,7 +248,8 @@ class RunnerTests: XCTestCase {
       deletedObjects: [],
       newAnchor: nil,
       pageSize: 500,
-      incremental: true)
+      incremental: true,
+      ownBundleId: nil)
     XCTAssertEqual((payload["samples"] as? [[String: Any]])?.count, 0)
     XCTAssertEqual(payload["incremental"] as? Bool, true)
     XCTAssertEqual(payload["deletedRecordIds"] as? [String], [])
@@ -269,7 +271,8 @@ class RunnerTests: XCTestCase {
       deletedObjects: [],
       newAnchor: nil,
       pageSize: 1,
-      incremental: false)
+      incremental: false,
+      ownBundleId: nil)
     XCTAssertEqual((payload["samples"] as? [[String: Any]])?.count, 1)
     XCTAssertNil(payload["nextCursor"])
     XCTAssertNil(payload["commitToken"])
@@ -290,12 +293,42 @@ class RunnerTests: XCTestCase {
       deletedObjects: [],
       newAnchor: nil,
       pageSize: 500,
-      incremental: false)
+      incremental: false,
+      ownBundleId: nil)
     let samples = payload["samples"] as? [[String: Any]]
     XCTAssertEqual(samples?.count, 1)
     XCTAssertEqual(samples?.first?["recordId"] as? String, sample.uuid.uuidString)
     XCTAssertEqual(samples?.first?["flow"] as? String, "heavy")
     XCTAssertNotNil(samples?.first?["startMs"])
     XCTAssertNotNil(samples?.first?["endMs"])
+  }
+
+  /// A sample this app wrote comes back with the app's own bundle id as its
+  /// source, and the page must drop it: re-importing our own writes would
+  /// duplicate every entry and loop the write and read directions (#193's
+  /// mandatory echo prevention). A sample constructed in memory carries the
+  /// running app as its default source, which is what makes the filter
+  /// assertable here.
+  func testPagePayloadDropsThisAppsOwnWrites() throws {
+    let sample = HKCategorySample(
+      type: HKObjectType.categoryType(forIdentifier: .menstrualFlow)!,
+      value: 4,
+      start: Date(timeIntervalSince1970: 1_784_016_000),
+      end: Date(timeIntervalSince1970: 1_784_101_599))
+    let ownBundle = try XCTUnwrap(
+      sample.sourceRevision.source.bundleIdentifier,
+      "an in-memory sample's default source is this app; if it has no "
+        + "bundle id the echo filter below can never fire")
+    let payload = HealthKitChannelHandler.pagePayload(
+      samples: [sample],
+      deletedObjects: [],
+      newAnchor: nil,
+      pageSize: 500,
+      incremental: true,
+      ownBundleId: ownBundle)
+    XCTAssertEqual((payload["samples"] as? [[String: Any]])?.count, 0)
+    // The page itself advanced, so it still says what was deleted and is
+    // not mistaken for exhaustion.
+    XCTAssertEqual(payload["incremental"] as? Bool, true)
   }
 }

@@ -1631,7 +1631,8 @@ enum HealthKitChannelHandler {
       deletedObjects: page.deletedObjects,
       newAnchor: page.newAnchor,
       pageSize: pageSize,
-      incremental: startPage.incremental)
+      incremental: startPage.incremental,
+      ownBundleId: Bundle.main.bundleIdentifier)
   }
 
   /// Where a read starts: the cursor's anchor on a later page, or — on a
@@ -1691,14 +1692,20 @@ enum HealthKitChannelHandler {
   /// are. A full-history page never carries them, matching Health Connect:
   /// a whole read is the store's answer to "what is here", and only a
   /// changes page reports what went.
+  ///
+  /// [ownBundleId] is this app's bundle identifier in production — the
+  /// echo filter below must know whom to drop — and is injected rather
+  /// than read from `Bundle.main` here so a test can construct a sample
+  /// (whose default source is always the running app) and name another
+  /// app, or nil, in its place.
   static func pagePayload(
     samples: [HKSample],
     deletedObjects: [HKDeletedObject],
     newAnchor: HKQueryAnchor?,
     pageSize: Int,
-    incremental: Bool
+    incremental: Bool,
+    ownBundleId: String?
   ) -> [String: Any] {
-    let ownBundleId = Bundle.main.bundleIdentifier
     var sampleMaps: [[String: Any]] = []
     for case let sample as HKCategorySample in samples {
       if let entry = samplePayload(sample, ownBundleId: ownBundleId) {
