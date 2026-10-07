@@ -645,5 +645,120 @@ void main() {
 
       await disposeApp(tester, db);
     });
+
+    testWidgets(
+        'tapping "Turn on reminders" skips the push ask after a refused '
+        'request (issue #1627, #1639)', (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final profile = await DriftProfilesRepository(db.storage)
+          .create(displayName: 'Alice', isMinor: false);
+      final settings = DriftSettingsStore(db.storage);
+      await settings.set(SettingsKeys.lastActiveProfile, profile.id);
+
+      final scheduler = FakeReminderScheduler(
+        initialAvailability: NotificationAvailability.denied,
+      )..requestPermissionResult = NotificationAvailability.denied;
+
+      var pushCalls = 0;
+      final ensurePush = EnsurePushRegistrationCallback(() async {
+        pushCalls++;
+      });
+
+      final gateController = GateController(
+        gate: FakeGate(requiresUnlock: false),
+        inactivityTimerFactory: FakeInactivityTimers().factory,
+      );
+      addTearDown(gateController.dispose);
+
+      await tester.pumpWidget(
+        Provider<EnsurePushRegistrationCallback>.value(
+          value: ensurePush,
+          child: ChangeNotifierProvider<GateController>.value(
+            value: gateController,
+            child: LunarLogApp.withCollaborators(
+              db: db,
+              scheduler: scheduler,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      final action = find.byKey(const ValueKey('reminder-hint-action'));
+      expect(action, findsOneWidget);
+
+      await tester.tap(action);
+      await tester.pumpAndSettle();
+
+      expect(scheduler.requestPermissionCalls, 1);
+      expect(pushCalls, 0,
+          reason: 'a refused reminder request must not chain the push ask '
+              'so Android does not raise a second dialog immediately');
+
+      await disposeApp(tester, db);
+    });
+
+    testWidgets(
+        'tapping "Turn on reminders" chains the push ask after a granted '
+        'request (issue #1627, #1639)', (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final profile = await DriftProfilesRepository(db.storage)
+          .create(displayName: 'Alice', isMinor: false);
+      final settings = DriftSettingsStore(db.storage);
+      await settings.set(SettingsKeys.lastActiveProfile, profile.id);
+
+      final scheduler = FakeReminderScheduler(
+        initialAvailability: NotificationAvailability.denied,
+      )..requestPermissionResult = NotificationAvailability.available;
+
+      var pushCalls = 0;
+      final ensurePush = EnsurePushRegistrationCallback(() async {
+        pushCalls++;
+      });
+
+      final gateController = GateController(
+        gate: FakeGate(requiresUnlock: false),
+        inactivityTimerFactory: FakeInactivityTimers().factory,
+      );
+      addTearDown(gateController.dispose);
+
+      await tester.pumpWidget(
+        Provider<EnsurePushRegistrationCallback>.value(
+          value: ensurePush,
+          child: ChangeNotifierProvider<GateController>.value(
+            value: gateController,
+            child: LunarLogApp.withCollaborators(
+              db: db,
+              scheduler: scheduler,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      final action = find.byKey(const ValueKey('reminder-hint-action'));
+      expect(action, findsOneWidget);
+
+      await tester.tap(action);
+      await tester.pumpAndSettle();
+
+      expect(scheduler.requestPermissionCalls, 1);
+      expect(pushCalls, 1,
+          reason: 'a granted reminder request proceeds with push registration');
+
+      await disposeApp(tester, db);
+    });
   });
 }
