@@ -32,6 +32,7 @@ import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/observations_repository.dart';
 
 const _profileId = 'p1';
 const _ownerId = 'owner-user';
@@ -1629,5 +1630,204 @@ void runSuite(HealthImportPlatform platform) {
       await removeOffered();
       expect(await entriesOn(11), hasLength(1));
     });
+
+    group('scan counts on an unanswered offer (Issue #1622)', () {
+      test(
+          'a pass with no modifications loads rows once, not twice',
+          () async {
+        await imported([
+          flow('rec-10', 10, HealthFlowValue.heavy),
+          flow('rec-11', 11, HealthFlowValue.medium),
+        ]);
+        await deletedInStore(['rec-10']);
+        expect(await onOffer(), 1);
+
+        final countingDays = _CountingDayEntries(days);
+        final countingObs = _CountingObservations(observations);
+        final countingService = LocalHealthImportService(
+          importPlatform: platform,
+          platform: _Platform(),
+          source: store,
+          binding: binding,
+          minorBindingAllowed: false,
+          profiles: profiles,
+          dayEntries: countingDays,
+          observations: countingObs,
+          guardiansForProfile: (_) async => [
+            ProfileGuardian(
+              id: 'g1',
+              profileId: _profileId,
+              userId: _ownerId,
+              role: GuardianRole.primaryGuardian,
+              createdAt: DateTime.utc(2026, 1, 1),
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          ],
+          signedInUserId: () => _ownerId,
+          today: () => LocalDate(2026, 9, 30),
+        );
+
+        await countingService.importNow();
+
+        expect(countingDays.listCalls, 1);
+        expect(countingObs.listCalls, 1);
+        expect(await onOffer(), 1);
+      });
+
+      test(
+          'a pass with writes on unrelated dates does not reload rows for the trim',
+          () async {
+        await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
+        await deletedInStore(['rec-10']);
+        expect(await onOffer(), 1);
+
+        store.write(flow('rec-20', 20, HealthFlowValue.light));
+
+        final countingDays = _CountingDayEntries(days);
+        final countingObs = _CountingObservations(observations);
+        final countingService = LocalHealthImportService(
+          importPlatform: platform,
+          platform: _Platform(),
+          source: store,
+          binding: binding,
+          minorBindingAllowed: false,
+          profiles: profiles,
+          dayEntries: countingDays,
+          observations: countingObs,
+          guardiansForProfile: (_) async => [
+            ProfileGuardian(
+              id: 'g1',
+              profileId: _profileId,
+              userId: _ownerId,
+              role: GuardianRole.primaryGuardian,
+              createdAt: DateTime.utc(2026, 1, 1),
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          ],
+          signedInUserId: () => _ownerId,
+          today: () => LocalDate(2026, 9, 30),
+        );
+
+        await countingService.importNow();
+
+        expect(countingDays.listCalls, 1);
+        expect(countingObs.listCalls, 1);
+        expect(await onOffer(), 1);
+        expect((await dayOn(20))?.flow, FlowLevel.light);
+      });
+
+      test(
+          'a pass that modifies the deleted day reloads rows and trims the offer',
+          () async {
+        await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
+        await deletedInStore(['rec-10']);
+        expect(await onOffer(), 1);
+
+        store.write(flow('rec-replacement-10', 10, HealthFlowValue.medium,
+            modifiedHour: 15));
+
+        final countingDays = _CountingDayEntries(days);
+        final countingObs = _CountingObservations(observations);
+        final countingService = LocalHealthImportService(
+          importPlatform: platform,
+          platform: _Platform(),
+          source: store,
+          binding: binding,
+          minorBindingAllowed: false,
+          profiles: profiles,
+          dayEntries: countingDays,
+          observations: countingObs,
+          guardiansForProfile: (_) async => [
+            ProfileGuardian(
+              id: 'g1',
+              profileId: _profileId,
+              userId: _ownerId,
+              role: GuardianRole.primaryGuardian,
+              createdAt: DateTime.utc(2026, 1, 1),
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          ],
+          signedInUserId: () => _ownerId,
+          today: () => LocalDate(2026, 9, 30),
+        );
+
+        await countingService.importNow();
+
+        expect(countingDays.listCalls, 2);
+        expect(countingObs.listCalls, 2);
+        expect(await onOffer(), 0);
+      });
+    });
   });
+}
+
+class _CountingDayEntries
+    implements DayEntriesRepository, DeletedDayEntryReader {
+  _CountingDayEntries(this._inner);
+  final DayEntriesRepository _inner;
+  int listCalls = 0;
+
+  @override
+  Future<List<DayEntry>> listForProfile(String profileId) {
+    listCalls++;
+    return _inner.listForProfile(profileId);
+  }
+
+  @override
+  Future<DayEntry?> find(String profileId, LocalDate localDate) =>
+      _inner.find(profileId, localDate);
+
+  @override
+  Future<DayEntry> save(DayEntry entry) => _inner.save(entry);
+
+  @override
+  Future<void> delete(String profileId, LocalDate localDate) =>
+      _inner.delete(profileId, localDate);
+
+  @override
+  Future<Map<String, DateTime>> deletedHealthRecords(String profileId) =>
+      (_inner as DeletedDayEntryReader).deletedHealthRecords(profileId);
+
+  @override
+  Future<void> forgetDeletedHealthRecords(
+    String profileId,
+    Map<String, DateTime> records,
+  ) =>
+      (_inner as DeletedDayEntryReader)
+          .forgetDeletedHealthRecords(profileId, records);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError('${invocation.memberName}');
+}
+
+class _CountingObservations implements ObservationsRepository {
+  _CountingObservations(this._inner);
+  final ObservationsRepository _inner;
+  int listCalls = 0;
+
+  @override
+  Future<List<Observation>> listForProfile(String profileId) {
+    listCalls++;
+    return _inner.listForProfile(profileId);
+  }
+
+  @override
+  Future<List<Observation>> listForDayEntry(String dayEntryId) =>
+      _inner.listForDayEntry(dayEntryId);
+
+  @override
+  Future<List<Observation>> listForDayEntryWithLegacyAlias(String dayEntryId) =>
+      _inner.listForDayEntryWithLegacyAlias(dayEntryId);
+
+  @override
+  Future<Observation> save(Observation observation) =>
+      _inner.save(observation);
+
+  @override
+  Future<void> delete(String id) => _inner.delete(id);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError('${invocation.memberName}');
 }
