@@ -1784,14 +1784,17 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
 
   /// Whether a delete that skipped [skippedTypes] may have left [recordId]
   /// in the store ([healthRecordMatchesSkippedType], which counts either
-  /// of a spotting record's two types).
-  bool _passedOver(String recordId, Set<String> skippedTypes) =>
-      healthRecordMatchesSkippedType(
-        recordId,
-        skippedTypes,
-        isSpotting:
-            _memory.entryOf(recordId)?.kind == HealthExportLedgerKind.spotting,
-      );
+  /// of a spotting record's two types when the written type is unknown,
+  /// or only the written type when known from the summary).
+  bool _passedOver(String recordId, Set<String> skippedTypes) {
+    final entry = _memory.entryOf(recordId);
+    return healthRecordMatchesSkippedType(
+      recordId,
+      skippedTypes,
+      isSpotting: entry?.kind == HealthExportLedgerKind.spotting,
+      payloadSummary: entry?.payloadSummary,
+    );
+  }
 
   /// Whether a delete of flow or period records went through: the store
   /// allowed it, or passed over other types only (Issue #1583).
