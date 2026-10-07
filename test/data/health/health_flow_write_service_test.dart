@@ -147,6 +147,9 @@ Observation _bbt(
 
 /// Records every port call; each guarded call's outcome is programmable.
 class _FakePlatform implements HealthPlatformStore {
+  @override
+  bool writesCycleStart = true;
+
   HealthPlatformResult bindResult = const HealthPlatformAllowed();
   HealthPlatformResult authResult = const HealthPlatformAllowed();
 
@@ -5584,6 +5587,105 @@ void main() {
             .payloadSummary,
         'marker',
       );
+    });
+
+    test('on Android (writesCycleStart = false), logging the day before a '
+        'written period day does not re-send the second day (issue #1645)', () async {
+      await seedGranted(grant);
+      platform.writesCycleStart = false;
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.heavy,
+            grant.add(const Duration(hours: 1))),
+      ];
+      final service = buildService();
+      await service.syncNow();
+      expect(platform.flowWrites, hasLength(1));
+      expect(
+        ledger.rows.singleWhere((row) => row.recordId == 'entry-2026-06-02')
+            .payloadSummary,
+        'flow:heavy',
+        reason: 'Android flow summary leaves out the cycle-start flag',
+      );
+
+      // The next day she adds Monday. Monday is the period's first day now,
+      // and Tuesday's own row has not changed.
+      dayEntries.entries = [
+        _entry('2026-06-01', FlowLevel.light,
+            grant.add(const Duration(hours: 2))),
+        _entry('2026-06-02', FlowLevel.heavy,
+            grant.add(const Duration(hours: 1))),
+      ];
+      final report = await service.syncNow();
+
+      expect(report.blocked, isNull);
+      // Only Monday is written: Tuesday's record in Health Connect is
+      // already identical to what this pass would write.
+      expect(report.samplesWritten, 1);
+      expect(platform.flowWrites, hasLength(2));
+      expect(platform.flowWrites.last.date.iso, '2026-06-01');
+      expect(
+        ledger.rows.singleWhere((row) => row.recordId == 'entry-2026-06-01')
+            .payloadSummary,
+        'flow:light',
+      );
+      expect(
+        ledger.rows.singleWhere((row) => row.recordId == 'entry-2026-06-02')
+            .payloadSummary,
+        'flow:heavy',
+      );
+
+      // Third pass sends nothing.
+      await service.syncNow();
+      expect(platform.flowWrites, hasLength(2));
+    });
+
+    test('on Android (writesCycleStart = false), a pre-#1640 flow record '
+        'with no summary is not re-sent and is quietly stamped (issue #1645)', () async {
+      await seedGranted(grant);
+      platform.writesCycleStart = false;
+      dayEntries.entries = [
+        _entry('2026-06-01', FlowLevel.light,
+            grant.add(const Duration(hours: 1))),
+        _entry('2026-06-02', FlowLevel.heavy,
+            grant.subtract(const Duration(hours: 1))),
+      ];
+      // Tuesday was written by a pre-#1640 build without a payload summary.
+      await ledger.record([
+        HealthExportLedgerEntry(
+          recordId: 'entry-2026-06-02',
+          profileId: _profileId,
+          sourceRowId: 'entry-2026-06-02',
+          kind: HealthExportLedgerKind.entry,
+          localDate: '2026-06-02',
+          exportedAt: grant.subtract(const Duration(hours: 1)),
+        ),
+      ]);
+      final service = buildService();
+
+      final report = await service.syncNow();
+
+      expect(report.blocked, isNull);
+      // Tuesday was already written to Health Connect at its current version
+      // and Health Connect has no cycle-start flag, so only Monday is sent.
+      expect(report.samplesWritten, 1);
+      expect(platform.flowWrites, hasLength(1));
+      expect(platform.flowWrites.single.date.iso, '2026-06-01');
+
+      // Tuesday's ledger row is quietly stamped with its summary.
+      expect(
+        ledger.rows.singleWhere((row) => row.recordId == 'entry-2026-06-02')
+            .payloadSummary,
+        'flow:heavy',
+      );
+      expect(
+        ledger.rows.singleWhere((row) => row.recordId == 'entry-2026-06-01')
+            .payloadSummary,
+        'flow:light',
+      );
+
+      // Subsequent pass sends nothing.
+      await service.syncNow();
+      expect(platform.flowWrites, hasLength(1));
     });
   });
 }

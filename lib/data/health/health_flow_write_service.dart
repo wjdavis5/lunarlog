@@ -337,11 +337,15 @@ class _PendingBbtWrite {
 /// fertility/measurement signals join their own lists, and every row in
 /// scope says what it should have in the store ([desiredByRow]).
 class _Batch {
+  _Batch({this.writesCycleStart = true});
+
+  final bool writesCycleStart;
   final List<_PendingWrite> pending = [];
   final List<_PendingSymptomWrite> pendingSymptoms = [];
   final List<_PendingCervicalMucusWrite> pendingCervicalMucus = [];
   final List<_PendingOvulationWrite> pendingOvulation = [];
   final List<_PendingBbtWrite> pendingBbt = [];
+  final List<HealthExportLedgerEntry> quietStamps = [];
   int withoutSample = 0;
 
   /// The record ids each in-scope day entry or spotting observation should
@@ -408,7 +412,11 @@ class _Batch {
       tzName: tzName,
       plan: plan,
       cycleStart: cycleStart,
-      payloadSummary: flowPayloadSummary(plan, cycleStart: cycleStart),
+      payloadSummary: flowPayloadSummary(
+        plan,
+        cycleStart: cycleStart,
+        writesCycleStart: writesCycleStart,
+      ),
       recordId: recordId,
       updatedAt: updatedAt,
       kind: kind,
@@ -437,11 +445,13 @@ class _Batch {
   static String? payloadSummaryOf(
     HealthFlowWritePlan plan,
     Episode? containing,
-    LocalDate date,
-  ) =>
+    LocalDate date, {
+    bool writesCycleStart = true,
+  }) =>
       flowPayloadSummary(
         plan,
         cycleStart: cycleStartOf(plan, containing, date),
+        writesCycleStart: writesCycleStart,
       );
 }
 
@@ -1021,7 +1031,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     final pain = _indexPain(observationRows);
     final bleedDays = bleedDatesOf(entries);
     final episodes = deriveEpisodes(bleedDays);
-    final batch = _Batch();
+    final batch = _Batch(writesCycleStart: _platform.writesCycleStart);
     batch.liveRowIds
       ..addAll(entries.map((entry) => entry.id))
       ..addAll(observationRows.map((row) => row.id));
@@ -1095,13 +1105,32 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         batch.unknownFlowRecords[flowId] = entry.updatedAt;
       }
     } else {
-      final dueAt = _dueAt(
-        flowId,
-        entry.updatedAt,
-        _writeTypeOf(plan),
-        payloadSummary:
-            _Batch.payloadSummaryOf(plan, containing, entry.localDate),
+      final summary = _Batch.payloadSummaryOf(
+        plan,
+        containing,
+        entry.localDate,
+        writesCycleStart: _platform.writesCycleStart,
       );
+      final written = _memory.entryOf(flowId);
+      // On a platform that does not write cycleStart (Health Connect,
+      // Issue #1645), a flow record written by an earlier build without a
+      // summary is already in the store with the exact value this entry has.
+      // Stamp the summary without re-sending.
+      final isExistingPre1640Flow = !_platform.writesCycleStart &&
+          written != null &&
+          written.payloadSummary == null &&
+          !written.exportedAt.isBefore(entry.updatedAt);
+      if (isExistingPre1640Flow) {
+        batch.quietStamps.add(written.copyWith(payloadSummary: summary));
+      }
+      final dueAt = isExistingPre1640Flow
+          ? null
+          : _dueAt(
+              flowId,
+              entry.updatedAt,
+              _writeTypeOf(plan),
+              payloadSummary: summary,
+            );
       if (dueAt != null) {
         batch.add(
           entry.localDate,
@@ -1306,7 +1335,12 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       recordId,
       row.updatedAt,
       _writeTypeOf(plan),
-      payloadSummary: _Batch.payloadSummaryOf(plan, containing, row.localDate),
+      payloadSummary: _Batch.payloadSummaryOf(
+        plan,
+        containing,
+        row.localDate,
+        writesCycleStart: _platform.writesCycleStart,
+      ),
       storeVersion: _later(row.updatedAt, dayVersion),
     );
     if (dueAt == null) return;
@@ -1498,6 +1532,9 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   }) async {
     final canWriteFlow =
         _canWriteType(grantedTypes, HealthWriteTypes.menstrualFlow);
+    if (canWriteFlow && batch.quietStamps.isNotEmpty) {
+      await _memory.remember(batch.quietStamps);
+    }
     final flow = await _writeFlowRecords(
       batch.pending,
       facts,

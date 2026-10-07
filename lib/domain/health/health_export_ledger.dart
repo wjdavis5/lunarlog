@@ -111,6 +111,25 @@ class HealthExportLedgerEntry {
   /// #1591: read as "what it says is unknown", which sends the record once
   /// more so the store is corrected.
   final String? payloadSummary;
+
+  HealthExportLedgerEntry copyWith({
+    String? recordId,
+    String? profileId,
+    String? sourceRowId,
+    HealthExportLedgerKind? kind,
+    String? localDate,
+    DateTime? exportedAt,
+    String? payloadSummary,
+  }) =>
+      HealthExportLedgerEntry(
+        recordId: recordId ?? this.recordId,
+        profileId: profileId ?? this.profileId,
+        sourceRowId: sourceRowId ?? this.sourceRowId,
+        kind: kind ?? this.kind,
+        localDate: localDate ?? this.localDate,
+        exportedAt: exportedAt ?? this.exportedAt,
+        payloadSummary: payloadSummary ?? this.payloadSummary,
+      );
 }
 
 /// The read/write port for the device-local health-store export ledger.

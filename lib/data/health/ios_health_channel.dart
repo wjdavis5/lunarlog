@@ -49,5 +49,6 @@ class IOSHealthChannel extends MethodChannelHealthPlatform {
   }) : super(
          channel: const MethodChannel(kHealthChannelName),
          readAccessDisclosed: false,
+         writesCycleStart: true,
        );
 }

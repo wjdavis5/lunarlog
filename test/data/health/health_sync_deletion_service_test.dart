@@ -125,6 +125,9 @@ class _FakeTombstoneSource implements HealthSyncTombstoneSource {
 }
 
 class _RecordingPlatform implements HealthPlatformStore {
+  @override
+  bool writesCycleStart = true;
+
   final List<List<String>> deleted = [];
   HealthPlatformResult deleteResult = const HealthPlatformAllowed();
 

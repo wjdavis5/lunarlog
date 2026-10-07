@@ -135,6 +135,9 @@ class _Observations implements ObservationsRepository {
 
 /// Recording port. One ordered log of the calls that touch the store.
 class _Platform implements HealthPlatformStore {
+  @override
+  bool writesCycleStart = true;
+
   HealthPermissionStatus permission = HealthPermissionStatus.granted;
   HealthPermissionStatus permissionAfterAuth = HealthPermissionStatus.granted;
   final List<HealthMenstrualFlowWrite> flowWrites = [];
