@@ -1224,12 +1224,17 @@ class _LunarLogAppState extends State<LunarLogApp>
     final coordinator = _coordinator;
     if (coordinator == null) return;
     final gate = context.read<GateController?>();
+    final NotificationAvailability? answer;
     if (gate != null) {
-      await gate.duringSystemUi(coordinator.requestPermission);
+      answer = await gate.duringSystemUi(coordinator.requestPermission);
     } else {
-      await coordinator.requestPermission();
+      answer = await coordinator.requestPermission();
     }
     if (!mounted) return;
+    // Issue #1627: only a grant chains the push ask. After a refusal the push
+    // ask would raise Android's dialog a second time straight away (the shared
+    // refusal count is still below 2), spending both asks on one tap.
+    if (answer != NotificationAvailability.available) return;
     final ensurePush = context.read<EnsurePushRegistrationCallback?>();
     if (ensurePush != null) await ensurePush();
   }
