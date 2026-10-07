@@ -123,6 +123,12 @@ class HealthSyncTombstoneCoordinator {
   final Map<String, String> _knownObservationRecordIds = {};
   final Set<String> _knownSpottingRecordIds = {};
 
+  /// The payload summary written with each record (Issue #1591, Issue #1659),
+  /// seeded from the ledger. Lets [_runDeletion] pass the summary to
+  /// [healthRecordMatchesSkippedType] so a skipped write type only blocks
+  /// deletion of records actually written as that type.
+  final Map<String, String?> _knownPayloadSummaries = {};
+
   /// The profile the coordinator is currently subscribed to (or loading
   /// for) — lets the async ledger seed abandon itself if the binding moved
   /// on before it resolved.
@@ -170,6 +176,9 @@ class HealthSyncTombstoneCoordinator {
   /// they export.
   void _seedLedger(List<HealthExportLedgerEntry> rows) {
     for (final row in rows) {
+      if (row.payloadSummary != null) {
+        _knownPayloadSummaries[row.recordId] = row.payloadSummary;
+      }
       switch (row.kind) {
         case HealthExportLedgerKind.entry:
           _knownEntryRecordIds
@@ -206,6 +215,7 @@ class HealthSyncTombstoneCoordinator {
     _knownEntryRecordIds.clear();
     _knownObservationRecordIds.clear();
     _knownSpottingRecordIds.clear();
+    _knownPayloadSummaries.clear();
     _activeProfileId = null;
   }
 
@@ -294,6 +304,9 @@ class HealthSyncTombstoneCoordinator {
         await _ledger.removeRecordIds(tombstoned);
         _alreadyDeleted = {..._alreadyDeleted, ...tombstoned};
         _knownSpottingRecordIds.removeAll(tombstoned);
+        for (final id in tombstoned) {
+          _knownPayloadSummaries.remove(id);
+        }
       } else if (report.blocked is HealthPlatformPartial) {
         // Issue #1583: when some write permissions are denied, native skips
         // those types and reports them. We drop only the ledger rows and mark
@@ -301,17 +314,36 @@ class HealthSyncTombstoneCoordinator {
         // in the ledger and out of _alreadyDeleted so they retry once permission
         // returns.
         final skipped = (report.blocked as HealthPlatformPartial).skippedTypes;
+        // Issue #1659: refresh summaries from the ledger in case rows were
+        // written after the initial seed.
+        final profileId = _activeProfileId;
+        if (profileId != null) {
+          try {
+            final rows = await _ledger.readForProfile(profileId);
+            for (final row in rows) {
+              if (row.payloadSummary != null) {
+                _knownPayloadSummaries[row.recordId] = row.payloadSummary;
+              }
+            }
+          } catch (_) {
+            // Best-effort: keep using seeded summaries.
+          }
+        }
         final deletedIds = tombstoned
             .where((id) => !healthRecordMatchesSkippedType(
                   id,
                   skipped,
                   isSpotting: _knownSpottingRecordIds.contains(id),
+                  payloadSummary: _knownPayloadSummaries[id],
                 ))
             .toList();
         if (deletedIds.isNotEmpty) {
           await _ledger.removeRecordIds(deletedIds);
           _alreadyDeleted = {..._alreadyDeleted, ...deletedIds};
           _knownSpottingRecordIds.removeAll(deletedIds);
+          for (final id in deletedIds) {
+            _knownPayloadSummaries.remove(id);
+          }
         }
       }
     } catch (_) {

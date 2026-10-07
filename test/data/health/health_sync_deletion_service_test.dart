@@ -771,6 +771,294 @@ void main() {
       expect(deletion.calls, hasLength(2));
     });
 
+    // Issue #1659: with a known payload summary, only a skip of the type
+    // actually written counts as passed over in the tombstone coordinator;
+    // skipping the other type lets the delete through and forgets the record.
+    test(
+        'issue #1659: a tombstoned spotting marker with menstrualFlow skipped '
+        'is deleted and removed from the ledger without retry',
+        () async {
+      final settings = FakeSettingsStore({
+        SettingsKeys.healthStoreProfileId: _profileId,
+      });
+      final binding = HealthSyncBinding(settings);
+      final source = _FakeTombstoneSource();
+      final deletion = _FakeDeletion();
+      final ledger = FakeHealthExportLedger();
+      const spottingId = '01ARZ3NDEKTSV4RRFFQ69G5SPT';
+      await ledger.record([
+        HealthExportLedgerEntry(
+          recordId: spottingId,
+          profileId: _profileId,
+          sourceRowId: spottingId,
+          kind: HealthExportLedgerKind.spotting,
+          localDate: '2026-09-01',
+          exportedAt: DateTime.utc(2026, 9, 1),
+          payloadSummary: 'marker',
+        ),
+      ]);
+      final coordinator = HealthSyncTombstoneCoordinator(
+        binding: binding,
+        source: source,
+        deletionService: deletion,
+        ledger: ledger,
+        debounce: const Duration(milliseconds: 10),
+      );
+      coordinator.start();
+      addTearDown(() => coordinator.dispose());
+
+      deletion.result = const HealthSyncDeletionReport(
+        attempted: 1,
+        blocked: HealthPlatformResult.partial({'menstrualFlow'}),
+      );
+      await source.emitObservations([
+        _observation(spottingId,
+            category: 'spotting', deletedAt: DateTime.utc(2026, 9, 2)),
+      ]);
+      await _waitUntil(() => ledger.rows.isEmpty);
+
+      expect(ledger.rows, isEmpty);
+      expect(deletion.calls, hasLength(1));
+
+      // Subsequent emission does not resend the deletion.
+      await source.emitObservations([
+        _observation(spottingId,
+            category: 'spotting', deletedAt: DateTime.utc(2026, 9, 2)),
+      ]);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(deletion.calls, hasLength(1));
+    });
+
+    test(
+        'issue #1659: a tombstoned spotting marker with spotting skipped '
+        'keeps its ledger row and retries next pass',
+        () async {
+      final settings = FakeSettingsStore({
+        SettingsKeys.healthStoreProfileId: _profileId,
+      });
+      final binding = HealthSyncBinding(settings);
+      final source = _FakeTombstoneSource();
+      final deletion = _FakeDeletion();
+      final ledger = FakeHealthExportLedger();
+      const spottingId = '01ARZ3NDEKTSV4RRFFQ69G5SPT';
+      await ledger.record([
+        HealthExportLedgerEntry(
+          recordId: spottingId,
+          profileId: _profileId,
+          sourceRowId: spottingId,
+          kind: HealthExportLedgerKind.spotting,
+          localDate: '2026-09-01',
+          exportedAt: DateTime.utc(2026, 9, 1),
+          payloadSummary: 'marker',
+        ),
+      ]);
+      final coordinator = HealthSyncTombstoneCoordinator(
+        binding: binding,
+        source: source,
+        deletionService: deletion,
+        ledger: ledger,
+        debounce: const Duration(milliseconds: 10),
+      );
+      coordinator.start();
+      addTearDown(() => coordinator.dispose());
+
+      deletion.result = const HealthSyncDeletionReport(
+        attempted: 1,
+        blocked: HealthPlatformResult.partial({'spotting'}),
+      );
+      await source.emitObservations([
+        _observation(spottingId,
+            category: 'spotting', deletedAt: DateTime.utc(2026, 9, 2)),
+      ]);
+      await _waitUntil(() => deletion.calls.isNotEmpty);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(ledger.rows.map((r) => r.recordId), [spottingId]);
+
+      // When permission returns, deletion succeeds and ledger row is dropped.
+      deletion.result = const HealthSyncDeletionReport(
+        attempted: 1,
+        blocked: null,
+      );
+      await source.emitObservations([
+        _observation(spottingId,
+            category: 'spotting', deletedAt: DateTime.utc(2026, 9, 2)),
+      ]);
+      await _waitUntil(() => ledger.rows.isEmpty);
+      expect(ledger.rows, isEmpty);
+      expect(deletion.calls, hasLength(2));
+    });
+
+    test(
+        'issue #1659: a tombstoned spotting flow sample with spotting skipped '
+        'is deleted and removed from the ledger without retry',
+        () async {
+      final settings = FakeSettingsStore({
+        SettingsKeys.healthStoreProfileId: _profileId,
+      });
+      final binding = HealthSyncBinding(settings);
+      final source = _FakeTombstoneSource();
+      final deletion = _FakeDeletion();
+      final ledger = FakeHealthExportLedger();
+      const spottingId = '01ARZ3NDEKTSV4RRFFQ69G5SPT';
+      await ledger.record([
+        HealthExportLedgerEntry(
+          recordId: spottingId,
+          profileId: _profileId,
+          sourceRowId: spottingId,
+          kind: HealthExportLedgerKind.spotting,
+          localDate: '2026-09-01',
+          exportedAt: DateTime.utc(2026, 9, 1),
+          payloadSummary: 'flow:light:0',
+        ),
+      ]);
+      final coordinator = HealthSyncTombstoneCoordinator(
+        binding: binding,
+        source: source,
+        deletionService: deletion,
+        ledger: ledger,
+        debounce: const Duration(milliseconds: 10),
+      );
+      coordinator.start();
+      addTearDown(() => coordinator.dispose());
+
+      deletion.result = const HealthSyncDeletionReport(
+        attempted: 1,
+        blocked: HealthPlatformResult.partial({'spotting'}),
+      );
+      await source.emitObservations([
+        _observation(spottingId,
+            category: 'spotting', deletedAt: DateTime.utc(2026, 9, 2)),
+      ]);
+      await _waitUntil(() => ledger.rows.isEmpty);
+
+      expect(ledger.rows, isEmpty);
+      expect(deletion.calls, hasLength(1));
+
+      // Subsequent emission does not resend the deletion.
+      await source.emitObservations([
+        _observation(spottingId,
+            category: 'spotting', deletedAt: DateTime.utc(2026, 9, 2)),
+      ]);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(deletion.calls, hasLength(1));
+    });
+
+    test(
+        'issue #1659: a tombstoned spotting flow sample with menstrualFlow skipped '
+        'keeps its ledger row and retries next pass',
+        () async {
+      final settings = FakeSettingsStore({
+        SettingsKeys.healthStoreProfileId: _profileId,
+      });
+      final binding = HealthSyncBinding(settings);
+      final source = _FakeTombstoneSource();
+      final deletion = _FakeDeletion();
+      final ledger = FakeHealthExportLedger();
+      const spottingId = '01ARZ3NDEKTSV4RRFFQ69G5SPT';
+      await ledger.record([
+        HealthExportLedgerEntry(
+          recordId: spottingId,
+          profileId: _profileId,
+          sourceRowId: spottingId,
+          kind: HealthExportLedgerKind.spotting,
+          localDate: '2026-09-01',
+          exportedAt: DateTime.utc(2026, 9, 1),
+          payloadSummary: 'flow:light:0',
+        ),
+      ]);
+      final coordinator = HealthSyncTombstoneCoordinator(
+        binding: binding,
+        source: source,
+        deletionService: deletion,
+        ledger: ledger,
+        debounce: const Duration(milliseconds: 10),
+      );
+      coordinator.start();
+      addTearDown(() => coordinator.dispose());
+
+      deletion.result = const HealthSyncDeletionReport(
+        attempted: 1,
+        blocked: HealthPlatformResult.partial({'menstrualFlow'}),
+      );
+      await source.emitObservations([
+        _observation(spottingId,
+            category: 'spotting', deletedAt: DateTime.utc(2026, 9, 2)),
+      ]);
+      await _waitUntil(() => deletion.calls.isNotEmpty);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(ledger.rows.map((r) => r.recordId), [spottingId]);
+
+      // When permission returns, deletion succeeds and ledger row is dropped.
+      deletion.result = const HealthSyncDeletionReport(
+        attempted: 1,
+        blocked: null,
+      );
+      await source.emitObservations([
+        _observation(spottingId,
+            category: 'spotting', deletedAt: DateTime.utc(2026, 9, 2)),
+      ]);
+      await _waitUntil(() => ledger.rows.isEmpty);
+      expect(ledger.rows, isEmpty);
+      expect(deletion.calls, hasLength(2));
+    });
+
+    test(
+        'issue #1659: a spotting marker written to ledger after start '
+        'picks up summary on partial deletion and drops ledger row',
+        () async {
+      final settings = FakeSettingsStore({
+        SettingsKeys.healthStoreProfileId: _profileId,
+      });
+      final binding = HealthSyncBinding(settings);
+      final source = _FakeTombstoneSource();
+      final deletion = _FakeDeletion();
+      final ledger = FakeHealthExportLedger();
+      const spottingId = '01ARZ3NDEKTSV4RRFFQ69G5SPT';
+      final coordinator = HealthSyncTombstoneCoordinator(
+        binding: binding,
+        source: source,
+        deletionService: deletion,
+        ledger: ledger,
+        debounce: const Duration(milliseconds: 10),
+      );
+      coordinator.start();
+      addTearDown(() => coordinator.dispose());
+
+      // Live observation seen first
+      await source.emitObservations([
+        _observation(spottingId, category: 'spotting'),
+      ]);
+
+      // Export writes to ledger later
+      await ledger.record([
+        HealthExportLedgerEntry(
+          recordId: spottingId,
+          profileId: _profileId,
+          sourceRowId: spottingId,
+          kind: HealthExportLedgerKind.spotting,
+          localDate: '2026-09-01',
+          exportedAt: DateTime.utc(2026, 9, 1),
+          payloadSummary: 'marker',
+        ),
+      ]);
+
+      // Now tombstoned while menstrualFlow is skipped
+      deletion.result = const HealthSyncDeletionReport(
+        attempted: 1,
+        blocked: HealthPlatformResult.partial({'menstrualFlow'}),
+      );
+      await source.emitObservations([
+        _observation(spottingId,
+            category: 'spotting', deletedAt: DateTime.utc(2026, 9, 2)),
+      ]);
+      await _waitUntil(() => ledger.rows.isEmpty);
+
+      expect(ledger.rows, isEmpty);
+      expect(deletion.calls, hasLength(1));
+    });
+
     test(
         'issue #936: a ledger read failure is swallowed and the coordinator '
         'still subscribes with the live-emission memory', () async {
