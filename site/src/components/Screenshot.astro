@@ -34,8 +34,12 @@ const kDevices: Record<string, [number, number]> = {
   pixel: [1080, 2400],
   tablet: [1668, 2388],
   // The #1162 browser class: a 1280x800 viewport at 1.5 DPR — its PNG
-  // size is the product, not the viewport (issue #1208 put it on the
-  // home page).
+  // size is the product, not the viewport. Since the React web client
+  // cutover the PNG is the web client's own fixture capture
+  // (webapp/e2e/browser-home-capture.spec.ts, issue #1431) and not the
+  // Flutter render (#1208 put the first one on the home page — #1432
+  // retired that picture). This comment must stay free of the character
+  // the site claims test uses as its table-extraction delimiter.
   browser: [1920, 1200],
 };
 

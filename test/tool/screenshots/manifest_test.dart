@@ -109,4 +109,25 @@ void main() {
       expect(triples, kScreenshotScreens.length * kScreenshotDevices.length * 2);
     });
   });
+
+  group('the Flutter-rendered device rule (issue #1431)', () {
+    test('excludes exactly the browser class, and nothing else', () {
+      // Since the React web client cutover (#1258) the browser figure
+      // depicts the web client, captured by its own e2e fixture render
+      // (webapp/e2e/browser-home-capture.spec.ts) — the Flutter harness
+      // must not render it, or it would write the wrong picture over the
+      // capture's name. Every other class stays Flutter-rendered.
+      expect(
+        kFlutterRenderedDevices.map((d) => d.id),
+        kScreenshotDevices.map((d) => d.id).where((id) => id != 'browser'),
+      );
+      expect(kFlutterRenderedDevices, hasLength(kScreenshotDevices.length - 1));
+      expect(
+        kScreenshotDevices.map((d) => d.id),
+        contains('browser'),
+        reason: 'the class stays in the manifest as the name grammar and '
+            'pixel contract the site mirrors',
+      );
+    });
+  });
 }

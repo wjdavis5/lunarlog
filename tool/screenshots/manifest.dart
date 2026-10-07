@@ -4,8 +4,9 @@
 /// Every screenshot the site (and later the App Store / Play listings)
 /// shows is one (screen, device, theme) triple from this manifest — there
 /// is no ad-hoc capture path. The renderer (`render_screens_test.dart`)
-/// walks the full cross product, so adding a screen here is the whole
-/// change; removing one retires its PNGs on the next run.
+/// walks the full cross product ([kFlutterRenderedDevices]' rule is the
+/// one exception), so adding a screen here is the whole change; removing
+/// one retires its PNGs on the next run.
 ///
 /// The device table is pure data: logical sizes are whole points where the
 /// real device has them (iPhones), fractional where the store's pixel size
@@ -98,19 +99,33 @@ const List<ScreenshotDevice> kScreenshotDevices = [
     id: 'browser',
     // A small-desktop browser viewport (1280x800), 1.5x device pixel
     // ratio — 1920x1200 pixels, inside the manifest test's pixel bounds.
-    // Deliberately wider than the #1162 app frame's 834dp target so the
-    // capture shows the centred frame with its canvas surround, not a
-    // full-bleed layout (issue #1162). Not a store listing size — the
-    // recorded storePixelSize is simply its own PNG size.
+    // Since the React web client cutover (#1258) this class is not
+    // rendered here: the home page's browser figure depicts the web
+    // client, captured from its own fixture render by
+    // webapp/e2e/browser-home-capture.spec.ts (issue #1431), which writes
+    // exactly this pixel size into the same name grammar. The entry stays
+    // as the class' name grammar and pixel contract, mirrored by the
+    // site's Screenshot.astro. Not a store listing size — the recorded
+    // storePixelSize is simply its own PNG size.
     logicalWidth: 1280,
     logicalHeight: 800,
     pixelRatio: 1.5,
     storePixelSize: (1920, 1200),
     description:
-        'Desktop browser viewport (issue #1162 app-frame presentation; '
-        'not a store size)',
+        'Desktop browser viewport (issue #1162 name grammar and pixel '
+        'class; captured from the React web client since issue #1431, '
+        'not by the Flutter harness; not a store size)',
   ),
 ];
+
+/// The device classes the Flutter render harness (`render_screens_test.dart`)
+/// actually renders: every class above except `browser`, which since the
+/// React web client cutover (#1258) is captured from the web client itself
+/// (webapp/e2e/browser-home-capture.spec.ts, issue #1431) — the Flutter
+/// harness cannot draw it, and rendering the app at desktop width would
+/// only produce the wrong picture the site stopped showing (#1432).
+final List<ScreenshotDevice> kFlutterRenderedDevices =
+    kScreenshotDevices.where((d) => d.id != 'browser').toList();
 
 /// The two themes every screen renders in.
 enum ScreenshotTheme {

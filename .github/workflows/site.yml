@@ -31,6 +31,11 @@ on:
       # screenshots on the merge.
       - 'lib/ui/**'
       - 'tool/screenshots/**'
+      # Issue #1431: the home page's browser figure is the React web
+      # client's own capture (webapp/e2e/browser-home-capture.spec.ts), so
+      # a webapp change can change what the site shows exactly the way a
+      # lib/ui change can — the same #1104 logic, one directory over.
+      - 'webapp/**'
       - '.github/workflows/site.yml'
   schedule:
     # Mondays 06:23 UTC. The weekly outbound-link check (issue #1099) is a
@@ -50,9 +55,11 @@ jobs:
     name: Site build, links, Lighthouse, axe
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    # #1105 added the Flutter screenshot render below; Lighthouse runs 3x
-    # over ten URLs now. 20 minutes had no headroom for either.
-    timeout-minutes: 35
+    # #1105 added the Flutter screenshot render; Lighthouse runs 3x over
+    # ten URLs now; issue #1431 adds the web client's Playwright capture
+    # (webapp npm ci + build + Chromium) after the Flutter renders. 35
+    # minutes had no headroom for the added minutes.
+    timeout-minutes: 45
     # Issue #1316: the SDK pin rides the same FLUTTER_VERSION env var every
     # other Flutter workflow uses, not a step-level literal — a literal is
     # invisible to .github/scripts/check-flutter-version-parity.sh and to
@@ -75,10 +82,14 @@ jobs:
           # anyone here, and npm 10 (Node 22) refuses a lockfile npm 11
           # has regenerated ("Missing: proxy-agent from lock file"),
           # which is how a security update sat unmergeable (#1593).
-          # Astro 7 needs Node >= 22.12 either way.
+          # Astro 7 needs Node >= 22.12 either way. Issue #1431: the
+          # webapp lockfile is cached too — the browser capture below
+          # installs webapp/ to run its Playwright spec.
           node-version-file: 'site/.nvmrc'
           cache: 'npm'
-          cache-dependency-path: 'site/package-lock.json'
+          cache-dependency-path: |
+            site/package-lock.json
+            webapp/package-lock.json
 
       - name: Install site dependencies
         working-directory: site
@@ -111,6 +122,47 @@ jobs:
           ls -la "$FLUTTER_ROOT/bin/cache/artifacts/material_fonts/"
           flutter pub get
           npm run screenshots
+
+      # Issue #1431: the home page's browser figure is the React web
+      # client's own signed-in home — the Flutter harness cannot draw it
+      # (its browser class stopped being rendered here in the same change;
+      # tool/screenshots/manifest.dart's kFlutterRenderedDevices). The
+      # capture runs after the Flutter renders and before the site build,
+      # writing into the same gitignored site/public/screenshots/ the
+      # build copies into dist/ — check:links fails the job if the PNG the
+      # home page references never appeared.
+      - name: Compile the browser version's domain module
+        # The today-log card the figure shows is computed by the compiled
+        # Dart domain module (issue #1251) — the same dart2js artifact the
+        # webapp CI job builds, same command.
+        run: |
+          flutter pub get
+          dart compile js -O2 --no-source-maps tool/web_domain/main.dart \
+            -o webapp/public/domain/lunarlog_domain.js
+          rm -f webapp/public/domain/lunarlog_domain.js.deps
+
+      - name: Install the web app's dependencies and Playwright Chromium
+        working-directory: webapp
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Build the browser version
+        # The client-safe Supabase pair, quoted for the same reason the
+        # webapp CI job quotes them: empty on forks, and the capture then
+        # skips on an unconfigured build (check:links fails below — the
+        # canonical repo always builds configured).
+        working-directory: webapp
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: npm run build
+
+      - name: Capture the browser version's home screenshot
+        working-directory: webapp
+        env:
+          LUNARLOG_BROWSER_CAPTURE_OUT: ${{ github.workspace }}/site/public/screenshots
+        run: npx playwright test e2e/browser-home-capture.spec.ts
 
       - name: Build and type-check the site
         # `npm run build` runs `astro sync`, `astro check`, and the static

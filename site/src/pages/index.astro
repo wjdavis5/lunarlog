@@ -67,6 +67,22 @@ const browserLive = webAppIsLive();
     </figure>
   </div>
 
+  <!-- cite: webapp/e2e/browser-home-capture.spec.ts renders the signed-in home from webapp/e2e/fixtures.ts' fabricated snapshot (the Maya profile, no backend — issue #1431) at the #1162 browser device class, into site/public/screenshots/ at deploy time like the Flutter renders; the #1162 class' name grammar and pixel size are tool/screenshots/manifest.dart, mirrored by site/src/components/Screenshot.astro. Issue #1208 put a figure here captioned as what the button opens; the #1258 cutover made that picture the wrong app, and #1432 removed it. -->
+  <figure class="screenshot-figure">
+    <Screenshot
+      screen="today"
+      device="browser"
+      theme="light"
+      loading="lazy"
+      alt="The browser version's signed-in home: the profile's cycle day and estimate, a card of what was logged today, and the shared month calendar."
+    />
+    <figcaption>
+      The browser version's home — the React web client that "Use lunarlog
+      in your browser" opens, captured from the same fabricated data its
+      own tests run on.
+    </figcaption>
+  </figure>
+
   <section class="home-section">
     <h2>Track a cycle together</h2>
     <!-- cite: docs/product/positioning.md "The family-collaboration story"; PRIVACY.md §1 "Built For Sync & Family Collaboration"; §3 "Cross-Device Synchronization"; §2.A "Same-date merge disclosures"; §5 attribution; the calendar's labelled estimate bands per lib/l10n/app_en.arb (calendarCellPredictedPeriod, calendarCellPmsWindow). -->

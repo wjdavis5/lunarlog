@@ -1,7 +1,9 @@
 /// The screenshot runner (issue #1104): renders every (screen, device,
-/// theme) triple in the fixed manifest with `flutter test`, writes the
-/// PNGs plus `screenshots.json` into the output directory, and fails the
-/// test run if anything refuses to render.
+/// theme) triple the Flutter harness renders — `kFlutterRenderedDevices`,
+/// the manifest minus the browser class the web client captures since
+/// issue #1431 — with `flutter test`, writes the PNGs plus
+/// `screenshots.json` into the output directory, and fails the test run
+/// if anything refuses to render.
 ///
 /// Run it with one command from the repo root (the site's npm wrapper):
 ///
@@ -98,7 +100,7 @@ void main() {
         })();
 
   testWidgets(
-    'renders every manifest screenshot and writes the index',
+    'renders every Flutter-rendered manifest screenshot and writes the index',
     (tester) async {
       await loadScreenshotFonts();
       final out = _outputDir()..createSync(recursive: true);
@@ -107,8 +109,14 @@ void main() {
 
       final entries = <ScreenshotIndexEntry>[];
       final failures = <String>[];
+      // kFlutterRenderedDevices, not kScreenshotDevices: the browser
+      // class is the web client's capture since issue #1431 (see the
+      // constant's doc comment) — rendering it here would produce the
+      // Flutter-app picture the home page stopped showing (#1432), and
+      // the site's capture step would have to overwrite it.
+      final devices = kFlutterRenderedDevices;
       for (final screen in screens) {
-        for (final device in kScreenshotDevices) {
+        for (final device in devices) {
           for (final theme in ScreenshotTheme.values) {
             final label = '${screen.id}/${device.id}/${theme.id}';
             try {
@@ -124,7 +132,7 @@ void main() {
 
       if (failures.isNotEmpty) {
         fail(
-          '${failures.length} of ${screens.length * kScreenshotDevices.length * 2} '
+          '${failures.length} of ${screens.length * devices.length * 2} '
           'captures failed:\n${failures.join('\n---\n')}',
         );
       }
@@ -172,14 +180,12 @@ Future<ScreenshotIndexEntry> _renderOne(
     tester.view.devicePixelRatio = device.pixelRatio;
     tester.platformDispatcher.platformBrightnessTestValue =
         theme == ScreenshotTheme.light ? Brightness.light : Brightness.dark;
-    // iPhone-shaped devices render as iOS, the Pixel and the iPad as
-    // their own platforms — the same adaptive chrome a real device shows.
-    // The #1162 browser class renders as macOS: a real desktop browser
-    // reports its desktop OS (never iOS), and macOS is the deterministic
-    // stand-in for the desktop-browser posture the app frame presents in.
+    // iPhone-shaped devices render as iOS, the Pixel as its own platform
+    // — the same adaptive chrome a real device shows. (The #1162 browser
+    // class left this switch with issue #1431: it is captured from the
+    // web client, not rendered here.)
     debugDefaultTargetPlatformOverride = switch (device.id) {
       'pixel' => TargetPlatform.android,
-      'browser' => TargetPlatform.macOS,
       _ => TargetPlatform.iOS,
     };
 

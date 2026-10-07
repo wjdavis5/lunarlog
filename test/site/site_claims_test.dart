@@ -575,29 +575,90 @@ void main() {
     });
 
     // Issue #1208 put a browser-width capture under the CTA, captioned as
-    // what the button opens. That capture is the Flutter app rendered at
-    // desktop width. The button now opens the React web client (#1258),
-    // which looks nothing like it, so the picture claimed a screen the
-    // browser version does not have. Until the screenshot tool can render
-    // the web client itself, the home page shows no browser picture at all.
-    test('the home page shows no capture of a browser screen it does not '
-        'ship', () {
+    // what the button opens; the #1258 cutover made that picture the
+    // Flutter app at desktop width — a screen the browser version does
+    // not have — and #1432 removed it. Issue #1431 puts a real one back:
+    // the React web client's own signed-in home, captured from its e2e
+    // fixture render (webapp/e2e/browser-home-capture.spec.ts) at build
+    // time. The site test pins the wiring as well as the figure: the
+    // capture must run in both site workflows, before the Astro build.
+    test('the browser CTA is backed by a capture of the web client itself '
+        '(issue #1431)', () {
       final home = File(pages['/']!).readAsStringSync();
       final blocks = RegExp(r'<Screenshot[^>]*?>', dotAll: true)
           .allMatches(home)
           .map((match) => match.group(0)!)
           .toList();
-      expect(
-        blocks.where((block) => block.contains('device="browser"')),
-        isEmpty,
-        reason: 'the browser device class renders the Flutter app, not the '
-            'web client the CTA opens',
-      );
-      expect(home, isNot(contains('in a desktop browser')));
-      // The issue #1172 convention still holds: the page's first
-      // screenshot is the eager LCP candidate.
+      final browserBlocks = blocks
+          .where((block) => block.contains('device="browser"'))
+          .toList();
+      expect(browserBlocks, hasLength(1),
+          reason: 'the home page carries exactly one browser-class capture');
+      final block = browserBlocks.single;
+      expect(block, contains('screen="today"'),
+          reason: 'the capture shows the home the CTA lands on');
+      expect(block, contains('loading="lazy"'),
+          reason: 'the hero eager/LCP slot is taken; a second near-the-fold '
+              'PNG must lazy-load or the 0.90 floor loses its margin '
+              '(issue #1172)');
+      // The issue #1172 convention: the page's FIRST screenshot stays the
+      // eager LCP candidate, so the browser capture must sit after it in
+      // the source (site/scripts/lighthouse-budget.test.mjs pins the same
+      // rule from the site side).
       expect(blocks.first, contains('loading="eager"'),
           reason: 'the hero phone capture must remain the eager one');
+      // The caption names what the picture really is — the web client —
+      // so the Flutter-app caption #1432 removed cannot come back, and
+      // the cite names the capture script that produces the PNG. The
+      // region runs from the cite comment (which sits above the block)
+      // to the figure's end, so both pins travel with the figure.
+      final blockIndex = home.indexOf(browserBlocks.single);
+      final cite = home.lastIndexOf('<!-- cite:', blockIndex);
+      final figureEnd = home.indexOf('</figure>', blockIndex);
+      expect(cite, greaterThan(0), reason: 'the figure carries a cite');
+      expect(figureEnd, greaterThan(blockIndex),
+          reason: 'the figure closes');
+      final figureRegion = home.substring(cite, figureEnd);
+      expect(flat(figureRegion), contains('the React web client'));
+      expect(figureRegion, contains('browser-home-capture.spec.ts'));
+    });
+
+    test('the site workflows capture the web client before the site build '
+        '(issue #1431)', () {
+      const captureScript = 'browser-home-capture.spec.ts';
+      const captureOut = 'LUNARLOG_BROWSER_CAPTURE_OUT';
+      // Each workflow's site-build step — the Astro build the figure must
+      // ride into dist/ — named precisely, so the webapp build inside the
+      // capture sequence itself cannot satisfy the ordering pin.
+      const buildMarkers = <String, String>{
+        '.github/workflows/site.yml': 'Build and type-check the site',
+        '.github/workflows/site-deploy.yml': 'name: Build the site',
+      };
+      buildMarkers.forEach((workflow, buildMarker) {
+        final source = File(workflow).readAsStringSync();
+        expect(source, contains(captureScript),
+            reason: '$workflow must run the capture');
+        expect(source, contains(captureOut),
+            reason: '$workflow must aim the capture at '
+                'site/public/screenshots/');
+        // In place of the Flutter browser render means after it: the
+        // capture step follows the screenshot step, and both precede the
+        // Astro build the figure rides into dist/. The needle is the
+        // capture's own invocation (not the script's name, which the
+        // path-filter comments may also carry).
+        const captureInvocation =
+            'npx playwright test e2e/browser-home-capture.spec.ts';
+        final flutter = source.indexOf('npm run screenshots');
+        final capture = source.indexOf(captureInvocation);
+        final build = source.indexOf(buildMarker);
+        expect(flutter, greaterThan(0), reason: workflow);
+        expect(build, greaterThan(0), reason: workflow);
+        expect(capture, greaterThan(flutter),
+            reason: '$workflow: the web client capture follows the Flutter '
+                'renders');
+        expect(build, greaterThan(capture),
+            reason: '$workflow: the PNGs exist before the Astro build');
+      });
     });
 
     test("Screenshot.astro's kDevices mirror carries every manifest device "

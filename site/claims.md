@@ -38,6 +38,10 @@ email capture (the site collects nothing).
   page: /
   ships: site/src/pages/index.astro; site/src/lib/web-app.mjs; site/src/components/WebAppLink.astro; site/scripts/probe-web-app.mjs; .github/workflows/site-deploy.yml
   issue: #1105; #831
+- claim: The browser CTA is backed by a capture of the React web client itself — its signed-in home (TodayPage) as its own e2e fixture render draws it: the fabricated Maya profile through the signed-in fetch facade, no backend, never a hand-committed screenshot. The site workflows run the capture at build time into the same gitignored directory the Flutter renders use; the #1162 browser device class remains the name grammar and pixel contract both tools write.
+  page: /
+  ships: site/src/pages/index.astro; webapp/src/pages/TodayPage.tsx (the depicted home); webapp/e2e/browser-home-capture.spec.ts (writes today-browser-light.png); webapp/e2e/fixtures.ts (the fabricated snapshot and facade); tool/screenshots/manifest.dart (kScreenshotDevices' browser entry and kFlutterRenderedDevices); site/src/components/Screenshot.astro (kDevices mirror)
+  issue: #1208; #1162; #1431
 - claim: Free for personal use — stated in the hero fineprint alone (issue #1160: no security-speak in the hero; the no-ads stance leads on /privacy-security instead).
   page: /
   ships: README.md (License: PolyForm Noncommercial, free for personal use); pubspec.yaml (no billing dependency)
