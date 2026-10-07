@@ -295,61 +295,73 @@ class HealthSyncTombstoneCoordinator {
       // LLA-019: only ids the service did not report as blocked are
       // recorded done — a refusal (transient permission/provider failure)
       // must be retried by the next change, not silently swallowed.
-      if (report.blocked == null) {
+      final blocked = report.blocked;
+      if (blocked == null) {
         // Issue #936: the persisted ledger rows go with the successfully
         // deleted store samples, so the table does not grow forever. This
         // runs BEFORE the ids join _alreadyDeleted: a ledger-write failure
         // must leave the ids retryable (a second delete of an already-gone
         // sample is a documented no-op) rather than stranding the rows.
-        await _ledger.removeRecordIds(tombstoned);
-        _alreadyDeleted = {..._alreadyDeleted, ...tombstoned};
-        _knownSpottingRecordIds.removeAll(tombstoned);
-        for (final id in tombstoned) {
-          _knownPayloadSummaries.remove(id);
-        }
-      } else if (report.blocked is HealthPlatformPartial) {
+        await _markDeleted(tombstoned);
+      } else if (blocked is HealthPlatformPartial) {
         // Issue #1583: when some write permissions are denied, native skips
         // those types and reports them. We drop only the ledger rows and mark
         // done only the ids whose types were NOT skipped; the skipped ones stay
         // in the ledger and out of _alreadyDeleted so they retry once permission
         // returns.
-        final skipped = (report.blocked as HealthPlatformPartial).skippedTypes;
-        // Issue #1659: refresh summaries from the ledger in case rows were
-        // written after the initial seed.
-        final profileId = _activeProfileId;
-        if (profileId != null) {
-          try {
-            final rows = await _ledger.readForProfile(profileId);
-            for (final row in rows) {
-              if (row.payloadSummary != null) {
-                _knownPayloadSummaries[row.recordId] = row.payloadSummary;
-              }
-            }
-          } catch (_) {
-            // Best-effort: keep using seeded summaries.
-          }
-        }
-        final deletedIds = tombstoned
-            .where((id) => !healthRecordMatchesSkippedType(
-                  id,
-                  skipped,
-                  isSpotting: _knownSpottingRecordIds.contains(id),
-                  payloadSummary: _knownPayloadSummaries[id],
-                ))
-            .toList();
-        if (deletedIds.isNotEmpty) {
-          await _ledger.removeRecordIds(deletedIds);
-          _alreadyDeleted = {..._alreadyDeleted, ...deletedIds};
-          _knownSpottingRecordIds.removeAll(deletedIds);
-          for (final id in deletedIds) {
-            _knownPayloadSummaries.remove(id);
-          }
-        }
+        await _handlePartialDeletion(tombstoned, blocked.skippedTypes);
       }
     } catch (_) {
       // Best-effort background upkeep — the next change re-arms it, and
       // since _alreadyDeleted was never updated, these same ids retry too.
     }
+  }
+
+  /// Marks [ids] as successfully deleted in the store and removes their
+  /// ledger rows (Issue #936).
+  Future<void> _markDeleted(List<String> ids) async {
+    if (ids.isEmpty) return;
+    await _ledger.removeRecordIds(ids);
+    _alreadyDeleted = {..._alreadyDeleted, ...ids};
+    _knownSpottingRecordIds.removeAll(ids);
+    for (final id in ids) {
+      _knownPayloadSummaries.remove(id);
+    }
+  }
+
+  /// Refreshes [_knownPayloadSummaries] from the ledger for any record
+  /// written after the initial seed (Issue #1659).
+  Future<void> _refreshPayloadSummaries() async {
+    final profileId = _activeProfileId;
+    if (profileId == null) return;
+    try {
+      final rows = await _ledger.readForProfile(profileId);
+      for (final row in rows) {
+        if (row.payloadSummary != null) {
+          _knownPayloadSummaries[row.recordId] = row.payloadSummary;
+        }
+      }
+    } catch (_) {
+      // Best-effort: keep using seeded summaries.
+    }
+  }
+
+  /// Handles partial deletion when certain write permissions are denied
+  /// (Issue #1583, Issue #1659).
+  Future<void> _handlePartialDeletion(
+    List<String> tombstoned,
+    Set<String> skipped,
+  ) async {
+    await _refreshPayloadSummaries();
+    final deletedIds = tombstoned
+        .where((id) => !healthRecordMatchesSkippedType(
+              id,
+              skipped,
+              isSpotting: _knownSpottingRecordIds.contains(id),
+              payloadSummary: _knownPayloadSummaries[id],
+            ))
+        .toList();
+    await _markDeleted(deletedIds);
   }
 
   Future<void> dispose() async {
