@@ -1416,7 +1416,7 @@ enum HealthKitChannelHandler {
       let cursor = args?["cursor"] as? String
       // Issue #1610: only a literal true starts over (the same parse the
       // Kotlin half makes).
-      let wholeHistory = args?["wholeHistory"] == true
+      let wholeHistory = (args?["wholeHistory"] as? Bool) == true
       Task {
         do {
           let payload = try await readMenstrualFlowPage(
@@ -1855,7 +1855,7 @@ enum HealthKitChannelHandler {
         as? [String: Any],
       let anchor = decodeAnchor(json["anchor"] as? String)
     else { return nil }
-    return (anchor, json["incremental"] == true)
+    return (anchor, (json["incremental"] as? Bool) == true)
   }
 
   /// Base64 without line wrapping — separated from the anchor archive so the

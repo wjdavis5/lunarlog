@@ -228,7 +228,7 @@ class RunnerTests: XCTestCase {
       newAnchor: nil,
       pageSize: 500,
       incremental: false)
-    XCTAssertEqual(payload["samples"] as? [[String: Any]], [])
+    XCTAssertEqual((payload["samples"] as? [[String: Any]])?.count, 0)
     XCTAssertNil(payload["nextCursor"])
     XCTAssertNil(payload["commitToken"])
     XCTAssertNil(payload["incremental"])
@@ -248,7 +248,7 @@ class RunnerTests: XCTestCase {
       newAnchor: nil,
       pageSize: 500,
       incremental: true)
-    XCTAssertEqual(payload["samples"] as? [[String: Any]], [])
+    XCTAssertEqual((payload["samples"] as? [[String: Any]])?.count, 0)
     XCTAssertEqual(payload["incremental"] as? Bool, true)
     XCTAssertEqual(payload["deletedRecordIds"] as? [String], [])
     XCTAssertNil(payload["nextCursor"])
