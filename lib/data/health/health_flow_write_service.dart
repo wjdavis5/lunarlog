@@ -829,6 +829,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         kind: written.kind,
         localDate: written.localDate,
         exportedAt: version.isAfter(floor) ? floor : version,
+        writtenVersion: written.writtenVersion ??
+            (version.isAfter(floor) ? floor : version),
         payloadSummary: written.payloadSummary,
       ));
     }
@@ -1622,8 +1624,12 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// Remembers that the store accepted [recordId] for its row as it stood
   /// at [version]. The only way a day's or an observation's record enters
   /// the export ledger, so the ledger never names a record that was not
-  /// written. [payloadSummary] is what the record says that other rows
-  /// decide (Issue #1591); null for a kind with no such payload.
+  /// Remembers that [recordId] has been written to the health store at
+  /// [version] (its source row's `updatedAt`). [writtenVersion] is the
+  /// version the store was given (Issue #1643), which differs from [version]
+  /// on a summary-driven re-send or when a row edit arrives after one.
+  /// [payloadSummary] is what the record says that other rows decide
+  /// (Issue #1591); null for a kind with no such payload.
   Future<void> _remember(
     String profileId, {
     required String recordId,
@@ -1631,6 +1637,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     required HealthExportLedgerKind kind,
     required LocalDate date,
     required DateTime version,
+    DateTime? writtenVersion,
     String? payloadSummary,
   }) =>
       _memory.remember([
@@ -1641,6 +1648,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
           kind: kind,
           localDate: date.iso,
           exportedAt: version,
+          writtenVersion: writtenVersion ?? version,
           payloadSummary: payloadSummary,
         ),
       ]);
@@ -1966,6 +1974,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
           kind: write.kind,
           date: write.date,
           version: write.updatedAt,
+          writtenVersion: write.storeVersion,
           payloadSummary: write.payloadSummary,
         );
         continue;
@@ -2208,9 +2217,9 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   int _nextPeriodVersion(HealthExportLedgerEntry? remembered) {
     final nowMs = _now().millisecondsSinceEpoch;
     if (remembered == null) return nowMs;
-    // The ledger row's export instant is the version it was written with
+    // The ledger row's written version is the version it was written with
     // ([_rememberPeriod]).
-    final lastMs = remembered.exportedAt.millisecondsSinceEpoch;
+    final lastMs = remembered.storeVersion.millisecondsSinceEpoch;
     return nowMs > lastMs ? nowMs : lastMs + 1;
   }
 
@@ -2239,18 +2248,20 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     String interval,
     LocalDate start,
     int versionMs,
-  ) =>
-      _memory.remember([
-        HealthExportLedgerEntry(
-          recordId: recordId,
-          profileId: profileId,
-          sourceRowId: interval,
-          kind: HealthExportLedgerKind.period,
-          localDate: start.iso,
-          exportedAt:
-              DateTime.fromMillisecondsSinceEpoch(versionMs, isUtc: true),
-        ),
-      ]);
+  ) {
+    final v = DateTime.fromMillisecondsSinceEpoch(versionMs, isUtc: true);
+    return _memory.remember([
+      HealthExportLedgerEntry(
+        recordId: recordId,
+        profileId: profileId,
+        sourceRowId: interval,
+        kind: HealthExportLedgerKind.period,
+        localDate: start.iso,
+        exportedAt: v,
+        writtenVersion: v,
+      ),
+    ]);
+  }
 
   /// Sends the due symptom samples (Issue #238) and remembers the ones the
   /// store accepts. A platform that answers `unavailable` — Health Connect
@@ -2304,6 +2315,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
             kind: HealthExportLedgerKind.entry,
             localDate: symptom.date.iso,
             exportedAt: symptom.updatedAt,
+            writtenVersion: symptom.updatedAt,
           ),
       ]);
     }
@@ -2576,14 +2588,18 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     final rowChanged = written.exportedAt.isBefore(version);
     final summaryChanged = written.payloadSummary != payloadSummary;
     if (!rowChanged && !summaryChanged) return null;
-    // A re-send the row itself asked for keeps the natural version: the
-    // row is past the version the store holds. One whose summary differs
-    // — a change made through other rows, or the unknown summary of a
-    // record a build before #1591 wrote — does not say which version the
-    // store's copy carries, so it goes out above the natural one, the
-    // way the period record raises its own.
-    if (summaryChanged) {
-      return _pastWrittenVersion(natural, written.exportedAt);
+    // A re-send whose summary differs — a change made through other rows,
+    // or the unknown summary of a record a build before #1591 wrote — does
+    // not say which version the store's copy carries, so it goes out above
+    // the version the store holds, the way the period record raises its own.
+    // Likewise, an edit whose natural version is at or below what the store
+    // already holds (e.g. an offline edit made before a correction re-send
+    // but synced after it, Issue #1643) must write above what the store holds
+    // or the store keeps the old copy.
+    final storeWritten = written.storeVersion;
+    if (summaryChanged ||
+        natural.millisecondsSinceEpoch <= storeWritten.millisecondsSinceEpoch) {
+      return _pastWrittenVersion(natural, storeWritten);
     }
     return natural;
   }

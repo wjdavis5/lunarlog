@@ -315,8 +315,12 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   ///   written before the column existed reads as "what it says is
   ///   unknown", which is exactly what sends the record once more so the
   ///   second cycle start already out there in Apple Health is corrected.
+  /// * 33 — `health_export_ledger.written_version` (Issue #1643, the
+  ///   version given to the health store when writing the sample). Nullable
+  ///   with no backfill: a row written before this step reads as null, and
+  ///   [HealthExportLedgerEntry.storeVersion] falls back to [exportedAt].
   @override
-  int get schemaVersion => 32;
+  int get schemaVersion => 33;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -632,6 +636,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV31(m, from);
     // Issue #1591's v32 step, same shape again.
     await _upgradeToV32(m, from);
+    // Issue #1643's v33 step, same shape again.
+    await _upgradeToV33(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -1374,6 +1380,28 @@ class LunarLogDatabase extends _$LunarLogDatabase {
         await migrationStepHook?.call('health_export_ledger.payload_summary');
       }
       await _advanceSchemaVersion(32);
+    });
+  }
+
+  /// The v33 upgrade step (Issue #1643): the nullable `written_version`
+  /// column on the device-local `health_export_ledger`. Same standalone-
+  /// method shape as [_upgradeToV32] (`health_export_ledger` has existed
+  /// since v27 on every device that has it at all, so the addColumn is
+  /// always safe regardless of `from`; the same `_hasColumn` (LLA-015)
+  /// real-schema guard the sibling column steps use covers a schema
+  /// reconstructed by something other than a real `onCreate`).
+  ///
+  /// Nullable with no backfill, deliberately: a pre-#1643 row reads as null,
+  /// and [HealthExportLedgerEntry.storeVersion] falls back to [exportedAt],
+  /// which is the version the store was given when written before #1643.
+  Future<void> _upgradeToV33(Migrator m, int from) async {
+    if (from >= 33) return;
+    await transaction(() async {
+      if (!await _hasColumn('health_export_ledger', 'written_version')) {
+        await m.addColumn(healthExportLedger, healthExportLedger.writtenVersion);
+        await migrationStepHook?.call('health_export_ledger.written_version');
+      }
+      await _advanceSchemaVersion(33);
     });
   }
 }

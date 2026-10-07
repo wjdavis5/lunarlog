@@ -154,6 +154,9 @@ const Map<String, String> _waivedKeys = {
       "health-export payload SHAPE only: the written record's closed-set "
           'type plus a cycle-start boolean (flow:light:1 / marker), never '
           'health content (issue #1591)',
+  'written_version':
+      'device-local health-platform export store version timestamp, not '
+          'content (issue #1643)',
   'is_checked': 'checklist boolean state, not content',
   'field':
       'merge-event discriminator over the closed set flow|note, not content (issue #130)',

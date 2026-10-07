@@ -12313,6 +12313,18 @@ class $HealthExportLedgerTable extends HealthExportLedger
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _writtenVersionMeta = const VerificationMeta(
+    'writtenVersion',
+  );
+  @override
+  late final GeneratedColumn<DateTime> writtenVersion =
+      GeneratedColumn<DateTime>(
+        'written_version',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     recordId,
@@ -12322,6 +12334,7 @@ class $HealthExportLedgerTable extends HealthExportLedger
     localDate,
     exportedAt,
     payloadSummary,
+    writtenVersion,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -12395,6 +12408,15 @@ class $HealthExportLedgerTable extends HealthExportLedger
         ),
       );
     }
+    if (data.containsKey('written_version')) {
+      context.handle(
+        _writtenVersionMeta,
+        writtenVersion.isAcceptableOrUnknown(
+          data['written_version']!,
+          _writtenVersionMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -12434,6 +12456,10 @@ class $HealthExportLedgerTable extends HealthExportLedger
       payloadSummary: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}payload_summary'],
+      ),
+      writtenVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}written_version'],
       ),
     );
   }
@@ -12475,6 +12501,11 @@ class HealthExportLedgerRowData extends DataClass
   /// written before the column existed, which reads as "what it says is
   /// unknown" and is sent once more so the store is corrected.
   final String? payloadSummary;
+
+  /// Issue #1643: the version given to the health store when writing the sample.
+  /// Null for a row written before this column existed, which reads as
+  /// having been written at [exportedAt].
+  final DateTime? writtenVersion;
   const HealthExportLedgerRowData({
     required this.recordId,
     required this.profileId,
@@ -12483,6 +12514,7 @@ class HealthExportLedgerRowData extends DataClass
     required this.localDate,
     required this.exportedAt,
     this.payloadSummary,
+    this.writtenVersion,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -12495,6 +12527,9 @@ class HealthExportLedgerRowData extends DataClass
     map['exported_at'] = Variable<DateTime>(exportedAt);
     if (!nullToAbsent || payloadSummary != null) {
       map['payload_summary'] = Variable<String>(payloadSummary);
+    }
+    if (!nullToAbsent || writtenVersion != null) {
+      map['written_version'] = Variable<DateTime>(writtenVersion);
     }
     return map;
   }
@@ -12510,6 +12545,9 @@ class HealthExportLedgerRowData extends DataClass
       payloadSummary: payloadSummary == null && nullToAbsent
           ? const Value.absent()
           : Value(payloadSummary),
+      writtenVersion: writtenVersion == null && nullToAbsent
+          ? const Value.absent()
+          : Value(writtenVersion),
     );
   }
 
@@ -12526,6 +12564,7 @@ class HealthExportLedgerRowData extends DataClass
       localDate: serializer.fromJson<String>(json['localDate']),
       exportedAt: serializer.fromJson<DateTime>(json['exportedAt']),
       payloadSummary: serializer.fromJson<String?>(json['payloadSummary']),
+      writtenVersion: serializer.fromJson<DateTime?>(json['writtenVersion']),
     );
   }
   @override
@@ -12539,6 +12578,7 @@ class HealthExportLedgerRowData extends DataClass
       'localDate': serializer.toJson<String>(localDate),
       'exportedAt': serializer.toJson<DateTime>(exportedAt),
       'payloadSummary': serializer.toJson<String?>(payloadSummary),
+      'writtenVersion': serializer.toJson<DateTime?>(writtenVersion),
     };
   }
 
@@ -12550,6 +12590,7 @@ class HealthExportLedgerRowData extends DataClass
     String? localDate,
     DateTime? exportedAt,
     Value<String?> payloadSummary = const Value.absent(),
+    Value<DateTime?> writtenVersion = const Value.absent(),
   }) => HealthExportLedgerRowData(
     recordId: recordId ?? this.recordId,
     profileId: profileId ?? this.profileId,
@@ -12560,6 +12601,9 @@ class HealthExportLedgerRowData extends DataClass
     payloadSummary: payloadSummary.present
         ? payloadSummary.value
         : this.payloadSummary,
+    writtenVersion: writtenVersion.present
+        ? writtenVersion.value
+        : this.writtenVersion,
   );
   HealthExportLedgerRowData copyWithCompanion(
     HealthExportLedgerCompanion data,
@@ -12578,6 +12622,9 @@ class HealthExportLedgerRowData extends DataClass
       payloadSummary: data.payloadSummary.present
           ? data.payloadSummary.value
           : this.payloadSummary,
+      writtenVersion: data.writtenVersion.present
+          ? data.writtenVersion.value
+          : this.writtenVersion,
     );
   }
 
@@ -12590,7 +12637,8 @@ class HealthExportLedgerRowData extends DataClass
           ..write('kind: $kind, ')
           ..write('localDate: $localDate, ')
           ..write('exportedAt: $exportedAt, ')
-          ..write('payloadSummary: $payloadSummary')
+          ..write('payloadSummary: $payloadSummary, ')
+          ..write('writtenVersion: $writtenVersion')
           ..write(')'))
         .toString();
   }
@@ -12604,6 +12652,7 @@ class HealthExportLedgerRowData extends DataClass
     localDate,
     exportedAt,
     payloadSummary,
+    writtenVersion,
   );
   @override
   bool operator ==(Object other) =>
@@ -12615,7 +12664,8 @@ class HealthExportLedgerRowData extends DataClass
           other.kind == this.kind &&
           other.localDate == this.localDate &&
           other.exportedAt == this.exportedAt &&
-          other.payloadSummary == this.payloadSummary);
+          other.payloadSummary == this.payloadSummary &&
+          other.writtenVersion == this.writtenVersion);
 }
 
 class HealthExportLedgerCompanion
@@ -12627,6 +12677,7 @@ class HealthExportLedgerCompanion
   final Value<String> localDate;
   final Value<DateTime> exportedAt;
   final Value<String?> payloadSummary;
+  final Value<DateTime?> writtenVersion;
   final Value<int> rowid;
   const HealthExportLedgerCompanion({
     this.recordId = const Value.absent(),
@@ -12636,6 +12687,7 @@ class HealthExportLedgerCompanion
     this.localDate = const Value.absent(),
     this.exportedAt = const Value.absent(),
     this.payloadSummary = const Value.absent(),
+    this.writtenVersion = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   HealthExportLedgerCompanion.insert({
@@ -12646,6 +12698,7 @@ class HealthExportLedgerCompanion
     required String localDate,
     required DateTime exportedAt,
     this.payloadSummary = const Value.absent(),
+    this.writtenVersion = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : recordId = Value(recordId),
        profileId = Value(profileId),
@@ -12661,6 +12714,7 @@ class HealthExportLedgerCompanion
     Expression<String>? localDate,
     Expression<DateTime>? exportedAt,
     Expression<String>? payloadSummary,
+    Expression<DateTime>? writtenVersion,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -12671,6 +12725,7 @@ class HealthExportLedgerCompanion
       if (localDate != null) 'local_date': localDate,
       if (exportedAt != null) 'exported_at': exportedAt,
       if (payloadSummary != null) 'payload_summary': payloadSummary,
+      if (writtenVersion != null) 'written_version': writtenVersion,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -12683,6 +12738,7 @@ class HealthExportLedgerCompanion
     Value<String>? localDate,
     Value<DateTime>? exportedAt,
     Value<String?>? payloadSummary,
+    Value<DateTime?>? writtenVersion,
     Value<int>? rowid,
   }) {
     return HealthExportLedgerCompanion(
@@ -12693,6 +12749,7 @@ class HealthExportLedgerCompanion
       localDate: localDate ?? this.localDate,
       exportedAt: exportedAt ?? this.exportedAt,
       payloadSummary: payloadSummary ?? this.payloadSummary,
+      writtenVersion: writtenVersion ?? this.writtenVersion,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -12721,6 +12778,9 @@ class HealthExportLedgerCompanion
     if (payloadSummary.present) {
       map['payload_summary'] = Variable<String>(payloadSummary.value);
     }
+    if (writtenVersion.present) {
+      map['written_version'] = Variable<DateTime>(writtenVersion.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -12737,6 +12797,7 @@ class HealthExportLedgerCompanion
           ..write('localDate: $localDate, ')
           ..write('exportedAt: $exportedAt, ')
           ..write('payloadSummary: $payloadSummary, ')
+          ..write('writtenVersion: $writtenVersion, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -20828,6 +20889,7 @@ typedef $$HealthExportLedgerTableCreateCompanionBuilder =
       required String localDate,
       required DateTime exportedAt,
       Value<String?> payloadSummary,
+      Value<DateTime?> writtenVersion,
       Value<int> rowid,
     });
 typedef $$HealthExportLedgerTableUpdateCompanionBuilder =
@@ -20839,6 +20901,7 @@ typedef $$HealthExportLedgerTableUpdateCompanionBuilder =
       Value<String> localDate,
       Value<DateTime> exportedAt,
       Value<String?> payloadSummary,
+      Value<DateTime?> writtenVersion,
       Value<int> rowid,
     });
 
@@ -20883,6 +20946,11 @@ class $$HealthExportLedgerTableFilterComposer
 
   ColumnFilters<String> get payloadSummary => $composableBuilder(
     column: $table.payloadSummary,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get writtenVersion => $composableBuilder(
+    column: $table.writtenVersion,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -20930,6 +20998,11 @@ class $$HealthExportLedgerTableOrderingComposer
     column: $table.payloadSummary,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get writtenVersion => $composableBuilder(
+    column: $table.writtenVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$HealthExportLedgerTableAnnotationComposer
@@ -20965,6 +21038,11 @@ class $$HealthExportLedgerTableAnnotationComposer
 
   GeneratedColumn<String> get payloadSummary => $composableBuilder(
     column: $table.payloadSummary,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get writtenVersion => $composableBuilder(
+    column: $table.writtenVersion,
     builder: (column) => column,
   );
 }
@@ -21016,6 +21094,7 @@ class $$HealthExportLedgerTableTableManager
                 Value<String> localDate = const Value.absent(),
                 Value<DateTime> exportedAt = const Value.absent(),
                 Value<String?> payloadSummary = const Value.absent(),
+                Value<DateTime?> writtenVersion = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => HealthExportLedgerCompanion(
                 recordId: recordId,
@@ -21025,6 +21104,7 @@ class $$HealthExportLedgerTableTableManager
                 localDate: localDate,
                 exportedAt: exportedAt,
                 payloadSummary: payloadSummary,
+                writtenVersion: writtenVersion,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -21036,6 +21116,7 @@ class $$HealthExportLedgerTableTableManager
                 required String localDate,
                 required DateTime exportedAt,
                 Value<String?> payloadSummary = const Value.absent(),
+                Value<DateTime?> writtenVersion = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => HealthExportLedgerCompanion.insert(
                 recordId: recordId,
@@ -21045,6 +21126,7 @@ class $$HealthExportLedgerTableTableManager
                 localDate: localDate,
                 exportedAt: exportedAt,
                 payloadSummary: payloadSummary,
+                writtenVersion: writtenVersion,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
