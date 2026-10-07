@@ -679,6 +679,33 @@ void main() {
       });
     });
 
+    test('site-deploy.yml guards the browser capture sequence behind LUNARLOG_WEB_APP_LIVE (issue #1656)', () {
+      final deploySource =
+          File('.github/workflows/site-deploy.yml').readAsStringSync();
+      const captureSteps = [
+        "name: Compile the browser version's domain module",
+        "name: Install the web app's dependencies and Playwright Chromium",
+        'name: Build the browser version',
+        "name: Capture the browser version's home screenshot",
+        'name: Verify the browser home screenshot was captured',
+      ];
+      for (final step in captureSteps) {
+        final stepIndex = deploySource.indexOf(step);
+        expect(stepIndex, greaterThan(0), reason: 'missing step $step');
+        final nextStepIndex =
+            deploySource.indexOf('- name:', stepIndex + step.length);
+        final stepBlock = deploySource.substring(
+          stepIndex,
+          nextStepIndex > 0 ? nextStepIndex : deploySource.length,
+        );
+        expect(
+          stepBlock,
+          contains("if: env.LUNARLOG_WEB_APP_LIVE != 'false'"),
+          reason: '$step must skip when the browser version is down (issue #1656)',
+        );
+      }
+    });
+
     test("Screenshot.astro's kDevices mirror carries every manifest device "
         'at its PNG size', () {
       // The component's doc comment promises the mirror fails when it and

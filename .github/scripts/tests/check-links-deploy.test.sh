@@ -732,6 +732,9 @@ assert_contains "site-deploy.yml's screenshot step forces the material_fonts re-
 # Issue #1662: the deploy must verify today-browser-light.png exists
 # so a slow web app start cannot quietly skip capture and ship a broken figure.
 assert_contains "site-deploy.yml verifies the browser screenshot was captured (issue #1662)" "$site_deploy_yaml" "site/public/screenshots/today-browser-light.png"
+# Issue #1656: the deploy must guard the browser capture steps behind
+# LUNARLOG_WEB_APP_LIVE so a down build skips them without coupling site deploy.
+assert_contains "site-deploy.yml guards the capture steps when the web app is down (issue #1656)" "$site_deploy_yaml" "Issue #1656: all capture steps are guarded by LUNARLOG_WEB_APP_LIVE"
 
 site_yaml="$(cat "$SITE_WORKFLOW")"
 assert_contains "site.yml is path-filtered to site/**" "$site_yaml" "site/**"

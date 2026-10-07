@@ -148,7 +148,12 @@ jobs:
       # capture runs after the Flutter renders and before the site build,
       # writing into the same gitignored site/public/screenshots/ the
       # build copies into dist/.
+      #
+      # Issue #1656: all capture steps are guarded by LUNARLOG_WEB_APP_LIVE
+      # so that a down build skips them, decoupling site deployment (and its
+      # down notice) from the web app's build health.
       - name: Compile the browser version's domain module
+        if: env.LUNARLOG_WEB_APP_LIVE != 'false'
         # The today-log card the figure shows is computed by the compiled
         # Dart domain module (issue #1251) — the same dart2js artifact the
         # webapp CI job builds, same command.
@@ -159,12 +164,14 @@ jobs:
           rm -f webapp/public/domain/lunarlog_domain.js.deps
 
       - name: Install the web app's dependencies and Playwright Chromium
+        if: env.LUNARLOG_WEB_APP_LIVE != 'false'
         working-directory: webapp
         run: |
           npm ci
           npx playwright install --with-deps chromium
 
       - name: Build the browser version
+        if: env.LUNARLOG_WEB_APP_LIVE != 'false'
         # The client-safe Supabase pair, quoted for the same reason the
         # webapp CI job quotes them: empty on forks, and the capture then
         # skips on an unconfigured build. In the canonical repo with secrets,
@@ -176,6 +183,7 @@ jobs:
         run: npm run build
 
       - name: Capture the browser version's home screenshot
+        if: env.LUNARLOG_WEB_APP_LIVE != 'false'
         working-directory: webapp
         env:
           LUNARLOG_BROWSER_CAPTURE_OUT: ${{ github.workspace }}/site/public/screenshots
