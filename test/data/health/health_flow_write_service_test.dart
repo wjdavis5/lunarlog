@@ -401,6 +401,40 @@ class _SelectiveDeletePlatform extends _FakePlatform {
   }
 }
 
+/// A [_FakePlatform] that tracks flow and marker records in the store,
+/// removing on delete and inserting on write (Issue #1641).
+class _SimulatedStorePlatform extends _FakePlatform {
+  final Set<String> store = {};
+
+  @override
+  Future<HealthPlatformResult> writeMenstrualFlow(
+    HealthMenstrualFlowWrite write,
+  ) async {
+    store.add('flow:${write.recordId}');
+    return super.writeMenstrualFlow(write);
+  }
+
+  @override
+  Future<HealthPlatformResult> writeIntermenstrualBleeding(
+    HealthIntermenstrualBleedingWrite write,
+  ) async {
+    store.add('marker:${write.recordId}');
+    return super.writeIntermenstrualBleeding(write);
+  }
+
+  @override
+  Future<HealthPlatformResult> deleteRecords(
+    HealthGuardFacts facts,
+    List<String> recordIds,
+  ) async {
+    for (final id in recordIds) {
+      store.remove('flow:$id');
+      store.remove('marker:$id');
+    }
+    return super.deleteRecords(facts, recordIds);
+  }
+}
+
 class _FakeProfiles implements ProfilesRepository {
   Profile? profile = _profile();
 
@@ -3994,11 +4028,14 @@ void main() {
       ]);
       final service = buildService();
       await service.syncNow();
-      // What that build's record said is unknown (#1591), so the entry is
-      // sent once, as the marker it is now (no bleed day near it), and
-      // the summary stamped keeps it quiet after.
+      // What that build's record said is unknown (#1591, #1641): the old-type
+      // record is cleared first in case it was written as the other type,
+      // then the entry is sent as the marker it is now (no bleed day near it),
+      // and the summary stamped keeps it quiet after.
       expect(platform.markerWrites, hasLength(1));
-      expect(platform.deleteCalls, isEmpty);
+      expect(platform.deleteCalls, [
+        ['spot-2026-06-08'],
+      ]);
 
       dayEntries.entries = [_entry('2026-06-08', FlowLevel.medium, at(20))];
       clock = at(21);
@@ -4006,6 +4043,7 @@ void main() {
 
       expect(platform.flowWrites.single.recordId, 'entry-2026-06-08');
       expect(platform.deleteCalls, [
+        ['spot-2026-06-08'],
         ['spot-2026-06-08'],
       ]);
     });
@@ -5209,6 +5247,173 @@ void main() {
 
       await service.syncNow();
       expect(platform.flowWrites, hasLength(2));
+    });
+
+    test('a seeded ledger row with no summary for a spotting entry whose day '
+        'is now inside a period ends with one record in the store (issue #1641)',
+        () async {
+      final simulated = _SimulatedStorePlatform();
+      platform = simulated;
+      // Pre-seed the store with an intermenstrual marker from an earlier build.
+      simulated.store.add('marker:spot-2026-06-10');
+
+      await seedGranted(grant);
+      dayEntries.entries = [
+        _entry('2026-06-09', FlowLevel.heavy,
+            grant.add(const Duration(hours: 1))),
+        _entry('2026-06-11', FlowLevel.medium,
+            grant.add(const Duration(hours: 2))),
+      ];
+      observations.observations = [
+        _spotting('2026-06-10', grant.add(const Duration(hours: 3))),
+      ];
+      // An earlier build wrote the spotting entry without a payload summary.
+      await ledger.record([
+        HealthExportLedgerEntry(
+          recordId: 'spot-2026-06-10',
+          profileId: _profileId,
+          sourceRowId: 'spot-2026-06-10',
+          kind: HealthExportLedgerKind.spotting,
+          localDate: '2026-06-10',
+          exportedAt: grant.add(const Duration(hours: 3)),
+        ),
+      ]);
+      final service = buildService();
+
+      final report = await service.syncNow();
+
+      expect(report.blocked, isNull);
+      // The old marker was deleted first, and the new light flow was written.
+      expect(simulated.deleteCalls.first, ['spot-2026-06-10']);
+      final spotWrite = simulated.flowWrites
+          .singleWhere((w) => w.recordId == 'spot-2026-06-10');
+      expect(spotWrite.flow, HealthFlowValue.light);
+      // For the spotting record, the store ends with exactly one record:
+      // the new light flow sample (the old marker was removed).
+      expect(
+        simulated.store.where((r) => r.endsWith(':spot-2026-06-10')),
+        {'flow:spot-2026-06-10'},
+      );
+      expect(
+        ledger.rows
+            .singleWhere((r) => r.recordId == 'spot-2026-06-10')
+            .payloadSummary,
+        'flow:light:0',
+      );
+
+      final writesAfter = simulated.flowWrites.length;
+      final deletesAfter = simulated.deleteCalls.length;
+      await service.syncNow();
+      expect(simulated.flowWrites, hasLength(writesAfter));
+      expect(simulated.deleteCalls, hasLength(deletesAfter));
+      expect(
+        simulated.store.where((r) => r.endsWith(':spot-2026-06-10')),
+        {'flow:spot-2026-06-10'},
+      );
+    });
+
+    test('an unknown spotting record waits when either type is switched off, '
+        'and deletes then writes once both are back (issue #1641)', () async {
+      await seedGranted(grant);
+      dayEntries.entries = [
+        _entry('2026-06-09', FlowLevel.heavy, at(1)),
+        _entry('2026-06-11', FlowLevel.medium, at(2)),
+      ];
+      observations.observations = [_spotting('2026-06-10', at(3))];
+      await ledger.record([
+        HealthExportLedgerEntry(
+          recordId: 'spot-2026-06-10',
+          profileId: _profileId,
+          sourceRowId: 'spot-2026-06-10',
+          kind: HealthExportLedgerKind.spotting,
+          localDate: '2026-06-10',
+          exportedAt: at(3),
+        ),
+      ]);
+      final service = buildService();
+
+      // Only menstrualFlow is granted; spotting is off. An unknown spotting
+      // record needs both types granted to safely clear the replaced type.
+      platform.permission = HealthPermissionStatus.writingSome;
+      platform.grantedTypes = {'menstrualFlow'};
+      final waiting = await service.syncNow();
+      expect(waiting.blocked, isNull);
+      expect(platform.deleteCalls, isEmpty);
+      expect(
+        platform.flowWrites.where((w) => w.recordId == 'spot-2026-06-10'),
+        isEmpty,
+      );
+
+      // Both types granted: swap delete goes through, followed by the write.
+      platform.permission = HealthPermissionStatus.granted;
+      platform.grantedTypes = {'menstrualFlow', 'spotting'};
+      final completed = await service.syncNow();
+      expect(completed.blocked, isNull);
+      expect(platform.deleteCalls, [
+        ['spot-2026-06-10'],
+      ]);
+      expect(
+        platform.flowWrites
+            .singleWhere((w) => w.recordId == 'spot-2026-06-10')
+            .flow,
+        HealthFlowValue.light,
+      );
+      expect(
+        ledger.rows
+            .singleWhere((r) => r.recordId == 'spot-2026-06-10')
+            .payloadSummary,
+        'flow:light:0',
+      );
+    });
+
+    test('a ledger from an earlier build: payloadSummary is preserved when '
+        'adoptEarlierLedger runs again (issue #1641)', () async {
+      await settings.set(_bindingKey, _profileId);
+      await settings.set(_cursorKey, '${at(10).millisecondsSinceEpoch}');
+      dayEntries.entries = [
+        _entry('2026-06-09', FlowLevel.medium, at(10)),
+        _entry('2026-06-10', FlowLevel.none, at(10)),
+      ];
+      observations.observations = [
+        _spotting('2026-06-10', at(10)),
+      ];
+      await ledger.record([
+        HealthExportLedgerEntry(
+          recordId: 'entry-2026-06-09',
+          profileId: _profileId,
+          sourceRowId: 'entry-2026-06-09',
+          kind: HealthExportLedgerKind.entry,
+          localDate: '2026-06-09',
+          exportedAt: at(10),
+          payloadSummary: 'flow:medium:1',
+        ),
+        HealthExportLedgerEntry(
+          recordId: 'spot-2026-06-10',
+          profileId: _profileId,
+          sourceRowId: 'spot-2026-06-10',
+          kind: HealthExportLedgerKind.spotting,
+          localDate: '2026-06-10',
+          exportedAt: at(10),
+          payloadSummary: 'marker',
+        ),
+      ]);
+      // Write state is cleared so adoptEarlierLedger runs on next pass.
+      await settings.set(SettingsKeys.healthSyncWriteState, '');
+      final service = buildService();
+      await service.syncNow();
+
+      expect(
+        ledger.rows
+            .singleWhere((r) => r.recordId == 'entry-2026-06-09')
+            .payloadSummary,
+        'flow:medium:1',
+      );
+      expect(
+        ledger.rows
+            .singleWhere((r) => r.recordId == 'spot-2026-06-10')
+            .payloadSummary,
+        'marker',
+      );
     });
   });
 }
