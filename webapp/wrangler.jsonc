@@ -11,17 +11,12 @@
   // answer 503 auth_not_configured until the secret exists).
 
   // Issue #1258 (owner go 2026-10-03): app.lunarlog.app is this Worker's
-  // production origin, bound as a CUSTOM DOMAIN — Cloudflare manages the
-  // hostname's DNS once the attach succeeds. The attach refuses a hostname
-  // that still has zone DNS records (error 100117), and the retired Pages
-  // project left four behind (A + AAAA). webapp-deploy.yml clears them
-  // before the deploy when its token can; the token as issued cannot
-  // (dns_records answers Authentication error 10000), so the owner fix is
-  // one of: add Zone → DNS → Edit for lunarlog.app to the deploy token, or
-  // delete the four app.lunarlog.app records by hand (#1093 step 4).
-  // Workers Routes edit does not help: a route was tried (#1402, #1403) and
-  // the token lacks that permission too, so #1404 restored this form. The
-  // workers.dev hostname stays on as the staging alias (#1249).
+  // production origin, bound as a CUSTOM DOMAIN since 2026-10-03 -
+  // Cloudflare manages the hostname's DNS. (The attach had been refused by
+  // leftover zone DNS records from the retired Pages project, error 100117;
+  // they are gone, and #1624 removed the workflow's clearing step.) A route
+  // was tried instead (#1402, #1403) and reverted by #1404. The workers.dev
+  // hostname stays on as the staging alias (#1249).
   "workers_dev": true,
   "routes": [{ "pattern": "app.lunarlog.app", "custom_domain": true }],
 
