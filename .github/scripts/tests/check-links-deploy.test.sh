@@ -729,6 +729,9 @@ assert_contains "site-deploy.yml caches the site lockfile" "$site_deploy_yaml" "
 # re-download (#1158's fix) -- a stale runner SDK cache is what took every
 # deploy down and froze the privacy URL at a 404.
 assert_contains "site-deploy.yml's screenshot step forces the material_fonts re-download (issue #1158)" "$site_deploy_yaml" "flutter precache --universal --force"
+# Issue #1662: the deploy must verify today-browser-light.png exists
+# so a slow web app start cannot quietly skip capture and ship a broken figure.
+assert_contains "site-deploy.yml verifies the browser screenshot was captured (issue #1662)" "$site_deploy_yaml" "site/public/screenshots/today-browser-light.png"
 
 site_yaml="$(cat "$SITE_WORKFLOW")"
 assert_contains "site.yml is path-filtered to site/**" "$site_yaml" "site/**"
