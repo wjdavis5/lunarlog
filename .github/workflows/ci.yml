@@ -1370,6 +1370,38 @@ jobs:
           xcrun simctl bootstatus "$udid" -b
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
 
+      - name: Run the Swift channel unit tests on the simulator
+        # Issue #1610: ios/RunnerTests/RunnerTests.swift is the Runner
+        # scheme's test target (the XCTest home of the HealthKitChannelHandler
+        # tests since #916/#992), but nothing ran it -- the codec's raw-value
+        # tables and, now, the import-anchor handling and page shape were
+        # pinned only from the Dart side. One xcodebuild test on the
+        # simulator this job has already booted runs the whole target; the
+        # app build above warmed the DerivedData tree, so this compiles the
+        # test bundle on top of an existing build. Simulator destinations
+        # need no code signing.
+        #
+        # Deliberately BEFORE the integration tests: the integration build
+        # (`flutter test integration_test/...`) records a now-deleted
+        # flutter_test_listener temp file as its kernel entrypoint in the
+        # shared DerivedData, and an xcodebuild test that runs after it
+        # fails in the Runner target's Run Script phase re-reading that
+        # entrypoint (kernel_snapshot_program: No such file or directory --
+        # run 37568557173). Running against the "Build the app" step's
+        # state is the same build-then-test sequence the lab Mac mini
+        # verified this suite with.
+        if: steps.check_run.outputs.run == 'true'
+        timeout-minutes: 15
+        env:
+          SIM_UDID: ${{ steps.sim.outputs.udid }}
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -destination "id=$SIM_UDID" \
+            -quiet
+
       - name: Run integration tests on the simulator
         # Issue #121: this step used to be scoped with a --name filter to
         # the four tests that never drive the binding into
@@ -1465,28 +1497,6 @@ jobs:
 
           echo "Running integration tests on simulator $SIM_UDID (attempt 2)..."
           run_suite
-
-      - name: Run the Swift channel unit tests on the simulator
-        # Issue #1610: ios/RunnerTests/RunnerTests.swift is the Runner
-        # scheme's test target (the XCTest home of the HealthKitChannelHandler
-        # tests since #916/#992), but nothing ran it -- the codec's raw-value
-        # tables and, now, the import-anchor handling and page shape were
-        # pinned only from the Dart side. One xcodebuild test on the
-        # simulator this job has already booted runs the whole target; the
-        # app build above warmed the DerivedData tree, so this compiles the
-        # test bundle on top of an existing build. Simulator destinations
-        # need no code signing.
-        if: steps.check_run.outputs.run == 'true'
-        timeout-minutes: 15
-        env:
-          SIM_UDID: ${{ steps.sim.outputs.udid }}
-        run: |
-          set -euo pipefail
-          xcodebuild test \
-            -workspace ios/Runner.xcworkspace \
-            -scheme Runner \
-            -destination "id=$SIM_UDID" \
-            -quiet
 
       - name: Shut down simulator
         if: steps.check_run.outputs.run == 'true' && always()
