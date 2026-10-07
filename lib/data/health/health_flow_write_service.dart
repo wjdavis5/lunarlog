@@ -1085,6 +1085,23 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   ) {
     final desired = healthRecordIdsForEntry(entry);
     final flowId = healthFlowRecordId(entry.id);
+    _collectFlowEntry(entry, containing, batch, desired, flowId);
+    batch.desiredByRow[entry.id] = desired;
+    final symptomWrite = _symptomWriteFor(entry, gradedPain);
+    if (symptomWrite != null) batch.pendingSymptoms.add(symptomWrite);
+    final fertility = _fertilityWritesFor(entry);
+    final cervical = fertility.cervicalMucus;
+    if (cervical != null) batch.pendingCervicalMucus.add(cervical);
+    batch.pendingOvulation.addAll(fertility.ovulation);
+  }
+
+  void _collectFlowEntry(
+    DayEntry entry,
+    Episode? containing,
+    _Batch batch,
+    Set<String> desired,
+    String flowId,
+  ) {
     final plan = mapFlowToHealthWrite(
       entry.flow,
       inPeriodEpisode: containing != null,
@@ -1104,53 +1121,53 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
           _state.notYetCleared(entry.updatedAt)) {
         batch.unknownFlowRecords[flowId] = entry.updatedAt;
       }
-    } else {
-      final summary = _Batch.payloadSummaryOf(
+      return;
+    }
+
+    final summary = _Batch.payloadSummaryOf(
+      plan,
+      containing,
+      entry.localDate,
+      writesCycleStart: _platform.writesCycleStart,
+    );
+    final written = _memory.entryOf(flowId);
+    if (_isPre1640FlowWithoutSummary(written, entry.updatedAt)) {
+      batch.quietStamps.add(written!.copyWith(payloadSummary: summary));
+      return;
+    }
+
+    final dueAt = _dueAt(
+      flowId,
+      entry.updatedAt,
+      _writeTypeOf(plan),
+      payloadSummary: summary,
+    );
+    if (dueAt != null) {
+      batch.add(
+        entry.localDate,
+        entry.tz,
+        entry.updatedAt,
+        flowId,
         plan,
         containing,
-        entry.localDate,
-        writesCycleStart: _platform.writesCycleStart,
+        HealthExportLedgerKind.entry,
+        storeVersion: dueAt,
       );
-      final written = _memory.entryOf(flowId);
-      // On a platform that does not write cycleStart (Health Connect,
-      // Issue #1645), a flow record written by an earlier build without a
-      // summary is already in the store with the exact value this entry has.
-      // Stamp the summary without re-sending.
-      final isExistingPre1640Flow = !_platform.writesCycleStart &&
-          written != null &&
-          written.payloadSummary == null &&
-          !written.exportedAt.isBefore(entry.updatedAt);
-      if (isExistingPre1640Flow) {
-        batch.quietStamps.add(written.copyWith(payloadSummary: summary));
-      }
-      final dueAt = isExistingPre1640Flow
-          ? null
-          : _dueAt(
-              flowId,
-              entry.updatedAt,
-              _writeTypeOf(plan),
-              payloadSummary: summary,
-            );
-      if (dueAt != null) {
-        batch.add(
-          entry.localDate,
-          entry.tz,
-          entry.updatedAt,
-          flowId,
-          plan,
-          containing,
-          HealthExportLedgerKind.entry,
-          storeVersion: dueAt,
-        );
-      }
     }
-    batch.desiredByRow[entry.id] = desired;
-    final symptomWrite = _symptomWriteFor(entry, gradedPain);
-    if (symptomWrite != null) batch.pendingSymptoms.add(symptomWrite);
-    final fertility = _fertilityWritesFor(entry);
-    final cervical = fertility.cervicalMucus;
-    if (cervical != null) batch.pendingCervicalMucus.add(cervical);
-    batch.pendingOvulation.addAll(fertility.ovulation);
+  }
+
+  bool _isPre1640FlowWithoutSummary(
+    HealthExportLedgerEntry? written,
+    DateTime updatedAt,
+  ) {
+    // On a platform that does not write cycleStart (Health Connect,
+    // Issue #1645), a flow record written by an earlier build without a
+    // summary is already in the store with the exact value this entry has.
+    // Stamp the summary without re-sending.
+    return !_platform.writesCycleStart &&
+        written != null &&
+        written.payloadSummary == null &&
+        !written.exportedAt.isBefore(updatedAt);
   }
 
   /// Decides which period interval records the store should hold after
