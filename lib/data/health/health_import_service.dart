@@ -1307,7 +1307,9 @@ class LocalHealthImportService
   ) async {
     final day = await _dayEntries.find(profileId, date);
     final spotting = await _liveSpotting(day);
-    if (spotting.isNotEmpty) return _spottingAlreadyThere(spotting);
+    if (spotting.isNotEmpty) {
+      return _spottingAlreadyThere(spotting, replacedBy: sample.recordId);
+    }
     // Issue #1561: a spotting entry she removed stays removed while the
     // store still holds the record it came from. Asked before anything is
     // written, so no empty day is made to hang it on, and read afresh,
@@ -1352,11 +1354,26 @@ class LocalHealthImportService
   /// this importer wrote it, kept when she logged it. One this importer
   /// wrote is live, whatever was remembered about its record
   /// ([_seenLive]).
-  _MergeOutcome _spottingAlreadyThere(List<Observation> spotting) {
+  ///
+  /// When [replacedBy] names a record other than the one an imported entry
+  /// holds, the other app replaced that record (deleted it, wrote a new one
+  /// for the day): the entry takes the new id, as a flow day does, so the day
+  /// is not offered as deleted in the store (Issue #1621).
+  Future<_MergeOutcome> _spottingAlreadyThere(
+    List<Observation> spotting, {
+    String? replacedBy,
+  }) async {
     var imported = false;
     for (final observation in spotting) {
       if (observation.source != _observationSource) continue;
       imported = true;
+      if (replacedBy != null && observation.sourceId != replacedBy) {
+        await _observations.save(
+          observation.copyWith(sourceId: replacedBy, updatedAt: _now()),
+        );
+        _seenLive(observation.source.toDb(), replacedBy);
+        continue;
+      }
       _seenLive(observation.source.toDb(), observation.sourceId);
     }
     return imported ? _MergeOutcome.unchanged : _MergeOutcome.keptManual;
