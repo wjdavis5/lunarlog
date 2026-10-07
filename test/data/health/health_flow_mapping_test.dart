@@ -289,9 +289,12 @@ void main() {
       expect(flowPayloadSummaryWasMarker('flow:heavy:1'), isFalse);
       expect(flowPayloadSummaryWasMarker('flow:light'), isFalse);
       expect(flowPayloadSummaryWasMarker('flow:heavy'), isFalse);
-      // Unknown is unknown: a row written before #1591, and a shape a
-      // later build wrote, both keep the conservative reading.
+      // Unknown is unknown: a row written before #1591, a row whose old
+      // record was deleted during a type swap (Issues #1642, #1670), and a
+      // shape a later build wrote, all keep the conservative reading.
       expect(flowPayloadSummaryWasMarker(null), isNull);
+      expect(flowPayloadSummaryWasMarker(flowPayloadSummaryGone), isNull);
+      expect(flowPayloadSummaryWasMarker('gone'), isNull);
       expect(flowPayloadSummaryWasMarker('a-later-builds-shape'), isNull);
     });
   });

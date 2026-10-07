@@ -175,10 +175,19 @@ String? flowPayloadSummary(
       HealthFlowIntermenstrualMarker() => 'marker',
     };
 
+/// The payload summary stamped on an export ledger row after a type-swap
+/// delete has succeeded but before the replacement record is written
+/// (Issues #1642, #1670). Can never match a planned sample or marker
+/// summary, keeps the row in write-pass scope, and ensures `_dueAt` finds
+/// the record due on any subsequent pass.
+const String flowPayloadSummaryGone = 'gone';
+
 /// Whether [summary] says the record was written as an intermenstrual
 /// bleeding marker rather than a menstrual-flow sample (Issue #1591).
 /// Null when the ledger does not say: a row written before #1591 carries
-/// no summary, and a shape this build did not write is unknown to it.
+/// no summary, a row whose old record was deleted during a type swap
+/// carries [flowPayloadSummaryGone] (Issue #1670), and a shape this build
+/// did not write is unknown to it.
 /// Unknown keeps the conservative pre-#1591 reading wherever the two
 /// types behave differently.
 bool? flowPayloadSummaryWasMarker(String? summary) {
