@@ -1901,10 +1901,10 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         continue;
       }
       if (!cleared.proceed) continue;
+      if (cleared.removed) removed++;
       final result = await _sendSample(write, facts);
       if (result is HealthPlatformAllowed) {
         written++;
-        removed += cleared.removed ? 1 : 0;
         await _remember(
           profileId,
           recordId: write.recordId,
@@ -1946,12 +1946,11 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// way; a delete that went through is reported in [removed], and counts
   /// as a record taken out of the store.
   ///
-  /// The ledger row is deliberately left to [_writeFlowRecords]'s
-  /// [_remember] to re-stamp: a delete that succeeded but whose write then
-  /// failed leaves the old summary remembered, so the next pass tries the
-  /// whole swap again (the delete of an id the store no longer holds is a
-  /// no-op) instead of a record remembered as written that is in neither
-  /// type.
+  /// Once the delete succeeds, the ledger row is forgotten immediately
+  /// (Issue #1642): the store no longer holds the old record, so if the
+  /// subsequent write fails and the day later reverts to the old type,
+  /// the next pass sees the record as unwritten and re-sends it rather
+  /// than incorrectly matching the old summary.
   Future<({bool proceed, bool removed, HealthPlatformResult? failure})>
       _clearReplacedType(
     _PendingWrite write,
@@ -1975,6 +1974,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     if (gone == null || gone.isEmpty) {
       return (proceed: false, removed: false, failure: result);
     }
+    await _memory.forget(gone);
     return (proceed: true, removed: true, failure: null);
   }
 

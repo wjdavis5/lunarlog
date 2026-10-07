@@ -5278,7 +5278,7 @@ void main() {
       );
     });
 
-    test('a failed write after a successful swap-delete is retried whole '
+    test('a failed write after a successful swap-delete is retried '
         'on the next pass', () async {
       await seedGranted(grant);
       observations.observations = [_spotting('2026-06-10', at(5))];
@@ -5291,9 +5291,9 @@ void main() {
         _entry('2026-06-11', FlowLevel.medium, at(7)),
       ];
       // The swap-delete goes through; the light sample's write is
-      // refused. The ledger still remembers the marker, so the next pass
-      // tries the whole swap again instead of a record remembered as
-      // written that is in neither type.
+      // refused. The deleted marker is forgotten from the ledger
+      // (issue #1642), so the next pass sees it as unwritten and writes
+      // the light sample without needing a redundant delete.
       platform.writeResults = [
         const HealthPlatformAllowed(), // 06-09 heavy
         const HealthPlatformAllowed(), // 06-11 medium
@@ -5301,25 +5301,71 @@ void main() {
       ];
       final refused = await service.syncNow();
       expect(refused.blocked, isA<HealthPlatformFailed>());
+      expect(refused.samplesReconciled, 1);
       expect(platform.deleteCalls, [
         ['spot-2026-06-10'],
       ]);
       expect(
-        ledger.rows.singleWhere((row) => row.recordId == 'spot-2026-06-10')
-            .payloadSummary,
-        'marker',
+        ledger.rows.any((row) => row.recordId == 'spot-2026-06-10'),
+        isFalse,
       );
 
       platform.writeResults = [];
       final retried = await service.syncNow();
       expect(retried.blocked, isNull);
-      expect(platform.deleteCalls, hasLength(2));
+      expect(platform.deleteCalls, hasLength(1));
       expect(platform.flowWrites.last.recordId, 'spot-2026-06-10');
       expect(platform.flowWrites.last.flow, HealthFlowValue.light);
       expect(
         ledger.rows.singleWhere((row) => row.recordId == 'spot-2026-06-10')
             .payloadSummary,
         'flow:light:0',
+      );
+    });
+
+    test('a spotting type swap whose delete succeeds and write fails writes '
+        'the marker if the day reverts before the retry (issue #1642)',
+        () async {
+      await seedGranted(grant);
+      observations.observations = [_spotting('2026-06-10', at(5))];
+      final service = buildService();
+      await service.syncNow();
+      expect(platform.markerWrites, hasLength(1));
+
+      dayEntries.entries = [
+        _entry('2026-06-09', FlowLevel.heavy, at(6)),
+        _entry('2026-06-11', FlowLevel.medium, at(7)),
+      ];
+      // The swap-delete goes through; the light sample's write fails.
+      platform.writeResults = [
+        const HealthPlatformAllowed(), // 06-09 heavy
+        const HealthPlatformAllowed(), // 06-11 medium
+        const HealthPlatformResult.failed('transient'), // 06-10 swap write
+      ];
+      final refused = await service.syncNow();
+      expect(refused.blocked, isA<HealthPlatformFailed>());
+      expect(refused.samplesReconciled, 1);
+      expect(platform.deleteCalls, [
+        ['spot-2026-06-10'],
+      ]);
+      expect(
+        ledger.rows.any((row) => row.recordId == 'spot-2026-06-10'),
+        isFalse,
+        reason: 'the deleted marker was forgotten so a reverted plan is due',
+      );
+
+      // Before the retry, she removes the surrounding flow days.
+      // The plan reverts to an intermenstrual marker.
+      dayEntries.entries = [];
+      platform.writeResults = [];
+      final retried = await service.syncNow();
+      expect(retried.blocked, isNull);
+      expect(platform.markerWrites, hasLength(2));
+      expect(platform.markerWrites.last.recordId, 'spot-2026-06-10');
+      expect(
+        ledger.rows.singleWhere((row) => row.recordId == 'spot-2026-06-10')
+            .payloadSummary,
+        'marker',
       );
     });
 
