@@ -194,6 +194,18 @@ bool _symptomRecordMatchesSkippedType(
       !kSymptomHealthKitTypeIdentifiers.values.any(skippedTypes.contains);
 }
 
+/// [healthRecordMatchesSkippedType] for a spotting record.
+bool _spottingRecordMatchesSkippedType(
+  Set<String> skippedTypes,
+  String? payloadSummary,
+) =>
+    switch (flowPayloadSummaryWasMarker(payloadSummary)) {
+      true => skippedTypes.contains(HealthWriteTypes.spotting),
+      false => skippedTypes.contains(HealthWriteTypes.menstrualFlow),
+      null => skippedTypes.contains(HealthWriteTypes.spotting) ||
+          skippedTypes.contains(HealthWriteTypes.menstrualFlow),
+    };
+
 /// Checks whether [recordId] belongs to one of the write types in [skippedTypes]
 /// (Issue #1583).
 ///
@@ -226,12 +238,7 @@ bool healthRecordMatchesSkippedType(
     return _symptomRecordMatchesSkippedType(recordId, skippedTypes);
   }
   if (isSpotting) {
-    return switch (flowPayloadSummaryWasMarker(payloadSummary)) {
-      true => skippedTypes.contains(HealthWriteTypes.spotting),
-      false => skippedTypes.contains(HealthWriteTypes.menstrualFlow),
-      null => skippedTypes.contains(HealthWriteTypes.spotting) ||
-          skippedTypes.contains(HealthWriteTypes.menstrualFlow),
-    };
+    return _spottingRecordMatchesSkippedType(skippedTypes, payloadSummary);
   }
   return skippedTypes.contains(HealthWriteTypes.menstrualFlow);
 }
