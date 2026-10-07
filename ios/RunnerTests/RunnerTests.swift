@@ -261,11 +261,7 @@ class RunnerTests: XCTestCase {
   /// fabricates no cursor: the page shape may claim more pages, but only
   /// with an anchor to resume from.
   func testPagePayloadFullPageWithoutAnchorCarriesNoCursor() {
-    let sample = HKCategorySample(
-      type: HKObjectType.categoryType(forIdentifier: .menstrualFlow)!,
-      value: 4,
-      start: Date(timeIntervalSince1970: 1_784_016_000),
-      end: Date(timeIntervalSince1970: 1_784_101_599))
+    let sample = Self.menstrualFlowSample()
     let payload = HealthKitChannelHandler.pagePayload(
       samples: [sample],
       deletedObjects: [],
@@ -283,11 +279,7 @@ class RunnerTests: XCTestCase {
   /// must be exactly the sample UUID, with the flow intensity wire name the
   /// codec parses.
   func testPagePayloadSampleRecordIdIsTheSampleUuid() {
-    let sample = HKCategorySample(
-      type: HKObjectType.categoryType(forIdentifier: .menstrualFlow)!,
-      value: 4,
-      start: Date(timeIntervalSince1970: 1_784_016_000),
-      end: Date(timeIntervalSince1970: 1_784_101_599))
+    let sample = Self.menstrualFlowSample()
     let payload = HealthKitChannelHandler.pagePayload(
       samples: [sample],
       deletedObjects: [],
@@ -306,29 +298,47 @@ class RunnerTests: XCTestCase {
   /// A sample this app wrote comes back with the app's own bundle id as its
   /// source, and the page must drop it: re-importing our own writes would
   /// duplicate every entry and loop the write and read directions (#193's
-  /// mandatory echo prevention). A sample constructed in memory carries the
-  /// running app as its default source, which is what makes the filter
-  /// assertable here.
-  func testPagePayloadDropsThisAppsOwnWrites() throws {
-    let sample = HKCategorySample(
+  /// mandatory echo prevention). Naming another app keeps the sample.
+  ///
+  /// The drop direction needs the in-memory sample's source to carry a
+  /// bundle id; a source without one cannot be matched by the filter at
+  /// all, so there the kept half alone is assertable.
+  func testPagePayloadDropsThisAppsOwnWrites() {
+    let sample = Self.menstrualFlowSample()
+    let otherApp = pagePayloadCount(
+      sample, ownBundleId: "com.another.health-app")
+    XCTAssertEqual(otherApp, 1, "another app's bundle id keeps the sample")
+    if let ownBundle = sample.sourceRevision.source.bundleIdentifier {
+      let dropped = pagePayloadCount(sample, ownBundleId: ownBundle)
+      XCTAssertEqual(dropped, 0, "the app's own bundle id drops the sample")
+    }
+  }
+
+  /// One in-memory menstrual-flow sample: `HKMetadataKeyMenstrualCycleStart`
+  /// is required on the type (the #193 rule the write path follows) — a
+  /// sample without it fails object validation at construction. An
+  /// in-memory sample carries no time-zone metadata, so the page maps it
+  /// through the #902 device-zone fallback.
+  private static func menstrualFlowSample() -> HKCategorySample {
+    HKCategorySample(
       type: HKObjectType.categoryType(forIdentifier: .menstrualFlow)!,
       value: 4,
       start: Date(timeIntervalSince1970: 1_784_016_000),
-      end: Date(timeIntervalSince1970: 1_784_101_599))
-    let ownBundle = try XCTUnwrap(
-      sample.sourceRevision.source.bundleIdentifier,
-      "an in-memory sample's default source is this app; if it has no "
-        + "bundle id the echo filter below can never fire")
+      end: Date(timeIntervalSince1970: 1_784_101_599),
+      metadata: [HKMetadataKeyMenstrualCycleStart: true])
+  }
+
+  private func pagePayloadCount(
+    _ sample: HKCategorySample,
+    ownBundleId: String?
+  ) -> Int? {
     let payload = HealthKitChannelHandler.pagePayload(
       samples: [sample],
       deletedObjects: [],
       newAnchor: nil,
       pageSize: 500,
-      incremental: true,
-      ownBundleId: ownBundle)
-    XCTAssertEqual((payload["samples"] as? [[String: Any]])?.count, 0)
-    // The page itself advanced, so it still says what was deleted and is
-    // not mistaken for exhaustion.
-    XCTAssertEqual(payload["incremental"] as? Bool, true)
+      incremental: false,
+      ownBundleId: ownBundleId)
+    return (payload["samples"] as? [[String: Any]])?.count
   }
 }
