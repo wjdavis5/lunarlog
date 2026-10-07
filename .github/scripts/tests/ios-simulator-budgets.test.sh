@@ -68,6 +68,9 @@ require_nonempty "the Run integration tests step block" "$test_step_block"
 build_step_block="$(lines_between 'name: Build the app for the simulator' '^      - name: Pick and boot a simulator' "$CI_WORKFLOW")"
 require_nonempty "the Build the app for the simulator step block" "$build_step_block"
 
+swift_step_block="$(lines_between 'name: Run the Swift channel unit tests on the simulator' '^      - name: Run integration tests on the simulator' "$CI_WORKFLOW")"
+require_nonempty "the Swift channel unit-test step block" "$swift_step_block"
+
 attempt_seconds="$(sed -n "s/^ *' \([0-9][0-9]*\) flutter test integration_test\/gate_test\.dart.*/\1/p" <<<"$test_step_block" | head -1)"
 require_nonempty "the per-attempt bound from the python wrapper's argv" "$attempt_seconds"
 
@@ -77,13 +80,16 @@ require_nonempty "the test step's timeout-minutes" "$step_minutes"
 build_minutes="$(sed -n 's/^ *timeout-minutes: \([0-9][0-9]*\)$/\1/p' <<<"$build_step_block" | head -1)"
 require_nonempty "the build step's timeout-minutes" "$build_minutes"
 
+swift_minutes="$(sed -n 's/^ *timeout-minutes: \([0-9][0-9]*\)$/\1/p' <<<"$swift_step_block" | head -1)"
+require_nonempty "the Swift unit-test step's timeout-minutes" "$swift_minutes"
+
 job_minutes="$(sed -n 's/^ *timeout-minutes: \([0-9][0-9]*\)$/\1/p' <<<"$job_block" | head -1)"
 require_nonempty "the job's timeout-minutes" "$job_minutes"
 
 flutter_cmd="$(sed -n "s/^ *' [0-9][0-9]* \(flutter test integration_test\/gate_test\.dart.*\)$/\1/p" <<<"$test_step_block")"
 require_nonempty "the flutter test invocation line" "$flutter_cmd"
 
-# --- The pinned budgets (issue #1278) ---------------------------------------
+# --- The pinned budgets (issue #1278; the Swift step is #1610's) -------------
 #
 # attempt_seconds = 750: the measured healthy cold-cache attempt is 495s
 # (run 36792571635: pub, kernel compile, a 208s Xcode build, ~100s to
@@ -92,10 +98,26 @@ require_nonempty "the flutter test invocation line" "$flutter_cmd"
 # both attempts of run 36784132156 without one test line.
 assert_eq "the per-attempt bound stays at the #1278 value" "750" "$attempt_seconds"
 assert_eq "the test step's cap stays at the #1278 value" "30" "$step_minutes"
-assert_eq "the job cap stays at the #1278 value" "60" "$job_minutes"
+assert_eq "the Swift unit-test step's cap stays at the #1610 value" "15" "$swift_minutes"
+assert_eq "the job cap stays at the #1610 value" "75" "$job_minutes"
 
 assert_contains "the invocation skips the implicit pub re-resolve (#1278 -- the job runs flutter pub get earlier in the same checkout)" "$flutter_cmd" "--no-pub"
 assert_contains "the invocation targets the booted simulator by UDID" "$flutter_cmd" '-d "$SIM_UDID"'
+assert_contains "the Swift unit-test step targets the booted simulator by UDID (#1610)" "$swift_step_block" '-destination "id=$SIM_UDID"'
+assert_contains "the Swift unit-test step runs the Runner scheme's test target (#1610)" "$swift_step_block" "-scheme Runner"
+
+# The Swift unit tests must run BEFORE the integration tests (issue #1610's
+# CI failure, run 37568557173): the integration build records a deleted
+# flutter_test_listener temp file as its kernel entrypoint in the shared
+# DerivedData, and an xcodebuild test that runs after it fails in the
+# Runner target's Run Script phase re-reading that entrypoint.
+swift_line="$(grep -n 'name: Run the Swift channel unit tests on the simulator' "$CI_WORKFLOW" | head -1 | cut -d: -f1)"
+require_nonempty "the Swift step's line number" "$swift_line"
+integration_line="$(grep -n 'name: Run integration tests on the simulator' "$CI_WORKFLOW" | head -1 | cut -d: -f1)"
+require_nonempty "the integration step's line number" "$integration_line"
+assert_eq "the Swift step runs before the integration tests" \
+  "before" \
+  "$([ "$swift_line" -lt "$integration_line" ] && echo before || echo after)"
 
 # --- The arithmetic the caps must keep true ---------------------------------
 
@@ -108,11 +130,12 @@ assert_eq "two ${attempt_seconds}s attempts + 240s reboot/overhead fit under the
   "fit" \
   "$([ "$step_cap_seconds" -ge "$attempt_need" ] && echo fit || echo "no: ${step_cap_seconds}s < ${attempt_need}s")"
 
-# The job cap covers the build step and the test step plus at least 6
-# minutes of checkout / Flutter setup / cache restore / simulator boot /
-# shutdown (the same arithmetic the job's own comment documents).
-job_need=$((build_minutes + step_minutes + 6))
-assert_eq "the ${job_minutes}m job cap covers ${build_minutes}m build + ${step_minutes}m test step + 6m overhead" \
+# The job cap covers the build step, the integration-test step, the Swift
+# unit-test step, and at least 6 minutes of checkout / Flutter setup / cache
+# restore / simulator boot / shutdown (the same arithmetic the job's own
+# comment documents).
+job_need=$((build_minutes + step_minutes + swift_minutes + 6))
+assert_eq "the ${job_minutes}m job cap covers ${build_minutes}m build + ${step_minutes}m test step + ${swift_minutes}m Swift step + 6m overhead" \
   "fit" \
   "$([ "$job_minutes" -ge "$job_need" ] && echo fit || echo "no: ${job_minutes}m < ${job_need}m")"
 

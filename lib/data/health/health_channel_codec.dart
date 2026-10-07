@@ -28,7 +28,7 @@
 /// | `importPastDataGranted` (Android only) | none | `bool` |
 /// | `openPermissionSettings` | none | `null` |
 /// | `readMenstrualFlowPage` | guard + `startMs` + `endMs` + `pageSize` + `cursor?` + `wholeHistory?` | a page `Map` (`samples` list + `nextCursor`), or a result string |
-/// | `commitImport` (Android only) | guard + `commitToken` | result string |
+/// | `commitImport` | guard + `commitToken` | result string |
 /// | `pastDataSwitchOffered` (Android only) | none | `bool` |
 /// | `requestPastDataAccess` (Android only) | guard args | result string |
 /// | `readCycleDeviations` | guard + `startMs` + `endMs` + `kinds` (list of wire names) | a `List` of deviation maps, or a result string |
@@ -36,13 +36,17 @@
 /// *Page result* (`readMenstrualFlowPage`, Issue #992): a `Map` with
 /// `'samples'` — a `List` of the sample maps below — and `'nextCursor'` —
 /// the opaque cursor string for the next page, omitted or null when the
-/// stream is exhausted. An optional Android-only `'incremental'` boolean
-/// (Issue #1523) is true on a page read through Health Connect's change
-/// token, that is, a page of what changed since the profile's previous
-/// import; it is absent on a full-history page and Swift never sends it.
-/// Such a page may also carry `'deletedRecordIds'` (Issue #1594), a `List`
-/// of the ids of records deleted since that import; an entry that is not
-/// a non-empty string is dropped. A
+/// stream is exhausted. An optional `'incremental'` boolean (Issue #1523)
+/// is true on a page of what changed since the profile's previous import —
+/// read through Health Connect's change token on Android, or from the
+/// stored `HKQueryAnchor` on iOS (Issue #1610); it is absent on a
+/// full-history page. Such a page may also carry `'deletedRecordIds'`
+/// (Issue #1594), a `List` of the ids of records deleted since that
+/// import; an entry that is not a non-empty string is dropped. The final
+/// page of a read may carry `'commitToken'` (Issue #1560), the import
+/// position `commitImport` stores once the days are in the database —
+/// Health Connect's change token on Android, the serialized anchor on iOS.
+/// A
 /// bare `List` is also still accepted by
 /// [decodeHealthReadResult] as a legacy single-page/exhausted success, so a
 /// result-string protocol error is never silently read as data.
@@ -194,9 +198,10 @@ abstract final class HealthChannelMethods {
   static const readMenstrualFlowPage = 'readMenstrualFlowPage';
 
   /// Commits the import position (Issue #1560) after all read pages have been
-  /// successfully stored in the local database.
-  /// **Android only:** Health Connect saves its changes token and reached-past
-  /// flag upon commit; HealthKit does not track position this way.
+  /// successfully stored in the local database: Health Connect saves its
+  /// changes token and reached-past flag upon commit; HealthKit (Issue
+  /// #1610) saves the serialized `HKQueryAnchor` the final read page handed
+  /// back, per bound profile, cleared with the binding.
   static const commitImport = 'commitImport';
 
   /// Whether this phone's Health Connect has the "Access past data"
@@ -242,11 +247,12 @@ abstract final class HealthChannelMethods {
 ///
 /// **This is the single source of truth `AppDelegate.swift`'s
 /// `MenstrualFlowRawValue` enum must match — Dart has no mechanism to
-/// assert Swift's actual raw values at test time.** `ios/RunnerTests/`
-/// exists as a Swift XCTest target, but nothing in
-/// `.github/workflows/ci.yml` runs `xcodebuild test` against it (the
-/// "iOS Simulator tests" job runs Flutter integration tests instead), so
-/// there is no automated cross-language check at all. Until that changes,
+/// assert Swift's actual raw values at test time.** `ios/RunnerTests/` is a
+/// Swift XCTest target, run by the `iOS Simulator tests` job through one
+/// `xcodebuild test` step (since Issue #1610 — before that the job ran
+/// only the Flutter integration tests, so there was no automated
+/// cross-language check at all). Even so Dart cannot assert Swift's raw
+/// values from a `flutter test`, so
 /// `test/data/health/health_flow_value_apple_raw_test.dart` pins this
 /// table's own literals and completeness so a native reimplementation of
 /// the flow enum has an explicit, reviewed reference to diff against.
@@ -278,8 +284,8 @@ const Map<HealthFlowValue, int> kHealthFlowValueAppleRawValue = {
 /// **This table is the single source of truth
 /// `AppDelegate.swift`'s symptom-severity mapping must match — Dart cannot
 /// assert Swift's actual raw values at test time** (see
-/// [kHealthFlowValueAppleRawValue]'s doc for the full no-Swift-XCTest
-/// rationale). `test/data/health/health_symptom_apple_raw_test.dart` pins
+/// [kHealthFlowValueAppleRawValue]'s doc for the full
+/// why-the-pinning-lives-here rationale). `test/data/health/health_symptom_apple_raw_test.dart` pins
 /// these literals and their completeness.
 const Map<HealthSymptomSeverity, int> kHealthSymptomSeverityAppleRawValue = {
   HealthSymptomSeverity.unspecified: 0,
