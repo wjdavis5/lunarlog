@@ -149,9 +149,8 @@ jobs:
 
       - name: Build the browser version
         # The client-safe Supabase pair, quoted for the same reason the
-        # webapp CI job quotes them: empty on forks, and the capture then
-        # skips on an unconfigured build (check:links fails below — the
-        # canonical repo always builds configured).
+        # webapp CI job quotes them: empty on forks and Dependabot, and
+        # the capture below then skips on an unconfigured build (issue #1655).
         working-directory: webapp
         env:
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -166,8 +165,13 @@ jobs:
 
       - name: Build and type-check the site
         # `npm run build` runs `astro sync`, `astro check`, and the static
-        # build.
+        # build. On an unconfigured build (forks and Dependabot) the capture
+        # skipped and today-browser-light.png was not written, so building
+        # with LUNARLOG_WEB_APP_LIVE=false drops the browser figure so
+        # check:links does not fail on the missing figure (issue #1655).
         working-directory: site
+        env:
+          LUNARLOG_WEB_APP_LIVE: ${{ secrets.SUPABASE_URL != '' && 'true' || 'false' }}
         run: npm run build
 
       - name: Verify the public/ files were copied verbatim
