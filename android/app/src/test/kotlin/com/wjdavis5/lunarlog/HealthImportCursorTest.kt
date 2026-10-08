@@ -107,6 +107,47 @@ class HealthImportCursorTest {
         assertEquals("tok", decoded.token)
     }
 
+    // Issue #1556: the period record is the range read's third stage.
+    @Test
+    fun `period cursor round-trips and is distinct from the other modes`() {
+        val withToken = HealthImportCursor.decode(HealthImportCursor.period("tok"))!!
+        assertTrue(HealthImportCursor.isPeriod(withToken.mode))
+        assertEquals("tok", withToken.token)
+
+        val firstPage = HealthImportCursor.decode(HealthImportCursor.period(null))!!
+        assertTrue(HealthImportCursor.isPeriod(firstPage.mode))
+        assertNull(firstPage.token)
+
+        assertFalse(HealthImportCursor.isPeriod(HealthImportCursor.FLOW))
+        assertFalse(HealthImportCursor.isPeriod(HealthImportCursor.INTERMENSTRUAL))
+        assertFalse(HealthImportCursor.isPeriod(HealthImportCursor.CHANGES))
+        assertFalse(HealthImportCursor.isFlow(HealthImportCursor.PERIOD))
+        assertFalse(HealthImportCursor.isIntermenstrual(HealthImportCursor.PERIOD))
+        assertFalse(HealthImportCursor.isChanges(HealthImportCursor.PERIOD))
+    }
+
+    // Issue #1556: a stored change token minted before period records
+    // joined the read set stands for a read that can never return one.
+    private fun coverageStep(token: Boolean, stamped: Boolean) =
+        HealthImportCursor.periodCoverageStep(
+            tokenStored = token, coverageStamped = stamped)
+
+    @Test
+    fun `a stored token that predates period coverage is dropped once for a whole-range read`() {
+        assertEquals(HealthImportCursor.PastReadStep.REREAD, coverageStep(true, false))
+    }
+
+    @Test
+    fun `a token minted over a period-covering read set is left alone`() {
+        assertEquals(HealthImportCursor.PastReadStep.NONE, coverageStep(true, true))
+    }
+
+    @Test
+    fun `with no stored token the read is the whole range anyway`() {
+        assertEquals(HealthImportCursor.PastReadStep.NONE, coverageStep(false, false))
+        assertEquals(HealthImportCursor.PastReadStep.NONE, coverageStep(false, true))
+    }
+
     @Test
     fun `a token containing the separator or unicode still round-trips`() {
         for (token in listOf("a:b:c", "ünïcödé", "x".repeat(4096))) {

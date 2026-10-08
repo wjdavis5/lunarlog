@@ -108,7 +108,8 @@ import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart'
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/util/timezone.dart' show fixedOffsetZoneName;
 
-import 'health_flow_mapping.dart';
+import 'health_flow_mapping.dart'
+    show flowLevelFromHealthValue, healthFlowValueRank, kPeriodRecordImportFlowLevel;
 
 // The service takes its collaborators as constructor parameters that are
 // not initializing formals (private finals via the initializer list), the
@@ -233,6 +234,66 @@ _PageResolveResult _resolvePage(_PageResolveRequest request) {
   }
 
   for (final sample in request.samples) {
+    // Issue #1556: a period record is an interval spanning its whole
+    // episode, with no intensity of its own. It expands into bleed-day
+    // candidates for every civil date of its span, each carrying the
+    // record's own id as its record key. A real flow record for the same
+    // day always outranks the fill (its rank sits below every flow value,
+    // and the strict `>` comparisons below and in [_Accumulator.addPage]
+    // keep first-seen wins on ties), so a source writing both types yields
+    // exactly one entry per day with the flow record winning — the #1556
+    // dedup rule — whatever order the store returned the records in.
+    if (sample.kind == HealthSampleKind.menstruationPeriod) {
+      final span = _periodSpan(sample);
+      if (span == null) {
+        // Neither endpoint carries a zone: unplaceable without guessing,
+        // the same rule `_dateFor` applies to an instantaneous sample.
+        withoutZone++;
+        continue;
+      }
+      if (span.end.isBefore(span.start) ||
+          span.days > kMaxPeriodRecordSpanDays) {
+        // A degenerate or oversized span. Health Connect refuses to store
+        // a period record longer than 31 days of elapsed time (the rule
+        // #1478's own write path stays under), so anything longer is a
+        // corrupt or hostile record: counted, never expanded.
+        unsupported++;
+        continue;
+      }
+      final endTz = span.endZone == span.startZone
+          ? null
+          : fixedOffsetZoneName(span.endZone);
+      var placed = false;
+      for (var date = span.start; !date.isAfter(span.end); date =
+          date.addDays(1)) {
+        if (date.isBefore(request.from) || date.isAfter(request.to)) continue;
+        placed = true;
+        // Fill only: a day any flow record already claimed is left as it
+        // is, whatever page of the pass the two arrived on.
+        final current = byDate[date];
+        if (current != null) continue;
+        byDate[date] = _DesiredSample(
+          flow: kPeriodRecordImportFlowLevel,
+          // The lowest rank in [healthFlowValueRank] — that is the whole
+          // dedup rule. It is never mapped back through
+          // [flowLevelFromHealthValue] (which would null it out); the
+          // written level is [kPeriodRecordImportFlowLevel].
+          value: HealthFlowValue.unspecified,
+          recordId: sample.recordId,
+          tzName: date == span.end && endTz != null
+              ? endTz
+              : fixedOffsetZoneName(span.startZone),
+          modifiedAt: sample.modifiedAt,
+        );
+      }
+      if (placed) {
+        // Counted once per record, not per expanded day: the counts
+        // answer "how the store's samples were placed", and this is one
+        // sample whose endpoints the source zoned.
+        countZone(sample);
+      }
+      continue;
+    }
     final date = _dateFor(sample);
     if (date == null) {
       withoutZone++;
@@ -318,6 +379,60 @@ LocalDate? _dateFor(HealthFlowSample sample) {
   final offset = sample.offset;
   if (offset == null) return null;
   return localDateForSample(sample.start, offset: offset);
+}
+
+/// One period record's resolved endpoint facts (Issue #1556), or null when
+/// it cannot be placed: neither endpoint carries a zone, so placing it
+/// would mean guessing the device zone — the rule `_dateFor` applies to an
+/// instantaneous sample. The start date resolves in the start zone
+/// ([HealthFlowSample.offset], a `MenstruationPeriodRecord`'s
+/// `startZoneOffset`) and the end date in the end zone
+/// ([HealthFlowSample.endOffset], its `endZoneOffset`); on a
+/// DST-transition day inside the span the two differ, which is exactly why
+/// the record carries both. A record with only one offset resolves both
+/// endpoints in it. The interior dates of the span need no zone of their
+/// own — they are the civil dates between the two endpoints by
+/// construction, which is why the span is expanded here rather than one
+/// sample per day in the adapter: the adapter would have to guess an
+/// offset per interior day, and Dart's `day_boundary` rules are where
+/// every other civil-date decision is made and tested.
+class _PeriodSpan {
+  const _PeriodSpan({
+    required this.start,
+    required this.end,
+    required this.startZone,
+    required this.endZone,
+  });
+
+  /// The civil date of the record's start instant in its start zone.
+  final LocalDate start;
+
+  /// The civil date of the record's end instant in its end zone.
+  final LocalDate end;
+
+  final Duration startZone;
+  final Duration endZone;
+
+  /// How many civil dates the span covers, start and end inclusive.
+  int get days =>
+      DateTime.utc(end.year, end.month, end.day)
+          .difference(DateTime.utc(start.year, start.month, start.day))
+          .inDays +
+      1;
+}
+
+_PeriodSpan? _periodSpan(HealthFlowSample sample) {
+  // Either endpoint's offset stands in for both when the record carries
+  // only one; neither means unplaceable.
+  final startZone = sample.offset ?? sample.endOffset;
+  final endZone = sample.endOffset ?? sample.offset;
+  if (startZone == null || endZone == null) return null;
+  return _PeriodSpan(
+    start: localDateForSample(sample.start, offset: startZone),
+    end: localDateForSample(sample.end, offset: endZone),
+    startZone: startZone,
+    endZone: endZone,
+  );
 }
 
 /// The zone string a written row carries: the sample's own IANA name when it

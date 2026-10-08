@@ -647,10 +647,22 @@ void main() {
       );
       expect('applyPastReadStep('.allMatches(kotlin), hasLength(2),
           reason: 'declared once and called from that one place');
-      // What it does with each answer of the rule.
+      // Issue #1556: the companion one-time step, decided the same way — a
+      // stored change token minted before the period record joined the read
+      // set never returns one, so it is dropped once.
+      expect(
+        kotlin,
+        contains(
+            'if (decoded == null) applyPeriodCoverageStep(client, profileId)'),
+      );
+      expect('applyPeriodCoverageStep('.allMatches(kotlin), hasLength(2),
+          reason: 'declared once and called from that one place');
+      // What it does with each answer of the rule. Bounded at the #1556
+      // step so this substring holds applyPastReadStep's body alone.
       final stepStart =
           kotlin.indexOf('private suspend fun applyPastReadStep(');
-      final stepEnd = kotlin.indexOf('private fun guardDecision(');
+      final stepEnd =
+          kotlin.indexOf('private suspend fun applyPeriodCoverageStep(');
       expect(stepStart, isNonNegative);
       expect(stepEnd, greaterThan(stepStart));
       final step = kotlin.substring(stepStart, stepEnd);
@@ -738,10 +750,11 @@ void main() {
       );
       expect(
         'record.metadata.lastModifiedTime'.allMatches(kotlin),
-        hasLength(2),
-        reason: 'one for each record type the import reads',
+        hasLength(3),
+        reason: 'one for each record type the import reads (Issue #1556 '
+            'added the period record)',
       );
-      expect('sampleMap('.allMatches(kotlin), hasLength(3),
+      expect('sampleMap('.allMatches(kotlin), hasLength(4),
           reason: 'declared once, called for each record type');
     });
 
@@ -767,13 +780,18 @@ void main() {
       expect(body, isNot(contains('PERMISSION_READ_HEALTH_DATA')));
       expect(body, isNot(contains('getWritePermission')));
       expect(body, isNot(contains('backgroundReadPermissions')));
-      // The pass really does read those two types and no third.
+      // The pass really does read those three types and no further
+      // (Issue #1556 added the period record to the read set).
       expect(
         RegExp(r'ReadRecordsRequest\(\s*(\w+)::class')
             .allMatches(kotlin)
             .map((match) => match.group(1))
             .toSet(),
-        {'MenstruationFlowRecord', 'IntermenstrualBleedingRecord'},
+        {
+          'MenstruationFlowRecord',
+          'IntermenstrualBleedingRecord',
+          'MenstruationPeriodRecord',
+        },
       );
     });
 

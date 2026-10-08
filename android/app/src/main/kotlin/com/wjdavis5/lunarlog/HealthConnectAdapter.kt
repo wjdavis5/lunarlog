@@ -69,8 +69,11 @@ import kotlin.reflect.KClass
 // rule lives in lib/data/health/health_channel.dart's library doc and
 // both halves of the channel are bound by it.
 //
-// Issue #458 adds the read half: getChangesToken/getChanges over the two
-// user-recorded menstrual types, with dataOrigin filtering so this app's
+// Issue #458 adds the read half: getChangesToken/getChanges over the
+// user-recorded menstrual record types — the flow and spotting records
+// since #458, the period record since #1556 (all three under the same two
+// read permissions: the period record shares READ_MENSTRUATION with the
+// flow record) — with dataOrigin filtering so this app's
 // own writes are never re-imported (the Android counterpart of #217's
 // sourceRevision filtering) and a change-token-expiry fallback (connect-
 // client 1.1.0 reports expiry as ChangesPage.changesTokenExpired, not a
@@ -1394,6 +1397,10 @@ class HealthConnectAdapter(context: Context) {
         // read below that whole-range read, and it mints a new token when
         // it finishes. See [HealthImportCursor.pastReadStep].
         if (decoded == null) applyPastReadStep(client, profileId)
+        // Issue #1556: a token minted before period records joined the
+        // read never returns one. Dropped once, the same way, so the
+        // whole-range read below mints a period-covering token.
+        if (decoded == null) applyPeriodCoverageStep(client, profileId)
         // A stored change token means an incremental pass: the first page
         // (no cursor) uses it, and every later changes page carries its own
         // next token in the cursor.
@@ -1467,7 +1474,7 @@ class HealthConnectAdapter(context: Context) {
         } else {
             // Issue #1560: the final changes page hands back the commit token
             // so Dart can commit it after successfully merging days into storage.
-            val token = if (next.isNotEmpty()) next else mintChangesToken(client)
+            val token = if (next.isNotEmpty()) next else mintChangesToken(client, profileId)
             if (token != null) {
                 payload["commitToken"] = HealthImportCursor.commit(token)
             }
@@ -1478,9 +1485,10 @@ class HealthConnectAdapter(context: Context) {
     // One page of a full time-range read for one record type. The cursor's
     // mode says which type this page belongs to and carries that type's
     // pageToken; when the flow type is exhausted the next cursor starts the
-    // intermenstrual-bleeding type, and when that is exhausted the page
-    // carries no cursor at all (the Dart loop's termination condition) and a
-    // fresh change token is minted for the next incremental pass.
+    // intermenstrual-bleeding type, when that is exhausted the next cursor
+    // starts the period type (Issue #1556), and when that is exhausted the
+    // page carries no cursor at all (the Dart loop's termination condition)
+    // and a fresh change token is minted for the next incremental pass.
     private suspend fun readRangePage(
         client: HealthConnectClient,
         profileId: String,
@@ -1524,7 +1532,10 @@ class HealthConnectAdapter(context: Context) {
                 ?: HealthImportCursor.intermenstrual(null)
             return payload
         }
-        // Intermenstrual-bleeding page (the second and final type).
+        // Intermenstrual-bleeding page (the second type).
+        if (HealthImportCursor.isPeriod(mode)) {
+            return readPeriodPage(client, profileId, start, end, pageSize, token)
+        }
         val response = client.readRecords(
             ReadRecordsRequest(
                 IntermenstrualBleedingRecord::class,
@@ -1539,9 +1550,44 @@ class HealthConnectAdapter(context: Context) {
             payload["nextCursor"] = HealthImportCursor.intermenstrual(
                 response.pageToken)
         } else {
-            // Both types exhausted: this pass is done, and the next pass
-            // should be incremental. Mint a "now" anchor, best effort.
-            val next = mintChangesToken(client)
+            // Intermenstrual-bleeding exhausted -> start the period type
+            // (Issue #1556) with no token rather than ending the pass.
+            payload["nextCursor"] = HealthImportCursor.period(null)
+        }
+        return payload
+    }
+
+    // Issue #1556: the period-record page, the third and final type. A
+    // `MenstruationPeriodRecord` is one record per period episode, start to
+    // end; it crosses the channel as one `menstruationPeriod` sample (the
+    // Dart side expands it into its span's bleed days) under the same
+    // READ_MENSTRUATION permission the flow page read.
+    private suspend fun readPeriodPage(
+        client: HealthConnectClient,
+        profileId: String,
+        start: Instant,
+        end: Instant,
+        pageSize: Int,
+        token: String?,
+    ): Map<String, Any> {
+        val response = client.readRecords(
+            ReadRecordsRequest(
+                MenstruationPeriodRecord::class,
+                TimeRangeFilter.between(start, end),
+                pageSize = pageSize,
+                pageToken = token,
+            ))
+        val payload = mutableMapOf<String, Any>(
+            "samples" to response.records.mapNotNull { record ->
+                sampleFor(record, start, end)
+            },
+        )
+        if (response.pageToken != null) {
+            payload["nextCursor"] = HealthImportCursor.period(response.pageToken)
+        } else {
+            // All three types exhausted: this pass is done, and the next
+            // pass should be incremental. Mint a "now" anchor, best effort.
+            val next = mintChangesToken(client, profileId)
             if (next != null) {
                 // Issue #1549/#1560: this read reached the older data only if
                 // "Access past data" was on from its first page (recorded
@@ -1558,15 +1604,26 @@ class HealthConnectAdapter(context: Context) {
 
     private suspend fun mintChangesToken(
         client: HealthConnectClient,
+        profileId: String,
     ): String? = try {
-        client.getChangesToken(
+        // Issue #1556: the period record joins the change-token set, so an
+        // incremental pass sees another app's period upserts and deletions.
+        // The type shares READ_MENSTRUATION with the flow record, so the
+        // set widens under a permission the install already holds.
+        val token = client.getChangesToken(
             ChangesTokenRequest(
                 setOf(
                     MenstruationFlowRecord::class,
                     IntermenstrualBleedingRecord::class,
+                    MenstruationPeriodRecord::class,
                 ),
             ),
         )
+        // Stamped on every successful mint: a stored token stands for a
+        // read set that covers periods, and the one-time #1556 re-read
+        // (applyPeriodCoverageStep) need not run again.
+        prefs.edit().putString(periodCoverageKey(profileId), "1").apply()
+        token
     } catch (e: Exception) {
         null
     }
@@ -1598,6 +1655,38 @@ class HealthConnectAdapter(context: Context) {
                     sampleMap(record.metadata.id, "intermenstrualBleeding",
                         record.time, record.zoneOffset,
                         record.metadata.lastModifiedTime)
+                } else {
+                    null
+                }
+            // Issue #1556: one interval record per period episode, start to
+            // end. It crosses as ONE sample — Dart expands it into its
+            // span's bleed days from the two endpoint civil dates, so the
+            // interior days need no per-day zone guess here. The span's
+            // overlap with the read window is the inclusion test (either
+            // endpoint inside, or the record covering the window); Dart's
+            // window filter does the precise per-day clamp. `endMs` carries
+            // the real end instant (the flow sample map's start==end
+            // convention is for instantaneous records), and the end
+            // instant's own offset rides `endZoneOffsetSeconds` — on a
+            // DST-transition day inside the span it differs from the start
+            // offset, and only both together place the endpoint days
+            // exactly.
+            is MenstruationPeriodRecord ->
+                if (!record.endTime.isBefore(start) &&
+                    !record.startTime.isAfter(end)
+                ) {
+                    sampleMap(
+                        record.metadata.id,
+                        "menstruationPeriod",
+                        record.startTime,
+                        record.startZoneOffset,
+                        record.metadata.lastModifiedTime,
+                    ).apply {
+                        this["endMs"] = record.endTime.toEpochMilli()
+                        record.endZoneOffset?.let {
+                            this["endZoneOffsetSeconds"] = it.totalSeconds
+                        }
+                    }
                 } else {
                     null
                 }
@@ -1727,6 +1816,36 @@ class HealthConnectAdapter(context: Context) {
             HealthImportCursor.PastReadStep.NONE -> Unit
         }
     }
+
+    // Issue #1556, at the start of a pass: a stored change token minted
+    // before period records joined the read set never returns one, the
+    // same silent staleness [applyPastReadStep] exists for. The rule is
+    // [HealthImportCursor.periodCoverageStep]; the stamp is set by every
+    // successful [mintChangesToken], which now mints over all three
+    // types. A failed mint leaves no stamp, so the next pass retries the
+    // whole-range read.
+    private suspend fun applyPeriodCoverageStep(
+        client: HealthConnectClient,
+        profileId: String,
+    ) {
+        if (prefs.getString(changesTokenKey(profileId), null) == null) return
+        val step = HealthImportCursor.periodCoverageStep(
+            tokenStored = true,
+            coverageStamped =
+                prefs.getString(periodCoverageKey(profileId), null) != null,
+        )
+        if (step == HealthImportCursor.PastReadStep.REREAD) {
+            prefs.edit().remove(changesTokenKey(profileId)).apply()
+        }
+    }
+
+    // Issue #1556: whether the stored change token (if any) was minted
+    // over a read set that covers period records. Set by
+    // [mintChangesToken]; absent for every token minted before #1556.
+    // Like [reachedPastKey] it travels with the token it describes, and a
+    // first pass on a new phone throws both away with the token.
+    private fun periodCoverageKey(profileId: String): String =
+        "lunarlog.health.changesTokenCoversPeriods.$profileId"
 
     // The native mirror of HealthSyncBinding._evaluate — same wire
     // strings the Dart codec decodes. `boundProfileId` comes from
@@ -2156,15 +2275,18 @@ internal class HealthChangeFold<T> {
  * A cursor is `<mode>:<base64url token>`, where the mode names which stage
  * of the read the token belongs to:
  *
- *  * `flow` — a full-range `readRecords` page for `MenstruationFlowRecord`;
- *  * `ib`   — a full-range `readRecords` page for
+ *  * `flow`   — a full-range `readRecords` page for `MenstruationFlowRecord`;
+ *  * `ib`     — a full-range `readRecords` page for
  *               `IntermenstrualBleedingRecord`;
- *  * `chg`  — a `getChanges` page (the incremental pass).
+ *  * `period` — a full-range `readRecords` page for
+ *               `MenstruationPeriodRecord` (Issue #1556);
+ *  * `chg`    — a `getChanges` page (the incremental pass).
  *
  * The flow stage's final page emits an `ib:` cursor (empty token) so the
  * read moves on to the second record type; the ib stage's final page emits
- * no cursor at all, which is the Dart loop's termination condition. Dart
- * never parses this — it only compares cursors for equality to prove
+ * a `period:` cursor the same way (#1556); the period stage's final page
+ * emits no cursor at all, which is the Dart loop's termination condition.
+ * Dart never parses this — it only compares cursors for equality to prove
  * progress — so the format is free to change here, but a repeated cursor or
  * a malformed one must never trap the loop. Deliberately free of Health
  * Connect types (only `Base64` and strings) so it is unit-testable on the
@@ -2182,6 +2304,7 @@ internal object HealthImportCursor {
 
     const val FLOW = "flow"
     const val INTERMENSTRUAL = "ib"
+    const val PERIOD = "period"
     const val CHANGES = "chg"
     const val COMMIT = "commit"
 
@@ -2195,6 +2318,7 @@ internal object HealthImportCursor {
 
     fun flow(token: String?): String = encode(FLOW, token)
     fun intermenstrual(token: String?): String = encode(INTERMENSTRUAL, token)
+    fun period(token: String?): String = encode(PERIOD, token)
     fun changes(token: String): String = encode(CHANGES, token)
 
     fun commit(token: String, lowerPast: Boolean = false): String {
@@ -2277,6 +2401,22 @@ internal object HealthImportCursor {
         else -> PastReadStep.NONE
     }
 
+    /**
+     * What the start of a pass does about a change token minted before
+     * period records joined the read (Issue #1556).
+     *
+     * A token stands for the record-type set it was minted over. Every
+     * token minted before #1556 covers the two flow types only, so a pass
+     * holding one would never see a period record — the same silent
+     * staleness the #1549 `pastReadStep` exists for — until the token
+     * expired on its own. When a token is stored and the install has not
+     * yet minted one that covers periods, the token is dropped once, so
+     * the pass reads the whole range and its final mint covers all three
+     * types and stamps the coverage marker.
+     */
+    fun periodCoverageStep(tokenStored: Boolean, coverageStamped: Boolean): PastReadStep =
+        if (tokenStored && !coverageStamped) PastReadStep.REREAD else PastReadStep.NONE
+
     // The two values kept for [pastReadStep]'s `reachedPast`.
     const val REACHED_PAST = "past"
     const val REACHED_RECENT = "recent"
@@ -2294,6 +2434,7 @@ internal object HealthImportCursor {
 
     fun isFlow(mode: String): Boolean = mode == FLOW
     fun isIntermenstrual(mode: String): Boolean = mode == INTERMENSTRUAL
+    fun isPeriod(mode: String): Boolean = mode == PERIOD
     fun isChanges(mode: String): Boolean = mode == CHANGES
 
     private fun encode(mode: String, token: String?): String {
@@ -2307,7 +2448,8 @@ internal object HealthImportCursor {
         val index = cursor.indexOf(SEPARATOR)
         if (index <= 0) return null
         val mode = cursor.substring(0, index)
-        if (!isFlow(mode) && !isIntermenstrual(mode) && !isChanges(mode)) {
+        if (!isFlow(mode) && !isIntermenstrual(mode) && !isPeriod(mode) &&
+            !isChanges(mode)) {
             return null
         }
         val payload = cursor.substring(index + 1)
