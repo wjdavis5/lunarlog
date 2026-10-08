@@ -337,11 +337,15 @@ class _PendingBbtWrite {
 /// fertility/measurement signals join their own lists, and every row in
 /// scope says what it should have in the store ([desiredByRow]).
 class _Batch {
+  _Batch({this.writesCycleStart = true});
+
+  final bool writesCycleStart;
   final List<_PendingWrite> pending = [];
   final List<_PendingSymptomWrite> pendingSymptoms = [];
   final List<_PendingCervicalMucusWrite> pendingCervicalMucus = [];
   final List<_PendingOvulationWrite> pendingOvulation = [];
   final List<_PendingBbtWrite> pendingBbt = [];
+  final List<HealthExportLedgerEntry> quietStamps = [];
   int withoutSample = 0;
 
   /// The record ids each in-scope day entry or spotting observation should
@@ -408,7 +412,11 @@ class _Batch {
       tzName: tzName,
       plan: plan,
       cycleStart: cycleStart,
-      payloadSummary: flowPayloadSummary(plan, cycleStart: cycleStart),
+      payloadSummary: flowPayloadSummary(
+        plan,
+        cycleStart: cycleStart,
+        writesCycleStart: writesCycleStart,
+      ),
       recordId: recordId,
       updatedAt: updatedAt,
       kind: kind,
@@ -437,11 +445,13 @@ class _Batch {
   static String? payloadSummaryOf(
     HealthFlowWritePlan plan,
     Episode? containing,
-    LocalDate date,
-  ) =>
+    LocalDate date, {
+    bool writesCycleStart = true,
+  }) =>
       flowPayloadSummary(
         plan,
         cycleStart: cycleStartOf(plan, containing, date),
+        writesCycleStart: writesCycleStart,
       );
 }
 
@@ -786,11 +796,12 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// Doing this twice changes nothing but to send again what was saved
   /// after the floor, so it is safe to repeat if the stored state is lost.
   ///
-  /// The re-stamped rows carry no payload summary: what the earlier build
-  /// wrote is unknown to this one, so Issue #1591's rule sends each flow
-  /// or spotting record once more — which is what lets the first pass on
-  /// an upgraded phone correct a cycle-start flag an earlier build wrote
-  /// wrong — and stamps the summary of what it sent.
+  /// The re-stamped rows carry no payload summary when written by an
+  /// earlier build (what the earlier build wrote is unknown to this one,
+  /// so Issue #1591's rule sends each flow or spotting record once more —
+  /// which is what lets the first pass on an upgraded phone correct a
+  /// cycle-start flag an earlier build wrote wrong — and stamps the summary
+  /// of what it sent); a summary already known is preserved (Issue #1641).
   Future<void> _adoptEarlierLedger(
     DateTime floor,
     List<DayEntry> entries,
@@ -818,6 +829,9 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         kind: written.kind,
         localDate: written.localDate,
         exportedAt: version.isAfter(floor) ? floor : version,
+        writtenVersion: written.writtenVersion ??
+            (version.isAfter(floor) ? floor : version),
+        payloadSummary: written.payloadSummary,
       ));
     }
     await _memory.forget(neverWritten.where((id) => _memory.entryOf(id) != null));
@@ -1019,7 +1033,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     final pain = _indexPain(observationRows);
     final bleedDays = bleedDatesOf(entries);
     final episodes = deriveEpisodes(bleedDays);
-    final batch = _Batch();
+    final batch = _Batch(writesCycleStart: _platform.writesCycleStart);
     batch.liveRowIds
       ..addAll(entries.map((entry) => entry.id))
       ..addAll(observationRows.map((row) => row.id));
@@ -1073,6 +1087,23 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   ) {
     final desired = healthRecordIdsForEntry(entry);
     final flowId = healthFlowRecordId(entry.id);
+    _collectFlowEntry(entry, containing, batch, desired, flowId);
+    batch.desiredByRow[entry.id] = desired;
+    final symptomWrite = _symptomWriteFor(entry, gradedPain);
+    if (symptomWrite != null) batch.pendingSymptoms.add(symptomWrite);
+    final fertility = _fertilityWritesFor(entry);
+    final cervical = fertility.cervicalMucus;
+    if (cervical != null) batch.pendingCervicalMucus.add(cervical);
+    batch.pendingOvulation.addAll(fertility.ovulation);
+  }
+
+  void _collectFlowEntry(
+    DayEntry entry,
+    Episode? containing,
+    _Batch batch,
+    Set<String> desired,
+    String flowId,
+  ) {
     final plan = mapFlowToHealthWrite(
       entry.flow,
       inPeriodEpisode: containing != null,
@@ -1092,34 +1123,53 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
           _state.notYetCleared(entry.updatedAt)) {
         batch.unknownFlowRecords[flowId] = entry.updatedAt;
       }
-    } else {
-      final dueAt = _dueAt(
-        flowId,
-        entry.updatedAt,
-        _writeTypeOf(plan),
-        payloadSummary:
-            _Batch.payloadSummaryOf(plan, containing, entry.localDate),
-      );
-      if (dueAt != null) {
-        batch.add(
-          entry.localDate,
-          entry.tz,
-          entry.updatedAt,
-          flowId,
-          plan,
-          containing,
-          HealthExportLedgerKind.entry,
-          storeVersion: dueAt,
-        );
-      }
+      return;
     }
-    batch.desiredByRow[entry.id] = desired;
-    final symptomWrite = _symptomWriteFor(entry, gradedPain);
-    if (symptomWrite != null) batch.pendingSymptoms.add(symptomWrite);
-    final fertility = _fertilityWritesFor(entry);
-    final cervical = fertility.cervicalMucus;
-    if (cervical != null) batch.pendingCervicalMucus.add(cervical);
-    batch.pendingOvulation.addAll(fertility.ovulation);
+
+    final summary = _Batch.payloadSummaryOf(
+      plan,
+      containing,
+      entry.localDate,
+      writesCycleStart: _platform.writesCycleStart,
+    );
+    final written = _memory.entryOf(flowId);
+    if (_isPre1640FlowWithoutSummary(written, entry.updatedAt)) {
+      batch.quietStamps.add(written!.copyWith(payloadSummary: summary));
+      return;
+    }
+
+    final dueAt = _dueAt(
+      flowId,
+      entry.updatedAt,
+      _writeTypeOf(plan),
+      payloadSummary: summary,
+    );
+    if (dueAt != null) {
+      batch.add(
+        entry.localDate,
+        entry.tz,
+        entry.updatedAt,
+        flowId,
+        plan,
+        containing,
+        HealthExportLedgerKind.entry,
+        storeVersion: dueAt,
+      );
+    }
+  }
+
+  bool _isPre1640FlowWithoutSummary(
+    HealthExportLedgerEntry? written,
+    DateTime updatedAt,
+  ) {
+    // On a platform that does not write cycleStart (Health Connect,
+    // Issue #1645), a flow record written by an earlier build without a
+    // summary is already in the store with the exact value this entry has.
+    // Stamp the summary without re-sending.
+    return !_platform.writesCycleStart &&
+        written != null &&
+        written.payloadSummary == null &&
+        !written.exportedAt.isBefore(updatedAt);
   }
 
   /// Decides which period interval records the store should hold after
@@ -1304,7 +1354,12 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       recordId,
       row.updatedAt,
       _writeTypeOf(plan),
-      payloadSummary: _Batch.payloadSummaryOf(plan, containing, row.localDate),
+      payloadSummary: _Batch.payloadSummaryOf(
+        plan,
+        containing,
+        row.localDate,
+        writesCycleStart: _platform.writesCycleStart,
+      ),
       storeVersion: _later(row.updatedAt, dayVersion),
     );
     if (dueAt == null) return;
@@ -1496,6 +1551,9 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   }) async {
     final canWriteFlow =
         _canWriteType(grantedTypes, HealthWriteTypes.menstrualFlow);
+    if (canWriteFlow && batch.quietStamps.isNotEmpty) {
+      await _memory.remember(batch.quietStamps);
+    }
     final flow = await _writeFlowRecords(
       batch.pending,
       facts,
@@ -1566,8 +1624,12 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// Remembers that the store accepted [recordId] for its row as it stood
   /// at [version]. The only way a day's or an observation's record enters
   /// the export ledger, so the ledger never names a record that was not
-  /// written. [payloadSummary] is what the record says that other rows
-  /// decide (Issue #1591); null for a kind with no such payload.
+  /// Remembers that [recordId] has been written to the health store at
+  /// [version] (its source row's `updatedAt`). [writtenVersion] is the
+  /// version the store was given (Issue #1643), which differs from [version]
+  /// on a summary-driven re-send or when a row edit arrives after one.
+  /// [payloadSummary] is what the record says that other rows decide
+  /// (Issue #1591); null for a kind with no such payload.
   Future<void> _remember(
     String profileId, {
     required String recordId,
@@ -1575,6 +1637,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     required HealthExportLedgerKind kind,
     required LocalDate date,
     required DateTime version,
+    DateTime? writtenVersion,
     String? payloadSummary,
   }) =>
       _memory.remember([
@@ -1585,6 +1648,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
           kind: kind,
           localDate: date.iso,
           exportedAt: version,
+          writtenVersion: writtenVersion ?? version,
           payloadSummary: payloadSummary,
         ),
       ]);
@@ -1782,14 +1846,17 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
 
   /// Whether a delete that skipped [skippedTypes] may have left [recordId]
   /// in the store ([healthRecordMatchesSkippedType], which counts either
-  /// of a spotting record's two types).
-  bool _passedOver(String recordId, Set<String> skippedTypes) =>
-      healthRecordMatchesSkippedType(
-        recordId,
-        skippedTypes,
-        isSpotting:
-            _memory.entryOf(recordId)?.kind == HealthExportLedgerKind.spotting,
-      );
+  /// of a spotting record's two types when the written type is unknown,
+  /// or only the written type when known from the summary).
+  bool _passedOver(String recordId, Set<String> skippedTypes) {
+    final entry = _memory.entryOf(recordId);
+    return healthRecordMatchesSkippedType(
+      recordId,
+      skippedTypes,
+      isSpotting: entry?.kind == HealthExportLedgerKind.spotting,
+      payloadSummary: entry?.payloadSummary,
+    );
+  }
 
   /// Whether a delete of flow or period records went through: the store
   /// allowed it, or passed over other types only (Issue #1583).
@@ -1896,10 +1963,10 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         continue;
       }
       if (!cleared.proceed) continue;
+      if (cleared.removed) removed++;
       final result = await _sendSample(write, facts);
       if (result is HealthPlatformAllowed) {
         written++;
-        removed += cleared.removed ? 1 : 0;
         await _remember(
           profileId,
           recordId: write.recordId,
@@ -1907,6 +1974,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
           kind: write.kind,
           date: write.date,
           version: write.updatedAt,
+          writtenVersion: write.storeVersion,
           payloadSummary: write.payloadSummary,
         );
         continue;
@@ -1925,6 +1993,12 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// in the store under one id, so the old one goes first — a delete
   /// after the write would take the new record out with the old.
   ///
+  /// When an earlier build wrote a spotting record without a summary
+  /// (Issue #1641), what type was written in the store is unknown. The store
+  /// may hold the other type under the same record id (a delete of an id
+  /// the store does not hold is a no-op), so deleting first clears the way
+  /// under the same [healthRecordDeletable] wait.
+  ///
   /// When the old type's write switch is off, the delete would be passed
   /// over and the old record would stay beside the new one for good (the
   /// ledger would then say the new type, and nothing would look at the
@@ -1935,12 +2009,12 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// way; a delete that went through is reported in [removed], and counts
   /// as a record taken out of the store.
   ///
-  /// The ledger row is deliberately left to [_writeFlowRecords]'s
-  /// [_remember] to re-stamp: a delete that succeeded but whose write then
-  /// failed leaves the old summary remembered, so the next pass tries the
-  /// whole swap again (the delete of an id the store no longer holds is a
-  /// no-op) instead of a record remembered as written that is in neither
-  /// type.
+  /// Once the delete succeeds, the ledger row is re-stamped with
+  /// [flowPayloadSummaryGone] (Issues #1642, #1670): the store no longer holds
+  /// the old record, so if the subsequent write fails, the row remains in
+  /// scope for future passes, [HealthWritePassState.admitsNew] is not
+  /// consulted, and the record stays due on whichever type the day wants next
+  /// rather than incorrectly matching the old summary.
   Future<({bool proceed, bool removed, HealthPlatformResult? failure})>
       _clearReplacedType(
     _PendingWrite write,
@@ -1948,9 +2022,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     Set<String>? grantedTypes,
   ) async {
     final written = _memory.entryOf(write.recordId);
-    final wasMarker = flowPayloadSummaryWasMarker(written?.payloadSummary);
-    final isMarker = write.plan is HealthFlowIntermenstrualMarker;
-    if (wasMarker == null || wasMarker == isMarker) {
+    if (!_needsTypeSwapDelete(written, write)) {
       return (proceed: true, removed: false, failure: null);
     }
     if (!healthRecordDeletable(written, grantedTypes)) {
@@ -1961,7 +2033,28 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     if (gone == null || gone.isEmpty) {
       return (proceed: false, removed: false, failure: result);
     }
+    await _memory.remember([
+      written!.copyWith(payloadSummary: flowPayloadSummaryGone),
+    ]);
     return (proceed: true, removed: true, failure: null);
+  }
+
+  /// Whether [write] replaces an existing record in the store of the other
+  /// type under the same id, needing a delete first.
+  static bool _needsTypeSwapDelete(
+    HealthExportLedgerEntry? written,
+    _PendingWrite write,
+  ) {
+    if (written == null || written.payloadSummary == flowPayloadSummaryGone) {
+      return false;
+    }
+    final wasMarker = flowPayloadSummaryWasMarker(written.payloadSummary);
+    if (wasMarker == null) {
+      return write.kind == HealthExportLedgerKind.spotting ||
+          written.kind == HealthExportLedgerKind.spotting;
+    }
+    final isMarker = write.plan is HealthFlowIntermenstrualMarker;
+    return wasMarker != isMarker;
   }
 
   /// Sends [write]'s menstrual-flow or intermenstrual-bleeding sample.
@@ -2124,9 +2217,9 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   int _nextPeriodVersion(HealthExportLedgerEntry? remembered) {
     final nowMs = _now().millisecondsSinceEpoch;
     if (remembered == null) return nowMs;
-    // The ledger row's export instant is the version it was written with
+    // The ledger row's written version is the version it was written with
     // ([_rememberPeriod]).
-    final lastMs = remembered.exportedAt.millisecondsSinceEpoch;
+    final lastMs = remembered.storeVersion.millisecondsSinceEpoch;
     return nowMs > lastMs ? nowMs : lastMs + 1;
   }
 
@@ -2155,18 +2248,20 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     String interval,
     LocalDate start,
     int versionMs,
-  ) =>
-      _memory.remember([
-        HealthExportLedgerEntry(
-          recordId: recordId,
-          profileId: profileId,
-          sourceRowId: interval,
-          kind: HealthExportLedgerKind.period,
-          localDate: start.iso,
-          exportedAt:
-              DateTime.fromMillisecondsSinceEpoch(versionMs, isUtc: true),
-        ),
-      ]);
+  ) {
+    final v = DateTime.fromMillisecondsSinceEpoch(versionMs, isUtc: true);
+    return _memory.remember([
+      HealthExportLedgerEntry(
+        recordId: recordId,
+        profileId: profileId,
+        sourceRowId: interval,
+        kind: HealthExportLedgerKind.period,
+        localDate: start.iso,
+        exportedAt: v,
+        writtenVersion: v,
+      ),
+    ]);
+  }
 
   /// Sends the due symptom samples (Issue #238) and remembers the ones the
   /// store accepts. A platform that answers `unavailable` — Health Connect
@@ -2220,6 +2315,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
             kind: HealthExportLedgerKind.entry,
             localDate: symptom.date.iso,
             exportedAt: symptom.updatedAt,
+            writtenVersion: symptom.updatedAt,
           ),
       ]);
     }
@@ -2492,14 +2588,18 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     final rowChanged = written.exportedAt.isBefore(version);
     final summaryChanged = written.payloadSummary != payloadSummary;
     if (!rowChanged && !summaryChanged) return null;
-    // A re-send the row itself asked for keeps the natural version: the
-    // row is past the version the store holds. One whose summary differs
-    // — a change made through other rows, or the unknown summary of a
-    // record a build before #1591 wrote — does not say which version the
-    // store's copy carries, so it goes out above the natural one, the
-    // way the period record raises its own.
-    if (summaryChanged) {
-      return _pastWrittenVersion(natural, written.exportedAt);
+    // A re-send whose summary differs — a change made through other rows,
+    // or the unknown summary of a record a build before #1591 wrote — does
+    // not say which version the store's copy carries, so it goes out above
+    // the version the store holds, the way the period record raises its own.
+    // Likewise, an edit whose natural version is at or below what the store
+    // already holds (e.g. an offline edit made before a correction re-send
+    // but synced after it, Issue #1643) must write above what the store holds
+    // or the store keeps the old copy.
+    final storeWritten = written.storeVersion;
+    if (summaryChanged ||
+        natural.millisecondsSinceEpoch <= storeWritten.millisecondsSinceEpoch) {
+      return _pastWrittenVersion(natural, storeWritten);
     }
     return natural;
   }

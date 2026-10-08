@@ -32,6 +32,7 @@ HealthExportLedgerEntry _entry(
   HealthExportLedgerKind kind = HealthExportLedgerKind.entry,
   String localDate = '2026-09-01',
   String? payloadSummary,
+  DateTime? writtenVersion,
 }) =>
     HealthExportLedgerEntry(
       recordId: recordId,
@@ -41,6 +42,7 @@ HealthExportLedgerEntry _entry(
       localDate: localDate,
       exportedAt: DateTime.utc(2026, 9, 1),
       payloadSummary: payloadSummary,
+      writtenVersion: writtenVersion,
     );
 
 void main() {
@@ -63,7 +65,11 @@ void main() {
     test('record round-trips every column, preserving kind and provenance',
         () async {
       await ledger.record([
-        _entry('entry-1'),
+        _entry(
+          'entry-1',
+          payloadSummary: 'flow:light:1',
+          writtenVersion: DateTime.utc(2026, 9, 1, 14, 30),
+        ),
         _entry(
           'bbt-obs-1',
           sourceRowId: 'obs-1',
@@ -79,9 +85,14 @@ void main() {
       expect(flow.kind, HealthExportLedgerKind.entry);
       expect(flow.localDate, '2026-09-01');
       expect(flow.exportedAt, DateTime.utc(2026, 9, 1));
+      expect(flow.payloadSummary, 'flow:light:1');
+      expect(flow.writtenVersion, DateTime.utc(2026, 9, 1, 14, 30));
+      expect(flow.storeVersion, DateTime.utc(2026, 9, 1, 14, 30));
       final bbt = rows.singleWhere((r) => r.recordId == 'bbt-obs-1');
       expect(bbt.kind, HealthExportLedgerKind.bbt);
       expect(bbt.sourceRowId, 'obs-1');
+      expect(bbt.writtenVersion, isNull);
+      expect(bbt.storeVersion, DateTime.utc(2026, 9, 1));
     });
 
     test('record upserts by record id (no duplicate rows)', () async {
@@ -196,6 +207,9 @@ void main() {
           // Issue #1591: what the written record said that other rows
           // decide. Nullable; null is the pre-#1591 "unknown" reading.
           'payload_summary',
+          // Issue #1643: what version the health store was written at.
+          // Nullable; null falls back to exported_at.
+          'written_version',
         },
       );
     });

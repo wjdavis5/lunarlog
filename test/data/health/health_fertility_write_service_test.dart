@@ -96,6 +96,9 @@ class _FakePlatform implements HealthPlatformStore {
   HealthPlatformResult fertilityResult = const HealthPlatformAllowed();
 
   @override
+  bool writesCycleStart = true;
+
+  @override
   Future<bool> isAvailable() async => true;
 
   @override

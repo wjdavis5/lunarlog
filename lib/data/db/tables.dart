@@ -1180,6 +1180,11 @@ class HealthExportLedger extends Table {
   /// unknown" and is sent once more so the store is corrected.
   TextColumn get payloadSummary => text().named('payload_summary').nullable()();
 
+  /// Issue #1643: the version given to the health store when writing the sample.
+  /// Null for a row written before this column existed, which reads as
+  /// having been written at [exportedAt].
+  DateTimeColumn get writtenVersion => dateTime().named('written_version').nullable()();
+
   @override
   Set<Column> get primaryKey => {recordId};
 }

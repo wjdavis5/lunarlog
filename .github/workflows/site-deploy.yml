@@ -148,7 +148,12 @@ jobs:
       # capture runs after the Flutter renders and before the site build,
       # writing into the same gitignored site/public/screenshots/ the
       # build copies into dist/.
+      #
+      # Issue #1656: all capture steps are guarded by LUNARLOG_WEB_APP_LIVE
+      # so that a down build skips them, decoupling site deployment (and its
+      # down notice) from the web app's build health.
       - name: Compile the browser version's domain module
+        if: env.LUNARLOG_WEB_APP_LIVE != 'false'
         # The today-log card the figure shows is computed by the compiled
         # Dart domain module (issue #1251) — the same dart2js artifact the
         # webapp CI job builds, same command.
@@ -159,16 +164,18 @@ jobs:
           rm -f webapp/public/domain/lunarlog_domain.js.deps
 
       - name: Install the web app's dependencies and Playwright Chromium
+        if: env.LUNARLOG_WEB_APP_LIVE != 'false'
         working-directory: webapp
         run: |
           npm ci
           npx playwright install --with-deps chromium
 
       - name: Build the browser version
+        if: env.LUNARLOG_WEB_APP_LIVE != 'false'
         # The client-safe Supabase pair, quoted for the same reason the
         # webapp CI job quotes them: empty on forks, and the capture then
-        # skips on an unconfigured build (the site build below would ship
-        # a missing figure — the canonical repo always builds configured).
+        # skips on an unconfigured build. In the canonical repo with secrets,
+        # LUNARLOG_APP_CONFIGURED ensures the capture never skips quietly (issue #1662).
         working-directory: webapp
         env:
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -176,10 +183,19 @@ jobs:
         run: npm run build
 
       - name: Capture the browser version's home screenshot
+        if: env.LUNARLOG_WEB_APP_LIVE != 'false'
         working-directory: webapp
         env:
           LUNARLOG_BROWSER_CAPTURE_OUT: ${{ github.workspace }}/site/public/screenshots
+          LUNARLOG_APP_CONFIGURED: ${{ secrets.SUPABASE_URL != '' && 'true' || 'false' }}
         run: npx playwright test e2e/browser-home-capture.spec.ts
+
+      - name: Verify the browser home screenshot was captured
+        # Issue #1662: fail immediately if the capture skipped or failed
+        # to produce the PNG while the browser version is live, rather than
+        # deploying a broken <img> on the home page.
+        if: env.LUNARLOG_WEB_APP_LIVE != 'false'
+        run: test -f site/public/screenshots/today-browser-light.png
 
       - name: Build the site
         # `npm run build` runs `astro sync`, `astro check`, and the static

@@ -87,11 +87,18 @@ class MethodChannelHealthPlatform
     required this.binding,
     required this.minorBindingAllowed,
     required this.readAccessDisclosed,
+    this.writesCycleStart = true,
   });
 
   final MethodChannel channel;
   final HealthSyncBinding binding;
   final bool minorBindingAllowed;
+
+  /// Whether this platform's health store writes cycle-start metadata on
+  /// menstrual-flow samples (HealthKit does; Health Connect does not,
+  /// Issue #1645).
+  @override
+  final bool writesCycleStart;
 
   /// Whether this platform's health store tells an app which READ
   /// permissions it holds (Issue #1491) — the one platform fact
@@ -645,6 +652,9 @@ class UnsupportedHealthPlatform
   /// No health store, so nothing discloses anything.
   @override
   bool get readAccessDisclosed => false;
+
+  @override
+  bool get writesCycleStart => false;
 
   /// No health store, so there is nothing to reach.
   @override

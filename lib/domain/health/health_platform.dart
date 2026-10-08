@@ -726,6 +726,11 @@ abstract interface class HealthPlatformStore implements HealthPermissionProbe {
   /// Health Connect installed and available). Never touches user data.
   Future<bool> isAvailable();
 
+  /// Whether this platform's health store writes cycle-start metadata on
+  /// menstrual-flow samples (HealthKit does; Health Connect does not,
+  /// Issue #1645).
+  bool get writesCycleStart;
+
   // [permissionStatus], [importPermissionStatus], [readAccessDisclosed] and
   // [openPermissionSettings] are declared by [HealthPermissionProbe]
   // (Issues #959/#1491/#1515): the OS consent state for the writes, the one

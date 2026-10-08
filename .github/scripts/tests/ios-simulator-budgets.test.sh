@@ -89,7 +89,7 @@ require_nonempty "the job's timeout-minutes" "$job_minutes"
 flutter_cmd="$(sed -n "s/^ *' [0-9][0-9]* \(flutter test integration_test\/gate_test\.dart.*\)$/\1/p" <<<"$test_step_block")"
 require_nonempty "the flutter test invocation line" "$flutter_cmd"
 
-# --- The pinned budgets (issue #1278; the Swift step is #1610's) -------------
+# --- The pinned budgets (issue #1278; the Swift step is #1610/#1666) -----------
 #
 # attempt_seconds = 750: the measured healthy cold-cache attempt is 495s
 # (run 36792571635: pub, kernel compile, a 208s Xcode build, ~100s to
@@ -98,13 +98,14 @@ require_nonempty "the flutter test invocation line" "$flutter_cmd"
 # both attempts of run 36784132156 without one test line.
 assert_eq "the per-attempt bound stays at the #1278 value" "750" "$attempt_seconds"
 assert_eq "the test step's cap stays at the #1278 value" "30" "$step_minutes"
-assert_eq "the Swift unit-test step's cap stays at the #1610 value" "15" "$swift_minutes"
-assert_eq "the job cap stays at the #1610 value" "75" "$job_minutes"
+assert_eq "the Swift unit-test step's cap stays at the #1666 value" "20" "$swift_minutes"
+assert_eq "the job cap stays at the #1666 value" "80" "$job_minutes"
 
 assert_contains "the invocation skips the implicit pub re-resolve (#1278 -- the job runs flutter pub get earlier in the same checkout)" "$flutter_cmd" "--no-pub"
 assert_contains "the invocation targets the booted simulator by UDID" "$flutter_cmd" '-d "$SIM_UDID"'
 assert_contains "the Swift unit-test step targets the booted simulator by UDID (#1610)" "$swift_step_block" '-destination "id=$SIM_UDID"'
 assert_contains "the Swift unit-test step runs the Runner scheme's test target (#1610)" "$swift_step_block" "-scheme Runner"
+assert_contains "the Swift unit-test step disables clone simulator spawning (#1666)" "$swift_step_block" "-parallel-testing-enabled NO"
 
 # The Swift unit tests must run BEFORE the integration tests (issue #1610's
 # CI failure, run 37568557173): the integration build records a deleted

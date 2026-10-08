@@ -47,5 +47,6 @@ class AndroidHealthChannel extends MethodChannelHealthPlatform {
   }) : super(
          channel: const MethodChannel(kHealthChannelName),
          readAccessDisclosed: true,
+         writesCycleStart: false,
        );
 }

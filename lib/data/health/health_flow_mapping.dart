@@ -152,25 +152,42 @@ HealthFlowWritePlan mapSpottingToHealthWrite({
 /// (Issue #1591): what it says that *other* days decide, in one short
 /// string the ledger stores beside the record. A `menstrualFlow` sample
 /// is summarised as `flow:<value>:<cycle-start flag>` (`flow:light:1` —
-/// a light sample marked as the cycle's first day); an intermenstrual
-/// marker as `marker`. Null for [HealthFlowNoWrite]: a day that writes
-/// no sample is never in the ledger. Whatever the summary depends on —
-/// the episode a day falls inside, the flag the episode's first day
-/// carries — comes from other rows, which is why a change to those rows
-/// must make the record due again ([flowPayloadSummaryWasMarker]'s
-/// readers compare it).
-String? flowPayloadSummary(HealthFlowWritePlan plan, {required bool cycleStart}) =>
+/// a light sample marked as the cycle's first day) on a platform that
+/// writes cycle-start metadata (iOS / HealthKit), and as `flow:<value>`
+/// (`flow:light`) on a platform that does not (Android / Health Connect,
+/// Issue #1645). An intermenstrual marker is summarised as `marker` on
+/// both platforms. Null for [HealthFlowNoWrite]: a day that writes no
+/// sample is never in the ledger. Whatever the summary depends on — the
+/// episode a day falls inside, the flag the episode's first day carries
+/// — comes from other rows, which is why a change to those rows must make
+/// the record due again ([flowPayloadSummaryWasMarker]'s readers compare it).
+String? flowPayloadSummary(
+  HealthFlowWritePlan plan, {
+  bool? cycleStart,
+  bool writesCycleStart = true,
+}) =>
     switch (plan) {
       HealthFlowNoWrite() => null,
       HealthFlowMenstrualSample(:final value) =>
-        'flow:${value.name}:${cycleStart ? 1 : 0}',
+        (!writesCycleStart || cycleStart == null)
+            ? 'flow:${value.name}'
+            : 'flow:${value.name}:${cycleStart ? 1 : 0}',
       HealthFlowIntermenstrualMarker() => 'marker',
     };
+
+/// The payload summary stamped on an export ledger row after a type-swap
+/// delete has succeeded but before the replacement record is written
+/// (Issues #1642, #1670). Can never match a planned sample or marker
+/// summary, keeps the row in write-pass scope, and ensures `_dueAt` finds
+/// the record due on any subsequent pass.
+const String flowPayloadSummaryGone = 'gone';
 
 /// Whether [summary] says the record was written as an intermenstrual
 /// bleeding marker rather than a menstrual-flow sample (Issue #1591).
 /// Null when the ledger does not say: a row written before #1591 carries
-/// no summary, and a shape this build did not write is unknown to it.
+/// no summary, a row whose old record was deleted during a type swap
+/// carries [flowPayloadSummaryGone] (Issue #1670), and a shape this build
+/// did not write is unknown to it.
 /// Unknown keeps the conservative pre-#1591 reading wherever the two
 /// types behave differently.
 bool? flowPayloadSummaryWasMarker(String? summary) {
