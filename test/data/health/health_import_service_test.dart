@@ -335,10 +335,6 @@ class _FakeDayEntries
   }
 
   @override
-  Future<List<DayEntry>> listForProfile(String profileId) async =>
-      live.values.toList();
-
-  @override
   Future<DayEntry?> find(String profileId, LocalDate localDate) async {
     final row = live[localDate.iso];
     final hook = onAfterFind;
@@ -348,6 +344,12 @@ class _FakeDayEntries
     }
     return row;
   }
+
+  /// The pass's row scan (Issues #1594/#1683) reads the profile's rows
+  /// through this.
+  @override
+  Future<List<DayEntry>> listForProfile(String profileId) async =>
+      live.values.toList();
 
   @override
   Future<DayEntry> save(DayEntry entry) async {

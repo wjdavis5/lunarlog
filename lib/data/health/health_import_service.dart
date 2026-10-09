@@ -202,10 +202,13 @@ typedef _PageResolveRequest = ({
 });
 
 /// One page's pure resolution output: the winning flow day per date, the
-/// spotting record per date, and the placement counts.
+/// spotting record per date, the span of every period record the page
+/// brought (by the record's bare id, Issue #1683), and the placement
+/// counts.
 typedef _PageResolveResult = ({
   Map<LocalDate, _DesiredSample> flowDays,
   Map<LocalDate, _SpottingSample> spottingDays,
+  Map<String, _PeriodSpan> periods,
   int recordedZone,
   int deviceZone,
   int withoutZone,
@@ -220,6 +223,10 @@ typedef _PageResolveResult = ({
 _PageResolveResult _resolvePage(_PageResolveRequest request) {
   final byDate = <LocalDate, _DesiredSample>{};
   final spottingByDate = <LocalDate, _SpottingSample>{};
+  // Every period record this page brought, by its bare id, with the span
+  // it covers now (Issue #1683): the removal side of the pass needs it to
+  // find the days an earlier span wrote and this one no longer covers.
+  final periods = <String, _PeriodSpan>{};
   var withoutZone = 0;
   var unsupported = 0;
   var recordedZone = 0;
@@ -254,6 +261,7 @@ _PageResolveResult _resolvePage(_PageResolveRequest request) {
         request.from,
         request.to,
         countZone,
+        periods,
       );
       withoutZone += outcome.withoutZone;
       unsupported += outcome.unsupported;
@@ -288,6 +296,7 @@ _PageResolveResult _resolvePage(_PageResolveRequest request) {
   return (
     flowDays: byDate,
     spottingDays: spottingByDate,
+    periods: periods,
     recordedZone: recordedZone,
     deviceZone: deviceZone,
     withoutZone: withoutZone,
@@ -372,6 +381,11 @@ class _PeriodSpan {
           .difference(DateTime.utc(start.year, start.month, start.day))
           .inDays +
       1;
+
+  /// Whether [date] is one of the civil dates the span covers (Issue
+  /// #1683): what tells a day the record still covers from one an earlier
+  /// span wrote and this one left behind.
+  bool covers(LocalDate date) => !date.isBefore(start) && !date.isAfter(end);
 }
 
 _PeriodSpan? _periodSpan(HealthFlowSample sample) {
@@ -410,12 +424,18 @@ class _PeriodExpansion {
 /// called once per record, not per expanded day: the counts answer "how the
 /// store's samples were placed", and this is one sample whose endpoints the
 /// source zoned.
+///
+/// A record it can place is recorded in [periods] under its bare id with
+/// the span it covers now (Issue #1683), whether or not a fill landed in
+/// the window: a record that shortened, or moved wholly out of the window,
+/// still strands the days its earlier span wrote.
 _PeriodExpansion _expandPeriodSample(
   HealthFlowSample sample,
   Map<LocalDate, _DesiredSample> byDate,
   LocalDate from,
   LocalDate to,
   void Function(HealthFlowSample) countZone,
+  Map<String, _PeriodSpan> periods,
 ) {
   final span = _periodSpan(sample);
   if (span == null) return const _PeriodExpansion(withoutZone: 1);
@@ -423,6 +443,8 @@ _PeriodExpansion _expandPeriodSample(
       span.days > kMaxPeriodRecordSpanDays) {
     return const _PeriodExpansion(unsupported: 1);
   }
+  // A record with no id names no row; nothing could be cleared by it.
+  if (sample.recordId.isNotEmpty) periods[sample.recordId] = span;
   final endTz =
       span.endZone == span.startZone ? null : fixedOffsetZoneName(span.endZone);
   final placed = _fillPeriodDays(span, endTz, sample, byDate, from, to);
@@ -821,7 +843,9 @@ class LocalHealthImportService
   /// Issue #1594: a pass notes the records the store says were deleted
   /// ([_noteStoreDeleted]) and removes nothing. Only [remove], which she
   /// asks for, takes out what was imported, and only from the records it
-  /// names.
+  /// names. Issue #1683: a period record the store shortened in place
+  /// reports no deletion at all, so the days it no longer covers are
+  /// cleared by [_clearDroppedPeriodDays] after the merge, on every pass.
   Future<HealthImportSummary> _runPassSteps(
     ({Profile profile, HealthGuardFacts facts}) bound,
     void Function(HealthImportProgress progress)? onProgress, {
@@ -874,7 +898,17 @@ class LocalHealthImportService
     if (owed && run.finished) {
       await _forgetDeclinedAbsent(profileId, run.accumulator);
     }
+    // Issue #1683: after the new span is merged, clear the days the pass's
+    // period records no longer cover. Health Connect changing a record in
+    // place reports no deletion, so this is the only path that reaches
+    // them.
+    final dropped = await _clearDroppedPeriodDays(
+      profileId,
+      run.accumulator,
+      scanner,
+    );
     if (rerun.removed > 0 ||
+        dropped > 0 ||
         _touchesDeletedDates(rerun.found.dates, run.accumulator)) {
       scanner.invalidate();
     }
@@ -891,7 +925,7 @@ class LocalHealthImportService
     required void Function(HealthImportProgress progress)? onProgress,
     required Set<String>? remove,
     required _PageRun run,
-    required _StoreDeletedScanner scanner,
+    required _ImportedRowScanner scanner,
     required _StoreDeleted found,
   }) async {
     if (remove == null && !run.accumulator.heldDeletedSample) {
@@ -1148,7 +1182,7 @@ class LocalHealthImportService
   /// Stored before anything else is done with them, so a pass that ends
   /// early, or a phone that is switched off, loses none: the store says
   /// a record was deleted once, and never again.
-  _StoreDeletedScanner _scanner(String profileId) => _StoreDeletedScanner(
+  _ImportedRowScanner _scanner(String profileId) => _ImportedRowScanner(
         dayEntries: _dayEntries,
         observations: _observations,
         profileId: profileId,
@@ -1159,7 +1193,7 @@ class LocalHealthImportService
   Future<_StoreDeleted> _noteStoreDeleted(
     String profileId,
     _Accumulator accumulator,
-    _StoreDeletedScanner scanner,
+    _ImportedRowScanner scanner,
   ) async {
     final waiting = await _binding.storeDeletedRecordIds();
     if (waiting.isEmpty && accumulator.deletedRecordIds.isEmpty) {
@@ -1185,7 +1219,7 @@ class LocalHealthImportService
   /// merge, because the merge gives a day whose record was replaced its
   /// new record, and such a day is not waiting for any answer.
   Future<void> _trimStoreDeleted(
-    _StoreDeletedScanner scanner,
+    _ImportedRowScanner scanner,
   ) async {
     final waiting = await _binding.storeDeletedRecordIds();
     if (waiting.isEmpty) return;
@@ -1242,7 +1276,7 @@ class LocalHealthImportService
   Future<int> _removeStoreDeleted(
     String profileId,
     Set<String> offered,
-    _StoreDeletedScanner scanner,
+    _ImportedRowScanner scanner,
   ) async {
     final agreed = offered.intersection(await _binding.storeDeletedRecordIds());
     final gone = await scanner.find(agreed);
@@ -1309,6 +1343,57 @@ class LocalHealthImportService
       await _dayEntries.delete(profileId, live.localDate);
     }
     return true;
+  }
+
+  /// Clears the days the period records of this pass no longer cover
+  /// (Issue #1683).
+  ///
+  /// Health Connect changes a record in place: when another app shortens a
+  /// period it already wrote, or moves it to other dates, the record keeps
+  /// its id and no `DeletionChange` is ever sent, so nothing the #1594
+  /// offer reads is told about it and the days that fell out of the span
+  /// keep their imported flow for good. The pass's read saw each record's
+  /// current span ([_Accumulator.periods]); every row of this source whose
+  /// record id names that record, on a date the span does not cover, is
+  /// one of those days. Each goes the way a store-deleted record's day
+  /// goes ([_dropImportedFlow]): the row is deleted when the imported flow
+  /// is all it carries, and otherwise keeps its tags, note, PMS mark and
+  /// entries without the flow, becoming hers.
+  ///
+  /// Runs after [_apply], which merges the new span first: the rows inside
+  /// it were re-keyed to the record's new time there, so what is left to
+  /// clear is exactly the stranded days.
+  ///
+  /// Answers how many days were touched, so the pass invalidates the row
+  /// scan it has just changed.
+  Future<int> _clearDroppedPeriodDays(
+    String profileId,
+    _Accumulator accumulator,
+    _ImportedRowScanner scanner,
+  ) async {
+    if (accumulator.periods.isEmpty) return 0;
+    final found = await scanner.find(accumulator.periods.keys.toSet());
+    final dropped = [
+      for (final day in found.days)
+        if (!accumulator.periods[_recordIdOf(day.sourceId)]!.covers(
+          day.localDate,
+        ))
+          day,
+    ];
+    if (dropped.isEmpty) return 0;
+    // Read once, as [_removeStoreDeleted] does: the dates that carry an
+    // entry of any kind are what "the day carries more" is asked against.
+    final entryDates = {
+      for (final entry in await _observations.listForProfile(profileId))
+        entry.localDate,
+    };
+    final noted = <String>{};
+    for (final day in dropped) {
+      if (!await _dropImportedFlow(profileId, day, entryDates)) continue;
+      noted.add(healthImportDeletionId(day.source.toDb(), day.sourceId!));
+    }
+    await _forgetNoted(profileId, noted);
+    return noted.length;
   }
 
   /// Whether [day] carries anything beside its flow: a tag, a note, the
@@ -2042,15 +2127,17 @@ class _StoreDeleted {
       };
 }
 
-/// Scans the profile's imported rows for records the store says were
-/// deleted (Issue #1594, #1622).
+/// Scans the profile's imported rows by the record their `sourceId` names:
+/// the records the store says were deleted (Issue #1594, #1622), and the
+/// period records a pass saw with the spans they cover now (Issue #1683).
 ///
 /// Kept across a single pass so that [_noteStoreDeleted],
-/// [_removeStoreDeleted] and [_trimStoreDeleted] do not each load the
-/// profile's full history from storage; invalidated when a step writes
-/// or removes rows on a date that held one of the deleted records.
-class _StoreDeletedScanner {
-  _StoreDeletedScanner({
+/// [_removeStoreDeleted], [_trimStoreDeleted] and [_clearDroppedPeriodDays]
+/// do not each load the profile's full history from storage; invalidated
+/// when a step writes or removes rows on a date that held one of the
+/// deleted records.
+class _ImportedRowScanner {
+  _ImportedRowScanner({
     required this.dayEntries,
     required this.observations,
     required this.profileId,
@@ -2143,6 +2230,12 @@ class _Accumulator {
   final HealthImportPlatform platform;
   final Map<LocalDate, _DesiredSample> flowDays = {};
   final Map<LocalDate, _SpottingSample> spottingDays = {};
+
+  /// Every period record the read brought, by the record's bare id, with
+  /// the span it covers (Issue #1683). A record on a later page replaces
+  /// an earlier page's span: pages come in the order things happened, so
+  /// the later one is the store's current word on the record.
+  final Map<String, _PeriodSpan> periods = {};
   int recordedZone = 0;
   int deviceZone = 0;
   int withoutZone = 0;
@@ -2206,6 +2299,7 @@ class _Accumulator {
     for (final entry in page.spottingDays.entries) {
       spottingDays.putIfAbsent(entry.key, () => entry.value);
     }
+    periods.addAll(page.periods);
     recordedZone += page.recordedZone;
     deviceZone += page.deviceZone;
     withoutZone += page.withoutZone;
