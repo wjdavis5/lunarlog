@@ -1063,6 +1063,8 @@
   "careRestockBefore": "Restock before {date}",
   "guardianNotesFieldLabel": "Your note for this day",
   "guardianNotesGuardianFallback": "Guardian",
+  "guardianNotesSaveError": "Could not save your note.",
+  "guardianNotesRemoveError": "Could not remove your note.",
   "accountMismatchTitle": "Different account",
   "accountMismatchBodyNoEmail": "This device holds data that belongs to a different account than the one you just signed in to.",
   "accountMismatchBodyWithEmail": "This device holds data that belongs to a different account than {email}.",

@@ -5321,6 +5321,14 @@
     "@guardianNotesGuardianFallback": {
       "description": "Issue #1004 (tranche 3): fallback author name for a guardian note."
     },
+    "guardianNotesSaveError": "Could not save your note.",
+    "@guardianNotesSaveError": {
+      "description": "Issue #1713: the guardian-note editor's save failed; the text stays for a retry."
+    },
+    "guardianNotesRemoveError": "Could not remove your note.",
+    "@guardianNotesRemoveError": {
+      "description": "Issue #1713: the guardian-note editor's remove failed; the note stays."
+    },
     "accountMismatchTitle": "Different account",
     "@accountMismatchTitle": {
       "description": "Issue #1004 (tranche 2): account-mismatch screen app-bar title."

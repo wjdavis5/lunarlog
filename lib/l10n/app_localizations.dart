@@ -6506,6 +6506,18 @@ abstract class AppLocalizations {
   /// **'Guardian'**
   String get guardianNotesGuardianFallback;
 
+  /// Issue #1713: the guardian-note editor's save failed; the text stays for a retry.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save your note.'**
+  String get guardianNotesSaveError;
+
+  /// Issue #1713: the guardian-note editor's remove failed; the note stays.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not remove your note.'**
+  String get guardianNotesRemoveError;
+
   /// Issue #1004 (tranche 2): account-mismatch screen app-bar title.
   ///
   /// In en, this message translates to:

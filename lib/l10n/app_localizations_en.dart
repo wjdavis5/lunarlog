@@ -4156,6 +4156,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get guardianNotesGuardianFallback => 'Guardian';
 
   @override
+  String get guardianNotesSaveError => 'Could not save your note.';
+
+  @override
+  String get guardianNotesRemoveError => 'Could not remove your note.';
+
+  @override
   String get accountMismatchTitle => 'Different account';
 
   @override

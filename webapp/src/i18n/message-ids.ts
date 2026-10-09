@@ -1066,6 +1066,8 @@ export const MESSAGE_IDS = [
   "careRestockBefore",
   "guardianNotesFieldLabel",
   "guardianNotesGuardianFallback",
+  "guardianNotesSaveError",
+  "guardianNotesRemoveError",
   "accountMismatchTitle",
   "accountMismatchBodyNoEmail",
   "accountMismatchBodyWithEmail",

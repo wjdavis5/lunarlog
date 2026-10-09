@@ -270,6 +270,7 @@ const Map<String, List<String>> _helperCopyFileLiterals = {
     'guardian-note-field',
     'guardian-note-remove',
     'guardian-note-save',
+    'guardian-notes-error',
     r'guardian-note-${note.id}',
   ],
   'lib/ui/l10n/dates.dart': [
