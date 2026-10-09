@@ -853,6 +853,11 @@ class LocalHealthImportService
   }) async {
     final window = _window();
     final profileId = bound.profile.id;
+    // Issue #1690: days an earlier build expanded from one period record
+    // share a key and never sync; re-keyed here, before the read, because
+    // a changes-only read never returns the unchanged record that would
+    // let the merge re-key them (Issue #1686).
+    await _rekeySharedPeriodDays(profileId);
     // Issue #1652: a declined record whose row now permits the store's
     // value needs a read that returns records that did not change; an
     // anchored or changes read never will. The whole history is read for
@@ -1602,6 +1607,45 @@ class LocalHealthImportService
     if (_undone.isEmpty) return;
     await _deletedDays?.forgetDeletedHealthRecords(profileId, {..._undone});
     _undone.clear();
+  }
+
+  /// Issue #1690: days an earlier build expanded from one Health Connect
+  /// period record all carried the same `sourceId` (`<period id>@<ms>`),
+  /// and the server's `day_entries_profile_source_source_id_uq` accepts
+  /// only one of them, so days 2..N of an older period never synced
+  /// (#1682). Since #1686 a fresh import writes `<period id>#<date>@<ms>`,
+  /// but a changes-only read never returns an unchanged record, so the
+  /// rows the merge would re-key are never offered to it. Re-keyed here
+  /// instead, without a re-read: every live imported row whose record is
+  /// shared by more than one date is rewritten to its own per-day key and
+  /// marked dirty, so the next push carries each day on its own.
+  ///
+  /// A record only one day carries is left as it is (nothing rejects it),
+  /// and so is a row from another source or one with no record id. Runs on
+  /// every pass and is idempotent: once no live record is shared, nothing
+  /// matches and nothing is written.
+  Future<int> _rekeySharedPeriodDays(String profileId) async {
+    final rows = [
+      for (final row in await _dayEntries.listForProfile(profileId))
+        if (row.source == _daySource && row.sourceId != null) row,
+    ];
+    final shared = <String, List<DayEntry>>{};
+    for (final row in rows) {
+      shared.putIfAbsent(_recordIdOf(row.sourceId), () => []).add(row);
+    }
+    var rekeyed = 0;
+    for (final MapEntry(key: record, value: group) in shared.entries) {
+      if (record.isEmpty || group.length < 2) continue;
+      for (final row in group) {
+        final ms = _recordTimeMs(row.sourceId);
+        final key = _periodDayRecordId(record, row.localDate) +
+            (ms == null ? '' : '@$ms');
+        if (row.sourceId == key) continue;
+        await _dayEntries.save(row.copyWith(sourceId: key));
+        rekeyed++;
+      }
+    }
+    return rekeyed;
   }
 
   /// Issue #1652: reads what the import declined, afresh.

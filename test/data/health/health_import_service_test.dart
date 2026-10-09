@@ -3229,4 +3229,88 @@ void main() {
       expect(dayEntries.declinedRecords, isEmpty);
     });
   });
+
+  // Issue #1690. An earlier build expanded every day of one Health Connect
+  // period record with the same sourceId, which the server accepts only
+  // once; a changes-only read never returns the unchanged record, so the
+  // merge never re-keys those rows.
+  group('issue #1690: old shared-key period days', () {
+    DayEntry importedDay(String isoDay, String sourceId) => DayEntry(
+      id: 'day-$isoDay',
+      profileId: _profileId,
+      localDate: LocalDate.fromIso(isoDay),
+      tz: 'UTC',
+      flow: FlowLevel.light,
+      source: DayEntrySource.healthConnect,
+      sourceId: sourceId,
+      updatedAt: DateTime.utc(2026, 9, 1, 8),
+    );
+
+    test('a shared period key is re-keyed per day, without a re-read', () async {
+      await bind();
+      dayEntries.live['2026-09-10'] =
+          importedDay('2026-09-10', 'hc-period@111');
+      dayEntries.live['2026-09-11'] =
+          importedDay('2026-09-11', 'hc-period@111');
+      dayEntries.live['2026-09-12'] =
+          importedDay('2026-09-12', 'hc-period@111');
+      // A record only one day carries is not shared: left as it is.
+      dayEntries.live['2026-09-13'] =
+          importedDay('2026-09-13', 'hc-single@222');
+
+      source.result = const HealthReadResult.samples([]);
+      await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importNow();
+
+      expect(dayEntries.live['2026-09-10']!.sourceId,
+          'hc-period#2026-09-10@111');
+      expect(dayEntries.live['2026-09-11']!.sourceId,
+          'hc-period#2026-09-11@111');
+      expect(dayEntries.live['2026-09-12']!.sourceId,
+          'hc-period#2026-09-12@111');
+      expect(dayEntries.live['2026-09-13']!.sourceId, 'hc-single@222');
+      expect(dayEntries.saved, hasLength(3),
+          reason: 'only the three shared days are rewritten');
+
+      // Idempotent: nothing is shared any more, nothing is written.
+      dayEntries.saved.clear();
+      await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importNow();
+      expect(dayEntries.saved, isEmpty);
+    });
+
+    test('a day logged by hand, and an import from another source, are '
+        'left alone', () async {
+      await bind();
+      dayEntries.live['2026-09-10'] = DayEntry(
+        id: 'day-her',
+        profileId: _profileId,
+        localDate: LocalDate.fromIso('2026-09-10'),
+        tz: 'UTC',
+        flow: FlowLevel.light,
+        updatedAt: DateTime.utc(2026, 9, 1, 8),
+      );
+      dayEntries.live['2026-09-11'] = DayEntry(
+        id: 'day-other',
+        profileId: _profileId,
+        localDate: LocalDate.fromIso('2026-09-11'),
+        tz: 'UTC',
+        flow: FlowLevel.light,
+        source: DayEntrySource.healthkit,
+        sourceId: 'hk-shared@111',
+        updatedAt: DateTime.utc(2026, 9, 1, 8),
+      );
+
+      source.result = const HealthReadResult.samples([]);
+      await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importNow();
+
+      expect(dayEntries.live['2026-09-10']!.sourceId, isNull);
+      expect(dayEntries.live['2026-09-11']!.sourceId, 'hk-shared@111');
+      expect(dayEntries.saved, isEmpty);
+    });
+  });
 }
