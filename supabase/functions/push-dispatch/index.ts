@@ -82,17 +82,25 @@ export interface PushDispatchDeps {
    * already-sent rows. Implemented as one conditional UPDATE per candidate
    * id (KTD2, mirroring feedback-notify's single-row claim), so two
    * overlapping invocations (the webhook and a cron sweep, or two cron
-   * sweeps) can never both claim the same row. */
+   * sweeps) can never both claim the same row. A failed read logs and
+   * returns no rows (Issue #1738): the next drain re-claims what is still
+   * due, but the outage must not be silent. */
   claimBatch(limit: number): Promise<OutboxRow[]>;
-  /** The recipient's active (non-disabled) devices. */
-  devicesFor(userId: string): Promise<PushDeviceRow[]>;
+  /** The recipient's active (non-disabled) devices, or null when the read
+   * itself failed (Issue #1738). Null is deliberately not []: an empty
+   * list means "this recipient has no devices", which reaches the
+   * zero-pending branch and marks the row sent -- the terminal state no
+   * drain ever revisits -- so a failed read must stay distinguishable. */
+  devicesFor(userId: string): Promise<PushDeviceRow[] | null>;
   /** Device ids already recorded as successfully delivered for this outbox
    * row, from this or an earlier claim of it (Issue #526 fix (a): per-device
    * delivery tracking). A device in this set is never re-sent to on a later
    * attempt at the same row -- this is what stops one failing device on a
    * multi-device recipient from causing every already-succeeded device to
-   * be re-alerted on every retry. */
-  deliveredDeviceIds(outboxId: string): Promise<Set<string>>;
+   * be re-alerted on every retry. Null when the read itself failed (Issue
+   * #1738): collapsing it to an empty set re-sends to devices already
+   * delivered, the duplicate #526 exists to prevent. */
+  deliveredDeviceIds(outboxId: string): Promise<Set<string> | null>;
   /** Records a successful delivery to one device for one outbox row.
    * Idempotent (an upsert) -- recording the same (outboxId, deviceId) pair
    * twice, e.g. across two overlapping invocations, is harmless. */
@@ -239,6 +247,16 @@ async function dispatchOneRow(deps: PushDispatchDeps, row: OutboxRow): Promise<v
  * unregistered device is disabled so it stops being tried. */
 async function sendToDevices(deps: PushDispatchDeps, row: OutboxRow): Promise<void> {
   const devices = await deps.devicesFor(row.recipient_user_id);
+  if (devices === null) {
+    // Issue #1738: a failed read is not "no devices". Collapsing it to []
+    // reached the zero-pending branch below and marked the row sent -- the
+    // terminal state, which neither the webhook nor the cron drain ever
+    // revisits, so the alert was dropped for good with a 200 and nothing
+    // logged. Released like a failed recheck (releaseForRetry): a transient
+    // DB problem is not a delivery failure charged against MAX_ATTEMPTS.
+    await deps.releaseForRetry(row.id, row.claimed_at);
+    return;
+  }
   // Issue #526 fix (a): per-device delivery tracking. A device already
   // recorded as delivered (from this row's current claim or an earlier
   // one) is never sent to again -- without this, one failing device on a
@@ -246,6 +264,13 @@ async function sendToDevices(deps: PushDispatchDeps, row: OutboxRow): Promise<vo
   // *every* device on the next retry, including ones that had already
   // succeeded.
   const delivered = await deps.deliveredDeviceIds(row.id);
+  if (delivered === null) {
+    // Issue #1738: an empty set on a failed read re-sent to devices a
+    // prior attempt already delivered to -- the duplicate #526's
+    // per-device tracking exists to prevent. Release and retry instead.
+    await deps.releaseForRetry(row.id, row.claimed_at);
+    return;
+  }
   const pending = devices.filter((device) => !delivered.has(device.id));
 
   if (pending.length === 0) {
@@ -336,7 +361,18 @@ export function buildDeps(env: PushDispatchEnv, clientFactory: SupabaseClientFac
         .lt("attempts", MAX_ATTEMPTS)
         .order("created_at", { ascending: true })
         .limit(limit);
-      if (error || !candidates) return [];
+      if (error || !candidates) {
+        // Issue #1738: a failed read must not degrade every invocation to
+        // { processed: 0 } in complete silence -- that is indistinguishable
+        // from a healthy drain with nothing due. Nothing is claimed (the
+        // next drain re-claims whatever is still due), but the outage is
+        // logged.
+        console.error(
+          `push-dispatch: claimBatch read failed, claiming nothing this invocation: ` +
+            `${error?.message ?? "no data returned"}`,
+        );
+        return [];
+      }
 
       const claimed: OutboxRow[] = [];
       for (const candidate of candidates) {
@@ -357,14 +393,34 @@ export function buildDeps(env: PushDispatchEnv, clientFactory: SupabaseClientFac
         .select("id, token")
         .eq("user_id", userId)
         .is("disabled_at", null);
-      return error || !data ? [] : (data as PushDeviceRow[]);
+      if (error || !data) {
+        // Issue #1738: null, not [] -- [] means "this recipient has no
+        // devices", which marks the row sent (terminal) and drops the alert
+        // for good. The caller releases the claim and retries instead.
+        console.error(
+          `push-dispatch: push_devices read failed for recipient ${userId}, releasing the claim ` +
+            `rather than marking it sent with no devices: ${error?.message ?? "no data returned"}`,
+        );
+        return null;
+      }
+      return data as PushDeviceRow[];
     },
     deliveredDeviceIds: async (outboxId) => {
       const { data, error } = await client!
         .from("notification_outbox_deliveries")
         .select("device_id")
         .eq("outbox_id", outboxId);
-      if (error || !data) return new Set<string>();
+      if (error || !data) {
+        // Issue #1738: null, not an empty set -- an empty set means "nothing
+        // delivered yet", which re-sends to devices a prior attempt already
+        // delivered to. The caller releases the claim and retries instead.
+        console.error(
+          `push-dispatch: notification_outbox_deliveries read failed for row ${outboxId}, releasing ` +
+            `the claim rather than re-sending to devices already delivered: ` +
+            `${error?.message ?? "no data returned"}`,
+        );
+        return null;
+      }
       return new Set((data as Array<{ device_id: string }>).map((row) => row.device_id));
     },
     recordDelivery: async (outboxId, deviceId) => {

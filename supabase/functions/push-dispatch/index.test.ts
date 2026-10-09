@@ -50,6 +50,10 @@ interface FakeState {
   cancelled: Array<{ id: string; claimedAt: string }>;
   deferred: Array<{ id: string; claimedAt: string; deliverAfter: string }>;
   retried: Array<{ id: string; claimedAt: string }>;
+  /** Issue #1738: when true, devicesFor reports a failed read (null). */
+  devicesReadFails: boolean;
+  /** Issue #1738: when true, deliveredDeviceIds reports a failed read. */
+  deliveriesReadFails: boolean;
 }
 
 function fakeDeps(state: Partial<FakeState> = {}): PushDispatchDeps & FakeState {
@@ -66,13 +70,16 @@ function fakeDeps(state: Partial<FakeState> = {}): PushDispatchDeps & FakeState 
     cancelled: [],
     deferred: [],
     retried: [],
+    devicesReadFails: state.devicesReadFails ?? false,
+    deliveriesReadFails: state.deliveriesReadFails ?? false,
   };
 
   return {
     configured: true,
     claimBatch: async (limit) => s.rows.splice(0, limit),
-    devicesFor: async (userId) => s.devices[userId] ?? [],
-    deliveredDeviceIds: async (outboxId) => new Set(s.delivered[outboxId] ?? []),
+    devicesFor: async (userId) => (s.devicesReadFails ? null : s.devices[userId] ?? []),
+    deliveredDeviceIds: async (outboxId) =>
+      s.deliveriesReadFails ? null : new Set(s.delivered[outboxId] ?? []),
     recordDelivery: async (outboxId, deviceId) => {
       if (!s.delivered[outboxId]) s.delivered[outboxId] = new Set();
       s.delivered[outboxId].add(deviceId);
@@ -136,6 +143,12 @@ function fakeDeps(state: Partial<FakeState> = {}): PushDispatchDeps & FakeState 
     },
     get retried() {
       return s.retried;
+    },
+    get devicesReadFails() {
+      return s.devicesReadFails;
+    },
+    get deliveriesReadFails() {
+      return s.deliveriesReadFails;
     },
   };
 }
@@ -241,6 +254,63 @@ Deno.test("a recipient with zero devices marks the row sent rather than looping 
   assertEquals(deps.sent, ["row-1"]);
   assertEquals(deps.sendCalls.length, 0);
 });
+
+// ---------------------------------------------------------------------------
+// Issue #1738: a failed read is never collapsed to an empty result.
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "issue #1738: a failed devicesFor read releases the claim for a later retry instead of marking the row sent",
+  async () => {
+    const deps = fakeDeps({
+      rows: [row()],
+      devices: { "user-1": [{ id: "device-1", token: "token-1" }] },
+      devicesReadFails: true,
+    });
+
+    await handlePushDispatch(deps);
+
+    assertEquals(
+      deps.sent,
+      [],
+      "a failed devices read must never reach the terminal sent_at state -- nothing reclaims a sent row, " +
+        "so the alert would be dropped for good",
+    );
+    assertEquals(
+      deps.retried,
+      [{ id: "row-1", claimedAt: PAST }],
+      "the claim is released without burning an attempt (releaseForRetry): a transient DB problem is not a " +
+        "delivery failure, and the next drain re-runs this row",
+    );
+    assertEquals(deps.sendCalls.length, 0);
+  },
+);
+
+Deno.test(
+  "issue #1738: a failed deliveredDeviceIds read releases the claim instead of re-sending to devices already " +
+    "delivered",
+  async () => {
+    const deps = fakeDeps({
+      rows: [row()],
+      devices: { "user-1": [{ id: "device-1", token: "token-1" }] },
+      // A prior attempt already delivered to the only device: a successful
+      // read means zero pending and marks the row sent.
+      delivered: { "row-1": new Set(["device-1"]) },
+      deliveriesReadFails: true,
+    });
+
+    await handlePushDispatch(deps);
+
+    assertEquals(
+      deps.sendCalls.length,
+      0,
+      "an empty set on a failed read would re-alert a device that already got this row -- the duplicate " +
+        "#526's per-device tracking exists to prevent",
+    );
+    assertEquals(deps.sent, []);
+    assertEquals(deps.retried, [{ id: "row-1", claimedAt: PAST }]);
+  },
+);
 
 Deno.test("missing config sends nothing", async () => {
   const deps = fakeDeps({ rows: [row()], devices: { "user-1": [{ id: "device-1", token: "t" }] } });
@@ -486,8 +556,11 @@ function fakeClientFactory(
   rows: Array<Record<string, unknown>>,
   deliveries: Array<Record<string, unknown>> = [],
   resolveDispatchResponses: Record<string, { action: string; reason?: string; deliver_after?: string }> = {},
+  /** Issue #1738: tables whose select reads answer with an error instead of
+   * rows, so the production closures' error paths can be driven. */
+  selectFailsFor: Set<string> = new Set(),
 ): SupabaseClientFactory {
-  function makeSelectBuilder(source: Array<Record<string, unknown>>) {
+  function makeSelectBuilder(source: Array<Record<string, unknown>>, table: string) {
     const filters: Array<(row: Record<string, unknown>) => boolean> = [];
     let orderCol: string | null = null;
     let limitN: number | null = null;
@@ -520,7 +593,10 @@ function fakeClientFactory(
         const matched = source.filter((r) => filters.every((f) => f(r)));
         return matched.length === 0 ? { data: null, error: null } : { data: { ...matched[0] }, error: null };
       },
-      then(onFulfilled: (value: { data: Record<string, unknown>[]; error: null }) => unknown) {
+      then(onFulfilled: (value: { data: Record<string, unknown>[] | null; error: { message: string } | null }) => unknown) {
+        if (selectFailsFor.has(table)) {
+          return Promise.resolve({ data: null, error: { message: `select on ${table} failed` } }).then(onFulfilled);
+        }
         let matched = source.filter((r) => filters.every((f) => f(r)));
         if (orderCol) matched = [...matched].sort((a, b) => ((a[orderCol!] as string) > (b[orderCol!] as string) ? 1 : -1));
         if (limitN !== null) matched = matched.slice(0, limitN);
@@ -589,7 +665,7 @@ function fakeClientFactory(
       const source = tables[table] ?? [];
       return {
         select(_columns: string) {
-          return makeSelectBuilder(source);
+          return makeSelectBuilder(source, table);
         },
         update(patch: Record<string, unknown>) {
           return makeUpdateBuilder(source, patch);
@@ -702,6 +778,84 @@ Deno.test(
   },
 );
 
+// ---------------------------------------------------------------------------
+// Issue #1738: the production closures report a failed read as an error
+// result (null / a log), never as an empty success.
+// ---------------------------------------------------------------------------
+
+/** Runs [fn] with console.error captured, so a test can assert the failure
+ * was logged (the #2/#10 posture: an outage must never be silent). */
+async function withCapturedErrors<T>(
+  fn: () => Promise<T>,
+): Promise<{ result: T; logs: string[] }> {
+  const originalError = console.error;
+  const logs: string[] = [];
+  console.error = (...args: unknown[]) => {
+    logs.push(args.map(String).join(" "));
+  };
+  try {
+    return { result: await fn(), logs };
+  } finally {
+    console.error = originalError;
+  }
+}
+
+Deno.test(
+  "issue #1738: production devicesFor answers null and logs when the read fails, never []",
+  async () => {
+    const deps = buildDeps(fullEnv, fakeClientFactory([], [], {}, new Set(["push_devices"])));
+
+    const { result, logs } = await withCapturedErrors(() => deps.devicesFor("user-1"));
+
+    assertEquals(
+      result,
+      null,
+      "[] would mean 'this recipient has no devices' and mark the row sent; a failed read must stay " +
+        "distinguishable",
+    );
+    assertEquals(logs.length, 1);
+    assertEquals(logs[0].includes("push_devices read failed"), true);
+  },
+);
+
+Deno.test(
+  "issue #1738: production deliveredDeviceIds answers null and logs when the read fails, never an empty set",
+  async () => {
+    const deps = buildDeps(
+      fullEnv,
+      fakeClientFactory([], [], {}, new Set(["notification_outbox_deliveries"])),
+    );
+
+    const { result, logs } = await withCapturedErrors(() => deps.deliveredDeviceIds("row-1"));
+
+    assertEquals(
+      result,
+      null,
+      "an empty set would re-send to devices a prior attempt already delivered to",
+    );
+    assertEquals(logs.length, 1);
+    assertEquals(logs[0].includes("notification_outbox_deliveries read failed"), true);
+  },
+);
+
+Deno.test(
+  "issue #1738: production claimBatch logs and claims nothing when the read fails",
+  async () => {
+    const past = new Date(Date.now() - 60_000).toISOString();
+    const rows = [
+      { id: "row-1", profile_id: "p1", recipient_user_id: "u1", kind: "logged", claimed_at: null, sent_at: null, deliver_after: past, attempts: 0 },
+    ];
+    const deps = buildDeps(fullEnv, fakeClientFactory(rows, [], {}, new Set(["notification_outbox"])));
+
+    const { result, logs } = await withCapturedErrors(() => deps.claimBatch(10));
+
+    assertEquals(result, [], "nothing can be claimed from a read that failed");
+    assertEquals(logs.length, 1, "a failed claim read must be logged, not a silent { processed: 0 }");
+    assertEquals(logs[0].includes("claimBatch read failed"), true);
+    assertEquals(rows[0].claimed_at, null, "the row stays claimable for the next drain");
+  },
+);
+
 Deno.test(
   "#526 (b): production releaseClaim RPC really requires claimed_at to match, and increments attempts " +
     "atomically",
@@ -743,11 +897,11 @@ Deno.test("#526 (a): deliveredDeviceIds/recordDelivery round-trip through the pr
   ];
   const deps = buildDeps(fullEnv, fakeClientFactory(rows));
 
-  assertEquals([...(await deps.deliveredDeviceIds("row-1"))], []);
+  assertEquals([...((await deps.deliveredDeviceIds("row-1")) ?? [])], []);
 
   await deps.recordDelivery("row-1", "device-1");
 
-  assertEquals([...(await deps.deliveredDeviceIds("row-1"))], ["device-1"]);
+  assertEquals([...((await deps.deliveredDeviceIds("row-1")) ?? [])], ["device-1"]);
 });
 
 // ---------------------------------------------------------------------------
