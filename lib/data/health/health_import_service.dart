@@ -1635,7 +1635,9 @@ class LocalHealthImportService
   }
 
   /// Issue #1652: forgets the declined memories whose record ids the store
-  /// reports deleted. The record is not there to be read again.
+  /// reports deleted. The record is not there to be read again. The ids
+  /// are matched through [_recordIdOf], so a period record's reported
+  /// (bare) id reaches its expanded days' per-day memories (Issue #1682).
   Future<void> _forgetDeclinedForRecordIds(
     String profileId,
     Set<String> recordIds,
@@ -1646,7 +1648,7 @@ class LocalHealthImportService
     }
     final keys = {
       for (final record in _declinedEntries.values)
-        if (recordIds.contains(record.recordId)) record.key,
+        if (recordIds.contains(_recordIdOf(record.recordId))) record.key,
     };
     if (keys.isEmpty) return;
     await store.forgetDeclinedHealthRecords(profileId, keys);

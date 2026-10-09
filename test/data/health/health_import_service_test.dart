@@ -3113,6 +3113,42 @@ void main() {
       expect(dayEntries.live[day.iso]!.flow, FlowLevel.none);
     });
 
+    test('a period-expanded day declined over her flow is dropped when the '
+        'store reports the period record deleted (issue #1682)', () async {
+      await bind();
+      dayEntries.live[day.iso] = herDay(
+        FlowLevel.medium,
+        DateTime.utc(2026, 9, 10, 8),
+      );
+      source.result = HealthReadResult.samples([
+        _periodSample(
+          id: 'hc-period',
+          startIso: '2026-09-10T04:00:00Z',
+          endIso: '2026-09-11T03:59:59Z',
+        ),
+      ]);
+      final first = await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importNow();
+      expect(first.daysKeptManual, 1);
+      expect(
+        dayEntries.declinedRecords.keys,
+        [healthImportDeclinedId('health_connect', 'hc-period#2026-09-10')],
+      );
+
+      // The store reports the period record deleted, by its bare id.
+      source.result = HealthReadResult.samples(
+        const [],
+        deletedRecordIds: const ['hc-period'],
+        incremental: true,
+      );
+      await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importNow();
+
+      expect(dayEntries.declinedRecords, isEmpty);
+    });
+
     test('a declined record a finished whole read does not return is '
         'forgotten', () async {
       await bind();
