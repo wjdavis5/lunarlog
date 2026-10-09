@@ -267,10 +267,15 @@ class _OverviewPanelState extends State<OverviewPanel>
       Provider.of<HealthDeviationInsights?>(context, listen: false);
 
   /// The snapshot to render, or null while none is loaded / after a
-  /// dismissal. Loaded once on mount from the persisted device-local
-  /// snapshot — never a fresh health-store read here (the import flow owns
-  /// the read; this panel only renders what it wrote).
+  /// dismissal. Loaded on mount and re-loaded on a profile switch (issue
+  /// #1709) from the persisted device-local snapshot — never a fresh
+  /// health-store read here (the import flow owns the read; this panel only
+  /// renders what it wrote).
   HealthDeviationSnapshot? _deviationSnapshot;
+
+  /// Issue #1709: the profile [_deviationSnapshot] was loaded for, so the
+  /// dismissal always writes the key that produced the snapshot.
+  String? _deviationSnapshotProfileId;
 
   /// Issue #192: the profile's life-stage mode row (null repository on a
   /// test/unwired tree — no Pregnancy card, exactly the pre-#192 view).
@@ -406,18 +411,31 @@ class _OverviewPanelState extends State<OverviewPanel>
   Future<void> _loadDeviationSnapshot() async {
     final insights = _deviationInsights;
     if (insights == null) return;
-    final snapshot = await insights.visibleSnapshot(widget.profileId);
-    if (!mounted || snapshot == null) return;
-    setState(() => _deviationSnapshot = snapshot);
+    final profileId = widget.profileId;
+    final snapshot = await insights.visibleSnapshot(profileId);
+    // Issue #1709: a read that started for another profile must not paint
+    // this one's page — the panel is updated in place on a profile switch
+    // (didUpdateWidget) and the previous profile's read can land after it.
+    if (!mounted || widget.profileId != profileId || snapshot == null) return;
+    setState(() {
+      _deviationSnapshot = snapshot;
+      _deviationSnapshotProfileId = profileId;
+    });
   }
 
   /// Hides the card and records the dismissal, so the same snapshot stays
-  /// hidden on this device while a later, different one shows again.
+  /// hidden on this device while a later, different one shows again. The key
+  /// is the profile the snapshot was loaded for (issue #1709), never
+  /// whichever profile the panel happens to show now.
   Future<void> _dismissDeviation() async {
     final snapshot = _deviationSnapshot;
-    if (snapshot == null) return;
-    setState(() => _deviationSnapshot = null);
-    await _deviationInsights?.dismiss(widget.profileId, snapshot);
+    final profileId = _deviationSnapshotProfileId;
+    if (snapshot == null || profileId == null) return;
+    setState(() {
+      _deviationSnapshot = null;
+      _deviationSnapshotProfileId = null;
+    });
+    await _deviationInsights?.dismiss(profileId, snapshot);
   }
 
   /// Issue #192: watches the profile's `profile_modes` row so the
@@ -552,6 +570,12 @@ class _OverviewPanelState extends State<OverviewPanel>
       _watchModeRow();
       _watchTodayLog();
       _watchCustomTags();
+      // Issue #1709: the deviation snapshot is per-profile too - clear the
+      // previous profile's and load this one's, so a stale card can never
+      // paint (or be dismissed) under the new profile.
+      _deviationSnapshot = null;
+      _deviationSnapshotProfileId = null;
+      unawaited(_loadDeviationSnapshot());
       return;
     }
     // Issue #574: same profile, but `guardiansRepository`/`todayProvider`
