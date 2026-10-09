@@ -15,6 +15,15 @@ abstract interface class ImportedDataPurgeRepository {
   /// Local-only.
   Future<Map<String, int>> liveSourceCounts(String profileId);
 
+  /// The health-store records she deleted from [profileId] that are still
+  /// remembered on this device (Issue #1561's memory), keyed by the raw
+  /// `source` wire value — one count per remembered record. What an import
+  /// is still holding back for [profileId]; clearable through
+  /// [applyLocalPurge] even when a source has no live rows left (Issue
+  /// #1587 item 6). A source with none is absent (callers treat absent as
+  /// zero). Local-only, like [liveSourceCounts].
+  Future<Map<String, int>> rememberedSourceCounts(String profileId);
+
   /// Tombstones [profileId]'s live `day_entries` and `observations` whose
   /// `source` equals [source], on this device only. Reuses the app's
   /// tombstone shape (payload cleared, `deleted_at` stamped, the

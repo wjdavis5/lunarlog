@@ -116,6 +116,13 @@ abstract interface class DayEntryStore {
     required String profileId,
     required String localDate,
   });
+  /// The same delete without the Issue #1561 deletion memory: what an undo
+  /// of a row she created uses (Issue #1587 item 1). See
+  /// [UndoDayEntryDeleter].
+  Future<void> softDeleteDayEntryForUndo({
+    required String profileId,
+    required String localDate,
+  });
 }
 
 /// Reads and writes for the `observations` table.
@@ -460,6 +467,11 @@ abstract interface class HealthDeviceStore {
 /// The local-first imported-data purge (Issue #883).
 abstract interface class ImportedDataPurgeStore {
   Future<Map<String, int>> liveImportedSourceCounts(String profileId);
+
+  /// Issue #1587 item 6: the remembered health-store deletions still held
+  /// for [profileId], counted by source — what a purge of a source with no
+  /// live rows left has to clear. See [ImportedDataPurgeRepository].
+  Future<Map<String, int>> rememberedImportedSourceCounts(String profileId);
   Future<void> applyLocalImportedDataPurge({
     required String profileId,
     required String source,

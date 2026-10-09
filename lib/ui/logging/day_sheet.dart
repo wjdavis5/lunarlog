@@ -85,6 +85,7 @@ import 'package:lunarlog/domain/logging/cycle_start_confirm.dart';
 import 'package:lunarlog/domain/logging/day_entry_merge_event.dart';
 import 'package:lunarlog/domain/logging/day_sheet_reconciliation.dart';
 import 'package:lunarlog/domain/logging/day_sheet_save_state.dart';
+import 'package:lunarlog/domain/logging/quick_log.dart' show undoCreatedDay;
 import 'package:lunarlog/domain/logging/tag_recents.dart';
 import 'package:lunarlog/domain/logging/tag_recents_store.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
@@ -407,7 +408,17 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
   /// -persisted (or synthesised-from-legacy-`spotting`-flow) spotting
   /// observation by [_loadExistingSpotting]; starts `false` for a new
   /// entry.
-  bool _spotting = false;
+  ///
+  /// Issue #1587 review: every write goes through this setter, which
+  /// latches [_spottingSeenOn] whenever the toggle is turned on — a later
+  /// direct assignment cannot turn Spotting on without also allowing an
+  /// untick's save to remove the spotting rows.
+  bool get _spotting => _spottingState;
+  set _spotting(bool value) {
+    _spottingState = value;
+    if (value) _spottingSeenOn = true;
+  }
+  bool _spottingState = false;
 
   /// Issue #256: the graded intensity (1-5) chosen per pain code, keyed by
   /// taxonomy code and synced to the day's `category: 'pain'` observations
@@ -556,12 +567,13 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
   /// was just removed" apart from "spotting was never on this session".
   bool _hadSpottingOnLoad = false;
 
-  /// `true` once she ticks Spotting in this session. With
-  /// [_hadSpottingOnLoad] it says whether Spotting was ever on while the
-  /// sheet was open: only then can an unticked Spotting be something she
-  /// unticked, and only then does a save remove spotting rows (see
+  /// `true` once Spotting was on at any point while the sheet was open —
+  /// latched by the [_spotting] setter, so the load path and every tick go
+  /// through it. With [_hadSpottingOnLoad] it says whether Spotting was
+  /// ever on this session: only then can an unticked Spotting be something
+  /// she unticked, and only then does a save remove spotting rows (see
   /// `computeSpottingMutations`).
-  bool _spottingTicked = false;
+  bool _spottingSeenOn = false;
 
   /// Review fix (blocking): `true` once the user taps any flow chip this
   /// session (including re-tapping the already-selected one) — an
@@ -1547,7 +1559,7 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
     return computeObservationMutations(
       existingObservations: existingObs,
       spotting: _spotting,
-      spottingWasOn: _hadSpottingOnLoad || _spottingTicked,
+      spottingWasOn: _hadSpottingOnLoad || _spottingSeenOn,
       painIntensity: _painIntensity,
       // Issue #457: the BBT/weight fields' last-validated values, not the
       // controllers' raw (possibly currently-invalid) text — see
@@ -1919,7 +1931,7 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
   }) async {
     try {
       if (previous == null) {
-        await repository.delete(profileId, date);
+        await undoCreatedDay(repository, profileId: profileId, date: date);
       } else {
         await repository.save(previous);
       }
@@ -2433,7 +2445,7 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
     LLHaptics.selection();
     setState(() {
       if (value) {
-        _spottingTicked = true;
+        // The latch is the [_spotting] setter's job (Issue #1587 review).
         final before = _flow;
         _flow = resolveEffectiveFlow(
           spotting: true,

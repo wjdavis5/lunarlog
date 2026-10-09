@@ -285,12 +285,18 @@ void main() {
     }
 
     // On an iPhone the days carry `healthkit` and the entries on them
-    // `apple_health`, and the app removes one source at a time. Either one
-    // is the whole of Apple Health as far as what she deleted goes.
-    for (final named in ['healthkit', 'apple_health']) {
+    // `apple_health`. Removing the days (`healthkit`) is a clean slate for
+    // the whole store — the server cascades the entries on those days — so
+    // both sources' memories go. Removing the measurements (`apple_health`)
+    // touches no day, so only its own memory goes (Issue #1587 item 5: it
+    // used to clear `healthkit`'s too, so a day she had deleted came back
+    // on the next import).
+    for (final (named, remaining) in [
+      ('healthkit', [hc]),
+      ('apple_health', [hk, hc]),
+    ]) {
       test('removing Apple Health\'s imported data, named as $named, '
-          'forgets what she deleted from Apple Health and nothing else',
-          () async {
+          'forgets what she deleted with it and nothing else', () async {
         await deleteThree();
         expect((await remembered()).keys, unorderedEquals([hk, spot, hc]));
 
@@ -298,7 +304,7 @@ void main() {
           profileId: 'p1',
           source: named,
         );
-        expect((await remembered()).keys, [hc]);
+        expect((await remembered()).keys, unorderedEquals(remaining));
       });
     }
 
@@ -371,6 +377,97 @@ void main() {
       expect((await remembered('p10')).keys, [
         healthImportDeletionId('healthkit', 'rec-7'),
       ]);
+    });
+  });
+
+  group('an undo, and a row going live again (Issue #1587)', () {
+    test('an undo removes the day without remembering the store records '
+        'on it — an import may bring them back', () async {
+      final day = await importedDay();
+      await importedSpotting(day);
+      clock.now = t1;
+      await storage.softDeleteDayEntryForUndo(
+        profileId: 'p1',
+        localDate: date,
+      );
+
+      // The same tombstones the ordinary delete writes...
+      final row = (await storage.findDayEntryBySource(
+        profileId: 'p1',
+        source: 'healthkit',
+        sourceId: 'rec-1',
+      ))!;
+      expect(row.deletedAt, t1);
+      // ...but no memory: the case where Undo used to shadow a record
+      // nobody deleted.
+      expect(await remembered(), isEmpty);
+    });
+
+    test('saving a remembered record live again forgets it — the undo '
+        'saved back, no import pass needed', () async {
+      final day = await importedDay();
+      clock.now = t1;
+      await storage.softDeleteDayEntry(profileId: 'p1', localDate: date);
+      expect((await remembered()).keys, [hk]);
+
+      // The day sheet's Undo saves the same row back.
+      await storage.upsertDayEntry(
+        id: day.id,
+        profileId: 'p1',
+        localDate: date,
+        tz: 'UTC',
+        flow: FlowLevel.heavy,
+        source: 'healthkit',
+        sourceId: 'rec-1',
+        updatedAt: t2,
+      );
+      expect(await remembered(), isEmpty);
+
+      // And deleting it again is remembered anew.
+      await storage.softDeleteDayEntry(profileId: 'p1', localDate: date);
+      expect((await remembered()).keys, [hk]);
+    });
+
+    test('an observation saved live again forgets its record too', () async {
+      final day = await importedDay();
+      final spotting = await importedSpotting(day);
+      clock.now = t1;
+      await storage.softDeleteObservation(spotting.id);
+      expect((await remembered()).keys, [spot]);
+
+      await storage.upsertObservation(
+        id: spotting.id,
+        dayEntryId: day.id,
+        profileId: 'p1',
+        localDate: date,
+        tz: 'UTC',
+        category: 'spotting',
+        code: 'spotting',
+        source: 'apple_health',
+        sourceId: 'spot-1',
+        updatedAt: t2,
+      );
+      expect(await remembered(), isEmpty);
+    });
+
+    test('the remembered-deletion counts name each source', () async {
+      final day = await importedDay();
+      await importedSpotting(day);
+      await storage.softDeleteDayEntry(profileId: 'p1', localDate: date);
+      await importedDay(
+        localDate: '2026-08-02',
+        source: 'health_connect',
+        sourceId: 'hc-1@5',
+      );
+      await storage.softDeleteDayEntry(
+        profileId: 'p1',
+        localDate: '2026-08-02',
+      );
+      expect(
+        await storage.rememberedImportedSourceCounts('p1'),
+        {'healthkit': 1, 'apple_health': 1, 'health_connect': 1},
+      );
+      expect(await storage.rememberedImportedSourceCounts('p10'), isEmpty);
     });
   });
 

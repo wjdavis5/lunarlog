@@ -2908,6 +2908,12 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 entry} other{{count} entries}} from {source}'**
   String purgeImportedDataPreview(int count, String source);
 
+  /// The purge dialog's preview when the selected source has no live rows left but the app still remembers days deleted from it (issue #1587 item 6): the purge clears that memory, letting the next import bring the store's records back.
+  ///
+  /// In en, this message translates to:
+  /// **'No rows left from {source}. Clears what the app remembers about days you deleted, so an import can bring them back.'**
+  String purgeImportedDataRememberedPreview(String source);
+
   /// Issue #925: the restore-from-file preview's warning before the user commits, naming how many of the file's day entries are out of bounds and why (reasons). Shown only when count > 0.
   ///
   /// In en, this message translates to:

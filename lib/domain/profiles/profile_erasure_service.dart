@@ -177,4 +177,14 @@ abstract interface class ProfileErasureService {
   /// rows.
   Future<Map<PurgeableImportSource, int>> importedDataCounts(
       String profileId);
+
+  /// Issue #1587 item 6: the health-store records she deleted from
+  /// [profileId] that are still remembered on this device, per source —
+  /// what an import is still holding back. A source with no live rows left
+  /// but a non-zero count here is still purgeable: the purge clears the
+  /// memory, so the store's records come back on the next import.
+  /// Local-only, like [importedDataCounts]. Every
+  /// [PurgeableImportSource] is present, `0` when nothing is remembered.
+  Future<Map<PurgeableImportSource, int>> importedDataRememberedCounts(
+      String profileId);
 }

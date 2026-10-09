@@ -1865,6 +1865,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String purgeImportedDataRememberedPreview(String source) {
+    return 'No rows left from $source. Clears what the app remembers about days you deleted, so an import can bring them back.';
+  }
+
+  @override
   String importEntryDatesRejectedPreview(int count, String reasons) {
     String _temp0 = intl.Intl.pluralLogic(
       count,

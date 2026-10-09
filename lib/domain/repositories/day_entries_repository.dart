@@ -75,6 +75,27 @@ abstract interface class DeletedDayEntryReader {
   );
 }
 
+/// Issue #1587 (item 1): the delete an *undo* performs. The plain
+/// [DayEntriesRepository.delete] remembers the health-store records on the
+/// row ([DeletedDayEntryReader]), which is what "I removed this store data"
+/// means — but an undo is removing a row *she* created (`undoQuickLog`,
+/// the day sheet's cycle-start undo), and a record a background import
+/// attached to that row was not hers to remove. Without this, Undo shadowed
+/// that record forever: the next import would not bring it back.
+///
+/// Kept off [DayEntriesRepository] itself, like the readers above, so the
+/// ~40 test doubles that implement the repository need no new member: the
+/// two undo paths resolve it with an `is` check and fall back to the plain
+/// delete when it is absent.
+abstract interface class UndoDayEntryDeleter {
+  /// Deletes (profileId, localDate) exactly as
+  /// [DayEntriesRepository.delete] does — same tombstones, sync
+  /// dirty-marking and observation cascade — except that the health-store
+  /// records the row carries are *not* remembered as deleted. The store's
+  /// records may therefore be imported again on a later pass.
+  Future<void> deleteForUndo(String profileId, LocalDate localDate);
+}
+
 abstract interface class DayEntriesRepository {
   /// Upserts the live entry for (profileId, localDate). Tag codes are
   /// validated against the domain taxonomy. The returned model carries the

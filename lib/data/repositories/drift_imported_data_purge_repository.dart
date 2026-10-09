@@ -15,6 +15,10 @@ class DriftImportedDataPurgeRepository
       _storage.liveImportedSourceCounts(profileId);
 
   @override
+  Future<Map<String, int>> rememberedSourceCounts(String profileId) =>
+      _storage.rememberedImportedSourceCounts(profileId);
+
+  @override
   Future<void> applyLocalPurge({
     required String profileId,
     required String source,

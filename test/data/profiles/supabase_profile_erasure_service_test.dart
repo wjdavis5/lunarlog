@@ -105,6 +105,7 @@ class FakeProfilesRepository implements ProfilesRepository {
 class FakeImportedDataPurgeRepository implements ImportedDataPurgeRepository {
   final List<(String, String)> purges = [];
   Map<String, int> counts = const {};
+  Map<String, int> remembered = const {};
   Object? purgeError;
 
   @override
@@ -119,6 +120,10 @@ class FakeImportedDataPurgeRepository implements ImportedDataPurgeRepository {
 
   @override
   Future<Map<String, int>> liveSourceCounts(String profileId) async => counts;
+
+  @override
+  Future<Map<String, int>> rememberedSourceCounts(String profileId) async =>
+      remembered;
 }
 
 /// A base64url JWT-shaped string whose payload decodes to `{sub, exp, iat}`
@@ -549,6 +554,26 @@ void main() {
       expect(counts[PurgeableImportSource.clueImport], 4);
       expect(counts[PurgeableImportSource.healthkit], 2);
       expect(counts[PurgeableImportSource.fileImport], 0);
+      expect(counts.length, PurgeableImportSource.values.length);
+    });
+
+    test('importedDataRememberedCounts maps the remembered deletions the '
+        'same way, local-only (issue #1587 item 6)', () async {
+      purge.remembered = {'apple_health': 3};
+      final client = makeClient((req) async {
+        fail('importedDataRememberedCounts must never touch the network');
+      });
+
+      final service = SupabaseProfileErasureService(
+        client: client,
+        profiles: profiles,
+        importedDataPurge: purge,
+        syncEngine: syncEngine,
+      );
+      final counts = await service.importedDataRememberedCounts('profile-1');
+
+      expect(counts[PurgeableImportSource.appleHealthObservations], 3);
+      expect(counts[PurgeableImportSource.healthkit], 0);
       expect(counts.length, PurgeableImportSource.values.length);
     });
   });
