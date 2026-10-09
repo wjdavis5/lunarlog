@@ -733,6 +733,55 @@ void main() {
     });
 
     test(
+        'issue #1617: a gone ledger row is not seeded for deletion, and is '
+        'left in the ledger', () async {
+      final settings = FakeSettingsStore({
+        SettingsKeys.healthStoreProfileId: _profileId,
+      });
+      final binding = HealthSyncBinding(settings);
+      final source = _FakeTombstoneSource();
+      final deletion = _FakeDeletion();
+      const observationId = '01ARZ3NDEKTSV4RRFFQ69G5FDD';
+      final ledger = FakeHealthExportLedger();
+      await ledger.record([
+        HealthExportLedgerEntry(
+          recordId: healthBbtRecordId(observationId),
+          profileId: _profileId,
+          sourceRowId: observationId,
+          kind: HealthExportLedgerKind.gone,
+          localDate: '2026-09-01',
+          exportedAt: DateTime.utc(2026, 9, 1),
+        ),
+      ]);
+      final coordinator = HealthSyncTombstoneCoordinator(
+        binding: binding,
+        source: source,
+        deletionService: deletion,
+        passQueue: const _DirectPassQueue(),
+        ledger: ledger,
+        debounce: const Duration(milliseconds: 10),
+      );
+      coordinator.start();
+      addTearDown(() => coordinator.dispose());
+
+      await source.emitObservations([
+        _observation(observationId,
+            category: kBbtObservationCategory,
+            deletedAt: DateTime.utc(2026, 9, 2)),
+      ]);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(deletion.calls, isEmpty,
+          reason: 'the store does not hold a gone record, so a tombstone '
+              'has nothing to delete');
+      expect(
+        ledger.rows.single.kind,
+        HealthExportLedgerKind.gone,
+        reason: 'and nothing trims the row the write path keeps',
+      );
+    });
+
+    test(
         'issue #1583: when deletion returns partial, a skipped type keeps its '
         'ledger row and retries next pass, while authorized types are dropped',
         () async {

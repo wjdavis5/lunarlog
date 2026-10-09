@@ -61,6 +61,18 @@ enum HealthExportLedgerKind {
   /// (`DriftHealthExportLedger.readForProfile`), so it leaves the record
   /// in the store and the row in the table.
   period,
+
+  /// A record that is not in the store, but was dealt with before (Issue
+  /// #1617): the store let an earlier write of it go (its row stopped
+  /// producing it), or a write of it failed. Kept so a later pass treats
+  /// the record as "written before" rather than never written — the
+  /// forward-only floor must not keep it out when its row wants it again
+  /// — and replaced by a real row the moment the store accepts a write.
+  /// Grouped by source row so the row it came from stays in scope
+  /// ([HealthExportMemory.knowsRow]), but left out of the row's record set
+  /// (`recordIdsOf`): nothing is reconciled or deleted through it.
+  /// Cleared with the binding, like every ledger row.
+  gone,
 }
 
 /// One persisted health-store export.

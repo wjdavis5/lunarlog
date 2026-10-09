@@ -14,6 +14,14 @@
 /// is switched off, the write failed) stays due, and one that could not be
 /// removed stays remembered, however many passes go by.
 ///
+/// A [HealthExportLedgerKind.gone] row is the third case (Issue #1617): a
+/// record that is not in the store — the store let an earlier write go, or
+/// a write failed — kept so a later pass treats it as dealt with before
+/// rather than never written. It answers false to [holds], keeps the row
+/// it came from in scope ([knowsRow]) but is out of [recordIdsOf] (nothing
+/// is reconciled or deleted through it), and is replaced by a real row
+/// when the store accepts a write.
+///
 /// The tombstone coordinator reads and trims the same persisted ledger on
 /// its own. This copy can therefore remember a record the coordinator has
 /// already deleted; the only effect is one more delete of a record that is
@@ -48,10 +56,13 @@ class HealthExportMemory {
   }
 
   /// Whether [recordId] was written for its row as it stood at [version],
-  /// or later.
+  /// or later. False for a [HealthExportLedgerKind.gone] row: the store
+  /// does not hold it (Issue #1617).
   bool holds(String recordId, DateTime version) {
     final written = _byRecord[recordId];
-    return written != null && !written.exportedAt.isBefore(version);
+    return written != null &&
+        written.kind != HealthExportLedgerKind.gone &&
+        !written.exportedAt.isBefore(version);
   }
 
   /// What is remembered about [recordId], or null.
@@ -61,9 +72,15 @@ class HealthExportMemory {
   bool knowsRow(String sourceRowId) =>
       _bySourceRow[sourceRowId]?.isNotEmpty ?? false;
 
-  /// The records written from the row [sourceRowId].
-  Set<String> recordIdsOf(String sourceRowId) =>
-      {...?_bySourceRow[sourceRowId]};
+  /// The records written from the row [sourceRowId], except the
+  /// [HealthExportLedgerKind.gone] ones: nothing is reconciled or deleted
+  /// through a record the store does not hold (Issue #1617). A gone row
+  /// still answers [knowsRow], so the row it came from stays in scope.
+  Set<String> recordIdsOf(String sourceRowId) => {
+        for (final recordId in _bySourceRow[sourceRowId] ?? const <String>{})
+          if (_byRecord[recordId]?.kind != HealthExportLedgerKind.gone)
+            recordId,
+      };
 
   /// Every remembered record.
   List<HealthExportLedgerEntry> get all => _byRecord.values.toList();
@@ -110,6 +127,10 @@ class HealthExportMemory {
 
   void _index(HealthExportLedgerEntry entry) {
     _byRecord[entry.recordId] = entry;
+    // A gone row is indexed by its source row too (Issue #1617): the row
+    // it came from was dealt with before and stays in scope
+    // ([knowsRow]) — but [recordIdsOf] leaves it out, so nothing is
+    // reconciled or deleted through it.
     _bySourceRow.putIfAbsent(entry.sourceRowId, () => {}).add(entry.recordId);
   }
 
