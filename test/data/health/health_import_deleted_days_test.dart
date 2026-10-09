@@ -55,9 +55,11 @@ class _Platform implements HealthPlatformStore {
 }
 
 /// The health store: whatever [samples] holds is what every read returns,
-/// as a whole-history read does.
+/// as a whole-history read does. [incremental] makes it answer as a changes
+/// read instead (Issue #1683's changes-pass case).
 class _Store implements HealthImportSource {
   List<HealthFlowSample> samples = [];
+  bool incremental = false;
 
   @override
   Future<HealthReadResult> readMenstrualFlowPage(
@@ -68,7 +70,11 @@ class _Store implements HealthImportSource {
     String? cursor,
     bool wholeHistory = false,
   }) async =>
-      HealthReadResult.samples(samples);
+      HealthReadResult.samples(
+        samples,
+        incremental: incremental,
+        commitToken: incremental ? 'changes' : 'whole',
+      );
 
   @override
   Future<HealthDeviationReadResult> readCycleDeviations(
@@ -117,15 +123,22 @@ HealthFlowSample _spotting(String id) {
   );
 }
 
-/// One Health Connect `MenstruationPeriodRecord` (Issue #1556): Sep 10–12
-/// 2026 at UTC-4, one interval record for the whole span. [modifiedAt] is
-/// when Health Connect last changed it, carried in each day's key.
-HealthFlowSample _period(String id, {required DateTime modifiedAt}) {
+/// One Health Connect `MenstruationPeriodRecord` (Issue #1556): one interval
+/// record for the whole span at UTC-4. [modifiedAt] is when Health Connect
+/// last changed it, carried in each day's key. [startIso]/[endIso] default
+/// to Sep 10–12 2026, the #1682 group's span; the #1683 group passes its
+/// own to shorten the span or move it to other dates.
+HealthFlowSample _period(
+  String id, {
+  required DateTime modifiedAt,
+  String startIso = '2026-09-10T04:00:00Z',
+  String endIso = '2026-09-13T03:59:59Z',
+}) {
   return HealthFlowSample(
     recordId: id,
     kind: HealthSampleKind.menstruationPeriod,
-    start: DateTime.parse('2026-09-10T04:00:00Z'),
-    end: DateTime.parse('2026-09-13T03:59:59Z'),
+    start: DateTime.parse(startIso),
+    end: DateTime.parse(endIso),
     offset: const Duration(hours: -4),
     endOffset: const Duration(hours: -4),
     modifiedAt: modifiedAt,
@@ -528,6 +541,156 @@ void main() {
                 .get())
             .length,
         3,
+      );
+    });
+  });
+
+  // Issue #1683. Health Connect changes a MenstruationPeriodRecord in
+  // place: another app shortening a span it already wrote (or moving it to
+  // other dates) keeps the record's id and reports no DeletionChange, so
+  // the #1594 offer never fires and the days that fell out of the span
+  // would keep their imported flow for good. The pass sees the record's new
+  // span, so every day outside it goes the way a store-deleted record's
+  // days go: the row when the imported flow is all it carries, and without
+  // the flow, becoming hers, when she has anything of her own on it.
+  group('a period record shortened in the store (Issue #1683)', () {
+    final firstAt = DateTime.utc(2026, 9, 12, 6);
+    final secondAt = DateTime.utc(2026, 9, 14, 6);
+
+    LocalDate sept(int day) => LocalDate(2026, 9, day);
+
+    String key(int day, DateTime at) =>
+        'hc-period#2026-09-${day.toString().padLeft(2, '0')}'
+        '@${at.millisecondsSinceEpoch}';
+
+    /// Sep 8–12 2026, the record as another app first wrote it.
+    HealthFlowSample fiveDays() => _period(
+      'hc-period',
+      modifiedAt: firstAt,
+      startIso: '2026-09-08T04:00:00Z',
+      endIso: '2026-09-13T03:59:59Z',
+    );
+
+    /// The same record shortened to Sep 8–10, with a new last-changed time.
+    HealthFlowSample threeDays() => _period(
+      'hc-period',
+      modifiedAt: secondAt,
+      startIso: '2026-09-08T04:00:00Z',
+      endIso: '2026-09-11T03:59:59Z',
+    );
+
+    Future<LocalHealthImportService> importFiveDays() async {
+      store.samples = [fiveDays()];
+      final hc = importFor(HealthImportPlatform.healthConnect);
+      final summary = await hc.importNow();
+      expect(summary.daysWritten, 5);
+      return hc;
+    }
+
+    test('shortening a 5-day span to 3 clears the days that fell out',
+        () async {
+      final hc = await importFiveDays();
+
+      store.samples = [threeDays()];
+      final summary = await hc.importNow();
+
+      expect(summary.daysWritten, 0);
+      expect(summary.daysUnchanged, 3);
+      for (final day in [8, 9, 10]) {
+        final row = (await days.find(_profileId, sept(day)))!;
+        expect(row.flow, FlowLevel.light);
+        expect(row.sourceId, key(day, secondAt),
+            reason: 'the days still in the span re-key to its new time');
+      }
+      expect(await days.find(_profileId, sept(11)), isNull,
+          reason: 'the day the shortened span no longer covers');
+      expect(await days.find(_profileId, sept(12)), isNull);
+      expect((await hc.daysDeletedInStore()).days, 0,
+          reason: 'the store reported no deletion: the #1594 offer never '
+              'fires, so the pass has to clear these itself');
+    });
+
+    test('a dropped day she tagged keeps her tag and loses the imported '
+        'flow', () async {
+      final hc = await importFiveDays();
+      final tagged = (await days.find(_profileId, sept(12)))!;
+      await days.save(tagged.copyWith(tags: const ['cramps']));
+
+      store.samples = [threeDays()];
+      await hc.importNow();
+
+      final kept = (await days.find(_profileId, sept(12)))!;
+      expect(kept.tags, ['cramps']);
+      expect(kept.flow, FlowLevel.none,
+          reason: 'the store no longer covers this day');
+      expect(kept.source, DayEntrySource.manual,
+          reason: 'the same reset a store-deleted record leaves');
+      expect(kept.sourceId, isNull);
+      expect(await days.find(_profileId, sept(11)), isNull,
+          reason: 'its untagged sibling carries only the imported flow');
+    });
+
+    test('a changes pass clears the dropped days too', () async {
+      final hc = await importFiveDays();
+
+      store.incremental = true;
+      store.samples = [threeDays()];
+      final summary = await hc.importNow();
+
+      expect(summary.incremental, isTrue);
+      expect(await days.find(_profileId, sept(11)), isNull);
+      expect(await days.find(_profileId, sept(12)), isNull);
+      expect((await days.find(_profileId, sept(10)))!.flow, FlowLevel.light);
+    });
+
+    test('re-importing the shortened span again changes nothing', () async {
+      final hc = await importFiveDays();
+      store.samples = [threeDays()];
+      await hc.importNow();
+
+      Future<Map<String, (String?, DateTime)>> rows() async => {
+            for (final row in await db.select(db.dayEntries).get())
+              row.localDate: (row.sourceId, row.updatedAt),
+          };
+      final before = await rows();
+
+      final again = await hc.importNow();
+
+      expect(again.daysWritten, 0);
+      expect(again.daysUnchanged, 3);
+      expect(await rows(), before,
+          reason: 'no row is written, re-keyed or deleted a second time');
+      expect(await days.find(_profileId, sept(11)), isNull);
+      expect(await days.find(_profileId, sept(12)), isNull);
+    });
+
+    test('a record moved to other dates drops the old days and writes the '
+        'new one', () async {
+      final hc = await importFiveDays();
+
+      // Moved one day later: Sep 9–13, dropping the 8th and adding the
+      // 13th.
+      store.samples = [
+        _period(
+          'hc-period',
+          modifiedAt: secondAt,
+          startIso: '2026-09-09T04:00:00Z',
+          endIso: '2026-09-14T03:59:59Z',
+        ),
+      ];
+      final summary = await hc.importNow();
+
+      expect(summary.daysWritten, 1, reason: 'the 13th is new');
+      expect(await days.find(_profileId, sept(8)), isNull,
+          reason: 'the day the moved span no longer covers');
+      for (final day in [9, 10, 11, 12]) {
+        final row = (await days.find(_profileId, sept(day)))!;
+        expect(row.flow, FlowLevel.light);
+        expect(row.sourceId, key(day, secondAt));
+      }
+      expect(
+        (await days.find(_profileId, sept(13)))!.sourceId,
+        key(13, secondAt),
       );
     });
   });

@@ -294,6 +294,12 @@ class _FakeDayEntries
     return row;
   }
 
+  /// The pass's row scan (Issues #1594/#1683) reads the profile's rows
+  /// through this.
+  @override
+  Future<List<DayEntry>> listForProfile(String profileId) async =>
+      live.values.toList();
+
   @override
   Future<DayEntry> save(DayEntry entry) async {
     if (failSaves) throw StateError('save failed');
@@ -352,6 +358,11 @@ class _FakeObservations implements ObservationsRepository {
     String dayEntryId,
   ) async =>
       byDay[dayEntryId] ?? const [];
+
+  /// The pass's row scan (Issues #1594/#1683) reads the profile's entries
+  /// through this.
+  @override
+  Future<List<Observation>> listForProfile(String profileId) async => saved;
 
   @override
   dynamic noSuchMethod(Invocation invocation) =>
