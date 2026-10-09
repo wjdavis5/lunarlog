@@ -2631,8 +2631,22 @@ class LocalHealthFlowWriteService
   /// consent belongs to one binding, so re-binding (same or different
   /// profile) re-grants from the new authorization moment rather than
   /// backfilling under the old cursor.
+  ///
+  /// Issue #1702: the clear runs through the pass queue, like the
+  /// tombstone delete (Issue #1614), so it lands *after* any pass that was
+  /// running or already queued when the binding went away. Run outside the
+  /// queue it raced the pass it overlapped: the pass's `_closeState`
+  /// re-stored the `healthSyncWriteState` the clear had just blanked, and
+  /// its `_remember` repopulated the ledger the clear had just reset — so
+  /// a later bind started from the retired binding's floor and ledger.
+  /// Queued, the clear is the last writer; the coordinator's replace path
+  /// only schedules the new binding's first pass once it completes.
   @override
-  Future<void> onUnbound() async {
+  Future<void> onUnbound() => runInPassQueue(_clearBindingState);
+
+  /// Clears the stored floor, write state, ledger, and native mirror.
+  /// Runs on the pass queue, never beside a pass ([onUnbound]).
+  Future<void> _clearBindingState() async {
     await _settings.set(SettingsKeys.healthSyncWrittenThroughMs, '');
     await _settings.set(SettingsKeys.healthSyncWrittenThroughUs, '');
     await _settings.set(SettingsKeys.healthSyncWriteState, '');
