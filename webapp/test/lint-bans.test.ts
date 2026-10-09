@@ -172,6 +172,55 @@ describe('the qualified-reference storage ban (issue #1275)', () => {
     expect(messages.filter((m) => m.ruleId === 'no-restricted-syntax')).toHaveLength(0);
   });
 
+  // Issue #1776: a backtick key is a TemplateLiteral, which has no `value`
+  // field, so the computed string-literal selector cannot see it — the same
+  // surfaces reached as `window[`localStorage`]`, `document[`cookie`]`,
+  // etc. used to pass all three rules. The third exported selector matches
+  // a template literal with no expressions on its cooked value.
+  const templateSnippets: [string, string][] = [
+    [
+      'window[`localStorage`]',
+      'export function f(): number { return window[`localStorage`].length; }',
+    ],
+    [
+      'globalThis[`sessionStorage`]',
+      'export function f(): number { return globalThis[`sessionStorage`].length; }',
+    ],
+    [
+      'self[`indexedDB`]',
+      'export function f(): IDBFactory | undefined { return self[`indexedDB`]; }',
+    ],
+    ['window[`caches`]', 'export async function f() { return window[`caches`].keys(); }'],
+    ['document[`cookie`]', 'export function f(): string { return document[`cookie`]; }'],
+  ];
+
+  it.each(templateSnippets)('bans template-literal computed %s', async (surface, snippet) => {
+    const messages = await lintSrc(snippet);
+    const hits = messages.filter((m) => m.ruleId === 'no-restricted-syntax');
+    expect(
+      hits,
+      `expected the template-literal-form selector to fire for ${surface}`,
+    ).not.toHaveLength(0);
+    expect(hits.some((m) => m.message.includes('nothing at rest'))).toBe(true);
+  });
+
+  it('does not fire on a computed template access with an unrelated property name', async () => {
+    const messages = await lintSrc(
+      'export function f(o: Record<string, number>): number | undefined { return o[`length`]; }\n',
+    );
+    expect(messages.filter((m) => m.ruleId === 'no-restricted-syntax')).toHaveLength(0);
+  });
+
+  it('does not fire on a template literal with expressions (unmatchable statically)', async () => {
+    // A key built at runtime cannot be matched, the same accepted
+    // limitation as a concatenated or variable-held key — the selector is
+    // deliberately scoped to a single no-expression quasi.
+    const messages = await lintSrc(
+      'export function f(k: string): number { return window[`local${k}`].length; }\n',
+    );
+    expect(messages.filter((m) => m.ruleId === 'no-restricted-syntax')).toHaveLength(0);
+  });
+
   it('stays scoped to src/ (e2e reads qualified storage to assert emptiness)', async () => {
     const [result] = await linter.lintText('export const n = window.localStorage.length;\n', {
       filePath: join(webappRoot, 'e2e', 'probe.spec.ts'),
@@ -180,9 +229,11 @@ describe('the qualified-reference storage ban (issue #1275)', () => {
   });
 
   it('exports exactly the selectors the config consumes', () => {
-    // Two selectors: the dot form (property.name) and the computed form
-    // (property.value) — issue #1722.
-    expect(STORAGE_SYNTAX_BANS).toHaveLength(2);
+    // Three selectors: the dot form (property.name), the computed
+    // string-literal form (property.value) — issue #1722 — and the computed
+    // template-literal form (the no-expression quasi's cooked value) —
+    // issue #1776.
+    expect(STORAGE_SYNTAX_BANS).toHaveLength(3);
   });
 });
 
