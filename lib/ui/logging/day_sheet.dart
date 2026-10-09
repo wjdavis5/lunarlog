@@ -459,6 +459,15 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
   /// this only ever starts at 2 or 0.
   int _childObservationsLoadsPending = 0;
 
+  /// Issue #1711: set when [_loadExistingMeasurements]' read failed. The
+  /// write path then skips the BBT/weight mutation arms entirely
+  /// ([computeObservationMutations]' `measurementsUnknown`): an empty field
+  /// means "the seed never arrived", not "the operator cleared it", so the
+  /// day's stored measurement rows are left exactly as they are. Never
+  /// cleared — this sheet has no retry for the seed, and a session that
+  /// already saved around the gap must keep the same posture throughout.
+  bool _measurementsLoadFailed = false;
+
   /// Marks one of the two child-observation loaders settled (issue #642,
   /// LLA-011): flips [_childObservationsLoadFailed] on [failed], and
   /// clears [_childObservationsLoading] once both have reported in. Must
@@ -728,6 +737,12 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
   /// state to fall back on. This section simply renders nothing until it
   /// resolves, which reads correctly as "no unmapped rows on this day".
   List<Observation> _unmappedObservations = [];
+
+  /// Issue #1711: set when [_loadUnmappedObservations]' read failed, so the
+  /// section renders the shared "could not load" line instead of reading
+  /// as "this day has no unmapped rows" — the same discipline the #642
+  /// child-observation loaders apply.
+  bool _unmappedObservationsLoadFailed = false;
 
   /// Issue #234: this profile's "recently used tags" (device-local, per
   /// profile — `lib/domain/logging/tag_recents.dart`), backing
@@ -1394,43 +1409,54 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
   /// that value still exists and still charts, it is simply not this
   /// field's to show or edit.
   Future<void> _loadExistingMeasurements(String dayEntryId) async {
-    final observations = await Provider.of<ObservationsRepository>(
-      context,
-      listen: false,
-    ).listForDayEntry(dayEntryId);
-    if (!mounted) return;
-    // The pick itself is shared with the Today screen's log card (issue
-    // #1489), which names the same reading this field opens on.
-    final bbtRow = manualMeasurementIn(observations, ObservationCategory.bbt);
-    final weightRow = manualMeasurementIn(
-      observations,
-      ObservationCategory.weight,
-    );
-    if (bbtRow == null && weightRow == null) return;
-    setState(() {
-      _seedingMeasurements = true;
-      if (bbtRow != null) {
-        final displayValue = convertTemperature(
-          bbtRow.valueNum!,
-          from: BbtUnit.fromDb(bbtRow.unit),
-          to: widget.bbtUnit,
-        );
-        _bbtValue = displayValue;
-        _bbtExcluded = bbtRow.excluded;
-        _bbtController.text = formatMeasurementValue(displayValue);
-      }
-      if (weightRow != null) {
-        final displayValue = convertWeight(
-          weightRow.valueNum!,
-          from: WeightUnit.fromDb(weightRow.unit),
-          to: widget.weightUnit,
-        );
-        _weightValue = displayValue;
-        _weightExcluded = weightRow.excluded;
-        _weightController.text = formatMeasurementValue(displayValue);
-      }
-      _seedingMeasurements = false;
-    });
+    try {
+      final observations = await Provider.of<ObservationsRepository>(
+        context,
+        listen: false,
+      ).listForDayEntry(dayEntryId);
+      if (!mounted) return;
+      // The pick itself is shared with the Today screen's log card (issue
+      // #1489), which names the same reading this field opens on.
+      final bbtRow = manualMeasurementIn(observations, ObservationCategory.bbt);
+      final weightRow = manualMeasurementIn(
+        observations,
+        ObservationCategory.weight,
+      );
+      if (bbtRow == null && weightRow == null) return;
+      setState(() {
+        _seedingMeasurements = true;
+        if (bbtRow != null) {
+          final displayValue = convertTemperature(
+            bbtRow.valueNum!,
+            from: BbtUnit.fromDb(bbtRow.unit),
+            to: widget.bbtUnit,
+          );
+          _bbtValue = displayValue;
+          _bbtExcluded = bbtRow.excluded;
+          _bbtController.text = formatMeasurementValue(displayValue);
+        }
+        if (weightRow != null) {
+          final displayValue = convertWeight(
+            weightRow.valueNum!,
+            from: WeightUnit.fromDb(weightRow.unit),
+            to: widget.weightUnit,
+          );
+          _weightValue = displayValue;
+          _weightExcluded = weightRow.excluded;
+          _weightController.text = formatMeasurementValue(displayValue);
+        }
+        _seedingMeasurements = false;
+      });
+    } catch (error, stackTrace) {
+      // Issue #1711: previously unhandled — a failed read left the fields
+      // empty, and the write path read that emptiness as "the operator
+      // cleared it", tombstoning the stored readings on the next unrelated
+      // edit. Captured, and [_measurementsLoadFailed] makes the write path
+      // leave the day's measurement rows alone for this whole session.
+      unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+      if (!mounted) return;
+      setState(() => _measurementsLoadFailed = true);
+    }
   }
 
   /// Issue #457: the day sheet's own listener for [_bbtController] —
@@ -1571,6 +1597,9 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
       weightValue: _weightValue,
       weightUnit: widget.weightUnit.toDb(),
       weightExcluded: _weightExcluded,
+      // Issue #1711: a failed seed read must never let a null field read as
+      // an explicit clear — see [_measurementsLoadFailed].
+      measurementsUnknown: _measurementsLoadFailed,
       targetDayEntryId: targetId,
       profileId: widget.profileId,
       date: widget.date,
@@ -2936,7 +2965,8 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
                 ),
                 if (_inertTags.isNotEmpty)
                   ..._unrecognisedTagsSection(theme),
-                if (_unmappedObservations.isNotEmpty)
+                if (_unmappedObservations.isNotEmpty ||
+                    _unmappedObservationsLoadFailed)
                   ..._unmappedObservationsSection(theme),
                 // Issue #801: the per-guardian dated notes, beside the shared
                 // day note — never a rework of it. Gated in
@@ -3123,17 +3153,27 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
   /// the sheet can render them as readable text instead of leaving them
   /// invisible. Read-only: nothing here writes, autosaves, or synthesises.
   Future<void> _loadUnmappedObservations(String dayEntryId) async {
-    final rows = [
-      for (final o in await Provider.of<ObservationsRepository>(
-        context,
-        listen: false,
-      ).listForDayEntry(dayEntryId))
-        if (o.raw != null) o,
-    ];
-    if (!mounted) return;
-    setState(() {
-      _unmappedObservations = rows;
-    });
+    try {
+      final rows = [
+        for (final o in await Provider.of<ObservationsRepository>(
+          context,
+          listen: false,
+        ).listForDayEntry(dayEntryId))
+          if (o.raw != null) o,
+      ];
+      if (!mounted) return;
+      setState(() {
+        _unmappedObservations = rows;
+      });
+    } catch (error, stackTrace) {
+      // Issue #1711: previously unhandled — a failed read rendered as "no
+      // unmapped rows on this day", silently hiding imported rows the
+      // section exists to make visible. Captured, and the section says the
+      // load failed instead.
+      unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+      if (!mounted) return;
+      setState(() => _unmappedObservationsLoadFailed = true);
+    }
   }
 
   /// Inert, visible chips for [_unmappedObservations] (Issue #199): each
@@ -3148,29 +3188,42 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
   /// *codes* this build does not recognise, this one names imported
   /// datapoints that mapped to no field at all. Sharing a heading would
   /// stack two differently-sourced "Unrecognised" lists back to back.
-  List<Widget> _unmappedObservationsSection(ThemeData theme) => [
-    Padding(
-      padding: const EdgeInsets.only(
-        top: LLSpace.space3,
-        bottom: LLSpace.space1,
+  List<Widget> _unmappedObservationsSection(ThemeData theme) {
+    if (_unmappedObservationsLoadFailed) {
+      // Issue #1711: say the load failed rather than rendering nothing,
+      // which would read as "this day has no unmapped rows".
+      return [
+        const SizedBox(height: LLSpace.space3),
+        InlineError(
+          key: const ValueKey('day-sheet-unmapped-observations-error'),
+          message: AppLocalizations.of(context).daySheetChildObservationsError,
+        ),
+      ];
+    }
+    return [
+      Padding(
+        padding: const EdgeInsets.only(
+          top: LLSpace.space3,
+          bottom: LLSpace.space1,
+        ),
+        child: Text(
+          AppLocalizations.of(context).daySheetUnmappedImported,
+          style: theme.textTheme.labelMedium,
+        ),
       ),
-      child: Text(
-        AppLocalizations.of(context).daySheetUnmappedImported,
-        style: theme.textTheme.labelMedium,
+      Wrap(
+        spacing: LLSpace.space2,
+        runSpacing: LLSpace.space1,
+        children: [
+          for (var i = 0; i < _unmappedObservations.length; i++)
+            Chip(
+              key: ValueKey('unmapped-observation-$i'),
+              label: Text(_describeUnmapped(_unmappedObservations[i].raw)),
+            ),
+        ],
       ),
-    ),
-    Wrap(
-      spacing: LLSpace.space2,
-      runSpacing: LLSpace.space1,
-      children: [
-        for (var i = 0; i < _unmappedObservations.length; i++)
-          Chip(
-            key: ValueKey('unmapped-observation-$i'),
-            label: Text(_describeUnmapped(_unmappedObservations[i].raw)),
-          ),
-      ],
-    ),
-  ];
+    ];
+  }
 
   String _describeUnmapped(String? raw) {
     final fallback = AppLocalizations.of(context).daySheetUnmappedFallback;

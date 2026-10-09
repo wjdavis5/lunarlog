@@ -709,6 +709,80 @@ void main() {
       expect(mutations.toUpsert, isEmpty);
       expect(mutations.toDelete, isEmpty);
     });
+
+    // Issue #1711: the day sheet could not read the day's existing rows, so
+    // an empty BBT/weight field must not be read as an explicit clear.
+    test('issue #1711: measurementsUnknown skips the measurement arms '
+        'entirely -- a null field never deletes, a set value never writes',
+        () {
+      final existing = [
+        _measurementObs('bbt-1', ObservationCategory.bbt,
+            valueNum: 36.5, unit: 'celsius'),
+        _measurementObs('weight-1', ObservationCategory.weight,
+            valueNum: 61.0, unit: 'kg'),
+      ];
+
+      final cleared = computeObservationMutations(
+        existingObservations: existing,
+        spotting: false,
+        painIntensity: const {},
+        bbtValue: null,
+        weightValue: null,
+        measurementsUnknown: true,
+        targetDayEntryId: 'e1',
+        profileId: 'p1',
+        date: _date,
+        tz: 'UTC',
+        updatedAt: _now,
+      );
+      expect(
+        cleared.toDelete,
+        isEmpty,
+        reason: 'a failed seed read must never tombstone the stored '
+            'readings the operator never saw',
+      );
+      expect(cleared.toUpsert, isEmpty);
+
+      final typed = computeObservationMutations(
+        existingObservations: existing,
+        spotting: false,
+        painIntensity: const {},
+        bbtValue: 36.9,
+        weightValue: 62.0,
+        measurementsUnknown: true,
+        targetDayEntryId: 'e1',
+        profileId: 'p1',
+        date: _date,
+        tz: 'UTC',
+        updatedAt: _now,
+      );
+      expect(
+        typed.toUpsert,
+        isEmpty,
+        reason: 'a typed value could insert a second manual row beside one '
+            'the failed read hid',
+      );
+      expect(typed.toDelete, isEmpty);
+    });
+
+    test('issue #1711: spotting and pain still write while measurements are '
+        'unknown', () {
+      final mutations = computeObservationMutations(
+        existingObservations: const [],
+        spotting: true,
+        painIntensity: const {'cramps': 3},
+        measurementsUnknown: true,
+        targetDayEntryId: 'e1',
+        profileId: 'p1',
+        date: _date,
+        tz: 'UTC',
+        updatedAt: _now,
+      );
+      expect(
+        mutations.toUpsert.map((o) => o.category),
+        containsAll([ObservationCategory.spotting, ObservationCategory.pain]),
+      );
+    });
   });
 
   group('gradedPainIntensitiesFrom (issue #642 review, CRAP gate split of '

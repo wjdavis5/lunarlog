@@ -231,6 +231,10 @@ Future<Harness> pumpLogging(
   bool readOnly = false,
   ProfileMode mode = ProfileMode.standard,
   DayEntriesRepository? entryRepositoryOverride,
+  /// Issue #1711: wraps the real observations repository so a test can fail
+  /// one read (the day sheet's measurement seed) without failing the
+  /// autosave path's own read of the same method.
+  ObservationsRepository Function(ObservationsRepository real)? observationsWrap,
   Future<void> Function(LunarLogDatabase db, String profileId)? seed,
   String Function()? timezoneProvider,
   // Attribution seam (U2; R1/R5/R7). Both default off so every pre-existing
@@ -277,7 +281,7 @@ Future<Harness> pumpLogging(
         profiles: profiles,
         dayEntries: entryRepositoryOverride ?? entries,
         settings: settings,
-        observations: observations,
+        observations: observationsWrap?.call(observations) ?? observations,
         authController: authController,
         // Matches lib/app.dart's provider set (KTD2): LunarLogStorage is
         // what ProfileDetailScreen reads to decide whether MonthCalendar
@@ -367,6 +371,48 @@ Future<void> showMonth(WidgetTester tester, int year, int month) async {
 }
 
 /// Repository whose save always fails (F2 failure-state path).
+/// Issue #1711: a real observations repository with one switchable failing
+/// read. The day sheet's measurement *seed* and its autosave path both go
+/// through `listForDayEntry`, so a test that wants to fail only the seed
+/// flips [failReads] back off once the sheet has opened.
+class MeasurementSeedReadFailureRepo implements ObservationsRepository {
+  MeasurementSeedReadFailureRepo(this._inner);
+
+  final ObservationsRepository _inner;
+
+  /// When true, [listForDayEntry] throws — the failed seed read.
+  bool failReads = true;
+
+  /// How many reads have failed, so a test can prove the seed actually hit
+  /// the failure before it flips [failReads] off.
+  int failedReads = 0;
+
+  @override
+  Future<List<Observation>> listForDayEntry(String dayEntryId) {
+    if (failReads) {
+      failedReads++;
+      return Future.error(StateError('simulated observations read failure'));
+    }
+    return _inner.listForDayEntry(dayEntryId);
+  }
+
+  @override
+  Future<List<Observation>> listForProfile(String profileId) =>
+      _inner.listForProfile(profileId);
+
+  @override
+  Future<List<Observation>> listForDayEntryWithLegacyAlias(
+    String dayEntryId,
+  ) => _inner.listForDayEntryWithLegacyAlias(dayEntryId);
+
+  @override
+  Future<Observation> save(Observation observation) =>
+      _inner.save(observation);
+
+  @override
+  Future<void> delete(String id) => _inner.delete(id);
+}
+
 /// Issue #187: [failDelete] and [seeded] let a test exercise the
 /// delete-failure path (`InlineError` on `delete-error`) the same way
 /// [failSave] (the default, unchanged) already exercises the save-failure
@@ -2139,6 +2185,76 @@ void main() {
         (await h.observations.listForDayEntry(saved.id))
             .where((o) => o.category == ObservationCategory.bbt),
         isEmpty,
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets(
+        'issue #1711: a failed measurement seed read never lets an unrelated '
+        'edit tombstone the stored reading', (tester) async {
+      late MeasurementSeedReadFailureRepo failing;
+      final h = await pumpLogging(
+        tester,
+        observationsWrap: (real) =>
+            failing = MeasurementSeedReadFailureRepo(real),
+        seed: (db, profileId) async {
+          // A stored manual BBT reading the sheet's seed would have shown.
+          final entry = await DriftDayEntriesRepository(db.storage).save(
+            DayEntry(
+              id: '',
+              profileId: profileId,
+              localDate: kToday,
+              tz: 'UTC',
+              flow: FlowLevel.notBleeding,
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+          await DriftObservationsRepository(db.storage).save(
+            Observation(
+              id: '',
+              dayEntryId: entry.id,
+              profileId: profileId,
+              localDate: kToday,
+              tz: 'UTC',
+              category: ObservationCategory.bbt,
+              valueNum: 36.6,
+              unit: 'celsius',
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      expect(
+        failing.failedReads,
+        greaterThan(0),
+        reason: 'the seed read must actually have failed for this test to '
+            'mean anything',
+      );
+      expect(
+        find.byKey(const ValueKey('day-sheet-unmapped-observations-error')),
+        findsOneWidget,
+        reason: 'the unmapped-rows read failed too and must say so rather '
+            'than read as "no unmapped rows on this day"',
+      );
+      // Only the seed failed; the autosave path's own read succeeds from
+      // here on.
+      failing.failReads = false;
+
+      // An unrelated edit (the flow chip) triggers the autosave.
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Heavy'));
+      await pumpAutosave(tester);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(
+        (await h.observations.listForDayEntry(saved!.id))
+            .where((o) => o.category == ObservationCategory.bbt),
+        isNotEmpty,
+        reason: 'the empty field was "the seed never arrived", not "the '
+            'operator cleared it" -- the stored reading must survive',
       );
       await disposeLogging(tester, h);
     });
