@@ -28,7 +28,11 @@
 /// `WidgetCycleStatePayload.encode`, and writes through the [WidgetDataStore]
 /// port. Payload writes serialize through a small drain queue so two
 /// overlapping emissions can never interleave half a payload across the
-/// boundary.
+/// boundary. A failed write is best-effort (issue #1731): the store writes
+/// the payload in one atomic container entry, so a failure leaves the
+/// previous payload intact and the next data-change signal republishes —
+/// the error is swallowed here rather than escaping as an unhandled async
+/// error.
 library;
 
 // Named required parameters cannot be initializing formals; the private
@@ -208,8 +212,15 @@ class WidgetStatePublisher {
     final previous = _draining ?? Future<void>.value();
     final run = previous.then((_) async {
       if (_disposed) return;
-      await _store.savePayload(payload);
-      await _store.refresh();
+      try {
+        await _store.savePayload(payload);
+        await _store.refresh();
+      } catch (_) {
+        // Best-effort (issue #1731): the store writes the payload in one
+        // atomic container entry, so a failed write leaves the previous
+        // payload intact and the next data-change signal republishes.
+        // Swallowed so it can never surface as an unhandled async error.
+      }
     });
     _draining = run;
     await run.whenComplete(() {

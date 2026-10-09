@@ -51,8 +51,15 @@ class _CapturingStore implements WidgetDataStore {
   final List<Map<String, String>> payloads = [];
   int refreshes = 0;
 
+  /// Issue #1731 coverage: makes [savePayload] throw, the shape of the
+  /// store's failed-write report (the envelope write did not land).
+  bool failSaves = false;
+
   @override
   Future<void> savePayload(Map<String, String> payload) async {
+    if (failSaves) {
+      throw StateError('the widget payload write did not land');
+    }
     payloads.add(Map.of(payload));
   }
 
@@ -180,6 +187,34 @@ void main() {
     expect(payload[WidgetCycleStatePayload.keyCanQuickLog], '1');
     expect(h.store.refreshes, greaterThanOrEqualTo(1),
         reason: 'every payload write re-renders the widget');
+  });
+
+  test('a failed store write is swallowed, never an unhandled async error '
+      '(issue #1731)', () async {
+    h.profiles = [_profile('p1')];
+    h.settings.setSilently('last_active_profile', 'p1');
+    await h.start();
+    final payloadsBefore = h.store.payloads.length;
+    final refreshesBefore = h.store.refreshes;
+
+    h.store.failSaves = true;
+    h.emit('p1', _active(cycleDay: 14));
+    await h.settle();
+
+    // Reaching here is itself an assertion: the publisher's catch is what
+    // keeps the store's reported failure from surfacing as an unhandled
+    // async error (the store's single-entry write leaves the previous
+    // payload intact on the device, and the next signal republishes).
+    expect(h.store.payloads, hasLength(payloadsBefore),
+        reason: 'the failed write landed nothing');
+    expect(h.store.refreshes, refreshesBefore,
+        reason: 'no refresh after a failed save');
+
+    h.store.failSaves = false;
+    h.emit('p1', _active(cycleDay: 15));
+    await h.settle();
+    expect(h.store.payloads.last[WidgetCycleStatePayload.keyCycleDay], '15',
+        reason: 'the next signal republishes normally');
   });
 
   test('a known viewer gets no quick-log flag in the payload', () async {

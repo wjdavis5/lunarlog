@@ -50,14 +50,32 @@ import SwiftUI
 
 /// The keys the app writes into the shared suite (see
 /// `lib/domain/widget/widget_cycle_state.dart` — the documented,
-/// minimal boundary).
+/// minimal boundary). The whole payload travels as one JSON object under
+/// `payload` (issue #1731), so a failed or interrupted write can never
+/// leave half of a new payload beside half of the old one.
 private enum PayloadKey {
+    static let payload = "ll_widget_payload"
     static let state = "ll_widget_state"
     static let cycleDay = "ll_widget_cycle_day"
     static let daysUntilNext = "ll_widget_days_until_next"
     static let canQuickLog = "ll_widget_can_quick_log"
     static let profileId = "ll_widget_profile_id"
     static let asOf = "ll_widget_as_of"
+}
+
+/// The payload's fields, decoded from the single JSON entry the app writes
+/// (issue #1731); nil when that entry is absent or malformed, which reads
+/// as the neutral render.
+private func readPayloadFields() -> [String: Any]? {
+    guard let defaults = UserDefaults(suiteName: appGroupId),
+        let json = defaults.string(forKey: PayloadKey.payload),
+        let data = json.data(using: .utf8),
+        let object = try? JSONSerialization.jsonObject(with: data),
+        let fields = object as? [String: Any]
+    else {
+        return nil
+    }
+    return fields
 }
 
 /// The app group both Runner and this extension are entitled to; the suite
@@ -89,24 +107,23 @@ struct WidgetRender {
 
 /// Reads the app's latest payload from the shared suite, unrolled.
 func readRender() -> WidgetRender {
-    guard let defaults = UserDefaults(suiteName: appGroupId) else {
+    guard let fields = readPayloadFields() else {
         return .neutral
     }
-    let profileId = defaults.string(forKey: PayloadKey.profileId)
+    let profileId = fields[PayloadKey.profileId] as? String
     let canQuickLog =
-        (defaults.string(forKey: PayloadKey.canQuickLog) ?? "0") == "1"
+        (fields[PayloadKey.canQuickLog] as? String ?? "0") == "1"
         && profileId != nil
     // Any state other than a live cycle ("day") renders the neutral dash.
-    guard defaults.string(forKey: PayloadKey.state) == "day",
-        let baseDayText = defaults.string(forKey: PayloadKey.cycleDay),
+    guard fields[PayloadKey.state] as? String == "day",
+        let baseDayText = fields[PayloadKey.cycleDay] as? String,
         let baseDay = Int(baseDayText)
     else {
         return WidgetRender(
             title: "—", cycleDay: nil, daysUntilNext: nil,
             canQuickLog: canQuickLog, profileId: profileId)
     }
-    let untilNext = defaults
-        .string(forKey: PayloadKey.daysUntilNext)
+    let untilNext = (fields[PayloadKey.daysUntilNext] as? String)
         .flatMap(Int.init)
     return WidgetRender(
         title: "Day \(baseDay)", cycleDay: baseDay, daysUntilNext: untilNext,
@@ -116,7 +133,7 @@ func readRender() -> WidgetRender {
 /// The payload's as-of date, as the app wrote it: the day the stored
 /// counts were right.
 func readAsOf() -> String? {
-    UserDefaults(suiteName: appGroupId)?.string(forKey: PayloadKey.asOf)
+    readPayloadFields()?[PayloadKey.asOf] as? String
 }
 
 /// Whole civil days from the payload's as-of date (`yyyy-MM-dd`) to

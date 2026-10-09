@@ -18,10 +18,12 @@ library;
 /// branch on the platform themselves, they just get a store that does
 /// nothing.
 abstract interface class WidgetDataStore {
-  /// Writes the payload keys ([WidgetCycleStatePayload.encode]'s output)
-  /// into the shared container. The map is the complete write: keys not in
-  /// it are left as-is, so the writer sends the full set every time and a
-  /// previously-written key never lingers unintentionally.
+  /// Writes the payload ([WidgetCycleStatePayload.encode]'s output) into
+  /// the shared container. The map is the complete write: it is serialized
+  /// as one JSON object under [WidgetCycleStatePayload.keyPayload] and
+  /// written in a single container entry (issue #1731), so a failed or
+  /// interrupted write leaves the previous payload in place rather than a
+  /// mix of two. A failed write is reported by throwing.
   Future<void> savePayload(Map<String, String> payload);
 
   /// Asks the OS to re-render the widget(s) from the container.
