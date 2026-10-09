@@ -765,6 +765,11 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
           localRev: (i) => i.localRev,
         ),
     () => _hasPushable(
+          readPage: _syncMetadata.readDirtyGuardianNotes,
+          id: (n) => n.id,
+          localRev: (n) => n.localRev,
+        ),
+    () => _hasPushable(
           readPage: _syncMetadata.readDirtyDayEntryMergeEvents,
           id: (e) => e.id,
           localRev: (e) => e.localRev,
