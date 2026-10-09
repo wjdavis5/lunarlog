@@ -2343,6 +2343,15 @@
       }
     }
   },
+  "purgeImportedDataRememberedPreview": "No rows left from {source}. Clears what the app remembers about days you deleted, so an import can bring them back.",
+  "@purgeImportedDataRememberedPreview": {
+    "description": "The purge dialog's preview when the selected source has no live rows left but the app still remembers days deleted from it (issue #1587 item 6): the purge clears that memory, letting the next import bring the store's records back.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  },
   "importEntryDatesRejectedPreview": "{count, plural, =1{1 day entry falls} other{{count} day entries fall}} outside this profile's date range and will be skipped when you import ({reasons}).",
   "@importEntryDatesRejectedPreview": {
     "description": "Issue #925: the restore-from-file preview's warning before the user commits, naming how many of the file's day entries are out of bounds and why (reasons). Shown only when count > 0.",

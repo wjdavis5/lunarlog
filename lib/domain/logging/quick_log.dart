@@ -84,8 +84,29 @@ Future<void> undoQuickLog(
   required LocalDate date,
 }) async {
   if (previous == null) {
-    await repository.delete(profileId, date);
+    await undoCreatedDay(repository, profileId: profileId, date: date);
   } else {
     await repository.save(previous);
+  }
+}
+
+/// Deletes a day a session created, as an undo (Issue #1587 item 1).
+/// [DayEntriesRepository.delete] would remember the health-store records
+/// the row carries ([DeletedDayEntryReader]) — that is what "I removed this
+/// store data" means — but an undo is removing a row *she* created, and a
+/// record a background import attached to it was not hers to remove: the
+/// next import may bring it back. When the repository offers
+/// [UndoDayEntryDeleter] the delete skips that memory; a repository that
+/// does not (a test double, a wiring that lacks it) falls back to the plain
+/// delete, exactly the pre-#1572 behaviour for that case.
+Future<void> undoCreatedDay(
+  DayEntriesRepository repository, {
+  required String profileId,
+  required LocalDate date,
+}) async {
+  if (repository case final UndoDayEntryDeleter deleter) {
+    await deleter.deleteForUndo(profileId, date);
+  } else {
+    await repository.delete(profileId, date);
   }
 }

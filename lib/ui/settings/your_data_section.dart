@@ -536,12 +536,16 @@ class _PurgeImportedDataDialogState extends State<_PurgeImportedDataDialog> {
   /// Per-source live counts for [_profileId]; null while the local read is
   /// still in flight.
   Map<PurgeableImportSource, int>? _counts;
+
+  /// Per-source remembered-deletion counts (Issue #1587 item 6): what an
+  /// import is still holding back for [_profileId]; null while loading.
+  Map<PurgeableImportSource, int>? _remembered;
   bool _loading = true;
   bool _loadFailed = false;
 
   /// The selected source, or null when no platform-valid source has any
-  /// rows (or while loading) — [AlertDialog]'s Purge action is disabled in
-  /// both cases.
+  /// rows or remembered deletions (or while loading) — [AlertDialog]'s
+  /// Purge action is disabled in both cases.
   PurgeableImportSource? _source;
 
   List<PurgeableImportSource> get _availableSources => [
@@ -560,15 +564,19 @@ class _PurgeImportedDataDialogState extends State<_PurgeImportedDataDialog> {
       _loading = true;
       _loadFailed = false;
       _counts = null;
+      _remembered = null;
       _source = null;
     });
     try {
       final counts = await widget.service.importedDataCounts(profileId);
+      final remembered =
+          await widget.service.importedDataRememberedCounts(profileId);
       if (!mounted) return;
       setState(() {
         _loading = false;
         _counts = counts;
-        _source = _defaultSourceFor(counts);
+        _remembered = remembered;
+        _source = _defaultSourceFor(counts, remembered);
       });
     } catch (error) {
       debugPrint('lunarlog your-data: purge counts failed '
@@ -581,19 +589,35 @@ class _PurgeImportedDataDialogState extends State<_PurgeImportedDataDialog> {
     }
   }
 
+  /// A source with live rows first (the ordinary purge); then one with
+  /// only remembered deletions, whose purge clears the memory so an import
+  /// can bring the store's records back (Issue #1587 item 6).
   PurgeableImportSource? _defaultSourceFor(
     Map<PurgeableImportSource, int> counts,
+    Map<PurgeableImportSource, int> remembered,
   ) {
     for (final source in _availableSources) {
       if ((counts[source] ?? 0) > 0) return source;
     }
+    for (final source in _availableSources) {
+      if ((remembered[source] ?? 0) > 0) return source;
+    }
     return null;
   }
 
-  bool get _hasAnyRows =>
-      _counts != null && _availableSources.any((s) => (_counts![s] ?? 0) > 0);
+  /// Whether the chosen profile has anything a purge can act on: live
+  /// rows, remembered deletions, or both.
+  bool get _hasAnything =>
+      _counts != null &&
+      _remembered != null &&
+      _availableSources.any(
+        (s) => (_counts![s] ?? 0) > 0 || (_remembered![s] ?? 0) > 0,
+      );
 
   int get _selectedCount => _source == null ? 0 : (_counts?[_source] ?? 0);
+
+  int get _selectedRememberedCount =>
+      _source == null ? 0 : (_remembered?[_source] ?? 0);
 
   @override
   Widget build(BuildContext context) {
@@ -644,7 +668,8 @@ class _PurgeImportedDataDialogState extends State<_PurgeImportedDataDialog> {
           child: Text(l10n.yourDataPurgeCancel),
         ),
         DestructiveButton(
-          onPressed: _source == null || _selectedCount == 0
+          onPressed: _source == null ||
+                  (_selectedCount == 0 && _selectedRememberedCount == 0)
               ? null
               : () => Navigator.of(context)
                   .pop(_PurgeSelection(_profileId, _source!)),
@@ -671,7 +696,7 @@ class _PurgeImportedDataDialogState extends State<_PurgeImportedDataDialog> {
         ),
       ];
     }
-    if (!_hasAnyRows) {
+    if (!_hasAnything) {
       return [
         Text(
           l10n.purgeImportedDataNoRows,
@@ -705,7 +730,9 @@ class _PurgeImportedDataDialogState extends State<_PurgeImportedDataDialog> {
       const SizedBox(height: 8),
       if (source != null)
         Text(
-          l10n.purgeImportedDataPreview(_selectedCount, source.label),
+          _selectedCount > 0
+              ? l10n.purgeImportedDataPreview(_selectedCount, source.label)
+              : l10n.purgeImportedDataRememberedPreview(source.label),
           key: const ValueKey('purge-count-preview'),
         ),
     ];

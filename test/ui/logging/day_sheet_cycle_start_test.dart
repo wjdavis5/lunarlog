@@ -157,6 +157,33 @@ class _HistoryReadFailureRepo implements DayEntriesRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// An observations repository whose legacy-alias spotting read fails — the
+/// child-observation load failure (Issue #642's catch): the sheet must
+/// still render, and logging must still work. The save path's
+/// `listForDayEntry` and every other read forward to the real repository.
+class _SpottingReadFailureRepo implements ObservationsRepository {
+  _SpottingReadFailureRepo(this._inner);
+
+  final ObservationsRepository _inner;
+
+  @override
+  Future<List<Observation>> listForDayEntryWithLegacyAlias(String dayEntryId)
+      async {
+    throw StateError('disk error');
+  }
+
+  @override
+  Future<List<Observation>> listForDayEntry(String dayEntryId) =>
+      _inner.listForDayEntry(dayEntryId);
+
+  @override
+  Future<Observation> save(Observation observation) =>
+      _inner.save(observation);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 /// Pumps the app shell and opens the day sheet on [h]'s profile, on
 /// [date] (default: the issue's day 17), over [existing] (default:
 /// [Harness.existingToday]) and/or through a [repository] override.
@@ -167,6 +194,8 @@ Future<void> pumpSheet(
   LocalDate? today,
   DayEntry? existing,
   DayEntriesRepository? repository,
+  ObservationsRepository? observations,
+  bool readOnly = false,
 }) async {
   tester.view.physicalSize = const Size(800, 1400);
   tester.view.devicePixelRatio = 1.0;
@@ -175,7 +204,9 @@ Future<void> pumpSheet(
   await tester.pumpWidget(
     MultiProvider(
       providers: [
-        Provider<ObservationsRepository>.value(value: h.observations),
+        Provider<ObservationsRepository>.value(
+          value: observations ?? h.observations,
+        ),
       ],
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -195,6 +226,7 @@ Future<void> pumpSheet(
                     date: sheetDate,
                     existing: existing ?? h.existingToday,
                     today: today ?? sheetDate,
+                    readOnly: readOnly,
                   ),
                 ),
                 child: const Text('Open'),
@@ -312,6 +344,20 @@ void main() {
         rows.any((o) => o.category == ObservationCategory.spotting),
         isTrue,
         reason: 'spotting is its own observation row',
+      );
+
+      // Issue #1587 review: this route goes through [_toggleSpotting], so
+      // "Spotting was on this session" is latched and unticking it is
+      // allowed to remove the row it wrote.
+      await tester.tap(find.byKey(const ValueKey('spotting-chip')));
+      await tester.pumpAndSettle();
+      await _settleAutosave(tester);
+      final afterUntick = await h.observations.listForDayEntry(saved.id);
+      expect(
+        afterUntick.any((o) => o.category == ObservationCategory.spotting),
+        isFalse,
+        reason: 'unticking Spotting after this route removes the row, '
+            'because the route latched "Spotting was on"',
       );
 
       await _dismissSheet(tester);
@@ -547,6 +593,58 @@ void main() {
           reason: 'a guard whose read failed must never block logging — '
               'exactly the pre-#887 behavior');
       expect(_lightSelected(tester), isTrue);
+    });
+  });
+
+  // Issue #642's catch, at widget level (requested by the #1587 review): a
+  // failed spotting load leaves the toggle unset and says so in the
+  // read-only view; the editable sheet must keep working.
+  group('a failed child-observation load', () {
+    testWidgets('leaves the editable sheet usable: the spotting toggle '
+        'still logs', (tester) async {
+      final h = await createHarness(withExistingToday: true);
+      addTearDown(h.dispose);
+      await pumpSheet(
+        tester,
+        h,
+        observations: _SpottingReadFailureRepo(h.observations),
+      );
+
+      expect(
+        tester
+            .widget<FilterChip>(find.byKey(const ValueKey('spotting-chip')))
+            .selected,
+        isFalse,
+        reason: 'a failed load leaves the toggle at its unset default',
+      );
+
+      // The failure must not wedge the toggle: turning Spotting on still
+      // writes its observation row through the ordinary save path.
+      await tester.tap(find.byKey(const ValueKey('spotting-chip')));
+      await tester.pumpAndSettle();
+      await _settleAutosave(tester);
+      final saved = await h.entries.find(h.profileId, kToday);
+      final rows = await h.observations.listForDayEntry(saved!.id);
+      expect(
+        rows.any((o) => o.category == ObservationCategory.spotting),
+        isTrue,
+        reason: 'logging after a failed load still writes the row',
+      );
+    });
+
+    testWidgets('says so in the read-only view', (tester) async {
+      final h = await createHarness(withExistingToday: true);
+      addTearDown(h.dispose);
+      await pumpSheet(
+        tester,
+        h,
+        observations: _SpottingReadFailureRepo(h.observations),
+        readOnly: true,
+      );
+
+      expect(find.text('Could not load additional details.'), findsOneWidget,
+          reason: 'the read-only view says the load failed rather than '
+              'silently omitting spotting/pain rows');
     });
   });
 }

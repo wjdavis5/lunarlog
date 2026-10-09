@@ -24,7 +24,13 @@
 /// after it an import must bring the days back.
 ///
 /// Never synced: it lives in `app_settings`, and it is this phone's health
-/// store the ids belong to.
+/// store the ids belong to. Two limits worth naming (Issue #1587 item 7):
+/// a new phone, a reinstall, and a sign-out-and-back-in on the same phone
+/// (the device reset deletes the database) each lose the memory, and a
+/// deleted day — whose row is swept away shortly after it syncs — comes
+/// back on the next import. There is no server-side copy, deliberately:
+/// the ids name records in one phone's health store, which no other
+/// device can read.
 library;
 
 /// The row sources that mean "imported from this phone's health store": the
@@ -42,10 +48,18 @@ const Set<String> _kAppleHealthSources = {'healthkit', 'apple_health'};
 
 /// Every source that comes from the same health store as [source], itself
 /// included; none when [source] is not a health store's (a file import).
-/// Removing a store's imported data is a clean slate for the whole store,
-/// whichever of its sources was named.
+/// Removing a store's imported data clears the deletion memory for every
+/// source whose rows go with it.
+///
+/// On an iPhone the days carry `healthkit` and the entries on them
+/// `apple_health`: removing `healthkit` is a clean slate for the whole
+/// store (the server cascades the entries on those days too, so both
+/// sources' rows are gone), while removing `apple_health` — the
+/// measurements, which touches no day — clears only its own memory
+/// (Issue #1587 item 5: it used to clear `healthkit`'s too, so days she
+/// deleted came back on the next import).
 Set<String> healthStoreSourcesSharedWith(String source) {
-  if (_kAppleHealthSources.contains(source)) return _kAppleHealthSources;
+  if (source == 'healthkit') return _kAppleHealthSources;
   if (kHealthStoreSources.contains(source)) return {source};
   return const {};
 }

@@ -18,7 +18,8 @@ class DriftDayEntriesRepository
         DayEntriesRepository,
         LatestDayEntryReader,
         DayEntrySyncStateReader,
-        DeletedDayEntryReader {
+        DeletedDayEntryReader,
+        UndoDayEntryDeleter {
   DriftDayEntriesRepository(this._storage);
 
   final DayEntriesRepositoryStore _storage;
@@ -150,6 +151,14 @@ class DriftDayEntriesRepository
   @override
   Future<void> delete(String profileId, domain.LocalDate localDate) =>
       _storage.softDeleteDayEntry(
+        profileId: profileId,
+        localDate: localDate.iso,
+      );
+
+  /// Issue #1587 item 1: the undo's delete — see [UndoDayEntryDeleter].
+  @override
+  Future<void> deleteForUndo(String profileId, domain.LocalDate localDate) =>
+      _storage.softDeleteDayEntryForUndo(
         profileId: profileId,
         localDate: localDate.iso,
       );

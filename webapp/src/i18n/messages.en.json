@@ -464,6 +464,7 @@
   "profileErasureFailureOther": "Couldn't remove the imported data. Try again.",
   "purgeImportedDataNoRows": "This profile has no imported data from a supported source.",
   "purgeImportedDataPreview": "{count, plural, =1{1 entry} other{{count} entries}} from {source}",
+  "purgeImportedDataRememberedPreview": "No rows left from {source}. Clears what the app remembers about days you deleted, so an import can bring them back.",
   "importEntryDatesRejectedPreview": "{count, plural, =1{1 day entry falls} other{{count} day entries fall}} outside this profile's date range and will be skipped when you import ({reasons}).",
   "importEntryDatesRejectedResult": "{count, plural, =1{1 day entry} other{{count} day entries}} skipped by date ({reasons})",
   "importEntryDatesRejectionFuture": "{count, plural, =1{1 more than a day in the future} other{{count} more than a day in the future}}",
