@@ -345,6 +345,11 @@ class _FakeDayEntries
     return row;
   }
 
+  @override
+  Future<void> delete(String profileId, LocalDate localDate) async {
+    live.remove(localDate.iso);
+  }
+
   /// The pass's row scan (Issues #1594/#1683) reads the profile's rows
   /// through this.
   @override
@@ -407,6 +412,10 @@ class _FakeObservations implements ObservationsRepository {
   @override
   Future<List<Observation>> listForProfile(String profileId) async =>
       [for (final rows in byDay.values) ...rows];
+
+  @override
+  Future<List<Observation>> listForDayEntry(String dayEntryId) async =>
+      byDay[dayEntryId] ?? const [];
 
   @override
   Future<List<Observation>> listForDayEntryWithLegacyAlias(
@@ -3364,6 +3373,40 @@ void main() {
         dayEntries.live['2026-09-11']!.sourceId,
         'hc-period#2026-09-11@$ms',
       );
+    });
+
+    test('a shortened record clears the dropped days on the pass that '
+        're-keys them (issue #1695)', () async {
+      await bind();
+      for (final day in ['2026-09-10', '2026-09-11', '2026-09-12']) {
+        dayEntries.live[day] = importedDay(day, 'hc-period@111');
+      }
+
+      // The store shortened the record to 09-10 (modifiedAt 222). The
+      // re-key rewrites all three rows first; the two days the span no
+      // longer covers must still be cleared after the merge.
+      final changed = DateTime.utc(2026, 9, 10, 12);
+      source.result = HealthReadResult.samples([
+        _periodSample(
+          id: 'hc-period',
+          startIso: '2026-09-10T04:00:00Z',
+          endIso: '2026-09-11T03:59:59Z',
+          modifiedAt: changed,
+        ),
+      ]);
+
+      await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importNow();
+
+      final ms = changed.millisecondsSinceEpoch;
+      expect(
+        dayEntries.live['2026-09-10']!.sourceId,
+        'hc-period#2026-09-10@$ms',
+      );
+      expect(dayEntries.live['2026-09-11'], isNull,
+          reason: 'the shortened record no longer covers it');
+      expect(dayEntries.live['2026-09-12'], isNull);
     });
   });
 }
