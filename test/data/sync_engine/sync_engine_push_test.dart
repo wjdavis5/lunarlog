@@ -434,6 +434,34 @@ void main() {
           reason: 'a dirty custom-tag registry row is pushable content');
     });
 
+    test('Issue #1697: a dirty guardian note alone keeps a cycle queued',
+        () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+
+      // Everything except the note is clean: the profile is pushed, no
+      // entries exist — so _hasPushableDirty's walk must reach the
+      // guardian-notes read and find the note pushable.
+      final p =
+          await rig.storage.upsertProfile(displayName: 'P', isMinor: false);
+      await rig.storage.markPushed(
+        table: SyncTable.profiles,
+        id: p.id,
+        localRevAtPush: (await rig.storage.readDirtyProfiles()).single.localRev,
+      );
+      await rig.storage.upsertGuardianNote(
+        profileId: p.id,
+        localDate: '2026-01-01',
+        tz: 'UTC',
+        body: 'Only dirty row',
+      );
+
+      final hasPushable = await rig.engine.hasPushableDirtyForTest();
+      expect(hasPushable, isTrue,
+          reason: 'a dirty guardian note is pushable content');
+    });
+
     test('Issue #177: a _SyncPaused between batches (the device locks '
         'mid-import) leaves the not-yet-sent batches dirty; the next cycle '
         'resumes and pushes only what is left, never re-pushing an '
