@@ -259,6 +259,7 @@ export const MESSAGE_IDS = [
   "healthSyncStoreDeletedConfirmBody",
   "healthSyncStoreDeletedConfirmCancel",
   "healthSyncStoreDeletedConfirmAction",
+  "healthSyncStoreDeletedConfirmPastDataHidden",
   "healthSyncStoreDeletedNothingRemoved",
   "healthSyncStoreDeletedReadFailed",
   "healthSyncStoreDeletedRemoveFailed",

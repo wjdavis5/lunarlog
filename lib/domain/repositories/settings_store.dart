@@ -165,6 +165,18 @@ abstract final class SettingsKeys {
   static const String healthImportStoreDeletedRecordIds =
       'health_import_store_deleted_record_ids';
 
+  /// The ids she answered Keep for on the Health sync screen's offer
+  /// (Issue #1616 item 4): a JSON list of strings, or unset. A pass that
+  /// notes a deletion and then fails on a later page does not commit its
+  /// read position, so the next pass reports the same deletion again —
+  /// without this, an id she already kept came back on offer once. Written
+  /// only through `HealthSyncBinding`, and cleared with the binding by
+  /// `bind`/`unbind`; a record id is not re-offered once kept (a record
+  /// re-created in the store gets a new id). Device-local, never synced.
+  /// Record ids only: no date, no flow, nothing about a day.
+  static const String healthImportKeptDeletedRecordIds =
+      'health_import_kept_deleted_record_ids';
+
   /// Per-profile local reminder configuration (Issue #136, R10/R11), as
   /// the JSON document `encodeReminderConfigs` produces: a versioned map
   /// of profile id -> `ReminderConfig` JSON. Device-local **by design**
