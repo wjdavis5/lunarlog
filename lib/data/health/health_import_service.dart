@@ -853,11 +853,6 @@ class LocalHealthImportService
   }) async {
     final window = _window();
     final profileId = bound.profile.id;
-    // Issue #1690: days an earlier build expanded from one period record
-    // share a key and never sync; re-keyed here, before the read, because
-    // a changes-only read never returns the unchanged record that would
-    // let the merge re-key them (Issue #1686).
-    await _rekeySharedPeriodDays(profileId);
     // Issue #1652: a declined record whose row now permits the store's
     // value needs a read that returns records that did not change; an
     // anchored or changes read never will. The whole history is read for
@@ -918,6 +913,12 @@ class LocalHealthImportService
       scanner.invalidate();
     }
     await _trimStoreDeleted(scanner);
+    // Issue #1690: days an earlier build expanded from one period record
+    // share a key and never sync; re-keyed here, on the rows the pass's
+    // scan has already loaded, because a changes-only read never returns
+    // the unchanged record that would let the merge re-key them (Issue
+    // #1686).
+    await _rekeySharedPeriodDays(scanner);
     await _commitRead(bound.facts, run, summary);
     return summary;
   }
@@ -1616,21 +1617,19 @@ class LocalHealthImportService
   /// (#1682). Since #1686 a fresh import writes `<period id>#<date>@<ms>`,
   /// but a changes-only read never returns an unchanged record, so the
   /// rows the merge would re-key are never offered to it. Re-keyed here
-  /// instead, without a re-read: every live imported row whose record is
-  /// shared by more than one date is rewritten to its own per-day key and
-  /// marked dirty, so the next push carries each day on its own.
+  /// instead, without a re-read and on the rows the pass's scan has
+  /// already loaded: every live imported row whose record is shared by
+  /// more than one date is rewritten to its own per-day key and marked
+  /// dirty, so the next push carries each day on its own.
   ///
   /// A record only one day carries is left as it is (nothing rejects it),
-  /// and so is a row from another source or one with no record id. Runs on
-  /// every pass and is idempotent: once no live record is shared, nothing
-  /// matches and nothing is written.
-  Future<int> _rekeySharedPeriodDays(String profileId) async {
-    final rows = [
-      for (final row in await _dayEntries.listForProfile(profileId))
-        if (row.source == _daySource && row.sourceId != null) row,
-    ];
+  /// and so is a row with no record id. Runs on every pass and is
+  /// idempotent: once no live record is shared, nothing matches and
+  /// nothing is written.
+  Future<int> _rekeySharedPeriodDays(_ImportedRowScanner scanner) async {
     final shared = <String, List<DayEntry>>{};
-    for (final row in rows) {
+    for (final row in await scanner.days()) {
+      if (row.sourceId == null) continue;
       shared.putIfAbsent(_recordIdOf(row.sourceId), () => []).add(row);
     }
     var rekeyed = 0;
@@ -2218,16 +2217,26 @@ class _ImportedRowScanner {
     );
   }
 
-  Future<void> _ensureLoaded() async {
-    if (_days != null && _spotting != null) return;
-    _days = [
+  /// The profile's live imported day entries, loaded on their own and kept
+  /// for the pass. The #1690 re-key reads the same rows the scan does, so
+  /// one pass still loads them at most once.
+  Future<List<DayEntry>> days() async {
+    return _days ??= [
       for (final day in await dayEntries.listForProfile(profileId))
         if (day.source == daySource) day,
     ];
-    _spotting = [
+  }
+
+  Future<List<Observation>> _spottingEntries() async {
+    return _spotting ??= [
       for (final entry in await observations.listForProfile(profileId))
         if (isImportedSpotting(entry)) entry,
     ];
+  }
+
+  Future<void> _ensureLoaded() async {
+    await days();
+    await _spottingEntries();
   }
 }
 
