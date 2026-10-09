@@ -187,11 +187,13 @@ already boots for pgTAP (the suite skips itself when no stack is
 reachable); realtime delivery itself is proven manually by
 `supabase/tests/manual/verify_realtime_delivery.mjs` — the db-tests stack
 deliberately excludes the realtime container (AGENTS.md, Migration Flow).
-The webapp job is deliberately **not** a required check — not in
-`.github/scripts/check-ci-gate.sh`'s `REQUIRED_CHECKS` and not in the
-ruleset rollup's `needs:` — so the store release gate stays anchored to the
-app's own suites (the issue's acceptance criterion; a path-filtered job in
-the rollup would fail every docs-only PR with a "skipped" dependency).
+The webapp job **is** a required check of the store release gate — it sits
+in `.github/scripts/check-ci-gate.sh`'s `REQUIRED_CHECKS` and in the ruleset
+rollup's `needs:` — promoted there at the app.lunarlog.app launch (issue
+#1258, on the #1264 review's recorded recommendation: deliberately outside
+the gate was correct while the webapp was a staging-only scaffold, but the
+launch made it load-bearing). `check-webapp-staging.test.sh` pins both
+surfaces; issue #1249's "not required" posture was retired at that launch.
 
 ## Auth (issue #1250)
 

@@ -766,11 +766,11 @@ jobs:
     # (webapp/src/lib/**, webapp/test/integration/**, issue #1252) also
     # turn on the `database` suite, so this job runs alongside db-tests.
     #
-    # Deliberately NOT a required check: not in ci-required-checks' needs
-    # below, and not in check-ci-gate.sh's REQUIRED_CHECKS — the issue's
-    # acceptance criterion, so the store release gate stays anchored to the
-    # app's own suites (a path-filtered job in the rollup would also fail
-    # every docs-only PR with a "skipped" dependency).
+    # A required check of the store release gate since the app.lunarlog.app
+    # launch (issue #1258, on the #1264 review's recorded recommendation):
+    # in ci-required-checks' needs below AND in check-ci-gate.sh's
+    # REQUIRED_CHECKS. Deliberately outside the gate only while the webapp
+    # was a staging-only scaffold (issue #1249).
     name: Web app (lint, typecheck, unit, build, e2e)
     needs: detect-changes
     runs-on: ubuntu-latest

@@ -282,10 +282,12 @@ assert_contains "the webapp job pins Node" "$CI" "node-version: '22'"
 # truth-table cases would silently test the root fixtures instead.
 assert_contains "the check probes /auth/session (issue #1280)" "$(cat "$SCRIPT")" 'SESSION_URL="$BASE_URL/auth/session"'
 
-# Issue #1249's acceptance criterion: the web CI job must NOT be a required
-# check of the store release gate, and must not gate the ruleset rollup
-# either (a path-filtered job in the rollup would fail every docs-only PR
-# with a "skipped" dependency).
+# Issue #1258: the web CI job IS a required check of the store release gate
+# since the app.lunarlog.app launch (the #1264 review's recorded
+# recommendation -- outside the gate was correct while the webapp was a
+# staging-only scaffold, but the launch made it load-bearing), in
+# REQUIRED_CHECKS and in the ruleset rollup's needs. (Issue #1249's "not
+# required" posture was retired at that launch.)
 CI_GATE="$(cat "$CI_GATE_SCRIPT")"
 assert_contains "check-ci-gate.sh's REQUIRED_CHECKS carries the webapp job (promoted at the #1258 launch)" "$CI_GATE" "Web app (lint, typecheck, unit, build, e2e)"
 assert_contains "the ruleset rollup's needs carries webapp (#1258 launch promotion)" "$CI" "      - webapp"
