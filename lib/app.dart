@@ -25,6 +25,8 @@ import 'package:lunarlog/data/widget/widget_quick_log_executor.dart';
 import 'package:lunarlog/data/widget/widget_state_publisher.dart';
 import 'package:lunarlog/domain/health/health_deviation.dart';
 import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart';
+import 'package:lunarlog/domain/health/health_flow_write_service.dart'
+    show HealthWritePassQueue;
 import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/widget/widget_data_store.dart'
@@ -354,6 +356,11 @@ class _LunarLogAppState extends State<LunarLogApp>
   ReminderWindowPublisher? _reminderWindowPublisher;
   PredictionProjectionPublisher? _predictionProjectionPublisher;
   HealthFlowWriteCoordinator? _healthFlowCoordinator;
+
+  /// The shared write service's queue (Issue #1614): built with the write
+  /// coordinator and handed to the tombstone coordinator, so its delete
+  /// runs on the same one-at-a-time queue as the passes.
+  HealthWritePassQueue? _healthFlowWritePassQueue;
   HealthSyncTombstoneCoordinator? _healthSyncTombstoneCoordinator;
   HealthImportRunner? _healthImporter;
   HealthPermissionProbe? _healthPermissionProbe;
@@ -758,7 +765,7 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// only starts the returned instance. Widget-test harnesses never get
   /// one.
   void _initHealthFlowWriter() {
-    final coordinator = buildHealthFlowWriteCoordinator(
+    final built = buildHealthFlowWriteService(
       settings: _settings,
       profiles: _profiles,
       dayEntries: _dayEntries,
@@ -772,7 +779,15 @@ class _LunarLogAppState extends State<LunarLogApp>
       ledger: _deps.healthExportLedger,
       rowClock: _deps.localWriteClock,
     );
-    if (coordinator == null) return;
+    if (built == null) return;
+    // The same service backs the tombstone coordinator's queue (Issue
+    // #1614), so its delete is serialized with the passes.
+    _healthFlowWritePassQueue = built.service;
+    final coordinator = buildHealthFlowWriteCoordinator(
+      service: built.service,
+      binding: built.binding,
+      dayEntries: _dayEntries,
+    );
     _healthFlowCoordinator = coordinator;
     coordinator.start();
   }
@@ -783,6 +798,12 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// sample. AC2: construction lives in `lib/composition/` (which owns the
   /// same platform gating as the write flow); this only starts it.
   void _initHealthSyncTombstonePropagation() {
+    // Issue #1614: the write service is built by [_initHealthFlowWriter]
+    // first (see [initState]'s order), and its queue is what serializes
+    // this coordinator's delete with the write passes. No service means
+    // the write direction is gated off — same gate, nothing to start.
+    final passQueue = _healthFlowWritePassQueue;
+    if (passQueue == null) return;
     final coordinator = buildHealthSyncTombstoneCoordinator(
       settings: _settings,
       profiles: _profiles,
@@ -790,6 +811,7 @@ class _LunarLogAppState extends State<LunarLogApp>
       guardiansForProfile: _profileGuardians.getForProfile,
       signedInUserId: () => confirmedHealthSyncUserId(_authController),
       ledger: _deps.healthExportLedger,
+      passQueue: passQueue,
     );
     if (coordinator == null) return;
     _healthSyncTombstoneCoordinator = coordinator;
@@ -1322,6 +1344,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     final healthSyncTeardown =
         _healthSyncTombstoneCoordinator?.dispose() ?? Future<void>.value();
     _healthFlowCoordinator = null;
+    _healthFlowWritePassQueue = null;
     _healthSyncTombstoneCoordinator = null;
     // Issue #541: the reminder coordinator above is disposed first (so its
     // `changes` subscription is already gone), then the service's own

@@ -482,7 +482,8 @@ class _BatchOutcome {
   final HealthPlatformResult? failure;
 }
 
-class LocalHealthFlowWriteService implements HealthFlowWriteService {
+class LocalHealthFlowWriteService
+    implements HealthFlowWriteService, HealthWritePassQueue {
   LocalHealthFlowWriteService({
     required HealthPlatformStore platform,
     required HealthSyncBinding binding,
@@ -554,6 +555,20 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   Future<HealthFlowSyncReport>? _running;
   Future<HealthFlowSyncReport>? _queued;
 
+  /// The tail of the exclusive queue (Issue #1614): every pass chains onto
+  /// it ([_startPass]) and so does every action another writer runs through
+  /// [runInPassQueue], so no two ever overlap.
+  Future<void> _exclusiveTail = Future.value();
+
+  @override
+  Future<T> runInPassQueue<T>(Future<T> Function() action) {
+    final result = _exclusiveTail.then((_) => action());
+    // The tail never carries an error: one failed action must not stop
+    // everything queued behind it.
+    _exclusiveTail = result.then<void>((_) {}, onError: (Object _) {});
+    return result;
+  }
+
   /// Runs one sync pass for the currently bound profile. Never throws —
   /// every expected failure mode is a [HealthFlowSyncReport.blocked];
   /// unexpected storage errors propagate (the coordinator's job to
@@ -583,9 +598,13 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// The handler below is the first thing registered on the pass, ahead
   /// of the queued pass [syncNow] chains onto it, so it has run and
   /// cleared [_running] by the time that pass starts and sets it again.
+  ///
+  /// The pass runs through the exclusive queue (Issue #1614), so a delete
+  /// another writer queued through [runInPassQueue] is never interleaved
+  /// with it.
   Future<HealthFlowSyncReport> _startPass() {
     _queued = null;
-    final pass = _pass();
+    final pass = runInPassQueue(_pass);
     _running = pass;
     return pass.whenComplete(() => _running = null);
   }
