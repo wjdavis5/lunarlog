@@ -7,7 +7,10 @@ part of 'storage.dart';
 // is one small write inside the transaction that deletes the row, and
 // forgetting one record does not rewrite the others.
 //
-// Key: `health_import_deleted_<profileId>|<source>|<record id>`.
+// Key: `health_import_deleted_<profileId>|<source>|<row sourceId>` — the
+// record id and the time it was last changed, plus (Issue #1682) the date
+// an expanded period day carries, so deleting one day of a span is
+// remembered for that day alone.
 // Value: the moment of the deletion, in UTC milliseconds.
 
 const String _kHealthImportDeletedPrefix = 'health_import_deleted_';

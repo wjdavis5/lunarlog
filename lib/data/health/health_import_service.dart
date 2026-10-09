@@ -145,7 +145,10 @@ class _DesiredSample {
   final DateTime? modifiedAt;
 
   /// The winning sample's store id — the imported row's `source_id`, so a
-  /// re-import of the same sample is idempotent.
+  /// re-import of the same sample is idempotent. A period record expands
+  /// into one day per civil date, and each carries the day's own record id
+  /// ([_periodDayRecordId], Issue #1682), so every day of the span has a
+  /// `source_id` of its own.
   final String recordId;
 
   /// The winning sample's own zone (IANA name, or the fixed-offset
@@ -396,7 +399,9 @@ class _PeriodExpansion {
 
 /// Expands one `MenstruationPeriodRecord` sample (Issue #1556) into
 /// bleed-day fills for every civil date of its span, via [_fillPeriodDays].
-/// Neither endpoint carrying a zone is unplaceable without guessing — the
+/// Each fill carries the day's own record key (Issue #1682), so no two
+/// days of a span share a `source_id`. Neither endpoint carrying a zone is
+/// unplaceable without guessing — the
 /// same rule `_dateFor` applies to an instantaneous sample — and a
 /// degenerate or oversized span (Health Connect refuses to store a period
 /// record longer than 31 days of elapsed time, the rule #1478's own write
@@ -449,7 +454,7 @@ bool _fillPeriodDays(
     byDate[date] = _DesiredSample(
       flow: kPeriodRecordImportFlowLevel,
       value: HealthFlowValue.unspecified,
-      recordId: sample.recordId,
+      recordId: _periodDayRecordId(sample.recordId, date),
       tzName: date == span.end && endTz != null
           ? endTz
           : fixedOffsetZoneName(span.startZone),
@@ -458,6 +463,21 @@ bool _fillPeriodDays(
   }
   return placed;
 }
+
+/// The record id one expanded day of a period record carries (Issue
+/// #1682): `<period id>#<yyyy-mm-dd>`, so every day of the span has a
+/// `source_id` of its own and the server's
+/// `day_entries_profile_source_source_id_uq` admits the whole span. Before
+/// this, all the days shared one key — the record's id and time — and the
+/// server kept only the first, rejecting the rest on every push.
+///
+/// The day's date is this child's alone; [_recordKey] still appends the
+/// record's last-changed time for Health Connect, giving the full
+/// `<period id>#<yyyy-mm-dd>@<ms>` key. A lookup that must reach every day
+/// of the span (the #1594 store-deletion paths) works from the bare period
+/// id and matches through [_recordIdOf], which strips the segment again.
+String _periodDayRecordId(String periodId, LocalDate date) =>
+    '$periodId#${date.iso}';
 
 /// Places one usable flow sample on its date (the pre-#1556 tail of
 /// `_resolvePage`'s per-sample body, extracted so that method stays inside
@@ -1446,6 +1466,12 @@ class LocalHealthImportService
   /// Found by its full key, the record is the same version. Found by the
   /// bare id a Health Connect row carried before the key held a time, it
   /// is unchanged unless the store says it changed after she deleted it.
+  ///
+  /// A period record's expanded days each carry the day's own key (Issue
+  /// #1682), so a day deleted from the span is remembered — and found —
+  /// by itself. A sibling day's live row names no part of it ([_seenLive]),
+  /// and the store-deletion paths that do cover the whole span work from
+  /// the bare period id ([_recordIdOf]).
   bool _deletedUnchanged(_DesiredSample desired) {
     final source = _daySource.toDb();
     final key = _recordKey(desired);
@@ -1471,6 +1497,10 @@ class LocalHealthImportService
   /// content: deleting a day clears its flow and leaves this column, on
   /// the phone, on the server and in every guardian's copy, so nothing
   /// about what was logged may be written into it.
+  ///
+  /// A period record's expanded days carry their own date in their record
+  /// id (`_periodDayRecordId`, Issue #1682), so for those the key is per
+  /// day; every other record's key is per record.
   static String _recordKey(_DesiredSample desired) {
     final modifiedAt = desired.modifiedAt;
     if (modifiedAt == null) return desired.recordId;
@@ -1510,11 +1540,22 @@ class LocalHealthImportService
   /// it is her edit unless the store says the record changed after the
   /// row did. The row gets its full key on that pass ([_remember]), so
   /// this runs once per row.
+  ///
+  /// The comparison is done on the record the two keys name, not their
+  /// exact text ([_recordIdOf]): a period record's expanded days carry a
+  /// date of their own in the key (Issue #1682), and a row written before
+  /// that carries the record's bare id and time, so the two shapes differ
+  /// for one and the same unchanged record. Times still have to agree —
+  /// that is what tells it is her edit and not the store's news.
   static bool _storeChangedSince(DayEntry existing, _DesiredSample desired) {
     final stored = existing.sourceId;
     if (stored == _recordKey(desired)) return false;
-    if (stored != desired.recordId) return true;
+    if (_recordIdOf(stored) != _recordIdOf(desired.recordId)) return true;
     final modifiedAt = desired.modifiedAt;
+    final storedTime = _recordTimeMs(stored);
+    if (storedTime != null && modifiedAt != null) {
+      return storedTime != modifiedAt.millisecondsSinceEpoch;
+    }
     return modifiedAt != null && modifiedAt.isAfter(existing.updatedAt);
   }
 
@@ -1782,12 +1823,35 @@ class _StoreDeletedScanner {
 
 /// The record an imported day's `sourceId` names: the key without the
 /// time Health Connect's rows carry after an `@`
-/// ([LocalHealthImportService._recordKey]). Empty for a row that names
-/// none, which no record id is.
+/// ([LocalHealthImportService._recordKey]) and without the per-day date
+/// segment a period record's expanded days carry after a `#`
+/// ([_periodDayRecordId], Issue #1682). Both old shapes — a bare record id,
+/// and a bare id with the record's time — name the same record. Health
+/// Connect record ids are UUIDs, so a trailing `#<yyyy-mm-dd>` is always
+/// the segment and never part of the id. Empty for a row that names none,
+/// which no record id is.
 String _recordIdOf(String? key) {
   final id = key ?? '';
   final at = id.lastIndexOf('@');
-  return at < 0 ? id : id.substring(0, at);
+  final withoutTime = at < 0 ? id : id.substring(0, at);
+  final segment = _kPeriodDaySegment.firstMatch(withoutTime);
+  return segment == null
+      ? withoutTime
+      : withoutTime.substring(0, segment.start);
+}
+
+/// The `#<yyyy-mm-dd>` an expanded period day carries at the end of its
+/// record id.
+final RegExp _kPeriodDaySegment = RegExp(r'#\d{4}-\d{2}-\d{2}$');
+
+/// The moment an imported day's `sourceId` carries after its last `@`, or
+/// null when it carries none (an Apple Health sample's key, or a Health
+/// Connect row from before the key held a time).
+int? _recordTimeMs(String? key) {
+  final id = key ?? '';
+  final at = id.lastIndexOf('@');
+  if (at < 0) return null;
+  return int.tryParse(id.substring(at + 1));
 }
 
 /// The running per-date accumulator across pages (Issue #992). A page's

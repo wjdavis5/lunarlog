@@ -9,10 +9,11 @@
 /// sheet removes an entry.
 library;
 
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
+import 'package:lunarlog/data/db/db.dart'
+    show DayEntriesCompanion, LunarLogDatabase;
 import 'package:lunarlog/data/health/health_import_service.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
@@ -20,6 +21,7 @@ import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/domain/health/health_deviation.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
+import 'package:lunarlog/domain/health/health_import_deletions.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
@@ -112,6 +114,21 @@ HealthFlowSample _spotting(String id) {
     start: start,
     end: start,
     offset: Duration.zero,
+  );
+}
+
+/// One Health Connect `MenstruationPeriodRecord` (Issue #1556): Sep 10–12
+/// 2026 at UTC-4, one interval record for the whole span. [modifiedAt] is
+/// when Health Connect last changed it, carried in each day's key.
+HealthFlowSample _period(String id, {required DateTime modifiedAt}) {
+  return HealthFlowSample(
+    recordId: id,
+    kind: HealthSampleKind.menstruationPeriod,
+    start: DateTime.parse('2026-09-10T04:00:00Z'),
+    end: DateTime.parse('2026-09-13T03:59:59Z'),
+    offset: const Duration(hours: -4),
+    endOffset: const Duration(hours: -4),
+    modifiedAt: modifiedAt,
   );
 }
 
@@ -369,5 +386,149 @@ void main() {
     expect(day.flow, FlowLevel.none);
     expect(day.source, DayEntrySource.manual);
     expect(day.sourceId, isNull);
+  });
+
+  // Issue #1682. One period record expands into one row per civil date,
+  // and each row now carries its own record key: `<record id>#<date>@<ms>`.
+  // Before, all of the span shared one key, so the server kept only the
+  // first day, and deleting one day was undone by a sibling naming the
+  // same key.
+  group('a period record spanning several days (Issue #1682)', () {
+    final changedAt = DateTime.utc(2026, 9, 10, 6);
+    final changedMs = changedAt.millisecondsSinceEpoch;
+    String dayKey(int day) =>
+        'hc-period#2026-09-${day.toString().padLeft(2, '0')}@$changedMs';
+
+    LocalDate sept(int day) => LocalDate(2026, 9, day);
+
+    Future<LocalHealthImportService> importPeriod({
+      DateTime? modifiedAt,
+    }) async {
+      store.samples = [
+        _period('hc-period', modifiedAt: modifiedAt ?? changedAt),
+      ];
+      final hc = importFor(HealthImportPlatform.healthConnect);
+      final summary = await hc.importNow();
+      expect(summary.daysWritten, 3);
+      return hc;
+    }
+
+    test('every day of the span names the record with its own date, so the '
+        'server can accept all three', () async {
+      await importPeriod();
+
+      final sourceIds = {
+        for (final day in await days.listForProfile(_profileId))
+          day.localDate.iso: day.sourceId,
+      };
+      expect(sourceIds, {
+        '2026-09-10': dayKey(10),
+        '2026-09-11': dayKey(11),
+        '2026-09-12': dayKey(12),
+      });
+    });
+
+    test('deleting one day keeps it deleted while its siblings stay live, '
+        'and a tag on a sibling does not bring it back', () async {
+      final hc = await importPeriod();
+
+      await days.delete(_profileId, sept(11));
+      var summary = await hc.importNow();
+      expect(summary.daysKeptManual, 1);
+      expect(await days.find(_profileId, sept(11)), isNull);
+
+      // The memory names the day's own key, not one shared by the span.
+      final memory = await db.storage.readHealthImportDeletions(_profileId);
+      expect(
+        memory.keys,
+        contains(healthImportDeletionId('health_connect', dayKey(11))),
+      );
+
+      // A tag edit on the 12th is a write to that row: it forgets the
+      // 12th's own record, never the deleted 11th's.
+      final day12 = (await days.find(_profileId, sept(12)))!;
+      await days.save(day12.copyWith(tags: const ['cramps']));
+      expect(
+        (await db.storage.readHealthImportDeletions(_profileId)).keys,
+        contains(healthImportDeletionId('health_connect', dayKey(11))),
+      );
+
+      summary = await hc.importNow();
+      expect(summary.daysKeptManual, 1);
+      expect(await days.find(_profileId, sept(11)), isNull,
+          reason: 'the sibling\'s live row and the tag edit did not undo it');
+      expect((await days.find(_profileId, sept(12)))!.tags, ['cramps']);
+      expect((await days.find(_profileId, sept(10)))!.flow, FlowLevel.light);
+    });
+
+    test('the deleted day comes back only when the store changes the '
+        'record', () async {
+      final hc = await importPeriod();
+      await days.delete(_profileId, sept(11));
+      expect((await hc.importNow()).daysKeptManual, 1);
+      expect(await days.find(_profileId, sept(11)), isNull);
+
+      // Health Connect changes the record in place: its news, so the day
+      // is imported again, under the record's new time.
+      final later = DateTime.utc(2026, 9, 14, 6);
+      store.samples = [_period('hc-period', modifiedAt: later)];
+      expect((await hc.importNow()).daysWritten, 1);
+      final back = (await days.find(_profileId, sept(11)))!;
+      expect(back.flow, FlowLevel.light);
+      expect(back.sourceId,
+          'hc-period#2026-09-11@${later.millisecondsSinceEpoch}');
+    });
+
+    // A day deleted from a span by a build before #1682 is out of reach:
+    // its key named the record and its time but not which day. The other
+    // days still re-key, so the span syncs, and the store's unchanged
+    // record leaves that one day out until she deletes it again (or the
+    // store changes the record). Pinned so the trade-off is visible.
+    test('a pre-#1682 shared-key row re-keys on the next pass', () async {
+      final shared = 'hc-period@$changedMs';
+      for (var day = 10; day <= 12; day++) {
+        await days.save(DayEntry(
+          id: 'old-$day',
+          profileId: _profileId,
+          localDate: sept(day),
+          tz: 'UTC-04:00',
+          flow: FlowLevel.light,
+          source: DayEntrySource.healthConnect,
+          sourceId: shared,
+          updatedAt: DateTime.utc(2026, 9, 13),
+        ));
+      }
+      // As the server left them: one of the three pushed, the other two
+      // rejected, all three clean and no longer due.
+      await (db.update(db.dayEntries)
+            ..where((t) => t.sourceId.equals(shared)))
+          .write(const DayEntriesCompanion(dirty: Value(false)));
+
+      final hc = importFor(HealthImportPlatform.healthConnect);
+      store.samples = [_period('hc-period', modifiedAt: changedAt)];
+      final summary = await hc.importNow();
+
+      expect(summary.daysUnchanged, 3);
+      expect(
+        {
+          for (final day in await days.listForProfile(_profileId))
+            day.localDate.iso: day.sourceId,
+        },
+        {
+          '2026-09-10': dayKey(10),
+          '2026-09-11': dayKey(11),
+          '2026-09-12': dayKey(12),
+        },
+      );
+      // The re-key is a write: every row is due again, so the days the
+      // server rejected (and the one it holds under the old key) push.
+      expect(
+        (await (db.select(db.dayEntries)
+                  ..where((t) => t.dirty.equals(true)))
+                .get())
+            .length,
+        3,
+      );
+    });
   });
 }

@@ -284,6 +284,25 @@ HealthFlowSample _spotting(String id, int day) {
   );
 }
 
+/// One Health Connect `MenstruationPeriodRecord` (Issue #1556): one
+/// interval record covering Sep [startDay]–[startDay + 2] 2026 at UTC-4,
+/// last changed at [modifiedAt] (each expanded day's key carries it).
+HealthFlowSample _period(
+  String id,
+  int startDay, {
+  required DateTime modifiedAt,
+}) {
+  return HealthFlowSample(
+    recordId: id,
+    kind: HealthSampleKind.menstruationPeriod,
+    start: DateTime.utc(2026, 9, startDay, 4),
+    end: DateTime.utc(2026, 9, startDay + 3, 3, 59, 59),
+    offset: const Duration(hours: -4),
+    endOffset: const Duration(hours: -4),
+    modifiedAt: modifiedAt,
+  );
+}
+
 /// The `day_entries.source` rows imported from [platform] carry — mirrors
 /// `LocalHealthImportService`'s private getter (Issue #1610: the deletion
 /// rules hold on both stores, so the suite runs once per platform).
@@ -563,6 +582,36 @@ void runSuite(HealthImportPlatform platform) {
 
       expect(await onOffer(), 1);
     });
+
+    // Issue #1682: a period record expands into one day per civil date,
+    // each with its own record key, while the store reports — and the
+    // offer names — the record's bare id. Every day of the span must be
+    // found by that id, offered together, and removed together.
+    if (platform == HealthImportPlatform.healthConnect) {
+      test('every day of a period span is reached by the record its bare '
+          'id names', () async {
+        final changedAt = DateTime.utc(2026, 9, 10, 6);
+        final ms = changedAt.millisecondsSinceEpoch;
+        await imported([_period('period-1556', 10, modifiedAt: changedAt)]);
+        expect((await dayOn(10))!.sourceId, 'period-1556#2026-09-10@$ms');
+        expect((await dayOn(11))!.sourceId, 'period-1556#2026-09-11@$ms');
+        expect((await dayOn(12))!.sourceId, 'period-1556#2026-09-12@$ms');
+
+        await deletedInStore(['period-1556']);
+
+        expect(await onOffer(), 3);
+        expect(await binding.storeDeletedRecordIds(), {'period-1556'});
+
+        final summary = await removeOffered();
+
+        expect(summary.daysRemoved, 3);
+        expect(await dayOn(10), isNull);
+        expect(await dayOn(11), isNull);
+        expect(await dayOn(12), isNull);
+        expect(await days.deletedHealthRecords(_profileId), isEmpty,
+            reason: 'the removal is not remembered as her own deletion');
+      });
+    }
 
     test('Keep clears the offer and leaves the days', () async {
       await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);

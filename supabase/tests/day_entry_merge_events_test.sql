@@ -208,7 +208,10 @@ insert into r select 'e_mom', public.sync_push(
     'field', 'note', 'losing_value_text', 'a client-resolver-authored discard',
     'losing_author_user_id', tests.get_supabase_uid('mom'),
     'winning_author_user_id', tests.get_supabase_uid('dad'),
-    'updated_at', '2026-09-08T11:00:01Z')));
+    -- Relative on purpose: a client-pushed event's created_at is its
+    -- updated_at, and a fixed date eventually ages into Group H's 30-day
+    -- enforce_retention() purge window, inflating the count it asserts.
+    'updated_at', now() - interval '2 days')));
 
 select is(
   (select count(*) from public.day_entry_merge_events where id = tests.ulid(950)),

@@ -9,7 +9,7 @@
 -- RPC change to prove; observations reverses part of #240's original
 -- source_id-clearing, so it gets the more detailed proof here).
 begin;
-select plan(39);
+select plan(42);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -289,6 +289,51 @@ select isnt((select deleted_at from public.day_entries where id = tests.ulid(941
   'the losing imported row is tombstoned by the same-date resolver, same as any other collision loser');
 select is((select source from public.day_entries where id = tests.ulid(941)), 'clue_import',
   'the tombstoned loser keeps its own provenance too (source is never cleared on a day_entries tombstone, collision or otherwise)');
+
+-- ---------------------------------------------------------------------------
+-- Issue #1682: a Health Connect period record (Issue #1556) expands, on the
+-- client, into one day_entries row per civil date of its span, each with its
+-- own `<record id>#<yyyy-mm-dd>@<last-changed ms>` source_id. Before that
+-- they all shared the record's key and the partial unique index above
+-- rejected every day but the first, on every push. Three such rows must all
+-- land side by side; one still sharing a day's key must not.
+-- ---------------------------------------------------------------------------
+insert into r select 'period_span_days', public.sync_push('[]'::jsonb,
+  jsonb_build_array(
+    jsonb_build_object(
+      'id', tests.ulid(950), 'profile_id', tests.ulid(900), 'local_date', '2026-09-21',
+      'tz', 'UTC', 'flow', 'light', 'source', 'health_connect',
+      'source_id', 'period-1556#2026-09-21@1790071200000',
+      'updated_at', '2026-09-22T10:00:00Z'),
+    jsonb_build_object(
+      'id', tests.ulid(951), 'profile_id', tests.ulid(900), 'local_date', '2026-09-22',
+      'tz', 'UTC', 'flow', 'light', 'source', 'health_connect',
+      'source_id', 'period-1556#2026-09-22@1790071200000',
+      'updated_at', '2026-09-22T10:00:00Z'),
+    jsonb_build_object(
+      'id', tests.ulid(952), 'profile_id', tests.ulid(900), 'local_date', '2026-09-23',
+      'tz', 'UTC', 'flow', 'light', 'source', 'health_connect',
+      'source_id', 'period-1556#2026-09-23@1790071200000',
+      'updated_at', '2026-09-22T10:00:00Z')));
+select is(pg_temp.resp('period_span_days') -> 'rejected', '[]'::jsonb,
+  'a period record''s three expanded days, each with its own per-day source_id, are all accepted');
+select is(
+  (select count(*) from public.day_entries
+    where profile_id = tests.ulid(900) and source = 'health_connect'
+      and source_id like 'period-1556#%'),
+  3::bigint,
+  'all three day rows of the span are stored');
+
+-- The old shape still collides exactly as the index requires: a second live
+-- row sharing one expanded day's key is rejected.
+insert into r select 'period_span_duplicate', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(953), 'profile_id', tests.ulid(900), 'local_date', '2026-09-24',
+    'tz', 'UTC', 'flow', 'heavy', 'source', 'health_connect',
+    'source_id', 'period-1556#2026-09-21@1790071200000',
+    'updated_at', '2026-09-24T10:00:00Z')));
+select is(jsonb_array_length(pg_temp.resp('period_span_duplicate') -> 'rejected'), 1,
+  'a second live row sharing one expanded day''s key is still rejected');
 
 select * from finish();
 rollback;

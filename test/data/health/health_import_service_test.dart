@@ -1862,7 +1862,19 @@ void main() {
   // expands into bleed days across its span; a real flow record for the
   // same day always wins, so a both-types source still yields one entry
   // per day.
+  //
+  // Issue #1682: each expanded day carries its own record id — the record's
+  // id, the day's date, and (through `_recordKey`) the record's
+  // last-changed time — so the days never share a `source_id` and the
+  // server's (profile_id, source, source_id) unique index admits them all.
   group('Issue #1556 period records', () {
+    // The moment Health Connect last changed the record; every day's key
+    // carries it after the day's own date.
+    final changedAt = DateTime.utc(2026, 9, 10, 6);
+    final changedMs = changedAt.millisecondsSinceEpoch;
+    String dayKey(int day) =>
+        'hc-period#2026-09-${day.toString().padLeft(2, '0')}@$changedMs';
+
     // Sep 10–12 2026 at a fixed −04:00: the start instant is the 10th's
     // local midnight, the end instant the 12th's last second.
     HealthReadResult threeDayPeriod() => HealthReadResult.samples([
@@ -1870,6 +1882,7 @@ void main() {
             id: 'hc-period',
             startIso: '2026-09-10T04:00:00Z',
             endIso: '2026-09-13T03:59:59Z',
+            modifiedAt: changedAt,
           ),
         ]);
 
@@ -1895,11 +1908,16 @@ void main() {
         // invented as medium.
         expect(day.flow, FlowLevel.light);
         expect(day.source, DayEntrySource.healthConnect);
-        // The record key, not the flow: a deletion or change of this
-        // record addresses every day it filled.
-        expect(day.sourceId, 'hc-period');
         expect(day.tz, 'UTC-04:00');
       }
+      // Each day carries its own record key — the record id, the day's
+      // date, the record's time — never one shared by the span. That is
+      // what lets every day through the server's unique index; before
+      // Issue #1682 all three read back 'hc-period' and only one synced.
+      expect(
+        {for (final day in dayEntries.saved) day.sourceId},
+        {dayKey(10), dayKey(11), dayKey(12)},
+      );
       // One record placed, counted once — not once per expanded day.
       expect(summary.samplesFromRecordedZone, 1);
       expect(summary.samplesRead, 1);
@@ -1919,6 +1937,102 @@ void main() {
       expect(dayEntries.saved, hasLength(3));
     });
 
+    test('deleting one day of the span keeps it deleted while the other '
+        'days stay live, and forgets nothing', () async {
+      await bind();
+      source.result = threeDayPeriod();
+      final service = build(importPlatform: HealthImportPlatform.healthConnect);
+      await service.importNow();
+
+      // She deletes the 11th on the day sheet: the storage layer remembers
+      // that day's own key (Issue #1561), and the row goes.
+      dayEntries.deletedRecords[healthImportDeletionId(
+        'health_connect',
+        dayKey(11),
+      )] = DateTime.utc(2026, 9, 13, 8);
+      dayEntries.live.remove('2026-09-11');
+
+      // The next pass sees the 10th and 12th live. Their rows name their
+      // own keys, so neither counts as seeing the deleted day's record
+      // again — before Issue #1682 the shared key did, and the deletion
+      // was undone.
+      final summary = await service.importNow();
+      expect(summary.daysKeptManual, 1);
+      expect(summary.daysUnchanged, 2);
+      expect(dayEntries.live.keys, isNot(contains('2026-09-11')));
+      expect(dayEntries.saved, hasLength(3),
+          reason: 'the deleted day is not written back');
+      expect(dayEntries.forgotten, isEmpty,
+          reason: 'a sibling day naming the same record does not undo it');
+    });
+
+    test('a span written by the previous build re-keys every day on its '
+        'next pass', () async {
+      await bind();
+      // Before Issue #1682 every day of the span shared the record's key.
+      final shared = 'hc-period@$changedMs';
+      for (var day = 10; day <= 12; day++) {
+        await dayEntries.save(DayEntry(
+          id: 'old-$day',
+          profileId: _profileId,
+          localDate: LocalDate(2026, 9, day),
+          tz: 'UTC-04:00',
+          flow: FlowLevel.light,
+          source: DayEntrySource.healthConnect,
+          sourceId: shared,
+          updatedAt: DateTime.utc(2026, 9, 13),
+        ));
+      }
+      dayEntries.saved.clear();
+
+      source.result = threeDayPeriod();
+      final summary = await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importNow();
+
+      expect(summary.daysUnchanged, 3);
+      expect(
+        {for (final day in dayEntries.live.values) day.sourceId},
+        {dayKey(10), dayKey(11), dayKey(12)},
+        reason: 'each row takes its own day key, so the days the server '
+            'rejected before can now be pushed',
+      );
+    });
+
+    test('a day she corrected keeps her flow while the span re-keys',
+        () async {
+      await bind();
+      final shared = 'hc-period@$changedMs';
+      for (var day = 10; day <= 12; day++) {
+        await dayEntries.save(DayEntry(
+          id: 'old-$day',
+          profileId: _profileId,
+          localDate: LocalDate(2026, 9, day),
+          tz: 'UTC-04:00',
+          // The 11th is hers: a hand edit keeps the row's provenance but
+          // changes the flow.
+          flow: day == 11 ? FlowLevel.heavy : FlowLevel.light,
+          source: DayEntrySource.healthConnect,
+          sourceId: shared,
+          updatedAt: DateTime.utc(2026, 9, 13),
+        ));
+      }
+      dayEntries.saved.clear();
+
+      source.result = threeDayPeriod();
+      final summary = await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importNow();
+
+      expect(summary.daysKeptManual, 1);
+      expect(summary.daysUnchanged, 2);
+      final corrected = dayEntries.live['2026-09-11']!;
+      expect(corrected.flow, FlowLevel.heavy,
+          reason: 'the store did not change the record, so this is her edit');
+      expect(corrected.sourceId, dayKey(11),
+          reason: 'and the row still takes its own day key');
+    });
+
     test('a both-types source yields one entry per day with the flow '
         'record winning', () async {
       await bind();
@@ -1929,6 +2043,7 @@ void main() {
           id: 'hc-period',
           startIso: '2026-09-10T04:00:00Z',
           endIso: '2026-09-13T03:59:59Z',
+          modifiedAt: changedAt,
         ),
         _offsetSample(
           id: 'hc-flow-11',
@@ -1946,11 +2061,11 @@ void main() {
       final byDate = {for (final day in dayEntries.saved) day.localDate: day};
       final filledDay = byDate[LocalDate(2026, 9, 10)]!;
       expect(filledDay.flow, FlowLevel.light);
-      expect(filledDay.sourceId, 'hc-period');
+      expect(filledDay.sourceId, dayKey(10));
       final flowDay = byDate[LocalDate(2026, 9, 11)]!;
       expect(flowDay.flow, FlowLevel.medium);
       expect(flowDay.sourceId, 'hc-flow-11');
-      expect(byDate[LocalDate(2026, 9, 12)]!.sourceId, 'hc-period');
+      expect(byDate[LocalDate(2026, 9, 12)]!.sourceId, dayKey(12));
     });
 
     test('a spotting record on a day inside the span coexists with the '
