@@ -3,6 +3,7 @@
 library;
 
 import 'package:lunarlog/data/db/storage.dart';
+import 'package:lunarlog/domain/health/health_import_declined.dart';
 import 'package:lunarlog/domain/logging/day_entry_merge_event.dart'
     as mergelog;
 import 'package:lunarlog/domain/logging/merge_notice_dismissals.dart';
@@ -19,6 +20,7 @@ class DriftDayEntriesRepository
         LatestDayEntryReader,
         DayEntrySyncStateReader,
         DeletedDayEntryReader,
+        HealthImportDeclinedStore,
         UndoDayEntryDeleter,
         ImportedFlowResetter {
   DriftDayEntriesRepository(this._storage);
@@ -183,6 +185,37 @@ class DriftDayEntriesRepository
     Map<String, DateTime> deletedAt,
   ) =>
       _storage.forgetHealthImportDeletions(profileId, deletedAt);
+
+  /// Issue #1652: what the import declined and must ask the store for
+  /// again once her row changes.
+  @override
+  Future<Map<String, HealthImportDeclinedRecord>> readDeclinedHealthRecords(
+    String profileId,
+  ) =>
+      _storage.readDeclinedHealthRecords(profileId);
+
+  @override
+  Future<void> rememberDeclinedHealthRecord(
+    String profileId, {
+    required String source,
+    required String recordId,
+    required HealthImportDeclinedKind kind,
+    required domain.LocalDate date,
+  }) =>
+      _storage.rememberDeclinedHealthRecord(
+        profileId,
+        source: source,
+        recordId: recordId,
+        kind: kind,
+        date: date,
+      );
+
+  @override
+  Future<void> forgetDeclinedHealthRecords(
+    String profileId,
+    Set<String> keys,
+  ) =>
+      _storage.forgetDeclinedHealthRecords(profileId, keys);
 
   /// Issue #130: the day sheet's merge-notice list — the window-filtered
   /// storage read minus this device's dismissed ids. Dismissal filtering

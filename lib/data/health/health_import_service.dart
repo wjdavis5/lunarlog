@@ -91,6 +91,7 @@ import 'dart:isolate' show Isolate;
 
 import 'package:lunarlog/domain/health/day_boundary.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
+import 'package:lunarlog/domain/health/health_import_declined.dart';
 import 'package:lunarlog/domain/health/health_import_deletions.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
@@ -532,6 +533,9 @@ class LocalHealthImportService
        _deletedDays = dayEntries is DeletedDayEntryReader
            ? dayEntries as DeletedDayEntryReader
            : null,
+       _declined = dayEntries is HealthImportDeclinedStore
+           ? dayEntries as HealthImportDeclinedStore
+           : null,
        _guardiansForProfile = guardiansForProfile,
        _signedInUserId = signedInUserId,
        _today = today ?? LocalDate.today,
@@ -550,6 +554,16 @@ class LocalHealthImportService
   /// for one that cannot (a test double), and the import then inserts as
   /// it always did.
   final DeletedDayEntryReader? _deletedDays;
+
+  /// Issue #1652: what the import declined, where the repository can say.
+  /// Null for one that cannot (a test double), and the import then behaves
+  /// as it did before the memory existed.
+  final HealthImportDeclinedStore? _declined;
+
+  /// The declined records read for this pass ([_loadDeclined]), keyed
+  /// `<source>|<record id>`. Kept in step with the memory as merges settle
+  /// dates and the store reports deletions, so a pass never re-reads it.
+  final Map<String, HealthImportDeclinedRecord> _declinedEntries = {};
 
   /// The health-store records she deleted, named
   /// `healthImportDeletionId(source, sourceId)`, each with the moment of
@@ -794,15 +808,29 @@ class LocalHealthImportService
     Set<String>? remove,
   }) async {
     final window = _window();
-    final firstRun = await _readPages(bound.facts, window, onProgress);
+    final profileId = bound.profile.id;
+    // Issue #1652: a declined record whose row now permits the store's
+    // value needs a read that returns records that did not change; an
+    // anchored or changes read never will. The whole history is read for
+    // this pass, so the record is offered to the merge again.
+    final owed = await _declinedWantsWholeRead(profileId);
+    final firstRun = await _readPages(
+      bound.facts,
+      window,
+      onProgress,
+      wholeHistory: owed,
+    );
     // An import that could read nothing ends here, as it always has: a
     // read the store would not allow is "no data" to it. A removal goes
     // on to [_unfinished], which says it was stopped.
     final early = firstRun.earlySummary;
     if (early != null && remove == null) return early;
-    final profileId = bound.profile.id;
     final scanner = _scanner(profileId);
-    final initialFound = await _noteStoreDeleted(firstRun.accumulator, scanner);
+    final initialFound = await _noteStoreDeleted(
+      profileId,
+      firstRun.accumulator,
+      scanner,
+    );
     final rerun = await _rerunWholeHistoryIfNeeded(
       bound: bound,
       window: window,
@@ -821,6 +849,11 @@ class LocalHealthImportService
       run.lateBlocked,
       daysRemoved: rerun.removed,
     );
+    // Issue #1652: a whole read that reached its end tells which declined
+    // records the store no longer holds: none of them came back.
+    if (owed && run.finished) {
+      await _forgetDeclinedAbsent(profileId, run.accumulator);
+    }
     if (rerun.removed > 0 ||
         _touchesDeletedDates(rerun.found.dates, run.accumulator)) {
       scanner.invalidate();
@@ -873,7 +906,11 @@ class LocalHealthImportService
     }
     // A record this read found is in the store, whatever was said of
     // it before: it comes off the list.
-    final wholeFound = await _noteStoreDeleted(whole.accumulator, scanner);
+    final wholeFound = await _noteStoreDeleted(
+      bound.profile.id,
+      whole.accumulator,
+      scanner,
+    );
     var removedCount = 0;
     if (remove != null) {
       removedCount =
@@ -1100,6 +1137,7 @@ class LocalHealthImportService
       );
 
   Future<_StoreDeleted> _noteStoreDeleted(
+    String profileId,
     _Accumulator accumulator,
     _StoreDeletedScanner scanner,
   ) async {
@@ -1107,7 +1145,15 @@ class LocalHealthImportService
     if (waiting.isEmpty && accumulator.deletedRecordIds.isEmpty) {
       return const _StoreDeleted();
     }
-    final ids = {...waiting, ...accumulator.deletedRecordIds}
+    final reported = {...waiting, ...accumulator.deletedRecordIds};
+    // Issue #1652: a record the store reports deleted is not there to be
+    // read again, so its declined memory goes with it — before the offer
+    // list narrows, which would hide it from this drop.
+    await _forgetDeclinedForRecordIds(
+      profileId,
+      reported.difference(accumulator.liveRecordIds),
+    );
+    final ids = reported
       ..removeAll(accumulator.liveRecordIds)
       ..removeAll(await _binding.keptDeletedRecordIds());
     final found = await scanner.find(ids);
@@ -1357,9 +1403,27 @@ class LocalHealthImportService
     final key = _recordKey(desired);
     if (existing.flow == desired.flow) {
       await _remember(existing, desired, kept: false);
+      // Issue #1652: the day already carries the store's value; nothing
+      // is left to ask for again.
+      await _forgetDeclinedForDate(
+        profileId,
+        date,
+        HealthImportDeclinedKind.flow,
+      );
       return _MergeOutcome.unchanged;
     }
     if (!_mayAdopt(existing, desired)) {
+      // Issue #1652: her flow was kept over the store's record, and the
+      // store's record may become adoptable later without the store
+      // changing (she clears her flow). Remembered, so a later pass asks
+      // the store for it again.
+      await _rememberDeclined(
+        profileId,
+        _daySource.toDb(),
+        desired.recordId,
+        HealthImportDeclinedKind.flow,
+        date,
+      );
       await _remember(existing, desired, kept: true);
       return _MergeOutcome.keptManual;
     }
@@ -1372,6 +1436,11 @@ class LocalHealthImportService
         source: _daySource,
         sourceId: key,
       ),
+    );
+    await _forgetDeclinedForDate(
+      profileId,
+      date,
+      HealthImportDeclinedKind.flow,
     );
     return _MergeOutcome.written;
   }
@@ -1408,6 +1477,11 @@ class LocalHealthImportService
         updatedAt: _now(),
       ),
     );
+    await _forgetDeclinedForDate(
+      profileId,
+      date,
+      HealthImportDeclinedKind.flow,
+    );
     return _MergeOutcome.written;
   }
 
@@ -1423,6 +1497,192 @@ class LocalHealthImportService
     if (_undone.isEmpty) return;
     await _deletedDays?.forgetDeletedHealthRecords(profileId, {..._undone});
     _undone.clear();
+  }
+
+  /// Issue #1652: reads what the import declined, afresh.
+  Future<void> _loadDeclined(String profileId) async {
+    final read = await _declined?.readDeclinedHealthRecords(profileId);
+    _declinedEntries
+      ..clear()
+      ..addAll(read ?? const {});
+  }
+
+  /// Whether any declined record's row now permits the store's value, so
+  /// this pass must read the whole history (Issue #1652).
+  ///
+  /// The store's record is unchanged, so an anchored or changes read will
+  /// not return it; only a whole-history read offers it to the merge
+  /// again. The conditions mirror what the merge would adopt:
+  ///
+  ///  * a flow record: the day is gone (a fresh read would insert it), or
+  ///    a day she logged herself has no flow — an imported day she edited
+  ///    keeps her value ([_mayAdopt]), and a store-changed record comes
+  ///    back on its own;
+  ///  * a spotting record: the day carries no live spotting observation.
+  ///
+  /// A record she deleted is not owed: her deletion holds it back
+  /// ([_deletedUnchanged]), so reading again would change nothing.
+  Future<bool> _declinedWantsWholeRead(String profileId) async {
+    if (_declined == null) return false;
+    await _loadDeclined(profileId);
+    if (_declinedEntries.isEmpty) return false;
+    await _loadDeleted(profileId);
+    for (final record in _declinedEntries.values) {
+      if (_recordDeletedByHer(record.source, record.recordId)) continue;
+      switch (record.kind) {
+        case HealthImportDeclinedKind.flow: {
+          final row = await _dayEntries.find(profileId, record.date);
+          if (row == null) return true;
+          final imported = row.source == _daySource && row.sourceId != null;
+          if (!imported && row.flow == FlowLevel.none) return true;
+        }
+        case HealthImportDeclinedKind.spotting: {
+          final row = await _dayEntries.find(profileId, record.date);
+          if ((await _liveSpotting(row)).isEmpty) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /// Whether [recordId] is one she deleted, in either the keyed or the
+  /// pre-#1559 bare form the memory may hold it under.
+  bool _recordDeletedByHer(String source, String recordId) {
+    final exact = healthImportDeletionId(source, recordId);
+    if (_deleted.containsKey(exact)) return true;
+    final keyed = '$exact@';
+    return _deleted.keys.any((key) => key.startsWith(keyed));
+  }
+
+  /// Issue #1652: remembers [recordId] as declined for [date], so a later
+  /// pass can ask the store for it again. Nothing is written when the
+  /// memory already holds it for that date.
+  Future<void> _rememberDeclined(
+    String profileId,
+    String source,
+    String recordId,
+    HealthImportDeclinedKind kind,
+    LocalDate date,
+  ) async {
+    final store = _declined;
+    if (store == null) return;
+    final key = healthImportDeclinedId(source, recordId);
+    final known = _declinedEntries[key];
+    if (known != null && known.kind == kind && known.date == date) return;
+    await store.rememberDeclinedHealthRecord(
+      profileId,
+      source: source,
+      recordId: recordId,
+      kind: kind,
+      date: date,
+    );
+    _declinedEntries[key] = HealthImportDeclinedRecord(
+      key: key,
+      kind: kind,
+      date: date,
+    );
+  }
+
+  /// Issue #1652: forgets the declined memories for [date] of [kind] — a
+  /// merge settled the date (the store's value was written, or the day
+  /// already carried it).
+  Future<void> _forgetDeclinedForDate(
+    String profileId,
+    LocalDate date,
+    HealthImportDeclinedKind kind,
+  ) async {
+    final store = _declined;
+    if (store == null || _declinedEntries.isEmpty) return;
+    final keys = {
+      for (final record in _declinedEntries.values)
+        if (record.kind == kind && record.date == date) record.key,
+    };
+    if (keys.isEmpty) return;
+    await store.forgetDeclinedHealthRecords(profileId, keys);
+    _declinedEntries.removeWhere((key, _) => keys.contains(key));
+  }
+
+  /// Issue #1652: forgets the declined memories whose record ids the store
+  /// reports deleted. The record is not there to be read again.
+  Future<void> _forgetDeclinedForRecordIds(
+    String profileId,
+    Set<String> recordIds,
+  ) async {
+    final store = _declined;
+    if (store == null || recordIds.isEmpty || _declinedEntries.isEmpty) {
+      return;
+    }
+    final keys = {
+      for (final record in _declinedEntries.values)
+        if (recordIds.contains(record.recordId)) record.key,
+    };
+    if (keys.isEmpty) return;
+    await store.forgetDeclinedHealthRecords(profileId, keys);
+    _declinedEntries.removeWhere((key, _) => keys.contains(key));
+  }
+
+  /// Issue #1652: drops the memories a finished whole-history read did not
+  /// return: the record is not in the store any more, so there is nothing
+  /// to ask for again. Called only for a read that reached its end — a
+  /// record the store still holds but a cut-short read did not reach must
+  /// keep its memory.
+  Future<void> _forgetDeclinedAbsent(
+    String profileId,
+    _Accumulator accumulator,
+  ) async {
+    final store = _declined;
+    if (store == null || _declinedEntries.isEmpty) return;
+    final keys = {
+      for (final record in _declinedEntries.values)
+        if (!_readReturned(accumulator, record)) record.key,
+    };
+    if (keys.isEmpty) return;
+    await store.forgetDeclinedHealthRecords(profileId, keys);
+    _declinedEntries.removeWhere((key, _) => keys.contains(key));
+  }
+
+  /// Whether [record]'s own record came back in this read for its date.
+  /// A different record for the date means this one is not in the store
+  /// any more; so does no record for the date.
+  static bool _readReturned(
+    _Accumulator accumulator,
+    HealthImportDeclinedRecord record,
+  ) {
+    final flow = accumulator.flowDays[record.date];
+    if (flow != null && flow.recordId == record.recordId) return true;
+    final spotting = accumulator.spottingDays[record.date];
+    return spotting != null && spotting.recordId == record.recordId;
+  }
+
+  /// The outcome for a day that already carries spotting, with the
+  /// declined memory settled (Issue #1652): a record her own entry kept
+  /// off is remembered, so removing that entry can let it in later.
+  Future<_MergeOutcome> _spottingPresenceOutcome(
+    String profileId,
+    LocalDate date,
+    _SpottingSample sample,
+    List<Observation> spotting,
+  ) async {
+    final outcome = await _spottingAlreadyThere(
+      spotting,
+      replacedBy: sample.recordId,
+    );
+    if (outcome == _MergeOutcome.keptManual) {
+      await _rememberDeclined(
+        profileId,
+        _observationSource.toDb(),
+        sample.recordId,
+        HealthImportDeclinedKind.spotting,
+        date,
+      );
+    } else {
+      await _forgetDeclinedForDate(
+        profileId,
+        date,
+        HealthImportDeclinedKind.spotting,
+      );
+    }
+    return outcome;
   }
 
   /// A live row carries this record. If she had deleted it, the deletion
@@ -1559,7 +1819,7 @@ class LocalHealthImportService
     final day = await _dayEntries.find(profileId, date);
     final spotting = await _liveSpotting(day);
     if (spotting.isNotEmpty) {
-      return _spottingAlreadyThere(spotting, replacedBy: sample.recordId);
+      return _spottingPresenceOutcome(profileId, date, sample, spotting);
     }
     // Issue #1561: a spotting entry she removed stays removed while the
     // store still holds the record it came from. Asked before anything is
@@ -1578,7 +1838,7 @@ class LocalHealthImportService
     final racedDay = await _dayEntries.find(profileId, date);
     final racedSpotting = await _liveSpotting(racedDay);
     if (racedSpotting.isNotEmpty) {
-      return _spottingAlreadyThere(racedSpotting, replacedBy: sample.recordId);
+      return _spottingPresenceOutcome(profileId, date, sample, racedSpotting);
     }
     final host =
         racedDay ?? day ?? await _spottingHost(profileId, date, sample);
@@ -1595,6 +1855,11 @@ class LocalHealthImportService
         sourceId: sample.recordId,
         updatedAt: _now(),
       ),
+    );
+    await _forgetDeclinedForDate(
+      profileId,
+      date,
+      HealthImportDeclinedKind.spotting,
     );
     return _MergeOutcome.written;
   }

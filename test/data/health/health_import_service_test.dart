@@ -15,6 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/health/health_import_service.dart';
 import 'package:lunarlog/domain/health/health_deviation.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
+import 'package:lunarlog/domain/health/health_import_declined.dart';
 import 'package:lunarlog/domain/health/health_import_deletions.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
@@ -153,6 +154,10 @@ class _FakeSource implements HealthImportSource {
   String? lastCursor;
   final List<String?> cursorsSeen = [];
 
+  /// Issue #1652: whether the read asked for the whole history, one entry
+  /// per call.
+  final List<bool> wholeHistorySeen = [];
+
   /// Issue #1212's overlap test: when set, the FIRST read awaits this gate
   /// before returning — holds one pass open inside its read so a test can
   /// start a second pass while it is mid-flight.
@@ -172,6 +177,7 @@ class _FakeSource implements HealthImportSource {
     lastPageSize = pageSize;
     lastCursor = cursor;
     cursorsSeen.add(cursor);
+    wholeHistorySeen.add(wholeHistory);
     final index = calls;
     calls++;
     final gate = index == 0 ? firstReadGate : null;
@@ -239,13 +245,24 @@ class _FakeProfiles implements ProfilesRepository {
 }
 
 class _FakeDayEntries
-    implements DayEntriesRepository, DeletedDayEntryReader {
+    implements
+        DayEntriesRepository,
+        DeletedDayEntryReader,
+        HealthImportDeclinedStore {
   final Map<String, DayEntry> live = {};
   final List<DayEntry> saved = [];
 
   /// The health-store records the device remembers she deleted (Issue
   /// #1561), each with the moment of the deletion.
   final Map<String, DateTime> deletedRecords = {};
+
+  /// Issue #1652: the records the device remembers the import declined,
+  /// keyed `<source>|<record id>`.
+  final Map<String, HealthImportDeclinedRecord> declinedRecords = {};
+
+  /// What the import asked to be forgotten from the declined memory, one
+  /// set per call.
+  final List<Set<String>> forgottenDeclined = [];
 
   /// Records that become remembered after the first reading of
   /// [deletedRecords]: a deletion she makes while a pass is running.
@@ -282,6 +299,44 @@ class _FakeDayEntries
     // Only while it still carries the moment given, as the storage does.
     deletedRecords.removeWhere((id, at) => deletedAt[id] == at);
   }
+
+  /// Issue #1652: the declined memory, as the real repository reads and
+  /// writes it.
+  @override
+  Future<Map<String, HealthImportDeclinedRecord>> readDeclinedHealthRecords(
+    String profileId,
+  ) async => {...declinedRecords};
+
+  @override
+  Future<void> rememberDeclinedHealthRecord(
+    String profileId, {
+    required String source,
+    required String recordId,
+    required HealthImportDeclinedKind kind,
+    required LocalDate date,
+  }) async {
+    final key = healthImportDeclinedId(source, recordId);
+    declinedRecords[key] = HealthImportDeclinedRecord(
+      key: key,
+      kind: kind,
+      date: date,
+    );
+  }
+
+  @override
+  Future<void> forgetDeclinedHealthRecords(
+    String profileId,
+    Set<String> keys,
+  ) async {
+    forgottenDeclined.add({...keys});
+    for (final key in keys) {
+      declinedRecords.remove(key);
+    }
+  }
+
+  @override
+  Future<List<DayEntry>> listForProfile(String profileId) async =>
+      live.values.toList();
 
   @override
   Future<DayEntry?> find(String profileId, LocalDate localDate) async {
@@ -346,6 +401,10 @@ class _FakeObservations implements ObservationsRepository {
     byDay.putIfAbsent(stored.dayEntryId, () => []).add(stored);
     return stored;
   }
+
+  @override
+  Future<List<Observation>> listForProfile(String profileId) async =>
+      [for (final rows in byDay.values) ...rows];
 
   @override
   Future<List<Observation>> listForDayEntryWithLegacyAlias(
@@ -2812,6 +2871,203 @@ void main() {
 
       expect(summary.daysWritten, 1);
       expect(source.commitCalls, 0);
+    });
+  });
+
+  // Issue #1652. The merge declines a store record over her own value, and
+  // an anchored or changes read never returns a record that did not
+  // change — so without a memory the record was never offered again, and
+  // clearing her flow (or removing her spotting entry) could not let the
+  // store's value in.
+  group('issue #1652: a declined record is offered again', () {
+    final day = LocalDate(2026, 9, 10);
+
+    DayEntry herDay(FlowLevel flow, DateTime updatedAt) => DayEntry(
+      id: 'her-day',
+      profileId: _profileId,
+      localDate: day,
+      tz: _tz,
+      flow: flow,
+      updatedAt: updatedAt,
+    );
+
+    HealthReadResult theStoreRecord() => HealthReadResult.samples([
+      _sample(
+        id: 'apple-rec-1',
+        flow: HealthFlowValue.heavy,
+        startIso: '2026-09-10T12:00:00Z',
+      ),
+    ]);
+
+    test('a flow record declined over her own day comes back when she '
+        'clears her flow', () async {
+      await bind();
+      dayEntries.live[day.iso] = herDay(
+        FlowLevel.light,
+        DateTime.utc(2026, 9, 10, 8),
+      );
+      source.result = theStoreRecord();
+
+      final first = await build().importNow();
+
+      expect(first.daysKeptManual, 1);
+      final declined = dayEntries.declinedRecords.values.single;
+      expect(declined.key, healthImportDeclinedId('healthkit', 'apple-rec-1'));
+      expect(declined.kind, HealthImportDeclinedKind.flow);
+      expect(declined.date, day);
+
+      // She clears her flow. The merge would now adopt the store's value,
+      // but the record did not change, so only a whole read returns it.
+      dayEntries.live[day.iso] = herDay(
+        FlowLevel.none,
+        DateTime.utc(2026, 9, 11, 8),
+      );
+      source.wholeHistorySeen.clear();
+
+      final second = await build().importNow();
+
+      expect(source.wholeHistorySeen, [true]);
+      expect(second.daysWritten, 1);
+      final adopted = dayEntries.live[day.iso]!;
+      expect(adopted.flow, FlowLevel.heavy);
+      expect(adopted.source, DayEntrySource.healthkit);
+      expect(adopted.sourceId, 'apple-rec-1');
+      expect(dayEntries.declinedRecords, isEmpty);
+    });
+
+    test('a flow record declined over her own day comes back when she '
+        'deletes that day', () async {
+      await bind();
+      dayEntries.live[day.iso] = herDay(
+        FlowLevel.light,
+        DateTime.utc(2026, 9, 10, 8),
+      );
+      source.result = theStoreRecord();
+      await build().importNow();
+      expect(dayEntries.declinedRecords, hasLength(1));
+
+      dayEntries.live.remove(day.iso);
+      source.wholeHistorySeen.clear();
+
+      final second = await build().importNow();
+
+      expect(source.wholeHistorySeen, [true]);
+      expect(second.daysWritten, 1);
+      final inserted = dayEntries.live[day.iso]!;
+      expect(inserted.flow, FlowLevel.heavy);
+      expect(inserted.source, DayEntrySource.healthkit);
+      expect(dayEntries.declinedRecords, isEmpty);
+    });
+
+    test('a record the store reports deleted is forgotten, so no whole read '
+        'is owed for it', () async {
+      await bind();
+      dayEntries.live[day.iso] = herDay(
+        FlowLevel.light,
+        DateTime.utc(2026, 9, 10, 8),
+      );
+      source.result = theStoreRecord();
+      await build().importNow();
+      expect(dayEntries.declinedRecords, hasLength(1));
+
+      // A later changes read reports the record deleted in the store.
+      source.result = HealthReadResult.samples(
+        const [],
+        deletedRecordIds: const ['apple-rec-1'],
+        incremental: true,
+      );
+      await build().importNow();
+      expect(dayEntries.declinedRecords, isEmpty);
+
+      // She clears her flow; there is nothing left to ask for again.
+      dayEntries.live[day.iso] = herDay(
+        FlowLevel.none,
+        DateTime.utc(2026, 9, 11, 8),
+      );
+      source.wholeHistorySeen.clear();
+
+      await build().importNow();
+
+      expect(source.wholeHistorySeen, [false]);
+      expect(dayEntries.live[day.iso]!.flow, FlowLevel.none);
+    });
+
+    test('a declined record a finished whole read does not return is '
+        'forgotten', () async {
+      await bind();
+      dayEntries.live[day.iso] = herDay(
+        FlowLevel.light,
+        DateTime.utc(2026, 9, 10, 8),
+      );
+      source.result = theStoreRecord();
+      await build().importNow();
+      expect(dayEntries.declinedRecords, hasLength(1));
+
+      // She clears her flow, and the store no longer holds the record
+      // (deleted without a report: a whole read is what tells).
+      dayEntries.live[day.iso] = herDay(
+        FlowLevel.none,
+        DateTime.utc(2026, 9, 11, 8),
+      );
+      source.result = const HealthReadResult.samples([]);
+      source.wholeHistorySeen.clear();
+
+      await build().importNow();
+
+      expect(source.wholeHistorySeen, [true]);
+      expect(dayEntries.declinedRecords, isEmpty);
+
+      // Nothing is owed on the next pass.
+      source.wholeHistorySeen.clear();
+      await build().importNow();
+      expect(source.wholeHistorySeen, [false]);
+    });
+
+    test('an intermenstrual record declined over her own spotting comes '
+        'back when she removes it', () async {
+      await bind();
+      dayEntries.live[day.iso] = herDay(
+        FlowLevel.none,
+        DateTime.utc(2026, 9, 10, 8),
+      );
+      observations.byDay['her-day'] = [
+        Observation(
+          id: 'her-spot',
+          dayEntryId: 'her-day',
+          profileId: _profileId,
+          localDate: day,
+          tz: _tz,
+          category: ObservationCategory.spotting,
+          code: 'spotting',
+          updatedAt: DateTime.utc(2026, 9, 10, 8),
+        ),
+      ];
+      source.result = HealthReadResult.samples([
+        _bleedingSample(
+          id: 'ib-rec-1',
+          startIso: '2026-09-10T12:00:00Z',
+          offset: const Duration(hours: -4),
+        ),
+      ]);
+
+      final first = await build().importNow();
+
+      expect(first.spottingDaysWritten, 0);
+      final declined = dayEntries.declinedRecords.values.single;
+      expect(declined.key, healthImportDeclinedId('apple_health', 'ib-rec-1'));
+      expect(declined.kind, HealthImportDeclinedKind.spotting);
+      expect(declined.date, day);
+
+      // She removes her own spotting entry.
+      observations.byDay['her-day'] = [];
+      source.wholeHistorySeen.clear();
+
+      final second = await build().importNow();
+
+      expect(source.wholeHistorySeen, [true]);
+      expect(second.spottingDaysWritten, 1);
+      expect(observations.saved.single.sourceId, 'ib-rec-1');
+      expect(dayEntries.declinedRecords, isEmpty);
     });
   });
 }

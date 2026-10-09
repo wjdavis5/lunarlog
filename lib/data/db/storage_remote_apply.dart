@@ -1216,6 +1216,9 @@ mixin LunarLogStorageRemoteApply
     // Issue #1561: so is the memory of what was deleted from its imports:
     // record ids from a health store this device no longer reads for it.
     await _forgetHealthImportDeletions(db, profileId);
+    // Issue #1652: and the memory of what its imports declined, for the
+    // same reason.
+    await _forgetHealthImportDeclined(db, profileId);
   }
 
   /// Issue #522: applies a `deleted_profiles` row — the narrow tombstone a
@@ -1334,6 +1337,10 @@ mixin LunarLogStorageRemoteApply
         // iPhone the days and the entries on them carry different ones.
         for (final ofStore in healthStoreSourcesSharedWith(source)) {
           await _forgetHealthImportDeletions(db, profileId, ofStore);
+          // Issue #1652: the declined records name that store's records
+          // too, and a clean slate must clear them, or a later import
+          // would owe a whole read for a record this purge took away.
+          await _forgetHealthImportDeclined(db, profileId, ofStore);
         }
         // Issue #907: only when nothing live remains for the profile.
         await _clearCycleFactsIfProfileEmpty(profileId);
