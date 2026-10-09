@@ -17,6 +17,7 @@ import '../../domain/models/guardian_note.dart';
 import '../../domain/models/local_date.dart';
 import '../../domain/models/profile_guardian.dart';
 import '../../domain/repositories/guardian_notes_repository.dart';
+import '../components/inline_error.dart';
 import '../theme/tokens.dart';
 
 // The two disclosures are arb-backed since issue #1004, tranche 5
@@ -68,6 +69,11 @@ class _GuardianNotesSectionState extends State<GuardianNotesSection> {
   bool _seeding = false;
   bool _saving = false;
 
+  /// Issue #1713: the last save/remove failure, shown in place (the same
+  /// InlineError shape care_notes_screen.dart uses). Null when the last
+  /// attempt succeeded or none ran yet.
+  String? _error;
+
   @override
   void dispose() {
     _controller.dispose();
@@ -111,7 +117,10 @@ class _GuardianNotesSectionState extends State<GuardianNotesSection> {
     final repo = _repo(context);
     final body = _controller.text.trim();
     if (repo == null || body.isEmpty) return;
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
     try {
       await repo.save(
         id: own?.id,
@@ -121,6 +130,14 @@ class _GuardianNotesSectionState extends State<GuardianNotesSection> {
         body: body,
         loggedByUserId: widget.currentUserId,
       );
+    } catch (_) {
+      // Issue #1713: a failed write must not look saved -- the text stays
+      // in the box and the failure is surfaced in place (the same shape
+      // care_notes_screen.dart's mutations use).
+      if (mounted) {
+        setState(() =>
+            _error = AppLocalizations.of(context).guardianNotesSaveError);
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -129,9 +146,28 @@ class _GuardianNotesSectionState extends State<GuardianNotesSection> {
   Future<void> _remove(GuardianNote own) async {
     final repo = _repo(context);
     if (repo == null) return;
-    await repo.delete(own.id);
-    _adoptedId = null;
-    _controller.clear();
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await repo.delete(own.id);
+    } catch (_) {
+      // Issue #1713: the note must not appear removable-but-undeletable --
+      // surface the failure and keep the editor's state for a retry.
+      if (mounted) {
+        setState(() =>
+            _error = AppLocalizations.of(context).guardianNotesRemoveError);
+      }
+      return;
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+    if (!mounted) return;
+    setState(() {
+      _adoptedId = null;
+      _controller.clear();
+    });
   }
 
   @override
@@ -176,6 +212,13 @@ class _GuardianNotesSectionState extends State<GuardianNotesSection> {
               style: theme.textTheme.bodySmall,
             ),
             const SizedBox(height: LLSpace.space2),
+            if (_error != null)
+              InlineError(
+                key: const ValueKey('guardian-notes-error'),
+                // No onRetry: the editor's own Save/Remove buttons are the
+                // retry surface (the sibling screen's documented posture).
+                message: _error!,
+              ),
             if (widget.canWrite) _ownEditor(theme, own),
             for (final note in rowNotes) _noteRow(theme, note),
             if (!widget.canWrite && rowNotes.isEmpty)

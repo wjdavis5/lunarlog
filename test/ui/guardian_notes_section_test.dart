@@ -30,6 +30,11 @@ class _FakeGuardianNotesRepository implements GuardianNotesRepository {
   final StreamController<List<GuardianNote>> _controller =
       StreamController<List<GuardianNote>>.broadcast();
 
+  /// Issue #1713: one-shot failures the tests inject to exercise the
+  /// section's in-place error handling.
+  Object? nextSaveError;
+  Object? nextDeleteError;
+
   void _emit() => _controller.add(List.unmodifiable(_notes));
 
   void close() => _controller.close();
@@ -65,6 +70,11 @@ class _FakeGuardianNotesRepository implements GuardianNotesRepository {
     required String body,
     String? loggedByUserId,
   }) async {
+    final error = nextSaveError;
+    if (error != null) {
+      nextSaveError = null;
+      throw error;
+    }
     final saved = GuardianNote(
       id: id ?? 'generated-${_notes.length}',
       profileId: profileId,
@@ -82,6 +92,11 @@ class _FakeGuardianNotesRepository implements GuardianNotesRepository {
 
   @override
   Future<void> delete(String id) async {
+    final error = nextDeleteError;
+    if (error != null) {
+      nextDeleteError = null;
+      throw error;
+    }
     _notes.removeWhere((n) => n.id == id);
     _emit();
   }
@@ -286,5 +301,58 @@ void main() {
         find.byKey(const ValueKey('guardian-note-field')));
     expect(field.controller!.text, 'Higher id.');
     expect(find.text('Lower id.'), findsOneWidget);
+  });
+  testWidgets('a failed save surfaces an error and keeps the text (issue '
+      '#1713)', (tester) async {
+    final repo = _FakeGuardianNotesRepository();
+    addTearDown(repo.close);
+    await tester.pumpWidget(wrap(repo));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+        find.byKey(const ValueKey('guardian-note-field')), 'Never saved.');
+    repo.nextSaveError = StateError('disk full');
+    await tester.tap(find.byKey(const ValueKey('guardian-note-save')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('guardian-notes-error')), findsOneWidget,
+        reason: 'the failure must be visible, not silent');
+    expect(find.text(AppLocalizationsEn().guardianNotesSaveError),
+        findsOneWidget);
+    final field = tester.widget<TextFormField>(
+        find.byKey(const ValueKey('guardian-note-field')));
+    expect(field.controller!.text, 'Never saved.',
+        reason: 'the text stays for a retry');
+
+    // Retrying succeeds and clears the error.
+    await tester.tap(find.byKey(const ValueKey('guardian-note-save')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('guardian-notes-error')), findsNothing);
+    expect((await repo.listForProfile('p1')).single.body, 'Never saved.');
+  });
+
+  testWidgets('a failed remove surfaces an error and keeps the note (issue '
+      '#1713)', (tester) async {
+    final repo = _FakeGuardianNotesRepository(
+        [note('g1', 'Still here.', author: 'u1')]);
+    addTearDown(repo.close);
+    await tester.pumpWidget(wrap(repo));
+    await tester.pumpAndSettle();
+
+    repo.nextDeleteError = StateError('locked');
+    await tester.tap(find.byKey(const ValueKey('guardian-note-remove')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('guardian-notes-error')), findsOneWidget);
+    expect(find.text(AppLocalizationsEn().guardianNotesRemoveError),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('guardian-note-remove')), findsOneWidget,
+        reason: 'the editor keeps the note for a retry');
+
+    // Retrying succeeds: the note goes and the editor resets to an add form.
+    await tester.tap(find.byKey(const ValueKey('guardian-note-remove')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('guardian-notes-error')), findsNothing);
+    expect(find.byKey(const ValueKey('guardian-note-remove')), findsNothing);
   });
 }
