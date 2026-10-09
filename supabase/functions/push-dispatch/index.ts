@@ -24,6 +24,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { buildPushMessage } from "../_shared/notification_copy.ts";
 import { createPushSender, type ServiceAccountCredentials } from "../_shared/push.ts";
+import { webhookSecretsMatch } from "../_shared/webhook_secret.ts";
 
 const WEBHOOK_SECRET_HEADER = "x-push-dispatch-webhook-secret";
 
@@ -491,7 +492,9 @@ if (import.meta.main) {
   Deno.serve(async (req) => {
     const expectedSecret = Deno.env.get("PUSH_DISPATCH_WEBHOOK_SECRET");
     const providedSecret = req.headers.get(WEBHOOK_SECRET_HEADER);
-    if (!expectedSecret || providedSecret !== expectedSecret) {
+    // Issue #1740: a constant-time comparison, never `!==` (see
+    // _shared/webhook_secret.ts).
+    if (!(await webhookSecretsMatch(expectedSecret, providedSecret))) {
       // #10 (round-2 review): the sibling not-configured branch above logs a
       // missing secret; this branch must too. The Database Webhook config
       // and the app.settings.push_dispatch_webhook_secret GUC (the cron
