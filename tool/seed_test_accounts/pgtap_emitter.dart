@@ -25,6 +25,11 @@ const int kPgtapFixtureMonths = 2;
 const int kPgtapFixtureSeed = 71002;
 DateTime kPgtapFixtureClock() => DateTime.utc(2026, 9, 14, 12);
 
+/// Repo-root-relative path of the committed fixture this emitter generates
+/// (the `--emit-pgtap` target; read by the freshness test).
+const String kSeedPgtapFixturePath =
+    'supabase/tests/seed_sync_push_sample_test.sql';
+
 String _sqlString(Object value) {
   final s = value.toString();
   return "'${s.replaceAll("'", "''")}'";

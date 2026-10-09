@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../tool/seed_test_accounts/pgtap_emitter.dart';
@@ -54,5 +56,29 @@ void main() {
     final dayEntryCalls = RegExp('p_day_entries, \\d+ rows').firstMatch(sql);
     expect(dayEntryCalls, isNotNull);
     expect(int.parse(dayEntryCalls!.group(0)!.split(' ')[1]), lessThan(500));
+  });
+
+  test('the committed fixture is the generator\'s current output', () {
+    final file = File(kSeedPgtapFixturePath);
+    expect(
+      file.existsSync(),
+      isTrue,
+      reason:
+          'The committed seed fixture is missing. Regenerate it with '
+          '`dart run tool/seed_test_accounts/main.dart --emit-pgtap '
+          '$kSeedPgtapFixturePath` and commit the result.',
+    );
+    // A Windows checkout hands the file back as CRLF (core.autocrlf) while
+    // the generator emits LF; normalize so the check is about the fixture's
+    // content and stays green on every platform (CI checks out LF).
+    final committed = file.readAsStringSync().replaceAll('\r\n', '\n');
+    expect(
+      committed,
+      sql,
+      reason:
+          'The committed seed fixture is stale. Regenerate it with '
+          '`dart run tool/seed_test_accounts/main.dart --emit-pgtap '
+          '$kSeedPgtapFixturePath` and commit the result.',
+    );
   });
 }
