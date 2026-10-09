@@ -2234,6 +2234,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get daySheetMeasurementsHeading => 'Measurements';
 
   @override
+  String get daySheetMeasurementsLoadError =>
+      'Could not load this day\'s basal body temperature and weight. Close and reopen the day to try again.';
+
+  @override
   String daySheetBbtFieldLabel(String unit) {
     return 'BBT ($unit)';
   }

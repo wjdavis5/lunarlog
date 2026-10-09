@@ -3466,6 +3466,12 @@ abstract class AppLocalizations {
   /// **'Measurements'**
   String get daySheetMeasurementsHeading;
 
+  /// Issue #1754: day-sheet inline error when the BBT/weight seed read fails; the two fields are disabled because any value typed cannot be saved this session.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load this day\'s basal body temperature and weight. Close and reopen the day to try again.'**
+  String get daySheetMeasurementsLoadError;
+
   /// Label (and accessibility label) for the day sheet's BBT text field (Issue #457); {unit} is the profile's current display-unit symbol ('°C'/'°F', from measurement_unit.dart's bbtUnitSymbol — a universal symbol, not itself translated).
   ///
   /// In en, this message translates to:

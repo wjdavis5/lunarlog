@@ -2732,7 +2732,7 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
                     key: fieldKey,
                     controller: controller,
                     focusNode: focusNode,
-                    enabled: !_busy,
+                    enabled: !_busy && !_measurementsLoadFailed,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
@@ -2923,6 +2923,16 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
                 // chip-selected options), so this section sits outside the
                 // curated-categories loop above rather than inside it.
                 _sectionHeading(theme, l10n.daySheetMeasurementsHeading),
+                if (_measurementsLoadFailed)
+                  // Issue #1754: the seed read failed, so the two fields
+                  // below are inert -- the write path leaves the day's
+                  // measurement rows alone this session (issue #1711), so
+                  // anything typed would be silently dropped. Say so
+                  // instead of leaving two normal-looking inputs.
+                  InlineError(
+                    key: const ValueKey('measurements-load-error'),
+                    message: l10n.daySheetMeasurementsLoadError,
+                  ),
                 _measurementField(
                   theme: theme,
                   l10n: l10n,

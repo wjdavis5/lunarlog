@@ -557,6 +557,7 @@
   "daysCount": "{count} {count, plural, =1{day} other{days}}",
   "daysValue": "{count, plural, =1{{value} day} other{{value} days}}",
   "daySheetMeasurementsHeading": "Measurements",
+  "daySheetMeasurementsLoadError": "Could not load this day's basal body temperature and weight. Close and reopen the day to try again.",
   "daySheetBbtFieldLabel": "BBT ({unit})",
   "daySheetWeightFieldLabel": "Weight ({unit})",
   "daySheetBbtRangeError": "Enter a BBT between {min} and {max}",

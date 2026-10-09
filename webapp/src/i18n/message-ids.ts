@@ -560,6 +560,7 @@ export const MESSAGE_IDS = [
   "daysCount",
   "daysValue",
   "daySheetMeasurementsHeading",
+  "daySheetMeasurementsLoadError",
   "daySheetBbtFieldLabel",
   "daySheetWeightFieldLabel",
   "daySheetBbtRangeError",
