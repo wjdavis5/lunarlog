@@ -2259,6 +2259,75 @@ void main() {
       await disposeLogging(tester, h);
     });
 
+    testWidgets(
+        'issue #1754: a failed measurement seed read disables the BBT and '
+        'weight fields and says why', (tester) async {
+      late MeasurementSeedReadFailureRepo failing;
+      final h = await pumpLogging(
+        tester,
+        observationsWrap: (real) =>
+            failing = MeasurementSeedReadFailureRepo(real),
+        seed: (db, profileId) async {
+          // A stored entry is what makes the sheet run its measurement seed
+          // at all -- without one there is nothing to read and nothing to
+          // fail.
+          final entry = await DriftDayEntriesRepository(db.storage).save(
+            DayEntry(
+              id: '',
+              profileId: profileId,
+              localDate: kToday,
+              tz: 'UTC',
+              flow: FlowLevel.notBleeding,
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+          await DriftObservationsRepository(db.storage).save(
+            Observation(
+              id: '',
+              dayEntryId: entry.id,
+              profileId: profileId,
+              localDate: kToday,
+              tz: 'UTC',
+              category: ObservationCategory.bbt,
+              valueNum: 36.6,
+              unit: 'celsius',
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      expect(
+        failing.failedReads,
+        greaterThan(0),
+        reason: 'the seed read must actually have failed for this test to '
+            'mean anything',
+      );
+      expect(
+        find.byKey(const ValueKey('measurements-load-error')),
+        findsOneWidget,
+        reason: 'the failure is explained instead of the fields silently '
+            'dropping anything typed into them',
+      );
+      expect(
+        tester
+            .widget<TextFormField>(find.byKey(const ValueKey('bbt-field')))
+            .enabled,
+        isFalse,
+        reason: 'a value typed into an inert field would never be saved',
+      );
+      expect(
+        tester
+            .widget<TextFormField>(find.byKey(const ValueKey('weight-field')))
+            .enabled,
+        isFalse,
+      );
+      await disposeLogging(tester, h);
+    });
+
     testWidgets('a value outside the sanity range shows an inline error and '
         'writes nothing', (tester) async {
       final h = await pumpLogging(tester);
