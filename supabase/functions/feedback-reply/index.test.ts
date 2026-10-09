@@ -4,10 +4,11 @@
 // from `deno.json`'s `test.include`, and was never `deno check`ed in CI.
 // `handleFeedbackReply` takes all real I/O as injected `FeedbackReplyDeps`,
 // so every case here runs with fakes: no live Supabase project, no Resend
-// key, no network. The shared-webhook-secret check itself lives in the
-// `import.meta.main` block (see index.ts's header comment on why), so it is
-// not exercised here - mirroring push-dispatch/index.test.ts's identical
-// split.
+// key, no network. The shared-webhook-secret *branch* lives in the
+// `import.meta.main` block (see index.ts's header comment on why), so the
+// request path is not exercised here - mirroring push-dispatch/index.test.ts's
+// identical split - but its rejection *message* is a pure function (Issue
+// #1739) and is pinned below.
 //
 // Run locally with `deno test supabase/functions/feedback-reply/`.
 
@@ -15,6 +16,7 @@ import { assertEquals } from "jsr:@std/assert@1";
 import {
   buildDeps,
   handleFeedbackReply,
+  webhookSecretRejectionMessage,
   type FeedbackReplyDeps,
   type FeedbackReplyEnv,
   type FeedbackReplyTicketRow,
@@ -219,3 +221,32 @@ Deno.test("buildDeps: getTicket returns null when no row matches", async () => {
 
   assertEquals(ticket, null);
 });
+
+// ---------------------------------------------------------------------------
+// Issue #1739: the webhook-secret rejection is logged, never silent.
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "issue #1739: the rejection message names the missing side without ever printing a secret value",
+  () => {
+    const missing = webhookSecretRejectionMessage(undefined);
+    assertEquals(
+      missing.includes("FEEDBACK_WEBHOOK_SECRET is not set"),
+      true,
+      "a missing function secret must say so -- the bare 401 left no signal anywhere",
+    );
+
+    const mismatched = webhookSecretRejectionMessage("super-secret-value");
+    assertEquals(
+      mismatched.includes("missing or mismatched"),
+      true,
+      "a mismatch must name the drift between the function secret and the Database Webhook config",
+    );
+    assertEquals(
+      mismatched.includes("super-secret-value"),
+      false,
+      "the message must never echo the secret",
+    );
+    assertEquals(missing.includes("super-secret-value"), false);
+  },
+);
