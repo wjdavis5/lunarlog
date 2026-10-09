@@ -4506,7 +4506,7 @@ void main() {
 
       // Issue #1644: with a known payload summary, only a skip of the type
       // actually written counts as passed over; skipping the other type lets
-      // the delete through and forgets the record.
+      // the delete through and keeps the record as a gone row (issue #1617).
       test('a spotting marker with menstrualFlow skipped is deleted and kept '
           'as a gone row, but stays remembered when spotting was skipped '
           '(issue #1644)', () async {
