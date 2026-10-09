@@ -33,6 +33,8 @@ import 'package:lunarlog/data/health/health_fertility_mapping.dart'
 import 'package:lunarlog/data/health/health_record_ids.dart';
 import 'package:lunarlog/data/repositories/drift_health_sync_tombstone_source.dart';
 import 'package:lunarlog/domain/health/health_export_ledger.dart';
+import 'package:lunarlog/domain/health/health_flow_write_service.dart'
+    show HealthWritePassQueue;
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_deletion_service.dart';
@@ -122,6 +124,32 @@ class _FakeTombstoneSource implements HealthSyncTombstoneSource {
       }
     }
   }
+}
+
+/// Runs the queued action at once — the pre-#1614 behaviour, for the many
+/// tests that do not exercise the queue (the race and ordering tests use a
+/// recording one).
+class _DirectPassQueue implements HealthWritePassQueue {
+  const _DirectPassQueue();
+
+  @override
+  Future<T> runInPassQueue<T>(Future<T> Function() action) => action();
+}
+
+/// Holds every queued action until [release], as a running write pass
+/// would (Issue #1614's race test).
+class _DeferredPassQueue implements HealthWritePassQueue {
+  final Completer<void> _gate = Completer<void>();
+  int queued = 0;
+
+  @override
+  Future<T> runInPassQueue<T>(Future<T> Function() action) async {
+    queued++;
+    await _gate.future;
+    return action();
+  }
+
+  void release() => _gate.complete();
 }
 
 class _RecordingPlatform implements HealthPlatformStore {
@@ -284,6 +312,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        passQueue: const _DirectPassQueue(),
         ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 10),
       );
@@ -310,6 +339,50 @@ void main() {
       expect(deletion.calls, hasLength(1));
     });
 
+    // Issue #1614: the delete joins the write pass's queue and collects its
+    // tombstoned set at execution time, so an Undo before its turn is not
+    // deleted — and a pass can never land between the collection and the
+    // delete.
+    test('a tombstone undone before the queued delete runs is not deleted',
+        () async {
+      final settings = FakeSettingsStore({
+        SettingsKeys.healthStoreProfileId: _profileId,
+      });
+      final binding = HealthSyncBinding(settings);
+      final source = _FakeTombstoneSource();
+      final deletion = _FakeDeletion();
+      final queue = _DeferredPassQueue();
+      final coordinator = HealthSyncTombstoneCoordinator(
+        binding: binding,
+        source: source,
+        deletionService: deletion,
+        ledger: FakeHealthExportLedger(),
+        passQueue: queue,
+        debounce: const Duration(milliseconds: 10),
+      );
+      coordinator.start();
+      addTearDown(() => coordinator.dispose());
+
+      // Tombstoned: the delete is scheduled, and the queue holds it as a
+      // running write pass would.
+      await source.emitEntries([
+        _entry(_entryId, deletedAt: DateTime.utc(2026, 9, 2)),
+      ]);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(queue.queued, 1, reason: 'the delete waits on the queue');
+      expect(deletion.calls, isEmpty);
+
+      // Undo: the row is live again before the queued delete runs.
+      await source.emitEntries([_entry(_entryId)]);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      queue.release();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(deletion.calls, isEmpty,
+          reason: 'the set is collected at execution time, when nothing is '
+              'tombstoned any more');
+    });
+
     test('unbound: no deletion is ever issued', () async {
       final binding = HealthSyncBinding(FakeSettingsStore());
       final source = _FakeTombstoneSource();
@@ -318,6 +391,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        passQueue: const _DirectPassQueue(),
         ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 10),
       );
@@ -348,6 +422,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        passQueue: const _DirectPassQueue(),
         ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 10),
       );
@@ -389,6 +464,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        passQueue: const _DirectPassQueue(),
         ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 10),
       );
@@ -420,6 +496,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        passQueue: const _DirectPassQueue(),
         ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 10),
       );
@@ -468,6 +545,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        passQueue: const _DirectPassQueue(),
         ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 10),
       );
@@ -507,6 +585,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        passQueue: const _DirectPassQueue(),
         ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 10),
       );
@@ -544,6 +623,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        passQueue: const _DirectPassQueue(),
         ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 10),
       );
@@ -580,6 +660,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        passQueue: const _DirectPassQueue(),
         ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 10),
       );
@@ -629,6 +710,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        passQueue: const _DirectPassQueue(),
         ledger: ledger,
         debounce: const Duration(milliseconds: 10),
       );
@@ -684,6 +766,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        passQueue: const _DirectPassQueue(),
         ledger: ledger,
         debounce: const Duration(milliseconds: 10),
       );
@@ -742,6 +825,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        passQueue: const _DirectPassQueue(),
         ledger: ledger,
         debounce: const Duration(milliseconds: 10),
       );
@@ -804,6 +888,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        passQueue: const _DirectPassQueue(),
         ledger: ledger,
         debounce: const Duration(milliseconds: 10),
       );
@@ -859,6 +944,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        passQueue: const _DirectPassQueue(),
         ledger: ledger,
         debounce: const Duration(milliseconds: 10),
       );
@@ -919,6 +1005,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        passQueue: const _DirectPassQueue(),
         ledger: ledger,
         debounce: const Duration(milliseconds: 10),
       );
@@ -974,6 +1061,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        passQueue: const _DirectPassQueue(),
         ledger: ledger,
         debounce: const Duration(milliseconds: 10),
       );
@@ -1023,6 +1111,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        passQueue: const _DirectPassQueue(),
         ledger: ledger,
         debounce: const Duration(milliseconds: 10),
       );
@@ -1076,6 +1165,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        passQueue: const _DirectPassQueue(),
         ledger: ledger,
         debounce: const Duration(milliseconds: 10),
       );
@@ -1126,6 +1216,7 @@ void main() {
         binding: binding,
         source: DriftHealthSyncTombstoneSource(storage),
         deletionService: deletion,
+        passQueue: const _DirectPassQueue(),
         ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 20),
       );
@@ -1164,6 +1255,7 @@ void main() {
         binding: binding,
         source: DriftHealthSyncTombstoneSource(storage),
         deletionService: deletion,
+        passQueue: const _DirectPassQueue(),
         ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 20),
       );
@@ -1213,6 +1305,7 @@ void main() {
         binding: binding,
         source: DriftHealthSyncTombstoneSource(storage),
         deletionService: deletion,
+        passQueue: const _DirectPassQueue(),
         ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 20),
       );

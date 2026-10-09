@@ -19,6 +19,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/composition/app_dependencies.dart';
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/data/db/db.dart';
+import 'package:lunarlog/domain/health/health_flow_write_service.dart'
+    show HealthWritePassQueue;
+
+/// Runs the queued action at once. The gate test only checks whether the
+/// coordinators are built, not how they queue (Issue #1614).
+class _UnusedPassQueue implements HealthWritePassQueue {
+  const _UnusedPassQueue();
+
+  @override
+  Future<T> runInPassQueue<T>(Future<T> Function() action) => action();
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -37,7 +48,7 @@ void main() {
 
   Object? writeCoordinatorOn(TargetPlatform platform) {
     debugDefaultTargetPlatformOverride = platform;
-    return buildHealthFlowWriteCoordinator(
+    final built = buildHealthFlowWriteService(
       settings: deps.settings,
       profiles: deps.profiles,
       dayEntries: deps.dayEntries,
@@ -46,6 +57,12 @@ void main() {
       signedInUserId: () => null,
       minorBindingAllowed: AppConfig.healthSyncMinorBindingAllowed,
       ledger: deps.healthExportLedger,
+    );
+    if (built == null) return null;
+    return buildHealthFlowWriteCoordinator(
+      service: built.service,
+      binding: built.binding,
+      dayEntries: deps.dayEntries,
     );
   }
 
@@ -58,6 +75,9 @@ void main() {
       guardiansForProfile: deps.profileGuardians.getForProfile,
       signedInUserId: () => null,
       ledger: deps.healthExportLedger,
+      // The gate test does not exercise the queue; the write path's own
+      // builder test and the coordinator's tests cover it (Issue #1614).
+      passQueue: const _UnusedPassQueue(),
     );
   }
 
@@ -113,7 +133,8 @@ void main() {
       expect(
         '_healthWritesOnThisPlatform()'.allMatches(composition),
         hasLength(3),
-        reason: 'the helper, the write coordinator, the tombstone coordinator',
+        reason: 'the helper, the write service builder, the tombstone '
+            'coordinator',
       );
     });
 

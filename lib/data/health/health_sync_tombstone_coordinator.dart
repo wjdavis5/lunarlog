@@ -42,6 +42,14 @@
 /// and this was a documented accepted gap. Successfully deleted ids are
 /// removed from the ledger so the table does not grow forever.
 ///
+/// **Issue #1614:** the delete runs on the write pass's own exclusive queue
+/// ([HealthWritePassQueue]), and collects its tombstoned set at execution
+/// time. Before, it was a second writer beside the pass: after an Undo its
+/// delete could land after the pass had written the records again, leaving
+/// them gone from the store and the ledger until another pass. Serialized,
+/// it either runs first — the Undo's pass then writes again — or runs after
+/// the Undo, when nothing is tombstoned any more and it does nothing.
+///
 /// Best-effort, like every background upkeep here: a throwing pass is
 /// swallowed — the next genuine change re-arms it.
 ///
@@ -51,6 +59,8 @@ library;
 import 'dart:async';
 
 import 'package:lunarlog/domain/health/health_export_ledger.dart';
+import 'package:lunarlog/domain/health/health_flow_write_service.dart'
+    show HealthWritePassQueue;
 import 'package:lunarlog/domain/health/health_platform.dart'
     show HealthPlatformPartial;
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
@@ -71,15 +81,21 @@ class HealthSyncTombstoneCoordinator {
     required HealthSyncTombstoneSource source,
     required HealthSyncDeletionService deletionService,
     required HealthExportLedger ledger,
+    required HealthWritePassQueue passQueue,
     this.debounce = const Duration(milliseconds: 300),
   })  : _binding = binding,
         _source = source,
         _deletionService = deletionService,
-        _ledger = ledger;
+        _ledger = ledger,
+        _passQueue = passQueue;
 
   final HealthSyncBinding _binding;
   final HealthSyncTombstoneSource _source;
   final HealthSyncDeletionService _deletionService;
+
+  /// The write pass's exclusive queue (Issue #1614): the delete joins it,
+  /// so it can never land between a pass's decision and its write.
+  final HealthWritePassQueue _passQueue;
 
   /// The persisted device-local export ledger (Issue #936) — the
   /// cross-session source of the record ids the write path actually
@@ -287,30 +303,39 @@ class HealthSyncTombstoneCoordinator {
     ];
   }
 
+  /// Deletes what is tombstoned, on the write pass's own queue (Issue
+  /// #1614). The tombstoned set is collected when this runs, not when it
+  /// was scheduled: a row that came back (Undo) before its turn is not
+  /// deleted — and because the delete is serialized with passes, it can
+  /// never land between a pass's decision and its write. If it does run
+  /// before an Undo's pass, the row is live by then and that pass writes
+  /// the records again.
   Future<void> _runDeletion() async {
-    final tombstoned = _collectTombstoned();
-    if (tombstoned.isEmpty) return;
     try {
-      final report = await _deletionService.deleteSamples(tombstoned);
-      // LLA-019: only ids the service did not report as blocked are
-      // recorded done — a refusal (transient permission/provider failure)
-      // must be retried by the next change, not silently swallowed.
-      final blocked = report.blocked;
-      if (blocked == null) {
-        // Issue #936: the persisted ledger rows go with the successfully
-        // deleted store samples, so the table does not grow forever. This
-        // runs BEFORE the ids join _alreadyDeleted: a ledger-write failure
-        // must leave the ids retryable (a second delete of an already-gone
-        // sample is a documented no-op) rather than stranding the rows.
-        await _markDeleted(tombstoned);
-      } else if (blocked is HealthPlatformPartial) {
-        // Issue #1583: when some write permissions are denied, native skips
-        // those types and reports them. We drop only the ledger rows and mark
-        // done only the ids whose types were NOT skipped; the skipped ones stay
-        // in the ledger and out of _alreadyDeleted so they retry once permission
-        // returns.
-        await _handlePartialDeletion(tombstoned, blocked.skippedTypes);
-      }
+      await _passQueue.runInPassQueue(() async {
+        final tombstoned = _collectTombstoned();
+        if (tombstoned.isEmpty) return;
+        final report = await _deletionService.deleteSamples(tombstoned);
+        // LLA-019: only ids the service did not report as blocked are
+        // recorded done — a refusal (transient permission/provider failure)
+        // must be retried by the next change, not silently swallowed.
+        final blocked = report.blocked;
+        if (blocked == null) {
+          // Issue #936: the persisted ledger rows go with the successfully
+          // deleted store samples, so the table does not grow forever. This
+          // runs BEFORE the ids join _alreadyDeleted: a ledger-write failure
+          // must leave the ids retryable (a second delete of an already-gone
+          // sample is a documented no-op) rather than stranding the rows.
+          await _markDeleted(tombstoned);
+        } else if (blocked is HealthPlatformPartial) {
+          // Issue #1583: when some write permissions are denied, native skips
+          // those types and reports them. We drop only the ledger rows and mark
+          // done only the ids whose types were NOT skipped; the skipped ones stay
+          // in the ledger and out of _alreadyDeleted so they retry once permission
+          // returns.
+          await _handlePartialDeletion(tombstoned, blocked.skippedTypes);
+        }
+      });
     } catch (_) {
       // Best-effort background upkeep — the next change re-arms it, and
       // since _alreadyDeleted was never updated, these same ids retry too.
