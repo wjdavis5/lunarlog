@@ -1691,15 +1691,25 @@ class LocalHealthFlowWriteService
   /// switched off and on. Replaced by a real row on the next accepted
   /// write. Keeps whatever summary the row already carried — a type swap's
   /// `gone` stamp above all, which is what the retry's swap check reads.
+  ///
+  /// Issue #1689: a real row is left alone. Both native halves upsert, so a
+  /// failed update leaves the store's earlier copy of the record in place;
+  /// that row already keeps the retry due (the floor is not consulted for a
+  /// held record) and every delete path still reaches the record. Only a
+  /// record the ledger does not hold as written — the never-written case
+  /// #1617 is for — becomes a gone row.
   Future<void> _markGone(
     String profileId, {
     required String recordId,
     required String sourceRowId,
     required LocalDate date,
     required DateTime version,
-  }) {
+  }) async {
     final written = _memory.entryOf(recordId);
-    return _memory.remember([
+    if (written != null && written.kind != HealthExportLedgerKind.gone) {
+      return;
+    }
+    await _memory.remember([
       HealthExportLedgerEntry(
         recordId: recordId,
         profileId: profileId,
