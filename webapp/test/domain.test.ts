@@ -181,6 +181,38 @@ describe('pullSyncedData (issue #1252)', () => {
     expect(cursors.profiles).toBe(100);
   });
 
+  it('issue #1724: advances the cursor-only audit tables and the next pull sends them', async () => {
+    const seen: Record<string, unknown>[] = [];
+    const { client } = fakeRpcClient(async (name, params) => {
+      if (name === 'sync_watermark') {
+        return { data: 1_000_000, error: null };
+      }
+      seen.push(structuredClone(params.p_cursors) as Record<string, unknown>);
+      return {
+        data: {
+          profiles: [],
+          day_entry_merge_events: [{ server_version: 40 }],
+          day_entry_history: [{ server_version: 41 }, { server_version: 42 }],
+        },
+        error: null,
+      };
+    });
+
+    const first = await pullSyncedData(client);
+    expect(seen[0]).toEqual({});
+    // The rows are never merged, but their maxima become cursors.
+    expect(first.cursors.day_entry_merge_events).toBe(40);
+    expect(first.cursors.day_entry_history).toBe(42);
+
+    // The second pull starts from what the first handed back, so the server
+    // no longer re-serves the oldest page of either audit table from zero.
+    await pullSyncedData(client, { cursors: first.cursors });
+    expect(seen[1]).toEqual({
+      day_entry_merge_events: 40,
+      day_entry_history: 42,
+    });
+  });
+
   it('pages past the 500-row cap: a full page triggers another round with the advanced cursor', async () => {
     const fullPage = Array.from({ length: 500 }, (_, i) =>
       profileRow({ id: ULID_A, server_version: i + 1 }),

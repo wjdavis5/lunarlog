@@ -230,10 +230,8 @@ export function serverAdjustedNow(clock: () => Date = () => new Date()): Date {
 // ---------------------------------------------------------------------------
 
 /**
- * The `sync_pull` tables this client tracks cursors for. `day_entry_merge_events`
- * and `day_entry_history` ride the same RPC response but are not part of
- * the web data layer's typed surface yet (the issue scopes reads to the
- * content tables, guardians, and notes); their response keys are ignored.
+ * The `sync_pull` tables whose rows this client consumes and tracks
+ * cursors for.
  */
 export type SyncCursorTable =
   | 'profiles'
@@ -246,7 +244,19 @@ export type SyncCursorTable =
   | 'profile_tag_registry'
   | 'profile_guardians';
 
-export type SyncPullCursors = Partial<Record<SyncCursorTable, number>>;
+/**
+ * Issue #1724: the tables that ride the same `sync_pull` response but are
+ * not part of the web data layer's typed surface (the issue scopes reads
+ * to the content tables, guardians, and notes). The RPC coalesces a
+ * missing cursor to 0, so without one it re-queries and re-serializes the
+ * oldest page of each on every pull — every refresh, wake, and focus
+ * refetch — for the client to discard. The client sends and advances their
+ * cursors (the rows are parsed and dropped, never merged) so a pull stops
+ * paying for them.
+ */
+export type SyncCursorOnlyTable = 'day_entry_merge_events' | 'day_entry_history';
+
+export type SyncPullCursors = Partial<Record<SyncCursorTable | SyncCursorOnlyTable, number>>;
 
 export function emptyCursors(): SyncPullCursors {
   return {};
@@ -292,6 +302,25 @@ interface PullPage {
   visit_prep_items: VisitPrepItemRow[];
   profile_tag_registry: ProfileTagRegistryRow[];
   profile_guardians: ProfileGuardianRow[];
+  // Issue #1724: cursor-only tables — rows are never consumed, only their
+  // server_versions advance the cursor.
+  day_entry_merge_events: { server_version: number }[];
+  day_entry_history: { server_version: number }[];
+}
+
+/**
+ * Issue #1724: the server_versions of a cursor-only table's page. Anything
+ * that is not an object with a numeric server_version is dropped — the
+ * rows are never consumed, so this needs no full boundary schema.
+ */
+function cursorRows(raw: unknown): { server_version: number }[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (row): row is { server_version: number } =>
+      typeof row === 'object' &&
+      row !== null &&
+      typeof (row as { server_version?: unknown }).server_version === 'number',
+  );
 }
 
 async function pullOnce(
@@ -315,6 +344,8 @@ async function pullOnce(
     visit_prep_items: visitPrepItemListSchema.parse(parsed.visit_prep_items ?? []),
     profile_tag_registry: profileTagRegistryListSchema.parse(parsed.profile_tag_registry ?? []),
     profile_guardians: profileGuardianListSchema.parse(parsed.profile_guardians ?? []),
+    day_entry_merge_events: cursorRows(parsed.day_entry_merge_events),
+    day_entry_history: cursorRows(parsed.day_entry_history),
   };
 }
 
@@ -371,7 +402,7 @@ function clampedPullCursors(
   watermark: number | null,
 ): SyncPullCursors {
   const clamped: SyncPullCursors = {};
-  for (const table of Object.keys(raw) as SyncCursorTable[]) {
+  for (const table of Object.keys(raw) as (SyncCursorTable | SyncCursorOnlyTable)[]) {
     const rawValue = raw[table];
     if (rawValue === undefined) {
       continue;
@@ -435,6 +466,24 @@ export async function pullSyncedData(
     append('visit_prep_items', page.visit_prep_items);
     append('profile_tag_registry', page.profile_tag_registry);
     append('profile_guardians', page.profile_guardians);
+    // Issue #1724: the two audit tables ride the response but are never
+    // consumed — advance their cursors (and let a full page of theirs
+    // trigger another round) so the server stops re-serving their oldest
+    // page from zero on every pull.
+    const advanceCursorOnly = (
+      table: SyncCursorOnlyTable,
+      rows: { server_version: number }[],
+    ): void => {
+      if (rows.length > 0) {
+        const maxVersion = Math.max(...rows.map((row) => row.server_version));
+        cursors[table] = Math.max(cursors[table] ?? 0, maxVersion);
+      }
+      if (rows.length >= SYNC_PULL_PAGE_SIZE) {
+        anyFull = true;
+      }
+    };
+    advanceCursorOnly('day_entry_merge_events', page.day_entry_merge_events);
+    advanceCursorOnly('day_entry_history', page.day_entry_history);
 
     if (!anyFull) {
       return { data: merged, cursors: clampedPullCursors(cursors, start, watermark) };
