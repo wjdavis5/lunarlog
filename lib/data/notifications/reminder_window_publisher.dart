@@ -93,12 +93,25 @@ class ReminderWindowPublisher {
       unawaited(sub.cancel());
       _debounceTimers.remove(id)?.cancel();
       _pending.remove(id);
-      _pendingRetraction.remove(id);
       _retryAttempts.remove(id);
       _generation.remove(id);
       _lastPublished.remove(id);
+      // Issue #1727: a profile that leaves the active set (archived, or
+      // otherwise gone from the watch) must have its published server-side
+      // window retracted — scan_missed_entry_reminders() inner-joins
+      // profile_reminder_windows, so a leftover row keeps enqueueing
+      // missed-entry alerts for a profile that is out of everyday use.
+      // (This branch used to clear a pending suppression retraction
+      // instead of queueing one.)
+      _pendingRetraction.add(id);
       return true;
     });
+    // Flush every retraction still owed for a profile that is no longer
+    // active — the ones queued just above, and any left waiting from an
+    // earlier pass (e.g. queued while signed out).
+    for (final id in _pendingRetraction.toList()) {
+      if (!activeIds.contains(id)) unawaited(_flushRetraction(id));
+    }
     for (final id in activeIds) {
       _predictionSubs.putIfAbsent(
         id,

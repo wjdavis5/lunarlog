@@ -956,4 +956,49 @@ void main() {
       expect(remote.retracted, isEmpty);
     });
   });
+
+  test('issue #1727: a profile leaving the active set retracts its published '
+      'window and stops publishing', () async {
+    final profiles = StreamController<List<Profile>>(sync: true);
+    final predictions = <String, StreamController<CyclePrediction>>{};
+    final calls = <_UpsertCall>[];
+    final remote = _remote((profileId, iso, episodeOpen) async {
+      calls.add(_UpsertCall(profileId, iso, episodeOpen));
+    });
+    final today = LocalDate(2026, 8, 30);
+
+    final publisher = ReminderWindowPublisher(
+      activeProfiles: profiles.stream,
+      predictionFor: (id) => predictions
+          .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
+          .stream,
+      upsert: remote,
+      isSignedIn: () => true,
+      debounce: Duration.zero,
+    );
+    publisher.start();
+    addTearDown(() async {
+      await publisher.dispose();
+      await profiles.close();
+      for (final c in predictions.values) {
+        await c.close();
+      }
+    });
+
+    profiles.add([_profile('p1')]);
+    predictions['p1']!.add(_active(today, estimatedNextStart: today.addDays(1)));
+    await pumpEventQueue();
+    expect(calls, hasLength(1), reason: 'the live profile published');
+
+    // The filtered watch drops an archived profile (activeProfilesOnly) --
+    // that removal is what must retract the server-side window.
+    profiles.add(const <Profile>[]);
+    await pumpEventQueue();
+    expect(remote.retracted, ['p1']);
+
+    // The cancelled subscription publishes nothing further.
+    predictions['p1']!.add(_active(today, estimatedNextStart: today.addDays(2)));
+    await pumpEventQueue();
+    expect(calls, hasLength(1));
+  });
 }
