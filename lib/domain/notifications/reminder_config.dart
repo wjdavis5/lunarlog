@@ -751,16 +751,19 @@ Map<String, LocalDate> decodeLateSnoozes(String? raw) {
   if (decoded is! Map<String, Object?>) return const {};
   final snoozes = decoded['snoozes'];
   if (snoozes is! Map<String, Object?>) return const {};
-  return {
-    for (final entry in snoozes.entries)
-      if (entry.value is String && _isIsoDate(entry.value as String))
-        entry.key: LocalDate.fromIso(entry.value as String),
-  };
-}
-
-bool _isIsoDate(String value) {
-  if (value.length != 10) return false;
-  return RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value);
+  final parsed = <String, LocalDate>{};
+  for (final entry in snoozes.entries) {
+    final value = entry.value;
+    if (value is String) {
+      // Issue #1719: `_tryParseIso`, not a shape check plus
+      // `LocalDate.fromIso` — a calendar-invalid date ("2026-02-30") must
+      // degrade to "not snoozed" like any other malformed value, not throw
+      // out of the coordinator's load.
+      final date = _tryParseIso(value);
+      if (date != null) parsed[entry.key] = date;
+    }
+  }
+  return parsed;
 }
 
 /// A fire at ([fireOn], [minuteOfDay]) that lands inside a quiet-hours

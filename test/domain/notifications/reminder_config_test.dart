@@ -335,6 +335,12 @@ void main() {
       expect(decodeLateSnoozes('{"snoozes":{"p1":"2026-9-3"}}'), isEmpty,
           reason: 'a non-padded date is not an ISO civil date');
       expect(decodeLateSnoozes('{"snoozes":{"p1":"soon"}}'), isEmpty);
+      expect(
+        decodeLateSnoozes('{"snoozes":{"p1":"2026-02-30"}}'),
+        isEmpty,
+        reason: 'issue #1719: a calendar-invalid date degrades like any '
+            'other malformed value',
+      );
     });
   });
 
