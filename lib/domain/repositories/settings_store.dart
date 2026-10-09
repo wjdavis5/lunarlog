@@ -148,10 +148,28 @@ abstract final class SettingsKeys {
   /// completes a pass, and cleared alongside [healthStoreProfileId] by
   /// `bind`/`unbind` — the consent belongs to one binding, exactly like
   /// [healthSyncWrittenThroughMs], so any new binding re-gates background
-  /// passes until the person starts an import again. Device-local consent
-  /// metadata — a timestamp, never health content.
+  /// passes until the person starts an import again. The timestamp pairs
+  /// with [healthImportFirstPassProfileId], which names the profile the
+  /// pass read for (Issue #1701): a pass that finishes after the binding
+  /// moved on leaves its consent under the old profile's id, and the new
+  /// binding's gate reads it as closed. Device-local consent metadata — a
+  /// timestamp, never health content.
   static const String healthImportFirstPassCompletedMs =
       'health_import_first_pass_completed_ms';
+
+  /// The profile whose user-initiated import pass earned the first-import
+  /// consent [healthImportFirstPassCompletedMs] records (Issue #1701):
+  /// the id of the profile the finishing pass actually read for, or unset.
+  /// Written only through `HealthSyncBinding` — `markFirstImportCompleted`
+  /// takes the pass's profile id as a parameter, because the Health sync
+  /// screen keeps its profile tiles live and a pass can finish after a
+  /// different profile was bound — and cleared alongside the timestamp by
+  /// `bind`/`unbind`. The background gate reads the consent only while
+  /// this id still names the bound profile, so a stale pass cannot open
+  /// the new binding's gate. Device-local consent metadata — a profile id,
+  /// never health content.
+  static const String healthImportFirstPassProfileId =
+      'health_import_first_pass_profile_id';
 
   /// The ids of health-store records the store has said were deleted and
   /// that an imported row on this phone was written from (Issue #1594): a

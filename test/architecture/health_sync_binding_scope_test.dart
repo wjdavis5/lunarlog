@@ -10,7 +10,9 @@
 /// Issue #1215 put the binding's first-import consent marker
 /// ([SettingsKeys.healthImportFirstPassCompletedMs]) under the same
 /// discipline — `HealthSyncBinding` is its sole reader/writer too — so the
-/// guards below cover both keys.
+/// guards below cover both keys. Issue #1701's companion
+/// ([SettingsKeys.healthImportFirstPassProfileId]), which names the
+/// profile the consent belongs to, joins them.
 ///
 /// Doc-comment mentions (every dartdoc `[SettingsKeys.healthStoreProfileId]`
 /// cross-reference outside `lib/domain/health/` is exactly that — a
@@ -28,7 +30,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// The qualified reference form every real read/write uses, for every key
 /// this guard covers.
 final _reference = RegExp(
-  r'SettingsKeys\.health(StoreProfileId|ImportFirstPassCompletedMs)',
+  r'SettingsKeys\.health(StoreProfileId|ImportFirstPassCompletedMs|ImportFirstPassProfileId)',
 );
 
 /// The call form of the "proposed binding" entry point (Issue #296):
@@ -45,6 +47,7 @@ final _canBindCall = RegExp(r'\.canBind\(');
 const List<String> _rawKeyLiterals = [
   "'health_store_profile_id'",
   "'health_import_first_pass_completed_ms'",
+  "'health_import_first_pass_profile_id'",
 ];
 
 /// Strips `///` doc-comment lines (leading whitespace allowed) so a
@@ -84,7 +87,8 @@ void main() {
     ];
     expect(offenders, isEmpty,
         reason: 'every guarded binding key (healthStoreProfileId, '
-            'healthImportFirstPassCompletedMs) must be read only '
+            'healthImportFirstPassCompletedMs, '
+            'healthImportFirstPassProfileId) must be read only '
             'inside lib/domain/health/ (via HealthSyncBinding), but these '
             'files reference one directly:\n${offenders.join('\n')}');
   });
@@ -186,8 +190,9 @@ void sneaky(SettingsStore s) => s.get(SettingsKeys.healthStoreProfileId);
     expect(offenders, isEmpty,
         reason: 'each guarded raw key literal must be typed '
             'exactly once — every other surface must use '
-            'SettingsKeys.healthStoreProfileId or '
-            'SettingsKeys.healthImportFirstPassCompletedMs, via '
+            'SettingsKeys.healthStoreProfileId, '
+            'SettingsKeys.healthImportFirstPassCompletedMs, or '
+            'SettingsKeys.healthImportFirstPassProfileId, via '
             'HealthSyncBinding. Found in:\n${offenders.join('\n')}');
   });
 

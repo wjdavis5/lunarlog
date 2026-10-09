@@ -50,6 +50,15 @@ Profile _profile() => Profile(
   updatedAt: DateTime.utc(2026, 1, 1),
 );
 
+/// The second profile the issue #1701 test binds mid-pass.
+Profile _otherProfile() => Profile(
+  id: 'profile-2',
+  displayName: 'Bea',
+  isMinor: false,
+  createdAt: DateTime.utc(2026, 1, 1),
+  updatedAt: DateTime.utc(2026, 1, 1),
+);
+
 List<ProfileGuardian> _owners() => [
   ProfileGuardian(
     id: 'g1',
@@ -604,6 +613,42 @@ void main() {
     },
   );
 
+  test(
+    'issue #1701: a binding switched while the pass reads does not earn '
+    'the new binding a completed first import',
+    () async {
+      await bind();
+      source.result = const HealthReadResult.samples([]);
+      final gate = Completer<void>();
+      source.firstReadGate = gate;
+
+      final service = build();
+      final pass = service.importNow();
+      // Hold the pass inside its read — the window in which the Health
+      // sync screen's profile tiles stay live for a re-bind.
+      await pumpEventQueue();
+
+      final switched = await binding.bind(
+        profile: _otherProfile(),
+        signedInUserId: _ownerId,
+        ownerUserId: _ownerId,
+        minorBindingAllowed: false,
+      );
+      expect(switched.isAllowed, isTrue);
+      gate.complete();
+      final summary = await pass;
+      expect(summary.isBlocked, isFalse,
+          reason: 'the pass itself completed for the profile it read for');
+
+      expect(
+        await binding.hasCompletedFirstImport(),
+        isFalse,
+        reason: 'the finishing pass read for the old profile; its consent '
+            'must not open the new binding\'s background gate',
+      );
+    },
+  );
+
   // Issue #1515. The tap import used to ask through the write path's
   // request, which on Android carries every permission — so someone who had
   // allowed reading and declined writing was shown the write permissions
@@ -680,7 +725,7 @@ void main() {
       // gate has its own tests. This test pins #1212's overlap contract
       // (two passes never interleave), so the gate is open before the
       // overlap starts.
-      await binding.markFirstImportCompleted();
+      await binding.markFirstImportCompleted(_profileId);
       // One page serving both entry points: a flow day plus an
       // intermenstrual-bleeding record for the SAME date. Two passes
       // merging that page concurrently is exactly the overlap the issue
@@ -2550,7 +2595,8 @@ void main() {
     /// prompt-free shape, the probe, the provenance), so they open the
     /// first-import consent gate directly rather than re-proving the
     /// importNow chain every time — the gate itself has its own tests.
-    Future<void> completeFirstImport() => binding.markFirstImportCompleted();
+    Future<void> completeFirstImport() =>
+        binding.markFirstImportCompleted(_profileId);
 
     test('a background pass before the first user-initiated import is a '
         'no-op (issue #1215)', () async {
