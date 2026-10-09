@@ -91,8 +91,19 @@ class _FakeService implements PredictionConnectionService {
   @override
   Future<Set<String>> outgoingConnectedProfileIds() async {
     connectedLookups++;
+    // Issue #1777 coverage: lets a test hold this lookup "in flight" while
+    // the profile is archived, then resolve it to prove the in-flight flush
+    // still refuses to publish for a profile that left the active set.
+    final hold = holdNextConnectedLookup;
+    if (hold != null) {
+      holdNextConnectedLookup = null;
+      await hold.future;
+    }
     return connectedProfileIds;
   }
+
+  /// Issue #1777 coverage: see [outgoingConnectedProfileIds]'s comment.
+  Completer<void>? holdNextConnectedLookup;
 
   @override
   Future<void> publishProjection({
@@ -243,16 +254,29 @@ void main() {
   });
 
   test('publishNow publishes immediately for a connected profile', () async {
+    final profiles = StreamController<List<Profile>>(sync: true);
     final service = _FakeService(connectedProfileIds: {'p1'});
     final today = LocalDate(2026, 8, 30);
 
     final publisher = LocalPredictionProjectionPublisher(
-      activeProfiles: const Stream.empty(),
+      activeProfiles: profiles.stream,
       predictionFor: (id) => Stream<CyclePrediction>.value(_active(today)),
       service: service,
       isSignedIn: () => true,
+      // Issue #1777: `_publishCurrent` refuses a profile outside the last
+      // active set, so the profile must be active here (its production
+      // state right after a connection is created); the long debounce
+      // keeps the stream-driven flush out of this test's assertions.
+      debounce: const Duration(minutes: 5),
     );
-    addTearDown(() => publisher.dispose());
+    publisher.start();
+    addTearDown(() async {
+      await publisher.dispose();
+      await profiles.close();
+    });
+
+    profiles.add([_profile('p1')]);
+    await pumpEventQueue();
 
     await publisher.publishNow('p1');
     expect(service.publishedFor, ['p1']);
@@ -344,17 +368,29 @@ void main() {
   group('republishConnected (issue #373, the resume hook)', () {
     test('publishes the current prediction for every connected profile '
         'and skips one with nothing derived', () async {
+      final profiles = StreamController<List<Profile>>(sync: true);
       final service = _FakeService(connectedProfileIds: {'p1', 'p2', 'p3'});
       final today = LocalDate(2026, 8, 30);
 
       final publisher = LocalPredictionProjectionPublisher(
-        activeProfiles: const Stream.empty(),
+        activeProfiles: profiles.stream,
         predictionFor: (id) => Stream<CyclePrediction>.value(
             id == 'p2' ? _notEnoughHistory : _active(today)),
         service: service,
         isSignedIn: () => true,
+        // Issue #1777: every connected profile must be in the active set to
+        // reach the publish path; the long debounce keeps the
+        // stream-driven flush out of this test's assertions.
+        debounce: const Duration(minutes: 5),
       );
-      addTearDown(() => publisher.dispose());
+      publisher.start();
+      addTearDown(() async {
+        await publisher.dispose();
+        await profiles.close();
+      });
+
+      profiles.add([_profile('p1'), _profile('p2'), _profile('p3')]);
+      await pumpEventQueue();
 
       await publisher.republishConnected();
       expect(service.publishedFor, unorderedEquals(['p1', 'p3']));
@@ -365,15 +401,27 @@ void main() {
 
     test('is a no-op while signed out, after dispose, and on a failing '
         'service', () async {
+      final profiles = StreamController<List<Profile>>(sync: true);
       final service = _FakeService(connectedProfileIds: {'p1'});
       var signedIn = false;
       final publisher = LocalPredictionProjectionPublisher(
-        activeProfiles: const Stream.empty(),
+        activeProfiles: profiles.stream,
         predictionFor: (id) =>
             Stream<CyclePrediction>.value(_active(LocalDate(2026, 8, 30))),
         service: service,
         isSignedIn: () => signedIn,
+        // Issue #1777: p1 must be active for the failing-service phase to
+        // actually reach the publish call it means to swallow.
+        debounce: const Duration(minutes: 5),
       );
+      publisher.start();
+      addTearDown(() async {
+        await publisher.dispose();
+        await profiles.close();
+      });
+
+      profiles.add([_profile('p1')]);
+      await pumpEventQueue();
 
       await publisher.republishConnected();
       expect(service.publishedFor, isEmpty, reason: 'signed out');
@@ -738,16 +786,27 @@ void main() {
 
     test('two profiles publishing concurrently coalesce into one '
         'outgoingConnectedProfileIds lookup', () async {
+      final profiles = StreamController<List<Profile>>(sync: true);
       final service = _FakeService(connectedProfileIds: {'p1', 'p2'});
       final today = LocalDate(2026, 8, 30);
 
       final publisher = LocalPredictionProjectionPublisher(
-        activeProfiles: const Stream.empty(),
+        activeProfiles: profiles.stream,
         predictionFor: (id) => Stream<CyclePrediction>.value(_active(today)),
         service: service,
         isSignedIn: () => true,
+        // Issue #1777: both profiles must be in the active set to reach the
+        // publish path.
+        debounce: const Duration(minutes: 5),
       );
-      addTearDown(() => publisher.dispose());
+      publisher.start();
+      addTearDown(() async {
+        await publisher.dispose();
+        await profiles.close();
+      });
+
+      profiles.add([_profile('p1'), _profile('p2')]);
+      await pumpEventQueue();
 
       // Neither call is awaited before the next is issued, so both reach
       // the connection lookup before either's underlying call resolves.
@@ -981,5 +1040,100 @@ void main() {
     predictions['p1']!.add(_active(today));
     await pumpEventQueue();
     expect(service.publishedFor, ['p1']);
+  });
+
+  group('issue #1777: a profile that left the active set is never '
+      're-published', () {
+    test('republishConnected skips a profile archived since its retraction',
+        () async {
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final service = _FakeService(connectedProfileIds: {'p1'});
+      final today = LocalDate(2026, 8, 30);
+
+      final publisher = LocalPredictionProjectionPublisher(
+        activeProfiles: profiles.stream,
+        // A fresh listenable stream per call, the shape of the production
+        // `predictionFor`: pre-fix, the resume republish reads this again
+        // and re-uploads; post-fix the active-set guard stops it before
+        // the read.
+        predictionFor: (id) => Stream<CyclePrediction>.value(_active(today)),
+        service: service,
+        isSignedIn: () => true,
+        debounce: Duration.zero,
+      );
+      publisher.start();
+      addTearDown(() async {
+        await publisher.dispose();
+        await profiles.close();
+      });
+
+      profiles.add([_profile('p1')]);
+      await pumpEventQueue();
+      expect(service.publishedFor, ['p1'],
+          reason: 'the active profile published');
+
+      // The profile leaves the active set (archived) -- its snapshot is
+      // retracted, and the connection stays active server-side.
+      profiles.add(const <Profile>[]);
+      await pumpEventQueue();
+      expect(service.retractedFor, ['p1']);
+
+      // The next resume republish must not undo the retraction: the
+      // connection list has no archive state, so only the publisher's own
+      // active set can tell that this profile is out of everyday use.
+      await publisher.republishConnected();
+      expect(service.publishedFor, ['p1'],
+          reason: 'the archived profile must not be re-uploaded on resume');
+
+      // publishNow (a connection created/refreshed from the manage screen)
+      // holds the same guard.
+      await publisher.publishNow('p1');
+      expect(service.publishedFor, ['p1'],
+          reason: 'publishNow must not re-upload the archived profile either');
+    });
+
+    test('an in-flight debounced flush does not publish a profile archived '
+        'while its connection lookup was in flight', () async {
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final predictions = <String, StreamController<CyclePrediction>>{};
+      final service = _FakeService(connectedProfileIds: {'p1'});
+      final today = LocalDate(2026, 8, 30);
+
+      final publisher = LocalPredictionProjectionPublisher(
+        activeProfiles: profiles.stream,
+        predictionFor: (id) => predictions
+            .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
+            .stream,
+        service: service,
+        isSignedIn: () => true,
+        debounce: Duration.zero,
+      );
+      publisher.start();
+      addTearDown(() async {
+        await publisher.dispose();
+        await profiles.close();
+        for (final c in predictions.values) {
+          await c.close();
+        }
+      });
+
+      final lookupHold = Completer<void>();
+      service.holdNextConnectedLookup = lookupHold;
+
+      profiles.add([_profile('p1')]);
+      predictions['p1']!.add(_active(today));
+      await pumpEventQueue(); // The flush starts and holds on the lookup.
+
+      // Archived while the lookup is still in flight; the retraction runs.
+      profiles.add(const <Profile>[]);
+      await pumpEventQueue();
+      expect(service.retractedFor, ['p1']);
+
+      lookupHold.complete();
+      await pumpEventQueue();
+      expect(service.publishedFor, isEmpty,
+          reason: 'the in-flight flush must not re-publish after the '
+              'retraction');
+    });
   });
 }
