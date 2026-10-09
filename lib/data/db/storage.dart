@@ -68,6 +68,7 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart';
 import 'package:lunarlog/domain/activity/merge_events.dart';
+import 'package:lunarlog/domain/health/health_import_declined.dart';
 import 'package:lunarlog/domain/health/health_import_deletions.dart';
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
@@ -105,6 +106,7 @@ export '../sync/remote_rows.dart'
 
 part 'app_settings_storage.dart';
 part 'health_device_storage.dart';
+part 'health_import_declined_storage.dart';
 part 'health_import_deletions_storage.dart';
 part 'storage_local_writes.dart';
 part 'storage_queries.dart';
@@ -159,6 +161,7 @@ class LunarLogStorage
     with
         LunarLogStorageQueries,
         LunarLogStorageAppSettings,
+        LunarLogStorageHealthImportDeclined,
         LunarLogStorageHealthImportDeletions,
         LunarLogStorageLocalWrites,
         LunarLogStorageSyncMetadata,
@@ -180,6 +183,7 @@ class LunarLogStorage
         SyncApplyStore,
         HealthDeviceStore,
         ImportedDataPurgeStore,
+        HealthImportDeclinedStore,
         DayEntriesRepositoryStore,
         ObservationsRepositoryStore,
         ActivityFeedStore,
