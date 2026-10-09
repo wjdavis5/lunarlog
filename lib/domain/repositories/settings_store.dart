@@ -138,38 +138,42 @@ abstract final class SettingsKeys {
   /// [healthSyncWrittenThroughMs].
   static const String healthSyncWriteState = 'health_sync_write_state';
 
-  /// The first-import consent marker for the device's OS health-store
-  /// binding (Issue #1215): epoch milliseconds (UTC) of the completion of
-  /// the one user-initiated import pass that opens this binding's
-  /// background passes, or unset until that pass has run — "the first
-  /// import is yours to start". Written only through `HealthSyncBinding`
-  /// (`lib/domain/health/health_sync_binding.dart`): stamped by
-  /// `markFirstImportCompleted` when `LocalHealthImportService.importNow`
-  /// completes a pass, and cleared alongside [healthStoreProfileId] by
-  /// `bind`/`unbind` — the consent belongs to one binding, exactly like
-  /// [healthSyncWrittenThroughMs], so any new binding re-gates background
-  /// passes until the person starts an import again. The timestamp pairs
-  /// with [healthImportFirstPassProfileId], which names the profile the
-  /// pass read for (Issue #1701): a pass that finishes after the binding
-  /// moved on leaves its consent under the old profile's id, and the new
-  /// binding's gate reads it as closed. Device-local consent metadata — a
-  /// timestamp, never health content.
+  /// Legacy (pre-#1755) half of the first-import consent for the device's
+  /// OS health-store binding (Issue #1215): epoch milliseconds (UTC) of
+  /// the completion of the one user-initiated import pass that opens this
+  /// binding's background passes, or unset. Read — but never written — by
+  /// `HealthSyncBinding` since issue #1755 introduced
+  /// [healthImportFirstPassConsent], the one-value form every new write
+  /// uses; this pair remains the source of truth only for an upgraded
+  /// install that has not written the new value yet. Device-local consent
+  /// metadata — a timestamp, never health content.
   static const String healthImportFirstPassCompletedMs =
       'health_import_first_pass_completed_ms';
 
-  /// The profile whose user-initiated import pass earned the first-import
-  /// consent [healthImportFirstPassCompletedMs] records (Issue #1701):
-  /// the id of the profile the finishing pass actually read for, or unset.
-  /// Written only through `HealthSyncBinding` — `markFirstImportCompleted`
-  /// takes the pass's profile id as a parameter, because the Health sync
-  /// screen keeps its profile tiles live and a pass can finish after a
-  /// different profile was bound — and cleared alongside the timestamp by
-  /// `bind`/`unbind`. The background gate reads the consent only while
-  /// this id still names the bound profile, so a stale pass cannot open
-  /// the new binding's gate. Device-local consent metadata — a profile id,
-  /// never health content.
+  /// Legacy (pre-#1755) companion of
+  /// [healthImportFirstPassCompletedMs]: the profile the consent names
+  /// (Issue #1701), or unset. Read-only since issue #1755, same upgrade
+  /// rule. Device-local consent metadata — a profile id, never health
+  /// content.
   static const String healthImportFirstPassProfileId =
       'health_import_first_pass_profile_id';
+
+  /// The first-import consent as one atomic value (issue #1755): a JSON
+  /// object `{"profileId": "...", "completedMs": 123}`, or unset. Replaces
+  /// the pair above for every write — two separate settings writes could
+  /// interleave (a finishing pass's stamp against a re-bind's clear),
+  /// leaving a fresh timestamp with an empty id, which the legacy pair's
+  /// upgrade rule reads as completed for the new binding (issue #1701's
+  /// outcome). One write is atomic, so no interleaving can produce a mixed
+  /// pair. Unset means this build has never written it (an upgraded
+  /// install) and the legacy pair is still the source of truth; the empty
+  /// string is the cleared state, which fails shut regardless of any
+  /// legacy values still on disk. Written only through `HealthSyncBinding`
+  /// (`markFirstImportCompleted` stamps it, `bind`/`unbind` clear it).
+  /// Device-local consent metadata — a profile id and a timestamp, never
+  /// health content.
+  static const String healthImportFirstPassConsent =
+      'health_import_first_pass_consent';
 
   /// The ids of health-store records the store has said were deleted and
   /// that an imported row on this phone was written from (Issue #1594): a
