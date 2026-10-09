@@ -1150,6 +1150,11 @@ enum HealthKitChannelHandler {
       let start = Date(timeIntervalSince1970: Double(startMs) / 1000.0)
       let end = Date(timeIntervalSince1970: Double(endMs) / 1000.0)
       var toSave: [HKSample] = []
+      // Issue #1704: a sample whose type is not authorized is passed over —
+      // name it on the answer (exactly like deleteRecords below) instead of
+      // collapsing to "allowed", which made Dart remember samples the store
+      // never took.
+      var skippedTypes: Set<String> = []
       for sample in samples {
         guard
           let typeWire = sample["typeIdentifier"] as? String,
@@ -1169,6 +1174,8 @@ enum HealthKitChannelHandler {
           return
         }
         guard store.authorizationStatus(for: categoryType) == .sharingAuthorized else {
+          skippedTypes.insert(typeWire)
+          skippedTypes.insert("symptoms")
           continue
         }
         // #186 sync mechanics, as for writeMenstrualFlow:
@@ -1190,10 +1197,34 @@ enum HealthKitChannelHandler {
         )
       }
       if toSave.isEmpty {
-        result("allowed")
+        // Every sample was passed over (samples itself is non-empty).
+        result([
+          "status": "partial",
+          "skippedTypes": Array(skippedTypes),
+        ])
         return
       }
-      save(toSave, result: result)
+      if skippedTypes.isEmpty {
+        save(toSave, result: result)
+        return
+      }
+      // Some saved, some passed over: answer the per-type partial so Dart
+      // remembers only the samples the store took.
+      Task {
+        do {
+          _ = try await store.save(toSave)
+          result([
+            "status": "partial",
+            "skippedTypes": Array(skippedTypes),
+          ])
+        } catch {
+          result(
+            FlutterError(
+              code: "writeFailed",
+              message: "save failed: \(error.localizedDescription)",
+              details: nil))
+        }
+      }
 
     case "writeCervicalMucus":
       // Issue #228: the appearance decision lives in Dart
