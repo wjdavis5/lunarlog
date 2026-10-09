@@ -1048,6 +1048,7 @@ PushRegistrationCoordinator buildPushRegistrationCoordinator({
   required String platform,
   required Stream<AuthSessionState> authStates,
   required AuthSessionState Function() currentAuthState,
+  required String? Function() currentUserId,
   required void Function(String profileId)? onTap,
   required SettingsStore settings,
   required SystemUiWindow? duringSystemUi,
@@ -1064,6 +1065,7 @@ PushRegistrationCoordinator buildPushRegistrationCoordinator({
     platform: platform,
     authStates: authStates,
     currentAuthState: currentAuthState,
+    currentUserId: currentUserId,
     onTap: onTap,
   );
 }

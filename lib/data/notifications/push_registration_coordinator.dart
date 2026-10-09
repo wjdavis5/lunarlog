@@ -33,6 +33,7 @@ class PushRegistrationCoordinator {
     required String platform,
     required Stream<AuthSessionState> authStates,
     required AuthSessionState Function() currentAuthState,
+    String? Function()? currentUserId,
     void Function(String profileId)? onTap,
     BreadcrumbLog? breadcrumbLog,
     Future<void> Function()? requestPushPermission,
@@ -42,6 +43,7 @@ class PushRegistrationCoordinator {
         _platform = platform,
         _authStates = authStates,
         _currentAuthState = currentAuthState,
+        _currentUserId = currentUserId,
         _onTap = onTap,
         _breadcrumbLog = breadcrumbLog ?? defaultBreadcrumbLog,
         _requestPushPermission = requestPushPermission;
@@ -54,6 +56,13 @@ class PushRegistrationCoordinator {
   final String _platform;
   final Stream<AuthSessionState> _authStates;
   final AuthSessionState Function() _currentAuthState;
+
+  /// The signed-in user id, when the harness supplies one (issue #1726):
+  /// GoTrue emits only `signedIn` when a magic link replaces a live
+  /// session, so a bool alone cannot tell a replacement from a duplicate —
+  /// the id is what makes the identity change observable. Null on harnesses
+  /// that predate identity tracking; production always passes it.
+  final String? Function()? _currentUserId;
   final void Function(String profileId)? _onTap;
   final BreadcrumbLog _breadcrumbLog;
 
@@ -73,11 +82,13 @@ class PushRegistrationCoordinator {
   StreamSubscription<String>? _refreshSub;
   StreamSubscription<String?>? _tapSub;
   bool _signedIn = false;
+  String? _signedInUserId;
   bool _disposed = false;
 
   Future<void> start() async {
     if (_disposed) return;
     _signedIn = _currentAuthState() == AuthSessionState.signedIn;
+    _signedInUserId = _signedIn ? _currentUserId?.call() : null;
     _authSub = _authStates.listen(_onAuthState);
     // Round-2 review #4: both source streams are `async*` generators that
     // `await` FirebasePushTokenSource's init before their first yield -- an
@@ -109,9 +120,16 @@ class PushRegistrationCoordinator {
   void _onAuthState(AuthSessionState state) {
     if (_disposed) return;
     final signedIn = state == AuthSessionState.signedIn;
-    if (signedIn == _signedIn) return;
+    final userId = signedIn ? _currentUserId?.call() : null;
+    if (signedIn == _signedIn && userId == _signedInUserId) return;
     _signedIn = signedIn;
+    _signedInUserId = userId;
     if (signedIn) {
+      // Issue #1726: this also runs when the state did not change but the
+      // identity did — a magic link (or passwordless code) replacing a live
+      // session emits `signedIn` with no preceding `signedOut`, and this
+      // device's row still points at the old account until this
+      // re-registration upserts it.
       unawaited(_registerCurrentToken());
     } else {
       unawaited(_safeRemove());

@@ -221,6 +221,7 @@ void main() {
       platform: 'android',
       authStates: const Stream<AuthSessionState>.empty(),
       currentAuthState: () => AuthSessionState.signedOut,
+      currentUserId: () => null,
       onTap: (_) {},
       settings: buildCompositionSettingsStore(db),
       duringSystemUi: null,

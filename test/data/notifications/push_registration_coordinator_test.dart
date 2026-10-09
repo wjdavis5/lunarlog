@@ -644,4 +644,45 @@ void main() {
       await tokenSource.close();
     });
   });
+  test('a magic-link session replacement re-registers for the new identity '
+      'even though the state stayed signedIn (issue #1726)', () async {
+    final tokenSource = FakePushTokenSource()..tokenToReturn = 'token-1';
+    final registry = _FakeRegistry();
+    final authStates = StreamController<AuthSessionState>(sync: true);
+    var userId = 'user-a';
+    final coordinator = PushRegistrationCoordinator(
+      tokenSource: tokenSource,
+      registry: registry,
+      deviceId: deviceId,
+      platform: platform,
+      authStates: authStates.stream,
+      currentAuthState: () => AuthSessionState.signedIn,
+      currentUserId: () => userId,
+    );
+    await coordinator.start();
+    expect(registry.registerCalls, hasLength(1));
+
+    // GoTrue emits `signedIn` directly when a magic link replaces a live
+    // session -- no preceding `signedOut` -- so the state is unchanged
+    // while the identity is not.
+    userId = 'user-b';
+    authStates.add(AuthSessionState.signedIn);
+    await pumpEventQueue();
+    expect(
+      registry.registerCalls,
+      hasLength(2),
+      reason: 'issue #1726: the replacement session must re-register this '
+          'device for the new account',
+    );
+    expect(registry.registerCalls.last.deviceId, deviceId);
+
+    // A repeated signedIn for the same identity stays a no-op.
+    authStates.add(AuthSessionState.signedIn);
+    await pumpEventQueue();
+    expect(registry.registerCalls, hasLength(2));
+
+    await coordinator.dispose();
+    await tokenSource.close();
+    await authStates.close();
+  });
 }

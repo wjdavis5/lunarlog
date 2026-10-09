@@ -632,6 +632,10 @@ class LunarLogRootState extends State<LunarLogRoot> {
       platform: pushPlatformName(),
       authStates: authService.states,
       currentAuthState: () => authService.state,
+      // Issue #1726: the identity, not just the state — a magic-link
+      // replacement emits `signedIn` over a live session with no
+      // `signedOut`, and only the id makes that visible.
+      currentUserId: () => authService.currentUserId,
       onTap: _gate.setPendingLaunchProfileId,
       // Issue #1425: the coordinator's in-context permission ask (issue
       // #1444) gets the gate's system-UI window to open around a request
