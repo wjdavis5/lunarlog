@@ -6,27 +6,29 @@ set -euo pipefail
 # Issue #266: supabase/config.toml's [auth] block is committed, version-
 # controlled config for the LOCAL Supabase stack (`supabase start`) -- this
 # script is the CI enforcement that a future edit cannot silently drift it
-# back toward the permissive stock Supabase CLI template (jwt_expiry back
-# to 3600, enable_signup back to true, etc.). It guards this repo's
-# committed security posture; it is NOT a production-parity check and
-# nothing here pushes these values to production -- supabase config push
-# was deliberately NOT added to supabase-migrate.yml (review round 1):
-# config.toml also carries local-only settings (site_url =
-# http://127.0.0.1:3000, [auth.external.apple] disabled with an empty
-# client_id, local SMTP, etc.) that must never reach the live project, so
-# applying the documented production posture there stays a deliberate,
-# manual dashboard action -- see docs/ops/supabase-go-live.md's "Supabase
-# Auth" checklist for that manual checklist and PR #694's description for
-# the review finding.
+# away from this repo's committed posture (the expected values below; issue
+# #971 superseded #266's original jwt_expiry/enable_signup values, see the
+# note under them). It guards this repo's committed security posture; it is
+# NOT a production-parity check and nothing here pushes these values to
+# production -- supabase config push was deliberately NOT added to
+# supabase-migrate.yml (review round 1): config.toml also carries local-only
+# settings (site_url = http://127.0.0.1:3000, [auth.external.apple]
+# disabled with an empty client_id, local SMTP, etc.) that must never reach
+# the live project, so applying the documented production posture there
+# stays a deliberate, manual dashboard action -- see
+# docs/ops/supabase-go-live.md's "Supabase Auth" checklist for that manual
+# checklist and PR #694's description for the review finding.
 #
 # Expected values below are the documented production posture from that
-# checklist and issue #266 itself (D-5), used here as the values the
-# COMMITTED LOCAL config should match so `supabase start` at least
-# reproduces the same security posture developers and CI test against
-# (password_requirements is the one deliberate exception -- see its own
-# comment below). MFA settings are deliberately left alone -- issue #268
-# builds on this issue's config-as-code baseline for that, it is not this
-# issue's scope.
+# checklist and issue #266 itself (D-5), except jwt_expiry and
+# enable_signup, which issue #971 reset to the stock defaults (1 hour;
+# sign-ups open) after the docs of record retired #266's original values.
+# They are the values the COMMITTED LOCAL config should match so
+# `supabase start` at least reproduces the same security posture developers
+# and CI test against (password_requirements is the one deliberate exception
+# -- see its own comment below). MFA settings are deliberately left alone --
+# issue #268 builds on this issue's config-as-code baseline for that, it is
+# not this issue's scope.
 #
 # A plain-text/regex line scanner, not a full TOML parser -- the same
 # tradeoff test/release/export_compliance_test.dart's header documents for
@@ -57,8 +59,11 @@ if [ ! -f "$CONFIG_PATH" ]; then
 fi
 
 # Strip full-line comments up front (leading '#', optional whitespace
-# before it) so every helper below reads only live TOML.
-_stripped="$(grep -v '^[[:space:]]*#' "$CONFIG_PATH" || true)"
+# before it) so every helper below reads only live TOML. The `tr -d '\r'`
+# exists because a Windows checkout hands config.toml back as CRLF
+# (core.autocrlf), which would otherwise break the section-header equality
+# below; it is a no-op on the LF checkout CI uses.
+_stripped="$(grep -v '^[[:space:]]*#' "$CONFIG_PATH" | tr -d '\r' || true)"
 
 # Prints the body of a top-level or dotted TOML table header (e.g. "auth"
 # or "auth.email"), up to but not including the next "[" header line.
@@ -108,9 +113,10 @@ _check() {
   fi
 }
 
-# --- [auth]: the documented production posture (issue #266, D-5) ---
-_check auth jwt_expiry 600
-_check auth enable_signup false
+# --- [auth]: the documented production posture (issue #266, D-5;
+# jwt_expiry/enable_signup as reset by issue #971) ---
+_check auth jwt_expiry 3600
+_check auth enable_signup true
 _check auth enable_manual_linking true
 _check auth minimum_password_length 12
 # Empty, not a complexity requirement (review round 1): the client only

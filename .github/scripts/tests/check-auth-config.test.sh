@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Truth table for .github/scripts/check-auth-config.sh (issue #266). Run
+# Truth table for .github/scripts/check-auth-config.sh (issue #266; the
+# jwt_expiry/enable_signup expectations were reset by issue #971). Run
 # with:
 #
 #   bash .github/scripts/tests/check-auth-config.test.sh
@@ -31,21 +32,21 @@ assert_exit() {
   assert_eq "$1" "$2" "$LAST_EXIT"
 }
 
-# The committed security posture this repo targets (issue #266, D-5) --
-# matches what supabase/config.toml is expected to carry after this
-# issue's fix. password_requirements is deliberately empty, not a
-# complexity requirement -- review round 1: the client only enforces
-# minimum_password_length (kMinPasswordLength = 12), so a non-empty value
-# here would let the server reject a password the client already
-# accepted.
+# The committed security posture this repo targets (issue #266, D-5, with
+# #971's jwt_expiry/enable_signup reset) -- matches what
+# supabase/config.toml is expected to carry. password_requirements is
+# deliberately empty, not a complexity requirement -- review round 1: the
+# client only enforces minimum_password_length (kMinPasswordLength = 12),
+# so a non-empty value here would let the server reject a password the
+# client already accepted.
 good_config='[auth]
 enabled = true
 site_url = "http://127.0.0.1:3000"
 additional_redirect_urls = ["https://127.0.0.1:3000"]
-jwt_expiry = 600
+jwt_expiry = 3600
 enable_refresh_token_rotation = true
 refresh_token_reuse_interval = 10
-enable_signup = false
+enable_signup = true
 enable_anonymous_sign_ins = false
 enable_manual_linking = true
 minimum_password_length = 12
@@ -67,8 +68,10 @@ otp_expiry = 600
 enable_signup = false
 enable_confirmations = false'
 
-# The original stock-template values (issue #266's actual before-state) --
-# every checked key wrong at once.
+# The original stock-template values (issue #266's actual before-state).
+# With #971, jwt_expiry and enable_signup now MATCH the expected posture --
+# the stock defaults are the target for those two keys -- so the stock
+# template fails on the five keys #266 actually tightened.
 stock_config='[auth]
 enabled = true
 site_url = "http://127.0.0.1:3000"
@@ -102,31 +105,33 @@ assert_contains "clean config prints a confirmation line" "$LAST_LOG" \
 
 run_case "$stock_config"
 assert_exit "the original stock template (issue #266's before-state) fails" 1
-# password_requirements is NOT in this list: the stock default ("") is now
-# also the expected value (review round 1), so it is the one checked key
+# jwt_expiry and enable_signup are NOT in this list: #971 reset both to the
+# stock defaults, so the stock config now matches on them. And
+# password_requirements is NOT in this list either: the stock default ("")
+# is also the expected value (review round 1), so it is another checked key
 # the stock config does not get wrong -- see the dedicated
 # password_requirements-wrong case below for that key's own coverage.
-for key in jwt_expiry enable_signup enable_manual_linking \
-  minimum_password_length enable_confirmations otp_length otp_expiry; do
+for key in enable_manual_linking minimum_password_length \
+  enable_confirmations otp_length otp_expiry; do
   assert_contains "stock config names $key as wrong" "$LAST_LOG" "$key"
 done
 assert_not_contains \
   "stock config's password_requirements ('') matches the expected value, so it is not reported wrong" \
   "$LAST_LOG" "password_requirements ="
 error_count="$(printf '%s' "$LAST_LOG" | grep -c '::error::' || true)"
-assert_eq "stock config reports all 7 remaining mismatches, not just the first" "7" "$error_count"
+assert_eq "stock config reports all 5 remaining mismatches, not just the first" "5" "$error_count"
 
 # --- Targeted single-field regressions, each isolated from a clean base ---
 
-jwt_wrong="${good_config/jwt_expiry = 600/jwt_expiry = 3600}"
+jwt_wrong="${good_config/jwt_expiry = 3600/jwt_expiry = 600}"
 run_case "$jwt_wrong"
-assert_exit "jwt_expiry alone wrong (3600) fails" 1
+assert_exit "jwt_expiry alone wrong (600, the retired #266 value) fails" 1
 assert_contains "jwt_expiry mismatch names the actual and expected values" \
-  "$LAST_LOG" "jwt_expiry = 3600 (expected 600)"
+  "$LAST_LOG" "jwt_expiry = 600 (expected 3600)"
 
-signup_wrong="${good_config/enable_signup = false/enable_signup = true}"
+signup_wrong="${good_config/enable_signup = true/enable_signup = false}"
 run_case "$signup_wrong"
-assert_exit "top-level enable_signup alone wrong (true) fails" 1
+assert_exit "top-level enable_signup alone wrong (false, the retired #266 value) fails" 1
 assert_contains "enable_signup mismatch is under [auth], not [auth.email]" \
   "$LAST_LOG" "[auth] enable_signup"
 
@@ -159,14 +164,14 @@ assert_contains "missing key is reported as missing, not silently passed" \
   "$LAST_LOG" "missing 'otp_length'"
 
 # --- A commented-out correct value must not satisfy the check (the value
-# actually in effect, jwt_expiry = 3600, is still wrong) ---
+# actually in effect, jwt_expiry = 600, is still wrong) ---
 
 commented_trap="$(printf '%s\n' "$good_config" | \
-  sed 's/^jwt_expiry = 600$/# jwt_expiry = 600\njwt_expiry = 3600/')"
+  sed 's/^jwt_expiry = 3600$/# jwt_expiry = 3600\njwt_expiry = 600/')"
 run_case "$commented_trap"
 assert_exit "a commented-out correct value above the real wrong one still fails" 1
 assert_contains "the live (uncommented) wrong value is what gets reported" \
-  "$LAST_LOG" "jwt_expiry = 3600 (expected 600)"
+  "$LAST_LOG" "jwt_expiry = 600 (expected 3600)"
 
 # --- Missing file ---
 
