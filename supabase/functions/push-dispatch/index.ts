@@ -377,11 +377,19 @@ export function buildDeps(env: PushDispatchEnv, clientFactory: SupabaseClientFac
 
       const claimed: OutboxRow[] = [];
       for (const candidate of candidates) {
+        // Issue #1742: re-assert the whole candidate predicate, not just
+        // claimed_at -- between the select above and this UPDATE another
+        // invocation can claim, fail, release (attempts reaching the
+        // bound), or mark the row sent, and a stale UPDATE matching it
+        // would dispatch one attempt past MAX_ATTEMPTS or re-send an
+        // already-delivered row.
         const { data, error: claimError } = await client!
           .from("notification_outbox")
           .update({ claimed_at: new Date().toISOString() })
           .eq("id", candidate.id)
           .is("claimed_at", null)
+          .is("sent_at", null)
+          .lt("attempts", MAX_ATTEMPTS)
           .select("id, profile_id, recipient_user_id, kind, claimed_at")
           .maybeSingle();
         if (!claimError && data) claimed.push(data as OutboxRow);
