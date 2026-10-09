@@ -369,6 +369,12 @@ class SyncCursorStorage implements SyncMetadataStore {
   /// anything genuinely older. Returns how many rows were rebased. Idempotent
   /// and cheap when nothing is future-stamped — the predicate matches only
   /// rows the server would reject.
+  ///
+  /// **Every table `_pushTables` pushes belongs here** (issues #641, #1698):
+  /// a pushed table the server can reject on a future stamp must be rebased,
+  /// or a rejected row stays dirty at its future stamp until wall-clock
+  /// catches up. `guardian_notes` and `day_entry_merge_events` were missing
+  /// from this list until #1698.
   @override
   Future<int> rebaseFutureStampedRows({required DateTime serverNow}) async {
     final threshold = serverNow.toUtc().add(const Duration(minutes: 5));
@@ -437,6 +443,22 @@ class SyncCursorStorage implements SyncMetadataStore {
           .write(ProfileTagRegistryCompanion.custom(
             updatedAt: Constant(serverNow.toUtc()),
             localRev: db.profileTagRegistry.localRev + const Constant(1),
+          ));
+      rebased += await (db.update(db.guardianNotes)
+            ..where((t) =>
+                t.dirty.equals(true) &
+                t.updatedAt.isBiggerThanValue(threshold)))
+          .write(GuardianNotesCompanion.custom(
+            updatedAt: Constant(serverNow.toUtc()),
+            localRev: db.guardianNotes.localRev + const Constant(1),
+          ));
+      rebased += await (db.update(db.dayEntryMergeEvents)
+            ..where((t) =>
+                t.dirty.equals(true) &
+                t.updatedAt.isBiggerThanValue(threshold)))
+          .write(DayEntryMergeEventsCompanion.custom(
+            updatedAt: Constant(serverNow.toUtc()),
+            localRev: db.dayEntryMergeEvents.localRev + const Constant(1),
           ));
     });
     return rebased;
