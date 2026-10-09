@@ -730,7 +730,14 @@ class LocalHealthImportService
     // a first import that never actually ran never opens the gate; a
     // late-page failure ends in a blocked summary too, and the screen
     // already asks for a re-run in exactly that case.
-    if (!summary.isBlocked) await _binding.markFirstImportCompleted();
+    // Issue #1701: the consent names `bound`'s profile — the one this pass
+    // read for. The Health sync screen keeps its profile tiles live while
+    // a pass runs, so a binding switched mid-pass must not have the
+    // finishing pass open the new binding's background gate; the gate
+    // compares the named profile against the bound one and fails shut.
+    if (!summary.isBlocked) {
+      await _binding.markFirstImportCompleted(bound.profile.id);
+    }
     return summary;
   }
 

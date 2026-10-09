@@ -794,7 +794,7 @@ void main() {
 
     test('markFirstImportCompleted stamps a parsable timestamp', () async {
       await bindA();
-      await binding.markFirstImportCompleted();
+      await binding.markFirstImportCompleted('a');
 
       expect(await binding.hasCompletedFirstImport(), isTrue);
       final raw = await settings
@@ -803,11 +803,16 @@ void main() {
       // line can build on later; an unparsable value must never read as a
       // completed first import.
       expect(int.tryParse(raw ?? ''), isNotNull);
+      // Issue #1701: the consent names the profile the pass read for.
+      expect(
+        await settings.get(SettingsKeys.healthImportFirstPassProfileId),
+        'a',
+      );
     });
 
     test('unbind clears the marker with the binding', () async {
       await bindA();
-      await binding.markFirstImportCompleted();
+      await binding.markFirstImportCompleted('a');
       expect(await binding.hasCompletedFirstImport(), isTrue);
 
       await binding.unbind();
@@ -816,20 +821,20 @@ void main() {
 
     test('re-binding clears the marker, same or different profile', () async {
       await bindA();
-      await binding.markFirstImportCompleted();
+      await binding.markFirstImportCompleted('a');
 
       await bindA();
       expect(await binding.hasCompletedFirstImport(), isFalse,
           reason: 'the consent belonged to the old binding');
 
-      await binding.markFirstImportCompleted();
+      await binding.markFirstImportCompleted('a');
       await bindA(id: 'b');
       expect(await binding.hasCompletedFirstImport(), isFalse);
     });
 
     test('a refused bind changes nothing — including the marker', () async {
       await bindA();
-      await binding.markFirstImportCompleted();
+      await binding.markFirstImportCompleted('a');
 
       // A minor with the flag off cannot be bound: the bind refuses before
       // persisting anything, so the existing binding's consent survives.
@@ -849,6 +854,38 @@ void main() {
       await bindA();
       await settings.set(SettingsKeys.healthImportFirstPassCompletedMs, 'junk');
       expect(await binding.hasCompletedFirstImport(), isFalse);
+    });
+
+    test('a stamp naming a profile the device is no longer bound to does '
+        'not open the gate (issue #1701)', () async {
+      await bindA(id: 'b');
+      // The finishing tail of a pass that ran for the old binding arrives
+      // after the switch — the mid-pass re-bind the Health sync screen's
+      // live tiles allow.
+      await binding.markFirstImportCompleted('a');
+
+      expect(
+        await binding.hasCompletedFirstImport(),
+        isFalse,
+        reason: 'the consent names the profile the pass read for, not '
+            'whatever is bound when the tail runs',
+      );
+
+      // The bound profile's own completed pass still opens it.
+      await binding.markFirstImportCompleted('b');
+      expect(await binding.hasCompletedFirstImport(), isTrue);
+    });
+
+    test('a timestamp-only marker (stamped before the consent named a '
+        'profile) still reads as completed for the current binding',
+        () async {
+      await bindA();
+      // The shape a pre-#1701 build left behind; its bind/unbind cleared
+      // the marker with the binding, so it belongs to the current one.
+      await settings.set(
+          SettingsKeys.healthImportFirstPassCompletedMs, '1234');
+
+      expect(await binding.hasCompletedFirstImport(), isTrue);
     });
   });
 
