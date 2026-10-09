@@ -10,6 +10,8 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 
 /**
  * Issue #166: the rationale screen Health Connect requires before (and
@@ -120,5 +122,20 @@ class PermissionsRationaleActivity : Activity() {
         }
 
         setContentView(scroll)
+
+        // Issue #1730: targetSdk 36 enforces edge-to-edge, and this plain
+        // Activity is launched straight from Health Connect's own grant
+        // flow (and the system Settings alias) -- with no inset handling
+        // the title rendered under the status bar and the Close button
+        // under the navigation bar on Android 15+. Apply the system-bar
+        // insets to the scroll view's own padding (the content keeps its
+        // 24dp padding inside); on older releases, where the decor already
+        // fits the system windows, the listener receives zero insets and
+        // this is a no-op.
+        ViewCompat.setOnApplyWindowInsetsListener(scroll) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            insets
+        }
     }
 }
