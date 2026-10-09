@@ -135,6 +135,43 @@ describe('the qualified-reference storage ban (issue #1275)', () => {
     expect(messages.filter((m) => m.ruleId === 'no-restricted-syntax')).toHaveLength(0);
   });
 
+  // Issue #1722: the dot-form selector matches on `property.name`, which a
+  // computed (Literal) property does not have — so the same surfaces reached
+  // as `window['localStorage']`, `document['cookie']`, etc. used to pass all
+  // three rules. The second exported selector covers the computed form.
+  const computedSnippets: [string, string][] = [
+    [
+      "window['localStorage']",
+      "export function f(): number { return window['localStorage'].length; }",
+    ],
+    [
+      "globalThis['sessionStorage']",
+      "export function f(): number { return globalThis['sessionStorage'].length; }",
+    ],
+    [
+      "self['indexedDB']",
+      'export function f(): IDBFactory | undefined { return self["indexedDB"]; }',
+    ],
+    ["window['caches']", "export async function f() { return window['caches'].keys(); }"],
+    ["document['cookie']", "export function f(): string { return document['cookie']; }"],
+  ];
+
+  it.each(computedSnippets)('bans computed %s', async (surface, snippet) => {
+    const messages = await lintSrc(snippet);
+    const hits = messages.filter((m) => m.ruleId === 'no-restricted-syntax');
+    expect(hits, `expected the computed-form selector to fire for ${surface}`).not.toHaveLength(
+      0,
+    );
+    expect(hits.some((m) => m.message.includes('nothing at rest'))).toBe(true);
+  });
+
+  it('does not fire on a computed access with an unrelated property name', async () => {
+    const messages = await lintSrc(
+      "export function f(o: Record<string, number>): number | undefined { return o['length']; }\n",
+    );
+    expect(messages.filter((m) => m.ruleId === 'no-restricted-syntax')).toHaveLength(0);
+  });
+
   it('stays scoped to src/ (e2e reads qualified storage to assert emptiness)', async () => {
     const [result] = await linter.lintText('export const n = window.localStorage.length;\n', {
       filePath: join(webappRoot, 'e2e', 'probe.spec.ts'),
@@ -142,8 +179,10 @@ describe('the qualified-reference storage ban (issue #1275)', () => {
     expect(result?.messages.filter((m) => m.ruleId === 'no-restricted-syntax')).toHaveLength(0);
   });
 
-  it('exports exactly the selector the config consumes', () => {
-    expect(STORAGE_SYNTAX_BANS).toHaveLength(1);
+  it('exports exactly the selectors the config consumes', () => {
+    // Two selectors: the dot form (property.name) and the computed form
+    // (property.value) — issue #1722.
+    expect(STORAGE_SYNTAX_BANS).toHaveLength(2);
   });
 });
 
