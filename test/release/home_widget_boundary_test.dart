@@ -349,6 +349,29 @@ void main() {
               'writes');
     });
 
+    test('the iOS app excludes the widget container from backup (issue '
+        '#1732)', () {
+      // An App Group container rides device/iCloud backups unless the app
+      // marks it excluded — the same NSURLIsExcludedFromBackupKey control
+      // the database directory gets — while PRIVACY.md Section 2.E
+      // promises nothing in it ever leaves the device.
+      final appDelegate = readRepoFile('ios/Runner/AppDelegate.swift');
+      expect(appDelegate, contains('AppDelegate.protectWidgetContainer()'),
+          reason: 'the startup protection call must run it');
+      final protectWidget = RegExp(
+        r'private static func protectWidgetContainer\(\)[\s\S]*?\n  \}',
+      ).firstMatch(appDelegate)?.group(0);
+      expect(protectWidget, isNotNull,
+          reason: 'AppDelegate must define the container protection');
+      expect(protectWidget, contains('forSecurityApplicationGroupIdentifier'));
+      expect(protectWidget, contains('"$kLunarLogAppGroup"'),
+          reason: 'AppDelegate must protect the group the widget reads');
+      expect(protectWidget, contains('createDirectory'),
+          reason: 'a missing container directory is created so the '
+              'exclusion covers its future contents');
+      expect(protectWidget, contains('isExcludedFromBackup = true'));
+    });
+
     test('the Android manifest registers the widget provider', () {
       expect(manifest, contains('android:name=".LunarLogWidgetProvider"'));
       expect(

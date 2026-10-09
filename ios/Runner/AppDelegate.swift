@@ -38,6 +38,9 @@ import UserNotifications
     // NSFileProtectionCompleteUntilFirstUserAuthentication (Issue #906).
     // See lib/startup/startup_native.dart's protectDatabaseFile() doc
     // comment for why CompleteUntilFirstUserAuthentication is the right class.
+    // Issue #1732: the same startup call also excludes the widget's App
+    // Group container from backup, matching PRIVACY.md Section 2.E's
+    // promise about the widget container.
     FlutterMethodChannel(
       name: "lunarlog/privacy",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
@@ -52,6 +55,7 @@ import UserNotifications
           return
         }
         AppDelegate.protectDatabaseFile(atPath: path)
+        AppDelegate.protectWidgetContainer()
         result(nil)
       default:
         result(FlutterMethodNotImplemented)
@@ -141,6 +145,58 @@ import UserNotifications
       } catch {
         // Best effort only — see the Dart-side doc comment.
       }
+    }
+  }
+
+  /// Issue #1732: excludes the widget's App Group container from
+  /// device/iCloud backup — the same `NSURLIsExcludedFromBackupKey` control
+  /// [protectDatabaseFile] applies to the database directory, for the same
+  /// reason.
+  ///
+  /// PRIVACY.md Section 2.E promises "nothing in the widget container ever
+  /// leaves your device, is synced, or is included in exports", but an App
+  /// Group container is included in device/iCloud backups by default, so
+  /// without this flag the six widget fields (the state word, cycle-day
+  /// count, countdown, quick-log flag, opaque profile id, and anchor date)
+  /// restore to a new device. The container directory is created when
+  /// missing so the exclusion also covers its future contents —
+  /// `NSURLIsExcludedFromBackupKey` on a directory covers current *and
+  /// future* contents (the property [protectDatabaseFile]'s round-2
+  /// directory comment relies on), so the first widget write after this
+  /// call is already covered.
+  ///
+  /// Best effort, like [protectDatabaseFile]: a failure never stops the app
+  /// and never throws back across the channel. The group id must match
+  /// `kLunarLogAppGroup` in `lib/data/widget/home_widget_data_store_io.dart`
+  /// and `appGroupId` in `LunarLogWidget.swift` (the boundary guard pins
+  /// all three).
+  private static func protectWidgetContainer() {
+    let fileManager = FileManager.default
+    guard
+      let containerUrl = fileManager.containerURL(
+        forSecurityApplicationGroupIdentifier: "group.com.wjdavis5.lunarlog.widgets"
+      )
+    else {
+      return
+    }
+
+    if !fileManager.fileExists(atPath: containerUrl.path) {
+      do {
+        try fileManager.createDirectory(
+          at: containerUrl, withIntermediateDirectories: true)
+      } catch {
+        // Best effort only — see the function doc comment.
+        return
+      }
+    }
+
+    var url = containerUrl
+    var resourceValues = URLResourceValues()
+    resourceValues.isExcludedFromBackup = true
+    do {
+      try url.setResourceValues(resourceValues)
+    } catch {
+      // Best effort only — see the function doc comment.
     }
   }
 }
