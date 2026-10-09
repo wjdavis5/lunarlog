@@ -685,19 +685,29 @@ class CyclePredictionService {
   /// [ActiveBirthControl] the predictor branches on, via the
   /// `birthControlMethodInEffectOn` seam (issue #260 AC5 — never re-parsed
   /// here). Null when no tracked method is in effect on [today]. A
-  /// malformed start date (defensive — the columns are CHECK-bounded
-  /// `yyyy-MM-dd`) degrades to null, failing to the no-method path.
+  /// malformed or calendar-invalid date (defensive — the columns are
+  /// CHECK-bounded `yyyy-MM-dd`, but a hand-run `sync_push` can store a
+  /// shape-valid non-day like `2026-02-30`) degrades to null, failing to
+  /// the no-method path — issue #1718: this runs inside the shared
+  /// prediction stream, so a throw here would take down estimates,
+  /// calendar bands and reminders for the profile (the same guard
+  /// `scheduling.dart`'s `_birthControlMethodInEffect` already carries).
   static ActiveBirthControl? _activeBirthControlFor(
     BirthControlState? state,
     LocalDate today,
   ) {
     if (state == null) return null;
-    final method = birthControlMethodInEffectOn(
-      storedMethod: state.method,
-      startedOn: state.startedOn,
-      stoppedOn: state.stoppedOn,
-      date: today,
-    );
+    final BirthControlMethod? method;
+    try {
+      method = birthControlMethodInEffectOn(
+        storedMethod: state.method,
+        startedOn: state.startedOn,
+        stoppedOn: state.stoppedOn,
+        date: today,
+      );
+    } on ArgumentError {
+      return null;
+    }
     if (method == null) return null;
     return ActiveBirthControl(
       method: method,

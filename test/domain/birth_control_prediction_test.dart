@@ -501,5 +501,37 @@ void main() {
       await pumpEventQueue();
       expect(seen.last, isA<NotEnoughHistory>());
     });
+
+    test('a calendar-invalid start date degrades to the no-method path '
+        'instead of throwing through the stream (issue #1718)', () async {
+      final entries = _StubDayEntriesRepository();
+      final birthControl = StreamController<BirthControlState?>.broadcast();
+      final service = CyclePredictionService(
+        entries,
+        birthControlStateFor: (_) => birthControl.stream,
+      );
+      final seen = <CyclePrediction>[];
+      final sub = service.watch('p', today: () => d(2026, 6, 1)).listen(seen.add);
+      addTearDown(sub.cancel);
+      addTearDown(birthControl.close);
+      addTearDown(entries.close);
+
+      entries.emit(const []);
+      birthControl.add((
+        method: BirthControlMethod.pill.toDb(),
+        // Shape-valid, not a real calendar day: a hand-run sync_push (or a
+        // modified client) can store this, and every pulling device must
+        // keep estimating.
+        startedOn: '2026-02-30',
+        stoppedOn: null,
+      ));
+      await pumpEventQueue();
+
+      expect(seen, isNotEmpty,
+          reason: 'the stream must still emit; a throw here would take '
+              'down estimates, calendar bands and reminders');
+      expect(seen.last, isA<NotEnoughHistory>(),
+          reason: 'the invalid date fails to the no-method path');
+    });
   });
 }
