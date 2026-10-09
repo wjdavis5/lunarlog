@@ -3465,6 +3465,135 @@ void main() {
     });
   });
 
+  // Issue #1604. A type's floor moved only on a pass that found it off, so
+  // a row that arrived between the last such pass and the one that found
+  // the type on again was sent when the type came back. One test per kind
+  // of row the review named, and one for the row saved after the pass that
+  // finds the type on.
+  group('issue #1604: what arrived while a type was off stays out when it '
+      'is switched back on', () {
+    final grant = DateTime.utc(2026, 6, 1, 12);
+    DateTime at(int minutes) => grant.add(Duration(minutes: minutes));
+
+    /// A first pass that finds spotting off, so its floor and the
+    /// remembered off-set are stored.
+    Future<LocalHealthFlowWriteService> passThatFindsSpottingOff() async {
+      await seedGranted(grant);
+      platform.permission = HealthPermissionStatus.writingSome;
+      platform.grantedTypes = {'menstrualFlow'};
+      dayEntries.entries = [_entry('2026-06-02', FlowLevel.medium, at(60))];
+      clock = at(61);
+      final service = buildService();
+      final off = await service.syncNow();
+      expect(off.blocked, isNull);
+      expect(platform.flowWrites, hasLength(1));
+      return service;
+    }
+
+    test('a row from another device that synced in while the app was '
+        'closed', () async {
+      final service = await passThatFindsSpottingOff();
+
+      // While this app was closed, another device's spotting entry synced
+      // in: its time is after the pass that saw spotting off.
+      observations.observations = [_spotting('2026-06-03', at(70))];
+
+      // She returns and switches spotting on.
+      platform.grantedTypes = {'menstrualFlow', 'spotting'};
+      clock = at(71);
+      final back = await service.syncNow();
+      expect(back.samplesWritten, 0);
+      expect(platform.markerWrites, isEmpty,
+          reason: 'it arrived while spotting was off; the pass that finds '
+              'the type on moves its floor over it');
+
+      // Saved from here on, it is written.
+      observations.observations = [_spotting('2026-06-10', at(72))];
+      clock = at(73);
+      final later = await service.syncNow();
+      expect(later.samplesWritten, 1);
+      expect(platform.markerWrites.single.recordId, 'spot-2026-06-10');
+    });
+
+    test('a day saved in the moment before the app was left', () async {
+      final service = await passThatFindsSpottingOff();
+
+      // Saved just before she left for the store's settings screen — the
+      // write pass is debounced, so no pass saw it while spotting was off.
+      observations.observations = [_spotting('2026-06-03', at(62))];
+
+      platform.grantedTypes = {'menstrualFlow', 'spotting'};
+      clock = at(63);
+      final back = await service.syncNow();
+      expect(back.samplesWritten, 0);
+      expect(platform.markerWrites, isEmpty);
+
+      observations.observations = [_spotting('2026-06-10', at(64))];
+      clock = at(65);
+      final later = await service.syncNow();
+      expect(later.samplesWritten, 1);
+    });
+
+    test('a row saved around a pass that ended before it reached the '
+        'floors', () async {
+      final service = await passThatFindsSpottingOff();
+
+      // The next pass cannot read which types are on (#1584) and ends
+      // before the floors; the row arrives meanwhile.
+      platform.grantedWriteTypesError = StateError('the store would not say');
+      clock = at(62);
+      final failed = await service.syncNow();
+      expect(failed.blocked, isNotNull);
+      platform.grantedWriteTypesError = null;
+      observations.observations = [_spotting('2026-06-03', at(63))];
+
+      platform.grantedTypes = {'menstrualFlow', 'spotting'};
+      clock = at(64);
+      final back = await service.syncNow();
+      expect(back.samplesWritten, 0);
+      expect(platform.markerWrites, isEmpty);
+
+      observations.observations = [_spotting('2026-06-10', at(65))];
+      clock = at(66);
+      final later = await service.syncNow();
+      expect(later.samplesWritten, 1);
+    });
+
+    // The review's sequencing, confirmed: an in-app grant is observed by
+    // the pass that asked for it (the request is awaited inside the pass,
+    // and the post-request status is what the same pass resolves types
+    // from), so no save of hers can land between the grant and the pass
+    // that records it.
+    test('the pass that asks for write access observes the grant itself',
+        () async {
+      await settings.set(_bindingKey, _profileId);
+      platform.permission = HealthPermissionStatus.notAsked;
+      platform.permissionAfterAuth = HealthPermissionStatus.writingSome;
+      platform.grantedTypes = {'menstrualFlow'};
+      clock = at(10);
+      final service = buildService();
+
+      final grantPass = await service.syncNow();
+      expect(grantPass.authorizationRequested, isTrue);
+      expect(platform.authCalls, 1);
+
+      // The grant pass saw spotting off; a spotting entry saved while it is
+      // off stays out when the type comes back.
+      observations.observations = [_spotting('2026-06-03', at(11))];
+      platform.grantedTypes = {'menstrualFlow', 'spotting'};
+      clock = at(12);
+      final back = await service.syncNow();
+      expect(back.samplesWritten, 0);
+      expect(platform.markerWrites, isEmpty);
+
+      observations.observations = [_spotting('2026-06-10', at(13))];
+      clock = at(14);
+      final later = await service.syncNow();
+      expect(later.samplesWritten, 1);
+      expect(platform.markerWrites.single.recordId, 'spot-2026-06-10');
+    });
+  });
+
   // Issue #1581. The pass used to send whatever was newer than a cursor
   // that moved to the newest row it wrote. A row that turns up with an
   // older time was never sent. Each test here is one such row.
@@ -4105,13 +4234,20 @@ void main() {
       clock = at(60);
       await service.syncNow();
 
-      // Flow is switched on, and a day is saved a minute later. The
-      // storage layer stamps it five minutes behind the device's clock.
+      // Flow is switched on. The pass that finds it on runs before she can
+      // save anything — the review's sequencing (issue #1604) — and stamps
+      // flow's floor with the row clock, five minutes behind the device's.
       platform.permission = HealthPermissionStatus.granted;
+      clock = at(61);
+      await service.syncNow();
+
+      // A day saved from here on is sent, although its row time trails the
+      // device clock the observing pass ran on. Had the floor used the
+      // device clock, the row would be under it and never sent.
       dayEntries.entries = [
-        _entry('2026-06-10', FlowLevel.medium, at(61).subtract(ahead)),
+        _entry('2026-06-10', FlowLevel.medium, at(62).subtract(ahead)),
       ];
-      clock = at(62);
+      clock = at(63);
 
       expect((await service.syncNow()).samplesWritten, 1);
     });
