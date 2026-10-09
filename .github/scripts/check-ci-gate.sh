@@ -54,10 +54,10 @@ export GH_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
 echo "Evaluating CI check runs for commit $COMMIT_SHA on $REPO..."
 echo "Required checks: $REQUIRED_CHECKS"
 
-fetch_check_runs() {
-  local repo="$1" sha="$2"
+fetch_check_runs_page() {
+  local repo="$1" sha="$2" page="$3"
   if command -v gh >/dev/null 2>&1; then
-    gh api "repos/${repo}/commits/${sha}/check-runs?per_page=100"
+    gh api "repos/${repo}/commits/${sha}/check-runs?per_page=100&page=${page}"
   else
     local auth_header=()
     if [ -n "${GH_TOKEN:-}" ]; then
@@ -65,8 +65,42 @@ fetch_check_runs() {
     fi
     curl -sSL --fail ${auth_header[@]+"${auth_header[@]}"} \
       -H "Accept: application/vnd.github+json" \
-      "https://api.github.com/repos/${repo}/commits/${sha}/check-runs?per_page=100"
+      "https://api.github.com/repos/${repo}/commits/${sha}/check-runs?per_page=100&page=${page}"
   fi
+}
+
+# Issue #1736: the check-runs endpoint is paginated at 100 and returns runs
+# newest-first, and a commit can carry more than 100 of them (each store-
+# release dispatch adds ~6 check runs and each CI re-run ~15). A single
+# unpaginated page can therefore drop the required names off the payload,
+# reading a passing commit as "missing" and blocking the release for the full
+# wait. Page until a short page (or an error payload), emitting one JSON
+# document per page; the selection below parses the concatenated stream.
+fetch_check_runs() {
+  local repo="$1" sha="$2"
+  local page=1
+  local page_json
+  local page_count
+  while :; do
+    if ! page_json="$(fetch_check_runs_page "$repo" "$sha" "$page")"; then
+      return 1
+    fi
+    printf '%s\n' "$page_json"
+    page_count="$(printf '%s' "$page_json" | python3 -c '
+import json, sys
+try:
+    payload = json.load(sys.stdin)
+except Exception:
+    print(0)
+    sys.exit(0)
+runs = payload.get("check_runs") if isinstance(payload, dict) else None
+print(len(runs) if isinstance(runs, list) else 0)
+')" || page_count=0
+    if [ "${page_count:-0}" -lt 100 ]; then
+      break
+    fi
+    page=$((page + 1))
+  done
 }
 
 start_time=$(date +%s)
@@ -127,19 +161,36 @@ required_checks = [c.strip() for c in raw_list if c.strip()]
 
 try:
     if raw_input.startswith('{') or raw_input.startswith('['):
-        payload = json.loads(raw_input)
+        text = raw_input
     else:
         with open(raw_input, 'r', encoding='utf-8') as f:
-            payload = json.load(f)
+            text = f.read()
+    # Issue #1736: fetch_check_runs emits one document per page (a commit can
+    # carry more than one page of check runs, newest-first), so parse every
+    # document in the stream and merge their check_runs below.
+    decoder = json.JSONDecoder()
+    payloads = []
+    pos = 0
+    while pos < len(text):
+        obj, pos = decoder.raw_decode(text, pos)
+        payloads.append(obj)
+        while pos < len(text) and text[pos] in ' \t\r\n':
+            pos += 1
+    if not payloads:
+        raise ValueError("no JSON document found")
 except Exception as e:
     print(f"ERR_PARSE: {e}")
     sys.exit(2)
 
-if isinstance(payload, dict) and "message" in payload and "check_runs" not in payload:
-    print(f"ERR_API: {payload.get('message')}")
-    sys.exit(3)
+for payload in payloads:
+    if isinstance(payload, dict) and "message" in payload and "check_runs" not in payload:
+        print(f"ERR_API: {payload.get('message')}")
+        sys.exit(3)
 
-runs = payload.get("check_runs", [])
+runs = []
+for payload in payloads:
+    if isinstance(payload, dict):
+        runs.extend(payload.get("check_runs", []))
 runs_by_name = {}
 for run in sorted(runs, key=lambda r: r.get("id") or 0, reverse=True):
     name = run.get("name")
