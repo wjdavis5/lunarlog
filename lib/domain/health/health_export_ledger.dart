@@ -68,9 +68,10 @@ enum HealthExportLedgerKind {
   /// the record as "written before" rather than never written — the
   /// forward-only floor must not keep it out when its row wants it again
   /// — and replaced by a real row the moment the store accepts a write.
-  /// Deliberately not grouped by source row: nothing a row no longer
-  /// produces is reconciled through it, and nothing asks the store to
-  /// delete it. Cleared with the binding, like every ledger row.
+  /// Grouped by source row so the row it came from stays in scope
+  /// ([HealthExportMemory.knowsRow]), but left out of the row's record set
+  /// (`recordIdsOf`): nothing is reconciled or deleted through it.
+  /// Cleared with the binding, like every ledger row.
   gone,
 }
 

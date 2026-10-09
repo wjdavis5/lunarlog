@@ -2675,6 +2675,12 @@ class LocalHealthFlowWriteService
   /// at an older version may always be re-sent: it is there already, and
   /// what it says is out of date.
   ///
+  /// A gone row ([HealthExportLedgerKind.gone]) is a record the store does
+  /// not hold (Issue #1617): it is due the moment its row wants it, at the
+  /// natural version, and [HealthWritePassState.admitsNew] is not
+  /// consulted — the floor's never-written rule must not keep out a record
+  /// that has been dealt with before.
+  ///
   /// [storeVersion] is the version the write would naturally carry — the
   /// row's own time, except for a spotting record, whose record comes and
   /// goes with its day's flow while its own row stays as it was. A
