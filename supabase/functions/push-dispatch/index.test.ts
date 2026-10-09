@@ -559,6 +559,11 @@ function fakeClientFactory(
   /** Issue #1738: tables whose select reads answer with an error instead of
    * rows, so the production closures' error paths can be driven. */
   selectFailsFor: Set<string> = new Set(),
+  /** Issue #1742: runs once just before a claim UPDATE's filters are
+   * applied, so a test can interleave another invocation's claim+release
+   * (attempts reaching the bound, or a markSent) between the candidate
+   * select and this invocation's UPDATE. */
+  beforeClaimUpdate: (() => void) | null = null,
 ): SupabaseClientFactory {
   function makeSelectBuilder(source: Array<Record<string, unknown>>, table: string) {
     const filters: Array<(row: Record<string, unknown>) => boolean> = [];
@@ -617,9 +622,14 @@ function fakeClientFactory(
         filters.push((r) => r[column] === value);
         return builder;
       },
+      lt(column: string, value: number) {
+        filters.push((r) => (r[column] as number) < value);
+        return builder;
+      },
       select(_columns: string) {
         return {
           async maybeSingle() {
+            if (beforeClaimUpdate) beforeClaimUpdate();
             const matched = source.filter((r) => filters.every((f) => f(r)));
             if (matched.length === 0) return { data: null, error: null };
             Object.assign(matched[0], patch);
@@ -737,6 +747,71 @@ Deno.test("a row already claimed_at by another invocation is not claimed again",
   assertEquals(claimed, [], "a row already claimed by another invocation must not be claimed again");
 });
 
+Deno.test(
+  "issue #1742: the claim UPDATE re-asserts the attempts bound, so a row an interleaved invocation " +
+    "released at the bound is not dispatched",
+  async () => {
+    const past = new Date(Date.now() - 60_000).toISOString();
+    const rows: Array<Record<string, unknown>> = [
+      { id: "row-1", profile_id: "p1", recipient_user_id: "u1", kind: "logged", claimed_at: null, sent_at: null, deliver_after: past, attempts: 9 },
+    ];
+    let interleaved = false;
+    const deps = buildDeps(
+      fullEnv,
+      fakeClientFactory(rows, [], {}, new Set(), () => {
+        // Invocation B claims this row, fails, and releases it -- attempts
+        // reaches MAX_ATTEMPTS -- between A's candidate select and A's
+        // UPDATE. The stale UPDATE must not match it.
+        if (!interleaved) {
+          interleaved = true;
+          rows[0].attempts = 10;
+        }
+      }),
+    );
+
+    const claimed = await deps.claimBatch(10);
+
+    assertEquals(
+      claimed,
+      [],
+      "a row at the attempts bound must not be claimed by a stale UPDATE -- if the attempts re-check is " +
+        "removed from the real claim UPDATE, this fake would let it re-match",
+    );
+    assertEquals(rows[0].claimed_at, null, "the stale UPDATE must not leave the row claimed");
+  },
+);
+
+Deno.test(
+  "issue #1742: the claim UPDATE re-asserts sent_at, so a row an interleaved invocation marked sent " +
+    "is not re-claimed",
+  async () => {
+    const past = new Date(Date.now() - 60_000).toISOString();
+    const rows: Array<Record<string, unknown>> = [
+      { id: "row-1", profile_id: "p1", recipient_user_id: "u1", kind: "logged", claimed_at: null, sent_at: null, deliver_after: past, attempts: 0 },
+    ];
+    let interleaved = false;
+    const deps = buildDeps(
+      fullEnv,
+      fakeClientFactory(rows, [], {}, new Set(), () => {
+        // Invocation B marked the row sent between A's select and A's
+        // UPDATE -- a stale UPDATE must not re-claim it.
+        if (!interleaved) {
+          interleaved = true;
+          rows[0].sent_at = past;
+        }
+      }),
+    );
+
+    const claimed = await deps.claimBatch(10);
+
+    assertEquals(
+      claimed,
+      [],
+      "an already-sent row must not be re-claimed by a stale UPDATE -- if the sent_at re-check is removed " +
+        "from the real claim UPDATE, this fake would let it re-match",
+    );
+  },
+);
 Deno.test("production claim predicate: buildDeps' claimBatch really requires claimed_at IS NULL", async () => {
   const past = new Date(Date.now() - 60_000).toISOString();
   const rows = [
