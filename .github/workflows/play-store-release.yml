@@ -135,18 +135,11 @@ jobs:
         if: inputs.track == 'production'
         env:
           PLAY_HEALTH_DECLARATION_CONFIRMED: ${{ vars.PLAY_HEALTH_DECLARATION_CONFIRMED }}
-        run: |
-          set -euo pipefail
-          if ! grep -q "android.permission.health\." android/app/src/main/AndroidManifest.xml; then
-            echo "No health permissions in the manifest; nothing to gate."
-            exit 0
-          fi
-          if [ "$PLAY_HEALTH_DECLARATION_CONFIRMED" != "true" ]; then
-            echo "::error::The manifest requests android.permission.health.* permissions, but the Play Console Health apps declaration is not recorded as filed and approved."
-            echo "::error::Complete docs/ops/play-health-declaration.md (the Health apps declaration form, per-permission justifications, privacy-policy URL), then set the PLAY_HEALTH_DECLARATION_CONFIRMED repository variable to 'true'."
-            exit 1
-          fi
-          echo "Health permissions present and PLAY_HEALTH_DECLARATION_CONFIRMED=true; health declaration gate satisfied (issue #254)."
+        # Issue #1735: extracted to a script so the release-guards suite pins
+        # its exit-status truth table -- the inline `if ! grep -q` treated a
+        # missing manifest (grep exit 2) as "nothing to gate" and passed the
+        # gate without gating.
+        run: bash .github/scripts/check-play-health-declaration.sh
 
   migration-gate:
     # Issue #539: ios-release.yml grew this gate (issue #47) after two
