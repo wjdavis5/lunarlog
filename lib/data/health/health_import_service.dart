@@ -235,63 +235,24 @@ _PageResolveResult _resolvePage(_PageResolveRequest request) {
 
   for (final sample in request.samples) {
     // Issue #1556: a period record is an interval spanning its whole
-    // episode, with no intensity of its own. It expands into bleed-day
-    // candidates for every civil date of its span, each carrying the
-    // record's own id as its record key. A real flow record for the same
-    // day always outranks the fill (its rank sits below every flow value,
-    // and the strict `>` comparisons below and in [_Accumulator.addPage]
-    // keep first-seen wins on ties), so a source writing both types yields
-    // exactly one entry per day with the flow record winning — the #1556
-    // dedup rule — whatever order the store returned the records in.
+    // episode, with no intensity of its own. [_expandPeriodSample] expands
+    // it into bleed-day candidates for every civil date of its span, each
+    // carrying the record's own id as its record key; a real flow record
+    // for the same day always outranks the fill (its rank sits below every
+    // flow value, and the strict `>` comparisons keep first-seen wins on
+    // ties), so a source writing both types yields exactly one entry per
+    // day with the flow record winning — the #1556 dedup rule — whatever
+    // order the store returned the records in.
     if (sample.kind == HealthSampleKind.menstruationPeriod) {
-      final span = _periodSpan(sample);
-      if (span == null) {
-        // Neither endpoint carries a zone: unplaceable without guessing,
-        // the same rule `_dateFor` applies to an instantaneous sample.
-        withoutZone++;
-        continue;
-      }
-      if (span.end.isBefore(span.start) ||
-          span.days > kMaxPeriodRecordSpanDays) {
-        // A degenerate or oversized span. Health Connect refuses to store
-        // a period record longer than 31 days of elapsed time (the rule
-        // #1478's own write path stays under), so anything longer is a
-        // corrupt or hostile record: counted, never expanded.
-        unsupported++;
-        continue;
-      }
-      final endTz = span.endZone == span.startZone
-          ? null
-          : fixedOffsetZoneName(span.endZone);
-      var placed = false;
-      for (var date = span.start; !date.isAfter(span.end); date =
-          date.addDays(1)) {
-        if (date.isBefore(request.from) || date.isAfter(request.to)) continue;
-        placed = true;
-        // Fill only: a day any flow record already claimed is left as it
-        // is, whatever page of the pass the two arrived on.
-        final current = byDate[date];
-        if (current != null) continue;
-        byDate[date] = _DesiredSample(
-          flow: kPeriodRecordImportFlowLevel,
-          // The lowest rank in [healthFlowValueRank] — that is the whole
-          // dedup rule. It is never mapped back through
-          // [flowLevelFromHealthValue] (which would null it out); the
-          // written level is [kPeriodRecordImportFlowLevel].
-          value: HealthFlowValue.unspecified,
-          recordId: sample.recordId,
-          tzName: date == span.end && endTz != null
-              ? endTz
-              : fixedOffsetZoneName(span.startZone),
-          modifiedAt: sample.modifiedAt,
-        );
-      }
-      if (placed) {
-        // Counted once per record, not per expanded day: the counts
-        // answer "how the store's samples were placed", and this is one
-        // sample whose endpoints the source zoned.
-        countZone(sample);
-      }
+      final outcome = _expandPeriodSample(
+        sample,
+        byDate,
+        request.from,
+        request.to,
+        countZone,
+      );
+      withoutZone += outcome.withoutZone;
+      unsupported += outcome.unsupported;
       continue;
     }
     final date = _dateFor(sample);
@@ -318,19 +279,7 @@ _PageResolveResult _resolvePage(_PageResolveRequest request) {
       unsupported++;
       continue;
     }
-    countZone(sample);
-    final current = byDate[date];
-    if (current == null ||
-        healthFlowValueRank(value) > healthFlowValueRank(current.value)) {
-      byDate[date] = _DesiredSample(
-        flow: flow,
-        value: value,
-        recordId: sample.recordId,
-        // Non-null: _dateFor already proved a zone resolves.
-        tzName: _zoneNameFor(sample)!,
-        modifiedAt: sample.modifiedAt,
-      );
-    }
+    _placeFlowSample(sample, date, value, flow, byDate, countZone);
   }
   return (
     flowDays: byDate,
@@ -433,6 +382,109 @@ _PeriodSpan? _periodSpan(HealthFlowSample sample) {
     startZone: startZone,
     endZone: endZone,
   );
+}
+
+/// The counts one period record's expansion contributes to the page's
+/// placement counters (Issue #1556). The fills themselves are written
+/// straight into the page's flow-day map.
+class _PeriodExpansion {
+  const _PeriodExpansion({this.withoutZone = 0, this.unsupported = 0});
+
+  final int withoutZone;
+  final int unsupported;
+}
+
+/// Expands one `MenstruationPeriodRecord` sample (Issue #1556) into
+/// bleed-day fills for every civil date of its span, via [_fillPeriodDays].
+/// Neither endpoint carrying a zone is unplaceable without guessing — the
+/// same rule `_dateFor` applies to an instantaneous sample — and a
+/// degenerate or oversized span (Health Connect refuses to store a period
+/// record longer than 31 days of elapsed time, the rule #1478's own write
+/// path stays under) is counted unsupported, never expanded. [countZone] is
+/// called once per record, not per expanded day: the counts answer "how the
+/// store's samples were placed", and this is one sample whose endpoints the
+/// source zoned.
+_PeriodExpansion _expandPeriodSample(
+  HealthFlowSample sample,
+  Map<LocalDate, _DesiredSample> byDate,
+  LocalDate from,
+  LocalDate to,
+  void Function(HealthFlowSample) countZone,
+) {
+  final span = _periodSpan(sample);
+  if (span == null) return const _PeriodExpansion(withoutZone: 1);
+  if (span.end.isBefore(span.start) ||
+      span.days > kMaxPeriodRecordSpanDays) {
+    return const _PeriodExpansion(unsupported: 1);
+  }
+  final endTz =
+      span.endZone == span.startZone ? null : fixedOffsetZoneName(span.endZone);
+  final placed = _fillPeriodDays(span, endTz, sample, byDate, from, to);
+  if (placed) countZone(sample);
+  return const _PeriodExpansion();
+}
+
+/// One period span's per-day fills (Issue #1556); true when any day of the
+/// span fell in the window. Fill only: a day any flow record already claimed
+/// is left as it is, whatever page of the pass the two arrived on, and the
+/// fill carries the lowest rank in [healthFlowValueRank] — that is the whole
+/// dedup rule. It is never mapped back through [flowLevelFromHealthValue]
+/// (which would null it out); the written level is
+/// [kPeriodRecordImportFlowLevel]. The last day resolves in the end
+/// instant's own zone when the record's two offsets differ.
+bool _fillPeriodDays(
+  _PeriodSpan span,
+  String? endTz,
+  HealthFlowSample sample,
+  Map<LocalDate, _DesiredSample> byDate,
+  LocalDate from,
+  LocalDate to,
+) {
+  var placed = false;
+  for (var date = span.start; !date.isAfter(span.end); date =
+      date.addDays(1)) {
+    if (date.isBefore(from) || date.isAfter(to)) continue;
+    placed = true;
+    if (byDate.containsKey(date)) continue;
+    byDate[date] = _DesiredSample(
+      flow: kPeriodRecordImportFlowLevel,
+      value: HealthFlowValue.unspecified,
+      recordId: sample.recordId,
+      tzName: date == span.end && endTz != null
+          ? endTz
+          : fixedOffsetZoneName(span.startZone),
+      modifiedAt: sample.modifiedAt,
+    );
+  }
+  return placed;
+}
+
+/// Places one usable flow sample on its date (the pre-#1556 tail of
+/// `_resolvePage`'s per-sample body, extracted so that method stays inside
+/// the CRAP-gate complexity budget). Keeps the highest-intensity flow per
+/// date: an empty slot takes the sample, and a claimed one only when the
+/// sample's rank is strictly higher (first-seen wins on ties).
+void _placeFlowSample(
+  HealthFlowSample sample,
+  LocalDate date,
+  HealthFlowValue value,
+  FlowLevel flow,
+  Map<LocalDate, _DesiredSample> byDate,
+  void Function(HealthFlowSample) countZone,
+) {
+  countZone(sample);
+  final current = byDate[date];
+  if (current == null ||
+      healthFlowValueRank(value) > healthFlowValueRank(current.value)) {
+    byDate[date] = _DesiredSample(
+      flow: flow,
+      value: value,
+      recordId: sample.recordId,
+      // Non-null: _dateFor already proved a zone resolves.
+      tzName: _zoneNameFor(sample)!,
+      modifiedAt: sample.modifiedAt,
+    );
+  }
 }
 
 /// The zone string a written row carries: the sample's own IANA name when it

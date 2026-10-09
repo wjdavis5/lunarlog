@@ -507,8 +507,8 @@ HealthFlowSample? _decodeFlowSample(Object? entry) {
       (kind == HealthSampleKind.menstrualFlow && flow == null)) {
     return null;
   }
-  final offsetSeconds = (entry['zoneOffsetSeconds'] as num?)?.toInt();
-  final endOffsetSeconds = (entry['endZoneOffsetSeconds'] as num?)?.toInt();
+  final offset = _optionalDurationSeconds(entry['zoneOffsetSeconds']);
+  final endOffset = _optionalDurationSeconds(entry['endZoneOffsetSeconds']);
   return HealthFlowSample(
     recordId: recordId,
     kind: kind,
@@ -516,11 +516,8 @@ HealthFlowSample? _decodeFlowSample(Object? entry) {
     start: DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true),
     end: DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true),
     tzName: entry['tzName'] as String?,
-    offset:
-        offsetSeconds == null ? null : Duration(seconds: offsetSeconds),
-    endOffset: endOffsetSeconds == null
-        ? null
-        : Duration(seconds: endOffsetSeconds),
+    offset: offset,
+    endOffset: endOffset,
     offsetInferred: entry['zoneOffsetInferred'] as bool? ?? false,
     externalUuid: entry['externalUuid'] as String?,
     modifiedAt: _optionalInstant(entry['modifiedAtMs']),
@@ -535,6 +532,15 @@ HealthFlowSample? _decodeFlowSample(Object? entry) {
 DateTime? _optionalInstant(Object? raw) {
   if (raw is! num) return null;
   return DateTime.fromMillisecondsSinceEpoch(raw.toInt(), isUtc: true);
+}
+
+/// The zone offset an optional wire value names (the #180 contract's
+/// `zoneOffsetSeconds`, and the #1556 period record's
+/// `endZoneOffsetSeconds`). The same shape as [_optionalInstant], and kept
+/// out of [_decodeFlowSample] for the same complexity-budget reason.
+Duration? _optionalDurationSeconds(Object? raw) {
+  if (raw is! num) return null;
+  return Duration(seconds: raw.toInt());
 }
 
 /// The window-args half of `readMenstrualFlowPage` (Issue #992): the
