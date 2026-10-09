@@ -335,11 +335,19 @@ class _FakePlatform implements HealthPlatformStore {
     return _nextWriteResult();
   }
 
+  /// Issue #1704 coverage: the answer [writeSymptomSamples] gives; the
+  /// tests that care set a partial naming the skipped type's wire.
+  HealthPlatformResult symptomWriteResult =
+      const HealthPlatformResult.allowed();
+  final List<HealthSymptomSamplesWrite> symptomWrites = [];
+
   @override
   Future<HealthPlatformResult> writeSymptomSamples(
     HealthSymptomSamplesWrite write,
-  ) async =>
-      const HealthPlatformResult.allowed();
+  ) async {
+    symptomWrites.add(write);
+    return symptomWriteResult;
+  }
 
   // Issue #228: this fake predates the fertility/measurement port methods.
   // The tests here exercise the flow path; the new types get their own
@@ -3219,6 +3227,42 @@ void main() {
       expect(report.samplesWritten, 1);
       expect(platform.grantedWriteTypesCalls, 1);
       expect(platform.flowWrites, hasLength(1));
+    });
+
+    test('issue #1704: a partial symptom answer remembers only the samples '
+        'the store took', () async {
+      await seedGranted(grant);
+      final t1 = grant.add(const Duration(hours: 1));
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium, t1,
+            tags: const ['cramps', 'headache']),
+      ];
+      clock = t1.add(const Duration(minutes: 1));
+      // The store takes the headache sample and passes over cramps (its
+      // authorization was removed between the granted-types probe and this
+      // write).
+      platform.symptomWriteResult =
+          const HealthPlatformResult.partial({'abdominalCramps', 'symptoms'});
+      final service = buildService();
+
+      await service.syncNow();
+
+      final entryRows = {
+        for (final row in ledger.rows)
+          if (row.kind == HealthExportLedgerKind.entry) row.recordId,
+      };
+      expect(
+        entryRows,
+        contains(healthSymptomRecordId('entry-2026-06-02', 'headache')),
+        reason: 'the accepted sample is remembered',
+      );
+      expect(
+        entryRows,
+        isNot(contains(
+            healthSymptomRecordId('entry-2026-06-02', 'abdominalCramps'))),
+        reason: 'a sample the store passed over must never be remembered as '
+            'written',
+      );
     });
 
     // Issue #1581. Forward-only holds for each type: what was logged

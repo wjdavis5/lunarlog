@@ -2389,6 +2389,19 @@ class LocalHealthFlowWriteService
         ),
       );
       if (result is HealthPlatformUnavailable) break;
+      if (result is HealthPlatformPartial) {
+        // Issue #1704: the store took some samples and passed over others.
+        // See [_applySymptomPartial] — extracted to keep this method under
+        // the CRAP gate.
+        written += await _applySymptomPartial(
+          samples: samples,
+          result: result,
+          symptom: symptom,
+          profileId: profileId,
+        );
+        failure ??= result;
+        continue;
+      }
       if (result is! HealthPlatformAllowed) {
         failure ??= result;
         for (final sample in samples) {
@@ -2417,6 +2430,53 @@ class LocalHealthFlowWriteService
       ]);
     }
     return (written: written, failure: failure);
+  }
+
+  /// Issue #1704: applies a partial symptom answer — the store took some
+  /// samples and passed over others (a type's authorization was removed
+  /// between the granted-types probe and the write). Remember only the
+  /// samples it took; a passed-over sample goes back to due (gone), the
+  /// same shape a per-type delete skip uses — never remembered as written.
+  /// Returns how many samples were accepted. Extracted from
+  /// [_writeSymptomRecords] to keep that method under the CRAP gate.
+  Future<int> _applySymptomPartial({
+    required List<HealthSymptomSample> samples,
+    required HealthPlatformPartial result,
+    required _PendingSymptomWrite symptom,
+    required String profileId,
+  }) async {
+    final accepted = <HealthSymptomSample>[];
+    for (final sample in samples) {
+      if (healthRecordMatchesSkippedType(
+        sample.recordId,
+        result.skippedTypes,
+      )) {
+        await _markGone(
+          profileId,
+          recordId: sample.recordId,
+          sourceRowId: symptom.entryId,
+          date: symptom.date,
+          version: symptom.updatedAt,
+        );
+      } else {
+        accepted.add(sample);
+      }
+    }
+    if (accepted.isNotEmpty) {
+      await _memory.remember([
+        for (final sample in accepted)
+          HealthExportLedgerEntry(
+            recordId: sample.recordId,
+            profileId: profileId,
+            sourceRowId: symptom.entryId,
+            kind: HealthExportLedgerKind.entry,
+            localDate: symptom.date.iso,
+            exportedAt: symptom.updatedAt,
+            writtenVersion: symptom.updatedAt,
+          ),
+      ]);
+    }
+    return accepted.length;
   }
 
   static List<HealthSymptomSample> _filterGrantedSymptomSamples(
