@@ -107,9 +107,30 @@ class _GuardianOverviewCardState extends State<GuardianOverviewCard> {
   bool _loadedLatest = false;
   DayEntry? _latest;
 
+  /// Issue #1710: a monotonic token for the bounded latest-entry read, so a
+  /// read that started earlier can never apply its result over a newer one
+  /// (the `AnalysisTab._entriesTick` idiom).
+  int _latestTick = 0;
+
   @override
   void initState() {
     super.initState();
+    unawaited(_loadLatest());
+  }
+
+  @override
+  void didUpdateWidget(covariant GuardianOverviewCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.profileId != widget.profileId) {
+      // Issue #1710: the shell reuses this State across a profile switch (no
+      // key), and these facts are per-profile — the previous subject's must
+      // not paint beside the new name while the re-read is in flight.
+      _latest = null;
+      _loadedLatest = false;
+    }
+    // Re-read on every parent rebuild: a profile switch arrives here, and so
+    // does a logging action elsewhere in the panel (the estimate stream
+    // re-emits on entry writes), which is how a save refreshes the card.
     unawaited(_loadLatest());
   }
 
@@ -118,6 +139,8 @@ class _GuardianOverviewCardState extends State<GuardianOverviewCard> {
   /// the card renders the "nothing logged yet" state instead of subscribing
   /// to the full history.
   Future<void> _loadLatest() async {
+    final profileId = widget.profileId;
+    final tick = ++_latestTick;
     final entries = Provider.of<DayEntriesRepository?>(context, listen: false);
     // `is` alone does not promote across two unrelated interfaces
     // (DayEntriesRepository is not a subtype of LatestDayEntryReader), so
@@ -127,8 +150,8 @@ class _GuardianOverviewCardState extends State<GuardianOverviewCard> {
         : null;
     final entry = reader == null
         ? null
-        : await reader.latestEntryFor(widget.profileId);
-    if (!mounted) return;
+        : await reader.latestEntryFor(profileId);
+    if (!mounted || tick != _latestTick) return;
     setState(() {
       _latest = entry;
       _loadedLatest = true;
