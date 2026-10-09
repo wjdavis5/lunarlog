@@ -114,6 +114,8 @@ import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart';
+import 'package:lunarlog/domain/health/health_flow_write_service.dart'
+    show HealthWritePassQueue;
 import 'package:lunarlog/domain/health/health_deviation.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
@@ -751,11 +753,14 @@ const Map<TargetPlatform, HealthImportPlatform> _healthImportPlatforms = {
   TargetPlatform.android: HealthImportPlatform.healthConnect,
 };
 
-/// Constructs the health-flow write coordinator, or null when the feature
+/// Builds the one health-flow write service the write coordinator drives
+/// and the tombstone coordinator queues its delete behind (Issue #1614),
+/// with the binding both coordinators share. Null when the write direction
 /// is gated off (Issue #193: `AppConfig.hasHealthSync`, on the platforms
 /// `AppConfig.healthSyncWritePlatforms` names — iOS and, since issue #1478,
 /// Android; widget-test harnesses and web never construct it).
-HealthFlowWriteCoordinator? buildHealthFlowWriteCoordinator({
+({LocalHealthFlowWriteService service, HealthSyncBinding binding})?
+    buildHealthFlowWriteService({
   required SettingsStore settings,
   required ProfilesRepository profiles,
   required DayEntriesRepository dayEntries,
@@ -787,12 +792,23 @@ HealthFlowWriteCoordinator? buildHealthFlowWriteCoordinator({
     signedInUserId: signedInUserId,
     ledger: ledger,
   );
-  return LocalHealthFlowWriteCoordinator(
-    binding: binding,
-    dayEntries: dayEntries,
-    service: service,
-  );
+  return (service: service, binding: binding);
 }
+
+/// Constructs the health-flow write coordinator over [service]. The caller
+/// builds the service once with [buildHealthFlowWriteService] and hands the
+/// same instance to the tombstone coordinator (Issue #1614), so the two
+/// share one queue.
+HealthFlowWriteCoordinator buildHealthFlowWriteCoordinator({
+  required LocalHealthFlowWriteService service,
+  required HealthSyncBinding binding,
+  required DayEntriesRepository dayEntries,
+}) =>
+    LocalHealthFlowWriteCoordinator(
+      binding: binding,
+      dayEntries: dayEntries,
+      service: service,
+    );
 
 /// Constructs the user-initiated OS health-store import runner (Issues #217
 /// and #458), or null when the feature is gated off — the same
@@ -978,6 +994,7 @@ HealthSyncTombstoneCoordinator? buildHealthSyncTombstoneCoordinator({
   guardiansForProfile,
   required String? Function() signedInUserId,
   required HealthExportLedger ledger,
+  required HealthWritePassQueue passQueue,
 }) {
   if (!_healthWritesOnThisPlatform()) return null;
   final binding = HealthSyncBinding(settings);
@@ -998,6 +1015,7 @@ HealthSyncTombstoneCoordinator? buildHealthSyncTombstoneCoordinator({
     source: tombstoneSource,
     deletionService: deletionService,
     ledger: ledger,
+    passQueue: passQueue,
   );
 }
 

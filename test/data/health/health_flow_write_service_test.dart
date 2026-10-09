@@ -4993,6 +4993,51 @@ void main() {
         expect((await second).samplesWritten, 1);
         expect((await service.syncNow()).samplesWritten, 0);
       });
+
+      // Issue #1614: the tombstone coordinator's delete runs on this same
+      // queue, so it can never land between a pass's decision and its
+      // write, and a pass never starts inside the delete.
+      test('an action queued through the pass queue waits for the running '
+          'pass', () async {
+        final service = buildService();
+        final order = <String>[];
+
+        final pass = service.syncNow();
+        await pumpEventQueue();
+        expect(gated.flowWrites, hasLength(1),
+            reason: 'the pass is at its write');
+
+        final action =
+            service.runInPassQueue(() async => order.add('action'));
+        await pumpEventQueue();
+        expect(order, isEmpty, reason: 'the action waits for the pass');
+
+        gated.release();
+        await pass;
+        await action;
+        expect(order, ['action']);
+      });
+
+      test('a pass waits for an action queued ahead of it', () async {
+        final service = buildService();
+        final order = <String>[];
+        final actionGate = Completer<void>();
+
+        final action = service.runInPassQueue(() async {
+          order.add('action');
+          await actionGate.future;
+        });
+        final pass = service.syncNow();
+        await pumpEventQueue();
+        expect(order, ['action']);
+        expect(gated.flowWrites, isEmpty,
+            reason: 'the pass waits for the action ahead of it');
+
+        actionGate.complete();
+        await action;
+        gated.release();
+        expect((await pass).samplesWritten, 1);
+      });
     });
 
     test(

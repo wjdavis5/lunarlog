@@ -97,3 +97,23 @@ abstract interface class HealthFlowWriteService {
   /// cursor and the native-side binding mirror.
   Future<void> onUnbound();
 }
+
+/// The one-at-a-time queue every health write pass runs through (Issue
+/// #1581), exposed as its own seam so another writer can join it instead of
+/// racing a pass.
+///
+/// Issue #1614: `HealthSyncTombstoneCoordinator` deletes a tombstoned row's
+/// records on its own. Without this, its delete could land after a pass had
+/// written the records again (Undo saves the row back within the debounce
+/// windows), leaving them gone from the store and the ledger until another
+/// pass. Through this queue the delete either runs before the pass — which
+/// then sees the live row and writes again — or after it, with the
+/// tombstoned set collected at execution time, when the row is live again
+/// and nothing is deleted.
+abstract interface class HealthWritePassQueue {
+  /// Runs [action] with no write pass able to interleave: it starts after
+  /// the pass that is running (and any queued behind it), and a pass
+  /// requested while it runs waits for it. [action] must not request a
+  /// pass itself (a pass queues behind the action and would wait forever).
+  Future<T> runInPassQueue<T>(Future<T> Function() action);
+}
