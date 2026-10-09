@@ -877,7 +877,13 @@ class LocalHealthImportService
     // Before the merge, not after (Issue #1693): the scan's cache is read
     // before [_apply], and a row the merge re-keys must not be rewritten
     // from the stale copy.
-    await _rekeySharedPeriodDays(scanner);
+    if (await _rekeySharedPeriodDays(scanner) > 0) {
+      // Issue #1695: the rows the re-key rewrote are stale in the scan's
+      // cache, and the steps after the merge compare their sourceIds
+      // ([_dropImportedFlow], [_removeStoreDeleted]) — they must reload
+      // the rows. Only the one pass that re-keyed pays for it.
+      scanner.invalidate();
+    }
     final initialFound = await _noteStoreDeleted(
       profileId,
       firstRun.accumulator,
