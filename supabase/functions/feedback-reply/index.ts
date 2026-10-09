@@ -29,6 +29,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { buildReplyEmail, type FeedbackTicketSummary } from "../_shared/format.ts";
 import { sendEmail as sendEmailReal, type SendEmailResult } from "../_shared/email.ts";
+import { webhookSecretsMatch } from "../_shared/webhook_secret.ts";
 
 const WEBHOOK_SECRET_HEADER = "x-feedback-webhook-secret";
 
@@ -190,7 +191,9 @@ if (import.meta.main) {
   Deno.serve(async (req) => {
     const expectedSecret = Deno.env.get("FEEDBACK_WEBHOOK_SECRET");
     const providedSecret = req.headers.get(WEBHOOK_SECRET_HEADER);
-    if (!expectedSecret || providedSecret !== expectedSecret) {
+    // Issue #1740: a constant-time comparison, never `!==` (see
+    // _shared/webhook_secret.ts).
+    if (!(await webhookSecretsMatch(expectedSecret, providedSecret))) {
       // Issue #1739: the rejection must never be silent (see the message
       // helper's doc); mirrors push-dispatch's round-2 #10 posture.
       console.error(webhookSecretRejectionMessage(expectedSecret));
