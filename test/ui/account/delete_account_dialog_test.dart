@@ -33,8 +33,15 @@ Finder key(String value) => find.byKey(ValueKey(value));
 class FakeProfilesRepository implements ProfilesRepository {
   List<Profile> profiles = const [];
 
+  /// Issue #1714: when set, [list] throws - the failed blast-radius read the
+  /// dialog must surface with a retry rather than a silent dead end.
+  bool failList = false;
+
   @override
-  Future<List<Profile>> list() async => profiles;
+  Future<List<Profile>> list() async {
+    if (failList) throw StateError('blast-radius read failed');
+    return profiles;
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -357,5 +364,47 @@ void main() {
         expect(resolvedForeground, colorScheme.onError);
       });
     }
+  });
+
+  group('#1714: a failed blast-radius read', () {
+    testWidgets(
+      'shows an inline error with a retry instead of a silent dead end, and '
+      'the retry re-runs the read so a success enables confirm',
+      (tester) async {
+        final h = DialogHarness();
+        h.profilesRepository.failList = true;
+        addTearDown(h.dispose);
+        await h.pump(tester);
+        await h.open(tester);
+
+        expect(
+          tester.widget<FilledButton>(key('account-delete-confirm')).onPressed,
+          isNull,
+          reason: 'confirm cannot enable without the blast radius',
+        );
+        expect(
+          key('account-delete-blast-radius-error'),
+          findsOneWidget,
+          reason: 'the failure is explained instead of silently disabling',
+        );
+
+        // The next read succeeds; retrying recovers in place.
+        h.profilesRepository.failList = false;
+        await tester.tap(
+          find.descendant(
+            of: key('account-delete-blast-radius-error'),
+            matching: find.byType(TextButton),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(key('account-delete-blast-radius-error'), findsNothing);
+        expect(
+          tester.widget<FilledButton>(key('account-delete-confirm')).onPressed,
+          isNotNull,
+          reason: 'the retried read loaded the radius, so confirm is enabled',
+        );
+      },
+    );
   });
 }

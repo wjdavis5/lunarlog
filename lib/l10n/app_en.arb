@@ -5662,6 +5662,10 @@
     "@accountDeleteDialogExportError": {
       "description": "Issue #1004 (tranche 2): delete-account dialog export failure copy."
     },
+    "accountDeleteDialogBlastRadiusError": "Could not load what your account owns. Check your connection and try again.",
+    "@accountDeleteDialogBlastRadiusError": {
+      "description": "Issue #1714: delete-account dialog copy shown when the blast-radius read fails; the retry action re-runs the read."
+    },
     "accountDeleteDialogBlastRadiusProfiles": "This will also permanently delete {count, plural, =1{1 profile} other{{count} profiles}} you own ({names}).",
     "@accountDeleteDialogBlastRadiusProfiles": {
       "description": "Issue #1004 (tranche 2): delete-account blast radius with no other guardians.",
