@@ -709,7 +709,17 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   }
 
   /// Reads [_state] for this pass and moves the floor of every write type
-  /// that is switched off to the present (see [HealthWritePassState]).
+  /// that is switched off — and of every type the last pass found off that
+  /// is switched on again — to the present (see [HealthWritePassState],
+  /// Issue #1604).
+  ///
+  /// The pass that observes a type back on is the one scheduled when she
+  /// returns from the store's own screens (Issue #1478's `onAppResumed`),
+  /// or — for the in-app request — the pass that asked, which resolves the
+  /// types from its own post-request status. A save made in the moment
+  /// between returning and that pass (inside the coordinator's debounce
+  /// window) still falls under the new floor; a save made after the pass
+  /// is admitted.
   ///
   /// `firstPass` is true when nothing is stored: this binding has not run
   /// a pass on this build, so its ledger may be in the form an earlier
@@ -724,15 +734,16 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     final stored = await _settings.get(SettingsKeys.healthSyncWriteState);
     final earlier = HealthWritePassState.decode(stored);
     _state = (earlier ?? HealthWritePassState(clearedThrough: floor))
-        .withTypesOff(healthWriteTypesOff(grantedTypes), _rowClock());
+        .withObservedTypesOff(healthWriteTypesOff(grantedTypes), _rowClock());
     return (stored: stored, firstPass: earlier == null);
   }
 
   /// Moves every write type's floor to the present, on a pass that found
-  /// write access removed altogether. Such a pass ends before it reads
-  /// which types are on, and without this what she logs meanwhile would
-  /// be sent when a type comes back, which is not what happens when only
-  /// some types are off.
+  /// write access removed altogether, and remembers that every type is off
+  /// so the pass that finds them back moves their floors again (Issue
+  /// #1604). Such a pass ends before it reads which types are on, and
+  /// without this what she logs meanwhile would be sent when a type comes
+  /// back, which is not what happens when only some types are off.
   ///
   /// `denied` is something the store said: a status that could not be
   /// read comes back as `unavailable`, never as this.
@@ -758,7 +769,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       );
       state = HealthWritePassState(clearedThrough: floor);
     }
-    _state = state.withTypesOff(
+    _state = state.withObservedTypesOff(
       healthWriteTypesOff(const <String>{}),
       _rowClock(),
     );
