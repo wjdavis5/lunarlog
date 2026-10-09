@@ -89,7 +89,10 @@ export const STORAGE_BANS = [
  * pass untouched (issue #1275). A member access carrying one of these
  * property names — from any receiver — is the same persistence surface, and
  * in this codebase nothing else legitimately owns properties with these
- * names.
+ * names. Both spellings are covered: the dot form matches on
+ * `property.name`, and the computed string-literal form
+ * (`window['localStorage']`, `document['cookie']` — issue #1722) on
+ * `property.value`.
  *
  * @type {{ selector: string, message: string }[]}
  */
@@ -99,6 +102,12 @@ export const STORAGE_SYNTAX_BANS = [
       'MemberExpression[property.name=/^(localStorage|sessionStorage|indexedDB|caches|cookieStore|cookie|serviceWorker)$/]',
     message:
       'Browser storage reached through a qualified reference — e.g. window.localStorage, globalThis.sessionStorage, self.caches, window.cookieStore, window.navigator.serviceWorker, window.document.cookie — keeps data at rest exactly like the bare name does. The web client keeps nothing at rest (issue #1249) — keep state in memory (TanStack Query) or on the server via supabase-js.',
+  },
+  {
+    selector:
+      'MemberExpression[computed=true][property.value=/^(localStorage|sessionStorage|indexedDB|caches|cookieStore|cookie|serviceWorker)$/]',
+    message:
+      "Browser storage reached through a computed member access — e.g. window['localStorage'], globalThis['sessionStorage'], document['cookie'] — keeps data at rest exactly like the dot form does. The web client keeps nothing at rest (issue #1249) — keep state in memory (TanStack Query) or on the server via supabase-js.",
   },
 ];
 
