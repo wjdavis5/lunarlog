@@ -114,6 +114,45 @@ void main() {
     });
   });
 
+  // Issue #1617: a record the store let go (deleted because its row stopped
+  // producing it, or a failed write) is kept as a gone row rather than
+  // forgotten, so a later pass cannot mistake it for one never written.
+  group('a record the store let go', () {
+    test('is not held, but its row stays known and it is out of the row\'s '
+        'record set', () async {
+      await memory.remember([_row('entry-1'), _row('symptom-entry-1-acne')]);
+      await memory.remember(
+        [_row('symptom-entry-1-acne', kind: HealthExportLedgerKind.gone)],
+      );
+
+      expect(memory.holds('symptom-entry-1-acne', _v1), isFalse);
+      expect(memory.knowsRow('entry-1'), isTrue);
+      expect(memory.recordIdsOf('entry-1'), {'entry-1'});
+      expect(
+        memory.entryOf('symptom-entry-1-acne')!.kind,
+        HealthExportLedgerKind.gone,
+      );
+    });
+
+    test('a row whose only record is gone is still known', () async {
+      await memory.remember([_row('entry-1', kind: HealthExportLedgerKind.gone)]);
+
+      expect(memory.knowsRow('entry-1'), isTrue);
+      expect(memory.recordIdsOf('entry-1'), isEmpty);
+      expect(memory.ofKind(HealthExportLedgerKind.gone), hasLength(1));
+    });
+
+    test('is replaced by a real row when the store accepts a write', () async {
+      await memory.remember([_row('entry-1', kind: HealthExportLedgerKind.gone)]);
+      expect(memory.holds('entry-1', _v1), isFalse);
+
+      await memory.remember([_row('entry-1')]);
+
+      expect(memory.holds('entry-1', _v1), isTrue);
+      expect(memory.recordIdsOf('entry-1'), {'entry-1'});
+    });
+  });
+
   group('forgetting', () {
     test('a forgotten record is gone from the ledger too, and its row is '
         'unknown once its last record goes', () async {

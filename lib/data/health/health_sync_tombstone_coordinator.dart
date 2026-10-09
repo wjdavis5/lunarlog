@@ -210,6 +210,11 @@ class HealthSyncTombstoneCoordinator {
           // row, so no tombstone can name it. The write path reconciles
           // it on its own pass (`_reconcilePeriodRecords`).
           break;
+        case HealthExportLedgerKind.gone:
+          // Issue #1617: the store does not hold this record, so no
+          // tombstone can find anything to delete, and the write path
+          // replaces the row when it writes it again. Nothing to seed.
+          break;
       }
     }
   }

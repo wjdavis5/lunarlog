@@ -119,6 +119,9 @@ bool healthRecordDeletable(
   HealthExportLedgerEntry? written,
   Set<String>? granted,
 ) {
+  // Issue #1617: a gone row names a record the store does not hold, so a
+  // delete is never sent for it, whatever the switches say.
+  if (written?.kind == HealthExportLedgerKind.gone) return false;
   if (written == null || granted == null) return true;
   return switch (written.kind) {
     HealthExportLedgerKind.period =>
@@ -128,6 +131,8 @@ bool healthRecordDeletable(
     HealthExportLedgerKind.spotting =>
       _spottingRecordDeletable(written.payloadSummary, granted),
     HealthExportLedgerKind.entry => _entryRecordDeletable(written, granted),
+    // Unreachable: handled above.
+    HealthExportLedgerKind.gone => false,
   };
 }
 

@@ -965,8 +965,8 @@ void main() {
       });
     });
 
-    test('a failed write is not remembered, so the failing day (and only '
-        'it) is sent again', () async {
+    test('a failed write is remembered as gone (never as written), so the '
+        'failing day (and only it) is sent again', () async {
       final grant = DateTime.utc(2026, 6, 1, 12);
       await seedGranted(grant);
       final updatedAt = grant.add(const Duration(hours: 2));
@@ -979,9 +979,9 @@ void main() {
       expect(first.samplesWritten, 1);
       expect(first.blocked, isNull);
 
-      // A later-logged day fails. It is not remembered as written, so it
-      // is sent again on the next pass; the first day is remembered, and
-      // is not.
+      // A later-logged day fails. It is remembered as gone, not as
+      // written (issue #1617), so it is sent again on the next pass; the
+      // first day is remembered as written, and is not.
       platform.writeResults = [
         const HealthPlatformPermissionDenied(),
       ];
@@ -994,8 +994,11 @@ void main() {
       expect(second.blocked, isA<HealthPlatformPermissionDenied>());
       expect(second.samplesWritten, 0);
       expect(
-        ledger.rows.map((row) => row.recordId),
-        isNot(contains('entry-2026-06-03')),
+        ledger.rows
+            .singleWhere((row) => row.recordId == 'entry-2026-06-03')
+            .kind,
+        HealthExportLedgerKind.gone,
+        reason: 'a failed write is not remembered as written',
       );
 
       platform.writeResults = [const HealthPlatformAllowed()];
@@ -1188,7 +1191,12 @@ void main() {
       final retried = await service.syncNow();
       expect(retried.blocked, isNull);
       expect(platform.deleteCalls.first, ['entry-2026-06-02']);
-      expect(ledger.rows, isEmpty);
+      expect(
+        ledger.rows.single.kind,
+        HealthExportLedgerKind.gone,
+        reason: 'the store let it go: kept as gone, not forgotten '
+            '(issue #1617)',
+      );
     });
 
     test(
@@ -4415,8 +4423,8 @@ void main() {
     // Issue #1583: the store says which types it passed over, and it says
     // so for any type that is off, whichever records were asked for.
     group('a delete the store answers "partial" to', () {
-      test('with another type passed over, the record is gone: forgotten, '
-          'counted, and nothing is reported', () async {
+      test('with another type passed over, the record is gone: kept as a '
+          'gone row, counted, and nothing is reported', () async {
         await seedGranted(grant);
         dayEntries.entries = [_entry('2026-06-10', FlowLevel.medium, at(10))];
         clock = at(11);
@@ -4432,8 +4440,12 @@ void main() {
 
         expect(report.blocked, isNull);
         expect(report.samplesReconciled, 1);
-        expect(ledger.rows, isEmpty,
-            reason: 'the flow record and the period record are both gone');
+        expect(
+          ledger.rows.map((row) => row.kind).toSet(),
+          {HealthExportLedgerKind.gone},
+          reason: 'the flow record and the period record are both gone, '
+              'kept as gone rows (issue #1617)',
+        );
         final asked = platform.deleteCalls.length;
         await service.syncNow();
         expect(platform.deleteCalls, hasLength(asked));
@@ -4495,9 +4507,9 @@ void main() {
       // Issue #1644: with a known payload summary, only a skip of the type
       // actually written counts as passed over; skipping the other type lets
       // the delete through and forgets the record.
-      test('a spotting marker with menstrualFlow skipped is deleted and '
-          'forgotten, but stays remembered when spotting was skipped (issue #1644)',
-          () async {
+      test('a spotting marker with menstrualFlow skipped is deleted and kept '
+          'as a gone row, but stays remembered when spotting was skipped '
+          '(issue #1644)', () async {
         // 1. menstrualFlow skipped: delete succeeds and record is forgotten.
         ledger = FakeHealthExportLedger();
         settings = FakeSettingsStore();
@@ -4518,7 +4530,7 @@ void main() {
 
         expect(report.blocked, isNull);
         expect(report.samplesReconciled, 1);
-        expect(ledger.rows, isEmpty);
+        expect(ledger.rows.single.kind, HealthExportLedgerKind.gone);
         expect(platform.deleteCalls, hasLength(1));
 
         // Subsequent pass sends nothing.
@@ -4549,10 +4561,11 @@ void main() {
         );
       });
 
-      test('a spotting flow sample with spotting skipped is deleted and '
-          'forgotten, but stays remembered when menstrualFlow was skipped',
-          () async {
-        // 1. spotting skipped: flow sample delete succeeds and is forgotten.
+      test('a spotting flow sample with spotting skipped is deleted and kept '
+          'as a gone row, but stays remembered when menstrualFlow was '
+          'skipped', () async {
+        // 1. spotting skipped: flow sample delete succeeds and is kept as
+        // gone.
         ledger = FakeHealthExportLedger();
         settings = FakeSettingsStore();
         platform = _FakePlatform();
@@ -4580,8 +4593,10 @@ void main() {
 
         expect(report.blocked, isNull);
         expect(
-          ledger.rows.map((r) => r.recordId),
-          isNot(contains('spot-2026-06-10')),
+          ledger.rows
+              .singleWhere((r) => r.recordId == 'spot-2026-06-10')
+              .kind,
+          HealthExportLedgerKind.gone,
         );
 
         // 2. menstrualFlow skipped: flow sample stays remembered.
@@ -4684,7 +4699,15 @@ void main() {
         );
         expect(platform.deleteCalls.expand((call) => call),
             contains('entry-2026-06-10'));
-        expect(ledger.rows.map((row) => row.recordId), [mucus]);
+        expect(
+          [
+            for (final row in ledger.rows)
+              if (row.kind != HealthExportLedgerKind.gone) row.recordId,
+          ],
+          [mucus],
+          reason: 'the flow record is gone (issue #1617), and the mucus '
+              'record stays remembered until its type is back',
+        );
 
         // Days later, with the deleted row long swept, the type is back.
         platform.permission = HealthPermissionStatus.granted;
@@ -4695,7 +4718,10 @@ void main() {
         expect(platform.deleteCalls, [
           [mucus],
         ]);
-        expect(ledger.rows, isEmpty);
+        expect(
+          ledger.rows.map((row) => row.kind).toSet(),
+          {HealthExportLedgerKind.gone},
+        );
 
         // And that is the end of it.
         await service.syncNow();
@@ -4716,7 +4742,7 @@ void main() {
         expect(platform.deleteCalls, [
           ['spot-2026-06-12'],
         ]);
-        expect(ledger.rows, isEmpty);
+        expect(ledger.rows.single.kind, HealthExportLedgerKind.gone);
       });
 
       test('the records of a day that is still there are left alone when '
@@ -4761,7 +4787,7 @@ void main() {
         platform.deleteResult = const HealthPlatformAllowed();
         final retried = await service.syncNow();
         expect(retried.blocked, isNull);
-        expect(ledger.rows, isEmpty);
+        expect(ledger.rows.single.kind, HealthExportLedgerKind.gone);
       });
 
       // Undo saves the same row back: the same id, a later time.
@@ -4777,7 +4803,7 @@ void main() {
         dayEntries.entries = [];
         await service.syncNow();
         expect(platform.deleteCalls.expand((call) => call), contains(flow));
-        expect(ledger.rows, isEmpty);
+        expect(ledger.rows.single.kind, HealthExportLedgerKind.gone);
 
         dayEntries.entries = [_entry('2026-06-10', FlowLevel.medium, at(70))];
         await service.syncNow();
@@ -4793,7 +4819,7 @@ void main() {
         dayEntries.entries = [];
         await service.syncNow();
         expect(platform.deleteCalls.expand((call) => call), contains(flow));
-        expect(ledger.rows, isEmpty);
+        expect(ledger.rows.single.kind, HealthExportLedgerKind.gone);
       });
 
       // A spotting entry's record is one of two types. A row written by
@@ -4839,7 +4865,7 @@ void main() {
           final back = await buildService().syncNow();
           expect(back.blocked, isNull);
           expect(platform.deleteCalls.expand((call) => call), [marker]);
-          expect(ledger.rows, isEmpty);
+          expect(ledger.rows.single.kind, HealthExportLedgerKind.gone);
         });
       }
 
@@ -4864,7 +4890,7 @@ void main() {
 
         expect(report.blocked, isNull);
         expect(platform.deleteCalls.expand((call) => call), [marker]);
-        expect(ledger.rows, isEmpty);
+        expect(ledger.rows.single.kind, HealthExportLedgerKind.gone);
       });
 
       // Another device's row for the date wins a merge: this phone's row
@@ -4900,6 +4926,109 @@ void main() {
               if (row.kind == HealthExportLedgerKind.entry) row.recordId,
           ],
           ['entry-from-her-tablet'],
+        );
+      });
+    });
+
+    // Issue #1617. The store accepts a delete, and the record that went is
+    // one its row may want again without changing: a spotting entry under
+    // a day whose flow is later cleared. Kept as a gone ledger row rather
+    // than forgotten, so the forward-only floor — moved while the type was
+    // off — cannot keep it out.
+    group('issue #1617: a record the store let go', () {
+      test('a spotting marker deleted for a flow comes back when the flow is '
+          'cleared, even after spotting was switched off and on', () async {
+        await seedGranted(grant);
+        dayEntries.entries = [_entry('2026-06-10', FlowLevel.none, at(10))];
+        observations.observations = [_spotting('2026-06-10', at(10))];
+        clock = at(11);
+        final service = buildService();
+        await service.syncNow();
+        expect(platform.markerWrites, hasLength(1));
+        expect(platform.markerWrites.single.recordId, 'spot-2026-06-10');
+
+        // The day is given a flow: the marker goes, the flow sample is
+        // written.
+        dayEntries.entries = [_entry('2026-06-10', FlowLevel.medium, at(20))];
+        clock = at(21);
+        await service.syncNow();
+        expect(
+          platform.deleteCalls.expand((call) => call),
+          contains('spot-2026-06-10'),
+        );
+        expect(
+          ledger.rows
+              .singleWhere((row) => row.recordId == 'spot-2026-06-10')
+              .kind,
+          HealthExportLedgerKind.gone,
+        );
+
+        // Spotting is switched off, a pass runs, and it is switched back on.
+        platform
+          ..permission = HealthPermissionStatus.writingSome
+          ..grantedTypes = {'menstrualFlow'};
+        clock = at(30);
+        await service.syncNow();
+        platform.permission = HealthPermissionStatus.granted;
+        clock = at(40);
+        await service.syncNow();
+
+        // The flow is cleared. The observation row has not changed, so its
+        // time sits under the floor the off-and-on passes stamped; the
+        // marker must still be written.
+        dayEntries.entries = [_entry('2026-06-10', FlowLevel.none, at(50))];
+        clock = at(51);
+        final report = await service.syncNow();
+
+        expect(report.blocked, isNull);
+        expect(platform.markerWrites, hasLength(2),
+            reason: 'the record the store let go is not treated as never '
+                'written (issue #1617)');
+        expect(platform.markerWrites.last.recordId, 'spot-2026-06-10');
+      });
+
+      test('a write that failed is retried after its type was switched off '
+          'and on', () async {
+        await seedGranted(grant);
+        dayEntries.entries = [_entry('2026-06-10', FlowLevel.none, at(10))];
+        observations.observations = [_spotting('2026-06-10', at(10))];
+        clock = at(11);
+        platform.writeResults = [const HealthPlatformResult.failed('no')];
+        final service = buildService();
+        final first = await service.syncNow();
+
+        expect(first.blocked, isA<HealthPlatformFailed>());
+        expect(platform.markerWrites, hasLength(1));
+        expect(
+          ledger.rows.single.kind,
+          HealthExportLedgerKind.gone,
+          reason: 'the failed write is kept as gone, not as written',
+        );
+
+        // Spotting is switched off; a pass runs and writes nothing.
+        platform
+          ..permission = HealthPermissionStatus.writingSome
+          ..grantedTypes = {'menstrualFlow'};
+        clock = at(30);
+        await service.syncNow();
+        expect(platform.markerWrites, hasLength(1));
+
+        // It is switched back on. The floor moves to this pass, after the
+        // observation's own time, and the failed write is still retried.
+        platform
+          ..permission = HealthPermissionStatus.granted
+          ..writeResults = [];
+        clock = at(40);
+        final retried = await service.syncNow();
+
+        expect(retried.blocked, isNull);
+        expect(platform.markerWrites, hasLength(2),
+            reason: 'a write that failed while its type was on is not '
+                'blocked by a later off-and-on (issue #1617)');
+        expect(
+          ledger.rows.single.payloadSummary,
+          'marker',
+          reason: 'the retry was accepted, so the row is real again',
         );
       });
     });
