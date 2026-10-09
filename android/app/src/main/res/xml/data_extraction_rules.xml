@@ -49,6 +49,14 @@
   `app_flutter` directory — nothing else is ever written there today, but an
   explicit list doesn't silently swallow some future unrelated file placed
   in that directory.
+
+  Round 6 (issue #1788): the widget's shared container. The home_widget
+  plugin keeps the widget payload in the `sharedpref` domain file
+  `HomeWidgetPreferences.xml` (LunarLogWidgetProvider.PREFERENCES), which
+  rides device-to-device transfer on API 31+ unless it is excluded here —
+  allowBackup="false" does not stop that flow (see the first paragraph
+  above). PRIVACY.md Section 2.E promises nothing in the widget container
+  ever leaves the device.
 -->
 <data-extraction-rules>
     <cloud-backup>
@@ -80,6 +88,8 @@
         <exclude domain="cache" path="share_plus"/>
         <exclude domain="cache" path="image_picker"/>
         <exclude domain="cache" path="file_picker"/>
+        <!-- Round 6 (issue #1788): see the header comment. -->
+        <exclude domain="sharedpref" path="HomeWidgetPreferences.xml"/>
     </cloud-backup>
     <device-transfer>
         <exclude domain="file" path="lunarlog.db"/>
@@ -100,5 +110,7 @@
         <exclude domain="cache" path="share_plus"/>
         <exclude domain="cache" path="image_picker"/>
         <exclude domain="cache" path="file_picker"/>
+        <!-- Round 6 (issue #1788): see the header comment. -->
+        <exclude domain="sharedpref" path="HomeWidgetPreferences.xml"/>
     </device-transfer>
 </data-extraction-rules>

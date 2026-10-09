@@ -379,6 +379,32 @@ void main() {
       expect(protectWidget, contains('isExcludedFromBackup = true'));
     });
 
+    test('the Android backup rules exclude the widget preferences (issue '
+        '#1788)', () {
+      // `allowBackup="false"` does not stop API 31+ device-to-device
+      // transfer, so the widget's SharedPreferences file gets the same
+      // explicit exclusion the database files have — in both rule files
+      // and both sections of the API 31+ one.
+      const exclude =
+          '<exclude domain="sharedpref" path="HomeWidgetPreferences.xml"/>';
+      final extraction = readRepoFile(
+          'android/app/src/main/res/xml/data_extraction_rules.xml');
+      final legacy =
+          readRepoFile('android/app/src/main/res/xml/backup_rules.xml');
+      final cloudBackup = RegExp(r'<cloud-backup>[\s\S]*?</cloud-backup>')
+          .firstMatch(extraction)
+          ?.group(0);
+      final deviceTransfer =
+          RegExp(r'<device-transfer>[\s\S]*?</device-transfer>')
+              .firstMatch(extraction)
+              ?.group(0);
+      expect(cloudBackup, isNotNull);
+      expect(deviceTransfer, isNotNull);
+      expect(cloudBackup, contains(exclude));
+      expect(deviceTransfer, contains(exclude));
+      expect(legacy, contains(exclude));
+    });
+
     test('the Android manifest registers the widget provider', () {
       expect(manifest, contains('android:name=".LunarLogWidgetProvider"'));
       expect(
