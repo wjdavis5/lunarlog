@@ -123,6 +123,17 @@ abstract interface class DayEntryStore {
     required String profileId,
     required String localDate,
   });
+  /// The health import's removal, keeping the row (Issue #1594): the day
+  /// at [localDate] loses its imported flow and becomes hers — flow
+  /// `none`, source `manual`, no record (Issue #1616 item 1). Deliberately
+  /// not [saveDayEntryWithObservations]: the storage layer reads a
+  /// `manual`/null/null save against an imported row as "provenance
+  /// unspecified" and keeps the stored source, which is right for a bare
+  /// save but not for this reset.
+  Future<void> clearImportedFlowKeepingRow({
+    required String profileId,
+    required String localDate,
+  });
 }
 
 /// Reads and writes for the `observations` table.

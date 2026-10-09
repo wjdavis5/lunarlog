@@ -96,6 +96,19 @@ abstract interface class UndoDayEntryDeleter {
   Future<void> deleteForUndo(String profileId, LocalDate localDate);
 }
 
+/// Issue #1616 item 1: the reset the health import's removal performs on a
+/// day it keeps. A plain [DayEntriesRepository.save] cannot express it —
+/// the storage layer reads a `manual`/null/null save against an imported
+/// row as "provenance unspecified" and keeps the stored source (right for
+/// a bare save, wrong for this reset) — so it gets its own narrow seam,
+/// like the readers and [UndoDayEntryDeleter] above.
+abstract interface class ImportedFlowResetter {
+  /// Takes the imported flow off the day at [localDate] and makes the row
+  /// hers: flow `none`, source `manual`, no record. No-op when there is no
+  /// live row.
+  Future<void> clearImportedFlow(String profileId, LocalDate localDate);
+}
+
 abstract interface class DayEntriesRepository {
   /// Upserts the live entry for (profileId, localDate). Tag codes are
   /// validated against the domain taxonomy. The returned model carries the

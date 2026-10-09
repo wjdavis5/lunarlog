@@ -256,6 +256,7 @@
   "healthSyncStoreDeletedConfirmBody": "{count, plural, =1{The imported flow or spotting comes off that day, here and on every device this profile syncs to. Tags, notes and other entries stay. This cannot be undone.} other{The imported flow or spotting comes off those days, here and on every device this profile syncs to. Tags, notes and other entries stay. This cannot be undone.}}",
   "healthSyncStoreDeletedConfirmCancel": "Cancel",
   "healthSyncStoreDeletedConfirmAction": "Remove",
+  "healthSyncStoreDeletedConfirmPastDataHidden": "Older records may be hidden while Health Connect's \"Access past data\" setting is off, so a day removed here can come back after that setting is on and an import runs.",
   "healthSyncStoreDeletedNothingRemoved": "Nothing was removed.",
   "healthSyncStoreDeletedReadFailed": "lunarlog could not read everything in {source}. Please try again.",
   "healthSyncStoreDeletedRemoveFailed": "Could not finish removing. Please try again.",

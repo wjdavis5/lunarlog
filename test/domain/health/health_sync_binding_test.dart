@@ -959,4 +959,44 @@ void main() {
       expect(await binding.storeDeletedRecordIds(), {'rec-1', 'rec-2'});
     });
   });
+
+  // Issue #1616 item 4: the ids she answered Keep for. A pass that notes a
+  // deletion and then fails before committing its position reports the same
+  // deletion again; these keep the offer from coming back once.
+  group('ids she kept (issue #1616)', () {
+    const key = SettingsKeys.healthImportKeptDeletedRecordIds;
+
+    test('nothing is kept until something is', () async {
+      expect(await binding.keptDeletedRecordIds(), isEmpty);
+    });
+
+    test('adding keeps the old ids, reads back sorted, and is idempotent',
+        () async {
+      await binding.addKeptDeletedRecordIds({'rec-2'});
+      await binding.addKeptDeletedRecordIds({'rec-1', 'rec-2'});
+      await binding.addKeptDeletedRecordIds(const {});
+
+      expect(await binding.keptDeletedRecordIds(), {'rec-1', 'rec-2'});
+      expect(await settings.get(key), '["rec-1","rec-2"]');
+    });
+
+    test('unbind clears it with the binding', () async {
+      await binding.bind(
+        profile: _profile(id: 'a'),
+        signedInUserId: 'u1',
+        ownerUserId: 'u1',
+        minorBindingAllowed: false,
+      );
+      await binding.addKeptDeletedRecordIds({'rec-1'});
+
+      await binding.unbind();
+
+      expect(await binding.keptDeletedRecordIds(), isEmpty);
+    });
+
+    test('what cannot be read is nothing kept', () async {
+      await settings.set(key, 'junk');
+      expect(await binding.keptDeletedRecordIds(), isEmpty);
+    });
+  });
 }

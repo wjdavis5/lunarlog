@@ -805,6 +805,9 @@ void runSuite(HealthImportPlatform platform) {
       expect(day.flow, FlowLevel.none);
       expect(day.tags, ['cramps']);
       expect(day.sourceId, isNull, reason: 'it names no record any more');
+      expect(day.source, DayEntrySource.manual,
+          reason: 'the row is hers now, so a flow she logs on it is '
+              'exported (issue #1616 item 1)');
       expect(summary.daysRemoved, 1);
       expect(await days.deletedHealthRecords(_profileId), isEmpty);
     });
@@ -1211,6 +1214,39 @@ void runSuite(HealthImportPlatform platform) {
 
       expect(await binding.storeDeletedRecordIds(), {'rec-11'});
       expect(await onOffer(), 1);
+    });
+
+    // Issue #1616 item 4: a pass that notes a deletion and then fails on a
+    // later page does not commit its position, so the next pass reports
+    // the same deletion again. Keep has to stick across that.
+    test('an id she already kept is not offered again when a failed pass '
+        're-reports it', () async {
+      await imported([flow('rec-10', 10, HealthFlowValue.heavy)]);
+      store.delete('rec-10');
+
+      // A changes read whose first page carries the deletion and whose
+      // second fails: the deletion is noted, the position is not committed.
+      store.changePages.addAll([
+        HealthReadResult.samples(
+          const [],
+          incremental: true,
+          deletedRecordIds: const ['rec-10'],
+          nextCursor: 'more',
+        ),
+        const HealthReadResult.failed('the store went away'),
+      ]);
+      await import.importNow();
+      expect(await onOffer(), 1);
+      expect(store.commits, isEmpty, reason: 'the pass never finished');
+
+      await keepOffered();
+      expect(await onOffer(), 0);
+      expect(await binding.keptDeletedRecordIds(), {'rec-10'});
+
+      // The next pass reads the same changes again and re-reports the
+      // deletion; she already answered it.
+      await import.importNow();
+      expect(await onOffer(), 0);
     });
 
     // The list is what the store has said. An offer read earlier only

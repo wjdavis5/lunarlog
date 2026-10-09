@@ -192,6 +192,12 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// summary, and whether the pass threw (an unexpected storage error — the
   /// runner itself reports expected failures as a [HealthImportSummary]).
   bool _importing = false;
+
+  /// A removal she confirmed while a pass was running (Issue #1616 item
+  /// 3): the runner would queue it, but this screen's own pass state
+  /// cannot host two runs, so it waits here and starts when the running
+  /// pass finishes. Cleared with the result on a binding change.
+  HealthStoreDeletedOffer? _pendingRemoval;
   bool _importFailed = false;
   HealthImportSummary? _importSummary;
 
@@ -737,6 +743,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
     // change reads it again.
     _storeDeleted = const HealthStoreDeletedOffer();
     _lastPassRemoved = false;
+    _pendingRemoval = null;
     _bindingChanges++;
   }
 
@@ -764,6 +771,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       _importFailed = true;
     });
     _revealResult();
+    _startPendingRemoval();
   }
 
   /// The bound profile's display name, or a neutral stand-in when the bound
@@ -863,6 +871,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
         _setAccess(access);
       });
       _showResult(summary);
+      _startPendingRemoval();
     } catch (_) {
       _importThrew(startedUnder);
     }
@@ -891,7 +900,24 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   Future<void> _removeStoreDeleted() async {
     final offer = _storeDeleted;
     if (!await _confirmRemoveStoreDeleted(offer.days) || !mounted) return;
+    if (_importing) {
+      // Issue #1616 item 3: a pass is running (the common way in: she
+      // confirmed after returning from Health Connect, which starts one).
+      // It runs when that pass finishes instead of being dropped without
+      // a word.
+      _pendingRemoval = offer;
+      return;
+    }
     await _runImport(remove: offer);
+  }
+
+  /// Starts a removal she confirmed while a pass was running (Issue #1616
+  /// item 3), if one is waiting. Called when a pass ends, either way.
+  void _startPendingRemoval() {
+    final pending = _pendingRemoval;
+    _pendingRemoval = null;
+    if (pending == null || !mounted) return;
+    unawaited(_runImport(remove: pending));
   }
 
   /// The confirmation before a removal: what goes, what stays, that it
@@ -907,7 +933,23 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
         final l10n = AppLocalizations.of(dialogContext);
         return AlertDialog(
           title: Text(l10n.healthSyncStoreDeletedConfirmTitle(days)),
-          content: Text(l10n.healthSyncStoreDeletedConfirmBody(days)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(l10n.healthSyncStoreDeletedConfirmBody(days)),
+              // Issue #1616 item 2: with the switch known to be off, the
+              // read that precedes a removal cannot see a record in the
+              // hidden range, so a day removed here may come back once it
+              // is on. Health Connect only — an iPhone has no switch.
+              if (_importPlatform == HealthImportPlatform.healthConnect &&
+                  _importPastDataOffered &&
+                  _importReachedPastData == false) ...[
+                const SizedBox(height: 12),
+                Text(l10n.healthSyncStoreDeletedConfirmPastDataHidden),
+              ],
+            ],
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),

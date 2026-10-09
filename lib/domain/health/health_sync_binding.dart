@@ -283,6 +283,7 @@ class HealthSyncBinding {
     await _settings.set(SettingsKeys.healthStoreProfileId, profile.id);
     await _clearFirstImportMarker();
     await setStoreDeletedRecordIds(const {});
+    await _settings.set(SettingsKeys.healthImportKeptDeletedRecordIds, '');
     return HealthSyncCheck.allowed;
   }
 
@@ -293,15 +294,54 @@ class HealthSyncBinding {
     await _settings.set(SettingsKeys.healthStoreProfileId, '');
     await _clearFirstImportMarker();
     await setStoreDeletedRecordIds(const {});
+    await _settings.set(SettingsKeys.healthImportKeptDeletedRecordIds, '');
   }
 
   /// The health-store records the store has said were deleted and that
   /// an imported row here was written from, waiting for her answer
   /// (Issue #1594). Empty when nothing is stored or what is stored cannot
   /// be read: the offer is then simply not made.
-  Future<Set<String>> storeDeletedRecordIds() async {
-    final raw =
+  Future<Set<String>> storeDeletedRecordIds() async => _decodeIds(
+        await _settings.get(SettingsKeys.healthImportStoreDeletedRecordIds),
+      );
+
+  /// Replaces [storeDeletedRecordIds]. They belong to the current
+  /// binding, so `bind`/`unbind` clear them. Nothing is written when
+  /// nothing is stored and [ids] is empty.
+  Future<void> setStoreDeletedRecordIds(Set<String> ids) async {
+    final stored =
         await _settings.get(SettingsKeys.healthImportStoreDeletedRecordIds);
+    final next = ids.isEmpty ? '' : jsonEncode(ids.toList()..sort());
+    if ((stored ?? '') == next) return;
+    await _settings.set(SettingsKeys.healthImportStoreDeletedRecordIds, next);
+  }
+
+  /// The record ids she has answered Keep for on the Health sync screen's
+  /// offer (Issue #1616 item 4). A pass that notes a deletion and then
+  /// fails on a later page does not commit its read position, so the next
+  /// pass reports the same deletion again; without this set, an id she
+  /// already kept came back on offer once. Empty when nothing is stored
+  /// or what is stored cannot be read.
+  Future<Set<String>> keptDeletedRecordIds() async => _decodeIds(
+        await _settings.get(SettingsKeys.healthImportKeptDeletedRecordIds),
+      );
+
+  /// Adds [ids] to [keptDeletedRecordIds]. Nothing is written for an
+  /// empty call or one whose ids are all already kept.
+  Future<void> addKeptDeletedRecordIds(Set<String> ids) async {
+    if (ids.isEmpty) return;
+    final kept = await keptDeletedRecordIds();
+    final next = {...kept, ...ids};
+    if (next.length == kept.length) return;
+    await _settings.set(
+      SettingsKeys.healthImportKeptDeletedRecordIds,
+      jsonEncode(next.toList()..sort()),
+    );
+  }
+
+  /// Decodes a stored JSON list of record ids; anything unreadable reads
+  /// as empty, the same posture the two callers document.
+  static Set<String> _decodeIds(String? raw) {
     if (raw == null || raw.isEmpty) return const {};
     try {
       final decoded = jsonDecode(raw);
@@ -313,17 +353,6 @@ class HealthSyncBinding {
     } on FormatException {
       return const {};
     }
-  }
-
-  /// Replaces [storeDeletedRecordIds]. They belong to the current
-  /// binding, so `bind`/`unbind` clear them. Nothing is written when
-  /// nothing is stored and [ids] is empty.
-  Future<void> setStoreDeletedRecordIds(Set<String> ids) async {
-    final stored =
-        await _settings.get(SettingsKeys.healthImportStoreDeletedRecordIds);
-    final next = ids.isEmpty ? '' : jsonEncode(ids.toList()..sort());
-    if ((stored ?? '') == next) return;
-    await _settings.set(SettingsKeys.healthImportStoreDeletedRecordIds, next);
   }
 
   /// Whether the first user-initiated import has completed for the current

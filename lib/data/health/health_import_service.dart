@@ -625,10 +625,14 @@ class LocalHealthImportService
       _queued(() => _answered(offer.recordIds));
 
   /// Takes [recordIds] off the list: she has said to keep what was
-  /// imported from them.
+  /// imported from them. They also join the kept set (Issue #1616 item 4):
+  /// a pass that noted the same deletion and then failed before committing
+  /// its position reports it again, and without the kept set the offer
+  /// came back once.
   Future<void> _answered(Set<String> recordIds) async {
     final waiting = await _binding.storeDeletedRecordIds();
     await _binding.setStoreDeletedRecordIds(waiting.difference(recordIds));
+    await _binding.addKeptDeletedRecordIds(recordIds);
   }
 
   /// A pass she started: an import, or the removal of what was imported
@@ -1079,6 +1083,11 @@ class LocalHealthImportService
   /// (Issue #1594). Only ids an imported row was written from are kept:
   /// the store reports every deletion, this app's own among them.
   ///
+  /// Ids she has already answered Keep for are not added back (Issue
+  /// #1616 item 4): a pass that noted a deletion and then failed before
+  /// committing its position reports the same deletion again, and without
+  /// this the offer came back once.
+  ///
   /// Stored before anything else is done with them, so a pass that ends
   /// early, or a phone that is switched off, loses none: the store says
   /// a record was deleted once, and never again.
@@ -1099,7 +1108,8 @@ class LocalHealthImportService
       return const _StoreDeleted();
     }
     final ids = {...waiting, ...accumulator.deletedRecordIds}
-      ..removeAll(accumulator.liveRecordIds);
+      ..removeAll(accumulator.liveRecordIds)
+      ..removeAll(await _binding.keptDeletedRecordIds());
     final found = await scanner.find(ids);
     await _binding.setStoreDeletedRecordIds(found.recordIds);
     return found;
@@ -1209,12 +1219,26 @@ class LocalHealthImportService
     final live = await _dayEntries.find(profileId, day.localDate);
     if (live == null || live.sourceId != day.sourceId) return false;
     if (_carriesMore(live, entryDates) || await _hasEntries(live)) {
-      // The store's source stays and the record goes: a row of this
-      // store's with no record is hers ([_mayAdopt]), and takes a flow
-      // from the store again only while it has none.
-      await _dayEntries.save(
-        live.copyWith(flow: FlowLevel.none, sourceId: null),
-      );
+      // The record goes, and the row becomes hers: flow none, source
+      // manual, no record (Issue #1616 item 1). Keeping the store's source
+      // left the row reading as imported, and the write path does not
+      // export imported rows — a flow she then logged by hand on this day
+      // was never written. A manual row with no flow still takes a flow
+      // from the store again on a later import ([_mayAdopt]), so nothing
+      // else changes. The server accepts the change: `manual` is in
+      // `day_entries_source_check`'s closed set, sync_push resolves the
+      // row by id, and clearing `sourceId` takes it out of the import
+      // provenance index. The reset goes through its own seam
+      // ([ImportedFlowResetter]): a plain save would be read by the
+      // storage layer as "provenance unspecified" and keep the source.
+      if (_dayEntries case final ImportedFlowResetter resetter) {
+        await resetter.clearImportedFlow(profileId, live.localDate);
+      } else {
+        // A repository without the seam (a test double): the old save.
+        await _dayEntries.save(
+          live.copyWith(flow: FlowLevel.none, sourceId: null),
+        );
+      }
     } else {
       await _dayEntries.delete(profileId, live.localDate);
     }
