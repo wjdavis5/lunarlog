@@ -630,6 +630,20 @@ int _requireSchemaVersion(Object? raw) {
   return raw;
 }
 
+/// Issue #1717: a container key that is present but not a JSON array is
+/// evidence of tampering or corruption, the same as a wrong-typed scalar --
+/// reject the whole document rather than reading it as "no rows" (a
+/// hand-edited backup with `"dayEntries": { ... }` imported successfully
+/// with its entire history silently absent). Absent/null stays tolerated:
+/// an export from an older schema version may legitimately lack a container
+/// a later version added.
+List<Object?> _requireList(Object? raw, {required String what}) {
+  if (raw == null) return const [];
+  if (raw is! List) {
+    throw _ImportFormatException('$what is not a list.');
+  }
+  return raw;
+}
 ImportedProfile _parseProfile(Object? raw) {
   if (raw is! Map<String, Object?>) {
     throw _ImportFormatException('A profile entry is not an object.');
@@ -642,23 +656,23 @@ ImportedProfile _parseProfile(Object? raw) {
   final customTagsJson = raw['customTags'];
   final guardianNotesJson = raw['guardianNotes'];
   final dayEntries = [
-    for (final e in dayEntriesJson is List ? dayEntriesJson : const [])
+    for (final e in _requireList(dayEntriesJson, what: '$context dayEntries'))
       _parseDayEntry(e, profileId: id),
   ];
   final observations = [
-    for (final o in observationsJson is List ? observationsJson : const [])
+    for (final o in _requireList(observationsJson, what: '$context observations'))
       _parseObservation(o, profileId: id),
   ];
   final cycleOverrides = [
-    for (final o in cycleOverridesJson is List ? cycleOverridesJson : const [])
+    for (final o in _requireList(cycleOverridesJson, what: '$context cycleOverrides'))
       _parseCycleOverride(o, profileId: id),
   ];
   final customTags = [
-    for (final t in customTagsJson is List ? customTagsJson : const [])
+    for (final t in _requireList(customTagsJson, what: '$context customTags'))
       _parseCustomTag(t, profileId: id),
   ];
   final guardianNotes = [
-    for (final n in guardianNotesJson is List ? guardianNotesJson : const [])
+    for (final n in _requireList(guardianNotesJson, what: '$context guardianNotes'))
       _parseGuardianNote(n, profileId: id),
   ];
   _rejectDuplicateEntryDates(dayEntries, profileId: id);
