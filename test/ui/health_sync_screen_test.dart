@@ -3492,6 +3492,84 @@ void main() {
           expect(probe.settingsOpened, 1);
         });
 
+        // Issue #1616 item 3: she opens the removal confirmation, leaves
+        // for Health Connect to turn the switch on, and confirms when she
+        // is back — by then the resume has started an import, and the
+        // removal used to be dropped without a word. It now runs when that
+        // import finishes.
+        testWidgets('a removal confirmed while the resumed import runs '
+            'waits for it', (tester) async {
+          final probe = switchOff();
+          final importer = androidImporter(broughtDaysIn)..storeDeletedDays = 2;
+          await importOn(tester, probe, importer);
+
+          // She asks for the switch; it stays off.
+          await tester.tap(resultAllow);
+          await tester.pumpAndSettle();
+          expect(resultSettings, findsOneWidget);
+
+          // The offer's confirmation is open when she comes back.
+          await tester.tap(
+            find.byKey(const ValueKey('health-sync-store-deleted-remove')),
+          );
+          await tester.pumpAndSettle();
+          final confirm =
+              find.byKey(const ValueKey('health-sync-store-deleted-confirm'));
+
+          // The switch is on now. Coming back starts an import, held open.
+          probe.reachesPastData = true;
+          importer.importGate = Completer<void>();
+          tester.binding
+              .handleAppLifecycleStateChanged(AppLifecycleState.paused);
+          tester.binding
+              .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+          // No pumpAndSettle while the import runs: its progress bar never
+          // settles.
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 500));
+
+          // She confirms while that import runs: it waits, not dropped.
+          await tester.tap(confirm);
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 500));
+          expect(importer.removed, isEmpty,
+              reason: 'the running import comes first');
+
+          importer.importGate!.complete();
+          importer.importGate = null;
+          await tester.pumpAndSettle();
+
+          expect(importer.removed, hasLength(1),
+              reason: 'it runs when the import finishes');
+          expect(importer.removed.single.days, 2);
+        });
+
+        // Issue #1616 item 2: with the switch off, the read that precedes a
+        // removal cannot see a record in Health Connect's hidden range, so
+        // the confirmation says a day removed here can come back.
+        testWidgets('the removal confirmation names the hidden range when '
+            'the switch is off', (tester) async {
+          final probe = switchOff();
+          final importer = androidImporter(broughtDaysIn)..storeDeletedDays = 2;
+          await importOn(tester, probe, importer);
+          expect(find.text(olderHint), findsOneWidget,
+              reason: 'the read ran with the switch off');
+
+          await tester.tap(
+            find.byKey(const ValueKey('health-sync-store-deleted-remove')),
+          );
+          await tester.pumpAndSettle();
+
+          expect(
+            find.text(
+              'Older records may be hidden while Health Connect\'s "Access '
+              'past data" setting is off, so a day removed here can come '
+              'back after that setting is on and an import runs.',
+            ),
+            findsOneWidget,
+          );
+        });
+
         testWidgets('a request that fails ends the same way', (tester) async {
           final probe = switchOff();
           final importer = androidImporter(broughtDaysIn)

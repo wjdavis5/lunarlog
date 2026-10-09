@@ -1044,6 +1044,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get healthSyncStoreDeletedConfirmAction => 'Remove';
 
   @override
+  String get healthSyncStoreDeletedConfirmPastDataHidden =>
+      'Older records may be hidden while Health Connect\'s \"Access past data\" setting is off, so a day removed here can come back after that setting is on and an import runs.';
+
+  @override
   String get healthSyncStoreDeletedNothingRemoved => 'Nothing was removed.';
 
   @override

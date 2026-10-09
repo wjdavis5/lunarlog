@@ -1660,6 +1660,12 @@ abstract class AppLocalizations {
   /// **'Remove'**
   String get healthSyncStoreDeletedConfirmAction;
 
+  /// Health sync screen (Issue #1616 item 2): an extra paragraph in the removal confirmation when the store offers the 'Access past data' switch and the last read did not reach the older data. Says the hidden range can hold another record for a day being removed, so the day may return once the setting is on. Health Connect only; never shown on iOS.
+  ///
+  /// In en, this message translates to:
+  /// **'Older records may be hidden while Health Connect\'s \"Access past data\" setting is off, so a day removed here can come back after that setting is on and an import runs.'**
+  String get healthSyncStoreDeletedConfirmPastDataHidden;
+
   /// Health sync screen (Issue #1594): first line of the result of a removal that was stopped before it removed anything. The line after it says what stopped it.
   ///
   /// In en, this message translates to:

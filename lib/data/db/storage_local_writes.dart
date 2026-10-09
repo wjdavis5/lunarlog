@@ -1153,6 +1153,32 @@ mixin LunarLogStorageLocalWrites
         rememberHealthImportRecords: false,
       );
 
+  /// The health import's removal, keeping the row (Issue #1594): the day
+  /// loses its imported flow and becomes hers — flow `none`, source
+  /// `manual`, no record (Issue #1616 item 1). A direct column write, not
+  /// [_writeDayEntry]: that path's provenance resolution treats a
+  /// manual/null/null update against an imported row as "provenance
+  /// unspecified" and keeps the stored source. Same stamping rules as any
+  /// local write.
+  Future<void> clearImportedFlowKeepingRow({
+    required String profileId,
+    required String localDate,
+  }) async {
+    final live = await _liveDayEntry(profileId, localDate);
+    if (live == null) return;
+    await (db.update(db.dayEntries)..where((t) => t.id.equals(live.id))).write(
+      DayEntriesCompanion(
+        flow: const Value(FlowLevel.none),
+        source: const Value('manual'),
+        sourceId: const Value(null),
+        importId: const Value(null),
+        updatedAt: Value(_afterStored(_now(), live.updatedAt)),
+        dirty: const Value(true),
+        localRev: Value(live.localRev + 1),
+      ),
+    );
+  }
+
   Future<void> _softDeleteDayEntry({
     required String profileId,
     required String localDate,

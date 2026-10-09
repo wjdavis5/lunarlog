@@ -19,7 +19,8 @@ class DriftDayEntriesRepository
         LatestDayEntryReader,
         DayEntrySyncStateReader,
         DeletedDayEntryReader,
-        UndoDayEntryDeleter {
+        UndoDayEntryDeleter,
+        ImportedFlowResetter {
   DriftDayEntriesRepository(this._storage);
 
   final DayEntriesRepositoryStore _storage;
@@ -159,6 +160,15 @@ class DriftDayEntriesRepository
   @override
   Future<void> deleteForUndo(String profileId, domain.LocalDate localDate) =>
       _storage.softDeleteDayEntryForUndo(
+        profileId: profileId,
+        localDate: localDate.iso,
+      );
+
+  /// Issue #1616 item 1: the import removal's keep-the-row reset — see
+  /// [ImportedFlowResetter].
+  @override
+  Future<void> clearImportedFlow(String profileId, domain.LocalDate localDate) =>
+      _storage.clearImportedFlowKeepingRow(
         profileId: profileId,
         localDate: localDate.iso,
       );
