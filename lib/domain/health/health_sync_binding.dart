@@ -366,20 +366,54 @@ class HealthSyncBinding {
   /// that finishes after a mid-pass re-bind (the Health sync screen keeps
   /// its profile tiles live) leaves its consent under the old profile,
   /// and the new binding still reads as unstarted.
+  ///
+  /// Issue #1755: the consent is one atomic value
+  /// ([SettingsKeys.healthImportFirstPassConsent]) — two separate settings
+  /// writes could interleave a finishing pass's stamp with a re-bind's
+  /// clear and leave a fresh timestamp with an empty id, which the legacy
+  /// pair's upgrade rule reads as completed for the new binding. An
+  /// upgraded install with no consent value still reads the legacy pair.
   Future<bool> hasCompletedFirstImport() async {
+    final rawConsent =
+        await _settings.get(SettingsKeys.healthImportFirstPassConsent);
+    if (rawConsent != null) {
+      // A cleared (empty) or unreadable value fails shut — never falls back
+      // to the legacy pair, whose values may still be on disk from before
+      // the upgrade and could hold the dangerous timestamp-without-id shape.
+      final consent = _decodeFirstImportConsent(rawConsent);
+      if (consent == null) return false;
+      return consent.profileId == await boundProfileId();
+    }
+    // Legacy pair (pre-#1755 builds): the consent value is unset only on an
+    // install that upgraded and has not written it since.
     final raw =
         await _settings.get(SettingsKeys.healthImportFirstPassCompletedMs);
     if (int.tryParse(raw ?? '') == null) return false;
     final consentProfileId =
         await _settings.get(SettingsKeys.healthImportFirstPassProfileId);
-    // A timestamp with no companion id (Issue #1701) was stamped by a
-    // build whose bind/unbind still cleared the marker with the binding,
-    // so it belongs to the current binding and reads as completed — an
-    // upgrade must not stop a working background import. New-code writes
-    // cannot produce this pair: the stamp writes the id first and the
-    // clear blanks the timestamp first (see both methods below).
+    // A timestamp with no companion id (Issue #1701) was stamped by a build
+    // whose bind/unbind still cleared the marker with the binding, so it
+    // belongs to the current binding and reads as completed — an upgrade
+    // must not stop a working background import.
     if (consentProfileId == null || consentProfileId.isEmpty) return true;
     return consentProfileId == await boundProfileId();
+  }
+
+  /// Decodes the one-value consent ([SettingsKeys.healthImportFirstPassConsent],
+  /// issue #1755). Null for the cleared empty string, a non-object, a
+  /// missing/empty profile id, or unreadable JSON — every shape the reader
+  /// must fail shut on.
+  static ({String profileId})? _decodeFirstImportConsent(String raw) {
+    if (raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      final id = decoded['profileId'];
+      if (id is! String || id.isEmpty) return null;
+      return (profileId: id);
+    } on FormatException {
+      return null;
+    }
   }
 
   /// Records the completion of one user-initiated import pass for
@@ -388,26 +422,25 @@ class HealthSyncBinding {
   /// background gate reads. Stamped with this class's injected clock;
   /// belongs to the current binding only, so `bind`/`unbind` clear it.
   ///
-  /// The id is written before the timestamp: a gate read interleaved
-  /// between the two writes fails shut (no timestamp yet), and can never
-  /// see a fresh timestamp against a stale id.
+  /// Issue #1755: one atomic settings write (the consent value carries the
+  /// id and the timestamp together), so no interleaving with a re-bind's
+  /// clear can leave a mixed pair for the gate to misread.
   Future<void> markFirstImportCompleted(String profileId) async {
     await _settings.set(
-      SettingsKeys.healthImportFirstPassProfileId,
-      profileId,
-    );
-    await _settings.set(
-      SettingsKeys.healthImportFirstPassCompletedMs,
-      '${_now().toUtc().millisecondsSinceEpoch}',
+      SettingsKeys.healthImportFirstPassConsent,
+      jsonEncode({
+        'profileId': profileId,
+        'completedMs': _now().toUtc().millisecondsSinceEpoch,
+      }),
     );
   }
 
-  /// The timestamp goes first and the companion id second, so a read
-  /// interleaved with the clear — or with a `markFirstImportCompleted`
-  /// racing it — never sees a timestamp without its id: that pair is the
-  /// legacy shape [hasCompletedFirstImport] reads as completed.
+  /// The cleared state is one atomic settings write (issue #1755) — the
+  /// empty string, which the reader fails shut on regardless of any legacy
+  /// pair still on disk. Two ordered writes could interleave with a
+  /// finishing pass's stamp and leave a timestamp without its id, the pair
+  /// the legacy upgrade rule reads as completed.
   Future<void> _clearFirstImportMarker() async {
-    await _settings.set(SettingsKeys.healthImportFirstPassCompletedMs, '');
-    await _settings.set(SettingsKeys.healthImportFirstPassProfileId, '');
+    await _settings.set(SettingsKeys.healthImportFirstPassConsent, '');
   }
 }

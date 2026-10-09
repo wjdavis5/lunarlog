@@ -10,6 +10,8 @@
 /// [HealthSyncBinding.canWrite].
 library;
 
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_policy.dart';
@@ -792,22 +794,66 @@ void main() {
       expect(await binding.hasCompletedFirstImport(), isFalse);
     });
 
-    test('markFirstImportCompleted stamps a parsable timestamp', () async {
+    test('markFirstImportCompleted stamps one parsable consent value '
+        '(issue #1755)', () async {
       await bindA();
       await binding.markFirstImportCompleted('a');
 
       expect(await binding.hasCompletedFirstImport(), isTrue);
-      final raw = await settings
-          .get(SettingsKeys.healthImportFirstPassCompletedMs);
-      // Epoch milliseconds — the seed a "last updated from the Health app"
+      final raw =
+          await settings.get(SettingsKeys.healthImportFirstPassConsent);
+      // One atomic value: the profile id and an epoch-millisecond
+      // timestamp together — the seed a "last updated from the Health app"
       // line can build on later; an unparsable value must never read as a
       // completed first import.
-      expect(int.tryParse(raw ?? ''), isNotNull);
-      // Issue #1701: the consent names the profile the pass read for.
+      final decoded = jsonDecode(raw!) as Map;
+      expect(decoded['profileId'], 'a');
+      expect(decoded['completedMs'], isA<int>());
+      // New-code stamps no longer write the legacy pair.
+      expect(
+        await settings.get(SettingsKeys.healthImportFirstPassCompletedMs),
+        isNull,
+      );
       expect(
         await settings.get(SettingsKeys.healthImportFirstPassProfileId),
-        'a',
+        isNull,
       );
+    });
+
+    test('issue #1755: a cleared consent fails shut even when the legacy '
+        'pair holds a fresh timestamp with no id', () async {
+      await bindA();
+      // The exact pair the old stamp/clear interleaving could produce: a
+      // fresh timestamp, no id — which the legacy upgrade rule reads as
+      // completed for whatever is bound now.
+      await settings.set(
+        SettingsKeys.healthImportFirstPassCompletedMs,
+        '${DateTime.now().toUtc().millisecondsSinceEpoch}',
+      );
+      await settings.set(SettingsKeys.healthImportFirstPassProfileId, '');
+      // The re-bind wrote the cleared one-value consent.
+      await settings.set(SettingsKeys.healthImportFirstPassConsent, '');
+
+      expect(
+        await binding.hasCompletedFirstImport(),
+        isFalse,
+        reason: 'the cleared consent must win over the legacy pair — '
+            'otherwise a re-bind racing a finishing pass opens the new '
+            "binding's background gate",
+      );
+    });
+
+    test('issue #1755: an upgraded install with no consent value still reads '
+        'the legacy pair', () async {
+      // No bind: simulate an install that upgraded before writing the
+      // one-value consent, with a completed pass from a pre-#1701 build
+      // (timestamp, no id) — the upgrade must not stop a working
+      // background import.
+      await settings.set(
+        SettingsKeys.healthImportFirstPassCompletedMs,
+        '${DateTime.now().toUtc().millisecondsSinceEpoch}',
+      );
+      expect(await binding.hasCompletedFirstImport(), isTrue);
     });
 
     test('unbind clears the marker with the binding', () async {
@@ -876,16 +922,18 @@ void main() {
       expect(await binding.hasCompletedFirstImport(), isTrue);
     });
 
-    test('a timestamp-only marker (stamped before the consent named a '
-        'profile) still reads as completed for the current binding',
-        () async {
+    test('issue #1755: a legacy timestamp-only marker no longer reopens the '
+        'gate after a new-code clear', () async {
       await bindA();
-      // The shape a pre-#1701 build left behind; its bind/unbind cleared
-      // the marker with the binding, so it belongs to the current one.
+      // A pre-#1701 build left a timestamp with no id behind; under #1755
+      // the bind's cleared one-value consent wins, because the clear is
+      // what the new binding wrote — the legacy pair is only the source of
+      // truth while no consent value exists at all (the upgrade test
+      // above).
       await settings.set(
           SettingsKeys.healthImportFirstPassCompletedMs, '1234');
 
-      expect(await binding.hasCompletedFirstImport(), isTrue);
+      expect(await binding.hasCompletedFirstImport(), isFalse);
     });
   });
 
