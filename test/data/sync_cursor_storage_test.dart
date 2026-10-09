@@ -40,6 +40,10 @@ void main() {
       (db.update(db.dayEntries)..where((t) => t.id.equals(id)))
           .write(const DayEntriesCompanion(dirty: Value(false)));
 
+  Future<void> setGuardianNoteClean(String id) =>
+      (db.update(db.guardianNotes)..where((t) => t.id.equals(id)))
+          .write(const GuardianNotesCompanion(dirty: Value(false)));
+
   group('sync cursor', () {
     test('readSyncState returns the default before anything is written',
         () async {
@@ -169,6 +173,33 @@ void main() {
               .map((p) => p.id)
               .toList();
       expect(remaining, [kept.id]);
+    });
+
+    test('sweepTombstones removes a tombstoned profile with its tombstoned '
+        'guardian note (issue #1699)', () async {
+      final profile =
+          await storage.upsertProfile(displayName: 'Gone', isMinor: false);
+      final note = await storage.upsertGuardianNote(
+        profileId: profile.id,
+        localDate: '2026-01-15',
+        tz: 'UTC',
+        body: 'kept while the revocation settles',
+      );
+      // The revocation path: both rows tombstoned, then synced (clean).
+      await storage.softDeleteGuardianNote(note.id);
+      await storage.softDeleteProfile(profile.id);
+      await setProfileClean(profile.id);
+      await setGuardianNoteClean(note.id);
+
+      final swept = await storage.sweepTombstones(
+        olderThan: t0.add(const Duration(days: 1)),
+      );
+
+      expect(swept, 2,
+          reason: 'the note goes with the profile, not after it');
+      expect(await store.isEmpty(), isTrue,
+          reason: 'no referencing row is left behind, so the FK never trips '
+              'and the whole sweep is not rolled back');
     });
   });
 }
