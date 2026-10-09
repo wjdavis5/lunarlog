@@ -1290,6 +1290,64 @@ void main() {
       expect(plan.map((r) => r.timeOfDayMinutes), everyElement(9 * 60));
     });
 
+    // Issue #1716: the late pre-arm outranks the pill adherence reminder on
+    // a shared fire date (one reminder per fire date, by priority), so a
+    // pack profile that reads "late" forever loses its daily pill nudge —
+    // and the stale-history bound above is what stops that.
+    test('issue #1716: on a shared fire date the late pre-arm displaces the '
+        'pill reminder', () {
+      final plan = planReminders(
+        today: today,
+        predictions: {
+          'p1':
+              _prediction(today: today, estimatedNextStart: today.addDays(-6)),
+        },
+        configs: {'p1': bcConfig()},
+        birthControlModes: {
+          'p1': (method: 'pill', startedOn: '2025-01-01', stoppedOn: null),
+        },
+      );
+
+      expect(
+        plan.where((r) => r.fireOn == today).map((r) => r.kind),
+        [ReminderKind.late],
+        reason: 'the late reminder (priority 0) wins the shared date',
+      );
+      expect(
+        plan.where((r) => r.kind == ReminderKind.birthControlPill),
+        isEmpty,
+        reason: 'both windows are 7 days, so the late pre-arm covers the '
+            'whole pill window and the daily adherence reminder never fires '
+            'while the profile reads late — the displacement issue #1716 '
+            'names',
+      );
+    });
+
+    test('issue #1716: a stale pack history plans no late pre-arm, so the '
+        'pill reminder is not displaced', () {
+      final plan = planReminders(
+        today: today,
+        predictions: {
+          'p1': _prediction(
+            today: today,
+            estimatedNextStart: today.addDays(-6),
+            staleHistory: true,
+          ),
+        },
+        configs: {'p1': bcConfig()},
+        birthControlModes: {
+          'p1': (method: 'pill', startedOn: '2025-01-01', stoppedOn: null),
+        },
+      );
+
+      expect(plan.map((r) => r.kind), isNot(contains(ReminderKind.late)));
+      expect(
+        plan.where((r) => r.fireOn == today).map((r) => r.kind),
+        [ReminderKind.birthControlPill],
+        reason: 'with no late plan the daily pill reminder owns its date',
+      );
+    });
+
     test('weekly patch reminder anchors on the recorded start date', () {
       // Started exactly one week ago: the first due change is today (n=1).
       final plan = planReminders(

@@ -198,13 +198,20 @@ class _LateResolverState extends State<LateResolver> {
                   onPressed: widget.onLogIt,
                   emphasized: true,
                 ),
-                _option(
-                  key: 'resolver-skip',
-                  icon: Icons.skip_next,
-                  label: l10n.lateResolverSkipCycle,
-                  onPressed: () =>
-                      widget.exclusions.omit(widget.profileId, _openCycleStart),
-                ),
+                // Issue #1716: a pack schedule has no cycle to "skip" —
+                // omission is an editorial signal for the statistical
+                // predictor, and the regimen branch is deliberately
+                // independent of it, so the button would do nothing. Same
+                // reasoning as the teen composition's single action.
+                if (widget.prediction.basis !=
+                    PredictionBasis.regimenSchedule)
+                  _option(
+                    key: 'resolver-skip',
+                    icon: Icons.skip_next,
+                    label: l10n.lateResolverSkipCycle,
+                    onPressed: () => widget.exclusions
+                        .omit(widget.profileId, _openCycleStart),
+                  ),
                 _option(
                   key: 'resolver-remind',
                   icon: Icons.alarm,

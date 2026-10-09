@@ -1181,6 +1181,18 @@ ActivePrediction _packDrivenPrediction({
   // estimate, mirroring how the history path separates stats from the mean.
   final windows = _recentValidCycles(starts, const {});
 
+  // Issue #1716: the open cycle's length and the same stale-history bound
+  // the statistical path applies to its own open cycle. A pack profile that
+  // never logs a withdrawal bleed must not read "late" forever: once the
+  // schedule has rolled past several whole pack cycles with no new log, the
+  // estimate is stale history — the overview's stale card, the calendar's
+  // suppressed bands, and the reminder plan all read this one flag, and the
+  // late pre-arm (which otherwise outranks the pill adherence reminder on a
+  // shared fire date) stops planning.
+  final openDays = today.isBefore(anchor) ? 1 : today.difference(anchor) + 1;
+  final staleHistory =
+      openDays > staleHistoryThresholdDays(kPackCycleLengthDays.toDouble());
+
   return ActivePrediction(
     today: today,
     lastEpisodeStart: anchor,
@@ -1188,7 +1200,7 @@ ActivePrediction _packDrivenPrediction({
     originalEstimatedNextStart: originalEstimate,
     averagedCycleLengths: const [],
     meanCycleLengthDays: kPackCycleLengthDays.toDouble(),
-    cycleDay: today.isBefore(anchor) ? 1 : today.difference(anchor) + 1,
+    cycleDay: openDays,
     duringEpisode: sorted.any((episode) => episode.contains(today)),
     completedCycleCount: windows.lengths.length,
     validCycleCount: windows.validLengths.length,
@@ -1198,6 +1210,7 @@ ActivePrediction _packDrivenPrediction({
     forecast: forecast,
     unusuallyLongCycle: false,
     basis: PredictionBasis.regimenSchedule,
+    staleHistory: staleHistory,
   );
 }
 
