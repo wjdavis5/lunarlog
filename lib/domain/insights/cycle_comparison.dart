@@ -208,6 +208,11 @@ CycleComparisonData? deriveCycleComparisonFromEntries({
 /// `cycle_history.dart` already treats as the outer bound of a *valid*
 /// cycle length -- so neither a historical data-entry error spanning
 /// years nor a very overdue open cycle grows this list without bound.
+///
+/// The cap bounds the day rows only: [CycleComparisonSide.lengthDays] is
+/// the cycle's own length from its natural end (issue #1720), so a
+/// completed cycle past the cap reports its true length instead of the cap
+/// -- the recap already names that length beside the delta.
 CycleComparisonSide _sideFor(
   int index,
   List<LocalDate> starts,
@@ -220,7 +225,7 @@ CycleComparisonSide _sideFor(
   final naturalEnd = isOpen ? today : starts[index + 1].addDays(-1);
   final cappedEnd = start.addDays(kMaxCycleDays - 1);
   final end = naturalEnd.isAfter(cappedEnd) ? cappedEnd : naturalEnd;
-  final lengthDays = isOpen ? null : end.difference(start) + 1;
+  final lengthDays = isOpen ? null : naturalEnd.difference(start) + 1;
 
   final days = <CycleComparisonDayRow>[
     for (var day = start; !day.isAfter(end); day = day.addDays(1))
