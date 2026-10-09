@@ -195,14 +195,21 @@ Map<String, LocalDate> decodeStatisticChangeSignals(String? raw) {
   final parsed = <String, LocalDate>{};
   for (final entry in signals.entries) {
     final value = entry.value;
-    if (value is String && _isIsoDate(value)) {
-      parsed[entry.key] = LocalDate.fromIso(value);
+    if (value is String) {
+      // Issue #1719: a calendar-invalid date must degrade to "no signal"
+      // like any other malformed value, not throw out of the coordinator's
+      // pass (the same `_tryParseIso` shape reminder_config.dart uses).
+      final date = _tryParseIso(value);
+      if (date != null) parsed[entry.key] = date;
     }
   }
   return parsed;
 }
 
-bool _isIsoDate(String value) {
-  if (value.length != 10) return false;
-  return RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value);
+LocalDate? _tryParseIso(String raw) {
+  try {
+    return LocalDate.fromIso(raw);
+  } on ArgumentError {
+    return null;
+  }
 }

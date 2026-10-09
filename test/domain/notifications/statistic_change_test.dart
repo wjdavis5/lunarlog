@@ -183,6 +183,12 @@ void main() {
       expect(decodeStatisticChangeSignals(null), isEmpty);
       expect(decodeStatisticChangeSignals('junk'), isEmpty);
       expect(decodeStatisticChangeSignals('{"v":1}'), isEmpty);
+      expect(
+        decodeStatisticChangeSignals('{"signals":{"p1":"2026-02-30"}}'),
+        isEmpty,
+        reason: 'issue #1719: a calendar-invalid date degrades like any '
+            'other malformed value',
+      );
       expect(decodeStatisticChangeSignals('{"signals":{"p1":"2026-9-7"}}'),
           isEmpty, reason: 'a non-padded date is not an ISO civil date');
     });
