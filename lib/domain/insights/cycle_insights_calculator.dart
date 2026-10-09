@@ -107,7 +107,13 @@ class CycleInsightsCalculator {
         }
 
         validCycles.add(_CycleData(
-          index: i,
+          // Issue #1715: the position among *valid* cycles, not the raw
+          // episode position. Invalid cycles are dropped, and every
+          // consumer of this index — the per-cycle occurrence maps and
+          // _calculateTrend's midpoint partition — counts in valid-cycle
+          // positions; a dropped early cycle used to shift every later
+          // index past the midpoint and flip a stable symptom's trend.
+          index: validCycles.length,
           start: cycleStart,
           end: nextStart.addDays(-1),
           lengthDays: cycleLength,
@@ -230,7 +236,12 @@ class CycleInsightsCalculator {
     );
   }
 
-  /// Evaluates trend direction comparing recent half vs prior half of cycles.
+  /// Evaluates trend direction comparing recent half vs prior half of
+  /// cycles.
+  ///
+  /// [cyclesWithTag]'s keys are positions within the valid-cycle sequence
+  /// (see [_CycleData.index], issue #1715) — never raw episode positions —
+  /// so the partition lines up with [totalCycles].
   static TrendDirection _calculateTrend({
     required Map<int, Set<int>> cyclesWithTag,
     required int totalCycles,
@@ -327,6 +338,10 @@ class _CycleData {
     required this.entries,
   });
 
+  /// This cycle's position within the valid-cycle sequence (0-based) —
+  /// never the raw episode position: invalid cycles are dropped at
+  /// extraction, and the per-cycle occurrence maps and the trend partition
+  /// both count in valid-cycle positions (issue #1715).
   final int index;
   final LocalDate start;
   final LocalDate end;

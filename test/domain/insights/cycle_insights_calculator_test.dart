@@ -180,5 +180,64 @@ void main() {
       expect(pattern.trend, TrendDirection.increasing);
       expect(pattern.trend.displayName, 'Rising recently');
     });
+
+    // Issue #1715: an invalid leading cycle must not shift the trend's
+    // midpoint. Each surviving cycle carried its raw episode position as
+    // its index, so with one dropped cycle every valid index landed at or
+    // past the midpoint and a stable symptom read "Rising recently" (and
+    // the mirror case read "Consistent").
+    test('trend partition counts valid cycles, not raw episode positions '
+        '(issue #1715)', () {
+      // Episode starts: Jan 1 -> Jan 15 (14d, dropped) -> Feb 14 -> Mar 16
+      // -> Apr 15 -> May 15 (endpoint). Four valid 30-day cycles follow the
+      // dropped one; their raw episode positions are 1..4.
+      final episodes = [
+        Episode(_d(2026, 1, 1), _d(2026, 1, 5)),
+        Episode(_d(2026, 1, 15), _d(2026, 1, 19)),
+        Episode(_d(2026, 2, 14), _d(2026, 2, 18)),
+        Episode(_d(2026, 3, 16), _d(2026, 3, 20)),
+        Episode(_d(2026, 4, 15), _d(2026, 4, 19)),
+        Episode(_d(2026, 5, 15), _d(2026, 5, 19)),
+      ];
+
+      // One entry per valid cycle: perfectly stable.
+      final stableEntries = <DayEntry>[
+        _makeEntry(date: _d(2026, 1, 16), tags: ['bloating']),
+        _makeEntry(date: _d(2026, 2, 15), tags: ['bloating']),
+        _makeEntry(date: _d(2026, 3, 17), tags: ['bloating']),
+        _makeEntry(date: _d(2026, 4, 16), tags: ['bloating']),
+      ];
+
+      final stable = CycleInsightsCalculator.compute(
+        entries: stableEntries,
+        episodes: episodes,
+      ).symptomPatterns.firstWhere((p) => p.tag == 'bloating');
+      expect(
+        stable.trend,
+        TrendDirection.stable,
+        reason: 'a symptom in every valid cycle is stable, whatever the '
+            'dropped cycle did to raw positions',
+      );
+
+      // The first three of the four valid cycles: fading, not "Rising
+      // recently" (the pattern must still meet the 3-cycle reporting
+      // threshold to be visible).
+      final fadingEntries = <DayEntry>[
+        _makeEntry(date: _d(2026, 1, 16), tags: ['bloating']),
+        _makeEntry(date: _d(2026, 2, 15), tags: ['bloating']),
+        _makeEntry(date: _d(2026, 3, 17), tags: ['bloating']),
+      ];
+
+      final fading = CycleInsightsCalculator.compute(
+        entries: fadingEntries,
+        episodes: episodes,
+      ).symptomPatterns.firstWhere((p) => p.tag == 'bloating');
+      expect(
+        fading.trend,
+        TrendDirection.decreasing,
+        reason: 'the mirror case: raw positions put three occurrences '
+            'across the midpoint and read "Rising recently"',
+      );
+    });
   });
 }
