@@ -1033,6 +1033,36 @@ void main() {
       });
     });
 
+    test(
+        'an http.client span description carrying a Storage upload URL has '
+        'its query cut and its uuids redacted, exactly like data[url] '
+        '(issue #1728)', () async {
+      const uid = '11111111-1111-4111-8111-111111111111';
+      const ticketId = '22222222-2222-4222-8222-222222222222';
+      const objectId = '33333333-3333-4333-8333-333333333333';
+      const description =
+          'https://x.supabase.co/storage/v1/object/feedback-attachments/'
+          '$uid/$ticketId/$objectId.png?token=abc';
+      await withRealTransaction((tracer) {
+        final span =
+            tracer.startChild('http.client', description: description);
+        // ignore: discarded_futures
+        span.finish();
+      }, (transaction) {
+        final out = scrubTransaction(transaction)!;
+        final scrubbed = out.spans.single.context.description!;
+        expect(
+          scrubbed,
+          'https://x.supabase.co/storage/v1/object/feedback-attachments/'
+          '<id>/<id>/<id>.png',
+        );
+        expect(scrubbed, isNot(contains(uid)));
+        expect(scrubbed, isNot(contains(ticketId)));
+        expect(scrubbed, isNot(contains(objectId)));
+        expect(scrubbed, isNot(contains('?')));
+      });
+    });
+
     test('drops deny-listed span tags but keeps the rest', () async {
       await withRealTransaction((tracer) {
         final span = tracer.startChild('db.query')

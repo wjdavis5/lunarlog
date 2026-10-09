@@ -571,8 +571,12 @@ const List<String> _spanDescriptionSuffixes = [
 /// Reduces a span's `description` the same way [scrubEvent] reduces
 /// `event.transaction`: a TTID/TTFD description has its raw route-name
 /// prefix passed through [scrubRouteName] (see [_spanDescriptionSuffixes]);
-/// anything else is treated like a free-text message — kept unless it
-/// mentions a deny-listed key, in which case it becomes `'[scrubbed]'`
+/// anything else is first passed through [scrubUrl] — issue #1728: an
+/// `http.client` span's description is the request URL, and it used to be
+/// kept verbatim unless it mentioned a deny-listed key, so a Storage upload
+/// shipped its account and ticket UUIDs on the description even though the
+/// `data['url']` copy beside it was scrubbed — then kept unless the scrubbed
+/// text mentions a deny-listed key, in which case it becomes `'[scrubbed]'`
 /// (mirrors [_scrubMessage]). `null` passes through.
 String? _scrubSpanDescription(String? description) {
   if (description == null) return null;
@@ -583,7 +587,8 @@ String? _scrubSpanDescription(String? description) {
       return '${scrubRouteName(rawRouteName)}$suffix';
     }
   }
-  return mentionsDenyListedKey(description) ? '[scrubbed]' : description;
+  final scrubbed = scrubUrl(description);
+  return mentionsDenyListedKey(scrubbed) ? '[scrubbed]' : scrubbed;
 }
 
 /// KTD9: rebuilds one span's `data` under an allowlist, using the SDK's
