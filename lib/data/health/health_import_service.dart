@@ -1528,21 +1528,33 @@ class LocalHealthImportService
     if (_declinedEntries.isEmpty) return false;
     await _loadDeleted(profileId);
     for (final record in _declinedEntries.values) {
-      if (_recordDeletedByHer(record.source, record.recordId)) continue;
-      switch (record.kind) {
-        case HealthImportDeclinedKind.flow: {
-          final row = await _dayEntries.find(profileId, record.date);
-          if (row == null) return true;
-          final imported = row.source == _daySource && row.sourceId != null;
-          if (!imported && row.flow == FlowLevel.none) return true;
-        }
-        case HealthImportDeclinedKind.spotting: {
-          final row = await _dayEntries.find(profileId, record.date);
-          if ((await _liveSpotting(row)).isEmpty) return true;
-        }
-      }
+      if (await _declinedRecordIsAdoptable(profileId, record)) return true;
     }
     return false;
+  }
+
+  /// Whether a fresh read would adopt [record]'s store value against her
+  /// row as it stands now, and so a whole read is owed.
+  Future<bool> _declinedRecordIsAdoptable(
+    String profileId,
+    HealthImportDeclinedRecord record,
+  ) async {
+    if (_recordDeletedByHer(record.source, record.recordId)) return false;
+    final row = await _dayEntries.find(profileId, record.date);
+    return switch (record.kind) {
+      HealthImportDeclinedKind.flow => _flowRecordAdoptable(row),
+      HealthImportDeclinedKind.spotting =>
+        (await _liveSpotting(row)).isEmpty,
+    };
+  }
+
+  /// Whether the merge would adopt a flow record against [row]: no day at
+  /// all (a fresh read would insert it), or a day she logged herself with
+  /// no flow. An imported day keeps her value ([_mayAdopt]).
+  bool _flowRecordAdoptable(DayEntry? row) {
+    if (row == null) return true;
+    if (row.source == _daySource && row.sourceId != null) return false;
+    return row.flow == FlowLevel.none;
   }
 
   /// Whether [recordId] is one she deleted, in either the keyed or the

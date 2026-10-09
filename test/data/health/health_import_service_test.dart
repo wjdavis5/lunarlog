@@ -2916,6 +2916,12 @@ void main() {
       expect(declined.kind, HealthImportDeclinedKind.flow);
       expect(declined.date, day);
 
+      // Her flow is still there: nothing is owed, and the memory stays.
+      source.wholeHistorySeen.clear();
+      await build().importNow();
+      expect(source.wholeHistorySeen, [false]);
+      expect(dayEntries.declinedRecords, hasLength(1));
+
       // She clears her flow. The merge would now adopt the store's value,
       // but the record did not change, so only a whole read returns it.
       dayEntries.live[day.iso] = herDay(
