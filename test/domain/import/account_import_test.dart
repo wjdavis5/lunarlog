@@ -418,6 +418,33 @@ void main() {
       expect(result, isA<AccountImportParseFailed>());
     });
 
+    test('a container key present but not a list rejects the whole document '
+        '(issue #1717)', () {
+      for (final key in const [
+        'dayEntries',
+        'observations',
+        'cycleOverrides',
+        'customTags',
+        'guardianNotes',
+      ]) {
+        final raw = _rawDocument(profiles: [_rawProfile(_p1)]);
+        ((raw['profiles'] as List).first as Map<String, Object?>)[key] = {
+          'not': 'a list',
+        };
+        final result = parseAccountImport(_bytes(raw));
+        expect(result, isA<AccountImportParseFailed>(),
+            reason: '$key as an object must reject the document');
+      }
+    });
+
+    test('an absent container key stays tolerated (older schema versions) '
+        '(issue #1717)', () {
+      final raw = _rawDocument(profiles: [_rawProfile(_p1)]);
+      ((raw['profiles'] as List).first as Map<String, Object?>)
+          .remove('guardianNotes');
+      final result = parseAccountImport(_bytes(raw));
+      expect(result, isA<AccountImportParsed>());
+    });
     test('a profile missing its id is rejected', () {
       final raw = _rawDocument(profiles: [
         {'displayName': 'No id'},
