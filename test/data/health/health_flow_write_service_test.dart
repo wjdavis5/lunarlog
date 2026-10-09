@@ -5055,6 +5055,46 @@ void main() {
             reason: 'the store does not hold it, so it is written, not '
                 'quietly stamped (issue #1617)');
       });
+
+      test('a failed update of a held record keeps it real, so a later clear '
+          'still deletes it (issue #1689)', () async {
+        await seedGranted(grant);
+        dayEntries.entries = [_entry('2026-06-10', FlowLevel.light, at(10))];
+        clock = at(11);
+        final service = buildService();
+        await service.syncNow();
+        expect(platform.flowWrites, hasLength(1));
+
+        // She edits the day to medium; the re-send fails. The store still
+        // holds the earlier light record, so the ledger row must stay real.
+        dayEntries.entries = [_entry('2026-06-10', FlowLevel.medium, at(20))];
+        platform.writeResults = [const HealthPlatformResult.failed('no')];
+        clock = at(21);
+        final failed = await service.syncNow();
+
+        expect(failed.blocked, isA<HealthPlatformFailed>());
+        expect(platform.flowWrites, hasLength(2));
+        expect(
+          ledger.rows
+              .singleWhere((row) => row.recordId == 'entry-2026-06-10')
+              .kind,
+          HealthExportLedgerKind.entry,
+          reason: 'the store still holds the earlier copy: the row stays real '
+              '(issue #1689)',
+        );
+
+        // She clears the flow: the store's earlier record must be deleted.
+        dayEntries.entries = [_entry('2026-06-10', FlowLevel.none, at(30))];
+        platform.writeResults = [];
+        clock = at(31);
+        final cleared = await service.syncNow();
+
+        expect(cleared.blocked, isNull);
+        expect(
+          platform.deleteCalls.expand((call) => call),
+          contains('entry-2026-06-10'),
+        );
+      });
     });
 
     // Issue #1605. A pass runs on every save and every return to the
