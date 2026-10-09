@@ -23,6 +23,11 @@
   data_extraction_rules.xml's own round-4 addition; see that file's comment
   for the full explanation. Inert today for the same allowBackup="false"
   reason as the rest of this file, same belt-and-suspenders rationale.
+
+  Round 6 (issue #1788): the widget's shared container — kept consistent
+  with data_extraction_rules.xml's own round-6 addition; see that file's
+  header comment for the full explanation. Inert today for the same
+  allowBackup="false" reason as the rest of this file.
 -->
 <full-backup-content>
     <exclude domain="file" path="lunarlog.db"/>
@@ -47,4 +52,6 @@
     <exclude domain="cache" path="share_plus"/>
     <exclude domain="cache" path="image_picker"/>
     <exclude domain="cache" path="file_picker"/>
+    <!-- Round 6 (issue #1788): see the header comment. -->
+    <exclude domain="sharedpref" path="HomeWidgetPreferences.xml"/>
 </full-backup-content>
