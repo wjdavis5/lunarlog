@@ -45,7 +45,7 @@ directions, and CI fails if any of them regresses:
    belt-and-braces.
 3. **A Playwright test asserts the browser is empty after a session**
    (`e2e/storage-empty.spec.ts`): all six surfaces measured, all must be
-   empty — for the signed-out surfaces *and* for a real signed-in session
+   empty — for the signed-out surfaces _and_ for a real signed-in session
    (the facade-backed home and account pages, issue #1721). Later issues
    extend this test as the client grows.
 
