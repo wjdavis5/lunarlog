@@ -505,6 +505,19 @@ sealed class CyclePrediction {
 /// watcher fans a prediction stream out over this same shape).
 typedef ActiveProfilesStream = Stream<List<Profile>>;
 
+/// Narrows a profile watch to the genuinely active profiles (issue #634,
+/// LLA-098; every background consumer's input since issue #1727):
+/// `ProfilesRepository.watch()` deliberately includes archived profiles for
+/// display consumers, but a prediction-driven background consumer must see
+/// an archive as a *removal* — for the two publishers that removal is what
+/// retracts the profile's server-side reminder window / projection, and for
+/// the coordinator it is what drops the profile's subscriptions entirely.
+Stream<List<Profile>> activeProfilesOnly(Stream<List<Profile>> profiles) =>
+    profiles.map((list) => [
+          for (final profile in list)
+            if (profile.archivedAt == null) profile,
+        ]);
+
 /// A live [CyclePrediction] stream for one profile, keyed by [profileId]
 /// (issue #575: see [ActiveProfilesStream]'s doc comment for why this is
 /// declared once here).

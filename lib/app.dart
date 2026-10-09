@@ -55,6 +55,7 @@ import 'package:lunarlog/domain/notifications/notification_preferences_service.d
 import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
+import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/account_export_snapshot_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
@@ -527,11 +528,11 @@ class _LunarLogAppState extends State<LunarLogApp>
       // coordinator's "active profiles" input must mean genuinely active:
       // an archived profile must drop out of every prediction/birth-
       // control subscription here, not just stop being newly configured.
-      activeProfiles:
-          _profiles.watch().map((profiles) => [
-                for (final profile in profiles)
-                  if (profile.archivedAt == null) profile,
-              ]),
+      // Issue #1727: `activeProfilesOnly` is now the shared filter — the
+      // two publishers below take their input through it too, so an
+      // archive reads as a removal there and retracts their server-side
+      // snapshots.
+      activeProfiles: activeProfilesOnly(_profiles.watch()),
       predictionFor: _prediction.watch,
       localSettings: configService,
       // Issue #183: the profile_modes birth-control row feeds the
@@ -589,7 +590,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     final publisher = buildReminderWindowPublisher(
       notificationPreferencesService: _deps.notificationPreferencesService,
       reminderWindowUpsert: _deps.reminderWindowUpsert,
-      activeProfiles: _profiles.watch(),
+      activeProfiles: activeProfilesOnly(_profiles.watch()),
       predictionFor: _prediction.watch,
       isSignedIn: _isSignedIn,
     );
@@ -611,7 +612,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     // starts the returned instance.
     final publisher = buildPredictionProjectionPublisher(
       service: _deps.predictionConnectionService,
-      activeProfiles: _profiles.watch(),
+      activeProfiles: activeProfilesOnly(_profiles.watch()),
       predictionFor: _prediction.watch,
       isSignedIn: _isSignedIn,
     );

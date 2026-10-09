@@ -940,4 +940,46 @@ void main() {
       expect(service.retractedFor, isEmpty);
     });
   });
+
+  test('issue #1727: a profile leaving the active set retracts its published '
+      'projection and stops publishing', () async {
+    final profiles = StreamController<List<Profile>>(sync: true);
+    final predictions = <String, StreamController<CyclePrediction>>{};
+    final service = _FakeService(connectedProfileIds: {'p1'});
+    final today = LocalDate(2026, 8, 30);
+
+    final publisher = LocalPredictionProjectionPublisher(
+      activeProfiles: profiles.stream,
+      predictionFor: (id) => predictions
+          .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
+          .stream,
+      service: service,
+      isSignedIn: () => true,
+      debounce: Duration.zero,
+    );
+    publisher.start();
+    addTearDown(() async {
+      await publisher.dispose();
+      await profiles.close();
+      for (final c in predictions.values) {
+        await c.close();
+      }
+    });
+
+    profiles.add([_profile('p1')]);
+    predictions['p1']!.add(_active(today));
+    await pumpEventQueue();
+    expect(service.publishedFor, ['p1'], reason: 'the live profile published');
+
+    // The filtered watch drops an archived profile (activeProfilesOnly) --
+    // that removal is what must retract the server-side projection.
+    profiles.add(const <Profile>[]);
+    await pumpEventQueue();
+    expect(service.retractedFor, ['p1']);
+
+    // The cancelled subscription publishes nothing further.
+    predictions['p1']!.add(_active(today));
+    await pumpEventQueue();
+    expect(service.publishedFor, ['p1']);
+  });
 }
