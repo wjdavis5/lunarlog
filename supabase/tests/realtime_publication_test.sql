@@ -29,8 +29,13 @@
 -- *behavioral* half: that profiles/day_entries writes actually populate
 -- `sync_signals` (the trigger path Realtime's payload would ride on), and
 -- that a non-guardian cannot read another family's signal rows.
+--
+-- Issue #1707 extends the drift proof: the expected never-publish set is
+-- derived from the catalog (every table carrying a touch_sync_signal()
+-- trigger), not hand-restated, so a future synced table cannot be forgotten
+-- the way guardian_notes was.
 begin;
-select plan(28);
+select plan(31);
 
 select tests.create_supabase_user('mom');
 select tests.create_supabase_user('stranger');
@@ -305,6 +310,56 @@ select ok(
     = array['profile_id', 'updated_at']::name[],
   'reconcile_realtime_publication() narrows the column list back to exactly '
   || 'profile_id, updated_at -- correction, not silent skip (P1 fix)'
+);
+
+-- ---------------------------------------------------------------------------
+-- Issue #1707: the expected never-publish set is derived from the catalog,
+-- not hand-restated. Every table whose changes wake co-guardians through
+-- touch_sync_signal() is a synced table, and every synced table must be
+-- reverted by the reconcile function. Simulate a Studio "Enable Realtime"
+-- toggle on every derived table at once, re-run the guard, and prove the
+-- publication is back to exactly {sync_signals}: a future synced table
+-- cannot be forgotten the way guardian_notes was -- adding its
+-- touch_sync_signal trigger is enough to pull it into this proof.
+-- ---------------------------------------------------------------------------
+select ok(
+  exists(
+    select 1 from information_schema.triggers
+     where trigger_schema = 'public'
+       and event_object_table = 'guardian_notes'
+       and action_statement ilike '%touch_sync_signal%'
+  ),
+  'setup: guardian_notes carries the touch_sync_signal trigger (it is a synced table)'
+);
+
+do $$
+declare
+  v_table record;
+begin
+  for v_table in
+    select distinct t.event_object_table
+      from information_schema.triggers t
+     where t.trigger_schema = 'public'
+       and t.action_statement ilike '%touch_sync_signal%'
+  loop
+    execute format(
+      'alter publication supabase_realtime add table public.%I',
+      v_table.event_object_table
+    );
+  end loop;
+end $$;
+
+select lives_ok(
+  $$select public.reconcile_realtime_publication()$$,
+  'reconcile_realtime_publication() runs without error with every synced table published'
+);
+
+select set_eq(
+  $$select tablename::text from pg_catalog.pg_publication_tables
+     where pubname = 'supabase_realtime' and schemaname = 'public'$$,
+  $$select 'sync_signals'::text$$,
+  'every synced table derived from information_schema (touch_sync_signal '
+  || 'carriers) is reverted -- guardian_notes included (Issue #1707)'
 );
 
 -- ---------------------------------------------------------------------------
