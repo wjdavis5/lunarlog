@@ -1155,6 +1155,12 @@ class _MonthCalendarState extends State<MonthCalendar>
     }
   }
 
+  /// Issue #1712: a generation token for [_refetchObservations], so a read
+  /// that started before a profile switch — or before a newer read — can
+  /// never apply its result over the newer state (the same shape
+  /// [AnalysisTab._entriesTick] and this file's [_profileSwitchToken] use).
+  int _observationsToken = 0;
+
   /// Issue #761: (re)seeds [_spottingIsos] from the observations seam —
   /// the same entries-tick refetch shape `AnalysisTab._refetchObservations`
   /// uses. A null seam (no repository in scope) renders no marker rather
@@ -1166,17 +1172,30 @@ class _MonthCalendarState extends State<MonthCalendar>
   /// subscription uses ([_entriesWindowFrom]/[_entriesWindowTo]), never the
   /// profile's full observation history — the trigger (every entries tick)
   /// is unchanged, only how much this reads is.
+  ///
+  /// Issue #1712: the result is dropped when the profile has changed or a
+  /// newer read has started, and a failed read clears the set rather than
+  /// leaving an older window's markers up (or surfacing as an unhandled
+  /// async error) — the next entries tick retries.
   Future<void> _refetchObservations() async {
     final repository =
         widget.observationsRepository ??
         context.read<ObservationsRepository?>();
     if (repository == null) return;
-    final spotting = await repository.spottingIsosInRange(
-      profileId: widget.profileId,
-      from: _entriesWindowFrom,
-      to: _entriesWindowTo,
-    );
-    if (!mounted) return;
+    final profileId = widget.profileId;
+    final token = ++_observationsToken;
+    Set<String> spotting;
+    try {
+      spotting = await repository.spottingIsosInRange(
+        profileId: profileId,
+        from: _entriesWindowFrom,
+        to: _entriesWindowTo,
+      );
+    } catch (_) {
+      spotting = const {};
+    }
+    if (!mounted || token != _observationsToken) return;
+    if (widget.profileId != profileId) return;
     setState(() => _spottingIsos = spotting);
   }
 
