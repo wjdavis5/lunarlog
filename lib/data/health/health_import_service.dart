@@ -870,6 +870,14 @@ class LocalHealthImportService
     final early = firstRun.earlySummary;
     if (early != null && remove == null) return early;
     final scanner = _scanner(profileId);
+    // Issue #1690: days an earlier build expanded from one period record
+    // share a key and never sync; re-keyed here, before the merge, on the
+    // rows the pass's scan loads (a changes-only read never returns the
+    // unchanged record that would let the merge re-key them, Issue #1686).
+    // Before the merge, not after (Issue #1693): the scan's cache is read
+    // before [_apply], and a row the merge re-keys must not be rewritten
+    // from the stale copy.
+    await _rekeySharedPeriodDays(scanner);
     final initialFound = await _noteStoreDeleted(
       profileId,
       firstRun.accumulator,
@@ -913,12 +921,6 @@ class LocalHealthImportService
       scanner.invalidate();
     }
     await _trimStoreDeleted(scanner);
-    // Issue #1690: days an earlier build expanded from one period record
-    // share a key and never sync; re-keyed here, on the rows the pass's
-    // scan has already loaded, because a changes-only read never returns
-    // the unchanged record that would let the merge re-key them (Issue
-    // #1686).
-    await _rekeySharedPeriodDays(scanner);
     await _commitRead(bound.facts, run, summary);
     return summary;
   }

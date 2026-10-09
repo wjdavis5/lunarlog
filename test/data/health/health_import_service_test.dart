@@ -3312,5 +3312,58 @@ void main() {
       expect(dayEntries.live['2026-09-11']!.sourceId, 'hk-shared@111');
       expect(dayEntries.saved, isEmpty);
     });
+
+    test('a day the merge adopts after the re-key keeps the store value '
+        '(issue #1693)', () async {
+      await bind();
+      // Two days of one period share the old key; day 10 is her edit.
+      dayEntries.live['2026-09-10'] = DayEntry(
+        id: 'day-10',
+        profileId: _profileId,
+        localDate: LocalDate.fromIso('2026-09-10'),
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+        source: DayEntrySource.healthConnect,
+        sourceId: 'hc-period@111',
+        updatedAt: DateTime.utc(2026, 9, 1, 8),
+      );
+      dayEntries.live['2026-09-11'] =
+          importedDay('2026-09-11', 'hc-period@111');
+
+      // The store changed the record (modifiedAt 222), and the read also
+      // reports an unrelated deleted id, so the scan loads its rows before
+      // the merge runs — the re-key must not rewrite the merge's write
+      // from that pre-merge copy.
+      final changed = DateTime.utc(2026, 9, 10, 12);
+      source.result = HealthReadResult.samples(
+        [
+          _periodSample(
+            id: 'hc-period',
+            startIso: '2026-09-10T04:00:00Z',
+            endIso: '2026-09-12T03:59:59Z',
+            modifiedAt: changed,
+          ),
+        ],
+        deletedRecordIds: const ['hc-gone'],
+        incremental: true,
+      );
+
+      await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importNow();
+
+      final ms = changed.millisecondsSinceEpoch;
+      expect(dayEntries.live['2026-09-10']!.flow, FlowLevel.light,
+          reason: 'the store change the merge adopted must survive the '
+              're-key');
+      expect(
+        dayEntries.live['2026-09-10']!.sourceId,
+        'hc-period#2026-09-10@$ms',
+      );
+      expect(
+        dayEntries.live['2026-09-11']!.sourceId,
+        'hc-period#2026-09-11@$ms',
+      );
+    });
   });
 }
