@@ -5211,6 +5211,38 @@ void main() {
         expect(order, ['action']);
       });
 
+      // Issue #1702: the unbind clear runs through this queue too, so a
+      // pass that was running when the binding went away cannot re-store
+      // the state it just blanked nor repopulate the ledger it just reset.
+      test('onUnbound queued behind a running pass is the last writer: '
+          'the cleared state and ledger stay cleared', () async {
+        final service = buildService();
+        final pass = service.syncNow();
+        await pumpEventQueue();
+        expect(gated.flowWrites, hasLength(1),
+            reason: 'the pass is at its write');
+
+        final unbound = service.onUnbound();
+        gated.release();
+        expect((await pass).samplesWritten, 1);
+        await unbound;
+
+        expect(await settings.get(_cursorKey), '');
+        expect(
+          await settings.get(SettingsKeys.healthSyncWriteState),
+          '',
+          reason: 'the pass that was mid-flight must not re-store the '
+              'state the unbind just cleared',
+        );
+        expect(
+          ledger.rows,
+          isEmpty,
+          reason: 'the accepted write must not repopulate the ledger the '
+              'unbind just reset',
+        );
+        expect(platform.unbindCalls, 1);
+      });
+
       test('a pass waits for an action queued ahead of it', () async {
         final service = buildService();
         final order = <String>[];

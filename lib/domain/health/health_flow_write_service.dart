@@ -94,7 +94,10 @@ abstract interface class HealthFlowWriteService {
   Future<HealthFlowSyncReport> syncNow();
 
   /// The unbind/reset half of the write flow: clears the forward-only
-  /// cursor and the native-side binding mirror.
+  /// cursor and the native-side binding mirror. Runs through the pass
+  /// queue ([runInPassQueue]), so it lands after any pass that was running
+  /// or already queued when the binding went away (Issue #1702) — the
+  /// clear is the last writer, and a pass cannot re-store what it cleared.
   Future<void> onUnbound();
 }
 
