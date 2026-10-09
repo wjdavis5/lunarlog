@@ -18,11 +18,13 @@ abstract interface class PredictionProjectionPublisher {
   /// Begins observing the active-profiles and prediction streams.
   void start();
 
-  /// Publishes [profileId]'s current prediction right away.
+  /// Publishes [profileId]'s current prediction right away, if the profile
+  /// is still active.
   Future<void> publishNow(String profileId);
 
-  /// Publishes the current prediction for every profile the account shares
-  /// out, right away.
+  /// Publishes the current prediction for every active profile the account
+  /// shares out, right away. A profile that has left the active set is
+  /// skipped -- its snapshot has already been retracted.
   Future<void> republishConnected();
 
   /// Stops observing and cancels every outstanding timer/subscription.

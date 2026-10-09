@@ -11,6 +11,12 @@
 /// enforces the same gate and additionally no-ops (deleting any stored
 /// snapshot) when no active connection exists, so a publish racing a
 /// revocation can never leave derived data behind.
+///
+/// A profile also stops publishing the moment it leaves the active set:
+/// that departure is what retracts its snapshot (#1727), and every publish
+/// path re-checks the set (issue #1777), so neither the resume republish
+/// nor a flush whose connection lookup was in flight can put a snapshot
+/// back for a profile that is out of everyday use.
 library;
 
 // Named required parameters cannot be initializing formals; the private
@@ -57,6 +63,13 @@ class LocalPredictionProjectionPublisher
   final Duration retryDelay;
 
   StreamSubscription<List<Profile>>? _profilesSub;
+  // Issue #1777: the last active set [_onProfilesChanged] observed. The
+  // server's connection list knows nothing about archive state, so every
+  // publish path re-checks this before uploading -- otherwise the resume
+  // republish (and a flush whose connection lookup was in flight while the
+  // profile left the set) would re-upload a projection the departure
+  // already retracted (#1727).
+  Set<String> _activeIds = {};
   final Map<String, StreamSubscription<CyclePrediction>> _predictionSubs = {};
   final Map<String, Timer> _debounceTimers = {};
   final Map<String, ActivePrediction> _pending = {};
@@ -104,6 +117,7 @@ class LocalPredictionProjectionPublisher
   void _onProfilesChanged(List<Profile> profiles) {
     if (_disposed) return;
     final activeIds = profiles.map((p) => p.id).toSet();
+    _activeIds = activeIds;
     _predictionSubs.removeWhere((id, sub) {
       if (activeIds.contains(id)) return false;
       unawaited(sub.cancel());
@@ -199,6 +213,12 @@ class LocalPredictionProjectionPublisher
       // honored without a separate invalidation channel.
       final connected = await _connectedProfileIds();
       if (!connected.contains(profileId)) return;
+      // Issue #1777: the lookup above is a network round-trip -- the
+      // profile can leave the active set while it is in flight (archived
+      // here or on another device), and that departure retracts the
+      // snapshot this flush is about to (re)upload. Only a still-active
+      // profile may publish.
+      if (!_activeIds.contains(profileId)) return;
       await _service.publishProjection(
         profileId: profileId,
         projection: projection,
@@ -316,8 +336,9 @@ class LocalPredictionProjectionPublisher
   /// Publishes [profileId]'s current prediction right away — used right
   /// after a connection is created so the recipient's first fetch has
   /// data without waiting for the sharer's next prediction change.
-  /// Best-effort: a failure here leaves the publish to the regular
-  /// stream-driven path.
+  /// A profile that is no longer in the active set is skipped
+  /// (issue #1777). Best-effort: a failure here leaves the publish to the
+  /// regular stream-driven path.
   @override
   Future<void> publishNow(String profileId) async {
     if (_disposed || !_isSignedIn()) return;
@@ -336,7 +357,9 @@ class LocalPredictionProjectionPublisher
   /// recipient who redeemed a code while the sharer's app was in the
   /// background would otherwise see no snapshot until the sharer's next
   /// cycle event. One narrow select, then one idempotent upsert per
-  /// connected profile; best-effort like [publishNow].
+  /// connected profile; a profile that left the active set is skipped
+  /// (issue #1777 -- its snapshot is already retracted); best-effort like
+  /// [publishNow].
   @override
   Future<void> republishConnected() async {
     if (_disposed || !_isSignedIn()) return;
@@ -355,6 +378,10 @@ class LocalPredictionProjectionPublisher
   /// profile's current prediction once and uploads it when derived. The
   /// caller has already confirmed the profile is connected.
   Future<void> _publishCurrent(String profileId) async {
+    // Issue #1777: the callers' connection lookup knows nothing about
+    // archive state, so without this the resume republish would re-upload
+    // a profile whose snapshot the departure already retracted (#1727).
+    if (!_activeIds.contains(profileId)) return;
     final prediction = await _predictionFor(profileId).first;
     if (_disposed) return;
     if (prediction is! ActivePrediction) return;
@@ -387,6 +414,7 @@ class LocalPredictionProjectionPublisher
     _retryAttempts.clear();
     _generation.clear();
     _lastPublished.clear();
+    _activeIds = {};
     _pendingConnectedLookup = null;
   }
 }
