@@ -19,14 +19,26 @@ void main() {
   const channel = MethodChannel('home_widget');
   late List<MethodCall> calls;
   var saveResult = true;
+  var removalFailuresRemaining = 0;
 
   setUp(() {
     calls = [];
     saveResult = true;
+    removalFailuresRemaining = 0;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
       calls.add(call);
-      if (call.method == 'saveWidgetData') return saveResult;
+      if (call.method == 'saveWidgetData') {
+        final args = call.arguments as Map<Object?, Object?>;
+        // Issue #1787 coverage: lets a test fail the first legacy-key
+        // removal (a null value is a removal) without failing the payload
+        // write.
+        if (args['data'] == null && removalFailuresRemaining > 0) {
+          removalFailuresRemaining--;
+          return false;
+        }
+        return saveResult;
+      }
       return null;
     });
   });
@@ -52,12 +64,15 @@ void main() {
     final store = HomeWidgetDataStore();
     await store.savePayload(payload());
 
-    final saves =
-        calls.where((call) => call.method == 'saveWidgetData').toList();
-    expect(saves, hasLength(1),
-        reason: 'one atomic write, not one per field (issue #1731)');
+    final envelopeSaves = calls
+        .where((call) =>
+            call.method == 'saveWidgetData' &&
+            (call.arguments as Map<Object?, Object?>)['data'] != null)
+        .toList();
+    expect(envelopeSaves, hasLength(1),
+        reason: 'one atomic payload write, not one per field (issue #1731)');
 
-    final args = saves.single.arguments as Map<Object?, Object?>;
+    final args = envelopeSaves.single.arguments as Map<Object?, Object?>;
     expect(args['id'], WidgetCycleStatePayload.keyPayload);
     expect(
       jsonDecode(args['data']! as String),
@@ -73,6 +88,60 @@ void main() {
     );
   });
 
+  test('the six pre-envelope keys are removed once, on the first save '
+      '(issue #1787)', () async {
+    final store = HomeWidgetDataStore();
+    await store.savePayload(payload());
+    await store.savePayload(payload());
+
+    final removals = calls
+        .where((call) =>
+            call.method == 'saveWidgetData' &&
+            (call.arguments as Map<Object?, Object?>)['data'] == null)
+        .map((call) => (call.arguments as Map<Object?, Object?>)['id'])
+        .toList();
+    expect(
+      removals,
+      [
+        WidgetCycleStatePayload.keyState,
+        WidgetCycleStatePayload.keyCycleDay,
+        WidgetCycleStatePayload.keyDaysUntilNext,
+        WidgetCycleStatePayload.keyCanQuickLog,
+        WidgetCycleStatePayload.keyProfileId,
+        WidgetCycleStatePayload.keyAsOf,
+      ],
+      reason: 'each legacy key removed exactly once, on the first save',
+    );
+  });
+
+  test('a failed legacy-key removal is retried on the next save '
+      '(issue #1787)', () async {
+    removalFailuresRemaining = 1;
+    final store = HomeWidgetDataStore();
+    await store.savePayload(payload());
+    await store.savePayload(payload());
+
+    final removals = calls
+        .where((call) =>
+            call.method == 'saveWidgetData' &&
+            (call.arguments as Map<Object?, Object?>)['data'] == null)
+        .map((call) => (call.arguments as Map<Object?, Object?>)['id'])
+        .toList();
+    expect(
+      removals,
+      [
+        WidgetCycleStatePayload.keyState, // failed, retried below
+        WidgetCycleStatePayload.keyState,
+        WidgetCycleStatePayload.keyCycleDay,
+        WidgetCycleStatePayload.keyDaysUntilNext,
+        WidgetCycleStatePayload.keyCanQuickLog,
+        WidgetCycleStatePayload.keyProfileId,
+        WidgetCycleStatePayload.keyAsOf,
+      ],
+      reason: 'the failed removal is retried, and the rest follow once',
+    );
+  });
+
   test('a write the plugin reports as failed throws, and no partial payload '
       'was written', () async {
     saveResult = false;
@@ -80,9 +149,11 @@ void main() {
 
     await expectLater(store.savePayload(payload()), throwsStateError);
     expect(
-      calls.where((call) => call.method == 'saveWidgetData'),
+      calls.where((call) =>
+          call.method == 'saveWidgetData' &&
+          (call.arguments as Map<Object?, Object?>)['data'] != null),
       hasLength(1),
-      reason: 'one attempted write, never a second field write',
+      reason: 'one attempted payload write, never a second field write',
     );
   });
 

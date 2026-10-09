@@ -68,6 +68,10 @@ class HomeWidgetDataStore implements WidgetDataStore {
 
   @override
   Future<void> savePayload(Map<String, String> payload) async {
+    // Issue #1787: an install that ran a build before the #1731 envelope
+    // still holds the six per-key values; clear them once, before the
+    // payload write, so a successful publish leaves nothing stale behind.
+    await _clearLegacyKeysOnce();
     // Issue #1731: the whole payload is one JSON value under the single
     // envelope key -- one plugin round-trip, so a failed or interrupted
     // write can only leave the previous payload in place, never pair one
@@ -81,6 +85,42 @@ class HomeWidgetDataStore implements WidgetDataStore {
     if (saved == false) {
       throw StateError('the widget payload write did not land');
     }
+  }
+
+  /// Issue #1787: the six per-key names a build before the #1731 envelope
+  /// wrote. No build writes them any more, but an install that ran one
+  /// keeps their last values — a stale cycle-day count and profile id that
+  /// would otherwise outlive sign-out, profile deletion and account
+  /// deletion, because the old overwrite-the-six-keys publish was the only
+  /// thing that ever cleared them.
+  static const List<String> _legacyKeys = [
+    WidgetCycleStatePayload.keyState,
+    WidgetCycleStatePayload.keyCycleDay,
+    WidgetCycleStatePayload.keyDaysUntilNext,
+    WidgetCycleStatePayload.keyCanQuickLog,
+    WidgetCycleStatePayload.keyProfileId,
+    WidgetCycleStatePayload.keyAsOf,
+  ];
+
+  bool _legacyKeysCleared = false;
+
+  /// Removes the pre-envelope keys once, best-effort: a failed or partial
+  /// removal leaves the flag unset so the next save retries. A removal
+  /// failure is not a publish failure — the stale key is exactly the
+  /// pre-fix state — and the payload write below still reports its own
+  /// result.
+  Future<void> _clearLegacyKeysOnce() async {
+    if (_legacyKeysCleared) return;
+    for (final key in _legacyKeys) {
+      try {
+        // A null value removes the entry on both platforms.
+        final removed = await HomeWidget.saveWidgetData<String>(key, null);
+        if (removed == false) return;
+      } catch (_) {
+        return;
+      }
+    }
+    _legacyKeysCleared = true;
   }
 
   @override
