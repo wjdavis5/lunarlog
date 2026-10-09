@@ -6,7 +6,8 @@ set -euo pipefail
 #   bash .github/scripts/tests/check-ci-gate.test.sh
 #
 # Tests check evaluation, fail-fast behavior on failure/cancelled/timed_out,
-# latest-attempt re-run handling, custom check sets, and poll simulation,
+# latest-attempt re-run handling, custom check sets, poll simulation, and
+# pagination of the check-runs fetch (issue #1736) through a stubbed `gh`,
 # using local JSON fixtures without making network calls.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -230,5 +231,58 @@ assert_exit "built-in default passes on current CI job names" 0
 assert_contains "default gate confirms Verify job" "$LAST_LOG" "✓ Verify (codegen, analyze, web build): success"
 assert_contains "default gate confirms a Test shard" "$LAST_LOG" "✓ Test (shard 2): success"
 assert_contains "default gate confirms Quality gate" "$LAST_LOG" "✓ Quality gate (coverage floor + CRAP): success"
+
+# Case 12 (issue #1736): a commit with more than 100 check runs — the
+# required names sit on page 2, past the first unpaginated page.
+PAGE1_JSON="$WORKDIR/pagination_page1.json"
+PAGE2_JSON="$WORKDIR/pagination_page2.json"
+filler=''
+i=1
+while [ "$i" -le 100 ]; do
+  filler="$filler,{\"id\": $((9000 + i)), \"name\": \"Filler check $i\", \"status\": \"completed\", \"conclusion\": \"success\"}"
+  i=$((i + 1))
+done
+write_check_runs "$PAGE1_JSON" "[${filler#,}]"
+write_check_runs "$PAGE2_JSON" '[
+  {"id": 1000, "name": "Database tests (pgTAP)", "status": "completed", "conclusion": "success"},
+  {"id": 1001, "name": "Edge Functions (deno test)", "status": "completed", "conclusion": "success"},
+  {"id": 1002, "name": "Verify (codegen, analyze, web build)", "status": "completed", "conclusion": "success"},
+  {"id": 1003, "name": "Test (shard 0)", "status": "completed", "conclusion": "success"},
+  {"id": 1004, "name": "Test (shard 1)", "status": "completed", "conclusion": "success"},
+  {"id": 1005, "name": "Test (shard 2)", "status": "completed", "conclusion": "success"},
+  {"id": 1006, "name": "Quality gate (coverage floor + CRAP)", "status": "completed", "conclusion": "success"}
+]'
+
+# A fake `gh` serving the two pages, so the real fetch path (not the
+# CHECK_RUNS_JSON_FILE simulation path) runs. It matches on `&page=` because
+# `per_page=100` alone would match a `page=1` pattern.
+FAKE_BIN="$WORKDIR/bin"
+mkdir -p "$FAKE_BIN"
+cat >"$FAKE_BIN/gh" <<'FAKE_GH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FAKE_GH_LOG"
+case "$*" in
+  *"&page=1"*) cat "$FAKE_GH_PAGE1" ;;
+  *"&page=2"*) cat "$FAKE_GH_PAGE2" ;;
+  *) echo '{"message": "unexpected page requested"}'; exit 1 ;;
+esac
+FAKE_GH
+chmod +x "$FAKE_BIN/gh"
+
+FAKE_GH_LOG="$WORKDIR/pagination_gh_calls.log"
+: >"$FAKE_GH_LOG"
+export FAKE_GH_LOG FAKE_GH_PAGE1="$PAGE1_JSON" FAKE_GH_PAGE2="$PAGE2_JSON"
+
+# CHECK_RUNS_JSON_FILE="" keeps the simulation path off, so the script must
+# fetch through the fake gh.
+OLD_PATH="$PATH"
+export PATH="$FAKE_BIN:$PATH"
+run_case "" "$DEFAULT_CHECKS" 0
+export PATH="$OLD_PATH"
+assert_exit "pagination: required checks on page 2 pass" 0
+assert_contains "pagination: page-2 check confirmed" "$LAST_LOG" "✓ Database tests (pgTAP): success"
+assert_not_contains "pagination: no timeout" "$LAST_LOG" "Timed out"
+assert_contains "pagination: page 1 requested" "$(cat "$FAKE_GH_LOG")" "&page=1"
+assert_contains "pagination: page 2 requested" "$(cat "$FAKE_GH_LOG")" "&page=2"
 
 print_summary "check-ci-gate.test.sh"
