@@ -5031,6 +5031,30 @@ void main() {
           reason: 'the retry was accepted, so the row is real again',
         );
       });
+
+      test('a gone flow row is not quietly stamped as already written on '
+          'Android (issue #1617)', () async {
+        await seedGranted(grant);
+        platform.writesCycleStart = false;
+        dayEntries.entries = [_entry('2026-06-10', FlowLevel.medium, at(10))];
+        clock = at(11);
+        platform.writeResults = [const HealthPlatformResult.failed('no')];
+        final service = buildService();
+        final first = await service.syncNow();
+
+        expect(first.blocked, isA<HealthPlatformFailed>());
+        expect(platform.flowWrites, hasLength(1));
+
+        // The retry must send the record, not stamp it as already written.
+        platform.writeResults = [];
+        clock = at(12);
+        final retried = await service.syncNow();
+
+        expect(retried.blocked, isNull);
+        expect(platform.flowWrites, hasLength(2),
+            reason: 'the store does not hold it, so it is written, not '
+                'quietly stamped (issue #1617)');
+      });
     });
 
     // Issue #1605. A pass runs on every save and every return to the

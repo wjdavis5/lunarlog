@@ -1195,9 +1195,11 @@ class LocalHealthFlowWriteService
     // On a platform that does not write cycleStart (Health Connect,
     // Issue #1645), a flow record written by an earlier build without a
     // summary is already in the store with the exact value this entry has.
-    // Stamp the summary without re-sending.
+    // Stamp the summary without re-sending. A gone row is not in the store
+    // (Issue #1617), so it is never quietly stamped: the record is due.
     return !_platform.writesCycleStart &&
         written != null &&
+        written.kind != HealthExportLedgerKind.gone &&
         written.payloadSummary == null &&
         !written.exportedAt.isBefore(updatedAt);
   }
