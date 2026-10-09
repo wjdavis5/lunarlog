@@ -141,9 +141,13 @@ dependencies {
     // (paging cursor format). The codec deliberately uses only
     // java.util.Base64 and strings — no Health Connect or android.* types —
     // so it runs as a normal local unit test without Robolectric. Run with
-    // `./gradlew :app:testDebugUnitTest`; it is not wired into CI (which
-    // has no Android unit-test step).
+    // `./gradlew :app:testDebugUnitTest`; ci.yml's Android unit-tests step
+    // runs the same task.
     testImplementation("junit:junit:4.13.2")
+    // Issue #1731: WidgetPayload.parse uses org.json (provided by the
+    // platform at runtime, stubbed in the unit-test android.jar), so the
+    // real artifact rides the test classpath for WidgetPayloadTest.
+    testImplementation("org.json:json:20240303")
 }
 
 flutter {

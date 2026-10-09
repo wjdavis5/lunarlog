@@ -17,6 +17,8 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeParseException
 import java.time.temporal.ChronoUnit
+import org.json.JSONException
+import org.json.JSONObject
 
 /**
  * The home-screen widget provider (issue #141).
@@ -148,21 +150,29 @@ class LunarLogWidgetProvider : AppWidgetProvider() {
     )
 
     private fun render(prefs: SharedPreferences): Render {
-        val state = prefs.getString(KEY_STATE, null)
-        val profileId = prefs.getString(KEY_PROFILE_ID, null)
-        val canQuickLog = prefs.getString(KEY_CAN_QUICK_LOG, "0") == "1" && profileId != null
+        // Issue #1731: the app writes the whole payload as one JSON value
+        // under the single envelope key, so this reads one entry — a
+        // failed or interrupted app-side write can only leave the previous
+        // payload, never half of a new one. A missing or malformed entry
+        // (e.g. a container written by a build before this format) reads
+        // as the neutral state.
+        val payload = WidgetPayload.parse(
+            prefs.getString(WidgetPayload.KEY, null),
+        )
+        val profileId = payload?.profileId
+        val canQuickLog = (payload?.canQuickLog ?: "0") == "1" && profileId != null
 
         // Any state other than a live cycle renders as an em dash — the
         // three "nothing to show" reasons are deliberately indistinguishable
         // (why predictions are suppressed is itself health context).
-        if (state != STATE_DAY) {
+        if (payload?.state != STATE_DAY) {
             return Render(EM_DASH, null, canQuickLog, profileId)
         }
 
-        val baseDay = prefs.getString(KEY_CYCLE_DAY, null)?.toIntOrNull()
+        val baseDay = payload?.cycleDay?.toIntOrNull()
             ?: return Render(EM_DASH, null, canQuickLog, profileId)
-        val baseUntilNext = prefs.getString(KEY_DAYS_UNTIL_NEXT, null)?.toIntOrNull()
-        val asOf = prefs.getString(KEY_AS_OF, null)?.let { parseDate(it) }
+        val baseUntilNext = payload?.daysUntilNext?.toIntOrNull()
+        val asOf = payload?.asOf?.let { parseDate(it) }
         val elapsed = if (asOf != null) daysBetween(asOf, LocalDate.now()) else 0L
         // Defensive: a device clock rollback renders the stored values
         // unchanged rather than counting backwards. The elapsed count is
@@ -229,14 +239,9 @@ class LunarLogWidgetProvider : AppWidgetProvider() {
         /** How late after midnight the system may deliver that broadcast. */
         private const val MIDNIGHT_WINDOW_MILLIS = 10 * 60 * 1000L
 
-        // The payload keys — pinned to lib/domain/widget/widget_cycle_state.dart's
+        // The payload's envelope key and field names live in WidgetPayload
+        // below, pinned to lib/domain/widget/widget_cycle_state.dart's
         // WidgetCycleStatePayload constants.
-        private const val KEY_STATE = "ll_widget_state"
-        private const val KEY_CYCLE_DAY = "ll_widget_cycle_day"
-        private const val KEY_DAYS_UNTIL_NEXT = "ll_widget_days_until_next"
-        private const val KEY_CAN_QUICK_LOG = "ll_widget_can_quick_log"
-        private const val KEY_PROFILE_ID = "ll_widget_profile_id"
-        private const val KEY_AS_OF = "ll_widget_as_of"
         private const val STATE_DAY = "day"
         private const val EM_DASH = "—"
 
@@ -260,5 +265,57 @@ class LunarLogWidgetProvider : AppWidgetProvider() {
 
         private fun daysBetween(from: LocalDate, to: LocalDate): Long =
             ChronoUnit.DAYS.between(from, to)
+    }
+}
+
+/**
+ * The widget payload (issue #141), parsed from the single JSON envelope the
+ * app writes under [KEY] (issue #1731). Every field is nullable: a missing
+ * or malformed entry reads as the neutral state, never an error.
+ *
+ * The field names are pinned to `lib/domain/widget/widget_cycle_state.dart`
+ * (the documented boundary); [parse] is the only reader. Kept free of
+ * Android types so the JVM unit tests can drive it directly.
+ */
+internal data class WidgetPayload(
+    val state: String?,
+    val cycleDay: String?,
+    val daysUntilNext: String?,
+    val canQuickLog: String?,
+    val profileId: String?,
+    val asOf: String?,
+) {
+    companion object {
+        /** The single container entry the whole payload is written under. */
+        const val KEY = "ll_widget_payload"
+
+        const val FIELD_STATE = "ll_widget_state"
+        const val FIELD_CYCLE_DAY = "ll_widget_cycle_day"
+        const val FIELD_DAYS_UNTIL_NEXT = "ll_widget_days_until_next"
+        const val FIELD_CAN_QUICK_LOG = "ll_widget_can_quick_log"
+        const val FIELD_PROFILE_ID = "ll_widget_profile_id"
+        const val FIELD_AS_OF = "ll_widget_as_of"
+
+        /** Parses the envelope; null when it is absent or malformed. */
+        fun parse(json: String?): WidgetPayload? {
+            if (json.isNullOrBlank()) return null
+            val payload = try {
+                JSONObject(json)
+            } catch (_: JSONException) {
+                return null
+            }
+            return WidgetPayload(
+                state = payload.fieldOrNull(FIELD_STATE),
+                cycleDay = payload.fieldOrNull(FIELD_CYCLE_DAY),
+                daysUntilNext = payload.fieldOrNull(FIELD_DAYS_UNTIL_NEXT),
+                canQuickLog = payload.fieldOrNull(FIELD_CAN_QUICK_LOG),
+                profileId = payload.fieldOrNull(FIELD_PROFILE_ID),
+                asOf = payload.fieldOrNull(FIELD_AS_OF),
+            )
+        }
+
+        /** A present field's string value; null when the field is absent. */
+        private fun JSONObject.fieldOrNull(name: String): String? =
+            if (has(name)) optString(name) else null
     }
 }

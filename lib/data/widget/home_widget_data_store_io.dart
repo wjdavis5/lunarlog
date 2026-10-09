@@ -32,8 +32,10 @@
 library;
 
 import 'dart:async' show unawaited;
+import 'dart:convert' show jsonEncode;
 
 import 'package:home_widget/home_widget.dart';
+import 'package:lunarlog/domain/widget/widget_cycle_state.dart';
 import 'package:lunarlog/domain/widget/widget_data_store.dart';
 
 /// The app group both the Runner and the widget extension are entitled to,
@@ -66,8 +68,18 @@ class HomeWidgetDataStore implements WidgetDataStore {
 
   @override
   Future<void> savePayload(Map<String, String> payload) async {
-    for (final entry in payload.entries) {
-      await HomeWidget.saveWidgetData<String>(entry.key, entry.value);
+    // Issue #1731: the whole payload is one JSON value under the single
+    // envelope key -- one plugin round-trip, so a failed or interrupted
+    // write can only leave the previous payload in place, never pair one
+    // profile's id with another profile's day count (which the per-key
+    // loop this replaced could). A reported failure surfaces to the
+    // caller; the payload on the device is unchanged either way.
+    final saved = await HomeWidget.saveWidgetData<String>(
+      WidgetCycleStatePayload.keyPayload,
+      jsonEncode(payload),
+    );
+    if (saved == false) {
+      throw StateError('the widget payload write did not land');
     }
   }
 

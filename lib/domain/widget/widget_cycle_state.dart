@@ -22,9 +22,13 @@
 ///   sensitive content on that surface in the first place. This render state
 ///   is that design: the numbers below are the whole story.
 /// * a **minimal, documented boundary** — the field table below is the
-///   complete, exhaustive set of keys the app ever writes to the widget
-///   container ([encodeWidgetPayload] is the only writer). Nothing else may
-///   be added without its own row in this header and a privacy review.
+///   complete, exhaustive set of fields the app ever writes to the widget
+///   container ([WidgetCycleStatePayload.encode] is the only writer). They
+///   travel as one JSON object under the single envelope key
+///   [WidgetCycleStatePayload.keyPayload] (issue #1731), so the payload is
+///   one container write: a failure or an OS kill can leave the previous
+///   payload in place, never half of a new one. Nothing else may be added
+///   without its own row in this header and a privacy review.
 ///
 /// ## The render state itself
 ///
@@ -45,9 +49,10 @@
 ///
 /// ## The boundary field table
 ///
-/// Written by [WidgetCycleStatePayload.encode], the only writer:
+/// Written by [WidgetCycleStatePayload.encode], the only writer, as one
+/// JSON object under [WidgetCycleStatePayload.keyPayload]:
 ///
-/// | Key | Value | Why it crosses |
+/// | Field | Value | Why it crosses |
 /// |-----|-------|----------------|
 /// | `ll_widget_state` | `day`/`no_data`/`suppressed`/`off` | the render |
 /// | `ll_widget_cycle_day` | stringified int | the "Day 14" count |
@@ -175,6 +180,15 @@ class WidgetCycleState {
 /// every key carries its justification inline, and the App Store / Play
 /// privacy declarations reference this same set (PRIVACY.md §11).
 abstract final class WidgetCycleStatePayload {
+  /// The single container entry the whole payload is written under, as one
+  /// JSON object of the six fields below (issue #1731).
+  ///
+  /// Why it crosses: it is the envelope. One write, so an interrupted or
+  /// failed publish can only leave the previous payload in place, never a
+  /// mix of two — the per-key write it replaced could pair one profile's
+  /// id with another profile's day count. The key itself names nothing.
+  static const String keyPayload = 'll_widget_payload';
+
   /// The coarse state, one of `day` / `no_data` / `suppressed` / `off`.
   ///
   /// Why it crosses: it is the render. Nothing more specific than the four
@@ -216,10 +230,11 @@ abstract final class WidgetCycleStatePayload {
   /// device's own clock shows — not health data.
   static const String keyAsOf = 'll_widget_as_of';
 
-  /// Encodes [state] into the container's key set. [encodeWidgetPayload]'s
-  /// output is the *complete* write: exactly the six keys above, nothing
-  /// else. All values are strings (the lowest common type across both
-  /// platforms' stores).
+  /// Encodes [state] into the container's field set. The returned map is
+  /// the *complete* write: exactly the six fields above, nothing else. All
+  /// values are strings (the lowest common type across both platforms'
+  /// stores), and the store serializes the map as one JSON object under
+  /// [keyPayload] (issue #1731).
   static Map<String, String> encode({
     required WidgetCycleState state,
     required String profileId,

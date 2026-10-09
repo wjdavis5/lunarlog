@@ -52,6 +52,7 @@ void main() {
     test('both native sides read exactly the documented payload keys',
         () {
       final keys = [
+        WidgetCycleStatePayload.keyPayload,
         WidgetCycleStatePayload.keyState,
         WidgetCycleStatePayload.keyCycleDay,
         WidgetCycleStatePayload.keyDaysUntilNext,
@@ -67,8 +68,8 @@ void main() {
       }
 
       // The exact-set side of the boundary: neither native file mentions
-      // any `ll_widget_` key beyond the six (a seventh key added natively
-      // would be an undocumented crossing).
+      // any `ll_widget_` key beyond the envelope and its six fields (a
+      // seventh field added natively would be an undocumented crossing).
       for (final source in [kotlin, swift]) {
         final mentioned = RegExp(r'll_widget_[a-z_]+')
             .allMatches(source)
@@ -85,7 +86,11 @@ void main() {
       // The test above is satisfied by a key's name appearing anywhere. The
       // iPhone widget declared `ll_widget_as_of` and never read it, so it
       // counted from the day the system rebuilt its timeline, not from the
-      // day the app wrote the counts.
+      // day the app wrote the counts. Since issue #1731 the six fields ride
+      // one JSON envelope, so each side must decode the envelope and then
+      // read every field from the decoded object.
+      expect(swift, contains('string(forKey: PayloadKey.payload)'),
+          reason: '$_swiftPath must read the envelope it decodes');
       const swiftNames = [
         'state',
         'cycleDay',
@@ -96,22 +101,24 @@ void main() {
       ];
       for (final name in swiftNames) {
         expect(
-          RegExp('string\\(forKey: PayloadKey\\.$name\\)').hasMatch(swift),
-          isTrue,
+          swift,
+          contains('[PayloadKey.$name]'),
           reason: '$_swiftPath declares PayloadKey.$name and must read it',
         );
       }
+      expect(kotlin, contains('prefs.getString(WidgetPayload.KEY,'),
+          reason: '$_kotlinPath must read the envelope it decodes');
       const kotlinNames = [
-        'KEY_STATE',
-        'KEY_CYCLE_DAY',
-        'KEY_DAYS_UNTIL_NEXT',
-        'KEY_CAN_QUICK_LOG',
-        'KEY_PROFILE_ID',
-        'KEY_AS_OF',
+        'STATE',
+        'CYCLE_DAY',
+        'DAYS_UNTIL_NEXT',
+        'CAN_QUICK_LOG',
+        'PROFILE_ID',
+        'AS_OF',
       ];
       for (final name in kotlinNames) {
-        expect(kotlin, contains('prefs.getString($name,'),
-            reason: '$_kotlinPath declares $name and must read it');
+        expect(kotlin, contains('FIELD_$name)'),
+            reason: '$_kotlinPath declares FIELD_$name and must read it');
       }
     });
 
