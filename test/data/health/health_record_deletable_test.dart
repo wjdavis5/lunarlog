@@ -171,6 +171,21 @@ void main() {
     expect(healthRecordDeletable(_written('something-else'), const {}), isTrue);
   });
 
+  // Issue #1617: a gone row names a record the store does not hold, so a
+  // delete is never sent for it, whatever the type switches say.
+  test('a gone record is never deletable', () {
+    final gone = _written(
+      healthFlowRecordId(_entryId),
+      kind: HealthExportLedgerKind.gone,
+    );
+    expect(healthRecordDeletable(gone, null), isFalse);
+    expect(healthRecordDeletable(gone, const {}), isFalse);
+    expect(
+      healthRecordDeletable(gone, {HealthWriteTypes.menstrualFlow}),
+      isFalse,
+    );
+  });
+
   test('an entry id that happens to start like another kind is still read '
       'as the flow record', () {
     final oddEntry = _written(

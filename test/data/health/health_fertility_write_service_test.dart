@@ -10,6 +10,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/health/health_flow_write_service.dart';
+import 'package:lunarlog/domain/health/health_export_ledger.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
@@ -566,8 +567,12 @@ void main() {
     expect(report.blocked, isA<HealthPlatformPermissionDenied>());
     expect(report.cervicalMucusSamplesWritten, 0);
     expect(report.basalBodyTemperatureSamplesWritten, 0);
-    expect(ledger.rows, isEmpty,
-        reason: 'a write the store refused is not remembered');
+    expect(
+      ledger.rows.map((row) => row.kind).toSet(),
+      {HealthExportLedgerKind.gone},
+      reason: 'a write the store refused is kept as gone, never as '
+          'written (issue #1617)',
+    );
 
     platform.fertilityResult = const HealthPlatformAllowed();
     final retried = await service.syncNow();

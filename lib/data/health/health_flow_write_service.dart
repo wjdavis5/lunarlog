@@ -1195,9 +1195,11 @@ class LocalHealthFlowWriteService
     // On a platform that does not write cycleStart (Health Connect,
     // Issue #1645), a flow record written by an earlier build without a
     // summary is already in the store with the exact value this entry has.
-    // Stamp the summary without re-sending.
+    // Stamp the summary without re-sending. A gone row is not in the store
+    // (Issue #1617), so it is never quietly stamped: the record is due.
     return !_platform.writesCycleStart &&
         written != null &&
+        written.kind != HealthExportLedgerKind.gone &&
         written.payloadSummary == null &&
         !written.exportedAt.isBefore(updatedAt);
   }
@@ -1683,6 +1685,33 @@ class LocalHealthFlowWriteService
         ),
       ]);
 
+  /// Remembers [recordId] as gone after a failed write (Issue #1617): the
+  /// attempt proves its row was saved while its type was on, and the
+  /// forward-only floor must not block the retry once the type has been
+  /// switched off and on. Replaced by a real row on the next accepted
+  /// write. Keeps whatever summary the row already carried — a type swap's
+  /// `gone` stamp above all, which is what the retry's swap check reads.
+  Future<void> _markGone(
+    String profileId, {
+    required String recordId,
+    required String sourceRowId,
+    required LocalDate date,
+    required DateTime version,
+  }) {
+    final written = _memory.entryOf(recordId);
+    return _memory.remember([
+      HealthExportLedgerEntry(
+        recordId: recordId,
+        profileId: profileId,
+        sourceRowId: sourceRowId,
+        kind: HealthExportLedgerKind.gone,
+        localDate: date.iso,
+        exportedAt: version,
+        payloadSummary: written?.payloadSummary,
+      ),
+    ]);
+  }
+
   /// Takes out of the store every record a row put there and no longer
   /// produces (Issue #930; rewritten by Issue #1581): a symptom or a
   /// fertility tag removed from a day, a flow cleared, a spotting entry
@@ -1834,7 +1863,9 @@ class LocalHealthFlowWriteService
             recordId,
       ];
 
-  /// Deletes [recordIds] from the store and forgets the ones it let go.
+  /// Deletes [recordIds] from the store and marks the ones it let go as
+  /// gone (Issue #1617) — not in the store, but dealt with before, so a row
+  /// that wants one again is not kept out by the forward-only floor.
   /// Answers which those were, and the store's answer when any of the
   /// rest is still there: a refusal, or a delete that passed some over.
   Future<({List<String> gone, HealthPlatformResult? failure})>
@@ -1847,7 +1878,15 @@ class LocalHealthFlowWriteService
     final result = await _platform.deleteRecords(facts, recordIds);
     final gone = _letGo(recordIds, result);
     if (gone == null) return (gone: const <String>[], failure: result);
-    await _memory.forget(gone);
+    // Issue #1617: the store let these go, and a row may want one again
+    // without changing (a spotting marker under a day whose flow is later
+    // cleared). Keep them as gone rows rather than forgetting them, so the
+    // floor's never-written rule cannot keep a wanted record out.
+    await _memory.remember([
+      for (final recordId in gone)
+        if (_memory.entryOf(recordId) case final entry?)
+          entry.copyWith(kind: HealthExportLedgerKind.gone),
+    ]);
     return (
       gone: gone,
       failure: gone.length == recordIds.length ? null : result,
@@ -2011,6 +2050,13 @@ class LocalHealthFlowWriteService
       }
       failure ??= result;
       if (result is HealthPlatformUnavailable) break;
+      await _markGone(
+        profileId,
+        recordId: write.recordId,
+        sourceRowId: write.recordId,
+        date: write.date,
+        version: write.updatedAt,
+      );
     }
     return (written: written, removed: removed, failure: failure);
   }
@@ -2075,7 +2121,9 @@ class LocalHealthFlowWriteService
     HealthExportLedgerEntry? written,
     _PendingWrite write,
   ) {
-    if (written == null || written.payloadSummary == flowPayloadSummaryGone) {
+    if (written == null ||
+        written.kind == HealthExportLedgerKind.gone ||
+        written.payloadSummary == flowPayloadSummaryGone) {
       return false;
     }
     final wasMarker = flowPayloadSummaryWasMarker(written.payloadSummary);
@@ -2333,6 +2381,15 @@ class LocalHealthFlowWriteService
       if (result is HealthPlatformUnavailable) break;
       if (result is! HealthPlatformAllowed) {
         failure ??= result;
+        for (final sample in samples) {
+          await _markGone(
+            profileId,
+            recordId: sample.recordId,
+            sourceRowId: symptom.entryId,
+            date: symptom.date,
+            version: symptom.updatedAt,
+          );
+        }
         continue;
       }
       written += samples.length;
@@ -2402,6 +2459,13 @@ class LocalHealthFlowWriteService
               date: item.date,
               version: item.updatedAt,
             ),
+            markGone: (item) => _markGone(
+              profileId,
+              recordId: item.recordId,
+              sourceRowId: item.entryId,
+              date: item.date,
+              version: item.updatedAt,
+            ),
           );
 
   /// Sends the due ovulation-test records (Issue #228). Same handling as
@@ -2432,6 +2496,13 @@ class LocalHealthFlowWriteService
               recordId: item.recordId,
               sourceRowId: item.entryId,
               kind: HealthExportLedgerKind.entry,
+              date: item.date,
+              version: item.updatedAt,
+            ),
+            markGone: (item) => _markGone(
+              profileId,
+              recordId: item.recordId,
+              sourceRowId: item.entryId,
               date: item.date,
               version: item.updatedAt,
             ),
@@ -2469,17 +2540,26 @@ class LocalHealthFlowWriteService
           date: item.date,
           version: item.updatedAt,
         ),
+        markGone: (item) => _markGone(
+          profileId,
+          recordId: item.recordId,
+          sourceRowId: item.observationId,
+          date: item.date,
+          version: item.updatedAt,
+        ),
       );
 
   /// The loop the three one-record-at-a-time writers share: [send] each of
-  /// [pending], [remember] the ones the store accepts, report the first
-  /// failure and keep going, stop on a loss of authority, and stop quietly
-  /// when the platform has no such type.
+  /// [pending], [remember] the ones the store accepts, [markGone] the ones
+  /// a retryable failure left out of the store (Issue #1617), report the
+  /// first failure and keep going, stop on a loss of authority, and stop
+  /// quietly when the platform has no such type.
   Future<({int written, HealthPlatformResult? failure})> _writeEach<T>(
     List<T> pending,
     HealthGuardFacts facts, {
     required Future<HealthPlatformResult> Function(T item) send,
     required Future<void> Function(T item) remember,
+    required Future<void> Function(T item) markGone,
   }) async {
     var written = 0;
     HealthPlatformResult? failure;
@@ -2493,6 +2573,7 @@ class LocalHealthFlowWriteService
       if (result is HealthPlatformUnavailable) break;
       if (result is! HealthPlatformAllowed) {
         failure ??= result;
+        await markGone(item);
         continue;
       }
       written++;
@@ -2594,6 +2675,12 @@ class LocalHealthFlowWriteService
   /// at an older version may always be re-sent: it is there already, and
   /// what it says is out of date.
   ///
+  /// A gone row ([HealthExportLedgerKind.gone]) is a record the store does
+  /// not hold (Issue #1617): it is due the moment its row wants it, at the
+  /// natural version, and [HealthWritePassState.admitsNew] is not
+  /// consulted — the floor's never-written rule must not keep out a record
+  /// that has been dealt with before.
+  ///
   /// [storeVersion] is the version the write would naturally carry — the
   /// row's own time, except for a spotting record, whose record comes and
   /// goes with its day's flow while its own row stays as it was. A
@@ -2615,6 +2702,10 @@ class LocalHealthFlowWriteService
           : null;
     }
     final natural = storeVersion ?? version;
+    // Issue #1617: a gone row is not in the store, and its earlier write
+    // (or the attempt) is proof its row was saved while its type was on.
+    // The floor's never-written rule must not keep it out.
+    if (written.kind == HealthExportLedgerKind.gone) return natural;
     final rowChanged = written.exportedAt.isBefore(version);
     final summaryChanged = written.payloadSummary != payloadSummary;
     if (!rowChanged && !summaryChanged) return null;

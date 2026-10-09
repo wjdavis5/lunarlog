@@ -9,11 +9,20 @@
 /// option: deleted records are removed once they have synced. So the one
 /// thing worth keeping is kept on its own.
 ///
-/// What is kept, per profile: the store's record id as the row held it (see
+/// What is kept, per profile: the row's `sourceId` as the row held it (see
 /// `_recordKey` in `health_import_service.dart`), under the row's source,
-/// and the moment of the deletion. No date, no flow, nothing about the day.
-/// The record itself is still in the health store on the same phone; this
-/// only says "not this one again".
+/// and the moment of the deletion. For a Health Connect record that names
+/// the record and the time it was last changed; for one of a period
+/// record's expanded days (Issue #1682) it also carries that day's date,
+/// so deleting one day of the span is remembered for that day alone. No
+/// flow, nothing else about the day. The record itself is still in the
+/// health store on the same phone; this only says "not this one again".
+///
+/// A memory written before Issue #1682 for a day of a period span names
+/// only the record and its time — the key every day of that span then
+/// shared — so it cannot say which day she deleted. That day is imported
+/// again once, and deleting it again records its own day key; nothing
+/// migrates the old entry.
 ///
 /// It is written by the storage layer in the transaction that deletes the
 /// row, for the two things she can do on this phone: delete a day, and

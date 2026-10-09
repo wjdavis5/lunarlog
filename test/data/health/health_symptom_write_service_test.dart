@@ -10,6 +10,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/health/health_flow_write_service.dart';
+import 'package:lunarlog/domain/health/health_export_ledger.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
@@ -491,8 +492,15 @@ void main() {
       expect(report.blocked, isA<HealthPlatformPermissionDenied>());
       expect(report.symptomSamplesWritten, 0);
       expect(
-        ledger.rows.map((row) => row.recordId),
-        isNot(contains('symptom-entry-2026-06-02-abdominalCramps')),
+        ledger.rows
+            .singleWhere(
+              (row) =>
+                  row.recordId == 'symptom-entry-2026-06-02-abdominalCramps',
+            )
+            .kind,
+        HealthExportLedgerKind.gone,
+        reason: 'not remembered as written, but kept as gone '
+            '(issue #1617)',
       );
     },
   );
