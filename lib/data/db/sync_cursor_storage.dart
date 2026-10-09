@@ -369,6 +369,12 @@ class SyncCursorStorage implements SyncMetadataStore {
   /// anything genuinely older. Returns how many rows were rebased. Idempotent
   /// and cheap when nothing is future-stamped — the predicate matches only
   /// rows the server would reject.
+  ///
+  /// **Every table `_pushTables` pushes belongs here** (issues #641, #1698):
+  /// a pushed table the server can reject on a future stamp must be rebased,
+  /// or a rejected row stays dirty at its future stamp until wall-clock
+  /// catches up. `guardian_notes` and `day_entry_merge_events` were missing
+  /// from this list until #1698.
   @override
   Future<int> rebaseFutureStampedRows({required DateTime serverNow}) async {
     final threshold = serverNow.toUtc().add(const Duration(minutes: 5));
@@ -438,6 +444,22 @@ class SyncCursorStorage implements SyncMetadataStore {
             updatedAt: Constant(serverNow.toUtc()),
             localRev: db.profileTagRegistry.localRev + const Constant(1),
           ));
+      rebased += await (db.update(db.guardianNotes)
+            ..where((t) =>
+                t.dirty.equals(true) &
+                t.updatedAt.isBiggerThanValue(threshold)))
+          .write(GuardianNotesCompanion.custom(
+            updatedAt: Constant(serverNow.toUtc()),
+            localRev: db.guardianNotes.localRev + const Constant(1),
+          ));
+      rebased += await (db.update(db.dayEntryMergeEvents)
+            ..where((t) =>
+                t.dirty.equals(true) &
+                t.updatedAt.isBiggerThanValue(threshold)))
+          .write(DayEntryMergeEventsCompanion.custom(
+            updatedAt: Constant(serverNow.toUtc()),
+            localRev: db.dayEntryMergeEvents.localRev + const Constant(1),
+          ));
     });
     return rebased;
   }
@@ -498,6 +520,17 @@ class SyncCursorStorage implements SyncMetadataStore {
                 t.deletedAt.isSmallerOrEqualValue(cutoff)))
           .go();
 
+      // 4c. Guardian notes (references profiles) — Issue #1699. A revoked
+      // or purged profile keeps its note as a tombstoned row (the
+      // revocation witness); without this delete the profile's own
+      // tombstone delete trips the FK and rolls the whole sweep back.
+      swept += await (db.delete(db.guardianNotes)
+            ..where((t) =>
+                t.deletedAt.isNotNull() &
+                t.dirty.equals(false) &
+                t.deletedAt.isSmallerOrEqualValue(cutoff)))
+          .go();
+
       // 5. Day entries (references profiles, referenced by observations)
       // Only delete day entries that are no longer referenced by any remaining observations.
       final referencedDayEntryIds = db.selectOnly(db.observations)
@@ -523,6 +556,8 @@ class SyncCursorStorage implements SyncMetadataStore {
       final refPrep = db.selectOnly(db.visitPrepItems)..addColumns([db.visitPrepItems.profileId]);
       final refRegistry = db.selectOnly(db.profileTagRegistry)
         ..addColumns([db.profileTagRegistry.profileId]);
+      final refGuardianNotes = db.selectOnly(db.guardianNotes)
+        ..addColumns([db.guardianNotes.profileId]);
 
       swept += await (db.delete(db.profiles)
             ..where((t) =>
@@ -536,7 +571,8 @@ class SyncCursorStorage implements SyncMetadataStore {
                 t.id.isNotInQuery(refOverrides) &
                 t.id.isNotInQuery(refNotes) &
                 t.id.isNotInQuery(refPrep) &
-                t.id.isNotInQuery(refRegistry)))
+                t.id.isNotInQuery(refRegistry) &
+                t.id.isNotInQuery(refGuardianNotes)))
           .go();
 
       return swept;

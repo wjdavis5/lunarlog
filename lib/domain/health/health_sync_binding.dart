@@ -360,23 +360,54 @@ class HealthSyncBinding {
   /// silent no-op — the first import is the person's to start, and an
   /// observer's own first fire or a launch-time trigger must never read
   /// the store's whole history before that.
+  ///
+  /// Issue #1701: the consent names the profile its pass read for, so it
+  /// opens the gate only while that profile is still the bound one. A pass
+  /// that finishes after a mid-pass re-bind (the Health sync screen keeps
+  /// its profile tiles live) leaves its consent under the old profile,
+  /// and the new binding still reads as unstarted.
   Future<bool> hasCompletedFirstImport() async {
     final raw =
         await _settings.get(SettingsKeys.healthImportFirstPassCompletedMs);
-    return int.tryParse(raw ?? '') != null;
+    if (int.tryParse(raw ?? '') == null) return false;
+    final consentProfileId =
+        await _settings.get(SettingsKeys.healthImportFirstPassProfileId);
+    // A timestamp with no companion id (Issue #1701) was stamped by a
+    // build whose bind/unbind still cleared the marker with the binding,
+    // so it belongs to the current binding and reads as completed — an
+    // upgrade must not stop a working background import. New-code writes
+    // cannot produce this pair: the stamp writes the id first and the
+    // clear blanks the timestamp first (see both methods below).
+    if (consentProfileId == null || consentProfileId.isEmpty) return true;
+    return consentProfileId == await boundProfileId();
   }
 
-  /// Records the completion of one user-initiated import pass for the
-  /// current binding (Issue #1215) — the consent the background gate
-  /// reads. Stamped with this class's injected clock; belongs to the
-  /// current binding only, so `bind`/`unbind` clear it.
-  Future<void> markFirstImportCompleted() async {
+  /// Records the completion of one user-initiated import pass for
+  /// [profileId] — the profile the pass actually read for (Issue #1215;
+  /// scoped to the pass's profile by Issue #1701) — the consent the
+  /// background gate reads. Stamped with this class's injected clock;
+  /// belongs to the current binding only, so `bind`/`unbind` clear it.
+  ///
+  /// The id is written before the timestamp: a gate read interleaved
+  /// between the two writes fails shut (no timestamp yet), and can never
+  /// see a fresh timestamp against a stale id.
+  Future<void> markFirstImportCompleted(String profileId) async {
+    await _settings.set(
+      SettingsKeys.healthImportFirstPassProfileId,
+      profileId,
+    );
     await _settings.set(
       SettingsKeys.healthImportFirstPassCompletedMs,
       '${_now().toUtc().millisecondsSinceEpoch}',
     );
   }
 
-  Future<void> _clearFirstImportMarker() =>
-      _settings.set(SettingsKeys.healthImportFirstPassCompletedMs, '');
+  /// The timestamp goes first and the companion id second, so a read
+  /// interleaved with the clear — or with a `markFirstImportCompleted`
+  /// racing it — never sees a timestamp without its id: that pair is the
+  /// legacy shape [hasCompletedFirstImport] reads as completed.
+  Future<void> _clearFirstImportMarker() async {
+    await _settings.set(SettingsKeys.healthImportFirstPassCompletedMs, '');
+    await _settings.set(SettingsKeys.healthImportFirstPassProfileId, '');
+  }
 }

@@ -33,6 +33,28 @@ import { webhookSecretsMatch } from "../_shared/webhook_secret.ts";
 
 const WEBHOOK_SECRET_HEADER = "x-feedback-webhook-secret";
 
+/** The log line for a rejected webhook call (Issue #1739). This branch used
+ * to be a bare `401` with no signal anywhere: when the secret is rotated on
+ * one side only (the function secret vs the Database Webhook config, two
+ * independently-set copies — docs/ops/supabase-go-live.md), every
+ * `feedback_replies` insert is rejected and admin reply emails stop, and
+ * the only clue is the absence of mail. The same failure class #567 closed
+ * for the send result and push-dispatch's round-2 #10 closed for its own
+ * secret branch. Names which side is missing; never the secret values.
+ * Exported so `deno test` can pin both branches. */
+export function webhookSecretRejectionMessage(
+  expectedSecret: string | undefined,
+): string {
+  return !expectedSecret
+    ? "feedback-reply: FEEDBACK_WEBHOOK_SECRET is not set -- every call is " +
+        "rejected with 401 until this function secret is set (see " +
+        "docs/ops/supabase-go-live.md)."
+    : "feedback-reply: rejected a call with a missing or mismatched " +
+        `${WEBHOOK_SECRET_HEADER} header -- check the Database Webhook ` +
+        "config's secret has not drifted from this function's (see " +
+        "docs/ops/supabase-go-live.md).";
+}
+
 function appVersionFrom(deviceInfo: unknown): string {
   if (deviceInfo && typeof deviceInfo === "object") {
     const value = (deviceInfo as Record<string, unknown>)["app_version"];
@@ -172,6 +194,9 @@ if (import.meta.main) {
     // Issue #1740: a constant-time comparison, never `!==` (see
     // _shared/webhook_secret.ts).
     if (!(await webhookSecretsMatch(expectedSecret, providedSecret))) {
+      // Issue #1739: the rejection must never be silent (see the message
+      // helper's doc); mirrors push-dispatch's round-2 #10 posture.
+      console.error(webhookSecretRejectionMessage(expectedSecret));
       return new Response(null, { status: 401 });
     }
 

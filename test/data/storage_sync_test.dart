@@ -3505,5 +3505,56 @@ void main() {
       expect(after.localRev, normal.localRev,
           reason: 'a healthy dirty row keeps its rev');
     });
+
+    test('rebases a future-stamped guardian note and merge event too '
+        '(issue #1698)', () async {
+      final profile =
+          await storage.upsertProfile(displayName: 'Cara', isMinor: false);
+      // Move the local clock far into the future, then write a note and a
+      // same-date merge disclosure: both are stamped in the future and the
+      // server would reject them.
+      final future = t0.add(const Duration(days: 365));
+      clock.now = future;
+      final note = await storage.upsertGuardianNote(
+        profileId: profile.id,
+        localDate: '2026-01-16',
+        tz: 'UTC',
+        body: 'future-stamped note',
+      );
+      await db.into(db.dayEntryMergeEvents).insert(
+            DayEntryMergeEventsCompanion.insert(
+              id: '01JWIPE00000000000000000D',
+              profileId: profile.id,
+              localDate: '2026-01-16',
+              winningRowId: '01JWIPE00000000000000000F',
+              losingRowId: '01JWIPE00000000000000000E',
+              field: 'note',
+              losingValueText: 'future-stamped',
+              createdAt: future,
+              updatedAt: future,
+              dirty: const Value(true),
+            ),
+          );
+
+      final rebased = await storage.rebaseFutureStampedRows(serverNow: t0);
+      expect(rebased, 2,
+          reason: 'the note and the merge event are both rebased');
+
+      final noteAfter = await (db.select(db.guardianNotes)
+            ..where((t) => t.id.equals(note.id)))
+          .getSingle();
+      expect(noteAfter.updatedAt, t0,
+          reason: 'the note is rebased onto the learned server clock');
+      expect(noteAfter.localRev, greaterThan(note.localRev),
+          reason: 'its rev bumps so it is pushable');
+
+      final eventAfter = await (db.select(db.dayEntryMergeEvents)
+            ..where((t) => t.id.equals('01JWIPE00000000000000000D')))
+          .getSingle();
+      expect(eventAfter.updatedAt, t0,
+          reason: 'the merge event is rebased onto the learned server clock');
+      expect(eventAfter.localRev, greaterThan(0),
+          reason: 'its rev bumps so it is pushable');
+    });
   });
 }
