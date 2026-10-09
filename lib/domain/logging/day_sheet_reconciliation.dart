@@ -306,6 +306,14 @@ ObservationMutations computeMeasurementMutations({
 /// the canonical default unit, not excluded) so every pre-#457 caller —
 /// including this file's own earlier tests — keeps compiling and behaving
 /// identically without passing them.
+///
+/// [measurementsUnknown] (Issue #1711): true when the caller could not read
+/// the day's existing rows for the BBT/weight fields. The measurement arms
+/// are then skipped entirely — a null field value is not a known clear
+/// (deleting would tombstone a stored reading the operator never saw), and
+/// a non-null value could insert a second manual row beside one the failed
+/// read hid. Spotting and pain are unaffected: their loaders have their own
+/// failure handling (#642) and their own gates.
 ObservationMutations computeObservationMutations({
   required List<Observation> existingObservations,
   required bool spotting,
@@ -317,6 +325,7 @@ ObservationMutations computeObservationMutations({
   double? weightValue,
   String weightUnit = 'kg',
   bool weightExcluded = false,
+  bool measurementsUnknown = false,
   required String targetDayEntryId,
   required String profileId,
   required LocalDate date,
@@ -345,32 +354,34 @@ ObservationMutations computeObservationMutations({
           updatedAt: updatedAt,
         ),
       ),
-      ObservationMutations.merge(
-        computeMeasurementMutations(
-          existingObservations: existingObservations,
-          category: ObservationCategory.bbt,
-          value: bbtValue,
-          unit: bbtUnit,
-          excluded: bbtExcluded,
-          targetDayEntryId: targetDayEntryId,
-          profileId: profileId,
-          date: date,
-          tz: tz,
-          updatedAt: updatedAt,
-        ),
-        computeMeasurementMutations(
-          existingObservations: existingObservations,
-          category: ObservationCategory.weight,
-          value: weightValue,
-          unit: weightUnit,
-          excluded: weightExcluded,
-          targetDayEntryId: targetDayEntryId,
-          profileId: profileId,
-          date: date,
-          tz: tz,
-          updatedAt: updatedAt,
-        ),
-      ),
+      measurementsUnknown
+          ? const ObservationMutations()
+          : ObservationMutations.merge(
+              computeMeasurementMutations(
+                existingObservations: existingObservations,
+                category: ObservationCategory.bbt,
+                value: bbtValue,
+                unit: bbtUnit,
+                excluded: bbtExcluded,
+                targetDayEntryId: targetDayEntryId,
+                profileId: profileId,
+                date: date,
+                tz: tz,
+                updatedAt: updatedAt,
+              ),
+              computeMeasurementMutations(
+                existingObservations: existingObservations,
+                category: ObservationCategory.weight,
+                value: weightValue,
+                unit: weightUnit,
+                excluded: weightExcluded,
+                targetDayEntryId: targetDayEntryId,
+                profileId: profileId,
+                date: date,
+                tz: tz,
+                updatedAt: updatedAt,
+              ),
+            ),
     );
 
 /// Reduces [observations] to one highest graded pain intensity per taxonomy
