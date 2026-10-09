@@ -65,8 +65,14 @@
 /// distinguishes a `MenstruationFlowRecord`
 /// (`menstrualFlow`, the pre-#458 default when absent) from an
 /// `IntermenstrualBleedingRecord` (`intermenstrualBleeding`, which carries
-/// no `flow`). An optional `flow` intensity is present for menstrual-flow
-/// samples; `externalUuid` (iOS) is diagnostic only.
+/// no `flow`) and, since #1556, from a `MenstruationPeriodRecord`
+/// (`menstruationPeriod`, Android only — HealthKit has no period record
+/// type). An optional `flow` intensity is present for menstrual-flow
+/// samples. A period sample spans its `startMs`…`endMs` and carries its
+/// end instant's own offset in the optional `endZoneOffsetSeconds`
+/// (`startZoneOffset` rides `zoneOffsetSeconds`); on a DST-transition day
+/// inside the span the two differ, and only both together place the span's
+/// endpoint days exactly. `externalUuid` (iOS) is diagnostic only.
 ///
 /// *Guard args* (every guarded method): `profileId`, `signedInUserId?`,
 /// `ownerUserId?`, `isMinor`, `birthYear?`, `transferredAtMs?`,
@@ -477,7 +483,8 @@ HealthReadResult _decodeSampleList(
 
 /// One sample map from `readMenstrualFlowPage`, or null when a required key is
 /// missing/typed wrong. Optional keys (`tzName`, `zoneOffsetSeconds`,
-/// `zoneOffsetInferred`, `externalUuid`, `modifiedAtMs`) are genuinely
+/// `endZoneOffsetSeconds`, `zoneOffsetInferred`, `externalUuid`,
+/// `modifiedAtMs`) are genuinely
 /// nullable. [start]/[end]
 /// cross as epoch-millisecond numbers and become UTC instants; the sample's
 /// own zone rides [HealthFlowSample.tzName] (iOS IANA) or
@@ -500,7 +507,8 @@ HealthFlowSample? _decodeFlowSample(Object? entry) {
       (kind == HealthSampleKind.menstrualFlow && flow == null)) {
     return null;
   }
-  final offsetSeconds = (entry['zoneOffsetSeconds'] as num?)?.toInt();
+  final offset = _optionalDurationSeconds(entry['zoneOffsetSeconds']);
+  final endOffset = _optionalDurationSeconds(entry['endZoneOffsetSeconds']);
   return HealthFlowSample(
     recordId: recordId,
     kind: kind,
@@ -508,8 +516,8 @@ HealthFlowSample? _decodeFlowSample(Object? entry) {
     start: DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true),
     end: DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true),
     tzName: entry['tzName'] as String?,
-    offset:
-        offsetSeconds == null ? null : Duration(seconds: offsetSeconds),
+    offset: offset,
+    endOffset: endOffset,
     offsetInferred: entry['zoneOffsetInferred'] as bool? ?? false,
     externalUuid: entry['externalUuid'] as String?,
     modifiedAt: _optionalInstant(entry['modifiedAtMs']),
@@ -524,6 +532,15 @@ HealthFlowSample? _decodeFlowSample(Object? entry) {
 DateTime? _optionalInstant(Object? raw) {
   if (raw is! num) return null;
   return DateTime.fromMillisecondsSinceEpoch(raw.toInt(), isUtc: true);
+}
+
+/// The zone offset an optional wire value names (the #180 contract's
+/// `zoneOffsetSeconds`, and the #1556 period record's
+/// `endZoneOffsetSeconds`). The same shape as [_optionalInstant], and kept
+/// out of [_decodeFlowSample] for the same complexity-budget reason.
+Duration? _optionalDurationSeconds(Object? raw) {
+  if (raw is! num) return null;
+  return Duration(seconds: raw.toInt());
 }
 
 /// The window-args half of `readMenstrualFlowPage` (Issue #992): the

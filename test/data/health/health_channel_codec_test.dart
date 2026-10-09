@@ -595,6 +595,44 @@ void main() {
       expect(samples[1].offset, const Duration(hours: 5, minutes: 30));
     });
 
+    // Issue #1556: a MenstruationPeriodRecord crosses as one interval
+    // sample carrying no flow, its start offset in `zoneOffsetSeconds`
+    // and — where the record has one — its end instant's own offset in
+    // `endZoneOffsetSeconds`.
+    test('a period sample decodes its span and its two zone offsets '
+        '(Issue #1556)', () {
+      final decoded = decodeHealthReadResult([
+        {
+          'recordId': 'hc-period',
+          'kind': 'menstruationPeriod',
+          'startMs': 1000,
+          'endMs': 2000,
+          'zoneOffsetSeconds': -14400,
+          'endZoneOffsetSeconds': -18000,
+          'modifiedAtMs': 1791000000000,
+        },
+        // `endZoneOffsetSeconds` is optional: a record that carries only
+        // its start offset decodes with a null end offset, and Dart
+        // resolves both endpoints in the start zone.
+        {
+          'recordId': 'hc-period-2',
+          'kind': 'menstruationPeriod',
+          'startMs': 3000,
+          'endMs': 4000,
+          'zoneOffsetSeconds': 3600,
+        },
+      ]);
+      final samples = (decoded as HealthReadSamples).samples;
+      expect(samples[0].kind, HealthSampleKind.menstruationPeriod);
+      expect(samples[0].flow, isNull);
+      expect(samples[0].offset, const Duration(hours: -4));
+      expect(samples[0].endOffset, const Duration(hours: -5));
+      expect(samples[0].modifiedAt, isNotNull);
+      expect(samples[1].kind, HealthSampleKind.menstruationPeriod);
+      expect(samples[1].offset, const Duration(hours: 1));
+      expect(samples[1].endOffset, isNull);
+    });
+
     // Issue #1559: Health Connect changes a record in place, so the import
     // needs to know when; HealthKit sends nothing, and that is not an error.
     test('a sample carries the store\'s last-modified time when it is sent, '

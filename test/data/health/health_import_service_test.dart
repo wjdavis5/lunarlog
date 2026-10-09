@@ -399,6 +399,30 @@ HealthFlowSample _offsetSample({
   );
 }
 
+/// One Health Connect `MenstruationPeriodRecord`: an interval from a period's
+/// first-day local midnight to the last instant of its last day, with a zone
+/// offset per endpoint (Issue #1556). [offset]/[endOffset] default to −04:00
+/// on both endpoints — pass null for a record that carries no zone at all,
+/// or a different [endOffset] for a span crossing a DST transition.
+HealthFlowSample _periodSample({
+  required String id,
+  required String startIso,
+  required String endIso,
+  Duration? offset = const Duration(hours: -4),
+  Duration? endOffset = const Duration(hours: -4),
+  DateTime? modifiedAt,
+}) {
+  return HealthFlowSample(
+    recordId: id,
+    kind: HealthSampleKind.menstruationPeriod,
+    start: DateTime.parse(startIso),
+    end: DateTime.parse(endIso),
+    offset: offset,
+    endOffset: endOffset,
+    modifiedAt: modifiedAt,
+  );
+}
+
 /// One iOS import sample with no recorded IANA zone, carrying the
 /// device-zone offset the iOS read synthesises (Issue #902).
 HealthFlowSample _deviceZoneSample({
@@ -1798,6 +1822,241 @@ void main() {
       ).importNow();
       expect(summary.samplesWithoutZone, 1);
       expect(observations.saved, isEmpty);
+    });
+  });
+
+  // Issue #1556: a source that records a period as one start-to-end record
+  // and no per-day flow records used to import nothing. The record now
+  // expands into bleed days across its span; a real flow record for the
+  // same day always wins, so a both-types source still yields one entry
+  // per day.
+  group('Issue #1556 period records', () {
+    // Sep 10–12 2026 at a fixed −04:00: the start instant is the 10th's
+    // local midnight, the end instant the 12th's last second.
+    HealthReadResult threeDayPeriod() => HealthReadResult.samples([
+          _periodSample(
+            id: 'hc-period',
+            startIso: '2026-09-10T04:00:00Z',
+            endIso: '2026-09-13T03:59:59Z',
+          ),
+        ]);
+
+    test('a period-only source imports its span as bleed days', () async {
+      await bind();
+      source.result = threeDayPeriod();
+      final summary = await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importNow();
+
+      expect(summary.daysWritten, 3);
+      expect(dayEntries.saved, hasLength(3));
+      final byDate = {for (final day in dayEntries.saved) day.localDate: day};
+      expect(byDate.keys, containsAll([
+        LocalDate(2026, 9, 10),
+        LocalDate(2026, 9, 11),
+        LocalDate(2026, 9, 12),
+      ]));
+      for (final day in dayEntries.saved) {
+        // The chosen level (health_flow_mapping.dart's
+        // kPeriodRecordImportFlowLevel): the weakest real bleed level, so
+        // an intensity the record does not carry is understated, never
+        // invented as medium.
+        expect(day.flow, FlowLevel.light);
+        expect(day.source, DayEntrySource.healthConnect);
+        // The record key, not the flow: a deletion or change of this
+        // record addresses every day it filled.
+        expect(day.sourceId, 'hc-period');
+        expect(day.tz, 'UTC-04:00');
+      }
+      // One record placed, counted once — not once per expanded day.
+      expect(summary.samplesFromRecordedZone, 1);
+      expect(summary.samplesRead, 1);
+    });
+
+    test('a second import of the same period record brings nothing new',
+        () async {
+      await bind();
+      source.result = threeDayPeriod();
+      final service = build(importPlatform: HealthImportPlatform.healthConnect);
+      await service.importNow();
+      expect(dayEntries.saved, hasLength(3));
+
+      final second = await service.importNow();
+      expect(second.daysWritten, 0);
+      expect(second.daysUnchanged, 3);
+      expect(dayEntries.saved, hasLength(3));
+    });
+
+    test('a both-types source yields one entry per day with the flow '
+        'record winning', () async {
+      await bind();
+      // The period record arrives BEFORE the flow record, so this pins the
+      // rank rule, not page order: any flow record outranks a period fill.
+      source.result = HealthReadResult.samples([
+        _periodSample(
+          id: 'hc-period',
+          startIso: '2026-09-10T04:00:00Z',
+          endIso: '2026-09-13T03:59:59Z',
+        ),
+        _offsetSample(
+          id: 'hc-flow-11',
+          flow: HealthFlowValue.medium,
+          startIso: '2026-09-11T15:00:00Z',
+        ),
+      ]);
+      final summary = await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importNow();
+
+      // Exactly one entry per day: the two days with no flow record are
+      // filled by the period, the covered day carries the flow record.
+      expect(summary.daysWritten, 3);
+      final byDate = {for (final day in dayEntries.saved) day.localDate: day};
+      final filledDay = byDate[LocalDate(2026, 9, 10)]!;
+      expect(filledDay.flow, FlowLevel.light);
+      expect(filledDay.sourceId, 'hc-period');
+      final flowDay = byDate[LocalDate(2026, 9, 11)]!;
+      expect(flowDay.flow, FlowLevel.medium);
+      expect(flowDay.sourceId, 'hc-flow-11');
+      expect(byDate[LocalDate(2026, 9, 12)]!.sourceId, 'hc-period');
+    });
+
+    test('a spotting record on a day inside the span coexists with the '
+        'period day — they are different rows, nothing double counts',
+        () async {
+      await bind();
+      source.result = HealthReadResult.samples([
+        _periodSample(
+          id: 'hc-period',
+          startIso: '2026-09-10T04:00:00Z',
+          endIso: '2026-09-13T03:59:59Z',
+        ),
+        _bleedingSample(
+          id: 'hc-spot-11',
+          startIso: '2026-09-11T15:00:00Z',
+          offset: const Duration(hours: -4),
+        ),
+      ]);
+      final summary = await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importNow();
+
+      // Three bleed days AND the one spotting observation: a period record
+      // never suppresses an intermenstrual record, and a spotting record
+      // never becomes a second flow day.
+      expect(summary.daysWritten, 3);
+      expect(summary.spottingDaysWritten, 1);
+      expect(observations.saved.single.localDate, LocalDate(2026, 9, 11));
+      expect(observations.saved.single.sourceId, 'hc-spot-11');
+    });
+
+    test('a hand-logged day inside the span is never overwritten', () async {
+      await bind();
+      await dayEntries.save(
+        DayEntry(
+          id: '',
+          profileId: _profileId,
+          localDate: LocalDate(2026, 9, 11),
+          tz: _tz,
+          flow: FlowLevel.heavy,
+          source: DayEntrySource.manual,
+          updatedAt: DateTime.utc(2026, 9, 11),
+        ),
+      );
+      source.result = threeDayPeriod();
+      final summary = await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importNow();
+
+      // The hand-logged day keeps her value; the period fills the two
+      // days she did not log.
+      expect(summary.daysKeptManual, 1);
+      expect(summary.daysWritten, 2);
+      final byDate = {for (final day in dayEntries.saved) day.localDate: day};
+      expect(byDate[LocalDate(2026, 9, 11)]!.flow, FlowLevel.heavy);
+      expect(byDate[LocalDate(2026, 9, 11)]!.source, DayEntrySource.manual);
+    });
+
+    test('a record with no offset on either endpoint is skipped, not '
+        'guessed', () async {
+      await bind();
+      source.result = HealthReadResult.samples([
+        _periodSample(
+          id: 'hc-period',
+          startIso: '2026-09-10T04:00:00Z',
+          endIso: '2026-09-13T03:59:59Z',
+          offset: null,
+          endOffset: null,
+        ),
+      ]);
+      final summary = await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importNow();
+      expect(summary.samplesWithoutZone, 1);
+      expect(dayEntries.saved, isEmpty);
+    });
+
+    test('the end instant resolves in its own zone: on a DST-transition '
+        'span the end offset, not the start offset, places the last day',
+        () async {
+      await bind();
+      // US DST ended 2025-11-02 (the suite's clock sits at 2026-09-15, so
+      // the span must lie before it). The end instant is Nov 3's last
+      // second at −05:00; resolved in the start zone (−04:00) it would land
+      // on Nov 4 and add a day that never existed.
+      source.result = HealthReadResult.samples([
+        _periodSample(
+          id: 'hc-period',
+          startIso: '2025-11-02T04:00:00Z',
+          endIso: '2025-11-04T04:59:59Z',
+          offset: const Duration(hours: -4),
+          endOffset: const Duration(hours: -5),
+        ),
+      ]);
+      await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importNow();
+
+      final dates = dayEntries.saved.map((day) => day.localDate).toList();
+      expect(dates, [LocalDate(2025, 11, 2), LocalDate(2025, 11, 3)]);
+      final last = dayEntries.saved.last;
+      expect(last.tz, 'UTC-05:00');
+    });
+
+    test('a span longer than any real period is counted, never expanded',
+        () async {
+      await bind();
+      // ~5 months: Health Connect itself refuses to store a period record
+      // longer than 31 days of elapsed time, so this is a corrupt record
+      // (kMaxPeriodRecordSpanDays bounds the expansion).
+      source.result = HealthReadResult.samples([
+        _periodSample(
+          id: 'hc-period',
+          startIso: '2026-01-01T05:00:00Z',
+          endIso: '2026-06-01T05:00:00Z',
+        ),
+      ]);
+      final summary = await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importNow();
+      expect(summary.samplesUnsupported, 1);
+      expect(dayEntries.saved, isEmpty);
+    });
+
+    test('an end before the start is counted, never expanded', () async {
+      await bind();
+      source.result = HealthReadResult.samples([
+        _periodSample(
+          id: 'hc-period',
+          startIso: '2026-09-12T04:00:00Z',
+          endIso: '2026-09-10T03:59:59Z',
+        ),
+      ]);
+      final summary = await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importNow();
+      expect(summary.samplesUnsupported, 1);
+      expect(dayEntries.saved, isEmpty);
     });
   });
 

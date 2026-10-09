@@ -12,6 +12,29 @@ import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 
 void main() {
+  group('kPeriodRecordImportFlowLevel (Issue #1556)', () {
+    // A MenstruationPeriodRecord carries no intensity; the model has no
+    // "unspecified" level to choose, so the import writes this one. Pinned
+    // to the weakest real bleed level: unknown is understated, never
+    // invented as medium, and the day still counts as a bleed day.
+    test('the level a period record imports as is the weakest real bleed '
+        'level', () {
+      expect(kPeriodRecordImportFlowLevel, FlowLevel.light);
+      expect(isBleed(kPeriodRecordImportFlowLevel), isTrue);
+    });
+
+    test('it is a real level, never the deprecated spotting alias or an '
+        'unlogged value', () {
+      expect(
+        kPeriodRecordImportFlowLevel,
+        isNot(FlowLevel.none),
+      );
+      // ignore: deprecated_member_use_from_same_package
+      expect(kPeriodRecordImportFlowLevel, isNot(FlowLevel.spotting));
+      expect(kPeriodRecordImportFlowLevel, isNot(FlowLevel.notBleeding));
+    });
+  });
+
   group('mapFlowToHealthWrite', () {
     test('none writes no sample (the issue\'s stated assumption)', () {
       expect(

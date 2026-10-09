@@ -92,6 +92,14 @@ const int kHealthImportMaxPages = 1000;
 /// date.
 const int kHealthImportEarliestYear = 1970;
 
+/// The longest period-record span (civil dates, inclusive) the import will
+/// expand (Issue #1556). Health Connect refuses to store a
+/// `MenstruationPeriodRecord` longer than 31 days of elapsed time — the
+/// rule #1478's own write path stays under — so anything longer than this
+/// bound (which leaves margin for the two endpoint offsets) is a corrupt
+/// or hostile record: counted as unsupported, never expanded into days.
+const int kMaxPeriodRecordSpanDays = 40;
+
 /// Which OS health-store record a [HealthFlowSample] came from. The shared
 /// import pipeline handles both of Android's read data types; iOS currently
 /// produces only [menstrualFlow] (#217's read set is the single menstrual
@@ -106,7 +114,17 @@ enum HealthSampleKind {
   /// the datum), so [HealthFlowSample.flow] is null. Imported as a
   /// `spotting` observation, the inverse of the write side's A3-4 rule
   /// (`health_flow_mapping.dart`'s `mapSpottingToHealthWrite`).
-  intermenstrualBleeding;
+  intermenstrualBleeding,
+
+  /// A `MenstruationPeriodRecord` (Android only — HealthKit has no
+  /// period record type, only per-day menstrual-flow samples, so the iOS
+  /// read never emits this; Issue #1556). One record per period episode,
+  /// start to end, with no intensity of its own: the record asserts that
+  /// its whole span was menstrual bleeding. Imported as bleed days across
+  /// its civil-date span ([kPeriodRecordImportFlowLevel]'s level), where
+  /// each day the source also carries a real flow record keeps the flow
+  /// record — the period fills only days with no flow record.
+  menstruationPeriod;
 
   /// Parses the wire string; null when [raw] is not in the closed set. A
   /// null [raw] is the pre-#458 iOS payload (no `kind` key) and means
@@ -115,6 +133,7 @@ enum HealthSampleKind {
   static HealthSampleKind? fromWire(String? raw) => switch (raw) {
         null || 'menstrualFlow' => menstrualFlow,
         'intermenstrualBleeding' => intermenstrualBleeding,
+        'menstruationPeriod' => menstruationPeriod,
         _ => null,
       };
 }
@@ -152,12 +171,16 @@ class HealthFlowSample {
     this.flow,
     this.tzName,
     this.offset,
+    this.endOffset,
     this.offsetInferred = false,
     this.externalUuid,
     this.modifiedAt,
   }) : assert(
-          kind == HealthSampleKind.intermenstrualBleeding || flow != null,
-          'a menstrual-flow sample requires a flow value',
+          // Only the flow kind carries an intensity; the bleeding marker
+          // and the period interval (Issue #1556) carry none at all.
+          kind == HealthSampleKind.menstrualFlow ? flow != null : flow == null,
+          'a menstrual-flow sample requires a flow value; '
+          'the other kinds carry none',
         );
 
   final String recordId;
@@ -182,6 +205,15 @@ class HealthFlowSample {
   /// last-resort proxy (Issue #902). Exactly one of this or [tzName] is
   /// present for a placeable sample.
   final Duration? offset;
+
+  /// The end instant's own recorded UTC offset (Issue #1556), where the
+  /// record carries two: a Health Connect `MenstruationPeriodRecord` has a
+  /// `startZoneOffset` ([offset]) and an `endZoneOffset` ([endOffset]),
+  /// and on a DST-transition day inside the span they differ — resolving
+  /// the end date with the start offset could then shift it one day.
+  /// Null for every instantaneous sample (flow, bleeding), whose date is
+  /// resolved from [offset] alone.
+  final Duration? endOffset;
 
   /// Whether [offset] is the iPhone's own zone at [start] rather than a zone
   /// the source sample recorded (Issue #902). False for every Health Connect

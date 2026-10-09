@@ -197,6 +197,30 @@ bool? flowPayloadSummaryWasMarker(String? summary) {
   return null;
 }
 
+/// The flow level a Health Connect `MenstruationPeriodRecord` imports as
+/// (Issue #1556). A period record carries no intensity — one record per
+/// period, start to end — and [FlowLevel] deliberately has no "unspecified"
+/// level to choose (the check #1556 asked for), so the import must either
+/// skip the record (the bug #1556 fixes: a period-only source imported
+/// nothing) or write a real level. [FlowLevel.light] is the choice:
+///
+/// * it is the weakest real bleed level, so an unknown intensity is
+///   understated rather than invented as "medium";
+/// * it is the same value the write side already sends for the least
+///   specific bleeding day inside a period episode (spotting-in-episode →
+///   `menstrualFlow` light, the #193 A3-4 rule) — the one precedent in the
+///   codebase for writing a concrete level for a day whose bleeding the
+///   source never graded;
+/// * the day still counts as a bleed day (`isBleed`), so the period takes
+///   part in episode and cycle computation exactly as the record asserts.
+///
+/// Never extended into a new enum value: a stored `unspecified` flow would
+/// ripple through the DB enum, the `public.flow_level` SQL domain, and the
+/// sync wire for a level no source of lunarlog's own can produce. A real
+/// per-day flow record from the same source always wins over this fill —
+/// see `_resolvePage`'s merge rule in `health_import_service.dart`.
+const FlowLevel kPeriodRecordImportFlowLevel = FlowLevel.light;
+
 /// The inverse direction (Issue #217): a health-store flow value read back
 /// into lunarlog's [FlowLevel]. `unspecified` has no lunarlog equivalent —
 /// the app always knows which value it means — so it returns null and the
