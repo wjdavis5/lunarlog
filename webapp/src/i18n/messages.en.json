@@ -1138,6 +1138,7 @@
   "accountDeleteDialogExportFirst": "Export first",
   "accountDeleteDialogConfirm": "Delete account",
   "accountDeleteDialogExportError": "Could not export your data. Please try again.",
+  "accountDeleteDialogBlastRadiusError": "Could not load what your account owns. Check your connection and try again.",
   "accountDeleteDialogBlastRadiusProfiles": "This will also permanently delete {count, plural, =1{1 profile} other{{count} profiles}} you own ({names}).",
   "accountDeleteDialogBlastRadiusGuardians": "This will also permanently delete {count, plural, =1{1 profile} other{{count} profiles}} you own ({names}) and remove access for {guardianCount, plural, =1{1 other guardian} other{{guardianCount} other guardians}}.",
   "accountSectionTitle": "Account",

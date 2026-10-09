@@ -1141,6 +1141,7 @@ export const MESSAGE_IDS = [
   "accountDeleteDialogExportFirst",
   "accountDeleteDialogConfirm",
   "accountDeleteDialogExportError",
+  "accountDeleteDialogBlastRadiusError",
   "accountDeleteDialogBlastRadiusProfiles",
   "accountDeleteDialogBlastRadiusGuardians",
   "accountSectionTitle",

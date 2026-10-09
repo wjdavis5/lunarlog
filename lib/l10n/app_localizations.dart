@@ -6956,6 +6956,12 @@ abstract class AppLocalizations {
   /// **'Could not export your data. Please try again.'**
   String get accountDeleteDialogExportError;
 
+  /// Issue #1714: delete-account dialog copy shown when the blast-radius read fails; the retry action re-runs the read.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load what your account owns. Check your connection and try again.'**
+  String get accountDeleteDialogBlastRadiusError;
+
   /// Issue #1004 (tranche 2): delete-account blast radius with no other guardians.
   ///
   /// In en, this message translates to:

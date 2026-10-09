@@ -4424,6 +4424,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Could not export your data. Please try again.';
 
   @override
+  String get accountDeleteDialogBlastRadiusError =>
+      'Could not load what your account owns. Check your connection and try again.';
+
+  @override
   String accountDeleteDialogBlastRadiusProfiles(int count, String names) {
     String _temp0 = intl.Intl.pluralLogic(
       count,

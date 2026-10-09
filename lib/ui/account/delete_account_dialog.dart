@@ -176,12 +176,22 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
   /// actively acknowledges the extra consequence.
   bool _acknowledged = false;
 
-  late final Future<_DeleteAccountBlastRadius> _blastRadius;
+  late Future<_DeleteAccountBlastRadius> _blastRadius;
 
   @override
   void initState() {
     super.initState();
     _blastRadius = _loadBlastRadius(context);
+  }
+
+  /// Issue #1714: re-runs the blast-radius read after a failure. The confirm
+  /// button cannot enable without the radius (that is #533's whole point),
+  /// so a failed read must not be a dead end - the error branch in [build]
+  /// shows the failure and this is its retry.
+  void _retryBlastRadius() {
+    setState(() {
+      _blastRadius = _loadBlastRadius(context);
+    });
   }
 
   Future<void> _handleExport() async {
@@ -227,8 +237,10 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
   /// #533: gates the destructive confirm action on (a) no export in flight,
   /// (b) the blast radius having actually loaded (never enabled during the
   /// brief initial load - the whole point is to enumerate it *before* the
-  /// button is enabled), and (c) the acknowledgement checkbox when the
-  /// blast radius includes a shared owned profile.
+  /// button is enabled; #1714: a failed read keeps it disabled too, but the
+  /// inline error and its retry now say why and offer the way back), and (c)
+  /// the acknowledgement checkbox when the blast radius includes a shared
+  /// owned profile.
   bool _confirmEnabled(_DeleteAccountBlastRadius? blastRadius) {
     if (_exporting) return false;
     if (blastRadius == null) return false;
@@ -287,6 +299,16 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
                       controlAffinity: ListTileControlAffinity.leading,
                       contentPadding: EdgeInsets.zero,
                       title: Text(l10n.accountDeleteDialogAck),
+                    ),
+                  ],
+                  if (snapshot.hasError) ...[
+                    const SizedBox(height: 12),
+                    // Issue #1714: a failed blast-radius read used to leave
+                    // confirm disabled with no explanation and no way back.
+                    InlineError(
+                      key: const ValueKey('account-delete-blast-radius-error'),
+                      message: l10n.accountDeleteDialogBlastRadiusError,
+                      onRetry: _exporting ? null : _retryBlastRadius,
                     ),
                   ],
                   if (exportError != null) ...[
