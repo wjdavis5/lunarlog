@@ -223,6 +223,47 @@ void main() {
               'signal — fertile-window consumers must check this');
     });
 
+    // Issue #1716: a pack profile that never logs a withdrawal bleed must
+    // not read "late" forever — the regimen estimate goes stale at the same
+    // bound the statistical path uses (max(4 x 28, kMinStaleHistoryDays) =
+    // 120 days open for a 28-day pack).
+    test('issue #1716: a never-logging pack profile goes stale at the shared '
+        'bound, not late forever', () {
+      final startedOn = LocalDate(2026, 1, 1);
+      ActivePrediction pack(LocalDate today) => computePrediction(
+            episodes: const [],
+            today: today,
+            birthControl: ActiveBirthControl(
+              method: BirthControlMethod.pill,
+              startedOn: startedOn,
+            ),
+          ) as ActivePrediction;
+
+      // 120 open days (the floor) is still a long cycle, not stale.
+      final atBound = pack(LocalDate(2026, 4, 30));
+      expect(atBound.cycleDay, 120);
+      expect(atBound.staleHistory, isFalse);
+
+      // 121 open days is stale — the issue's 163-days-late scenario is far
+      // past it.
+      final past = pack(LocalDate(2026, 5, 1));
+      expect(past.staleHistory, isTrue);
+      expect(past.basis, PredictionBasis.regimenSchedule,
+          reason: 'the stale flag does not change the basis');
+
+      // A logged withdrawal bleed re-anchors and clears the state.
+      final reAnchored = computePrediction(
+        episodes: episodesFromStarts([LocalDate(2026, 4, 25)]),
+        today: LocalDate(2026, 5, 1),
+        birthControl: ActiveBirthControl(
+          method: BirthControlMethod.pill,
+          startedOn: startedOn,
+        ),
+      ) as ActivePrediction;
+      expect(reAnchored.staleHistory, isFalse);
+      expect(reAnchored.lastEpisodeStart, LocalDate(2026, 4, 25));
+    });
+
     test(
         'Issue LLA-071: a future-dated logged bleed is never selected as the '
         'withdrawal-bleed anchor', () {
