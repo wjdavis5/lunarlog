@@ -53,6 +53,51 @@ class RunnerTests: XCTestCase {
     XCTAssertNil(HealthKitChannelHandler.severity(forWire: "unknown"))
   }
 
+  /// Issue #1590: the write types no sheet has asked about — the
+  /// `.notDetermined` ones, and no others. A type the person denied or
+  /// allowed is never offered again, and every written type must map to a
+  /// wire name: a type added without one would be silently skipped by the
+  /// ask the Health sync screen raises for it.
+  func testNeverAskedWriteTypesAreOnlyTheNotDeterminedOnes() {
+    // Every written type answers .notDetermined with a wire name — the
+    // same set `grantedWriteTypes` speaks.
+    let allWires = Set(
+      HealthKitChannelHandler.writtenSampleTypes.compactMap {
+        HealthKitChannelHandler.wireIdentifier(for: $0)
+      })
+    let neverAsked = HealthKitChannelHandler.neverAskedWriteTypeWires {
+      _ in .notDetermined
+    }
+    XCTAssertEqual(Set(neverAsked), allWires)
+    XCTAssertTrue(neverAsked.contains("menstrualFlow"))
+    XCTAssertTrue(neverAsked.contains("spotting"))
+    XCTAssertTrue(neverAsked.contains("cervicalMucus"))
+    XCTAssertTrue(neverAsked.contains("ovulationTest"))
+    XCTAssertTrue(neverAsked.contains("basalBodyTemperature"))
+    XCTAssertTrue(neverAsked.contains("headache"))
+    XCTAssertFalse(
+      neverAsked.contains("symptoms"),
+      "the all-on aggregate is not a type any sheet asks about")
+
+    // A determined type is never in the answer: denied or allowed, the
+    // person has answered for it.
+    XCTAssertTrue(
+      HealthKitChannelHandler.neverAskedWriteTypeWires {
+        _ in .sharingDenied
+      }.isEmpty)
+    XCTAssertTrue(
+      HealthKitChannelHandler.neverAskedWriteTypeWires {
+        _ in .sharingAuthorized
+      }.isEmpty)
+
+    // A mixed store: exactly the notDetermined one is offered.
+    let mixed = HealthKitChannelHandler.neverAskedWriteTypeWires {
+      HealthKitChannelHandler.wireIdentifier(for: $0) == "spotting"
+        ? .notDetermined : .sharingDenied
+    }
+    XCTAssertEqual(mixed, ["spotting"])
+  }
+
   /// Issue #992: Pins the paging-cursor codec on the Swift side. Dart treats
   /// the cursor as opaque and only compares cursors for progress, but the
   /// bytes that cross the channel must round-trip and malformed input must

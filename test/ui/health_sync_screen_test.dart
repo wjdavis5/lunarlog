@@ -336,6 +336,9 @@ class _ScriptedProbe implements HealthPermissionProbe {
     this.reachesPastData = true,
     this.pastDataThrows = false,
     this.grantedTypes = const {},
+    this.neverAskedTypes = const {},
+    this.neverAskedThrows = false,
+    this.writeTypeRequestThrows = false,
   });
 
   @override
@@ -355,6 +358,21 @@ class _ScriptedProbe implements HealthPermissionProbe {
   int pastDataProbes = 0;
   int grantedWriteTypesProbes = 0;
 
+  /// Issue #1590: the write types no sheet has asked about, what the
+  /// per-type probe does, and every ask the screen raised — the facts and
+  /// the exact set of types, in order.
+  Set<String> neverAskedTypes;
+  final bool neverAskedThrows;
+  final bool writeTypeRequestThrows;
+  int neverAskedProbes = 0;
+  int writeTypeRequests = 0;
+  final List<({HealthGuardFacts facts, Set<String> types})>
+      writeTypeRequestCalls = [];
+
+  /// Run when an ask answers, so a test can make the probe show the
+  /// type as asked (or granted).
+  void Function()? onWriteTypeRequest;
+
   @override
   Future<HealthPermissionStatus> permissionStatus() async {
     writeProbes++;
@@ -365,6 +383,25 @@ class _ScriptedProbe implements HealthPermissionProbe {
   Future<Set<String>> grantedWriteTypes() async {
     grantedWriteTypesProbes++;
     return grantedTypes;
+  }
+
+  @override
+  Future<Set<String>> neverAskedWriteTypes() async {
+    neverAskedProbes++;
+    if (neverAskedThrows) throw StateError('boom');
+    return neverAskedTypes;
+  }
+
+  @override
+  Future<HealthPlatformResult> requestWriteAuthorizationForTypes(
+    HealthGuardFacts facts,
+    Set<String> types,
+  ) async {
+    writeTypeRequests++;
+    writeTypeRequestCalls.add((facts: facts, types: types));
+    if (writeTypeRequestThrows) throw StateError('boom');
+    onWriteTypeRequest?.call();
+    return const HealthPlatformResult.allowed();
   }
 
   @override
@@ -3971,7 +4008,7 @@ void main() {
     });
 
     testWidgets('iPhone: the real adapter sends Swift the write probe once '
-        'per reading and nothing else', (tester) async {
+        'per reading and never the read-side one', (tester) async {
       final HealthPermissionProbe ios = createHealthPlatform(
         TargetPlatform.iOS,
         binding: HealthSyncBinding(FakeSettingsStore()),
@@ -3995,9 +4032,15 @@ void main() {
         expect(statusLine(tester), expected);
         expect(
           permissionCalls.map((call) => call.method),
-          ['permissionStatus'],
-          reason: 'one write probe; the read-side answer on iOS would be a '
-              'second one',
+          // Issue #1590: a denied state also reads which write types were
+          // never asked about — the type an app update added — but the
+          // read-side question (`importPermissionStatus`) is an Android
+          // one and is never sent to Swift.
+          wire == 'denied'
+              ? ['permissionStatus', 'neverAskedWriteTypes']
+              : ['permissionStatus'],
+          reason: 'the write probe and, when some writes are off, the '
+              'never-asked one — nothing the read side would have to answer',
         );
       }
     });
@@ -4027,7 +4070,13 @@ void main() {
       // asked when an import finishes, not when the screen opens.
       expect(
         permissionCalls.map((call) => call.method),
-        ['permissionStatus', 'importPermissionStatus'],
+        [
+          'permissionStatus',
+          'importPermissionStatus',
+          // Issue #1590: and which write types no sheet has asked about,
+          // so a type an app update added is asked for once.
+          'neverAskedWriteTypes',
+        ],
       );
     });
 
@@ -4057,6 +4106,197 @@ void main() {
         'Health Connect access: writing some (Spotting off) — open Settings to change',
       );
       expect(find.byKey(settingsKey), findsOneWidget);
+    });
+  });
+
+  // Issue #1590: the write pass asks for authorization once, while no
+  // forward-only floor is stamped, so a write type an app update adds is
+  // never asked for on a phone that already gave access — and never
+  // written there. The sync screen tells "never asked" from "declined" per
+  // type and asks for the never-asked ones once, at a moment of its own
+  // rather than in the pass's day-logging upkeep.
+  group('Issue #1590 a write type no sheet has asked about', () {
+    const statusKey = ValueKey('health-sync-permission-status');
+
+    Future<HealthSyncBinding> boundBinding() async {
+      final binding = HealthSyncBinding(FakeSettingsStore());
+      await binding.bind(
+        profile: profiles.firstWhere((p) => p.id == 'eligible'),
+        signedInUserId: 'u1',
+        ownerUserId: 'u1',
+        minorBindingAllowed: false,
+      );
+      return binding;
+    }
+
+    Future<void> pumpAndroid(
+      WidgetTester tester, {
+      required HealthSyncBinding binding,
+      required HealthPermissionProbe permissionProbe,
+      bool writeEnabled = true,
+    }) =>
+        pumpScreen(
+          tester,
+          binding: binding,
+          permissionProbe: permissionProbe,
+          writeEnabled: writeEnabled,
+          storePlatform: HealthImportPlatform.healthConnect,
+          viewport: const Size(800, 2400),
+        );
+
+    String statusLine(WidgetTester tester) => tester
+        .widget<Text>(
+          find.descendant(
+            of: find.byKey(statusKey),
+            matching: find.byType(Text),
+          ),
+        )
+        .data!;
+
+    testWidgets('asks once, for exactly the never-asked types, with the '
+        'bound profile\'s guard facts', (tester) async {
+      final probe = _ScriptedProbe(
+        readAccessDisclosed: true,
+        write: HealthPermissionStatus.writingSome,
+        read: HealthPermissionStatus.granted,
+        grantedTypes: const {'menstrualFlow'},
+        neverAskedTypes: const {'spotting'},
+      );
+      // What the person choosing "allow" leaves behind: the type is no
+      // longer one no sheet has asked about.
+      probe.onWriteTypeRequest = () {
+        probe.neverAskedTypes = const {};
+        probe.grantedTypes = const {'menstrualFlow', 'spotting'};
+      };
+      await pumpAndroid(
+        tester,
+        binding: await boundBinding(),
+        permissionProbe: probe,
+      );
+
+      // Exactly one ask, carrying only the type no sheet has offered —
+      // Health Connect drops a whole request that carries a permission
+      // already declined twice.
+      expect(probe.writeTypeRequests, 1);
+      final call = probe.writeTypeRequestCalls.single;
+      expect(call.types, {'spotting'});
+      // The same guard facts the bind flow evaluates.
+      expect(call.facts.profile.id, 'eligible');
+      expect(call.facts.signedInUserId, 'u1');
+      expect(call.facts.ownerUserId, 'u1');
+      // The per-type answers are read again after the sheet, so the status
+      // line and the off-types list are what the person just answered.
+      expect(probe.neverAskedProbes, 2);
+    });
+
+    testWidgets('does not ask in the state the write pass\'s own first '
+        'request owns', (tester) async {
+      // On a fresh install every type is "never asked"; the pass asks on
+      // its first pass, a moment after a profile is bound. The screen must
+      // not race it with a sheet of its own.
+      final probe = _ScriptedProbe(
+        readAccessDisclosed: false,
+        write: HealthPermissionStatus.notAsked,
+        neverAskedTypes: const {'menstrualFlow', 'spotting'},
+      );
+      await pumpScreen(
+        tester,
+        binding: HealthSyncBinding(FakeSettingsStore()),
+        permissionProbe: probe,
+        storePlatform: HealthImportPlatform.appleHealth,
+      );
+
+      expect(probe.writeTypeRequests, 0);
+      expect(probe.neverAskedProbes, 0);
+    });
+
+    testWidgets('asks on a denied state too: the denied types are not the '
+        'never-asked one', (tester) async {
+      final probe = _ScriptedProbe(
+        readAccessDisclosed: true,
+        write: HealthPermissionStatus.denied,
+        read: HealthPermissionStatus.granted,
+        neverAskedTypes: const {'spotting'},
+      );
+      await pumpAndroid(
+        tester,
+        binding: await boundBinding(),
+        permissionProbe: probe,
+      );
+
+      expect(probe.writeTypeRequests, 1);
+      expect(probe.writeTypeRequestCalls.single.types, {'spotting'});
+    });
+
+    testWidgets('a probe that cannot answer leaves the status line on the '
+        'screen and asks nothing', (tester) async {
+      final probe = _ScriptedProbe(
+        readAccessDisclosed: true,
+        write: HealthPermissionStatus.denied,
+        read: HealthPermissionStatus.granted,
+        neverAskedThrows: true,
+      );
+      await pumpAndroid(
+        tester,
+        binding: await boundBinding(),
+        permissionProbe: probe,
+      );
+
+      expect(probe.writeTypeRequests, 0);
+      expect(statusLine(tester), isNot(contains('not available')));
+    });
+
+    testWidgets('asks nothing while no profile is bound', (tester) async {
+      final probe = _ScriptedProbe(
+        readAccessDisclosed: true,
+        write: HealthPermissionStatus.denied,
+        read: HealthPermissionStatus.granted,
+        neverAskedTypes: const {'spotting'},
+      );
+      await pumpAndroid(
+        tester,
+        binding: HealthSyncBinding(FakeSettingsStore()),
+        permissionProbe: probe,
+      );
+
+      expect(probe.writeTypeRequests, 0);
+    });
+
+    testWidgets('asks nothing on a build where the write direction is not '
+        'wired', (tester) async {
+      final probe = _ScriptedProbe(
+        readAccessDisclosed: true,
+        write: HealthPermissionStatus.denied,
+        read: HealthPermissionStatus.granted,
+        neverAskedTypes: const {'spotting'},
+      );
+      await pumpAndroid(
+        tester,
+        binding: await boundBinding(),
+        permissionProbe: probe,
+        writeEnabled: false,
+      );
+
+      expect(probe.writeTypeRequests, 0);
+    });
+
+    testWidgets('a request that throws is best effort: one ask, not a '
+        'crash', (tester) async {
+      final probe = _ScriptedProbe(
+        readAccessDisclosed: true,
+        write: HealthPermissionStatus.writingSome,
+        read: HealthPermissionStatus.granted,
+        grantedTypes: const {'menstrualFlow'},
+        neverAskedTypes: const {'spotting'},
+        writeTypeRequestThrows: true,
+      );
+      await pumpAndroid(
+        tester,
+        binding: await boundBinding(),
+        permissionProbe: probe,
+      );
+
+      expect(probe.writeTypeRequests, 1);
     });
   });
 

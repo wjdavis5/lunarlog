@@ -81,6 +81,24 @@ Set<String> _kotlinRecordTypes(String source) {
       .toSet();
 }
 
+/// The quoted wire names, in order, inside the Kotlin
+/// `writtenRecordTypeWires = listOf(...)` literal (Issue #1590).
+List<String> _kotlinWireNames(String source) {
+  final start = source.indexOf('val writtenRecordTypeWires');
+  expect(start, isNonNegative,
+      reason: 'writtenRecordTypeWires was not found in the Kotlin source');
+  final listOf = source.indexOf('listOf(', start);
+  expect(listOf, isNonNegative, reason: 'writtenRecordTypeWires has no listOf');
+  final close = source.indexOf(')', listOf);
+  expect(close, greaterThan(listOf),
+      reason: 'writtenRecordTypeWires is unterminated');
+  final block = source.substring(listOf, close);
+  return RegExp(r'"(\w+)"')
+      .allMatches(block)
+      .map((match) => match.group(1)!)
+      .toList();
+}
+
 /// The `("wire", .caseName)` pairs of the `categoryWires` table in
 /// Swift's `wireIdentifier(for:)`: the name a delete reports for a type it
 /// passed over, by the HealthKit case it stands for.
@@ -1028,6 +1046,214 @@ void main() {
     });
   });
 
+  // Issue #1590: a write type an app update adds is never asked for on a
+  // phone that already gave access — the write pass asks once, while no
+  // forward-only floor is stamped. These guards keep Android's per-type
+  // answer honest (a type is "asked" only once a launched request has
+  // carried it, with the old install-wide marker migrated once) and keep
+  // the ask for such a type carrying that type alone, because Health
+  // Connect drops a whole request once any permission in it was declined
+  // twice. On iOS the state is HealthKit's own `.notDetermined`, so no
+  // marker exists there and the one sheet is reused.
+  group('Android: a write type never asked about is asked for once '
+      '(#1590)', () {
+    late String kotlin;
+
+    setUpAll(() {
+      kotlin = _stripLineComments(readRepoFile(_adapterPath));
+    });
+
+    test('every written record type has a wire name, in the same order', () {
+      // The parallel list is what a request and the per-type answer speak;
+      // a type added to writtenRecordTypes without a wire here would be
+      // silently unaskable.
+      final records = _kotlinRecordTypes(kotlin);
+      final wires = _kotlinWireNames(kotlin);
+      expect(wires, hasLength(records.length),
+          reason: 'one wire per written record type, in order');
+      expect(wires, contains('menstrualFlow'));
+      expect(wires, contains('spotting'));
+      expect(wires, contains('cervicalMucus'));
+      expect(wires, contains('ovulationTest'));
+      expect(wires, contains('basalBodyTemperature'));
+      // Two records share the menstruation permission and wire; the answer
+      // dedupes them.
+      expect(
+        RegExp(r'fun neverAskedWriteTypes\(\s*granted: Set<String>,\s*'
+                r'writes: List<Pair<String, String>>,\s*'
+                r'asked: \(String\) -> Boolean,\s*\): List<String> = writes\s*'
+                r'\.filter \{ \(permission, _\) -> permission !in granted && !asked\(permission\) \}\s*'
+                r'\.map \{ it\.second \}\s*\.distinct\(\)')
+            .hasMatch(kotlin),
+        isTrue,
+        reason: 'HealthPermissionState.neverAskedWriteTypes changed shape — '
+            'update HealthPermissionStateTest.kt and this guard together',
+      );
+    });
+
+    test('a type counts as asked only when a launched request carried it, '
+        'with the install-wide marker migrated once', () {
+      // The per-permission markers, stamped from the request's own
+      // permission set before the sheet launches (the same interrupted-
+      // sheet rule as the install-wide marker).
+      expect(
+        kotlin,
+        contains('const val PERMISSION_REQUESTED_TYPE_PREFIX ='),
+      );
+      expect(kotlin, contains('markWritePermissionsAsked(permissions)'));
+      final launcher = _between(
+        kotlin,
+        'private fun launchPermissionRequest(',
+        'private fun insert(',
+      );
+      final stamped = launcher.indexOf('markWritePermissionsAsked(permissions)');
+      final launched = launcher.indexOf('launcher.launch(permissions)');
+      expect(stamped, isNonNegative);
+      expect(launched, greaterThan(stamped),
+          reason: 'the per-type record is written before the sheet');
+      // Only write permissions: what a read sheet carried says nothing
+      // about the writes (Issue #1515).
+      expect(
+        RegExp(r'private fun markWritePermissionsAsked\(permissions: Set<String>\) \{'
+                r'\s*val editor = prefs\.edit\(\)\s*'
+                r'for \(permission in permissions\) \{\s*'
+                r'if \(permission in writePermissions\) \{\s*'
+                r'editor\.putLong\(perWritePermissionKey\(permission\), installStamp\)')
+            .hasMatch(kotlin),
+        isTrue,
+      );
+      // The one-time migration for an install whose sheet predates this
+      // tracking: its sheet carried every type that build listed. Also
+      // seeded from `permissionStatus`, which the write pass calls on every
+      // pass, so an install that never opens the Health sync screen has its
+      // list recorded before a later build adds a type.
+      expect(
+        _between(kotlin, '"permissionStatus" ->', '"grantedWriteTypes" ->'),
+        contains('seedAskedWritePermissions()'),
+      );
+      final seed = _between(
+        kotlin,
+        'private fun seedAskedWritePermissions()',
+        'private fun markWritePermissionsAsked(',
+      );
+      expect(seed, contains('if (!writesEverRequested()) return'));
+      expect(seed, contains('if (writePermissionMarkersExist()) return'));
+      expect(seed, contains('markWritePermissionsAsked(writePermissions)'));
+      // And the answer's "asked" is the marker, with that migration only
+      // while no per-type marker exists at all.
+      expect(
+        RegExp(r'private fun writePermissionAsked\(permission: String\): Boolean =\s*'
+                r'markerSetByThisInstall\(perWritePermissionKey\(permission\)\) \|\|\s*'
+                r'\(writesEverRequested\(\) && !writePermissionMarkersExist\(\)\)')
+            .hasMatch(kotlin),
+        isTrue,
+      );
+    });
+
+    test('the never-asked query only looks, and seeds the migration', () {
+      final handler = _between(
+        kotlin,
+        '"neverAskedWriteTypes" ->',
+        '"openPermissionSettings" ->',
+      );
+      expect(handler, contains('seedAskedWritePermissions()'));
+      expect(handler, contains('permissionController.getGrantedPermissions()'));
+      expect(handler, contains('HealthPermissionState.neverAskedWriteTypes('));
+      expect(handler, contains('writes = writePermissionWires'));
+      expect(handler, contains('asked = ::writePermissionAsked'));
+      expect(handler, contains('result.error("unavailable"'),
+          reason: 'a failed query must not read as "nothing to ask"');
+      for (final forbidden in [
+        'launcher',
+        'requestPermissions',
+        'launchPermissionRequest',
+        '.launch(',
+        'markWritePermissionsAsked',
+        'PERMISSION_REQUESTED_KEY',
+      ]) {
+        expect(handler, isNot(contains(forbidden)), reason: forbidden);
+      }
+    });
+
+    test('the ask carries the never-asked types alone, and no read '
+        'permission', () {
+      final request = _between(
+        kotlin,
+        '"requestWriteAuthorizationForTypes" ->',
+        '"requestImportAuthorization" ->',
+      );
+      final guarded = request.indexOf(
+        'if (!requestGuardAllows(call.method, args, result)) return',
+      );
+      final parsed = request.indexOf('writePermissionsForWires(wires)');
+      final launched = request.indexOf('launchPermissionRequest(');
+      expect(guarded, isNonNegative);
+      expect(parsed, greaterThan(guarded));
+      expect(launched, greaterThan(parsed));
+      expect(request, contains('askedMarker = PERMISSION_REQUESTED_KEY'));
+      expect(request, contains('permissions = permissions'));
+      for (final forbidden in [
+        'allPermissions',
+        'readPermissions',
+        'importReadPermissions',
+        'pastDataPermissions',
+        'backgroundReadPermissions',
+        'getReadPermission',
+      ]) {
+        expect(request, isNot(contains(forbidden)), reason: forbidden);
+      }
+      // The mapping touches only the write list.
+      final map = _between(
+        kotlin,
+        'private fun writePermissionsForWires(',
+        'private val importReadPermissions',
+      );
+      expect(map, contains('writePermissionWires'));
+      expect(map, isNot(contains('getReadPermission')));
+      // An empty list raises nothing.
+      expect(request, contains('result.success("allowed")'));
+    });
+
+    test('iOS answers from HealthKit itself: no marker, the one sheet, and '
+        'no types list sent to Swift', () {
+      final swift = _stripLineComments(readRepoFile(_appDelegatePath));
+      expect(swift, contains('case "neverAskedWriteTypes":'));
+      expect(swift, contains('neverAskedWriteTypeWires'));
+      expect(
+        swift,
+        contains(r'store.authorizationStatus(for: $0)'),
+        reason: 'the answer is the per-type authorization status',
+      );
+      // No stored "asked" state on iOS: HealthKit tells not-determined from
+      // denied itself, and the request is the one existing sheet.
+      expect(swift, isNot(contains('neverAskedMarker')));
+      expect(swift, isNot(contains('requestWriteAuthorizationForTypes')));
+      final channel = _stripLineComments(
+        readRepoFile('lib/data/health/health_channel.dart'),
+      );
+      expect(
+        RegExp(
+          r'readAccessDisclosed\s*\?\s*'
+          r'HealthChannelMethods\.requestWriteAuthorizationForTypes\s*'
+          r':\s*HealthChannelMethods\.requestWriteAuthorization',
+        ).hasMatch(channel),
+        isTrue,
+        reason: 'where read access is disclosed (Android) the subset request '
+            'is its own; on iOS it is the one sheet',
+      );
+      expect(
+        RegExp(
+          r"payloadArgs: readAccessDisclosed\s*"
+          r"\? \(\) => \{'types': types\.toList\(\)\}\s*"
+          r": null,",
+        ).hasMatch(channel),
+        isTrue,
+        reason: 'the types argument crosses only where the store asks per '
+            'permission (Android)',
+      );
+    });
+  });
+
   // Issue #1515: the import asks through a request of its own. Someone who
   // let lunarlog read from Health Connect and not write to it used to be
   // shown the write permissions again on every tap of Import, because the
@@ -1047,7 +1273,9 @@ void main() {
       writeRequest = _between(
         kotlin,
         '"requestWriteAuthorization" ->',
-        '"requestImportAuthorization" ->',
+        // Issue #1590's request for a never-asked type sits between the
+        // write path's and the import's.
+        '"requestWriteAuthorizationForTypes" ->',
       );
       // Up to the next handler, which since Issue #1573 is the request
       // for past data.
@@ -1171,10 +1399,10 @@ void main() {
       expect(launcher, contains('launcher.launch(permissions)'));
       expect(
         'launchPermissionRequest('.allMatches(kotlin),
-        hasLength(4),
-        reason: 'the declaration, the two requests, and the request for '
-            'past data (Issue #1573): nothing else raises a Health '
-            'Connect sheet',
+        hasLength(5),
+        reason: 'the declaration, the two requests, the request for past '
+            'data (Issue #1573), and the request for a never-asked type '
+            '(Issue #1590): nothing else raises a Health Connect sheet',
       );
     });
 
