@@ -514,10 +514,10 @@ HealthReadResult _decodeSampleList(
 HealthFlowSample? _decodeFlowSample(Object? entry) {
   if (entry is! Map) return null;
   final recordId = entry['recordId'];
-  final kind = HealthSampleKind.fromWire(entry['kind'] as String?);
-  final flow = HealthFlowValue.fromWire(entry['flow'] as String?);
-  final startMs = (entry['startMs'] as num?)?.toInt();
-  final endMs = (entry['endMs'] as num?)?.toInt();
+  final kind = HealthSampleKind.fromWire(_optionalString(entry['kind']));
+  final flow = HealthFlowValue.fromWire(_optionalString(entry['flow']));
+  final startMs = _optionalInt(entry['startMs']);
+  final endMs = _optionalInt(entry['endMs']);
   if (recordId is! String ||
       kind == null ||
       startMs == null ||
@@ -533,14 +533,29 @@ HealthFlowSample? _decodeFlowSample(Object? entry) {
     flow: flow,
     start: DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true),
     end: DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true),
-    tzName: entry['tzName'] as String?,
+    tzName: _optionalString(entry['tzName']),
     offset: offset,
     endOffset: endOffset,
-    offsetInferred: entry['zoneOffsetInferred'] as bool? ?? false,
-    externalUuid: entry['externalUuid'] as String?,
+    offsetInferred: _optionalBool(entry['zoneOffsetInferred']) ?? false,
+    externalUuid: _optionalString(entry['externalUuid']),
     modifiedAt: _optionalInstant(entry['modifiedAtMs']),
   );
 }
+
+/// The string an optional wire value names, or null for anything else:
+/// absent, or present with the wrong type (Issue #1703). The casts this
+/// replaces (`as String?`) throw a `TypeError` — an `Error`, which the
+/// channel's `on Exception` catch does not cover — so a malformed page
+/// escaped the decoders' documented total contract. A wrong-typed required
+/// field now reads as absent and fails its sample, as that contract says.
+String? _optionalString(Object? raw) => raw is String ? raw : null;
+
+/// The int a wire value names, or null for anything else (Issue #1703).
+/// The same shape as [_optionalString], for epoch-millisecond fields.
+int? _optionalInt(Object? raw) => raw is num ? raw.toInt() : null;
+
+/// The bool an optional wire value names, or null (Issue #1703).
+bool? _optionalBool(Object? raw) => raw is bool ? raw : null;
 
 /// The instant an optional epoch-millisecond wire value names (Issue
 /// #1559: `modifiedAtMs`, which Health Connect alone sends). Anything but
@@ -651,22 +666,22 @@ HealthDeviationReadResult decodeHealthDeviationReadResult(Object? raw) {
 /// `zoneOffsetInferred`), exactly like the flow read's #180/#902 contract.
 HealthDeviationSample? _decodeDeviationSample(Object? entry) {
   if (entry is! Map) return null;
-  final kind = HealthDeviationKind.fromWire(entry['kind'] as String?);
+  final kind = HealthDeviationKind.fromWire(_optionalString(entry['kind']));
   final recordId = entry['recordId'];
-  final startMs = (entry['startMs'] as num?)?.toInt();
-  final endMs = (entry['endMs'] as num?)?.toInt();
+  final startMs = _optionalInt(entry['startMs']);
+  final endMs = _optionalInt(entry['endMs']);
   if (kind == null || recordId is! String || startMs == null || endMs == null) {
     return null;
   }
-  final offsetSeconds = (entry['zoneOffsetSeconds'] as num?)?.toInt();
+  final offsetSeconds = _optionalInt(entry['zoneOffsetSeconds']);
   return HealthDeviationSample(
     kind: kind,
     recordId: recordId,
     start: DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true),
     end: DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true),
-    tzName: entry['tzName'] as String?,
+    tzName: _optionalString(entry['tzName']),
     offset: offsetSeconds == null ? null : Duration(seconds: offsetSeconds),
-    offsetInferred: entry['zoneOffsetInferred'] as bool? ?? false,
+    offsetInferred: _optionalBool(entry['zoneOffsetInferred']) ?? false,
   );
 }
 

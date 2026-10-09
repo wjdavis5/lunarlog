@@ -758,6 +758,74 @@ void main() {
       );
     });
 
+    // Issue #1703: the decoders' documented contract is total — an
+    // unrecognised shape becomes a failed result. The casts they used
+    // (`as String?`, `as num?`, `as bool?`) threw a TypeError on a
+    // present-but-wrong-typed value instead, and a TypeError is an Error,
+    // which the channel's `on Exception` catch does not cover: the throw
+    // escaped the HealthImportRunner's "never throws on an expected
+    // failure mode" contract. A wrong-typed required field now reads as
+    // absent and fails its sample; an optional one reads as absent.
+    test('a present-but-wrong-typed field never throws: a required field '
+        'fails the sample, an optional one reads as absent', () {
+      expect(
+        decodeHealthReadResult([
+          {
+            'recordId': 'x',
+            'kind': 'menstrualFlow',
+            'flow': 'heavy',
+            'startMs': 'nope',
+            'endMs': 2,
+          },
+        ]),
+        isA<HealthReadFailed>(),
+      );
+      expect(
+        decodeHealthReadResult([
+          {
+            'recordId': 'x',
+            'kind': 'menstrualFlow',
+            'flow': 7,
+            'startMs': 1,
+            'endMs': 2,
+          },
+        ]),
+        isA<HealthReadFailed>(),
+      );
+      // A wrong-typed kind reads as absent, which is the documented
+      // pre-#458 iOS payload — menstrualFlow — not a failure.
+      final defaultedKind = decodeHealthReadResult([
+        {
+          'recordId': 'x',
+          'kind': 7,
+          'flow': 'heavy',
+          'startMs': 1,
+          'endMs': 2,
+        },
+      ]);
+      expect(
+        (defaultedKind as HealthReadSamples).samples.single.kind,
+        HealthSampleKind.menstrualFlow,
+      );
+
+      final decoded = decodeHealthReadResult([
+        {
+          'recordId': 'x',
+          'kind': 'menstrualFlow',
+          'flow': 'heavy',
+          'startMs': 1,
+          'endMs': 2,
+          'tzName': 5,
+          'zoneOffsetInferred': 1,
+          'externalUuid': false,
+        },
+      ]);
+      final sample = (decoded as HealthReadSamples).samples.single;
+      expect(sample.tzName, isNull);
+      expect(sample.offsetInferred, isFalse);
+      expect(sample.externalUuid, isNull);
+    });
+
     test('an unknown string and a non-list/non-string result are failures',
         () {
       expect(decodeHealthReadResult('nonsense'), isA<HealthReadFailed>());
@@ -837,6 +905,39 @@ void main() {
         isA<HealthDeviationFailed>(),
       );
       expect(decodeHealthDeviationReadResult(7), isA<HealthDeviationFailed>());
+    });
+
+    // Issue #1703: the same total-decode contract as the flow samples — a
+    // present-but-wrong-typed value reads as absent (or fails the sample),
+    // never throws a TypeError past the decoders.
+    test('a present-but-wrong-typed deviation field never throws', () {
+      expect(
+        decodeHealthDeviationReadResult([
+          {
+            'kind': 'prolongedMenstrualPeriods',
+            'recordId': 'x',
+            'startMs': 'nope',
+            'endMs': 2,
+          },
+        ]),
+        isA<HealthDeviationFailed>(),
+      );
+
+      final decoded = decodeHealthDeviationReadResult([
+        {
+          'kind': 'prolongedMenstrualPeriods',
+          'recordId': 'x',
+          'startMs': 1,
+          'endMs': 2,
+          'tzName': 5,
+          'zoneOffsetSeconds': 'x',
+          'zoneOffsetInferred': 1,
+        },
+      ]);
+      final sample = (decoded as HealthDeviationSamples).samples.single;
+      expect(sample.tzName, isNull);
+      expect(sample.offset, isNull);
+      expect(sample.offsetInferred, isFalse);
     });
 
     test('the wire vocabulary is the four closed names, and unknown is null',
