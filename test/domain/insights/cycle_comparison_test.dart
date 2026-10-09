@@ -127,9 +127,11 @@ void main() {
       expect(data.sideB.excluded, isFalse);
     });
 
-    test('a cycle length is capped at kMaxCycleDays days out from its start', () {
+    test('the day-row window is capped at kMaxCycleDays, but the reported '
+        'length is the cycle\'s own (issue #1720)', () {
       // Next start is 90 days after cycle A's own start -- far outside the
-      // valid window; the comparison must not render 90 aligned rows.
+      // valid window; the comparison must not render 90 aligned rows, and
+      // the length must stay honest (Jan 1 -> Mar 31 inclusive = 90 days).
       final episodes = [
         Episode(LocalDate(2026, 1, 1), LocalDate(2026, 1, 4)),
         Episode(LocalDate(2026, 4, 1), LocalDate(2026, 4, 3)),
@@ -143,7 +145,33 @@ void main() {
       );
 
       expect(data!.sideA.days, hasLength(kMaxCycleDays));
-      expect(data.sideA.lengthDays, kMaxCycleDays);
+      expect(data.sideA.lengthDays, 90,
+          reason: 'the cap bounds the rows, not the reported length');
+    });
+
+    test('a >kMaxCycleDays completed cycle reports its true length, so the '
+        'delta is not understated (issue #1720)', () {
+      // A: Jan 1 -> Mar 31 inclusive (90 days, past the row cap).
+      // B: Apr 1 -> Apr 30 inclusive (30 days).
+      // C: May 1 opens B's successor, so both A and B are completed.
+      final episodes = [
+        Episode(LocalDate(2026, 1, 1), LocalDate(2026, 1, 4)),
+        Episode(LocalDate(2026, 4, 1), LocalDate(2026, 4, 3)),
+        Episode(LocalDate(2026, 5, 1), LocalDate(2026, 5, 1)),
+      ];
+      final data = deriveCycleComparison(
+        episodes: episodes,
+        entries: const [],
+        today: LocalDate(2026, 5, 10),
+        cycleAStart: LocalDate(2026, 1, 1),
+        cycleBStart: LocalDate(2026, 4, 1),
+      );
+
+      expect(data!.sideA.lengthDays, 90,
+          reason: 'the cap bounds the rows, not the reported length');
+      expect(data.sideA.days, hasLength(kMaxCycleDays));
+      expect(data.sideB.lengthDays, 30);
+      expect(data.stats.lengthDeltaDays, 30 - 90);
     });
 
     test('an overdue open cycle is also capped at kMaxCycleDays', () {
