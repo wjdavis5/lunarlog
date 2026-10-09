@@ -559,7 +559,11 @@ class LocalHealthImportService
 
   /// Records this pass found on a live row although [_deleted] named
   /// them, with the moment that was read for each: the deletion was
-  /// undone. Forgotten when the pass ends ([_forgetUndone]).
+  /// undone. Forgotten when the pass ends ([_forgetUndone]) — the storage
+  /// layer forgets a record the moment a live row carrying it is written
+  /// (Issue #1587 item 3), so this map is what cleans up a row that was
+  /// already live when the pass began (an install upgraded from a build
+  /// before that hook existed).
   final Map<String, DateTime> _undone = {};
   final GuardiansForProfile _guardiansForProfile;
   final String? Function() _signedInUserId;
@@ -1361,6 +1365,13 @@ class LocalHealthImportService
   ) async {
     await _loadDeleted(profileId);
     if (_deletedUnchanged(desired)) return _MergeOutcome.keptManual;
+    // Issue #1587 (item 4): the `find` in [_mergeDay], the memory read
+    // above and this write leave a window in which she can hand-log a day
+    // for the date. Look once more, and merge with the row that appeared
+    // instead of overwriting it with an insert. The lookup is one more
+    // read only on this path — the insert itself is the uncommon case.
+    final raced = await _dayEntries.find(profileId, date);
+    if (raced != null) return _mergeDay(profileId, date, desired);
     await _dayEntries.save(
       DayEntry(
         id: '',
@@ -1536,7 +1547,17 @@ class LocalHealthImportService
       sample.recordId,
     );
     if (_deleted.containsKey(recordId)) return _MergeOutcome.keptManual;
-    final host = day ?? await _spottingHost(profileId, date, sample);
+    // Issue #1587 (item 4): a day (with spotting on it) may have been
+    // hand-logged between the reads above and this write; merge with it
+    // instead of hanging the entry on a host row the write would have to
+    // overwrite. The common path (`racedDay` null or bare) is unchanged.
+    final racedDay = await _dayEntries.find(profileId, date);
+    final racedSpotting = await _liveSpotting(racedDay);
+    if (racedSpotting.isNotEmpty) {
+      return _spottingAlreadyThere(racedSpotting, replacedBy: sample.recordId);
+    }
+    final host =
+        racedDay ?? day ?? await _spottingHost(profileId, date, sample);
     await _observations.save(
       Observation(
         id: '',

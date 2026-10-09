@@ -260,6 +260,11 @@ class _FakeDayEntries
   int _nextId = 0;
   Object? saveError;
 
+  /// Runs once, after the next [find] has read its answer — the seam a
+  /// test uses to hand-log a row between the import's first look at a
+  /// date and its write (Issue #1587 item 4).
+  void Function()? onAfterFind;
+
   @override
   Future<Map<String, DateTime>> deletedHealthRecords(
     String profileId,
@@ -279,8 +284,15 @@ class _FakeDayEntries
   }
 
   @override
-  Future<DayEntry?> find(String profileId, LocalDate localDate) async =>
-      live[localDate.iso];
+  Future<DayEntry?> find(String profileId, LocalDate localDate) async {
+    final row = live[localDate.iso];
+    final hook = onAfterFind;
+    if (hook != null) {
+      onAfterFind = null;
+      hook();
+    }
+    return row;
+  }
 
   @override
   Future<DayEntry> save(DayEntry entry) async {
@@ -1366,6 +1378,26 @@ void main() {
       final summary = await build().importNow();
       expect(summary.daysWritten, 0);
       expect(summary.daysKeptManual, 1);
+      expect(dayEntries.saved, isEmpty);
+    });
+
+    // Issue #1587 item 4: the first look at the date and the write are a
+    // few awaits apart, with the memory read in between; she can hand-log
+    // a day in that window. It must be merged with, not overwritten.
+    test('a day hand-logged while the pass is running is merged with, not '
+        'overwritten', () async {
+      await bind();
+      dayEntries.onAfterFind = () {
+        dayEntries.live[day] = liveRow(flow: FlowLevel.light);
+      };
+      source.result = store('rec-1');
+
+      final summary = await build().importNow();
+
+      expect(summary.daysWritten, 0);
+      expect(summary.daysKeptManual, 1);
+      expect(dayEntries.live[day]!.flow, FlowLevel.light);
+      expect(dayEntries.live[day]!.sourceId, isNull);
       expect(dayEntries.saved, isEmpty);
     });
 

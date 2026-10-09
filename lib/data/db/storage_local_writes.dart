@@ -903,6 +903,12 @@ mixin LunarLogStorageLocalWrites
               sourceId: Value(sourceId),
               importId: Value(importId),
             ));
+        // Issue #1587 (item 3): a live row carrying a health-store record
+        // forgets that record's deletion memory, the inverse of the delete
+        // hook below. The row is live again — the day sheet's Undo saved
+        // it back, an import adopted the store's news, or she corrected
+        // it — so no later pass may keep treating the record as deleted.
+        await _forgetHealthImportDeletion(db, profileId, source, sourceId);
       } else {
         final rowId = live.id;
         final provenance = _resolvedProvenanceForUpdate(
@@ -942,6 +948,15 @@ mixin LunarLogStorageLocalWrites
           sourceId: Value(provenance.sourceId),
           importId: Value(provenance.importId),
         ));
+        // Issue #1587 (item 3): see the insert branch above — the effective
+        // provenance (resolved, not just the caller's arguments) is what
+        // the row now carries.
+        await _forgetHealthImportDeletion(
+          db,
+          profileId,
+          provenance.source,
+          provenance.sourceId,
+        );
       }
       final rows = await _liveDayEntries(profileId, localDate);
       if (rows.isEmpty) {
@@ -1115,6 +1130,33 @@ mixin LunarLogStorageLocalWrites
   Future<void> softDeleteDayEntry({
     required String profileId,
     required String localDate,
+  }) =>
+      _softDeleteDayEntry(
+        profileId: profileId,
+        localDate: localDate,
+        rememberHealthImportRecords: true,
+      );
+
+  /// [softDeleteDayEntry] without the Issue #1561 deletion memory: the
+  /// delete an undo performs (Issue #1587 item 1). Tombstones, the
+  /// observation cascade and the sync marking are identical; only the
+  /// "she removed this store data" note is left out, because the row being
+  /// removed is one she created and a record a background import attached
+  /// to it was not hers to shadow. See [UndoDayEntryDeleter].
+  Future<void> softDeleteDayEntryForUndo({
+    required String profileId,
+    required String localDate,
+  }) =>
+      _softDeleteDayEntry(
+        profileId: profileId,
+        localDate: localDate,
+        rememberHealthImportRecords: false,
+      );
+
+  Future<void> _softDeleteDayEntry({
+    required String profileId,
+    required String localDate,
+    required bool rememberHealthImportRecords,
   }) async {
     await db.transaction(() async {
       final live = await _liveDayEntry(profileId, localDate);
@@ -1177,11 +1219,16 @@ mixin LunarLogStorageLocalWrites
 
       // Issue #1561: what came from the health store is remembered as
       // deleted, in this transaction, so the next import does not bring
-      // the day or its entries back.
-      await _rememberHealthImportDeletions(db, profileId, [
-        (live.source, live.sourceId),
-        for (final obs in liveObs) (obs.source, obs.sourceId),
-      ], at);
+      // the day or its entries back. Skipped for an undo
+      // ([softDeleteDayEntryForUndo], Issue #1587 item 1): the row being
+      // removed is one she created, and a record an import attached to it
+      // was not hers to shadow.
+      if (rememberHealthImportRecords) {
+        await _rememberHealthImportDeletions(db, profileId, [
+          (live.source, live.sourceId),
+          for (final obs in liveObs) (obs.source, obs.sourceId),
+        ], at);
+      }
     });
   }
 
@@ -1308,6 +1355,10 @@ mixin LunarLogStorageLocalWrites
               dirty: const Value(true),
               localRev: const Value(1),
             ));
+        // Issue #1587 (item 3): a live observation carrying a health-store
+        // record forgets that record's deletion memory — the inverse of
+        // [_softDeleteObservation]'s hook; see [_writeDayEntry].
+        await _forgetHealthImportDeletion(db, profileId, source, sourceId);
         return _observationById(rowId);
       }
       final rowId = existing.id;
@@ -1334,6 +1385,8 @@ mixin LunarLogStorageLocalWrites
         dirty: const Value(true),
         localRev: Value(existing.localRev + 1),
       ));
+      // Issue #1587 (item 3): see the insert branch above.
+      await _forgetHealthImportDeletion(db, profileId, source, sourceId);
       return _observationById(rowId);
   }
 

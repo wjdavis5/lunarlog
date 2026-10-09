@@ -793,6 +793,44 @@ void main() {
     );
 
     testWidgets(
+      'remembered deletions alone still offer the purge, so the memory can '
+      'be cleared (issue #1587 item 6)',
+      (tester) async {
+        final profiles = FakeProfilesRepository([_profile('p1')]);
+        final service = _FakeProfileErasureService()
+          ..rememberedCounts = {PurgeableImportSource.healthkit: 3};
+        await _pump(
+          tester,
+          profiles: profiles,
+          profileErasureService: service,
+          platform: TargetPlatform.iOS,
+        );
+
+        await tester.tap(key('your-data-purge-imported'));
+        await tester.pumpAndSettle();
+
+        expect(key('purge-no-rows'), findsNothing);
+        expect(
+          tester
+              .widget<DropdownButton<PurgeableImportSource>>(
+                  key('purge-source-dropdown'))
+              .value,
+          PurgeableImportSource.healthkit,
+          reason: 'the source with remembered deletions is the default when '
+              'nothing live is left',
+        );
+        expect(
+          find.textContaining('No rows left from Apple Health (iOS)'),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.widgetWithText(DestructiveButton, 'Purge'));
+        await tester.pumpAndSettle();
+        expect(service.purgedSource, PurgeableImportSource.healthkit);
+      },
+    );
+
+    testWidgets(
       'a signed-out caller who succeeds never sees the primary-guardian copy '
       '(issue #883)',
       (tester) async {
@@ -864,6 +902,9 @@ class _FakeProfileErasureService implements ProfileErasureService {
 
   /// Issue #883: canned per-source counts for the dialog's preview/default.
   Map<PurgeableImportSource, int> counts = const {};
+
+  /// Issue #1587 item 6: canned remembered-deletion counts.
+  Map<PurgeableImportSource, int> rememberedCounts = const {};
   Object? countsError;
 
   @override
@@ -878,6 +919,17 @@ class _FakeProfileErasureService implements ProfileErasureService {
     return {
       for (final source in PurgeableImportSource.values)
         source: counts[source] ?? 0,
+    };
+  }
+
+  @override
+  Future<Map<PurgeableImportSource, int>> importedDataRememberedCounts(
+      String profileId) async {
+    final error = countsError;
+    if (error != null) throw error;
+    return {
+      for (final source in PurgeableImportSource.values)
+        source: rememberedCounts[source] ?? 0,
     };
   }
 

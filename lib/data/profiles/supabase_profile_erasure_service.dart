@@ -121,6 +121,16 @@ class SupabaseProfileErasureService implements ProfileErasureService {
     };
   }
 
+  @override
+  Future<Map<PurgeableImportSource, int>> importedDataRememberedCounts(
+      String profileId) async {
+    final raw = await importedDataPurge.rememberedSourceCounts(profileId);
+    return {
+      for (final source in PurgeableImportSource.values)
+        source: raw[source.wireValue] ?? 0,
+    };
+  }
+
   ProfileErasureFailure _mapError(Object error) {
     if (error is ProfileErasureFailure) return error;
     if (error is SocketException || error is http.ClientException) {

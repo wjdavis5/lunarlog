@@ -49,6 +49,23 @@ Future<void> _rememberHealthImportDeletions(
   }
 }
 
+/// Forgets one remembered record: a live row carrying it was written
+/// (Issue #1587 item 3) or an undo removed the row that carried it without
+/// remembering it — either way the record is no longer deleted. No-op for
+/// a row that did not come from a health store or carries no record id.
+Future<void> _forgetHealthImportDeletion(
+  LunarLogDatabase db,
+  String profileId,
+  String source,
+  String? sourceId,
+) async {
+  if (sourceId == null || !kHealthStoreSources.contains(source)) return;
+  await (db.delete(db.appSettings)
+        ..where((t) => t.key
+            .equals('${_healthImportDeletedPrefix(profileId, source)}$sourceId')))
+      .go();
+}
+
 /// Forgets [profileId]'s remembered records: those of one [source], or
 /// every one when [source] is null.
 Future<void> _forgetHealthImportDeletions(
@@ -106,5 +123,28 @@ mixin LunarLogStorageHealthImportDeletions on LunarLogStorageQueries
                 t.value.equals('${at.toUtc().millisecondsSinceEpoch}')))
           .go();
     }
+  }
+
+  /// Issue #1587 item 6: the remembered deletions still held for
+  /// [profileId], counted by the source each key names — what a purge of a
+  /// source with no live rows left has to clear. Satisfies
+  /// [ImportedDataPurgeStore] on the composed storage class.
+  Future<Map<String, int>> rememberedImportedSourceCounts(
+    String profileId,
+  ) async {
+    final prefix = _healthImportDeletedPrefix(profileId);
+    final rows = await (db.select(db.appSettings)
+          ..where((t) => _healthImportDeletedIn(t, prefix)))
+        .get();
+    final counts = <String, int>{};
+    for (final row in rows) {
+      // Key: `<source>|<record id>` under the profile prefix.
+      final id = row.key.substring(prefix.length);
+      final bar = id.indexOf('|');
+      if (bar <= 0) continue;
+      final source = id.substring(0, bar);
+      counts.update(source, (n) => n + 1, ifAbsent: () => 1);
+    }
+    return counts;
   }
 }
