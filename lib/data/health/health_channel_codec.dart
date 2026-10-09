@@ -24,6 +24,8 @@
 /// | `deleteRecords` | guard + `recordIds` | result string |
 /// | `permissionStatus` | none | one of `granted` / `writingSome` / `notAsked` / `denied` / `unavailable` |
 /// | `grantedWriteTypes` | none | `List<String>` of authorized write wire identifiers |
+/// | `neverAskedWriteTypes` | none | `List<String>` of write wire identifiers no sheet has asked about (Issue #1590) |
+/// | `requestWriteAuthorizationForTypes` (Android only) | guard + `types` | result string |
 /// | `importPermissionStatus` (Android only) | none | one of `granted` / `notAsked` / `denied` / `unavailable` |
 /// | `importPastDataGranted` (Android only) | none | `bool` |
 /// | `openPermissionSettings` | none | `null` |
@@ -180,6 +182,22 @@ abstract final class HealthChannelMethods {
   /// The authorized write types query (Issue #1555): returns the list of
   /// write type wire identifiers currently granted. Unguarded.
   static const grantedWriteTypes = 'grantedWriteTypes';
+
+  /// The never-asked write types query (Issue #1590): returns the list of
+  /// write type wire identifiers no permission sheet has asked about —
+  /// iOS's `.notDetermined` types, or Android's write permissions no
+  /// launched request has carried. Unguarded; it reads OS consent state
+  /// and raises nothing.
+  static const neverAskedWriteTypes = 'neverAskedWriteTypes';
+
+  /// The Health sync screen's request for write types no sheet has asked
+  /// about (Issue #1590): guard args plus `types`, a `List<String>` of
+  /// wire identifiers to ask for and nothing else. **Android only:** on
+  /// iOS the same request is [requestWriteAuthorization], HealthKit's one
+  /// sheet, which shows only the types still not determined (see
+  /// `MethodChannelHealthPlatform.requestWriteAuthorizationForTypes`).
+  static const requestWriteAuthorizationForTypes =
+      'requestWriteAuthorizationForTypes';
 
   static const openPermissionSettings = 'openPermissionSettings';
 

@@ -341,4 +341,66 @@ class HealthPermissionStateTest {
         assertEquals("denied", HealthPermissionState.DENIED)
         assertEquals("writingSome", HealthPermissionState.WRITING_SOME)
     }
+
+    // Issue #1590: which write types no sheet has asked about, as wire
+    // identifiers. On a phone that already gave access the write pass never
+    // asks again, so a type an app update adds has to be told from one that
+    // was declined — and the request for it must carry that type alone,
+    // because Health Connect drops a whole request once any permission in
+    // it was declined twice.
+    private val writeWires = listOf(
+        writeMenstruation to "menstrualFlow",
+        writeMenstruation to "menstrualFlow", // the period record's wire
+        writeSpotting to "spotting",
+    )
+
+    private fun neverAsked(
+        granted: Set<String>,
+        asked: (String) -> Boolean,
+    ): List<String> = HealthPermissionState.neverAskedWriteTypes(
+        granted = granted,
+        writes = writeWires,
+        asked = asked,
+    )
+
+    @Test
+    fun `a granted permission is never offered, whatever the per-type record says`() {
+        // It was either asked for or deliberately granted in Health
+        // Connect's own settings; there is nothing left to ask.
+        assertEquals(emptyList<String>(), neverAsked(writes) { false })
+        // The other type, neither granted nor asked, is still offered.
+        assertEquals(
+            listOf("spotting"),
+            neverAsked(setOf(writeMenstruation)) { it == writeMenstruation },
+        )
+    }
+
+    @Test
+    fun `a not-granted permission the record says was asked is not asked again`() {
+        assertEquals(emptyList<String>(), neverAsked(emptySet()) { it in writes })
+    }
+
+    @Test
+    fun `a not-granted permission with no record of an ask is offered`() {
+        // The state an app update leaves: the old sheet carried these two,
+        // the new build's type was never on any sheet.
+        assertEquals(
+            listOf("spotting"),
+            neverAsked(setOf(writeMenstruation)) { it == writeMenstruation },
+        )
+        assertEquals(
+            listOf("menstrualFlow", "spotting"),
+            neverAsked(emptySet()) { false },
+        )
+    }
+
+    @Test
+    fun `a wire two records share appears once`() {
+        // menstrualFlow and menstrualFlow (the period record) are one
+        // permission and one wire, so a request for it must carry it once.
+        assertEquals(
+            listOf("menstrualFlow"),
+            neverAsked(emptySet()) { it == writeSpotting },
+        )
+    }
 }

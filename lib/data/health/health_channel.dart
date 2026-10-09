@@ -253,6 +253,24 @@ class MethodChannelHealthPlatform
     );
   }
 
+  /// The write types no permission sheet has asked about (Issue #1590).
+  /// Unguarded like [permissionStatus]: it reads OS consent state and
+  /// raises nothing. Throws on channel error or unexpected response, the
+  /// same way [grantedWriteTypes] does (Issue #1584) — the Health sync
+  /// screen treats a throw as "cannot tell" and offers no ask.
+  @override
+  Future<Set<String>> neverAskedWriteTypes() async {
+    final raw = await channel
+        .invokeMethod<Object?>(HealthChannelMethods.neverAskedWriteTypes);
+    if (raw is List) {
+      return raw.whereType<String>().toSet();
+    }
+    throw PlatformException(
+      code: 'invalid_result',
+      message: 'neverAskedWriteTypes returned unexpected result: $raw',
+    );
+  }
+
   /// The OS permission state for what the import reads (Issue #1491) —
   /// the background pass's gate. Unguarded and data-free like
   /// [permissionStatus], and like it a missing handler or a platform error
@@ -316,11 +334,39 @@ class MethodChannelHealthPlatform
       // No native settings surface on this platform.
     }
   }
+
   @override
   Future<HealthPlatformResult> requestWriteAuthorization(
     HealthGuardFacts facts,
   ) =>
       _invokeGuarded(HealthChannelMethods.requestWriteAuthorization, facts);
+
+  /// The Health sync screen's request for the write types no sheet has
+  /// asked about (Issue #1590), guarded like every other health-API touch.
+  /// Where the store asks permission by permission (Android) the call
+  /// carries [types] and, deliberately, no read permission: Health Connect
+  /// drops a whole request once any permission in it was declined twice,
+  /// so asking for a newly added type beside declined ones would raise
+  /// nothing at all. Where read access is not disclosed (iOS) the request
+  /// is the store's one sheet — [requestWriteAuthorization]'s call —
+  /// exactly as [requestImportAuthorization] falls back to it, and
+  /// HealthKit itself shows only the types still not determined.
+  @override
+  Future<HealthPlatformResult> requestWriteAuthorizationForTypes(
+    HealthGuardFacts facts,
+    Set<String> types,
+  ) async {
+    if (types.isEmpty) return const HealthPlatformResult.allowed();
+    return _invokeGuarded(
+      readAccessDisclosed
+          ? HealthChannelMethods.requestWriteAuthorizationForTypes
+          : HealthChannelMethods.requestWriteAuthorization,
+      facts,
+      payloadArgs: readAccessDisclosed
+          ? () => {'types': types.toList()}
+          : null,
+    );
+  }
 
   /// The import's permission request (Issue #1515), guarded like every
   /// other health-API touch. Where the store discloses read access
@@ -645,6 +691,11 @@ class UnsupportedHealthPlatform
   @override
   Future<Set<String>> grantedWriteTypes() async => const <String>{};
 
+  /// No health store, so nothing was ever asked about and no sheet can be
+  /// raised: the screen finds no ask to offer (Issues #1590).
+  @override
+  Future<Set<String>> neverAskedWriteTypes() async => const <String>{};
+
   @override
   Future<HealthPermissionStatus> importPermissionStatus() async =>
       HealthPermissionStatus.unavailable;
@@ -673,6 +724,14 @@ class UnsupportedHealthPlatform
   @override
   Future<HealthPlatformResult> requestWriteAuthorization(
     HealthGuardFacts facts,
+  ) async =>
+      const HealthPlatformResult.unavailable();
+
+  /// No health store, so there is nothing to ask (Issue #1590).
+  @override
+  Future<HealthPlatformResult> requestWriteAuthorizationForTypes(
+    HealthGuardFacts facts,
+    Set<String> types,
   ) async =>
       const HealthPlatformResult.unavailable();
 

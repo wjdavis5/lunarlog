@@ -73,12 +73,15 @@ String _sourceName(AppLocalizations l10n, HealthImportPlatform platform) =>
     };
 
 /// What the permission probe says: the status line's state, where the
-/// store discloses it the read-side answer on its own (Issue #1523), and
-/// for writingSome the set of granted write types (Issue #1555).
+/// store discloses it the read-side answer on its own (Issue #1523), the
+/// raw write status, the set of granted write types (Issue #1555), and the
+/// set of write types no sheet has asked about yet (Issue #1590).
 typedef _Access = ({
   HealthAccessState? state,
+  HealthPermissionStatus? write,
   HealthPermissionStatus? read,
   Set<String>? grantedWriteTypes,
+  Set<String>? neverAskedWriteTypes,
 });
 
 /// The human name of [platform]'s health store for titles and headings.
@@ -270,6 +273,23 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// The set of authorized write types for writingSome (Issue #1555).
   Set<String>? _grantedWriteTypes;
 
+  /// The write types no permission sheet has asked about (Issue #1590),
+  /// for the states where such a type can exist and the first ask is not
+  /// the one already coming. Null when the probe could not answer.
+  Set<String>? _neverAskedWriteTypes;
+
+  /// The raw write status ([_Access.write]), kept beside the folded
+  /// [_accessState] because the Issue #1590 ask must tell the states a
+  /// first ask still owns (`notAsked`) from the ones it does not.
+  HealthPermissionStatus? _writeStatus;
+
+  /// Whether this visit has already raised the sheet for the never-asked
+  /// types (Issue #1590). Once per visit: the per-type answers are read
+  /// again afterwards, and a person who answers sees no second sheet;
+  /// leaving and returning, which is a fresh moment of its own, asks once
+  /// more — which for an unanswered type is exactly once again.
+  bool _askedForNeverAskedWriteTypes = false;
+
   /// The store this screen is about — drives every store name and the
   /// write copy below. See [HealthSyncScreen.storePlatform] for the order.
   HealthImportPlatform get _importPlatform {
@@ -348,10 +368,12 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
 
   bool _sameAccess(_Access access) =>
       access.state == _accessState &&
+      access.write == _writeStatus &&
       access.read == _readStatus &&
-      _sameGranted(access.grantedWriteTypes, _grantedWriteTypes);
+      _sameSet(access.grantedWriteTypes, _grantedWriteTypes) &&
+      _sameSet(access.neverAskedWriteTypes, _neverAskedWriteTypes);
 
-  static bool _sameGranted(Set<String>? a, Set<String>? b) {
+  static bool _sameSet(Set<String>? a, Set<String>? b) {
     if (identical(a, b)) return true;
     if (a == null || b == null) return false;
     return a.length == b.length && a.containsAll(b);
@@ -360,8 +382,10 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// Stores a fresh probe answer. Call inside `setState`.
   void _setAccess(_Access access) {
     _accessState = access.state;
+    _writeStatus = access.write;
     _readStatus = access.read;
     _grantedWriteTypes = access.grantedWriteTypes;
+    _neverAskedWriteTypes = access.neverAskedWriteTypes;
   }
 
   /// Loads the bound profile id, every non-archived profile, and each
@@ -404,6 +428,13 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       _loading = false;
       _loadFailed = false;
     });
+    // Issue #1590: a write type no sheet has asked about gets its own
+    // request once the screen is up (post-frame, so the first build is
+    // done) — never from the write pass, which runs on day-logging upkeep
+    // and must not raise a sheet there.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_askForNeverAskedWriteTypes());
+    });
   }
 
   /// Issue #959: reads the OS permission state through the probe, best
@@ -415,10 +446,23 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// read answer, folded into the one state the line shows by
   /// [healthAccessState]. The read answer rides along ([_Access.read]) for
   /// the import result line (Issue #1523).
+  ///
+  /// Issue #1590: the never-asked write types ride along too, for the ask
+  /// this screen raises — read only where such a type can exist and the
+  /// first ask is not the one coming: on `notAsked` the write pass's first
+  /// pass owns the request, `granted` has nothing to ask for, and
+  /// `unavailable` has no store. A probe that cannot answer is null: no
+  /// ask is offered, which is the safe direction.
   Future<_Access> _readAccess() async {
     final probe = widget.permissionProbe;
     if (probe == null) {
-      return (state: null, read: null, grantedWriteTypes: null);
+      return (
+        state: null,
+        write: null,
+        read: null,
+        grantedWriteTypes: null,
+        neverAskedWriteTypes: null,
+      );
     }
     try {
       final write = await probe.permissionStatus();
@@ -428,14 +472,114 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       if (state == HealthAccessState.writingSome) {
         granted = await probe.grantedWriteTypes();
       }
-      return (state: state, read: read, grantedWriteTypes: granted);
+      Set<String>? neverAsked;
+      if (write == HealthPermissionStatus.writingSome ||
+          write == HealthPermissionStatus.denied) {
+        neverAsked = await _neverAskedOrNull(probe);
+      }
+      return (
+        state: state,
+        write: write,
+        read: read,
+        grantedWriteTypes: granted,
+        neverAskedWriteTypes: neverAsked,
+      );
     } catch (_) {
       return (
         state: HealthAccessState.unavailable,
+        write: null,
         read: null,
         grantedWriteTypes: null,
+        neverAskedWriteTypes: null,
       );
     }
+  }
+
+  /// The never-asked write types, or null when the probe cannot answer
+  /// (Issue #1590). Split out so a failed per-type probe fails only the
+  /// offer, never the status line.
+  Future<Set<String>?> _neverAskedOrNull(HealthPermissionProbe probe) async {
+    try {
+      return await probe.neverAskedWriteTypes();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The guard facts for the currently bound profile, or null when no bound
+  /// profile resolves in this screen's list. The same inputs the bind flow
+  /// evaluates, read from what this screen already loaded.
+  HealthGuardFacts? _boundGuardFacts() {
+    final id = _boundProfileId;
+    if (id == null) return null;
+    for (final profile in _profiles) {
+      if (profile.id == id) {
+        return HealthGuardFacts(
+          profile: profile,
+          signedInUserId: widget.signedInUserId,
+          ownerUserId: _ownerUserIdByProfile[id],
+        );
+      }
+    }
+    return null;
+  }
+
+  /// Whether the write status is one a never-asked type can be missing
+  /// from while the first ask is not the one coming (Issue #1590): on
+  /// `notAsked` the write pass's own first request owns it, `granted` has
+  /// nothing to ask for, and `unavailable` has no store.
+  bool get _missingAskMightApply =>
+      _writeStatus == HealthPermissionStatus.writingSome ||
+      _writeStatus == HealthPermissionStatus.denied;
+
+  /// What this visit's never-asked ask would be — the probe to raise it
+  /// with, the bound profile's guard facts, and the types — or null when
+  /// there is nothing to raise: this visit already asked, no probe is
+  /// wired, writes are not wired on this platform, the write status is one
+  /// whose first ask is not this one, no bound profile resolves, or
+  /// nothing is never-asked. Split out of [_askForNeverAskedWriteTypes] to
+  /// keep both inside the quality gate's CRAP ceiling.
+  ({HealthPermissionProbe probe, HealthGuardFacts facts, Set<String> types})?
+      _neverAskedAsk() {
+    if (_askedForNeverAskedWriteTypes) return null;
+    final probe = widget.permissionProbe;
+    if (probe == null || !widget.writeEnabled) return null;
+    if (!_missingAskMightApply) return null;
+    final types = _neverAskedWriteTypes;
+    if (types == null || types.isEmpty) return null;
+    final facts = _boundGuardFacts();
+    if (facts == null) return null;
+    return (probe: probe, facts: facts, types: types);
+  }
+
+  /// Issue #1590: raises the store's permission sheet, once per visit, for
+  /// exactly the write types [HealthPermissionProbe.neverAskedWriteTypes]
+  /// named — the type an app update added to a phone that has already
+  /// given access, which the write pass will never ask for again (it asks
+  /// once, while no forward-only floor is stamped, and stops asking after
+  /// that). The request carries those types alone so Health Connect, which
+  /// drops a whole request once any permission in it was declined twice,
+  /// can show it.
+  ///
+  /// Deliberately not the pass: a sheet has no place in the pass's
+  /// day-logging upkeep, and the issue's own direction is that a new type's
+  /// request wants a moment of its own — this screen. The answers are read
+  /// again afterwards, so the status line and the off-types list show what
+  /// the person just chose.
+  Future<void> _askForNeverAskedWriteTypes() async {
+    if (!mounted) return;
+    final ask = _neverAskedAsk();
+    if (ask == null) return;
+    _askedForNeverAskedWriteTypes = true;
+    try {
+      await ask.probe.requestWriteAuthorizationForTypes(ask.facts, ask.types);
+    } catch (_) {
+      // Best effort; the re-read below says what actually holds.
+    }
+    if (!mounted) return;
+    final access = await _readAccess();
+    if (!mounted) return;
+    setState(() => _setAccess(access));
   }
 
   /// Formats the comma-separated list of disabled write types for writingSome (Issue #1555).

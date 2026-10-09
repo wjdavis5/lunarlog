@@ -940,6 +940,56 @@ void main() {
       );
     });
 
+    // Issue #1590: the not-yet-asked side of the same per-type answer.
+    test('neverAskedWriteTypes sends the pinned method name and decodes '
+        'lists', () async {
+      calls.clear();
+      nextResult = ['spotting'];
+      expect(await makePlatform().neverAskedWriteTypes(), {'spotting'});
+      expect(calls.single.method, 'neverAskedWriteTypes');
+    });
+
+    test('neverAskedWriteTypes throws on non-list or channel errors '
+        '(issue #1590)', () async {
+      nextResult = 'not-a-list';
+      expect(
+        () => makePlatform().neverAskedWriteTypes(),
+        throwsA(isA<PlatformException>()),
+      );
+
+      nextResult = null;
+      expect(
+        () => makePlatform().neverAskedWriteTypes(),
+        throwsA(isA<PlatformException>()),
+      );
+
+      nextError = PlatformException(code: 'anything');
+      expect(
+        () => makePlatform().neverAskedWriteTypes(),
+        throwsA(isA<PlatformException>()),
+      );
+
+      nextError = MissingPluginException();
+      expect(
+        () => makePlatform().neverAskedWriteTypes(),
+        throwsA(isA<MissingPluginException>()),
+      );
+    });
+
+    test('the unsupported platform has nothing to ask and no store to '
+        'raise', () async {
+      const platform = UnsupportedHealthPlatform();
+      expect(await platform.neverAskedWriteTypes(), isEmpty);
+      expect(
+        await platform.requestWriteAuthorizationForTypes(
+          _facts(),
+          {'spotting'},
+        ),
+        isA<HealthPlatformUnavailable>(),
+      );
+      expect(calls, isEmpty, reason: 'no channel exists to call');
+    });
+
     test('the unsupported platform reports unavailable and opens nothing',
         () async {
       const platform = UnsupportedHealthPlatform();
@@ -949,6 +999,83 @@ void main() {
       );
       await platform.openPermissionSettings();
       expect(calls, isEmpty, reason: 'no channel exists to call');
+    });
+  });
+
+  // Issue #1590: the Health sync screen's ask for the write types no sheet
+  // has offered — the type an app update added to a phone that already gave
+  // access. Android carries exactly those types and no read permission,
+  // because Health Connect drops a whole request once any permission in it
+  // was declined twice. iOS is the store's one sheet, and HealthKit itself
+  // shows only the types still not determined.
+  group('the never-asked ask (Issue #1590)', () {
+    test('Android carries exactly the types and no read permission',
+        () async {
+      calls.clear();
+      nextResult = 'allowed';
+      final result = await makePlatform().requestWriteAuthorizationForTypes(
+        _facts(),
+        {'spotting'},
+      );
+
+      expect(result, isA<HealthPlatformAllowed>());
+      expect(calls.single.method, 'requestWriteAuthorizationForTypes');
+      final args = calls.single.arguments as Map<Object?, Object?>;
+      expect(args['types'], ['spotting']);
+      // Nothing of the read side rides this sheet (the guard args'
+      // ownership fields are the facts, not permissions).
+      expect(args.containsKey('readTypes'), isFalse);
+    });
+
+    test('an empty set never reaches the channel', () async {
+      calls.clear();
+      expect(
+        await makePlatform().requestWriteAuthorizationForTypes(
+          _facts(),
+          const {},
+        ),
+        isA<HealthPlatformAllowed>(),
+      );
+      expect(calls, isEmpty);
+    });
+
+    test('iOS sends the one write request and no types argument', () async {
+      final HealthPlatformStore ios = createHealthPlatform(
+        TargetPlatform.iOS,
+        binding: HealthSyncBinding(FakeSettingsStore({
+          SettingsKeys.healthStoreProfileId: 'p1',
+        })),
+        minorBindingAllowed: true,
+      );
+      calls.clear();
+      nextResult = 'allowed';
+
+      expect(
+        await ios.requestWriteAuthorizationForTypes(_facts(), {'spotting'}),
+        isA<HealthPlatformAllowed>(),
+      );
+      expect(calls.single.method, 'requestWriteAuthorization');
+      final args = calls.single.arguments as Map<Object?, Object?>;
+      expect(
+        args.containsKey('types'),
+        isFalse,
+        reason: 'HealthKit filters the sheet itself; no per-type list '
+            'crosses to Swift',
+      );
+    });
+
+    test('a denied guard never reaches the channel', () async {
+      final result = await makePlatform(
+        seed: const {},
+      ).requestWriteAuthorizationForTypes(_facts(), {'spotting'});
+
+      expect(result, isA<HealthPlatformRefused>());
+      expect(
+        (result as HealthPlatformRefused).check,
+        HealthSyncCheck.noBinding,
+      );
+      expect(calls, isEmpty,
+          reason: 'a denied request must not invoke the channel at all');
     });
   });
 

@@ -108,6 +108,20 @@ class _FakePlatform implements HealthPlatformStore {
   @override
   Future<Set<String>> grantedWriteTypes() async => const {};
 
+  // Issue #1590: the ask for a type no sheet has asked about is the Health
+  // sync screen's, at a moment of its own. A write pass that read or raised
+  // it would decide writes from a sheet in mid-day-logging.
+  @override
+  Future<Set<String>> neverAskedWriteTypes() =>
+      throw StateError('a write pass must never ask what was never asked');
+
+  @override
+  Future<HealthPlatformResult> requestWriteAuthorizationForTypes(
+    HealthGuardFacts facts,
+    Set<String> types,
+  ) =>
+      throw StateError('a write pass must never raise the ask for a new type');
+
   // Issue #1491: the read-side probe is the background import's alone. A
   // write pass that read it would be gating writes on a read permission.
   @override

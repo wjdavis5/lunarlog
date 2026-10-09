@@ -440,7 +440,11 @@ enum HealthKitChannelHandler {
   /// are both `HKSampleType`, so a single loop drives both the
   /// authorization request and the delete query. Deliberately derived from
   /// the two identifier lists rather than hand-written a second time.
-  private static var writtenSampleTypes: [HKSampleType] {
+  ///
+  /// Not `private` since Issue #1590: `RunnerTests` asserts that
+  /// `neverAskedWriteTypeWires` covers every type in this list (a written
+  /// type with no wire name would be silently skipped by the ask).
+  static var writtenSampleTypes: [HKSampleType] {
     var types: [HKSampleType] = writtenCategoryTypeIdentifiers.compactMap {
       HKObjectType.categoryType(forIdentifier: $0)
     }.map { $0 as HKSampleType }
@@ -478,6 +482,30 @@ enum HealthKitChannelHandler {
       return "basalBodyTemperature"
     }
     return nil
+  }
+
+  /// Issue #1590: the wire identifiers of the write types this store has
+  /// never been asked about — `authorizationStatus` still
+  /// `.notDetermined`. On HealthKit that state IS "never asked": a type the
+  /// person denied is `.sharingDenied`, and one they allowed is
+  /// `.sharingAuthorized`. A phone that already gave access therefore
+  /// answers with a type an app update added, and the Health sync screen
+  /// asks for it once; requesting again is safe because HealthKit's sheet
+  /// shows only the types still not determined.
+  ///
+  /// `statusFor` is a parameter so the decision can be unit-tested without
+  /// a real `HKHealthStore` (the store's own statuses cannot be set in a
+  /// test host). Wires the same vocabulary as `grantedWriteTypes`.
+  static func neverAskedWriteTypeWires(
+    statusFor: (HKSampleType) -> HKAuthorizationStatus
+  ) -> [String] {
+    var wires: [String] = []
+    for type in writtenSampleTypes {
+      guard statusFor(type) == .notDetermined,
+            let wire = wireIdentifier(for: type) else { continue }
+      wires.append(wire)
+    }
+    return wires
   }
 
   /// The guard-args half of every guarded call (mirrors
@@ -961,6 +989,22 @@ enum HealthKitChannelHandler {
         granted.append("symptoms")
       }
       result(granted)
+
+    case "neverAskedWriteTypes":
+      // Issue #1590: the write types still in `.notDetermined` — the state
+      // a type an app update added is in on a phone that has already given
+      // access. The Health sync screen asks for these once, at a moment of
+      // its own. Unlike `permissionStatus`, this never folds a denial into
+      // the answer: `.sharingDenied` is a decline, and only
+      // `.notDetermined` is "never asked".
+      guard HKHealthStore.isHealthDataAvailable() else {
+        result(FlutterError(code: "unavailable", message: "Health data unavailable", details: nil))
+        return
+      }
+      result(
+        HealthKitChannelHandler.neverAskedWriteTypeWires {
+          store.authorizationStatus(for: $0)
+        })
 
     case "openPermissionSettings":
       // Issue #959: the settings deep link offered when the status line is

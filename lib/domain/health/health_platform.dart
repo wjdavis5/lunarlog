@@ -219,9 +219,10 @@ abstract final class HealthWriteTypes {
 /// The narrow seam `lib/ui`, the write pass and the background import read
 /// for the OS permission state (Issues #959/#1491): the OS consent — one
 /// answer for the writes, one for the import's reads — plus the platform
-/// settings deep link, with none of [HealthPlatformStore]'s write surface.
-/// [HealthPlatformStore] implements it, so the concrete adapter and the
-/// production factory remain one object.
+/// settings deep link and the one authorization request the Health sync
+/// screen raises for itself (Issue #1590), with none of
+/// [HealthPlatformStore]'s write surface. [HealthPlatformStore] implements
+/// it, so the concrete adapter and the production factory remain one object.
 abstract interface class HealthPermissionProbe {
   /// The current OS permission state for the types this app writes. Never
   /// touches user data; safe to call before any binding exists.
@@ -230,6 +231,62 @@ abstract interface class HealthPermissionProbe {
   /// The set of write type identifiers currently authorized by the health
   /// store (Issue #1555).
   Future<Set<String>> grantedWriteTypes();
+
+  /// The write types this device's store has **never been asked about**
+  /// (Issue #1590): the not-yet-asked side of the per-type answer
+  /// [grantedWriteTypes] gives for the authorized side.
+  ///
+  /// The write pass asks for authorization once, while no forward-only
+  /// floor is stamped (`health_flow_write_service.dart`), so a phone that
+  /// has already given access never sees a request again. A write type
+  /// added by an app update would therefore never be asked for on such a
+  /// phone, and never written there. This is how the Health sync screen
+  /// tells such a type from one the person declined, and asks for it once
+  /// at a moment of its own.
+  ///
+  /// * **iOS** answers per type from `HKHealthStore.authorizationStatus`:
+  ///   `.notDetermined` is exactly "never asked" (`.sharingDenied` is a
+  ///   decline, `.sharingAuthorized` a grant). Requesting again is safe
+  ///   there: HealthKit's sheet shows only the types not yet determined.
+  /// * **Android** cannot tell "never asked" from "declined" by the
+  ///   granted set alone, so the adapter remembers, per write permission,
+  ///   which ones a launched request has carried — an install whose sheet
+  ///   predates that tracking has its current list recorded once, since
+  ///   the sheet it did launch carried every type that build listed. A
+  ///   permission that is granted (or that a request has carried) is never
+  ///   in the answer; there is no per-type denial, only "asked" beyond
+  ///   "granted".
+  ///
+  /// Same wire vocabulary as [grantedWriteTypes] (one name per symptom
+  /// type on iOS; the named write types elsewhere). Throws on a channel
+  /// error or an unexpected response, like [grantedWriteTypes]; the screen
+  /// treats a throw as "cannot tell" and offers nothing.
+  Future<Set<String>> neverAskedWriteTypes();
+
+  /// Raises the OS permission sheet for [types] alone (Issue #1590),
+  /// behind the same guard as every other health-API touch — the request
+  /// the Health sync screen raises for the write types
+  /// [neverAskedWriteTypes] named, at a moment of its own rather than in
+  /// the middle of the write pass's day-logging upkeep.
+  ///
+  /// * **Android** asks Health Connect for exactly [types]: it drops a
+  ///   whole request, showing nothing, once any permission in it has been
+  ///   declined twice (see `HealthConnectAdapter.kt`), so a request for a
+  ///   type no sheet has offered must not carry the permissions that were
+  ///   already declined beside it.
+  /// * **iOS** is the store's one sheet. The request is
+  ///   [requestWriteAuthorization]'s call and HealthKit's own filtering
+  ///   decides what appears — only the types not yet determined — so no
+  ///   per-type list crosses to Swift.
+  ///
+  /// As with [requestWriteAuthorization], [HealthPlatformResult.allowed]
+  /// does not say what was granted; the caller re-reads the per-type
+  /// answers afterwards. An empty [types] raises nothing and is
+  /// `allowed`.
+  Future<HealthPlatformResult> requestWriteAuthorizationForTypes(
+    HealthGuardFacts facts,
+    Set<String> types,
+  );
 
   /// The current OS permission state for what the **import** reads (Issue
   /// #1491) — the gate of the prompt-free background pass
