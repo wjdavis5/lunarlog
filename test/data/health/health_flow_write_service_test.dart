@@ -219,6 +219,21 @@ class _FakePlatform implements HealthPlatformStore {
     return grantedTypes;
   }
 
+  /// Issue #1590: the ask for a type no sheet has asked about belongs to
+  /// the Health sync screen, never to a pass. The stubs throw, so a pass
+  /// that ever reached one fails loudly in a test rather than raising a
+  /// sheet mid-day-logging.
+  @override
+  Future<Set<String>> neverAskedWriteTypes() =>
+      throw StateError('a write pass must never ask what was never asked');
+
+  @override
+  Future<HealthPlatformResult> requestWriteAuthorizationForTypes(
+    HealthGuardFacts facts,
+    Set<String> types,
+  ) =>
+      throw StateError('a write pass must never raise the ask for a new type');
+
   /// Issue #1491: the read-side probe gates the background import and
   /// nothing else. Programmable and counted so a test can prove a write
   /// pass is neither stopped by it nor reads it.

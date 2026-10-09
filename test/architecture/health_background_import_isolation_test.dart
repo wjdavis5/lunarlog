@@ -347,13 +347,24 @@ void main() {
       );
     });
 
-    test('the screen raises neither: it only reads the probe', () {
+    test('the screen raises neither direction\'s own request — only the ask '
+        'for a never-asked type (Issue #1590)', () {
       final source = _stripComments(
         _read('lib/ui/settings/health_sync_screen.dart'),
       );
 
-      expect(source, isNot(contains('requestWriteAuthorization')));
+      // Neither direction's own request: the write pass's (all the writes,
+      // with the reads beside them) and the tap import's. Each belongs to
+      // the pass that raises it.
+      expect(source, isNot(contains('.requestWriteAuthorization(')));
       expect(source, isNot(contains('requestImportAuthorization')));
+      // Issue #1590's ask is the one request this screen raises — for the
+      // write types no sheet has asked about, from one place.
+      expect(
+        '.requestWriteAuthorizationForTypes('.allMatches(source),
+        hasLength(1),
+        reason: 'the screen raises exactly the never-asked ask, and once',
+      );
     });
 
     test('the status line asks the read-side question only behind the '

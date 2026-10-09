@@ -122,6 +122,61 @@ class HealthConnectAdapter(context: Context) {
         false
     }
 
+    // Issue #1590: the per-write-permission markers, so a type added by an
+    // app update reads as "never asked" on a phone whose write sheet ran
+    // long ago. Android cannot tell the two apart from the granted set, and
+    // the install-wide marker above only says *some* write sheet was shown,
+    // not which permissions it carried.
+    private fun perWritePermissionKey(permission: String): String =
+        PERMISSION_REQUESTED_TYPE_PREFIX + permission
+
+    // Whether any per-permission marker exists at all. Absent alongside the
+    // install-wide marker means this install's write sheet predates this
+    // tracking (or its only write grant arrived through Health Connect's
+    // own settings), so [seedAskedWritePermissions] records the current
+    // list once: that sheet carried every type the build that launched it
+    // listed, and the ones this build adds must not be read as asked.
+    private fun writePermissionMarkersExist(): Boolean =
+        prefs.all.keys.any { it.startsWith(PERMISSION_REQUESTED_TYPE_PREFIX) }
+
+    // One-time migration into the per-permission markers (Issue #1590): an
+    // install whose only "asked" evidence is the install-wide marker had
+    // every permission of its build's list on that sheet. Recording the
+    // current list here — before any type is added — is what lets a later
+    // build tell a newly added type from these.
+    //
+    // A phone that skips the build that first runs this cannot be told from
+    // one that ran it: the install-wide marker predates the type list, and
+    // no build recorded one. Such a phone treats the type as already asked;
+    // the alternative (treating the marker as proving nothing) would put
+    // the permissions the person already declined back in front of her.
+    private fun seedAskedWritePermissions() {
+        if (!writesEverRequested()) return
+        if (writePermissionMarkersExist()) return
+        markWritePermissionsAsked(writePermissions)
+    }
+
+    // Records that a launched request carried [permissions], stamping each
+    // as this install's (the same device-to-device-transfer guard as every
+    // other marker). Only the write permissions: a read this install
+    // carried says nothing about the writes (Issue #1515).
+    private fun markWritePermissionsAsked(permissions: Set<String>) {
+        val editor = prefs.edit()
+        for (permission in permissions) {
+            if (permission in writePermissions) {
+                editor.putLong(perWritePermissionKey(permission), installStamp)
+            }
+        }
+        editor.apply()
+    }
+
+    // Issue #1590: whether [permission] has ever been carried by a request
+    // this install launched — "asked". A permission that is granted never
+    // reaches this question: the caller excludes granted ones first.
+    private fun writePermissionAsked(permission: String): Boolean =
+        markerSetByThisInstall(perWritePermissionKey(permission)) ||
+            (writesEverRequested() && !writePermissionMarkersExist())
+
     // Issue #1515: there are two requests, so there are two things to have
     // been asked. Whether this install has put the WRITE permissions in
     // front of the person: it launched the request that carries them
@@ -205,8 +260,43 @@ class HealthConnectAdapter(context: Context) {
         BasalBodyTemperatureRecord::class,
     )
 
+    // Issue #1590: the Dart wire identifier for each record in
+    // [writtenRecordTypes], in the same order — the vocabulary
+    // `grantedWriteTypes` and `neverAskedWriteTypes` answer in
+    // (HealthWriteTypes in lib/domain/health/health_platform.dart). A
+    // parallel list rather than a re-shaped [writtenRecordTypes], which the
+    // #924 deletion guard parses on its own; a release guard parses this
+    // one and fails if the two drift. `MenstruationFlowRecord` and
+    // `MenstruationPeriodRecord` share one wire name and one permission,
+    // and `neverAskedWriteTypes` dedupes the answer.
+    private val writtenRecordTypeWires: List<String> = listOf(
+        "menstrualFlow",
+        "menstrualFlow",
+        "spotting",
+        "cervicalMucus",
+        "ovulationTest",
+        "basalBodyTemperature",
+    )
+
     private val writePermissions =
         writtenRecordTypes.map { HealthPermission.getWritePermission(it) }.toSet()
+
+    // Issue #1590: the (permission, wire) pairs the never-asked query and
+    // the subset request work over. Two record classes can share one
+    // permission; a Set keeps a request from carrying one twice.
+    private val writePermissionWires: List<Pair<String, String>> =
+        writtenRecordTypes.mapIndexed { index, record ->
+            HealthPermission.getWritePermission(record) to
+                writtenRecordTypeWires[index]
+        }
+
+    // The write permissions the wire identifiers in [wires] stand for
+    // (an unknown wire contributes nothing).
+    private fun writePermissionsForWires(wires: Set<String>): Set<String> =
+        writePermissionWires
+            .filter { it.second in wires }
+            .map { it.first }
+            .toSet()
 
     // Issue #458 (the owner's #781 read decision, already applied to iOS in
     // #217): the read/import half. Only the two user-recorded menstrual
@@ -453,6 +543,34 @@ class HealthConnectAdapter(context: Context) {
                 )
             }
 
+            // Issue #1590: the Health sync screen's request for the write
+            // types no sheet has asked about — the type an app update
+            // added — and nothing else. Health Connect drops a whole
+            // request, showing nothing, once any permission in it has been
+            // declined twice, so the new type must not ride beside the
+            // permissions the person already declined; and no read
+            // permission belongs on this sheet either. Launching it marks
+            // those permissions asked, so it is raised at most once.
+            "requestWriteAuthorizationForTypes" -> {
+                if (!requestGuardAllows(call.method, args, result)) return
+                val wires = (args?.get("types") as? List<*>)
+                    ?.filterIsInstance<String>()
+                    ?.toSet()
+                    .orEmpty()
+                val permissions = writePermissionsForWires(wires)
+                if (permissions.isEmpty()) {
+                    // Nothing to ask for: no sheet, and no guess that
+                    // something was granted.
+                    result.success("allowed")
+                    return
+                }
+                launchPermissionRequest(
+                    result,
+                    askedMarker = PERMISSION_REQUESTED_KEY,
+                    permissions = permissions,
+                )
+            }
+
             // Issue #1515: the IMPORT's request — what the import reads and
             // the two optional read extras, and no write permission. It
             // sets a marker of its own and never the write one: being asked
@@ -663,6 +781,13 @@ class HealthConnectAdapter(context: Context) {
                     result.success("unavailable")
                     return
                 }
+                // Issue #1590: record the per-permission asked state once
+                // for an install whose sheet predates it, here as well as in
+                // neverAskedWriteTypes — the write pass calls this on every
+                // pass, so an install that never opens the Health sync
+                // screen still has its list recorded before a later build
+                // adds a type.
+                seedAskedWritePermissions()
                 CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
                     try {
                         val granted = client.permissionController.getGrantedPermissions()
@@ -740,6 +865,36 @@ class HealthConnectAdapter(context: Context) {
                             types.add("basalBodyTemperature")
                         }
                         result.success(types)
+                    } catch (e: Exception) {
+                        result.error("failed", e.message, null)
+                    }
+                }
+            }
+
+            "neverAskedWriteTypes" -> {
+                // Issue #1590: the write types no permission sheet has
+                // asked about — on a phone that already gave access, the
+                // type an app update added. Read-only: it raises no sheet
+                // (the migration seed records what the install-wide marker
+                // already meant, nothing the person answered here). Errors
+                // are reported rather than degraded to an empty list, so
+                // the caller does not read "nothing to ask" from a failed
+                // query.
+                seedAskedWritePermissions()
+                val client = healthConnectClient()
+                if (client == null) {
+                    result.error("unavailable", "Health Connect unavailable", null)
+                    return
+                }
+                CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
+                    try {
+                        val granted = client.permissionController.getGrantedPermissions()
+                        result.success(
+                            HealthPermissionState.neverAskedWriteTypes(
+                                granted = granted,
+                                writes = writePermissionWires,
+                                asked = ::writePermissionAsked,
+                            ))
                     } catch (e: Exception) {
                         result.error("failed", e.message, null)
                     }
@@ -1321,6 +1476,13 @@ class HealthConnectAdapter(context: Context) {
             result.error(
                 "writeFailed", "no activity to host the permission prompt", null)
         } else {
+            // Issue #1590: and, per write permission the sheet carries,
+            // which ones have been asked about — stamped before launch
+            // like the marker above, so a type a later build adds is not
+            // read as one this request already offered. Only write
+            // permissions: what a read sheet carried says nothing about
+            // the writes (Issue #1515).
+            markWritePermissionsAsked(permissions)
             // Issue #1478: remember that this install has put the
             // request in front of the person, BEFORE launching it —
             // the status reports "notAsked" only until this is set,
@@ -1949,6 +2111,18 @@ class HealthConnectAdapter(context: Context) {
         // binding.
         const val PERMISSION_REQUESTED_KEY = "lunarlog.health.permissionRequested"
 
+        // Issue #1590: the per-write-permission asked markers, one key per
+        // permission string this install has carried in a launched request
+        // (`<prefix><permission>`), stamped with the install's own
+        // first-install time like [PERMISSION_REQUESTED_KEY]. The
+        // install-wide marker says *some* write sheet was shown; these say
+        // which permissions it offered, so a type an app update adds reads
+        // as never asked. An install whose sheet predates this tracking is
+        // recorded once by the adapter's seed (the sheet carried every type
+        // its build listed).
+        const val PERMISSION_REQUESTED_TYPE_PREFIX =
+            "lunarlog.health.permissionRequestedType."
+
         // Issue #1515: set once this install has launched the import's own
         // request, which asks for the reads and no write permission.
         // Stamped like the marker above. It counts as "asked" for the read
@@ -2151,6 +2325,31 @@ internal object HealthPermissionState {
         writesEverRequested -> DENIED
         else -> NOT_ASKED
     }
+
+    /**
+     * The `neverAskedWriteTypes` decision (Issue #1590): which write types
+     * no permission sheet has asked about, as wire identifiers.
+     *
+     * A granted permission is never in the answer — it was either asked for
+     * or deliberately granted in Health Connect's settings, and there is
+     * nothing left to ask. Of the rest, `asked` answers the per-permission
+     * record (the adapter's marker plus its one-time seed for a sheet that
+     * predates that tracking). Everything else is "never asked", and the
+     * Health sync screen raises one request for exactly those — alone,
+     * because Health Connect drops a whole request once any permission in
+     * it has been declined twice.
+     *
+     * `writes` is (permission, wire) in the adapter's own order; a wire
+     * repeated by two records that share one permission appears once.
+     */
+    fun neverAskedWriteTypes(
+        granted: Set<String>,
+        writes: List<Pair<String, String>>,
+        asked: (String) -> Boolean,
+    ): List<String> = writes
+        .filter { (permission, _) -> permission !in granted && !asked(permission) }
+        .map { it.second }
+        .distinct()
 
     /**
      * The `importPermissionStatus` decision (Issue #1491): may the import
