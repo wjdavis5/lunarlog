@@ -1,14 +1,15 @@
 import { useT } from '../i18n/t';
 import type { BbtChart as BbtChartData } from '../domain/schemas';
+import { bbtUnitSymbol, convertTemperature, type BbtUnit } from '../lib/day/measurements';
 
 /**
  * The BBT chart (issue #1796): the phone's chart, drawn from the drawable
  * form the domain sends - per-point x/y fractions, per-series overlay
  * opacity, and the Celsius range for the caption (see `bbtChartSchema`).
  * The SVG only maps fractions to pixels; no geometry is recomputed here.
- * The caption reads in Celsius, the canonical unit the response carries
- * (the phone converts to the profile's display unit; the web profile has no
- * BBT unit setting of its own yet).
+ * The caption converts that canonical Celsius range to the profile's own
+ * `bbt_unit` at render time (issue #1820), the same read-time-only rule
+ * the phone's `_captionFor` applies.
  */
 
 const kViewBoxWidth = 320;
@@ -25,13 +26,14 @@ function yPixels(fraction: number): number {
   return kInset + (1 - fraction) * (kViewBoxHeight - 2 * kInset);
 }
 
-function formatCelsius(value: number): string {
-  return `${value.toFixed(1)}\u00B0C`;
+/** One caption bound, converted from the response's Celsius to [unit]. */
+function formatTemperature(valueCelsius: number, unit: BbtUnit): string {
+  return `${convertTemperature(valueCelsius, 'celsius', unit).toFixed(1)}${bbtUnitSymbol(unit)}`;
 }
 
-export function BbtChart(props: { chart: BbtChartData }) {
+export function BbtChart(props: { chart: BbtChartData; unit: BbtUnit }) {
   const t = useT();
-  const { chart } = props;
+  const { chart, unit } = props;
   if (chart.isEmpty) {
     return (
       <section className="card" aria-labelledby="home-bbt-title">
@@ -44,7 +46,7 @@ export function BbtChart(props: { chart: BbtChartData }) {
       </section>
     );
   }
-  const range = `${formatCelsius(chart.minCelsius)}-${formatCelsius(chart.maxCelsius)}`;
+  const range = `${formatTemperature(chart.minCelsius, unit)}-${formatTemperature(chart.maxCelsius, unit)}`;
   return (
     <section className="card" aria-labelledby="home-bbt-title">
       <h2 className="card-title" id="home-bbt-title">

@@ -7617,6 +7617,296 @@
     }
   },
   {
+    "name": "bbtChart.same-date-rows",
+    "method": "bbtChart",
+    "request": {
+      "entries": [
+        {
+          "id": "entry-profile-1-0-0",
+          "profileId": "profile-1",
+          "localDate": "2026-07-08",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-07-08T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-0-1",
+          "profileId": "profile-1",
+          "localDate": "2026-07-09",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-07-09T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-0-2",
+          "profileId": "profile-1",
+          "localDate": "2026-07-10",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-07-10T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-0-3",
+          "profileId": "profile-1",
+          "localDate": "2026-07-11",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-07-11T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-1-0",
+          "profileId": "profile-1",
+          "localDate": "2026-08-05",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-08-05T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-1-1",
+          "profileId": "profile-1",
+          "localDate": "2026-08-06",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-08-06T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-1-2",
+          "profileId": "profile-1",
+          "localDate": "2026-08-07",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-08-07T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-1-3",
+          "profileId": "profile-1",
+          "localDate": "2026-08-08",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-08-08T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-2-0",
+          "profileId": "profile-1",
+          "localDate": "2026-09-02",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-09-02T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-2-1",
+          "profileId": "profile-1",
+          "localDate": "2026-09-03",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-09-03T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-2-2",
+          "profileId": "profile-1",
+          "localDate": "2026-09-04",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-09-04T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-2-3",
+          "profileId": "profile-1",
+          "localDate": "2026-09-05",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-09-05T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-3-0",
+          "profileId": "profile-1",
+          "localDate": "2026-09-30",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-09-30T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-3-1",
+          "profileId": "profile-1",
+          "localDate": "2026-10-01",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-10-01T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-3-2",
+          "profileId": "profile-1",
+          "localDate": "2026-10-02",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-10-02T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-3-3",
+          "profileId": "profile-1",
+          "localDate": "2026-10-03",
+          "tz": "UTC",
+          "flow": "medium",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-10-03T12:00:00.000Z"
+        }
+      ],
+      "observations": [
+        {
+          "dayEntryId": "entry-profile-1-0-1",
+          "category": "bbt",
+          "valueNum": 36.9,
+          "unit": "celsius",
+          "source": "manual",
+          "updatedAt": "2026-07-09T15:00:00.000Z"
+        },
+        {
+          "dayEntryId": "entry-profile-1-0-1",
+          "category": "bbt",
+          "valueNum": 36.5,
+          "unit": "celsius",
+          "source": "manual",
+          "updatedAt": "2026-07-09T09:00:00.000Z"
+        }
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "series": [
+          {
+            "cycleStart": "2026-07-08",
+            "opacity": 1.0,
+            "points": [
+              {
+                "cycleDay": 2,
+                "celsius": 36.9,
+                "date": "2026-07-09",
+                "xFraction": 1.0,
+                "yFraction": 0.5
+              }
+            ]
+          }
+        ],
+        "maxCycleDay": 2,
+        "minCelsius": 36.6,
+        "maxCelsius": 37.199999999999996,
+        "isEmpty": false
+      }
+    }
+  },
+  {
     "name": "bbtChart.empty",
     "method": "bbtChart",
     "request": {

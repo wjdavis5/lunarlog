@@ -204,14 +204,21 @@ export interface BbtObservationJson {
   source?: string;
   excluded?: boolean;
   deletedAt?: string | null;
+  /**
+   * The row's own update instant (issue #1821). One date can carry more
+   * than one live BBT row; the chart breaks that tie by `updatedAt`, so it
+   * crosses the boundary rather than being borrowed from the day entry. A
+   * row without one falls back to its entry's.
+   */
+  updatedAt?: string | null;
 }
 
 /**
  * The BBT chart's input: the same entries `predict` takes, plus the
  * profile's measurement rows. Callers map their synced `observations` rows
  * onto `BbtObservationJson` (the row's `dayEntryId`, category, value, unit,
- * source, exclusion flag, and tombstone); the facade resolves each row onto
- * its day and drops what the chart does not plot.
+ * source, exclusion flag, tombstone, and own update instant); the facade
+ * resolves each row onto its day and drops what the chart does not plot.
  */
 export interface BbtChartRequest {
   entries: DayEntryJson[];

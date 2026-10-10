@@ -46,6 +46,7 @@ describe('bbtObservationRows (issue #1796)', () => {
         source: 'manual',
         excluded: false,
         deletedAt: null,
+        updatedAt: '2026-09-01T00:00:00Z',
       },
     ]);
   });
@@ -60,5 +61,19 @@ describe('bbtObservationRows (issue #1796)', () => {
     ]);
     expect(mapped[0]?.excluded).toBe(true);
     expect(mapped[0]?.deletedAt).toBe('2026-09-02T00:00:00Z');
+  });
+
+  // Issue #1821: one date can carry two live rows, and the chart breaks
+  // that tie by updatedAt - so each row's own instant must cross the
+  // boundary, not be borrowed from its day entry.
+  it("carries each row's own update instant", () => {
+    const mapped = bbtObservationRows([
+      row({ updated_at: '2026-09-02T00:00:00Z' }),
+      row({ updated_at: '2026-09-03T00:00:00Z' }),
+    ]);
+    expect(mapped.map((entry) => entry.updatedAt)).toEqual([
+      '2026-09-02T00:00:00Z',
+      '2026-09-03T00:00:00Z',
+    ]);
   });
 });
