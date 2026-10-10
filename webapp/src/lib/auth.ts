@@ -93,6 +93,32 @@ const CSRF_HEADER = 'x-lunarlog-csrf';
 /** Where the Apple delete ceremony leaves for, and nowhere else. */
 const APPLE_AUTHORIZE_URL = 'https://appleid.apple.com/auth/authorize?';
 
+/**
+ * The hosts the identity-link flow may navigate to (issue #1827), one per
+ * provider. The Worker returns GoTrue's own authorize address and the page
+ * assigns it to `window.location`; without this check a misconfigured or
+ * compromised upstream answer could navigate the browser anywhere. The
+ * Apple delete ceremony pins its own full prefix above; this pins scheme
+ * and host, which survives a path change on the provider's side.
+ */
+const IDENTITY_LINK_AUTHORIZE_HOSTS: Record<OAuthProvider, string> = {
+  apple: 'appleid.apple.com',
+  google: 'accounts.google.com',
+};
+
+/** Whether [rawUrl] is an https address on [provider]'s authorize host. */
+function isTrustedAuthorizeUrl(rawUrl: string, provider: OAuthProvider): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return false;
+  }
+  return (
+    parsed.protocol === 'https:' && parsed.hostname === IDENTITY_LINK_AUTHORIZE_HOSTS[provider]
+  );
+}
+
 /** [body] with the return path added when there is one (issue #1456). */
 function withReturnPath(
   body: Record<string, unknown>,
@@ -363,13 +389,15 @@ export class WebAuthClient {
    * which a browser navigation cannot carry). Returns the provider URL the
    * caller assigns the browser to; the landed code completes through the
    * ordinary callback exchange, because GoTrue's link-mode flow state links
-   * the identity instead of starting a session.
+   * the identity instead of starting a session. The address must be the
+   * provider's own authorize host over https (issue #1827); anything else
+   * is refused rather than navigated to.
    */
   async startIdentityLink(provider: OAuthProvider): Promise<string> {
     const response = await this.authedFetch('/auth/identities/link', 'POST', { provider });
     await raiseForError(response);
     const raw = (await response.json()) as Record<string, unknown>;
-    if (typeof raw.url !== 'string' || raw.url === '') {
+    if (typeof raw.url !== 'string' || !isTrustedAuthorizeUrl(raw.url, provider)) {
       throw new AuthError('upstream_authorize_shape', 502);
     }
     return raw.url;

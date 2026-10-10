@@ -435,6 +435,53 @@ describe('WebAuthClient account surfaces (issue #1256)', () => {
     expect(headers.get('x-lunarlog-csrf')).toBe('1');
   });
 
+  it.each([
+    ['nothing', {}],
+    ['another site', { url: 'https://evil.example/auth/authorize?state=s' }],
+    ['a lookalike host', { url: 'https://appleid.apple.com.evil.example/auth/authorize?x=1' }],
+    ['a path on this site', { url: '/account?code=c&state=s' }],
+    ['a script address', { url: 'javascript:alert(1)' }],
+    ['plain http', { url: 'http://appleid.apple.com/auth/authorize?x=1' }],
+  ])('startIdentityLink goes nowhere when it is handed %s', async (_described, body) => {
+    await signIn();
+    stubFetch((call) =>
+      call.url === '/auth/session'
+        ? Promise.resolve(jsonResponse(SESSION_BODY))
+        : Promise.resolve(jsonResponse(body)),
+    );
+
+    await expect(client.startIdentityLink('apple')).rejects.toMatchObject({
+      code: 'upstream_authorize_shape',
+    });
+  });
+
+  it('startIdentityLink accepts the Google authorize host for a Google link', async () => {
+    await signIn();
+    const google = 'https://accounts.google.com/o/oauth2/v2/auth?client_id=c&state=s';
+    stubFetch((call) =>
+      call.url === '/auth/session'
+        ? Promise.resolve(jsonResponse(SESSION_BODY))
+        : Promise.resolve(jsonResponse({ url: google })),
+    );
+
+    expect(await client.startIdentityLink('google')).toBe(google);
+  });
+
+  it("startIdentityLink refuses the other provider's host", async () => {
+    await signIn();
+    stubFetch((call) =>
+      call.url === '/auth/session'
+        ? Promise.resolve(jsonResponse(SESSION_BODY))
+        : Promise.resolve(
+            jsonResponse({ url: 'https://appleid.apple.com/auth/authorize?x=1' }),
+          ),
+    );
+
+    await expect(client.startIdentityLink('google')).rejects.toMatchObject({
+      code: 'upstream_authorize_shape',
+    });
+  });
+
   it('unlinkIdentity renews the session after the unlink so the cached user drops the identity', async () => {
     await signIn();
     const { calls } = stubFetch((call) =>
