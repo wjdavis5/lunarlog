@@ -37,9 +37,9 @@ Platform gates in `lib/config.dart` shape what ships. Health sync is on for both
 
 ## The other two surfaces
 
-The web client at `app.lunarlog.app` is a signed-in thin client that keeps nothing at rest in the browser. The rule is enforced three ways: lint bans on browser storage APIs, an in-memory access token, and a Playwright spec that asserts every storage surface stays empty. Cycle math comes from the same Dart domain compiled to JavaScript, so parity with the phone is structural. First-run onboarding and the insights surface were deferred. Its staging alias shares the production Supabase project, which the deploy docs note.
+The web client at `app.lunarlog.app` is a signed-in thin client that keeps nothing at rest in the browser. The rule is enforced three ways: lint bans on browser storage APIs, an in-memory access token, and a Playwright spec that asserts every storage surface stays empty. Cycle math comes from the same Dart domain compiled to JavaScript, so parity with the phone is structural. First-run onboarding shipped the same day (PR #1803), followed by the insights section, the BBT chart, the recap card, and the phase card (PRs #1805 through #1814). Its staging alias shares the production Supabase project, which the deploy docs note.
 
-The marketing site is an Astro build with zero client JavaScript and strict response headers, deployed by its own workflow. Its checks (html validation, links, axe, Lighthouse budgets) are deliberately not release-gating. One documented drift: `docs/links/README.md:52` withholds the web-app button until #1258, which shipped on 2026-10-04.
+The marketing site is an Astro build with zero client JavaScript and strict response headers, deployed by its own workflow. Its checks (html validation, links, axe, Lighthouse budgets) are deliberately not release-gating. One documented drift: `docs/links/README.md:52` withholds the web-app button until #1258, which shipped on 2026-10-04 (the cutover was executed the same day this review landed, PR #1800).
 
 ## Quality and maturity
 
