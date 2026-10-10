@@ -45,6 +45,7 @@ void main() {
     ..._predictCases(),
     ..._cycleHistoryCases(),
     ..._insightCases(),
+    ..._bbtChartCases(),
     ..._calendarForecastCases(),
     ..._validateDateCases(),
     ..._exportCases(),
@@ -508,6 +509,64 @@ List<Map<String, Object?>> _insightCases() {
     }),
   ];
 }
+
+// ---------------------------------------------------------------------------
+// bbtChart
+// ---------------------------------------------------------------------------
+
+/// The BBT chart's series (issue #1796): three completed 28-day cycles with
+/// readings on a few days (Celsius and one Fahrenheit row, converted by the
+/// chart), plus the rows it must not plot - an excluded reading, a deleted
+/// one, a day that is not among the entries, and another category - and the
+/// empty case.
+List<Map<String, Object?>> _bbtChartCases() {
+  const today = '2026-09-30';
+  final entries = _cycleEntries(
+    cycleLengths: const [28, 28, 28, 28],
+    firstStart: _addDays(today, -84),
+  );
+  final observations = <Map<String, Object?>>[
+    _bbtRow('entry-profile-1-0-0', 36.4),
+    _bbtRow('entry-profile-1-0-1', 36.5),
+    _bbtRow('entry-profile-1-0-2', 36.7),
+    _bbtRow('entry-profile-1-1-1', 98.6, unit: 'fahrenheit'),
+    _bbtRow('entry-profile-1-1-2', 36.9, excluded: true),
+    _bbtRow(
+      'entry-profile-1-2-0',
+      36.6,
+      deletedAt: '2026-08-01T00:00:00.000Z',
+    ),
+    _bbtRow('entry-not-in-entries', 36.8),
+    _bbtRow('entry-profile-1-2-1', 60.0, category: 'weight'),
+  ];
+  return [
+    _case('bbtChart.points-by-cycle', 'bbtChart', {
+      'entries': entries,
+      'observations': observations,
+    }),
+    _case('bbtChart.empty', 'bbtChart', {
+      'entries': entries,
+      'observations': const <Map<String, Object?>>[],
+    }),
+  ];
+}
+
+Map<String, Object?> _bbtRow(
+  String dayEntryId,
+  double valueNum, {
+  String unit = 'celsius',
+  String category = 'bbt',
+  bool excluded = false,
+  String? deletedAt,
+}) => {
+  'dayEntryId': dayEntryId,
+  'category': category,
+  'valueNum': valueNum,
+  'unit': unit,
+  'source': 'manual',
+  if (excluded) 'excluded': true,
+  'deletedAt': ?deletedAt,
+};
 
 // ---------------------------------------------------------------------------
 // calendarForecast

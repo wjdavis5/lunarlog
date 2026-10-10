@@ -61,6 +61,7 @@ import 'dart:convert';
 
 import 'package:lunarlog/domain/birth_control.dart';
 import 'package:lunarlog/domain/export/account_export.dart';
+import 'package:lunarlog/domain/insights/bbt_chart.dart';
 import 'package:lunarlog/domain/insights/cramp_prediction.dart';
 import 'package:lunarlog/domain/insights/cycle_insights_calculator.dart';
 import 'package:lunarlog/domain/insights/symptom_trends.dart';
@@ -115,6 +116,7 @@ String handleFacadeCall(String method, String requestJson) {
       'predict' => predictFromJson(decoded),
       'cycleHistory' => cycleHistoryFromJson(decoded),
       'insights' => insightsFromJson(decoded),
+      'bbtChart' => bbtChartFromJson(decoded),
       'calendarForecast' => calendarForecastFromJson(decoded),
       'validateDayEntryDate' => validateDayEntryDateFromJson(decoded),
       'buildExport' => buildExportFromJson(decoded),
@@ -403,6 +405,114 @@ Map<String, Object?>? _crampPredictionToJson(CrampPrediction? prediction) {
     'totalCyclesAnalyzed': prediction.totalCyclesAnalyzed,
     'summaryText': prediction.summaryText,
     'disclaimer': prediction.disclaimer,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// bbtChart
+// ---------------------------------------------------------------------------
+
+/// `bbtChart` (issue #1796): the BBT chart's per-cycle series, the same
+/// `BbtChartData` the Analysis tab's chart consumes (`deriveBbtChartData`),
+/// so the web plots exactly what the phone plots.
+///
+/// Request keys: `entries` (required - the same set `predict` takes), and
+/// `observations` (optional): the profile's measurement rows, each carrying
+/// `dayEntryId` (the day it was logged on), `category`, `valueNum`, `unit`,
+/// `source`, `excluded`, and `deletedAt`. A row naming no day among
+/// `entries`, a deleted row, or a row without a category is skipped here;
+/// everything else the chart itself skips (another category, an excluded
+/// row, a missing value) is skipped by `deriveBbtChartData`.
+///
+/// Response `data`: `{"series": [{"cycleStart", "points": [{"cycleDay",
+/// "celsius", "date"}]}], "maxCycleDay", "isEmpty"}`. Celsius is canonical;
+/// the web converts to the profile's display unit at render time.
+Map<String, Object?> bbtChartFromJson(Map<String, Object?> request) {
+  final entries = _requireEntries(request);
+  final chart = deriveBbtChartData(
+    episodes: deriveEpisodes(bleedDatesOf(entries)),
+    observations: _observationsAcrossEntries(request['observations'], entries),
+  );
+  return bbtChartDataToJson(chart);
+}
+
+/// The live rows among [raw]'s, each resolved onto its own day among
+/// [entries] by `dayEntryId`. A row naming no day, or a day not present in
+/// [entries], is skipped: its date and update time are the entry's own.
+List<Observation> _observationsAcrossEntries(
+  Object? raw,
+  List<DayEntry> entries,
+) {
+  if (raw == null) return const [];
+  if (raw is! List) {
+    throw ArgumentError('observations must be a JSON array');
+  }
+  final byId = {for (final entry in entries) entry.id: entry};
+  final observations = <Observation>[];
+  for (var i = 0; i < raw.length; i++) {
+    final json = raw[i];
+    if (json is! Map<String, Object?>) {
+      throw ArgumentError('observations[$i] must be a JSON object');
+    }
+    if (_optionalDateTime(json['deletedAt']) != null) continue;
+    final entry = byId[_optionalString(json['dayEntryId'])];
+    if (entry == null) continue;
+    final category = _optionalString(json['category']);
+    if (category == null) continue;
+    observations.add(
+      _observationFor(
+        entry,
+        category: ObservationCategory.fromCode(category),
+        valueNum: _optionalNum(json['valueNum'], 'observations[$i].valueNum'),
+        unit: _optionalString(json['unit']),
+        source: ObservationSource.fromDb(_optionalString(json['source'])),
+        excluded: _optionalBool(json['excluded'], defaultValue: false),
+      ),
+    );
+  }
+  return observations;
+}
+
+/// Serializes [BbtChartData] in the form the chart draws: the most recent
+/// cycles carrying data (most recent last, capped the way the app's chart
+/// caps the overlay), each point with its cycle day, Celsius value, civil
+/// date, and the domain's own x/y fractions, each series with its overlay
+/// opacity, plus the y-axis Celsius range for the caption. A painter -
+/// Flutter's or the web's - only turns these fractions into pixels; nothing
+/// about the geometry is recomputed outside `lib/domain/insights/
+/// bbt_chart.dart`.
+Map<String, Object?> bbtChartDataToJson(BbtChartData chart) {
+  final recent = bbtChartRecentSeries(chart);
+  final (minCelsius, maxCelsius) = bbtChartValueRange(chart.allCelsiusValues);
+  return {
+    'series': [
+      for (var i = 0; i < recent.length; i++)
+        {
+          'cycleStart': recent[i].cycleStart.iso,
+          'opacity': bbtChartCycleOpacity(recent.length - 1 - i, recent.length),
+          'points': [
+            for (final point in recent[i].points)
+              {
+                'cycleDay': point.cycleDay,
+                'celsius': point.celsius,
+                'date': point.date.iso,
+                'xFraction': bbtChartXFraction(
+                  point.cycleDay,
+                  chart.maxCycleDay,
+                ),
+                'yFraction': bbtChartYFraction(
+                  point.celsius,
+                  minCelsius,
+                  maxCelsius,
+                ),
+              },
+          ],
+        },
+    ],
+    'maxCycleDay': chart.maxCycleDay,
+    'minCelsius': minCelsius,
+    'maxCelsius': maxCelsius,
+    'isEmpty': chart.isEmpty,
   };
 }
 
@@ -711,13 +821,15 @@ List<Observation> _observationsFromJson(Object? raw, DayEntry entry) {
 }
 
 /// One observation of [entry]'s day. The log reads only its category,
-/// value, unit and source; the rest is the entry's own.
+/// value, unit and source; the rest is the entry's own. `excluded` (BBT's
+/// own per-point exclusion flag, A1-44) is read by the BBT chart's rows.
 Observation _observationFor(
   DayEntry entry, {
   required ObservationCategory category,
   double? valueNum,
   String? unit,
   ObservationSource source = ObservationSource.manual,
+  bool excluded = false,
 }) => Observation(
   id: '',
   dayEntryId: entry.id,
@@ -727,6 +839,7 @@ Observation _observationFor(
   category: category,
   valueNum: valueNum,
   unit: unit,
+  excluded: excluded,
   source: source,
   updatedAt: entry.updatedAt,
 );

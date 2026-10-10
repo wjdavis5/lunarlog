@@ -263,6 +263,40 @@ export const insightsReportSchema = z.object({
 
 export type InsightsReport = z.infer<typeof insightsReportSchema>;
 
+/**
+ * The BBT chart's drawable series (issue #1796), the `bbtChart` method's
+ * response: the most recent cycles carrying data (most recent last, capped
+ * as the app's chart caps the overlay), each point with its cycle day,
+ * Celsius value, civil date, and the domain's own x/y fractions, each
+ * series with its overlay opacity, plus the y-axis Celsius range for the
+ * caption. The chart maps fractions to pixels; no geometry is recomputed
+ * here. Celsius is canonical; the caption converts to the profile's display
+ * unit at render time, as the phone's painter does.
+ */
+export const bbtChartSchema = z.object({
+  series: z.array(
+    z.object({
+      cycleStart: isoDate,
+      opacity: z.number(),
+      points: z.array(
+        z.object({
+          cycleDay: z.number().int(),
+          celsius: z.number(),
+          date: isoDate,
+          xFraction: z.number(),
+          yFraction: z.number(),
+        }),
+      ),
+    }),
+  ),
+  maxCycleDay: z.number().int(),
+  minCelsius: z.number(),
+  maxCelsius: z.number(),
+  isEmpty: z.boolean(),
+});
+
+export type BbtChart = z.infer<typeof bbtChartSchema>;
+
 export const dateValidationSchema = z.object({
   status: z.enum(['valid', 'futureDate', 'beforeBirthYear']),
 });
