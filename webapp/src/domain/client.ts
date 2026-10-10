@@ -20,6 +20,7 @@
  */
 
 import {
+  bbtChartSchema,
   calendarForecastSchema,
   cycleHistoryViewSchema,
   dateValidationSchema,
@@ -30,6 +31,7 @@ import {
   inviteLinkSchema,
   predictionSchema,
   todayLogSchema,
+  type BbtChart,
   type CalendarForecast,
   type CycleHistoryView,
   type ExportDocument,
@@ -187,6 +189,38 @@ export function calendarForecast(
 
 export function insights(module: DomainModule, request: PredictRequest): InsightsReport {
   return callDomain(module, 'insights', request, insightsReportSchema);
+}
+
+/** One measurement row the BBT chart resolves onto its own day. */
+export interface BbtObservationJson {
+  dayEntryId: string;
+  category: string;
+  valueNum: number | null;
+  unit: string | null;
+  source?: string;
+  excluded?: boolean;
+  deletedAt?: string | null;
+}
+
+/**
+ * The BBT chart's input: the same entries `predict` takes, plus the
+ * profile's measurement rows. Callers map their synced `observations` rows
+ * onto `BbtObservationJson` (the row's `dayEntryId`, category, value, unit,
+ * source, exclusion flag, and tombstone); the facade resolves each row onto
+ * its day and drops what the chart does not plot.
+ */
+export interface BbtChartRequest {
+  entries: DayEntryJson[];
+  observations: BbtObservationJson[];
+}
+
+/**
+ * The BBT chart's per-cycle series (issue #1796): the same `BbtChartData`
+ * the app's Analysis tab plots, so the web draws exactly what the phone
+ * draws.
+ */
+export function bbtChart(module: DomainModule, request: BbtChartRequest): BbtChart {
+  return callDomain(module, 'bbtChart', request, bbtChartSchema);
 }
 
 export function validateDayEntryDate(

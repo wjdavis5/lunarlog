@@ -263,6 +263,33 @@ export const insightsReportSchema = z.object({
 
 export type InsightsReport = z.infer<typeof insightsReportSchema>;
 
+/**
+ * The BBT chart's series (issue #1796), the `bbtChart` method's response:
+ * one entry per episode-derived cycle (oldest first, empty series included),
+ * each point a cycle day with its Celsius value and civil date, plus the
+ * widest cycle day any point reaches. Celsius is canonical; the chart
+ * converts to the profile's display unit at render time, as the phone's
+ * painter does.
+ */
+export const bbtChartSchema = z.object({
+  series: z.array(
+    z.object({
+      cycleStart: isoDate,
+      points: z.array(
+        z.object({
+          cycleDay: z.number().int(),
+          celsius: z.number(),
+          date: isoDate,
+        }),
+      ),
+    }),
+  ),
+  maxCycleDay: z.number().int(),
+  isEmpty: z.boolean(),
+});
+
+export type BbtChart = z.infer<typeof bbtChartSchema>;
+
 export const dateValidationSchema = z.object({
   status: z.enum(['valid', 'futureDate', 'beforeBirthYear']),
 });
