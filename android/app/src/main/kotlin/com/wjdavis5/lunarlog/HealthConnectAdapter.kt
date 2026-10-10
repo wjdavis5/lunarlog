@@ -28,6 +28,7 @@ import androidx.health.connect.client.response.ChangesResponse
 import androidx.health.connect.client.time.TimeRangeFilter
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -1618,24 +1619,42 @@ class HealthConnectAdapter(context: Context) {
             if (token != null) {
                 val page = try {
                     client.getChanges(token)
+                } catch (e: CancellationException) {
+                    // A cancelled read is not a bad token: it must
+                    // propagate (Issue #1891), and the token stays.
+                    throw e
                 } catch (e: SecurityException) {
                     // A revoked read permission is not a bad token: the
                     // caller's handler reports it as permissionDenied, and
                     // the token stays for when access returns.
                     throw e
                 } catch (e: Exception) {
-                    // Issue #1882: a token Health Connect throws on (the
+                    // Issue #1882: a token Health Connect rejects (the
                     // prefs of another install, carried over by a
                     // device-to-device transfer, or a store it no longer
                     // matches) would fail every pass identically, forever.
-                    // Drop it and recover with the whole-range read a
-                    // first import uses, the same recovery the
-                    // expired-token case below makes.
+                    // Issue #1891: a TRANSIENT failure must not count as a
+                    // rejection — dropping the token for a hiccup would
+                    // lose every DeletionChange queued behind it (#1594)
+                    // and force a full-history read — so the first failure
+                    // keeps the token and the pass reports readFailed, and
+                    // only the same token failing twice in a row is
+                    // treated as rejected. Then drop it and recover with
+                    // the whole-range read a first import uses, the same
+                    // recovery the expired-token case below makes.
+                    if (!changesTokenFailedBefore(profileId, token)) {
+                        noteChangesTokenFailure(profileId, token)
+                        throw e
+                    }
+                    clearChangesTokenFailure(profileId)
                     prefs.edit().remove(changesTokenKey(profileId)).apply()
                     return readRangePage(
                         client, profileId, startMs, endMs, pageSize,
                         HealthImportCursor.FLOW, null)
                 }
+                // A token that answered is not a failed one: the strike
+                // clears so a later transient failure starts over.
+                clearChangesTokenFailure(profileId)
                 if (page.changesTokenExpired) {
                     // Health Connect tokens expire after 30 days: clear the
                     // stale anchor and recover with the same full-range read
@@ -1980,6 +1999,30 @@ class HealthConnectAdapter(context: Context) {
 
     private fun changesTokenKey(profileId: String): String =
         "lunarlog.health.changesToken.$profileId"
+
+    // Issue #1891: the token whose getChanges failed on the LAST pass, so a
+    // second consecutive failure on the same token can be told from the
+    // first. A token Health Connect rejects (another install's prefs
+    // carried over, or a store it no longer matches) fails every pass; a
+    // transient failure (a dropped IPC call, disk I/O, the service briefly
+    // unavailable) usually does not. Only the former is dropped — dropping
+    // on the first throw would lose every DeletionChange queued behind the
+    // token (#1594) and force a full-history read for a hiccup. Inert
+    // when it names a token that is no longer stored.
+    private fun changesTokenFailureKey(profileId: String): String =
+        "lunarlog.health.changesTokenFailure.$profileId"
+
+    private fun changesTokenFailedBefore(profileId: String, token: String): Boolean =
+        prefs.getString(changesTokenFailureKey(profileId), null) == token
+
+    private fun noteChangesTokenFailure(profileId: String, token: String) {
+        prefs.edit().putString(changesTokenFailureKey(profileId), token).apply()
+    }
+
+    private fun clearChangesTokenFailure(profileId: String) {
+        if (!prefs.contains(changesTokenFailureKey(profileId))) return
+        prefs.edit().remove(changesTokenFailureKey(profileId)).apply()
+    }
 
     // Issue #1549: whether the whole-range read that minted the stored
     // change token was made with "Access past data" granted from its
