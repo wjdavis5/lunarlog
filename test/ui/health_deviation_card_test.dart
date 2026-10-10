@@ -64,6 +64,18 @@ void main() {
         findsOneWidget,
       );
     }
+
+    // Review item: the key-only loop above let a wrong or empty kind label
+    // pass, so the card's only behaviour went unpinned. These are the four
+    // labels it composes into "Possible {kind} ({range})".
+    for (final expected in [
+      'Possible irregular cycles',
+      'Possible infrequent cycles',
+      'Possible prolonged periods',
+      'Possible bleeding between periods',
+    ]) {
+      expect(find.textContaining(expected), findsOneWidget);
+    }
   });
 
   testWidgets('tapping dismiss invokes the callback', (tester) async {

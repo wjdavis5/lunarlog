@@ -5,7 +5,6 @@ import {
   createInMemorySessionStorage,
   createSupabaseClient,
   getSupabaseClient,
-  resetSupabaseClientForTests,
 } from '../src/lib/supabase';
 import { hasSupabase } from '../src/lib/config';
 
@@ -60,11 +59,27 @@ describe('the Supabase client seam (issue #1249, accessToken option #1250)', () 
     expect(await second.getItem('sb-auth-token')).toBeNull();
   });
 
-  it('memoises one client and resets for tests', () => {
-    resetSupabaseClientForTests();
-    // hasSupabase is false in the test env, so memoisation is only asserted
-    // via the reset seam's type contract here; the configured path is
-    // covered by createSupabaseClient above.
-    expect(() => resetSupabaseClientForTests()).not.toThrow();
+  it('memoises one configured client and resets for tests', async () => {
+    // Review item: the old case asserted only that the reset seam does not
+    // throw, and every test env has hasSupabase false, so the configured
+    // path (memoisation plus the accessToken wiring) was never exercised.
+    vi.resetModules();
+    vi.doMock('../src/lib/config', () => ({
+      hasSupabase: true,
+      supabaseUrl: 'https://example.supabase.co',
+      supabasePublishableKey: 'sb_publishable_test',
+    }));
+    try {
+      const mod = await import('../src/lib/supabase');
+      const first = mod.getSupabaseClient();
+      const second = mod.getSupabaseClient();
+      expect(first).not.toBeNull();
+      expect(first).toBe(second);
+      mod.resetSupabaseClientForTests();
+      expect(mod.getSupabaseClient()).not.toBe(first);
+    } finally {
+      vi.doUnmock('../src/lib/config');
+      vi.resetModules();
+    }
   });
 });
