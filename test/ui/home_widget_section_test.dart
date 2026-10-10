@@ -41,13 +41,20 @@ class _FakeProfilesRepository implements ProfilesRepository {
 }
 
 class _FakeGuardiansRepository implements ProfileGuardiansRepository {
-  _FakeGuardiansRepository(this.byProfile);
+  _FakeGuardiansRepository(this.byProfile, {this.failFor = const {}});
 
   final Map<String, List<ProfileGuardian>> byProfile;
 
+  /// Profile ids whose one-shot read throws (issue #1829).
+  final Set<String> failFor;
+
   @override
-  Future<List<ProfileGuardian>> getForProfile(String profileId) async =>
-      byProfile[profileId] ?? const [];
+  Future<List<ProfileGuardian>> getForProfile(String profileId) async {
+    if (failFor.contains(profileId)) {
+      throw StateError('guardian read failed');
+    }
+    return byProfile[profileId] ?? const [];
+  }
 
   @override
   Stream<List<ProfileGuardian>> watchForProfile(String profileId) =>
@@ -227,6 +234,31 @@ void main() {
     expect(settings.get('widget_profile_id'), completion('p1'));
     // The tile subtitle now names the pinned profile.
     expect(find.text('Alice'), findsOneWidget);
+  });
+
+  testWidgets('a failed guardian read degrades to the fail-open path and the '
+      'tap still opens the picker (issue #1829)', (tester) async {
+    await _pumpSection(
+      tester,
+      settings: FakeSettingsStore(),
+      profiles: _FakeProfilesRepository([_profile('p1', 'Alice')]),
+      guardians: _FakeGuardiansRepository(
+        const {},
+        failFor: const {'p1'},
+      ),
+      auth: _signedInAuth('u1'),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('home-widget-profile-tile')));
+    await tester.pumpAndSettle();
+
+    // The read failed, so the role is unknown: the fail-open rule
+    // (`canQuickLogFor`'s `?? true`) keeps the option offered instead of
+    // killing the tap and surfacing nothing.
+    expect(
+      find.byKey(const ValueKey('home-widget-option-p1')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('picking "follow" clears the pin back to the empty string',

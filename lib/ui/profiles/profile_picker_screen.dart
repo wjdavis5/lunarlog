@@ -405,9 +405,20 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
     if (!context.mounted) return;
     final guardiansRepository =
         Provider.of<ProfileGuardiansRepository?>(context, listen: false);
-    final guardians = guardiansRepository == null
-        ? const <ProfileGuardian>[]
-        : await guardiansRepository.getForProfile(profile.id);
+    List<ProfileGuardian> guardians;
+    if (guardiansRepository == null) {
+      guardians = const <ProfileGuardian>[];
+    } else {
+      try {
+        guardians = await guardiansRepository.getForProfile(profile.id);
+      } catch (error) {
+        // Issue #1829: the same fail-open degradation the watch-side reads
+        // apply - an unreadable role is unknown, not a refusal.
+        debugPrint(
+            'lunarlog picker: guardian read failed (${error.runtimeType})');
+        guardians = const <ProfileGuardian>[];
+      }
+    }
     if (!context.mounted) return;
     final currentUserId =
         Provider.of<AuthController?>(context, listen: false)?.currentUserId;
