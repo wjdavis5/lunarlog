@@ -350,6 +350,12 @@ Map<String, Object?> insightsFromJson(Map<String, Object?> request) {
 /// `flowByCycleDay` carry cycle-day numbers as keys; JSON object keys are
 /// strings, so they are stringified here (the Zod side reads them back as
 /// `record<string, number>`).
+///
+/// The display strings the phone computes above the payload
+/// (`SymptomPattern.timingSummary`, `TrendDirection.displayName`,
+/// `CrampPrediction.summaryText`) are carried here as well (issue #1796):
+/// the web client renders them instead of re-deriving Dart string logic in
+/// TypeScript, the same rule `todayLog` follows for its labels.
 Map<String, Object?> insightsReportToJson(CycleInsightsReport report) => {
   'symptomPatterns': [
     for (final pattern in report.symptomPatterns)
@@ -363,6 +369,8 @@ Map<String, Object?> insightsReportToJson(CycleInsightsReport report) => {
         },
         'peakCycleDays': [...pattern.peakCycleDays],
         'trend': pattern.trend.name,
+        'trendDisplayName': pattern.trend.displayName,
+        'timingSummary': pattern.timingSummary,
         'meetsThreshold': pattern.meetsThreshold,
       },
   ],
@@ -393,6 +401,7 @@ Map<String, Object?>? _crampPredictionToJson(CrampPrediction? prediction) {
     'predictedDates': [for (final date in prediction.predictedDates) date.iso],
     'observedCycleCount': prediction.observedCycleCount,
     'totalCyclesAnalyzed': prediction.totalCyclesAnalyzed,
+    'summaryText': prediction.summaryText,
     'disclaimer': prediction.disclaimer,
   };
 }

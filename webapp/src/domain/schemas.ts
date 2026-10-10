@@ -227,6 +227,13 @@ export const symptomPatternSchema = z.object({
    * half-split — so it is a routine value, not an error (issue #1272).
    */
   trend: z.enum(['increasing', 'decreasing', 'stable', 'insufficientData']),
+  /**
+   * The phone's display string for `trend` (issue #1796): the web renders
+   * it instead of re-deriving Dart string logic in TypeScript.
+   */
+  trendDisplayName: z.string(),
+  /** The phone's `SymptomPattern.timingSummary`, carried the same way. */
+  timingSummary: z.string(),
   meetsThreshold: z.boolean(),
 });
 
@@ -241,6 +248,8 @@ export const crampPredictionSchema = z.object({
   predictedDates: z.array(isoDate),
   observedCycleCount: z.number().int(),
   totalCyclesAnalyzed: z.number().int(),
+  /** The phone's `CrampPrediction.summaryText`, carried for the web (issue #1796). */
+  summaryText: z.string(),
   disclaimer: z.string(),
 });
 
