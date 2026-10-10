@@ -1203,8 +1203,14 @@ ActivePrediction _packDrivenPrediction({
   // late pre-arm (which otherwise outranks the pill adherence reminder on a
   // shared fire date) stops planning.
   final openDays = today.isBefore(anchor) ? 1 : today.difference(anchor) + 1;
+  // Issue #1858: `staleHistory` is measured in elapsed days — the unit
+  // `staleHistoryThresholdDays` is defined in and the unit the statistical
+  // path compares (`today.difference(lastStart)`). `openDays` above is the
+  // cycle-day numeral, one higher, which flagged a pack profile stale a day
+  // before an equivalent statistical one.
+  final elapsedDays = today.isBefore(anchor) ? 0 : today.difference(anchor);
   final staleHistory =
-      openDays > staleHistoryThresholdDays(kPackCycleLengthDays.toDouble());
+      elapsedDays > staleHistoryThresholdDays(kPackCycleLengthDays.toDouble());
 
   return ActivePrediction(
     today: today,
