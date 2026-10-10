@@ -473,27 +473,48 @@ List<Observation> _observationsAcrossEntries(
   return observations;
 }
 
-/// Serializes [BbtChartData]: one entry per cycle (oldest first, empty
-/// series included - the chart's own "cycles with data" filter), each point
-/// a cycle day with its Celsius value and civil date.
-Map<String, Object?> bbtChartDataToJson(BbtChartData chart) => {
-  'series': [
-    for (final series in chart.series)
-      {
-        'cycleStart': series.cycleStart.iso,
-        'points': [
-          for (final point in series.points)
-            {
-              'cycleDay': point.cycleDay,
-              'celsius': point.celsius,
-              'date': point.date.iso,
-            },
-        ],
-      },
-  ],
-  'maxCycleDay': chart.maxCycleDay,
-  'isEmpty': chart.isEmpty,
-};
+/// Serializes [BbtChartData] in the form the chart draws: the most recent
+/// cycles carrying data (most recent last, capped the way the app's chart
+/// caps the overlay), each point with its cycle day, Celsius value, civil
+/// date, and the domain's own x/y fractions, each series with its overlay
+/// opacity, plus the y-axis Celsius range for the caption. A painter -
+/// Flutter's or the web's - only turns these fractions into pixels; nothing
+/// about the geometry is recomputed outside `lib/domain/insights/
+/// bbt_chart.dart`.
+Map<String, Object?> bbtChartDataToJson(BbtChartData chart) {
+  final recent = bbtChartRecentSeries(chart);
+  final (minCelsius, maxCelsius) = bbtChartValueRange(chart.allCelsiusValues);
+  return {
+    'series': [
+      for (var i = 0; i < recent.length; i++)
+        {
+          'cycleStart': recent[i].cycleStart.iso,
+          'opacity': bbtChartCycleOpacity(recent.length - 1 - i, recent.length),
+          'points': [
+            for (final point in recent[i].points)
+              {
+                'cycleDay': point.cycleDay,
+                'celsius': point.celsius,
+                'date': point.date.iso,
+                'xFraction': bbtChartXFraction(
+                  point.cycleDay,
+                  chart.maxCycleDay,
+                ),
+                'yFraction': bbtChartYFraction(
+                  point.celsius,
+                  minCelsius,
+                  maxCelsius,
+                ),
+              },
+          ],
+        },
+    ],
+    'maxCycleDay': chart.maxCycleDay,
+    'minCelsius': minCelsius,
+    'maxCelsius': maxCelsius,
+    'isEmpty': chart.isEmpty,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // validateDayEntryDate

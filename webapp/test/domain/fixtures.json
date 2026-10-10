@@ -7570,44 +7570,48 @@
         "series": [
           {
             "cycleStart": "2026-07-08",
+            "opacity": 0.35,
             "points": [
               {
                 "cycleDay": 1,
                 "celsius": 36.4,
-                "date": "2026-07-08"
+                "date": "2026-07-08",
+                "xFraction": 0.0,
+                "yFraction": 0.24999999999999853
               },
               {
                 "cycleDay": 2,
                 "celsius": 36.5,
-                "date": "2026-07-09"
+                "date": "2026-07-09",
+                "xFraction": 0.5,
+                "yFraction": 0.3333333333333333
               },
               {
                 "cycleDay": 3,
                 "celsius": 36.7,
-                "date": "2026-07-10"
+                "date": "2026-07-10",
+                "xFraction": 1.0,
+                "yFraction": 0.500000000000003
               }
             ]
           },
           {
             "cycleStart": "2026-08-05",
+            "opacity": 1.0,
             "points": [
               {
                 "cycleDay": 2,
                 "celsius": 37.0,
-                "date": "2026-08-06"
+                "date": "2026-08-06",
+                "xFraction": 0.5,
+                "yFraction": 0.7500000000000014
               }
             ]
-          },
-          {
-            "cycleStart": "2026-09-02",
-            "points": []
-          },
-          {
-            "cycleStart": "2026-09-30",
-            "points": []
           }
         ],
         "maxCycleDay": 3,
+        "minCelsius": 36.1,
+        "maxCelsius": 37.3,
         "isEmpty": false
       }
     }
@@ -7863,25 +7867,10 @@
     "expected": {
       "ok": true,
       "data": {
-        "series": [
-          {
-            "cycleStart": "2026-07-08",
-            "points": []
-          },
-          {
-            "cycleStart": "2026-08-05",
-            "points": []
-          },
-          {
-            "cycleStart": "2026-09-02",
-            "points": []
-          },
-          {
-            "cycleStart": "2026-09-30",
-            "points": []
-          }
-        ],
+        "series": [],
         "maxCycleDay": 0,
+        "minCelsius": 35.7,
+        "maxCelsius": 36.3,
         "isEmpty": true
       }
     }

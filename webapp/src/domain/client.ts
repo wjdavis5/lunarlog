@@ -215,9 +215,10 @@ export interface BbtChartRequest {
 }
 
 /**
- * The BBT chart's per-cycle series (issue #1796): the same `BbtChartData`
- * the app's Analysis tab plots, so the web draws exactly what the phone
- * draws.
+ * The BBT chart's drawable series (issue #1796): the app's own
+ * `BbtChartData` in the form its painter consumes - per-point x/y fractions,
+ * per-series overlay opacity, and the Celsius range for the caption - so the
+ * web draws exactly what the phone draws without recomputing any geometry.
  */
 export function bbtChart(module: DomainModule, request: BbtChartRequest): BbtChart {
   return callDomain(module, 'bbtChart', request, bbtChartSchema);
