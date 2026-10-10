@@ -68,6 +68,9 @@ export function TodayPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const signedIn = useHasSyncSession();
   const synced = useSyncedData();
+  // Issue #1806: the snapshot has not arrived yet. `live` is empty during
+  // the pull, so the cards below must not read that as "no profiles".
+  const syncedPending = synced.data === undefined;
   const me = useCurrentUserId(signedIn).data ?? null;
 
   // First-run orientation (issue #1795): a module-scoped session flag, so a
@@ -207,7 +210,7 @@ export function TodayPage() {
             </Link>
           ) : null}
         </div>
-      ) : !firstRunDismissed ? (
+      ) : syncedPending ? null : !firstRunDismissed ? (
         <FirstRunCard
           onContinue={() => {
             markFirstRunSeen();
