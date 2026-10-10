@@ -1,12 +1,13 @@
 // Claims-ledger check for the how-to guides (issue #1106, applying the
 // rule #1105 defines for the site).
 //
-// Every factual claim in a guide carries a `<!-- cite: ... -->` comment
-// naming the repo path (optionally with an `#anchor`) or the GitHub issue
-// (`#123`) that ships it — the ledger lives at the claim, the same
-// convention `src/pages/support.astro` established. Because the site is
-// in this repo, a cited path that no longer exists fails the site build
-// here, and a reviewer checks the ledger instead of their memory:
+// A guide's factual claims carry `<!-- cite: ... -->` comments naming the
+// repo path (optionally with an `#anchor`) or the GitHub issue (`#123`)
+// that ships them — the ledger lives at the claim, the same convention
+// `src/pages/support.astro` established. The check enforces at least one
+// cite per guide; because the site is in this repo, a cited path that no
+// longer exists fails the site build here, and a reviewer checks the
+// ledger instead of their memory:
 //
 //   node scripts/check-claims.mjs
 //
