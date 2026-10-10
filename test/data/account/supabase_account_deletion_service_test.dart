@@ -444,7 +444,10 @@ void main() {
         timeout: const Duration(seconds: 30),
       );
 
-      await service.deleteAccount();
+      // Review item: the case asserted nothing, so a no-op deleteAccount
+      // passed it. Pin the observable effects instead.
+      await expectLater(service.deleteAccount(), completes);
+      expect(client.functions.invokedFunctionNames, ['delete-account']);
     });
   });
 }
