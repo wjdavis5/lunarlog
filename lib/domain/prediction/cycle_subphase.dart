@@ -261,7 +261,11 @@ String? _buildHedgedNotice({
       : 'Subphase timing is estimated from your cycle average. Exact hormonal transitions vary from cycle to cycle.';
 }
 
-/// Derives the active [CycleSubphaseInfo] for [today] given [prediction].
+/// Derives the active [CycleSubphaseInfo] for [prediction]'s own
+/// [ActivePrediction.today] — the date the prediction was computed for.
+/// There is deliberately no separate date parameter (issue #1862): every
+/// range below is derived from the prediction itself, so a caller holding a
+/// stale prediction must recompute it rather than pass a fresher date.
 ///
 /// This describes an ovulatory cycle and must not be called for any
 /// non-statistical [PredictionBasis] prediction (a pack-driven pill, patch
@@ -272,7 +276,6 @@ String? _buildHedgedNotice({
 /// that contract.
 CycleSubphaseInfo deriveSubphase({
   required ActivePrediction prediction,
-  required LocalDate today,
 }) {
   assert(
     prediction.basis == PredictionBasis.statistical,

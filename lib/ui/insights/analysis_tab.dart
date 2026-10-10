@@ -672,10 +672,7 @@ class _AnalysisTabState extends State<AnalysisTab>
       ),
       if (prediction is ActivePrediction) ...[
         const SizedBox(height: 16),
-        PhaseInsightsCard(
-          prediction: prediction,
-          today: widget.todayProvider(),
-        ),
+        PhaseInsightsCard(prediction: prediction),
       ],
       const SizedBox(height: 16),
       SymptomTrendsSection(report: report),
