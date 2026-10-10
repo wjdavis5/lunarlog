@@ -435,7 +435,10 @@ enum HealthKitChannelHandler {
   /// Resolves a wire name (or a canonical raw-value string) to its
   /// `HKCategoryType`, or nil when the caller asked for something outside
   /// the closed set — a protocol error the handler reports rather than
-  /// silently ignoring.
+  /// silently ignoring — or when the identifier is not available on this
+  /// OS (all four are iOS 16+; the target is iOS 15). The read handler
+  /// skips the latter, the same nils `deviationReadTypes` drops, so an
+  /// older OS gets an empty read instead of a failed one (issue #1877).
   static func deviationCategoryType(forWire wire: String) -> HKCategoryType? {
     guard
       let entry = deviationKinds.first(where: {
@@ -1628,12 +1631,17 @@ enum HealthKitChannelHandler {
         guard
           let entry = deviationKinds.first(where: {
             $0.wire == wire || $0.identifier == wire
-          }),
-          let type = deviationCategoryType(forWire: wire)
+          })
         else {
           badArgs(result, "readCycleDeviations unknown kind: \(wire)")
           return
         }
+        // Issue #1877: all four deviation identifiers are iOS 16+ APIs and
+        // the deployment target is iOS 15, where they resolve to nil - the
+        // same nils `deviationReadTypes` drops. Skip an unavailable kind
+        // rather than failing the whole read, so an iOS 15 device gets the
+        // resolvable subset (empty) instead of bad_args on every call.
+        guard let type = deviationCategoryType(forWire: wire) else { continue }
         requestedPairs.append((wire: entry.wire, type: type))
       }
       Task {
