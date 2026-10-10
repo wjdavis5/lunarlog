@@ -68,21 +68,30 @@ differentiator, not an add-on layered on top of a single-user app:
 - **Export is account-independent, by design, for continuity — not
   evidence against sync being the default.** "Export my data" works fully
   offline and without an account; this is data portability, not a second
-  product identity. Reading an exported file back in is being built
-  (issue #140, PR #325 open); it is not in the shipped app yet.
+  product identity. Reading an exported file back in shipped (issue #140)
+  and works the same way: on-device only, previewed before anything is
+  written, and merged without deleting what is already there.
   (`README.md` "Accounts"; `PRIVACY.md` Section 7, "Data Export &
   Retention & Deletion Rights".)
 
-## What lunarlog deliberately does not do
+## What the app estimates
 
-- **No fertility or ovulation inference in the base product today.** The app
-  tracks cycles and flow and estimates the next period; fertile-window and
-  ovulation estimation is planned scope but does not exist in the app as of
-  this writing (issue #143, open). The earlier policy guarantee that no
-  fertility feature would ever exist was removed by owner decision (issue
-  #142, closed) — this is a scope change under active tracking, not a
-  currently-shipped claim. (`PRIVACY.md` Section 1, "Estimates From Your Own
-  Logged Data"; `README.md` opening paragraph.)
+- **The next period**, from the cycle history you log, computed on your
+  device. (`PRIVACY.md` Section 1, "Estimates From Your Own Logged Data".)
+- **A fertile window and an ovulation day**, a calendar-method
+  back-calculation carrying the same reliability tier as the period
+  estimate and the must-not-be-used-to-prevent-pregnancy disclaimer (issue
+  #143). (`PRIVACY.md` Section 1.)
+- **A per-day conception likelihood** in the conceive mode, a second,
+  mode-scoped estimator built on the same logged history (issue #204;
+  `lib/domain/conceive.dart`). Pregnancy, postpartum, and perimenopause
+  modes shipped alongside it (issue #188's mode plan of record).
+
+The earlier guarantee that no fertility feature would ever exist was
+removed by owner decision (issue #142), and these estimates are what
+shipped under that removal.
+
+## What lunarlog deliberately does not do
 - **No advertising, data brokers, or behavioral tracking**, regardless of
   sync being the default framing. (`PRIVACY.md` Section 1, "No Advertising
   or Data Brokers"; Section 3.)
@@ -96,14 +105,16 @@ differentiator, not an add-on layered on top of a single-user app:
   Resend, Apple/Google (sign-in), and FCM (optional caregiver push) ever
   receive data, each for a named app-functionality purpose. (`PRIVACY.md`
   Section 4.)
-- **No Clue import yet.** A Clue/Apple Health/Health Connect import is being
-  built (issues #190, #167, #172) with a provenance label already disclosed
-  in the schema (`PRIVACY.md` Section 2.A, September 9, 2026 change-history
-  entry) — it does not exist in the shipped app yet.
-- **No open-ended health-platform sync.** Profile-to-device-owner binding
-  and a guardian-write guard for health-platform sync landed (issue #153,
-  closed) as groundwork; this document does not claim a general Apple
-  Health / Health Connect sync feature is live for end users.
+- **No Clue import yet.** Clue import remains deferred (issues #467, #451).
+  Apple Health and Health Connect import shipped (issues #217, #458) and
+  carries the provenance label already disclosed in the schema
+  (`PRIVACY.md` Section 2.A).
+- **No open-ended health-platform sync.** Health-platform sync is
+  user-initiated and bounded: import (issues #217, #458) and write (issue
+  #1478) shipped, both into the one profile bound to the device, excluding
+  the app's own writes and never overwriting a hand-logged value. The
+  server-side consent column remains open (issue #782). (`PRIVACY.md`
+  Sections 4 and 10.)
 
 ## Non-goals of this document
 
