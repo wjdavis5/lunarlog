@@ -1,9 +1,10 @@
 import { QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 
 import { getSyncedDataCache, resetWebDataForSignOut, subscribeSyncSignals } from './domain';
 import type { SyncedData } from './domain';
 import { webAuth } from './auth';
+import { useAuthSession } from './authSession';
 import { type ProfileRow } from './schemas';
 import {
   currentUserId,
@@ -49,45 +50,24 @@ export const SYNCED_DATA_QUERY_KEY = ['synced-data'] as const;
 
 /**
  * Whether the build is configured AND a session is in memory. The synced
- * queries stay idle until both hold — `sync_pull` requires an
+ * queries stay idle until both hold - `sync_pull` requires an
  * authenticated caller, and on an unconfigured build (every PR build)
  * there is no client at all.
+ *
+ * Issue #1826: the answer follows the session query for the life of the
+ * page. The previous mount-only probe latched its first answer, so a
+ * session that arrived without an auth mutation in this tab - a token
+ * renewal whose refresh cookie another tab's sign-in replaced, the case
+ * `useResetWebDataOnIdentityChange` exists for - never enabled the synced
+ * queries until a reload. The query's queryFn is the same probe the old
+ * effect ran (`webAuth.getToken()`: the app client's `accessToken` option
+ * makes `client.auth` itself unusable, issue #1250), and the query
+ * refetches on focus and after every auth mutation.
  */
 export function useHasSyncSession(): boolean {
   const configured = getSupabaseClient() !== null;
-  const [hasSession, setHasSession] = useState(false);
-
-  useEffect(() => {
-    if (getSupabaseClient() === null) {
-      setHasSession(false);
-      return;
-    }
-    let active = true;
-    // The app client carries supabase-js's `accessToken` option (issue
-    // #1250), whose contract makes the `auth` namespace unusable — calling
-    // `client.auth.getSession()` there throws and takes the React tree with
-    // it (the e2e shell went blank exactly there). The session signal comes
-    // from the in-memory web auth client instead: one `getToken()` probes
-    // the Worker's `/auth/session` (single-flighted, rotates the refresh
-    // cookie) and resolves null when no session exists — signed out, not
-    // crashed.
-    void webAuth
-      .getToken()
-      .then((token) => {
-        if (active) setHasSession(token !== null);
-      })
-      .catch(() => {
-        // A reachable-but-wrong /auth/session (the preview server has no
-        // Worker, so it answers the SPA fallback) rejects the parse — a
-        // signed-out page, not a crashed one.
-        if (active) setHasSession(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  return configured && hasSession;
+  const session = useAuthSession({ enabled: configured });
+  return configured && session.data?.signedIn === true;
 }
 
 async function refreshSyncedData(): Promise<SyncedData> {

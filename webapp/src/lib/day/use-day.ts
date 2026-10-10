@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { SYNCED_DATA_QUERY_KEY } from '../queries';
 import { getSyncedDataCache } from '../domain';
 import { webAuth } from '../auth';
+import { useAuthSession } from '../authSession';
 import { sessionUserId } from '../sharing';
 import type { AppSupabaseClient } from '../supabase';
 import { DaySaveError, dayViewFromSyncedData, saveDay, type SaveDayResult } from './day-data';
@@ -31,12 +32,18 @@ export function useDayView(
   dateIso: string,
 ) {
   // The membership lookup needs the session user's id; the session lives
-  // in client memory, resolved once per client. `null` = unresolved;
-  // `''` = resolved and signed out (a configured build visited without a
-  // session shows the sign-in prompt, not an access error). sessionUserId
-  // covers both client kinds — the app client's accessToken option makes
-  // client.auth itself unusable (issue #1250), so the id comes from the
-  // auth Worker there.
+  // in client memory. `null` = unresolved; `''` = resolved and signed out
+  // (a configured build visited without a session shows the sign-in prompt,
+  // not an access error). sessionUserId covers both client kinds - the app
+  // client's accessToken option makes client.auth itself unusable (issue
+  // #1250), so the id comes from the auth Worker there.
+  //
+  // Issue #1826: the resolve re-runs whenever the session query settles
+  // (`dataUpdatedAt`), so a session that arrives after this page mounts - a
+  // renewal whose refresh cookie another tab's sign-in replaced - enables
+  // the pull without a reload. The query's own queryFn probes the same
+  // source, so this is a re-resolve on a signal, not a second probe loop.
+  const session = useAuthSession({ enabled: client !== null });
   const [uid, setUid] = useState<string | null>(null);
   useEffect(() => {
     if (client === null) return;
@@ -51,7 +58,7 @@ export function useDayView(
     return () => {
       active = false;
     };
-  }, [client]);
+  }, [client, session.dataUpdatedAt]);
 
   const query = useQuery({
     queryKey: SYNCED_DATA_QUERY_KEY,
