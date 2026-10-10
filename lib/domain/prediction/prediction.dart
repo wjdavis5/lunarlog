@@ -825,9 +825,11 @@ class ActivePrediction extends CyclePrediction {
   /// plus a way forward. Deliberately a flag on the prediction (issue #859)
   /// rather than a UI date comparison, and deliberately not overloaded onto
   /// [tier] (issue #858: [CycleConfidence] carries variability semantics).
-  /// Never true on the pack-schedule branch ([basis] is
-  /// [PredictionBasis.regimenSchedule]): that estimate is a fixed pack
-  /// cadence, not a statistical history average.
+  /// Set on the pack-schedule branch too since issue #1716 (see
+  /// `_packDrivenPrediction`): a pack profile that never logs a withdrawal
+  /// bleed goes stale at the same elapsed-day bound as the statistical
+  /// path, so its rolled estimate stops reading "late" forever. The flag
+  /// does not change [basis].
   final bool staleHistory;
 
   /// The predicted PMS phase (Issue #220): averages over the logged

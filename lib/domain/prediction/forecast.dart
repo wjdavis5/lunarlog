@@ -155,7 +155,9 @@ class ForecastDayCell {
   /// (KTD5 — numerals never chain across later cycles).
   final int? cycleDayNumber;
 
-  /// The date falls in the PMS window (estimate − 7 … − 1).
+  /// The date falls in the data-driven PMS band (issue #220: the logged
+  /// intervals' mean onset before the next predicted start, replacing the
+  /// retired fixed estimate − 7 … − 1 window).
   final bool pmsBadge;
 
   /// The date falls in the cramps window (estimate − 2 … + 2).
