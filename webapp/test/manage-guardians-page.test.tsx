@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppIntlProvider } from '../src/i18n/i18n';
 import messages from '../src/i18n/messages.en.json';
 import { QueryClient } from '@tanstack/react-query';
+import { AUTH_SESSION_QUERY_KEY } from '../src/lib/authSession';
 import { SYNCED_DATA_QUERY_KEY } from '../src/lib/queries';
 import { SharingError } from '../src/lib/sharing';
 import { ManageGuardiansPage } from '../src/pages/ManageGuardiansPage';
@@ -150,12 +151,21 @@ function renderPage(
   {
     pending = false,
     profiles = [profileRow],
-  }: { pending?: boolean; profiles?: unknown[] } = {},
+    signedIn = true,
+  }: { pending?: boolean; profiles?: unknown[]; signedIn?: boolean } = {},
 ) {
   // Retry-free: a rejected query settles on its first failure, so failure-
   // copy assertions do not wait out TanStack's exponential retry delay.
+  // staleTime: Infinity keeps the seeded session authoritative (the
+  // account-page suite's shape): the page's session gate reads the seeded
+  // answer, never a jsdom fetch.
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  });
+  queryClient.setQueryData(AUTH_SESSION_QUERY_KEY, {
+    signedIn,
+    email: signedIn ? 'e2e@example.com' : null,
+    userId: signedIn ? ME : null,
   });
   if (pending) {
     // Never resolves: the page sees `useSyncedData` still pending (the
@@ -220,6 +230,20 @@ describe('ManageGuardiansPage (issue #1255)', () => {
     renderPage(ULID, { pending: true });
     expect(screen.getByText(messages['webGuardiansLoading'] ?? 'missing')).toBeInTheDocument();
     expect(screen.queryByText(messages['webDayNoAccess'] ?? 'missing')).not.toBeInTheDocument();
+  });
+
+  // Issue #1851: without a session the synced query is disabled, so the
+  // loading branch used to match forever — "Loading guardians…" for a
+  // signed-out visitor, with no way to sign in from the page.
+  it('shows the signed-out home, not a loading card, without a session', () => {
+    renderPage(ULID, { pending: true, signedIn: false });
+    expect(
+      screen.queryByText(messages['webGuardiansLoading'] ?? 'missing'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(messages['webWelcomeTitle'] ?? 'missing')).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: messages['accountSectionSignIn'] ?? 'missing' }),
+    ).toHaveAttribute('href', '/sign-in');
   });
 
   it('shows the no-access card for an account with no profiles, not a blank page (review item)', () => {
@@ -708,13 +732,18 @@ describe('ManageGuardiansPage (issue #1255)', () => {
     expect(queryClient.getQueryState(SYNCED_DATA_QUERY_KEY)?.isInvalidated ?? false).toBe(
       false,
     );
+    // The seeded snapshot is fresh (staleTime Infinity), so nothing has
+    // refetched it yet.
+    const refetches = domainMocks.refresh.mock.calls.length;
     fireEvent.click(screen.getByText(messages['sharingTransferOwnershipAction'] ?? ''));
-    // The invalidation lands on the one key any screen reads — the
-    // mounted-but-idle synced-data query is marked stale and refetches the
-    // moment a session holds (the profiles key this used to touch is read
-    // by no query at all).
+    // The invalidation lands on the one key any screen reads - the mounted
+    // synced-data query is marked invalidated and refetches (the profiles
+    // key this used to touch is read by no query at all). The page holds a
+    // session in these tests (issue #1851's gate reads the seeded answer),
+    // so that refetch runs for real and the invalidated flag clears the
+    // moment it completes: the pin is the refetch itself.
     await waitFor(() => {
-      expect(queryClient.getQueryState(SYNCED_DATA_QUERY_KEY)?.isInvalidated).toBe(true);
+      expect(domainMocks.refresh.mock.calls.length).toBeGreaterThan(refetches);
     });
   });
 });
