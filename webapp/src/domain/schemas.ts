@@ -356,6 +356,8 @@ export const phaseInsightsSchema = z.object({
       hormonalSummary: z.string(),
       whatToTrack: z.string(),
       primaryArticleId: z.string(),
+      /** The bundled library's title for that article (issue #1796). */
+      primaryArticleTitle: z.string().nullable(),
       cycleDay: z.number().int(),
       startCycleDay: z.number().int(),
       endCycleDay: z.number().int(),

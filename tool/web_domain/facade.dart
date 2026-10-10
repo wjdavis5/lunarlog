@@ -60,6 +60,7 @@ library;
 import 'dart:convert';
 
 import 'package:lunarlog/domain/birth_control.dart';
+import 'package:lunarlog/domain/content/cycle_literacy_library.dart';
 import 'package:lunarlog/domain/export/account_export.dart';
 import 'package:lunarlog/domain/insights/bbt_chart.dart';
 import 'package:lunarlog/domain/insights/cramp_prediction.dart';
@@ -658,13 +659,17 @@ Map<String, Object?> phaseInsightsFromJson(Map<String, Object?> request) {
 
 /// Serializes a [CycleSubphaseInfo]. Every field is the model's own; the
 /// day-range text and the subphase's display strings are carried so the web
-/// renders them rather than re-deriving Dart string logic.
+/// renders them rather than re-deriving Dart string logic, and the primary
+/// article's title comes from the bundled library so the web can label its
+/// link without carrying the library itself.
 Map<String, Object?> phaseInfoToJson(CycleSubphaseInfo info) => {
   'subphase': info.subphase.id,
   'displayName': info.subphase.displayName,
   'hormonalSummary': info.subphase.hormonalSummary,
   'whatToTrack': info.subphase.whatToTrack,
   'primaryArticleId': info.subphase.primaryArticleId,
+  'primaryArticleTitle':
+      CycleLiteracyLibrary.getArticleById(info.subphase.primaryArticleId)?.title,
   'cycleDay': info.cycleDay,
   'startCycleDay': info.startCycleDay,
   'endCycleDay': info.endCycleDay,
