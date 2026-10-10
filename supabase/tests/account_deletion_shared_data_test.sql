@@ -20,7 +20,7 @@
 --     delete_account_data() completes without raising (lives_ok) rather
 --     than aborting the whole function with no partial progress.
 begin;
-select plan(16);
+select plan(21);
 
 -- ---------------------------------------------------------------------------
 -- 1. LLA-047: a caregiver's checkmark on a profile they do not own must not
@@ -218,6 +218,76 @@ select is(
   (select last_modified_by_user_id from public.observations where id = tests.ulid(21)),
   tests.get_supabase_uid('editor_b'),
   'LLA-048: the shared observation''s attribution is untouched'
+);
+
+-- ---------------------------------------------------------------------------
+-- 3. Issue #1831: a departing guardian's own live guardian notes on a profile
+--    they do NOT own must be tombstoned (the revoke path's own update,
+--    20260918160000), while notes other guardians wrote there survive
+--    untouched. Before the fix, deletion left them live and authorless
+--    (the auth.users cascade nulls logged_by_user_id), readable by every
+--    remaining guardian.
+-- ---------------------------------------------------------------------------
+
+select tests.create_supabase_user('owner_c');
+select tests.create_supabase_user('guardian_c');
+
+select tests.authenticate_as('owner_c');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(3), 'Nina', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select public.create_guardian_invitation(
+  tests.ulid(3), 'caregiver', 'Guardian',
+  repeat('c3', 32), 48
+);
+
+select tests.authenticate_as('guardian_c');
+select public.accept_guardian_invitation(repeat('c3', 32), 'Guardian');
+
+-- The departing guardian's own live note on the shared profile...
+insert into public.guardian_notes
+  (id, profile_id, local_date, tz, body, updated_at, logged_by_user_id, last_modified_by_user_id)
+values
+  (tests.ulid(30), tests.ulid(3), '2026-09-06', 'UTC', 'Guardian C note',
+   '2026-09-06T00:00:00Z', tests.get_supabase_uid('guardian_c'), tests.get_supabase_uid('guardian_c'));
+
+-- ...and the owner's own note beside it, which the deletion must not touch.
+select tests.authenticate_as('owner_c');
+insert into public.guardian_notes
+  (id, profile_id, local_date, tz, body, updated_at, logged_by_user_id, last_modified_by_user_id)
+values
+  (tests.ulid(31), tests.ulid(3), '2026-09-07', 'UTC', 'Owner C note',
+   '2026-09-07T00:00:00Z', tests.get_supabase_uid('owner_c'), tests.get_supabase_uid('owner_c'));
+
+select tests.authenticate_as('guardian_c');
+select lives_ok(
+  'select public.delete_account_data()',
+  'Issue #1831: delete_account_data succeeds for a guardian with a live note on a profile they do not own'
+);
+
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
+
+select is(
+  (select count(*) from public.guardian_notes
+    where id = tests.ulid(30) and deleted_at is not null),
+  1::bigint,
+  'Issue #1831: the departing guardian''s note is tombstoned'
+);
+select is(
+  (select body from public.guardian_notes where id = tests.ulid(30)),
+  '',
+  'Issue #1831: the departing guardian''s note body is cleared'
+);
+select is(
+  (select count(*) from public.guardian_notes
+    where id = tests.ulid(31) and deleted_at is null and body = 'Owner C note'),
+  1::bigint,
+  'Issue #1831: the owner''s own note survives untouched'
+);
+select is(
+  (select last_modified_by_user_id from public.guardian_notes where id = tests.ulid(30)),
+  tests.get_supabase_uid('guardian_c'),
+  'Issue #1831: the tombstone records the departing caller as last modifier'
 );
 
 rollback;
