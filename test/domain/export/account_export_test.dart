@@ -1155,6 +1155,29 @@ void main() {
       expect(observation['raw'], {'type': 'bbt', 'value': 36.5});
       expect(() => jsonEncode(doc), returnsNormally);
     });
+
+    test('a malformed observations.raw exports as its stored text, never a '
+        'crash (issue #1830)', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: {
+          'p-1': [_entry('e1', 'p-1', '2026-09-01')],
+        },
+        observationsByProfile: {
+          'p-1': [
+            _observation('o1', 'e1', 'p-1', '2026-09-01',
+                raw: 'not json at all'),
+          ],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final profile = (doc['profiles'] as List).single as Map;
+      final observation = (profile['observations'] as List).single as Map;
+      expect(observation['raw'], 'not json at all');
+      expect(() => jsonEncode(doc), returnsNormally);
+    });
   });
 
   group('import provenance (Issue #159, kAccountExportSchemaVersion v4)', () {

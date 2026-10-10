@@ -533,9 +533,21 @@ Map<String, Object?> _exportObservation(Observation o) => {
       'sourceId': o.sourceId,
       // Issue #159 (kAccountExportSchemaVersion v4).
       'importId': o.importId,
-      'raw': o.raw == null ? null : jsonDecode(o.raw!),
+      'raw': _exportRaw(o.raw),
       'updatedAt': o.updatedAt.toUtc().toIso8601String(),
     };
+
+/// Issue #1830: rows written before the write-boundary check could hold text
+/// that is not JSON; the export must not crash on them, so a value that does
+/// not parse is carried as its stored text rather than dropped.
+Object? _exportRaw(String? raw) {
+  if (raw == null) return null;
+  try {
+    return jsonDecode(raw);
+  } on FormatException {
+    return raw;
+  }
+}
 
 /// Issue #128 (kAccountExportSchemaVersion v6): one standing care note.
 /// Attribution ids stay out per this file's R9 rule (see [_exportProfile]).
