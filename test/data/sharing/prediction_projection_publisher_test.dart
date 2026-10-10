@@ -770,7 +770,8 @@ void main() {
       predictions['p1']!.add(_active(today));
       await pumpEventQueue();
       expect(service.publishedFor, ['p1']);
-      expect(service.connectedLookups, 1);
+      final lookupsAfterFirstPublish = service.connectedLookups;
+      expect(lookupsAfterFirstPublish, greaterThanOrEqualTo(1));
 
       // A second, distinct ActivePrediction INSTANCE that derives a
       // bit-identical projection (same today, same forecast shape) — the
@@ -780,7 +781,7 @@ void main() {
 
       expect(service.publishedFor, ['p1'],
           reason: 'no redundant publish for the unchanged payload');
-      expect(service.connectedLookups, 1,
+      expect(service.connectedLookups, lookupsAfterFirstPublish,
           reason: 'no redundant connection lookup either');
     });
 
@@ -807,6 +808,7 @@ void main() {
 
       profiles.add([_profile('p1'), _profile('p2')]);
       await pumpEventQueue();
+      final lookupsBefore = service.connectedLookups;
 
       // Neither call is awaited before the next is issued, so both reach
       // the connection lookup before either's underlying call resolves.
@@ -814,7 +816,7 @@ void main() {
       final f2 = publisher.publishNow('p2');
       await Future.wait([f1, f2]);
 
-      expect(service.connectedLookups, 1,
+      expect(service.connectedLookups, lookupsBefore + 1,
           reason: 'both concurrent calls shared one in-flight lookup');
       expect(service.publishedFor, unorderedEquals(['p1', 'p2']));
     });
@@ -1134,6 +1136,119 @@ void main() {
       expect(service.publishedFor, isEmpty,
           reason: 'the in-flight flush must not re-publish after the '
               'retraction');
+    });
+  });
+
+  group('issue #1860: retraction robustness', () {
+    test('the first profiles emission retracts a connected profile that is '
+        'not in the active set (archived while the app was closed)',
+        () async {
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final service = _FakeService(connectedProfileIds: {'p1'});
+      final today = LocalDate(2026, 8, 30);
+
+      final publisher = LocalPredictionProjectionPublisher(
+        activeProfiles: profiles.stream,
+        predictionFor: (id) => Stream<CyclePrediction>.value(_active(today)),
+        service: service,
+        isSignedIn: () => true,
+        debounce: Duration.zero,
+      );
+      publisher.start();
+      addTearDown(() async {
+        await publisher.dispose();
+        await profiles.close();
+      });
+
+      // p1 is connected but was already archived before this run: the
+      // departure branch never sees it leave.
+      profiles.add([_profile('p2')]);
+      await pumpEventQueue();
+
+      expect(service.retractedFor, ['p1'],
+          reason: 'the cold-start sweep owes the inactive connection a '
+              'retraction');
+    });
+
+    test('a publish that lands after a completed suppression retraction '
+        're-retracts instead of resurrecting the row', () async {
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final predictions = <String, StreamController<CyclePrediction>>{};
+      final service = _FakeService(connectedProfileIds: {'p1'});
+      final today = LocalDate(2026, 8, 30);
+
+      final publisher = LocalPredictionProjectionPublisher(
+        activeProfiles: profiles.stream,
+        predictionFor: (id) => predictions
+            .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
+            .stream,
+        service: service,
+        isSignedIn: () => true,
+        debounce: Duration.zero,
+      );
+      publisher.start();
+      addTearDown(() async {
+        await publisher.dispose();
+        await profiles.close();
+        for (final c in predictions.values) {
+          await c.close();
+        }
+      });
+
+      profiles.add([_profile('p1')]);
+      predictions['p1']!.add(_active(today));
+      await pumpEventQueue();
+      expect(service.publishedFor, ['p1']);
+
+      // Hold the next publish in flight, then suppress while it is held:
+      // the retraction completes before the publish lands.
+      final hold = Completer<void>();
+      service.holdNextPublish = hold;
+      predictions['p1']!.add(_active(today.addDays(1)));
+      await pumpEventQueue();
+      predictions['p1']!.add(const PredictionsDisabled());
+      await pumpEventQueue();
+      expect(service.retractedFor, ['p1'],
+          reason: 'the suppression retracted the published snapshot');
+
+      // The held publish now lands, re-creating the row the retraction
+      // just deleted.
+      hold.complete();
+      await pumpEventQueue();
+
+      expect(service.retractedFor, ['p1', 'p1'],
+          reason: 'the late-landing publish must be re-retracted');
+    });
+
+    test('republishConnected continues past a profile whose publish fails',
+        () async {
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final service = _FakeService(connectedProfileIds: {'p1', 'p2'});
+      final today = LocalDate(2026, 8, 30);
+      service.publishError = StateError('rejected');
+      service.remainingFailures = 1;
+
+      final publisher = LocalPredictionProjectionPublisher(
+        activeProfiles: profiles.stream,
+        predictionFor: (id) => Stream<CyclePrediction>.value(_active(today)),
+        service: service,
+        isSignedIn: () => true,
+        debounce: const Duration(minutes: 5),
+      );
+      publisher.start();
+      addTearDown(() async {
+        await publisher.dispose();
+        await profiles.close();
+      });
+
+      profiles.add([_profile('p1'), _profile('p2')]);
+      await pumpEventQueue();
+
+      await publisher.republishConnected();
+
+      expect(service.publishedFor, ['p2'],
+          reason: "one profile's failure must not starve the rest of the "
+              'batch');
     });
   });
 }

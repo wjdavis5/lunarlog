@@ -1419,14 +1419,19 @@ void main() {
         user: const AuthUser(id: 'user-mom'),
       );
       await tester.pumpAndSettle();
+      // Issue #1860: the publisher's first signed-in emission sweeps the
+      // outgoing connections for inactive profiles; capture that baseline.
+      final afterSignIn = service.outgoingQueries;
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       await tester.pumpAndSettle();
-      expect(service.outgoingQueries, 0, reason: 'only resume triggers it');
+      expect(service.outgoingQueries, afterSignIn,
+          reason: 'only resume triggers it');
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pumpAndSettle();
-      expect(service.outgoingQueries, 1, reason: 'one narrow select on resume');
+      expect(service.outgoingQueries, afterSignIn + 1,
+          reason: 'one narrow select on resume');
       expect(
         service.publishedFor,
         isEmpty,
