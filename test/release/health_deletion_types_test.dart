@@ -507,20 +507,25 @@ void main() {
       // Dart write pass stops on "denied" before its own authorization
       // request — so answering "denied" on a fresh install meant the write
       // path could never ask. The adapter remembers that it launched the
-      // request, sets that BEFORE launching (an interrupted sheet has still
-      // been shown), and decides through the pure HealthPermissionState.
+      // request and decides through the pure HealthPermissionState.
       //
       // Issue #1515: the launch is shared with the import's own request,
       // so the remembering lives in the shared launcher and each request
       // names the marker it sets. The write path's is this one.
+      //
+      // Issue #1883: the remembering happens once the launch RETURNED.
+      // `launch` hands the sheet to the activity and returns before it
+      // appears, so a sheet interrupted after that (the process dies
+      // behind it) is still remembered — while a launch that throws
+      // records nothing and is answered as the failure it always was.
       expect(kotlin, contains('PERMISSION_REQUESTED_KEY'));
       final remembered =
           kotlin.indexOf('prefs.edit().putLong(askedMarker, installStamp)');
       final launched = kotlin.indexOf('launcher.launch(permissions)');
       expect(remembered, isNonNegative);
       expect(launched, isNonNegative);
-      expect(remembered, lessThan(launched),
-          reason: 'the request is remembered before the sheet is launched');
+      expect(launched, lessThan(remembered),
+          reason: 'the request is remembered once the launch returned');
       expect('launcher.launch('.allMatches(kotlin), hasLength(1),
           reason: 'one launcher: no request can skip the remembering');
       final writeRequest = _between(
@@ -970,20 +975,24 @@ void main() {
       expect(request, isNot(contains('PERMISSION_REQUESTED_KEY')));
       expect(request, isNot(contains('IMPORT_REQUEST_LAUNCHED_KEY')));
       expect(request, isNot(contains('prefs.')));
-      // And the launcher writes a marker only when it is given one.
+      // And the launcher writes a marker only when it is given one, after
+      // a launch that returned (Issue #1883) — a launch that throws is
+      // answered as the failure it always was and records nothing.
       final launcher = _between(
         kotlin,
         'private fun launchPermissionRequest(',
         'private fun insert(',
       );
       expect(launcher, contains('askedMarker: String?,'));
-      expect(
-        RegExp(r'if \(askedMarker != null\) \{\s*'
-                r'prefs\.edit\(\)\.putLong\(askedMarker, installStamp\)\.apply\(\)'
-                r'\s*\}\s*launcher\.launch\(permissions\)')
-            .hasMatch(launcher),
-        isTrue,
-      );
+      final launched = launcher.indexOf('launcher.launch(permissions)');
+      final failure = launcher.indexOf('catch (e: Exception)');
+      final marked = launcher.indexOf('markWritePermissionsAsked(permissions)');
+      final asked =
+          launcher.indexOf('prefs.edit().putLong(askedMarker, installStamp)');
+      expect(launched, isNonNegative);
+      expect(failure, greaterThan(launched));
+      expect(marked, greaterThan(failure));
+      expect(asked, greaterThan(marked));
     });
 
     test('whether there is a switch only looks, and is the feature check',
@@ -1094,8 +1103,8 @@ void main() {
     test('a type counts as asked only when a launched request carried it, '
         'with the install-wide marker migrated once', () {
       // The per-permission markers, stamped from the request's own
-      // permission set before the sheet launches (the same interrupted-
-      // sheet rule as the install-wide marker).
+      // permission set once the launch returned (Issue #1883's rule, the
+      // same one the install-wide marker follows).
       expect(
         kotlin,
         contains('const val PERMISSION_REQUESTED_TYPE_PREFIX ='),
@@ -1109,8 +1118,8 @@ void main() {
       final stamped = launcher.indexOf('markWritePermissionsAsked(permissions)');
       final launched = launcher.indexOf('launcher.launch(permissions)');
       expect(stamped, isNonNegative);
-      expect(launched, greaterThan(stamped),
-          reason: 'the per-type record is written before the sheet');
+      expect(stamped, greaterThan(launched),
+          reason: 'the per-type record is written once the launch returned');
       // Only write permissions: what a read sheet carried says nothing
       // about the writes (Issue #1515).
       expect(
