@@ -124,14 +124,29 @@ class _WidgetProfileTile extends StatelessWidget {
     final currentUserId = context.read<AuthController?>()?.currentUserId;
     final selectable = <WidgetProfileOption>[];
     for (final profile in active) {
-      final rows = await guardians.getForProfile(profile.id);
-      selectable.addAll(
-        widgetProfileOptions(
+      Iterable<WidgetProfileOption> options;
+      try {
+        final rows = await guardians.getForProfile(profile.id);
+        options = widgetProfileOptions(
           profiles: [profile],
           guardiansForProfile: rows,
           currentUserId: currentUserId,
-        ).where((option) => option.canQuickLog),
-      );
+        );
+      } catch (error) {
+        // Issue #1829: a storage failure degrades to the empty-guardian
+        // fail-open path (canQuickLogFor's `?? true`), the discipline every
+        // watch-side read already applies, instead of aborting the tap. The
+        // empty rows still flow through widgetProfileOptions so the role
+        // rule answers "unknown", not "refused".
+        debugPrint(
+            'lunarlog widget picker: guardian read failed (${error.runtimeType})');
+        options = widgetProfileOptions(
+          profiles: [profile],
+          guardiansForProfile: const [],
+          currentUserId: currentUserId,
+        );
+      }
+      selectable.addAll(options.where((option) => option.canQuickLog));
     }
     if (!context.mounted) return;
     await showDialog<void>(
