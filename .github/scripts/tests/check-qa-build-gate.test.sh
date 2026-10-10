@@ -98,7 +98,7 @@ assert_contains "ios-release.yml release job needs the QA build gate" "$ios_yaml
 assert_contains "play-store-release.yml declares the qa_build input" "$play_yaml" "qa_build:"
 assert_contains "play-store-release.yml runs the QA build gate script" "$play_yaml" "check-qa-build-gate.sh"
 assert_contains "play-store-release.yml compiles the QA dart-define (bundle)" "$play_yaml" '--dart-define=LUNARLOG_QA_BUILD="$QA_BUILD"'
-assert_contains "play-store-release.yml release job needs the QA build gate" "$play_yaml" "needs: [verify, production-gate, qa-build-gate, migration-gate, ci-gate]"
+assert_contains "play-store-release.yml release job needs the QA build gate" "$play_yaml" "needs: [preflight, verify, production-gate, qa-build-gate, migration-gate, ci-gate]"
 assert_contains "play-store-release.yml marks the QA Play release name" "$play_yaml" "releaseName: QA "
 
 print_summary "check-qa-build-gate.test.sh"

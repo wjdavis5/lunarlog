@@ -114,6 +114,16 @@ jobs:
         if: steps.check_run.outputs.run == 'true' && !cancelled()
         run: bash .github/scripts/tests/check-play-health-declaration.test.sh
 
+      - name: Run check-release-secrets tests
+        # Issue #1791: the Play release preflight's truth table -- every
+        # missing secret is named at once, and the workflow consults it
+        # before any other job. Lives in this ubuntu arm only, like the
+        # Play versionCode clamp below: play-store-release.yml runs on
+        # ubuntu-latest, and the macOS arm exists for the scripts the iOS
+        # pipeline actually executes on macOS.
+        if: steps.check_run.outputs.run == 'true' && !cancelled()
+        run: bash .github/scripts/tests/check-release-secrets.test.sh
+
       - name: Run play-highest-version-code tests
         # Issue #1302: proves the Play versionCode clamp's lookup script --
         # env validation and bad-credential aborts, the RS256 JWT it signs
