@@ -4,6 +4,7 @@ library;
 
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/domain/health/health_import_declined.dart';
+import 'package:lunarlog/domain/health/health_import_whole_read.dart';
 import 'package:lunarlog/domain/logging/day_entry_merge_event.dart'
     as mergelog;
 import 'package:lunarlog/domain/logging/merge_notice_dismissals.dart';
@@ -21,6 +22,7 @@ class DriftDayEntriesRepository
         DayEntrySyncStateReader,
         DeletedDayEntryReader,
         HealthImportDeclinedStore,
+        HealthImportWholeReadStore,
         UndoDayEntryDeleter,
         ImportedFlowResetter {
   DriftDayEntriesRepository(this._storage);
@@ -216,6 +218,20 @@ class DriftDayEntriesRepository
     Set<String> keys,
   ) =>
       _storage.forgetDeclinedHealthRecords(profileId, keys);
+
+  /// Issue #1876: the whole-history read a purge of a store's imported
+  /// data owes, until a whole read settles it.
+  @override
+  Future<bool> wholeReadOwed(String profileId) =>
+      _storage.wholeReadOwed(profileId);
+
+  @override
+  Future<void> rememberWholeReadOwed(String profileId) =>
+      _storage.rememberWholeReadOwed(profileId);
+
+  @override
+  Future<void> forgetWholeReadOwed(String profileId) =>
+      _storage.forgetWholeReadOwed(profileId);
 
   /// Issue #130: the day sheet's merge-notice list — the window-filtered
   /// storage read minus this device's dismissed ids. Dismissal filtering

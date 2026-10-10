@@ -17,6 +17,7 @@ import 'package:lunarlog/domain/health/health_deviation.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_import_declined.dart';
 import 'package:lunarlog/domain/health/health_import_deletions.dart';
+import 'package:lunarlog/domain/health/health_import_whole_read.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_policy.dart';
@@ -257,9 +258,14 @@ class _FakeDayEntries
     implements
         DayEntriesRepository,
         DeletedDayEntryReader,
-        HealthImportDeclinedStore {
+        HealthImportDeclinedStore,
+        HealthImportWholeReadStore {
   final Map<String, DayEntry> live = {};
   final List<DayEntry> saved = [];
+
+  /// Issue #1876: whether the device owes a whole-history read after a
+  /// purge of a store's imported data.
+  bool wholeReadOwedFlag = false;
 
   /// The health-store records the device remembers she deleted (Issue
   /// #1561), each with the moment of the deletion.
@@ -341,6 +347,21 @@ class _FakeDayEntries
     for (final key in keys) {
       declinedRecords.remove(key);
     }
+  }
+
+  /// Issue #1876: the purge's whole-read obligation, as the real
+  /// repository reads and writes it.
+  @override
+  Future<bool> wholeReadOwed(String profileId) async => wholeReadOwedFlag;
+
+  @override
+  Future<void> rememberWholeReadOwed(String profileId) async {
+    wholeReadOwedFlag = true;
+  }
+
+  @override
+  Future<void> forgetWholeReadOwed(String profileId) async {
+    wholeReadOwedFlag = false;
   }
 
   @override
@@ -3282,6 +3303,44 @@ void main() {
       expect(second.spottingDaysWritten, 1);
       expect(observations.saved.single.sourceId, 'ib-rec-1');
       expect(dayEntries.declinedRecords, isEmpty);
+    });
+  });
+
+  // Issue #1876. A purge of a store's imported data clears the memories
+  // that would hold a re-import back, and the next pass must read the
+  // whole history: an anchored or changes read never returns a record
+  // that did not change, so the purged days would stay gone.
+  group('issue #1876: a purge owes a whole-history read', () {
+    test('the owed whole read is sent, and settled once it finishes',
+        () async {
+      await bind();
+      dayEntries.wholeReadOwedFlag = true;
+
+      source.wholeHistorySeen.clear();
+      await build().importNow();
+
+      expect(source.wholeHistorySeen, [true]);
+      expect(dayEntries.wholeReadOwedFlag, isFalse);
+
+      // Nothing is owed on the next pass.
+      source.wholeHistorySeen.clear();
+      await build().importNow();
+      expect(source.wholeHistorySeen, [false]);
+    });
+
+    test('a read that does not reach its end leaves it owed', () async {
+      await bind();
+      dayEntries.wholeReadOwedFlag = true;
+
+      // A cursor that comes round again stops the read short of its end.
+      source.pages = [
+        const HealthReadResult.samples([], nextCursor: 'same'),
+        const HealthReadResult.samples([], nextCursor: 'same'),
+      ];
+      final summary = await build().importNow();
+
+      expect(summary.repeatedCursor, isTrue);
+      expect(dayEntries.wholeReadOwedFlag, isTrue);
     });
   });
 

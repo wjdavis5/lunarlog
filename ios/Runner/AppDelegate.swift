@@ -879,6 +879,17 @@ enum HealthKitChannelHandler {
         result(decision)
         return
       }
+      // Issue #1876: replacing the bound profile drops the displaced
+      // profile's import anchor, as its own `unbind` would have. Only
+      // `unbind` used to drop it, so a process killed between the
+      // Dart-side binding write and the coordinator's `onUnbound` left
+      // the old anchor behind — and binding that profile again later
+      // started from it instead of the clean full read every re-bind is
+      // documented to make (Issue #1610). Re-asserting the same binding
+      // (Issue #1212) is not a displacement and keeps the anchor.
+      if let displaced = storedBoundProfileId, displaced != g.profileId {
+        dropStoredImportAnchor(displaced)
+      }
       UserDefaults.standard.set(g.profileId, forKey: boundProfileKey)
       // Issue #993: a first-ever bind during this session starts the
       // background trigger without waiting for the next launch. Issue

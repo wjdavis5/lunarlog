@@ -93,6 +93,7 @@ import 'package:lunarlog/domain/health/day_boundary.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_import_declined.dart';
 import 'package:lunarlog/domain/health/health_import_deletions.dart';
+import 'package:lunarlog/domain/health/health_import_whole_read.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_policy.dart';
@@ -578,6 +579,9 @@ class LocalHealthImportService
        _declined = dayEntries is HealthImportDeclinedStore
            ? dayEntries as HealthImportDeclinedStore
            : null,
+       _wholeRead = dayEntries is HealthImportWholeReadStore
+           ? dayEntries as HealthImportWholeReadStore
+           : null,
        _guardiansForProfile = guardiansForProfile,
        _signedInUserId = signedInUserId,
        _today = today ?? LocalDate.today,
@@ -601,6 +605,12 @@ class LocalHealthImportService
   /// Null for one that cannot (a test double), and the import then behaves
   /// as it did before the memory existed.
   final HealthImportDeclinedStore? _declined;
+
+  /// Issue #1876: the whole-read obligation a purge of a store's imported
+  /// data leaves behind, where the repository can say. Null for one that
+  /// cannot (a test double), and the import then reads as it did before
+  /// the memory existed.
+  final HealthImportWholeReadStore? _wholeRead;
 
   /// The declined records read for this pass ([_loadDeclined]), keyed
   /// `<source>|<record id>`. Kept in step with the memory as merges settle
@@ -865,11 +875,16 @@ class LocalHealthImportService
     // anchored or changes read never will. The whole history is read for
     // this pass, so the record is offered to the merge again.
     final owed = await _declinedWantsWholeRead(profileId);
+    // Issue #1876: a purge of a store's imported data owes the whole
+    // history too — the store's unchanged records are exactly the ones
+    // the purge took away, and an anchored or changes read never returns
+    // them, so the purged days would stay gone.
+    final purgeOwed = await _wholeReadOwed(profileId);
     final firstRun = await _readPages(
       bound.facts,
       window,
       onProgress,
-      wholeHistory: owed,
+      wholeHistory: owed || purgeOwed,
     );
     // An import that could read nothing ends here, as it always has: a
     // read the store would not allow is "no data" to it. A removal goes
@@ -918,6 +933,12 @@ class LocalHealthImportService
     // records the store no longer holds: none of them came back.
     if (owed && run.finished) {
       await _forgetDeclinedAbsent(profileId, run.accumulator);
+    }
+    // Issue #1876: and it has offered the store's current contents to the
+    // merge, which is what the purge owed. A read that did not reach its
+    // end (or whose merge never ran) leaves the obligation in place.
+    if (purgeOwed && run.finished) {
+      await _clearWholeReadOwed(profileId);
     }
     // Issue #1683: after the new span is merged, clear the days the pass's
     // period records no longer cover. Health Connect changing a record in
@@ -1694,6 +1715,23 @@ class LocalHealthImportService
       if (await _declinedRecordIsAdoptable(profileId, record)) return true;
     }
     return false;
+  }
+
+  /// Issue #1876: whether a purge of a store's imported data left a
+  /// whole-history read owed. False where the repository cannot say (a
+  /// test double), so the import reads as it did before the memory
+  /// existed.
+  Future<bool> _wholeReadOwed(String profileId) async {
+    final store = _wholeRead;
+    if (store == null) return false;
+    return store.wholeReadOwed(profileId);
+  }
+
+  /// Issue #1876: the purge's obligation is met — a whole read reached
+  /// its end and its merge ran. Only ever called when the obligation was
+  /// read as owed, so the store is present.
+  Future<void> _clearWholeReadOwed(String profileId) async {
+    await _wholeRead?.forgetWholeReadOwed(profileId);
   }
 
   /// Whether a fresh read would adopt [record]'s store value against her
