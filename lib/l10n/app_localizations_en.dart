@@ -1687,6 +1687,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get reminderSectionOther => 'Other reminders';
 
   @override
+  String get reminderLoadFailed => 'Couldn\'t load your reminders.';
+
+  @override
   String get reminderKindPeriodStartingSoon => 'Period starting soon';
 
   @override

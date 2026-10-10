@@ -2143,6 +2143,10 @@
   "@reminderSectionOther": {
     "description": "Reminder settings header for the other-reminders group (Issue #178), matching Clue's information architecture."
   },
+  "reminderLoadFailed": "Couldn't load your reminders.",
+  "@reminderLoadFailed": {
+    "description": "Reminder settings error copy when the per-profile config load fails (issue #1828); the retry button re-runs the load."
+  },
   "reminderKindPeriodStartingSoon": "Period starting soon",
   "@reminderKindPeriodStartingSoon": {
     "description": "The period-starting-soon reminder's settings row title (Issue #178; Clue catalogue item 1)."
