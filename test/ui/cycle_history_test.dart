@@ -31,13 +31,20 @@ import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/birth_control.dart' show BirthControlMethod;
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
-import 'package:lunarlog/domain/prediction/prediction.dart' show NotEnoughHistory;
+import 'package:lunarlog/domain/prediction/prediction.dart'
+    show
+        ActivePrediction,
+        CycleConfidence,
+        CyclePrediction,
+        NotEnoughHistory,
+        PredictionsSuppressed;
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/overview/cycle_history_section.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
@@ -130,6 +137,7 @@ class Harness {
   Widget appFor({
     bool readOnly = false,
     NotEnoughHistory? notEnough,
+    CyclePrediction? prediction,
     AuthController? auth,
   }) {
     return MultiProvider(
@@ -153,6 +161,7 @@ class Harness {
             todayProvider: () => today,
             readOnly: readOnly,
             notEnough: notEnough,
+            prediction: prediction,
           ),
         ),
       ),
@@ -169,6 +178,7 @@ Future<Harness> pumpHistory(
   bool readOnly = false,
   int bleedDays = 4,
   NotEnoughHistory? notEnough,
+  CyclePrediction? prediction,
   bool signedIn = false,
 }) async {
   tester.view.physicalSize = const Size(800, 1600);
@@ -208,7 +218,12 @@ Future<Harness> pumpHistory(
     addTearDown(service.dispose);
   }
   await tester.pumpWidget(
-    harness.appFor(readOnly: readOnly, notEnough: notEnough, auth: auth),
+    harness.appFor(
+      readOnly: readOnly,
+      notEnough: notEnough,
+      prediction: prediction,
+      auth: auth,
+    ),
   );
   await tester.pumpAndSettle();
   return harness;
@@ -527,6 +542,60 @@ void main() {
       );
       expect(find.textContaining('vary a lot'), findsOneWidget);
       expectNoFertilityVocabulary(tester, 'irregular confidence');
+      await disposeHistory(tester, h);
+    });
+
+    testWidgets('the chip renders the caller\'s engine tier, not this '
+        'section\'s own derivation (issue #1861)', (tester) async {
+      // Few logged cycles: the section's own view reads learning, but the
+      // caller's engine prediction (a provisional seed, or a pack
+      // schedule) says high - the chip must mirror the engine, the same
+      // tier the overview caption shows.
+      final h = await pumpHistory(
+        tester,
+        today: aug30,
+        starts: kLearningStarts,
+        prediction: ActivePrediction(
+          today: aug30,
+          lastEpisodeStart: aug30.addDays(-10),
+          estimatedNextStart: aug30.addDays(18),
+          originalEstimatedNextStart: aug30.addDays(18),
+          averagedCycleLengths: const [30],
+          meanCycleLengthDays: 30,
+          cycleDay: 11,
+          duringEpisode: false,
+          completedCycleCount: 2,
+          validCycleCount: 2,
+          tier: CycleConfidence.high,
+        ),
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('history-confidence')),
+          matching: find.text('High confidence'),
+        ),
+        findsOneWidget,
+      );
+      await disposeHistory(tester, h);
+    });
+
+    testWidgets('a suppressed engine state hides the chip (issue #1861)', (
+      tester,
+    ) async {
+      final h = await pumpHistory(
+        tester,
+        today: aug30,
+        starts: kSteadyStarts,
+        prediction: PredictionsSuppressed(
+          method: BirthControlMethod.hormonalIud,
+        ),
+      );
+      expect(find.byKey(const ValueKey('history-confidence')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('history-confidence-summary')),
+        findsNothing,
+        reason: 'no statistical tier beside the suppressed card',
+      );
       await disposeHistory(tester, h);
     });
   });
