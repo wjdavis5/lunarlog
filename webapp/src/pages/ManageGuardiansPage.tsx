@@ -15,6 +15,7 @@ import {
   useGuardians,
   usePendingInvites,
   useLiveProfiles,
+  useSyncedData,
 } from '../lib/queries';
 import { profileHomePath } from '../lib/profiles/profile-views';
 import { subjectInviteAvailable } from '../lib/schemas';
@@ -134,8 +135,25 @@ export function ManageGuardiansPage() {
   const pending = usePendingInvites(profileId, profile !== null);
   const transfer = useActiveTransfer(profileId, profile !== null);
   const me = useCurrentUserId(client !== null).data ?? null;
+  const synced = useSyncedData();
 
-  if (profileId === undefined || (profiles.length > 0 && profile === null)) {
+  // Until the snapshot lands, `profiles` is empty and neither the no-access
+  // card nor the sections below are meaningful - the page used to render a
+  // blank heading here, and for an account with no profiles at all it stayed
+  // blank forever. Show the loading state, and let the no-access card cover
+  // every loaded-but-not-visible case.
+  if (synced.data === undefined && !synced.isError) {
+    return (
+      <main className="page">
+        <h1 className="display">{t('profilePickerTitle')}</h1>
+        <section className="card">
+          <p className="card-body">{t('webGuardiansLoading')}</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (profileId === undefined || profile === null) {
     return (
       <main className="page">
         <section className="card">
