@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { BbtChart as BbtChartData } from '../src/domain/schemas';
 import { AppIntlProvider } from '../src/i18n/i18n';
 import messages from '../src/i18n/messages.en.json';
+import type { BbtUnit } from '../src/lib/day/measurements';
 import { BbtChart } from '../src/pages/BbtChart';
 
 /**
@@ -44,10 +45,10 @@ function chart(overrides: Partial<BbtChartData> = {}): BbtChartData {
   };
 }
 
-function renderChart(value: BbtChartData) {
+function renderChart(value: BbtChartData, unit: BbtUnit = 'celsius') {
   return render(
     <AppIntlProvider>
-      <BbtChart chart={value} />
+      <BbtChart chart={value} unit={unit} />
     </AppIntlProvider>,
   );
 }
@@ -74,6 +75,15 @@ describe('BbtChart (issue #1796)', () => {
     const caption = screen.getByTestId('bbt-chart-caption');
     expect(caption).toHaveTextContent('1 cycle shown');
     expect(caption).toHaveTextContent('36.1\u00B0C-36.9\u00B0C');
+  });
+
+  // Issue #1820: the caption converts the response's canonical Celsius
+  // range to the profile's own bbt_unit, as the phone's _captionFor does.
+  it("captions the range in the profile's own unit", () => {
+    renderChart(chart(), 'fahrenheit');
+    expect(screen.getByTestId('bbt-chart-caption')).toHaveTextContent(
+      '97.0\u00B0F-98.4\u00B0F',
+    );
   });
 
   it('pluralizes the caption for several cycles', () => {

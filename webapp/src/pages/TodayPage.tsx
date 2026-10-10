@@ -15,6 +15,7 @@ import {
 import type { ForecastDayCell } from '../domain/schemas';
 import { emptySyncedData } from '../lib/domain';
 import { browserTimeZone, todayInBrowserZone } from '../lib/day/day-entry-policy';
+import { bbtUnitFromDb } from '../lib/day/measurements';
 import { bbtObservationRows } from '../lib/profiles/bbt-inputs';
 import { firstRunSeen, markFirstRunSeen } from '../lib/first-run';
 import { dismissRecap, recapDismissed } from '../lib/recap-dismiss';
@@ -433,7 +434,7 @@ function ProfileHome(props: {
           <ProfileHomeHistory history={domain.history} />
           <ProfileHomeComparison history={domain.history} />
           <ProfileHomeInsights report={domain.insights} />
-          <BbtChart chart={domain.bbt} />
+          <BbtChart chart={domain.bbt} unit={bbtUnitFromDb(profile.bbt_unit)} />
           <PhaseCard insights={domain.phase} />
         </>
       ) : null}

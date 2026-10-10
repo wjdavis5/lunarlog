@@ -519,8 +519,8 @@ List<Map<String, Object?>> _insightCases() {
 /// The BBT chart's series (issue #1796): three completed 28-day cycles with
 /// readings on a few days (Celsius and one Fahrenheit row, converted by the
 /// chart), plus the rows it must not plot - an excluded reading, a deleted
-/// one, a day that is not among the entries, and another category - and the
-/// empty case.
+/// one, a day that is not among the entries, and another category - the
+/// same-date tie case (issue #1821), and the empty case.
 List<Map<String, Object?>> _bbtChartCases() {
   const today = '2026-09-30';
   final entries = _cycleEntries(
@@ -546,6 +546,26 @@ List<Map<String, Object?>> _bbtChartCases() {
       'entries': entries,
       'observations': observations,
     }),
+    _case('bbtChart.same-date-rows', 'bbtChart', {
+      'entries': entries,
+      'observations': <Map<String, Object?>>[
+        // One date, two live rows (a manual entry alongside an imported
+        // one): the newer row wins by its own updatedAt, never by the
+        // request's array order - the newer row is listed first on
+        // purpose (issue #1821). The older row's instant precedes its day
+        // entry's own (noon, the fallback), the newer one follows it.
+        _bbtRow(
+          'entry-profile-1-0-1',
+          36.9,
+          updatedAt: '2026-07-09T15:00:00.000Z',
+        ),
+        _bbtRow(
+          'entry-profile-1-0-1',
+          36.5,
+          updatedAt: '2026-07-09T09:00:00.000Z',
+        ),
+      ],
+    }),
     _case('bbtChart.empty', 'bbtChart', {
       'entries': entries,
       'observations': const <Map<String, Object?>>[],
@@ -560,6 +580,7 @@ Map<String, Object?> _bbtRow(
   String category = 'bbt',
   bool excluded = false,
   String? deletedAt,
+  String? updatedAt,
 }) => {
   'dayEntryId': dayEntryId,
   'category': category,
@@ -568,6 +589,7 @@ Map<String, Object?> _bbtRow(
   'source': 'manual',
   if (excluded) 'excluded': true,
   'deletedAt': ?deletedAt,
+  'updatedAt': ?updatedAt,
 };
 
 // ---------------------------------------------------------------------------

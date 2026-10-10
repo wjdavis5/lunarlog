@@ -443,7 +443,10 @@ Map<String, Object?> bbtChartFromJson(Map<String, Object?> request) {
 
 /// The live rows among [raw]'s, each resolved onto its own day among
 /// [entries] by `dayEntryId`. A row naming no day, or a day not present in
-/// [entries], is skipped: its date and update time are the entry's own.
+/// [entries], is skipped. The row's own update instant crosses the boundary
+/// (issue #1821): one date can carry more than one live BBT row, and
+/// `deriveBbtChartData` breaks that tie by `updatedAt`; a row that carries
+/// none falls back to its day entry's.
 List<Observation> _observationsAcrossEntries(
   Object? raw,
   List<DayEntry> entries,
@@ -472,6 +475,7 @@ List<Observation> _observationsAcrossEntries(
         unit: _optionalString(json['unit']),
         source: ObservationSource.fromDb(_optionalString(json['source'])),
         excluded: _optionalBool(json['excluded'], defaultValue: false),
+        updatedAt: _optionalDateTime(json['updatedAt']),
       ),
     );
   }
@@ -988,8 +992,11 @@ List<Observation> _observationsFromJson(Object? raw, DayEntry entry) {
 }
 
 /// One observation of [entry]'s day. The log reads only its category,
-/// value, unit and source; the rest is the entry's own. `excluded` (BBT's
-/// own per-point exclusion flag, A1-44) is read by the BBT chart's rows.
+/// value, unit and source; the rest is the entry's own, save `updatedAt`:
+/// a caller carrying the row's own update instant (the BBT chart's rows do,
+/// issue #1821) supplies it, and a row without one falls back to the
+/// entry's. `excluded` (BBT's own per-point exclusion flag, A1-44) is read
+/// by the BBT chart's rows.
 Observation _observationFor(
   DayEntry entry, {
   required ObservationCategory category,
@@ -997,6 +1004,7 @@ Observation _observationFor(
   String? unit,
   ObservationSource source = ObservationSource.manual,
   bool excluded = false,
+  DateTime? updatedAt,
 }) => Observation(
   id: '',
   dayEntryId: entry.id,
@@ -1008,7 +1016,7 @@ Observation _observationFor(
   unit: unit,
   excluded: excluded,
   source: source,
-  updatedAt: entry.updatedAt,
+  updatedAt: updatedAt ?? entry.updatedAt,
 );
 
 /// The live rows of the profile's own tag registry among [raw]'s. The log

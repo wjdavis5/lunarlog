@@ -5,9 +5,10 @@ import type { ObservationRow } from '../schemas';
  * The BBT chart's observation rows (issue #1796): the profile's synced
  * measurement rows mapped onto the `bbtChart` request shape. Rows without a
  * category are dropped here (the facade skips them too); everything else -
- * deleted rows, excluded rows, other categories - crosses the boundary and
- * is skipped by the chart itself, so the two sides never disagree about
- * what is plotted.
+ * deleted rows, excluded rows, other categories, each row's own update
+ * instant (issue #1821) - crosses the boundary and is skipped (or resolved)
+ * by the chart itself, so the two sides never disagree about what is
+ * plotted.
  */
 export function bbtObservationRows(rows: ObservationRow[]): BbtObservationJson[] {
   const mapped: BbtObservationJson[] = [];
@@ -21,6 +22,7 @@ export function bbtObservationRows(rows: ObservationRow[]): BbtObservationJson[]
       source: row.source,
       excluded: row.excluded,
       deletedAt: row.deleted_at,
+      updatedAt: row.updated_at,
     });
   }
   return mapped;

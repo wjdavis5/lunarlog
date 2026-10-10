@@ -167,10 +167,12 @@ function syncedResult(data: SyncedData): ReturnType<typeof useSyncedData> {
   } as unknown as ReturnType<typeof useSyncedData>;
 }
 
-// The fake module answers with the committed parity fixtures — the exact
+// The fake module answers with the committed parity fixtures - the exact
 // envelopes the compiled Dart engine produces. A pregnancy life-stage
 // request resolves to the suppressed fixture, the way the real engine
-// branches; everything else resolves to that method's richest fixture.
+// branches; the recap, phase and BBT chart pin their cases by name (the
+// BBT chart pins the empty case: the parity suite owns the populated ones);
+// everything else resolves to that method's richest fixture.
 interface FixtureCase {
   name: string;
   method: string;
@@ -191,13 +193,15 @@ function fixtureEnvelope(method: string, request: Record<string, unknown>): unkn
   const wanted =
     method === 'cycleRecap'
       ? 'cycleRecap.completed-cycle'
-      : method === 'phaseInsights'
-        ? 'phaseInsights.statistical-cycle'
-        : suppressed
-          ? 'predict.suppressed-lifecycle'
-          : nothingToday
-            ? 'todayLog.no-entry'
-            : undefined;
+      : method === 'bbtChart'
+        ? 'bbtChart.empty'
+        : method === 'phaseInsights'
+          ? 'phaseInsights.statistical-cycle'
+          : suppressed
+            ? 'predict.suppressed-lifecycle'
+            : nothingToday
+              ? 'todayLog.no-entry'
+              : undefined;
   const candidates = fixtureCases.filter((fixture) => fixture.method === method);
   const match =
     (wanted !== undefined
