@@ -159,4 +159,23 @@ set -e
 assert_eq "a non-array results field exits non-zero" "1" "$rc7"
 assert_contains "the non-array-results case produces an ::error:: annotation" "$err7" "::error::"
 
+# --- empty or whitespace-only input fails closed (issue #1832) ------------
+# With zero JSON documents jq prints nothing and exits 0, so before this
+# fix `count` was an empty string, `[ "" -gt 0 ]` was false, and the gate
+# reported a pass without having read any advisor output.
+
+set +e
+err_empty="$(printf '' | bash "$SCRIPT" 2>&1 1>/dev/null)"
+rc_empty=$?
+set -e
+assert_eq "empty stdin exits non-zero (issue #1832)" "1" "$rc_empty"
+assert_contains "the empty-input case produces an ::error:: annotation" "$err_empty" "::error::"
+
+set +e
+err_blank="$(run_script '   ' 2>&1 1>/dev/null)"
+rc_blank=$?
+set -e
+assert_eq "whitespace-only stdin exits non-zero (issue #1832)" "1" "$rc_blank"
+assert_contains "the whitespace-only case produces an ::error:: annotation" "$err_blank" "::error::"
+
 print_summary "check-advisor-gate.test.sh"

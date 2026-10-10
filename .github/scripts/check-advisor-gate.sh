@@ -60,15 +60,25 @@ set -euo pipefail
 # one INFO carve-out are ever excluded by level; nothing is ever
 # excluded by level alone unless it is unambiguously INFO.
 #
-# Malformed input (invalid JSON, or a `results` field that is missing or
-# not an array) is a hard failure, not a silent pass -- explicitly checked
-# below rather than left to `set -e` alone, matching this repo's other
-# stdin-JSON gate scripts (see check-apple-secrets.sh).
+# Malformed input (invalid JSON, an empty or whitespace-only stream, or a
+# `results` field that is missing or not an array) is a hard failure, not a
+# silent pass -- explicitly checked below rather than left to `set -e`
+# alone, matching this repo's other stdin-JSON gate scripts (see
+# check-apple-secrets.sh).
 #
 # Bash 3.2 compatible (macOS CI runner, issue #569's release-guards-macos
 # job): no associative arrays, no `${var,,}`, no `mapfile`.
 
 input="$(cat)"
+
+# An empty or whitespace-only stream is a hard failure (issue #1832): with
+# zero JSON documents jq prints nothing and exits 0, so without this check
+# the parse below "succeeds", `count` is an empty string, and the gate
+# reports a pass without having read any advisor output at all.
+if [ -z "$(printf '%s' "$input" | tr -d '[:space:]')" ]; then
+  echo "::error::No advisor output on stdin. The gate needs the JSON that \`supabase db advisors --type security --level warn --output-format json\` writes; an empty stream fails closed (issue #1832)." >&2
+  exit 1
+fi
 
 if ! remaining="$(printf '%s' "$input" | jq -c '
   if (.results | type) != "array" then
@@ -90,6 +100,16 @@ if ! remaining="$(printf '%s' "$input" | jq -c '
 fi
 
 count="$(printf '%s' "$remaining" | jq 'length')"
+
+# The count must be a plain non-negative integer (issue #1832): an empty or
+# non-numeric value would make `[ ... -gt 0 ]` a noisy false and let the
+# gate pass on input it never counted.
+case "$count" in
+  '' | *[!0-9]*)
+    echo "::error::Advisor gate could not count the remaining findings (jq returned '$count'); failing closed (issue #1832)." >&2
+    exit 1
+    ;;
+esac
 
 if [ "$count" -gt 0 ]; then
   echo "::error::$count security advisor finding(s) at warn level or above, after the documented exclusions (issue #454):" >&2
