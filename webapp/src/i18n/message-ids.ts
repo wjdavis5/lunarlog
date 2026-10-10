@@ -1487,6 +1487,7 @@ export const MESSAGE_IDS = [
   "webDayNeedsSignIn",
   "webDayNoAccess",
   "webDayLoading",
+  "webGuardiansLoading",
   "webDayLoadFailed",
   "webDayReadOnlyViewer",
   "webDayFlowSection",

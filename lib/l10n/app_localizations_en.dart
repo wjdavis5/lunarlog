@@ -5872,6 +5872,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get webDayLoading => 'Loading this day…';
 
   @override
+  String get webGuardiansLoading => 'Loading guardians…';
+
+  @override
   String get webDayLoadFailed =>
       'Couldn\'t load this day. Check your connection and try again.';
 

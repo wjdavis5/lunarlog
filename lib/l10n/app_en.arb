@@ -7556,6 +7556,10 @@
   "@webDayLoading": {
     "description": "The web day editor's loading state, shown while the account's data is being fetched."
   },
+  "webGuardiansLoading": "Loading guardians…",
+  "@webGuardiansLoading": {
+    "description": "The web manage-guardians page loading state, shown while the account data is being fetched."
+  },
   "webDayLoadFailed": "Couldn't load this day. Check your connection and try again.",
   "@webDayLoadFailed": {
     "description": "The web day editor's retryable failure state: the fetch itself failed (offline, server error). Distinct from webDayNoAccess, which is not retryable."

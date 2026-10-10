@@ -9067,6 +9067,12 @@ abstract class AppLocalizations {
   /// **'Loading this day…'**
   String get webDayLoading;
 
+  /// The web manage-guardians page loading state, shown while the account data is being fetched.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading guardians…'**
+  String get webGuardiansLoading;
+
   /// The web day editor's retryable failure state: the fetch itself failed (offline, server error). Distinct from webDayNoAccess, which is not retryable.
   ///
   /// In en, this message translates to:

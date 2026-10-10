@@ -145,16 +145,28 @@ function pendingRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function renderPage(profileId: string = ULID) {
+function renderPage(
+  profileId: string = ULID,
+  {
+    pending = false,
+    profiles = [profileRow],
+  }: { pending?: boolean; profiles?: unknown[] } = {},
+) {
   // Retry-free: a rejected query settles on its first failure, so failure-
   // copy assertions do not wait out TanStack's exponential retry delay.
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  // Seed the synced-data cache (issue #1252's `useLiveProfiles` reads
-  // `['synced-data']`, never a table) instead of the retired profiles read.
-  domainMocks.refresh.mockResolvedValue({ profiles: [profileRow] });
-  queryClient.setQueryData(['synced-data'], { profiles: [profileRow] } as never);
+  if (pending) {
+    // Never resolves: the page sees `useSyncedData` still pending (the
+    // blank-page case the review found).
+    domainMocks.refresh.mockReturnValue(new Promise(() => {}));
+  } else {
+    // Seed the synced-data cache (issue #1252's `useLiveProfiles` reads
+    // `['synced-data']`, never a table) instead of the retired profiles read.
+    domainMocks.refresh.mockResolvedValue({ profiles });
+    queryClient.setQueryData(['synced-data'], { profiles } as never);
+  }
   const view = render(
     <AppIntlProvider>
       <QueryClientProvider client={queryClient}>
@@ -202,6 +214,17 @@ describe('ManageGuardiansPage (issue #1255)', () => {
     );
     // One link back is not a navigation landmark of its own.
     expect(screen.queryByRole('navigation')).toBeNull();
+  });
+
+  it('shows the loading state while the snapshot is still arriving (review item)', () => {
+    renderPage(ULID, { pending: true });
+    expect(screen.getByText(messages['webGuardiansLoading'] ?? 'missing')).toBeInTheDocument();
+    expect(screen.queryByText(messages['webDayNoAccess'] ?? 'missing')).not.toBeInTheDocument();
+  });
+
+  it('shows the no-access card for an account with no profiles, not a blank page (review item)', () => {
+    renderPage(ULID, { profiles: [] });
+    expect(screen.getByText(messages['webDayNoAccess'] ?? 'missing')).toBeInTheDocument();
   });
 
   // Whoever created the profile has no display name: only an invitation
