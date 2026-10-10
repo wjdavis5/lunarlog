@@ -106,11 +106,11 @@ the UI wants it.
 
 `src/lib/domain.ts` is the one module every web screen reads and writes
 account data through; `src/lib/queries.ts` wraps it in TanStack Query.
-Reads go through **`sync_pull`** — the app's authoritative, guardian-scoped,
-`server_version`-cursor RPC — paged to exhaustion (500 rows/page) so a
-profile's full cycle history loads; `guardian_notes` and `settings`, which
-`sync_pull` does not carry, ride their own RLS-scoped selects paged past
-PostgREST's 1,000-row cap with `.range()`. The `sync_pull` path is chosen
+Reads go through **`sync_pull`** - the app's authoritative, guardian-scoped,
+`server_version`-cursor RPC - paged to exhaustion (500 rows/page) so a
+profile's full cycle history loads; guardian notes are read per date through
+their own RLS-scoped select (`sharing.ts`'s `fetchGuardianNotesForDate`),
+since `sync_pull` does not carry them. The `sync_pull` path is chosen
 over raw selects because private-note masking lives only on the RPC paths
 (`mask_day_entry_note`): a raw `select` on `day_entries` passes guardian RLS
 but would return an unmasked private note. Writes go exactly where the

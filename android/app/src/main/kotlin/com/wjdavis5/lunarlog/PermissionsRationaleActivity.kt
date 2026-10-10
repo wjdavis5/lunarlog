@@ -24,8 +24,9 @@ import androidx.core.view.WindowInsetsCompat
  * access" surface on Android 14+ -- without first starting the Flutter
  * engine, so this is a plain [Activity], not `FlutterActivity`.
  *
- * Deliberately static and minimal: no health data is read here (nothing in
- * this repo calls Health Connect yet -- see AppConfig.hasHealthSync), no
+ * Deliberately static and minimal: no health data is read here (the app's
+ * own Health Connect calls live in the Flutter engine; AppConfig.hasHealthSync
+ * is true and both platforms write), no
  * network request is made, and the content below is a plain-text mirror of
  * the privacy summary already shown in-app by
  * `SettingsScreen._showPrivacyPolicy` plus the one-profile-at-a-time
@@ -78,10 +79,10 @@ class PermissionsRationaleActivity : Activity() {
                 "use ads. Crash reports strip all health and personal " +
                 "details on-device before they ever leave it.\n\n" +
                 "You can grant, deny, or later revoke any of these permissions " +
-                "individually in Health Connect's own settings. Writing " +
-                "needs every write permission: while any one of them is " +
-                "off, lunarlog writes nothing and says so on its Health " +
-                "Connect sync screen. An import you start yourself needs " +
+                "individually in Health Connect's own settings. Writing works " +
+                "per type: lunarlog writes each type you have allowed and " +
+                "leaves the rest alone, and the Health Connect sync screen " +
+                "says which are off. An import you start yourself needs " +
                 "the two read permissions."
         }
 

@@ -33,7 +33,7 @@
 /// | `commitImport` | guard + `commitToken` | result string |
 /// | `pastDataSwitchOffered` (Android only) | none | `bool` |
 /// | `requestPastDataAccess` (Android only) | guard args | result string |
-/// | `readCycleDeviations` | guard + `startMs` + `endMs` + `kinds` (list of wire names) | a `List` of deviation maps, or a result string |
+/// | `readCycleDeviations` (iOS only) | guard + `startMs` + `endMs` + `kinds` (list of wire names) | a `List` of deviation maps, or a result string |
 ///
 /// *Page result* (`readMenstrualFlowPage`, Issue #992): a `Map` with
 /// `'samples'` — a `List` of the sample maps below — and `'nextCursor'` —

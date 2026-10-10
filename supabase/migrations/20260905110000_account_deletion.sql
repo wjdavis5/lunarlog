@@ -1,4 +1,4 @@
--- Migration: 20260905100000_account_deletion.sql
+-- Migration: 20260905110000_account_deletion.sql
 -- Implements Issue #17 (Unit U1): the row-deletion half of in-app account
 -- deletion. `public.delete_account_data()` removes every row the calling
 -- user owns across `profiles`, `day_entries`, `settings`, `profile_guardians`

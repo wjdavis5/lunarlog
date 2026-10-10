@@ -4,9 +4,9 @@ set -euo pipefail
 # .github/scripts/check-flutter-version-parity.sh
 #
 # Issue #1276: every workflow that pins the Flutter SDK via a
-# FLUTTER_VERSION env var must pin the SAME version ci.yml pins. Seven
+# FLUTTER_VERSION env var must pin the SAME version ci.yml pins. Six
 # workflows carry the pin today (ci, ios-release, play-store-release,
-# site, site-deploy, web-deploy, webapp-deploy -- site.yml joined when
+# site, site-deploy, webapp-deploy -- site.yml joined when
 # issue #1316 moved its SDK pin off a step-level literal) and AGENTS.md's
 # SDK-bump procedure names them -- but the list is prose, and it had
 # already gone stale once (site-deploy.yml was missing before
@@ -26,7 +26,7 @@ set -euo pipefail
 # check-auth-config.sh documents for its own structural checks, justified
 # here because a FLUTTER_VERSION pin is a single scalar line
 # (`FLUTTER_VERSION: 'x.y.z'`) at whatever env-block nesting the workflow
-# uses (ci.yml/ios-release.yml/play-store-release.yml/web-deploy.yml/
+# uses (ci.yml/ios-release.yml/play-store-release.yml/
 # webapp-deploy.yml top-level, site-deploy.yml job-level). Full-line `#`
 # comments are stripped first so a commented-out example value can never
 # satisfy or fail a check. Trailing comments ON a value line are NOT

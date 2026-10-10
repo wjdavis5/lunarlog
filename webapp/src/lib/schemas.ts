@@ -331,7 +331,9 @@ export function subjectInviteAvailable(profile: ProfileRow, today: Date = new Da
     return true;
   }
   // `deriveMinorStatus`: a birth year decides, the stored flag is the
-  // fallback — and "minor" means at most 18 this calendar year.
-  if (profile.birth_year !== null) return today.getUTCFullYear() - profile.birth_year <= 18;
+  // fallback - and "minor" means at most 18 this calendar year. The local
+  // year matches the Dart rule (`isMinorAsOf` reads `today.year`); the UTC
+  // year disagreed with it around New Year west of UTC.
+  if (profile.birth_year !== null) return today.getFullYear() - profile.birth_year <= 18;
   return profile.is_minor;
 }

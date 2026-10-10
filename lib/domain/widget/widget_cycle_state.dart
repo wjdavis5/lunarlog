@@ -7,9 +7,10 @@
 /// (`lib/ui/gate/`): it is drawn by the OS on the home screen, and no gate
 /// ever runs before it renders. It also reads from a shared container (the
 /// iOS App Group / the Android `HomeWidgetPreferences` store via the
-/// `home_widget` plugin), which is **outside the app's encrypted Drift
-/// store** — whatever is written there has left every protection the store
-/// has. Issue #141's design constraints therefore require:
+/// `home_widget` plugin), which is **outside the app's Drift store** and
+/// outside the OS at-rest protection covering it - whatever is written
+/// there has left every protection the store has. Issue #141's design
+/// constraints therefore require:
 ///
 /// * a **discreet default render** — no profile name, no flow level, no
 ///   symptom, no health word, no date; a neutral state indicator at most.

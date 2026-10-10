@@ -1,1 +1,1 @@
-Data layer — local encrypted persistence and repositories.
+Data layer - local persistence and repositories.

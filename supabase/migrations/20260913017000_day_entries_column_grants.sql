@@ -1,4 +1,4 @@
--- Migration: 20260913015000_day_entries_column_grants.sql
+-- Migration: 20260913017000_day_entries_column_grants.sql
 --
 -- Issue #562 (P2): column grants on day_entries/observations/care_notes/
 -- visit_prep_items let a guardian move entries between profiles via a raw

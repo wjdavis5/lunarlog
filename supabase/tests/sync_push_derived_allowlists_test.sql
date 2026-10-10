@@ -1,4 +1,4 @@
--- Issue #181: sync_push's nine per-table key allowlists are DERIVED from
+-- Issue #181: sync_push's ten per-table key allowlists are DERIVED from
 -- information_schema.columns (public.sync_push_payload_keys, materialized
 -- into the function body at CREATE time by
 -- 20260917120000_sync_push_derived_allowlists.sql), not hand-restated

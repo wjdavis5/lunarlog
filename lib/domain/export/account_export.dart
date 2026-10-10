@@ -3,7 +3,8 @@
 /// is the temp-file write and share-sheet hand-off in
 /// `lib/data/export/account_export_writer.dart`.
 ///
-/// The local encrypted Drift store is the app's source of truth (KTD5), so
+/// The local Drift store (OS-protected at rest, not app-encrypted) is the
+/// app's source of truth (KTD5), so
 /// this reads exactly what [ProfilesRepository.list] and
 /// [DayEntriesRepository.listForProfile] already return: archived profiles
 /// included, tombstoned rows excluded by those repositories themselves
