@@ -655,7 +655,7 @@ Map<String, Object?> phaseInsightsFromJson(Map<String, Object?> request) {
   }
   return {
     'phase': phaseInfoToJson(
-      deriveSubphase(prediction: prediction, today: today),
+      deriveSubphase(prediction: prediction),
     ),
     'basis': basis,
   };
