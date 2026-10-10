@@ -150,6 +150,26 @@ void main() {
       expect(usable.single.onsetDays, 2);
       expect(usable.single.lengthDays, 2);
     });
+
+    test(
+        'Issue #1857: an interval starting INSIDE a bleed episode belongs to '
+        'that episode, not the next one — it must not be attributed to the '
+        'following start with a near-full-cycle onset', () {
+      final episodes = [
+        _episode(_d(2026, 1, 1), 4), // Jan 1-4
+        _episode(_d(2026, 1, 29), 4), // Jan 29-Feb 1
+      ];
+      final usable = usablePmsIntervals(
+        episodes: episodes,
+        // PMS marked Jan 2-3 (inside the Jan 1-4 bleed; e.g. marked before
+        // the flow was backfilled onto Jan 1). The old lookup attributed it
+        // to Jan 29 with a bogus onset of 27.
+        intervalList: [PmsInterval(_d(2026, 1, 2), _d(2026, 1, 3))],
+      );
+      expect(usable, isEmpty,
+          reason: 'inside the Jan 1 episode — not a premenstrual interval '
+              'for the Jan 29 period');
+    });
   });
 
   group('computePmsEstimate', () {

@@ -21,9 +21,9 @@
 /// is shown — render here too, above the fold (the first thing in the
 /// scroll view, before the calendar itself), never behind a tap or below
 /// a scroll. The confidence tier renders alongside them when the
-/// projection carries one ([PredictionProjection.confidenceTier] — see
-/// that field's doc comment for why a real snapshot from today's server
-/// never actually carries it yet).
+/// projection carries one ([PredictionProjection.confidenceTier] - since
+/// issue #593 the server's allowlist admits the key, so a current
+/// snapshot does carry it).
 library;
 
 import 'package:flutter/material.dart';

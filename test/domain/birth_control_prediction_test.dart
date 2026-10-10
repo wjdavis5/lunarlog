@@ -239,14 +239,21 @@ void main() {
             ),
           ) as ActivePrediction;
 
-      // 120 open days (the floor) is still a long cycle, not stale.
+      // The cycle-day numeral is 120 on Apr 30 (elapsed 119) — a long
+      // cycle, not stale; May 1 (elapsed 120, the floor itself) is still
+      // not stale, matching the statistical path's `difference > threshold`
+      // comparison (issue #1858: the pack branch used to count cycle days
+      // here, flagging a day early).
       final atBound = pack(LocalDate(2026, 4, 30));
       expect(atBound.cycleDay, 120);
       expect(atBound.staleHistory, isFalse);
+      final atFloor = pack(LocalDate(2026, 5, 1));
+      expect(atFloor.staleHistory, isFalse,
+          reason: 'elapsed 120 = the floor; only strictly past it is stale');
 
-      // 121 open days is stale — the issue's 163-days-late scenario is far
-      // past it.
-      final past = pack(LocalDate(2026, 5, 1));
+      // 121 elapsed days is stale — the issue's 163-days-late scenario is
+      // far past it.
+      final past = pack(LocalDate(2026, 5, 2));
       expect(past.staleHistory, isTrue);
       expect(past.basis, PredictionBasis.regimenSchedule,
           reason: 'the stale flag does not change the basis');

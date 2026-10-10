@@ -148,6 +148,20 @@ List<UsablePmsInterval> usablePmsIntervals({
 }) {
   final usable = <UsablePmsInterval>[];
   for (final interval in intervalList) {
+    // Issue #1857: an interval that starts *inside* a bleed episode (PMS
+    // marked before the flow was backfilled onto the earlier days, or a day
+    // logged late) belongs to that episode, not the next one — attributing
+    // it to the next start would manufacture the same bogus full-cycle
+    // onset LLA-069 removed for the coincident-day case. (A same-day
+    // interval still attributes to its own period below and is discarded as
+    // non-premenstrual, the LLA-069 rule.)
+    if (episodes.any(
+      (episode) =>
+          episode.start.isBefore(interval.start) &&
+          episode.contains(interval.start),
+    )) {
+      continue;
+    }
     Episode? following;
     for (final episode in episodes) {
       if (!episode.start.isBefore(interval.start)) {

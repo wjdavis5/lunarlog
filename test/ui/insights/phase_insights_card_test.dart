@@ -45,7 +45,7 @@ void main() {
     final today = LocalDate(2026, 9, 1);
     final prediction = _makePrediction(today: today, cycleDay: 1, duringEpisode: true);
 
-    await _pump(tester, PhaseInsightsCard(prediction: prediction, today: today));
+    await _pump(tester, PhaseInsightsCard(prediction: prediction));
 
     expect(find.byKey(const ValueKey('phase-name-text')), findsOneWidget);
     expect(find.text('Early Follicular (Period)'), findsOneWidget);
@@ -80,7 +80,7 @@ void main() {
 
     await _pump(
       tester,
-      PhaseInsightsCard(prediction: prediction, today: today),
+      PhaseInsightsCard(prediction: prediction),
     );
 
     expect(
@@ -137,7 +137,7 @@ void main() {
 
     await _pump(
       tester,
-      PhaseInsightsCard(prediction: prediction, today: today),
+      PhaseInsightsCard(prediction: prediction),
     );
 
     expect(
@@ -176,7 +176,7 @@ void main() {
       tier: CycleConfidence.learning,
     );
 
-    await _pump(tester, PhaseInsightsCard(prediction: prediction, today: today));
+    await _pump(tester, PhaseInsightsCard(prediction: prediction));
 
     expect(find.byKey(const ValueKey('phase-hedged-notice')), findsOneWidget);
     expect(find.textContaining('Subphase timing is estimated'), findsOneWidget);
@@ -225,7 +225,7 @@ void main() {
 
       await _pump(
         tester,
-        PhaseInsightsCard(prediction: prediction, today: today),
+        PhaseInsightsCard(prediction: prediction),
       );
 
       expectLateLutealRunningLong();
@@ -240,7 +240,7 @@ void main() {
 
       await _pump(
         tester,
-        PhaseInsightsCard(prediction: prediction, today: today),
+        PhaseInsightsCard(prediction: prediction),
       );
 
       expectLateLutealRunningLong();
@@ -263,7 +263,7 @@ void main() {
 
       await _pump(
         tester,
-        PhaseInsightsCard(prediction: prediction, today: today),
+        PhaseInsightsCard(prediction: prediction),
       );
 
       expectLateLutealRunningLong();
@@ -274,7 +274,7 @@ void main() {
     final today = LocalDate(2026, 9, 1);
     final prediction = _makePrediction(today: today, cycleDay: 1, duringEpisode: true);
 
-    await _pump(tester, PhaseInsightsCard(prediction: prediction, today: today));
+    await _pump(tester, PhaseInsightsCard(prediction: prediction));
 
     final articleButton = find.byKey(const ValueKey('phase-article-button'));
     expect(articleButton, findsOneWidget);

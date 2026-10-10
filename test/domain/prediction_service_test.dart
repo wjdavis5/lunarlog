@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:lunarlog/domain/birth_control.dart' show BirthControlMethod;
 import 'package:lunarlog/domain/logging/day_entry_merge_event.dart' as mergelog;
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -491,6 +492,33 @@ void main() {
 
         final p = await seeded.current(profile.id, today: () => today);
         expect(p, isA<NotEnoughHistory>());
+      });
+
+      test('a copper-IUD profile still seeds: the method carries no '
+          'prediction kind, so the fallback guard must not block it '
+          '(issue #1856)', () async {
+        final profile = await profiles.create(
+          displayName: 'A',
+          isMinor: false,
+          lastPeriodStart: LocalDate(2026, 4, 20),
+          typicalCycleLengthDays: 28,
+          typicalPeriodLengthDays: 5,
+        );
+        final copper = CyclePredictionService(
+          dayEntries,
+          profiles: profiles,
+          birthControlStateFor: (_) => Stream.value((
+            method: BirthControlMethod.copperIud.toDb(),
+            startedOn: '2026-01-01',
+            stoppedOn: null,
+          )),
+        );
+
+        final p = await copper.current(profile.id, today: () => today);
+        expect(p, isA<ActivePrediction>(),
+            reason: 'a copper IUD neither suppresses nor pack-drives');
+        expect((p as ActivePrediction).tier, CycleConfidence.provisional);
+        expect(p.estimatedNextStart, LocalDate(2026, 5, 18));
       });
 
       test('a facts edit re-derives through the memo: an unrelated '

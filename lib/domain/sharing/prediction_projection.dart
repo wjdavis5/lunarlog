@@ -87,8 +87,8 @@ class PredictionProjection {
   /// reusing [CycleConfidence] rather than inventing a second vocabulary.
   /// `null` when the field is absent from the payload (an older snapshot,
   /// or one published before this field existed) — never a guessed
-  /// default. See the library doc comment for why this currently never
-  /// crosses the wire in production.
+  /// default. Issue #593 widened the server's payload allowlist so this
+  /// round-trips to a recipient's device (see the library doc comment).
   final CycleConfidence? confidenceTier;
 
   /// The server's derived-phase key allowlist, in wire order.
@@ -243,17 +243,42 @@ PredictionProjection buildPredictionProjection(ActivePrediction prediction) {
   // signal — see [PredictionBasis]'s own doc comment — so a share never
   // derives fertile/ovulation days from one, matching the sharer's own
   // calendar (`forecast.dart`).
-  final fertile = prediction.basis != PredictionBasis.statistical
+  //
+  // Issue #1859: a stale history (#859) suppresses the sharer's entire
+  // forward calendar — no forecast bleed bands, no fertile/ovulation days,
+  // no PMS band, only logged days (`month_calendar.dart`'s #982 branch) —
+  // so the projection must not ship what the sharer herself is shown no
+  // part of. What remains is the current episode's logged days so far.
+  final stale = prediction.staleHistory;
+  final fertile = prediction.basis != PredictionBasis.statistical || stale
       ? (fertile: <LocalDate>{}, ovulation: <LocalDate>{})
       : _fertileAndOvulationDays(prediction.forecast);
   return PredictionProjection(
     generatedAt: prediction.today,
-    periodDays: _cappedSorted(_periodDays(prediction)),
+    periodDays: _cappedSorted(
+      stale ? _openEpisodeDays(prediction) : _periodDays(prediction),
+    ),
     fertileDays: _cappedSorted(fertile.fertile),
     ovulationDays: _cappedSorted(fertile.ovulation),
     confidenceTier: prediction.tier,
-    pmsDays: _cappedSorted(_pmsBand(prediction.pms)),
+    pmsDays:
+        _cappedSorted(stale ? const <LocalDate>{} : _pmsBand(prediction.pms)),
   );
+}
+
+/// The current open episode's logged days so far — the one part of
+/// [_periodDays] a stale-history projection keeps (issue #1859: the
+/// sharer's calendar still paints logged days, and nothing forward).
+Set<LocalDate> _openEpisodeDays(ActivePrediction prediction) {
+  final days = <LocalDate>{};
+  if (!prediction.duringEpisode) return days;
+  final today = prediction.today;
+  var d = prediction.lastEpisodeStart;
+  while (d.difference(today) <= 0 && days.length < kProjectionMaxDatesPerField) {
+    days.add(d);
+    d = d.addDays(1);
+  }
+  return days;
 }
 
 /// The current open episode's days so far plus every forecast cycle's
@@ -261,14 +286,7 @@ PredictionProjection buildPredictionProjection(ActivePrediction prediction) {
 /// matching forecast.dart's own rendering).
 Set<LocalDate> _periodDays(ActivePrediction prediction) {
   final today = prediction.today;
-  final days = <LocalDate>{};
-  if (prediction.duringEpisode) {
-    var d = prediction.lastEpisodeStart;
-    while (d.difference(today) <= 0 && days.length < kProjectionMaxDatesPerField) {
-      days.add(d);
-      d = d.addDays(1);
-    }
-  }
+  final days = _openEpisodeDays(prediction);
   for (final cycle in prediction.forecast) {
     for (var i = 0; i < cycle.estimatedPeriodLengthDays; i++) {
       final date = cycle.start.addDays(i);

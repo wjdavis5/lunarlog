@@ -825,9 +825,11 @@ class ActivePrediction extends CyclePrediction {
   /// plus a way forward. Deliberately a flag on the prediction (issue #859)
   /// rather than a UI date comparison, and deliberately not overloaded onto
   /// [tier] (issue #858: [CycleConfidence] carries variability semantics).
-  /// Never true on the pack-schedule branch ([basis] is
-  /// [PredictionBasis.regimenSchedule]): that estimate is a fixed pack
-  /// cadence, not a statistical history average.
+  /// Set on the pack-schedule branch too since issue #1716 (see
+  /// `_packDrivenPrediction`): a pack profile that never logs a withdrawal
+  /// bleed goes stale at the same elapsed-day bound as the statistical
+  /// path, so its rolled estimate stops reading "late" forever. The flag
+  /// does not change [basis].
   final bool staleHistory;
 
   /// The predicted PMS phase (Issue #220): averages over the logged
@@ -1203,8 +1205,14 @@ ActivePrediction _packDrivenPrediction({
   // late pre-arm (which otherwise outranks the pill adherence reminder on a
   // shared fire date) stops planning.
   final openDays = today.isBefore(anchor) ? 1 : today.difference(anchor) + 1;
+  // Issue #1858: `staleHistory` is measured in elapsed days — the unit
+  // `staleHistoryThresholdDays` is defined in and the unit the statistical
+  // path compares (`today.difference(lastStart)`). `openDays` above is the
+  // cycle-day numeral, one higher, which flagged a pack profile stale a day
+  // before an equivalent statistical one.
+  final elapsedDays = today.isBefore(anchor) ? 0 : today.difference(anchor);
   final staleHistory =
-      openDays > staleHistoryThresholdDays(kPackCycleLengthDays.toDouble());
+      elapsedDays > staleHistoryThresholdDays(kPackCycleLengthDays.toDouble());
 
   return ActivePrediction(
     today: today,

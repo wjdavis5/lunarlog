@@ -823,9 +823,14 @@ class CyclePredictionService {
       omittedCycleStarts: omissions,
       birthControl: birthControl,
     );
-    if (birthControl == null &&
-        computed is NotEnoughHistory &&
-        facts.canSeed) {
+    // Issue #1856: a method with no prediction kind (copper IUD) neither
+    // suppresses nor pack-drives — computePredictionFromEntries takes the
+    // ordinary history path for it, so the NotEnoughHistory-only fallback
+    // must still apply. The guard excludes only methods the predictor
+    // itself already answered for.
+    final methodAnswered = birthControl != null &&
+        birthControlPredictionKind(birthControl.method) != null;
+    if (!methodAnswered && computed is NotEnoughHistory && facts.canSeed) {
       // Issue #1392: the entries go in too, so a period logged since
       // onboarding re-anchors the provisional estimate instead of being
       // ignored until three whole cycles exist. Issue #1412: so do the

@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 
 import '../../domain/content/cycle_literacy_library.dart';
-import '../../domain/models/local_date.dart';
 import '../../domain/prediction/cycle_subphase.dart';
 import '../../domain/prediction/prediction.dart';
 import '../content/cycle_literacy_article_sheet.dart';
@@ -14,11 +13,9 @@ class PhaseInsightsCard extends StatelessWidget {
   const PhaseInsightsCard({
     super.key,
     required this.prediction,
-    required this.today,
   });
 
   final ActivePrediction prediction;
-  final LocalDate today;
 
   @override
   Widget build(BuildContext context) {
@@ -53,7 +50,7 @@ class PhaseInsightsCard extends StatelessWidget {
       );
     }
 
-    final info = deriveSubphase(prediction: prediction, today: today);
+    final info = deriveSubphase(prediction: prediction);
     final primaryArticle =
         CycleLiteracyLibrary.getArticleById(info.subphase.primaryArticleId);
 

@@ -16,9 +16,12 @@ ActivePrediction _prediction(
   LocalDate today, {
   PmsEstimate? pms,
   PredictionBasis basis = PredictionBasis.statistical,
+  bool stale = false,
+  bool duringEpisode = false,
 }) {
   // 28-day cycles, 4-day bleed, next start 10 days out; today is mid-luteal
-  // and not bleeding.
+  // and not bleeding unless [duringEpisode] (then the open episode started
+  // two days ago).
   const cycle = 28;
   const period = 4;
   final nextStart = today.addDays(10);
@@ -34,13 +37,14 @@ ActivePrediction _prediction(
   ];
   return ActivePrediction(
     today: today,
-    lastEpisodeStart: today.addDays(10 - cycle),
+    lastEpisodeStart:
+        duringEpisode ? today.addDays(-2) : today.addDays(10 - cycle),
     estimatedNextStart: nextStart,
     originalEstimatedNextStart: nextStart,
     averagedCycleLengths: const [cycle],
     meanCycleLengthDays: cycle.toDouble(),
     cycleDay: cycle - 9,
-    duringEpisode: false,
+    duringEpisode: duringEpisode,
     completedCycleCount: 4,
     validCycleCount: 4,
     meanPeriodLengthDays: period.toDouble(),
@@ -49,6 +53,7 @@ ActivePrediction _prediction(
     forecast: forecast,
     pms: pms,
     basis: basis,
+    staleHistory: stale,
   );
 }
 
@@ -69,6 +74,37 @@ void main() {
       isTrue,
       reason: 'the sharer is not mid-episode, so every period day is '
           'strictly forecast (KTD3 forward-only)',
+    );
+  });
+
+  test('a stale-history prediction shares only logged days (issue #1859)',
+      () {
+    // The sharer's own calendar suppresses the whole forward forecast and
+    // the PMS band on this flag (#982), so the projection must not carry
+    // bands she is shown no part of.
+    final stale = _prediction(
+      today,
+      stale: true,
+      duringEpisode: true,
+      pms: PmsEstimate(
+        meanOnsetDaysBeforeNextPeriod: 3,
+        meanLengthDays: 2,
+        usableIntervalCount: 6,
+        tier: CycleConfidence.high,
+        predictedStart: today.addDays(5),
+        predictedEnd: today.addDays(7),
+      ),
+    );
+    final projection = buildPredictionProjection(stale);
+
+    expect(projection.fertileDays, isEmpty);
+    expect(projection.ovulationDays, isEmpty);
+    expect(projection.pmsDays, isEmpty,
+        reason: 'the PMS band is anchored to the stale estimate');
+    expect(
+      projection.periodDays,
+      [today.addDays(-2), today.addDays(-1), today],
+      reason: 'the current episode logged so far, and nothing forward',
     );
   });
 
