@@ -8,14 +8,14 @@ Success is a working public release with proof, not more surface. lunarlog alrea
 
 ## Priority order
 
-P0, release proof.
+P1, release proof.
 
 - #1791 Get one green Android internal-track release. The workflow has never succeeded.
 - #1505 Close the migration approval hole so a push cannot reach production before the run is approved.
 - #22, #29, #725 Run the device checklists. Owner and device work.
 - #1797 The release readiness umbrella tracks the whole submission and closes when every box is checked.
 
-P0, privacy gate. Close before any submission.
+P1 and P2, privacy gate. Close before any submission.
 
 - #1501 and #1705, the two open privacy bugs.
 - #782 The health-consent column. AGENTS.md already describes it as promised by #188, and it does not exist.
@@ -38,7 +38,7 @@ P2, quality.
 - #1792, #1793, and #1794 were closed on 2026-10-10. Verification found the areas already carry behavior tests, so the units were retired instead of written. The review's correction paragraph has the details.
 - Documentation truth. This run fixes the drift list in the review.
 
-P2, web client.
+P2 and P3, web client.
 
 - #1795 First-run onboarding.
 - #1796 Insights surface.
@@ -86,8 +86,14 @@ P3 and deferred, with reasons.
 
 ## Execution in this run
 
-Order for the 24-hour run that produced this plan. File the plan (done, #1791 through #1797). Commit the review and this plan. Fix the documentation drifts. Then work the first P0 item an agent can move, the Android release investigation in #1791. Each unit lands as its own pull request through the repository gates. Work that needs the owner's console access, a device, or a dispatch is parked in #1797 with the exact steps. The run trail records each decision.
+Order for the 24-hour run that produced this plan. File the plan (done, #1791 through #1797). Commit the review and this plan. Fix the documentation drifts. Then work the first P1 item an agent can move, the Android release investigation in #1791. Each unit lands as its own pull request through the repository gates. Work that needs the owner's console access, a device, or a dispatch is parked in #1797 with the exact steps. The run trail records each decision.
 
 ## How to read the issues
 
 Existing issues keep their numbers and labels. New issues from this review carry the `roadmap` label and were filed on 2026-10-10. An issue with `needs-human-review` waits on a decision or access only the owner can provide. Everything else is available for an agent to pick up.
+
+## Outcomes, end of 2026-10-10
+
+The run that produced this plan also executed its top units. Merged the same day: the Play release preflight and runbook (#1801), the invite cutover (#1800), the documentation drift fixes (#1799), the review correction (#1802), the web client's first-run orientation (#1803, closing #1795), the symptom-trends data path and section (#1804, #1805), the BBT chart's data path and chart (#1807, #1808), the recap's data path and card (#1809, #1810), the phase card's data path (#1813), and the site's `/learn` literacy pages (#1812, closing #1811). The phase card itself is PR #1814.
+
+What that leaves: #1796 closes with #1814. #1791 (the Play credentials) and #1797 (the release-readiness umbrella) stay with the owner. The review's first thin-spot claim was wrong about the repo's layout; the three issues it produced (#1792 through #1794) closed with file-level evidence, and the review carries the correction.
