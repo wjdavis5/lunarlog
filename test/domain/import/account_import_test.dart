@@ -2145,6 +2145,37 @@ void main() {
       expect(plan.summary.observationsSkipped, 0);
     });
 
+    test('a field containing the old delimiter no longer aliases two '
+        'different (date, category, code) pairs', () {
+      final document = (parseAccountImport(_bytes(_rawDocument(profiles: [
+        _rawProfile(_p1, dayEntries: [
+          _rawDayEntry(_e1, '2026-01-05'),
+        ], observations: [
+          _rawObservation(_o1, '2026-01-05',
+              category: 'pain|cramps', code: 'x'),
+        ]),
+      ]))) as AccountImportParsed)
+          .document;
+
+      // The row below is a DIFFERENT pair; under the old delimiter-joined
+      // key both rendered as `2026-01-05|pain|cramps|x`, so this row was a
+      // false duplicate and got skipped.
+      final existing = _observation('local-o1', _p1, '2026-01-05',
+          category: ObservationCategory.pain, code: 'cramps|x');
+
+      final plan = planImport(
+        document: document,
+        existingProfiles: [_profile(_p1)],
+        existingObservationsByProfileId: {
+          _p1: [existing],
+        },
+        writeBlockReason: _neverBlocked,
+      );
+
+      expect(plan.profiles.single.observations.single.outcome,
+          ObservationImportOutcome.add);
+    });
+
     test('a colliding (profileId, localDate, category, code) is skipped, '
         'never overwriting the existing row', () {
       final document = (parseAccountImport(_bytes(_rawDocument(profiles: [

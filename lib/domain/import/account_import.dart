@@ -2155,8 +2155,15 @@ _EntryPlanResult _planEntries(
   );
 }
 
-String _observationKey(String date, String category, String? code) =>
-    '$date|$category|${code ?? ''}';
+/// The observation's identity for the import planner: a record rather than a
+/// delimiter-joined string (review item). `category` and `code` are free
+/// text, so a `|` inside either used to alias two different pairs to one key.
+(String, String, String?) _observationKey(
+  String date,
+  String category,
+  String? code,
+) =>
+    (date, category, code);
 
 List<ObservationPlan> _planObservations(
   List<ImportedObservation> imported,
@@ -2202,7 +2209,7 @@ List<ObservationPlan> _planObservations(
 /// already had stored before this import started.
 ObservationPlan _planObservation(
   ImportedObservation imported,
-  Set<String> existingKeys,
+  Set<(String, String, String?)> existingKeys,
   Map<String, int> liveCountByDate,
 ) {
   final date = imported.localDate.iso;
