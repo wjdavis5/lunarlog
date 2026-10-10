@@ -9,6 +9,7 @@ import {
   cycleRecap,
   getDomainModule,
   insights,
+  phaseInsights,
   predict,
 } from '../domain/client';
 import type { ForecastDayCell } from '../domain/schemas';
@@ -49,6 +50,7 @@ import { ProfileHomeInsights } from './ProfileHomeInsights';
 import { ProfileHomeStatus } from './ProfileHomeStatus';
 import { ProfileHomeTodayLog } from './ProfileHomeTodayLog';
 import { RecapCard } from './RecapCard';
+import { PhaseCard } from './PhaseCard';
 import { SignedOutHome } from './SignedOutHome';
 
 /**
@@ -280,6 +282,7 @@ function ProfileHome(props: {
           observations: bbtObservations,
         }),
         recap: cycleRecap(module, request),
+        phase: phaseInsights(module, request),
       };
     } catch {
       return null;
@@ -402,6 +405,7 @@ function ProfileHome(props: {
           <ProfileHomeComparison history={domain.history} />
           <ProfileHomeInsights report={domain.insights} />
           <BbtChart chart={domain.bbt} />
+          <PhaseCard insights={domain.phase} />
         </>
       ) : null}
     </div>
