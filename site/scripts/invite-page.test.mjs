@@ -1,15 +1,11 @@
-// Pins the invite landing page's buttons (issue #1279).
+// Pins the invite landing page's buttons (issue #1279, cut over for #1258).
 //
-// Until #1258 moves the React client onto app.lunarlog.app, that origin is
-// still the Flutter web build (web-deploy.yml) — and it rejects https invite
-// links because web-deploy.yml sets no LUNARLOG_LINK_DOMAIN
-// (lib/domain/sharing/invite_links.dart's _isUniversalInvite returns false
-// for an empty link domain). An "Open in the web app" button pointing there
-// therefore silently drops the invite code. The page must offer only the
-// custom-scheme button; re-adding the web-app button is a deliberate #1258
-// cutover act that removes these pins in the same change (the Worker-side
-// twin lives in site/worker/index.test.ts, the Dart-side one in
-// test/domain/sharing/link_artifacts_test.dart).
+// The React client serves /invite at app.lunarlog.app (issue #1255), so the
+// page offers both buttons: the custom-scheme one, and the web-app one whose
+// href the inline script rewrites to carry the same code. The pins below
+// keep the deployed page, the canonical docs/links copy, and the buttons in
+// step. The Worker-side twin lives in site/worker/index.test.ts, the
+// Dart-side one in test/domain/sharing/link_artifacts_test.dart.
 
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -42,15 +38,13 @@ test("the invite page keeps the custom-scheme open-in-app button", () => {
   assert.match(landing, /rel="noreferrer noopener"/);
 });
 
-test("no web-app button until #1258 serves /invite on app.lunarlog.app", () => {
-  // The button's anchor id, its app.lunarlog.app target (in an href or the
-  // href-rewriting script), and any copy advertising web-app acceptance must
-  // all stay out until the #1258 cutover. If one of these fails, the button
-  // came back without the React client serving /invite behind it — see the
-  // HTML comment in docs/links/invite.html for the full cutover checklist.
-  assert.doesNotMatch(landing, /open-in-web-app/);
-  assert.doesNotMatch(landing, /app\.lunarlog\.app/);
-  assert.doesNotMatch(landing, /web app/);
+test("the web-app button is present, now that #1258 serves /invite on app.lunarlog.app", () => {
+  // The React client serves /invite behind app.lunarlog.app (issue #1255),
+  // so the anchor id, its app.lunarlog.app target (rewritten to carry the
+  // code by the inline script), and its copy are all back.
+  assert.match(landing, /open-in-web-app/);
+  assert.match(landing, /app\.lunarlog\.app\/invite/);
+  assert.match(landing, /Open in the web app/);
 });
 
 /** [html] with its comments taken out, cut on their delimiters. */
