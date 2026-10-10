@@ -2,41 +2,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 
 import { webAuth, type OAuthProvider, type SignOutScope, type WebIdentities } from './auth';
+import { AUTH_SESSION_QUERY_KEY, useAuthSession, type AuthStatus } from './authSession';
 import { resetWebData } from './queries';
 
-/**
- * The session query (issue #1250): the web app's signed-in state, held in
- * TanStack Query's in-memory cache like every other read. The queryFn runs
- * the auth client's renewal — on a fresh page load that is a GET
- * /auth/session, which is how a reload restores the session from the
- * HttpOnly refresh cookie without any user action.
- */
-export const AUTH_SESSION_QUERY_KEY = ['auth', 'session'] as const;
-
-export interface AuthStatus {
-  signedIn: boolean;
-  email: string | null;
-  /**
-   * The account the in-memory session belongs to (issue #1281) — the
-   * identity the synced-data cache must be dropped when it changes.
-   */
-  userId: string | null;
-}
-
-export function useAuthSession() {
-  return useQuery<AuthStatus>({
-    queryKey: AUTH_SESSION_QUERY_KEY,
-    queryFn: async () => {
-      const token = await webAuth.getToken();
-      const user = webAuth.getUser();
-      return {
-        signedIn: token !== null,
-        email: user?.email ?? null,
-        userId: user?.id ?? null,
-      };
-    },
-  });
-}
+// The session query itself moved to `authSession.ts` (issue #1826) so the
+// synced-data gate and the day view can read it without an import cycle;
+// re-exported here so every page keeps importing the session surface from
+// one place.
+export { AUTH_SESSION_QUERY_KEY, useAuthSession, type AuthStatus };
 
 function useInvalidateSession(): () => void {
   const queryClient = useQueryClient();
