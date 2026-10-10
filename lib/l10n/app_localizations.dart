@@ -9373,6 +9373,36 @@ abstract class AppLocalizations {
   /// **'Sign in to log a day, look back over the calendar, and manage guardians for the profiles you keep or share.'**
   String get webHomeNeedsSignIn;
 
+  /// Issue #1795: the first-run orientation card's title, shown by the web home to a signed-in account with no profiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Welcome to lunarlog'**
+  String get webFirstRunTitle;
+
+  /// Issue #1795: the first-run card's one sentence on what lunarlog is and who it is for.
+  ///
+  /// In en, this message translates to:
+  /// **'A private cycle tracker for a household. An account keeps a profile in sync across your devices and lets the people who help care for it share access, each with their own role.'**
+  String get webFirstRunBody;
+
+  /// Issue #1795: the first-run card's line on where the data lives - the browser client's nothing-stored rule in plain words.
+  ///
+  /// In en, this message translates to:
+  /// **'Everything you log lives in your account and syncs from there. This browser keeps nothing.'**
+  String get webFirstRunDataLine;
+
+  /// Issue #1795: the first-run card's primary action, leading to the profile picker where a profile is created.
+  ///
+  /// In en, this message translates to:
+  /// **'Create a profile'**
+  String get webFirstRunCreateAction;
+
+  /// Issue #1795: the first-run card's dismiss action, revealing the compact empty state for the rest of the session.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue to Today'**
+  String get webFirstRunContinueAction;
+
   /// The heading of the web client's signed-out home. The product name stays lowercase, sentence-initial included.
   ///
   /// In en, this message translates to:

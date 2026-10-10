@@ -6059,6 +6059,23 @@ class AppLocalizationsEn extends AppLocalizations {
       'Sign in to log a day, look back over the calendar, and manage guardians for the profiles you keep or share.';
 
   @override
+  String get webFirstRunTitle => 'Welcome to lunarlog';
+
+  @override
+  String get webFirstRunBody =>
+      'A private cycle tracker for a household. An account keeps a profile in sync across your devices and lets the people who help care for it share access, each with their own role.';
+
+  @override
+  String get webFirstRunDataLine =>
+      'Everything you log lives in your account and syncs from there. This browser keeps nothing.';
+
+  @override
+  String get webFirstRunCreateAction => 'Create a profile';
+
+  @override
+  String get webFirstRunContinueAction => 'Continue to Today';
+
+  @override
   String get webWelcomeTitle => 'lunarlog in your browser';
 
   @override
