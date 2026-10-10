@@ -95,7 +95,22 @@ Future<List<String>> _changedLibDartFiles() async {
         'git diff --name-only $base failed (exit ${diff.exitCode}) — '
         'see stderr above.');
   }
-  final names = (diff.stdout as String).split('\n');
+  // A new file is untracked, so no diff lists it; the doc comment promises
+  // uncommitted changes are in scope, and an untracked lib/ file with a
+  // mirror is exactly what the gate should mutate. `--exclude-standard`
+  // keeps .gitignore'd paths out.
+  final untracked =
+      await Process.run('git', ['ls-files', '--others', '--exclude-standard']);
+  if (untracked.exitCode != 0) {
+    stderr.write(untracked.stderr);
+    throw StateError(
+        'git ls-files --others failed (exit ${untracked.exitCode}) — '
+        'see stderr above.');
+  }
+  final names = [
+    ...(diff.stdout as String).split('\n'),
+    ...(untracked.stdout as String).split('\n'),
+  ];
   return _libDartFilesFrom(names);
 }
 
