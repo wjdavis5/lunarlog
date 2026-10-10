@@ -110,6 +110,29 @@ void main() {
       expect(view.items.first.isOpen, isTrue);
     });
 
+    test('a future-dated episode is ignored, matching the engine (issue #1855)', () {
+      // The LLA-071 shape: a restored export (or a device clock rollback)
+      // can carry a start after today. computePrediction filters it; the
+      // history view must not pin it as the open cycle or count it in the
+      // stats, or the two readings disagree.
+      final view = deriveCycleHistory(
+        episodes: episodesFromStarts([
+          d(2026, 1, 1),
+          d(2026, 1, 29),
+          d(2026, 2, 28),
+          d(2026, 4, 1),
+          d(2026, 4, 26), // future
+        ]),
+        today: d(2026, 4, 10),
+      );
+      expect(view.items.first.start, d(2026, 4, 1));
+      expect(view.items.first.isOpen, isTrue);
+      expect(view.items, hasLength(4));
+      expect(view.completedCycleCount, 3);
+      expect(view.episodeCount, 4, reason: 'the future row is not yet an episode');
+      expect(view.meanCycleLengthDays, closeTo(30.0, 0.001));
+    });
+
     test('no episodes at all -> empty view with null confidence and stats', () {
       final view = deriveCycleHistory(episodes: const [], today: d(2026, 1, 1));
       expect(view.items, isEmpty);
