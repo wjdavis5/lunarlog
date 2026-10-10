@@ -128,6 +128,18 @@ while IFS= read -r file; do
       release_guards=true
       ;;
 
+    # The release gate script is read by a Dart test
+    # (release_required_checks_docs_test.dart pins REQUIRED_CHECKS against
+    # AGENTS.md), so an edit to it must also run the Flutter suite that
+    # holds the pin. The Case 19 dynamic scan in
+    # .github/scripts/tests/detect-ci-changes.test.sh enforces this mapping.
+    # Before the generic .github/scripts/* arm below, which sets only
+    # release_guards.
+    .github/scripts/check-ci-gate.sh)
+      app_flutter=true
+      release_guards=true
+      ;;
+
     # Release guard scripts, tool coordinators, or other workflow files
     .github/workflows/*|.github/scripts/*|tool/coord/*|tool/orchestrator/*)
       release_guards=true

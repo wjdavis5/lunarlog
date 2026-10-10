@@ -80,8 +80,29 @@ permissions:
   checks: read
 
 jobs:
+  preflight:
+    # Issue #1791: both historical runs of this workflow failed in "Configure
+    # Android signing key" with an empty secret, each discovered part-way
+    # through a build. This job runs first and fails in seconds, naming every
+    # missing secret at once. See docs/ops/play-store-release.md.
+    name: Verify release secrets are configured
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Check Android signing and Play credentials
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          PLAY_STORE_JSON_KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}
+        run: bash .github/scripts/check-release-secrets.sh
+
   verify:
     name: Analyze and test
+    needs: [preflight]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -111,6 +132,7 @@ jobs:
     # job always runs and always succeeds except for the production case it
     # exists to gate.
     name: Verify the production release gate
+    needs: [preflight]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -149,6 +171,7 @@ jobs:
     # .github/workflows/migration-gate.yml -- so both release pipelines
     # enforce identically instead of drifting apart.
     name: Verify Supabase migrations are applied
+    needs: [preflight]
     uses: ./.github/workflows/migration-gate.yml
     # LLA-110: deployments:read (beyond this workflow's top-level
     # contents:read/checks:read default) is what lets the reusable
@@ -168,6 +191,7 @@ jobs:
     # always runs and always succeeds except in the one case it exists
     # to catch.
     name: Verify the QA build gate
+    needs: [preflight]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -185,6 +209,7 @@ jobs:
     # verify/test/quality-gate jobs — see check-ci-gate.sh's REQUIRED_CHECKS
     # default for the exact post-#644 job names).
     name: Verify CI check runs on commit
+    needs: [preflight]
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -198,7 +223,7 @@ jobs:
 
   release:
     name: Build, sign, and publish to Play Store
-    needs: [verify, production-gate, qa-build-gate, migration-gate, ci-gate]
+    needs: [preflight, verify, production-gate, qa-build-gate, migration-gate, ci-gate]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
