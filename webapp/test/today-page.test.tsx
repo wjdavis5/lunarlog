@@ -319,6 +319,24 @@ describe('TodayPage — the profile home (issue #1253)', () => {
         screen.getByText(messages['profilePickerEmptyTitle'] ?? 'missing'),
       ).toBeInTheDocument();
     });
+
+    // Issue #1806: `live` is empty while the snapshot pulls, which must not
+    // read as "no profiles" - the welcome card flashed at returning users.
+    it('shows neither card while the snapshot is still loading', () => {
+      vi.mocked(useSyncedData).mockReturnValue({
+        data: undefined,
+        isError: false,
+        isPending: true,
+        isLoading: true,
+      } as unknown as ReturnType<typeof useSyncedData>);
+      renderHome();
+      expect(
+        screen.queryByText(messages['webFirstRunTitle'] ?? 'missing'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(messages['profilePickerEmptyTitle'] ?? 'missing'),
+      ).not.toBeInTheDocument();
+    });
   });
 
   // The symptom-trends section rides the same domain call pattern as the
