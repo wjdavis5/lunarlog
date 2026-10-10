@@ -929,17 +929,14 @@ class LocalHealthImportService
       run.lateBlocked,
       daysRemoved: rerun.removed,
     );
-    // Issue #1652: a whole read that reached its end tells which declined
-    // records the store no longer holds: none of them came back.
-    if (owed && run.finished) {
-      await _forgetDeclinedAbsent(profileId, run.accumulator);
-    }
-    // Issue #1876: and it has offered the store's current contents to the
-    // merge, which is what the purge owed. A read that did not reach its
-    // end (or whose merge never ran) leaves the obligation in place.
-    if (purgeOwed && run.finished) {
-      await _clearWholeReadOwed(profileId);
-    }
+    // Issue #1652/#1876: whichever memory owed the whole read settles
+    // here, once it reached its end and the merge ran.
+    await _settleWholeReadOwed(
+      profileId,
+      declined: owed,
+      purge: purgeOwed,
+      run: run,
+    );
     // Issue #1683: after the new span is merged, clear the days the pass's
     // period records no longer cover. Health Connect changing a record in
     // place reports no deletion, so this is the only path that reaches
@@ -1732,6 +1729,28 @@ class LocalHealthImportService
   /// read as owed, so the store is present.
   Future<void> _clearWholeReadOwed(String profileId) async {
     await _wholeRead?.forgetWholeReadOwed(profileId);
+  }
+
+  /// Issue #1652/#1876: settles the memories that owed this pass's whole
+  /// read, once it reached its end and its merge ran. A read that stopped
+  /// short leaves every obligation in place for the next pass.
+  Future<void> _settleWholeReadOwed(
+    String profileId, {
+    required bool declined,
+    required bool purge,
+    required _PageRun run,
+  }) async {
+    if (!run.finished) return;
+    // Issue #1652: a whole read that reached its end tells which declined
+    // records the store no longer holds: none of them came back.
+    if (declined) {
+      await _forgetDeclinedAbsent(profileId, run.accumulator);
+    }
+    // Issue #1876: and it has offered the store's current contents to the
+    // merge, which is what the purge owed.
+    if (purge) {
+      await _clearWholeReadOwed(profileId);
+    }
   }
 
   /// Whether a fresh read would adopt [record]'s store value against her
