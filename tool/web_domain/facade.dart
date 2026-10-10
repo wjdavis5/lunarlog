@@ -201,7 +201,12 @@ CyclePrediction _resolvePrediction({
     omittedCycleStarts: omittedCycleStarts,
     birthControl: birthControl,
   );
-  if (birthControl == null &&
+  // Issue #1856: the same guard correction as the service's `_resolve` — a
+  // method with no prediction kind (copper IUD) short-circuits nothing, so
+  // the provisional fallback must still apply to it.
+  final methodAnswered = birthControl != null &&
+      birthControlPredictionKind(birthControl.method) != null;
+  if (!methodAnswered &&
       computed is NotEnoughHistory &&
       (facts?.canSeed ?? false)) {
     // Issue #1392: the same entries-aware seed the service uses, so a
