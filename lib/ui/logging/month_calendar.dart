@@ -1134,6 +1134,13 @@ class _MonthCalendarState extends State<MonthCalendar>
       _entriesWindowFrom = null;
       _entriesWindowTo = null;
       _spottingIsos = const {};
+      // The manual symptom-layer selection is per profile too: the shell
+      // keeps this State alive across a switcher change, so a set toggled
+      // for the old profile must not ride into the new one's calendar -
+      // its own lens default re-derives instead (review item: this was the
+      // one piece of per-profile state the branch above did not reset).
+      _layersUserSet = false;
+      _activeLayers = const {};
       unawaited(_syncDisplayedMonthForNewProfile());
       return;
     }

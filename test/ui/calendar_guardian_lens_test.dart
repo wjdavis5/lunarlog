@@ -238,7 +238,7 @@ void main() {
     );
 
     // With no layer active the inline toggle is hidden, so the chooser is
-    // reached through the info sheet — the same path a real guardian uses.
+    // reached through the info sheet - the same path a real guardian uses.
     await tester.tap(find.byKey(const ValueKey('legend-toggle')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('symptom-layers-open')));
@@ -267,5 +267,101 @@ void main() {
     );
 
     await disposeCalendar(tester, h);
+  });
+
+  testWidgets('a profile switch re-derives the layer selection (review item)', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 2000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final db = LunarLogDatabase(NativeDatabase.memory());
+    final profiles = DriftProfilesRepository(db.storage);
+    final entries = DriftDayEntriesRepository(db.storage);
+    final guardians = DriftProfileGuardiansRepository(db.storage);
+    final first = await profiles.create(displayName: 'Alice', isMinor: false);
+    final second = await profiles.create(displayName: 'Bea', isMinor: false);
+    for (final profile in [first, second]) {
+      for (final day in kTagDays.entries) {
+        await entries.save(
+          DayEntry(
+            id: '',
+            profileId: profile.id,
+            localDate: day.key,
+            tz: 'America/Chicago',
+            flow: FlowLevel.none,
+            tags: day.value,
+            updatedAt: DateTime.utc(2026, 1, 1),
+          ),
+        );
+      }
+      await db.storage.applyRemoteRows([
+        guardianRow(
+          profile.id,
+          'g-${profile.id}',
+          'user-mom',
+          'primary_guardian',
+          isSubject: true,
+        ),
+      ]);
+    }
+
+    final auth = FakeAuthService()
+      ..emit(AuthSessionState.signedIn, user: AuthUser(id: 'user-mom'));
+    final authController = AuthController(authService: auth);
+    addTearDown(auth.dispose);
+    addTearDown(authController.dispose);
+
+    Widget build(String profileId) => MultiProvider(
+      providers: [
+        Provider<DayEntriesRepository>.value(value: entries),
+        ChangeNotifierProvider<AuthController>.value(value: authController),
+      ],
+      child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: MonthCalendar(
+            profileId: profileId,
+            todayProvider: () => kToday,
+            guardiansRepository: guardians,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(build(first.id));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('layer-dot-headache-2026-08-10')),
+      findsOneWidget,
+    );
+
+    // Turn the subject default's headache layer off for the first profile.
+    await tester.tap(find.byKey(const ValueKey('symptom-layers-toggle')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('layer-chip-headache')));
+    await tester.pumpAndSettle();
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('layer-dot-headache-2026-08-10')),
+      findsNothing,
+    );
+
+    // Switch profiles in place: the new profile's own lens default must
+    // win, not the old profile's manual selection.
+    await tester.pumpWidget(build(second.id));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('layer-dot-headache-2026-08-10')),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 100));
+    await db.close();
   });
 }
