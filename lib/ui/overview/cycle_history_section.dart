@@ -39,7 +39,13 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart'
-    show NotEnoughHistory, kMinCompletedValidCycles;
+    show
+        ActivePrediction,
+        CyclePrediction,
+        NotEnoughHistory,
+        PredictionsDisabled,
+        PredictionsSuppressed,
+        kMinCompletedValidCycles;
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/confidence_chip.dart';
@@ -79,6 +85,7 @@ class CycleHistorySection extends StatefulWidget {
     this.showStatistics = true,
     this.showDisclaimer = true,
     this.notEnough,
+    this.prediction,
     this.onCompareSelected,
   });
 
@@ -97,6 +104,16 @@ class CycleHistorySection extends StatefulWidget {
   /// mount, which has no prediction but already shows the tally in its
   /// panel's card), so a profile with an estimate gets no progress line.
   final NotEnoughHistory? notEnough;
+
+  /// Issue #1861: the caller's live engine prediction, when it has one.
+  /// The chip then renders this prediction's own [CycleConfidence] tier —
+  /// the same one the overview caption shows — instead of the section's
+  /// own statistical re-derivation, which cannot see birth-control or
+  /// lifecycle state. A suppressed or disabled engine state hides the chip
+  /// (the overview shows its named card there; a statistical tier beside
+  /// it would contradict it). Null (the archived-profile mount) keeps the
+  /// section's own derivation.
+  final CyclePrediction? prediction;
 
   /// Whether this section renders its own statistics row (average cycle
   /// length, average period length, variation). Default true so
@@ -217,6 +234,17 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
   Widget _card(BuildContext context, CycleHistoryView view) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
+    // Issue #1861: the chip mirrors the engine's own tier when the caller
+    // supplied its live prediction, so the history badge and the overview
+    // caption can never disagree (this file's #213 contract — the section's
+    // own re-derivation cannot see birth-control or lifecycle state). A
+    // suppressed or disabled engine state hides the chip rather than
+    // framing a statistical tier the overview contradicts.
+    final confidence = switch (widget.prediction) {
+      ActivePrediction(:final tier) => tier,
+      PredictionsSuppressed() || PredictionsDisabled() => null,
+      _ => view.confidence,
+    };
     return Card(
       key: const ValueKey('history-card'),
       margin: const EdgeInsets.only(top: LLSpace.space3),
@@ -243,10 +271,10 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
                     if (widget.onCompareSelected != null &&
                         view.items.length >= kMinCyclesToCompare)
                       _compareToggleButton(context),
-                    if (view.confidence != null)
+                    if (confidence != null)
                       ConfidenceChip(
                         key: const ValueKey('history-confidence'),
-                        tier: view.confidence!,
+                        tier: confidence,
                       ),
                   ],
                 ),
@@ -262,10 +290,10 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
                 key: const ValueKey('history-progress'),
                 style: theme.textTheme.bodySmall,
               ),
-            ] else if (view.confidence != null) ...[
+            ] else if (confidence != null) ...[
               const SizedBox(height: LLSpace.space1),
               Text(
-                view.confidence!.summary,
+                confidence.summary,
                 key: const ValueKey('history-confidence-summary'),
                 style: theme.textTheme.bodySmall,
               ),

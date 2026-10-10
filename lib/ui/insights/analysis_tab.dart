@@ -659,6 +659,10 @@ class _AnalysisTabState extends State<AnalysisTab>
         // "N of 3 completed cycles" line can never disagree with the empty
         // state above it. Null in every other prediction state.
         notEnough: prediction is NotEnoughHistory ? prediction : null,
+        // Issue #1861: the engine's own tier, so the chip and the overview
+        // caption agree in every state (and a suppressed/disabled engine
+        // hides the chip).
+        prediction: prediction,
         onCompareSelected: (cycleAStart, cycleBStart) =>
             Navigator.of(context).push(
               CycleComparisonScreen.route(
