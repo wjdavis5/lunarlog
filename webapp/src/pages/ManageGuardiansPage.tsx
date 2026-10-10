@@ -13,6 +13,7 @@ import {
   useActiveTransfer,
   useCurrentUserId,
   useGuardians,
+  useHasSyncSession,
   usePendingInvites,
   useLiveProfiles,
   useSyncedData,
@@ -49,6 +50,7 @@ import {
   type GuardianRole,
 } from '../lib/roles';
 import { getSupabaseClient } from '../lib/supabase';
+import { SignedOutHome } from './SignedOutHome';
 
 /**
  * Manage-guardians on the web (issue #1255): the list / invite / role-change
@@ -135,7 +137,15 @@ export function ManageGuardiansPage() {
   const pending = usePendingInvites(profileId, profile !== null);
   const transfer = useActiveTransfer(profileId, profile !== null);
   const me = useCurrentUserId(client !== null).data ?? null;
+  const signedIn = useHasSyncSession();
   const synced = useSyncedData();
+
+  // Issue #1851: without a session the synced query is disabled — its data
+  // stays undefined and `isError` stays false — so the loading card below
+  // would sit there forever, saying data is coming when nothing is. A
+  // signed-out visitor (a bookmarked or invite-adjacent link) gets the
+  // signed-out home, the way TodayPage does.
+  if (!signedIn) return <SignedOutHome />;
 
   // Until the snapshot lands, `profiles` is empty and neither the no-access
   // card nor the sections below are meaningful - the page used to render a
