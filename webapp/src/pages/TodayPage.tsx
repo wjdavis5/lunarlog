@@ -2,7 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 
 import { useT } from '../i18n/t';
-import { calendarForecast, cycleHistory, getDomainModule, predict } from '../domain/client';
+import {
+  calendarForecast,
+  cycleHistory,
+  getDomainModule,
+  insights,
+  predict,
+} from '../domain/client';
 import type { ForecastDayCell } from '../domain/schemas';
 import { emptySyncedData } from '../lib/domain';
 import { browserTimeZone, todayInBrowserZone } from '../lib/day/day-entry-policy';
@@ -33,6 +39,7 @@ import type { DayEntryRow } from '../lib/schemas';
 import { FirstRunCard } from './FirstRunCard';
 import { ProfileHomeCalendar } from './ProfileHomeCalendar';
 import { ProfileHomeComparison, ProfileHomeHistory } from './ProfileHomeHistory';
+import { ProfileHomeInsights } from './ProfileHomeInsights';
 import { ProfileHomeStatus } from './ProfileHomeStatus';
 import { ProfileHomeTodayLog } from './ProfileHomeTodayLog';
 import { SignedOutHome } from './SignedOutHome';
@@ -250,6 +257,7 @@ function ProfileHome(props: {
         prediction: predict(module, request),
         history: cycleHistory(module, request),
         forecast: calendarForecast(module, request),
+        insights: insights(module, request),
       };
     } catch {
       return null;
@@ -343,6 +351,7 @@ function ProfileHome(props: {
         <>
           <ProfileHomeHistory history={domain.history} />
           <ProfileHomeComparison history={domain.history} />
+          <ProfileHomeInsights report={domain.insights} />
         </>
       ) : null}
     </div>
