@@ -35,7 +35,7 @@ and must never contain real personal or health data.
 **Security Policy:** Read our [Security Policy](SECURITY.md) to report vulnerabilities responsibly.  
 **License:** [PolyForm Noncommercial 1.0.0](LICENSE) (Free for personal/noncommercial use; commercial resale prohibited).
 
-**Status:** dev project, not deployed. Release is gated (see Known limitations).
+**Status:** pre-release. TestFlight builds ship from `main` (latest upload 2026-09-30); store submission is gated (see Known limitations).
 
 ## Build / run
 
@@ -176,9 +176,11 @@ see which methods the account has in the account section, add Google (or
 Apple on iOS) to it after a fresh device-credential check, and remove
 Google or Apple the same way once the account holds another method —
 email/password is never removable, since it is the account's only
-recovery path. Once the household is onboarded, sign-ups are
-closed in the dashboard and every create path says accounts are set up by
-the account owner. Passkeys are deferred (Supabase passkeys are beta and
+recovery path. Sign-ups are open in the dashboard: lunarlog is a public
+store app, so anyone may download it and create an account (issues #800,
+#821, #971). The app shows "New accounts for this app are set up by the
+account owner" only when an operator closes sign-ups for a locked-down
+deployment. Passkeys are deferred (Supabase passkeys are beta and
 need an HTTPS relying-party domain the app does not yet have). The Google
 button is hidden in any build without both `GOOGLE_*` defines. A signed-in
 operator can delete the account outright (server rows, the account, an
