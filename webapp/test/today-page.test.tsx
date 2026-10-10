@@ -184,11 +184,13 @@ function fixtureEnvelope(method: string, request: Record<string, unknown>): unkn
   const wanted =
     method === 'cycleRecap'
       ? 'cycleRecap.completed-cycle'
-      : suppressed
-        ? 'predict.suppressed-lifecycle'
-        : nothingToday
-          ? 'todayLog.no-entry'
-          : undefined;
+      : method === 'phaseInsights'
+        ? 'phaseInsights.statistical-cycle'
+        : suppressed
+          ? 'predict.suppressed-lifecycle'
+          : nothingToday
+            ? 'todayLog.no-entry'
+            : undefined;
   const candidates = fixtureCases.filter((fixture) => fixture.method === method);
   const match =
     (wanted !== undefined
@@ -325,6 +327,14 @@ describe('TodayPage — the profile home (issue #1253)', () => {
     renderHome();
     await screen.findByRole('heading', { name: 'Maya' });
     expect(screen.getByText(messages['symptomTrendsTitle'] ?? 'missing')).toBeInTheDocument();
+  });
+
+  // The phase card rides the same domain call pattern (issue #1796); the
+  // fake module answers the statistical-cycle case.
+  it('renders the phase card from the domain module', async () => {
+    renderHome();
+    await screen.findByRole('heading', { name: 'Maya' });
+    expect(screen.getByTestId('phase-range')).toBeInTheDocument();
   });
 
   it('renders the estimate card from the domain module for the first profile', async () => {
