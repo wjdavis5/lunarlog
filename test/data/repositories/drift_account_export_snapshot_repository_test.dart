@@ -188,6 +188,30 @@ void main() {
     expect(snapshot.guardianNotes.single.body, 'Caregiver note for Riley');
   });
 
+  test('an observation with malformed raw JSON is rejected at the write '
+      'boundary (issue #1830)', () async {
+    final storage = db.storage;
+    final entry = await storage.upsertDayEntry(
+      profileId: profileId,
+      localDate: '2026-01-06',
+      tz: 'UTC',
+      flow: dbtables.FlowLevel.medium,
+    );
+
+    await expectLater(
+      storage.upsertObservation(
+        dayEntryId: entry.id,
+        profileId: profileId,
+        localDate: '2026-01-06',
+        tz: 'UTC',
+        category: 'bbt',
+        valueNum: 36.5,
+        raw: 'not json at all',
+      ),
+      throwsA(isA<ArgumentError>()),
+    );
+  });
+
   test('profileMode is null when no profile_modes row was ever written',
       () async {
     final snapshot = await snapshotRepo.forProfile(profileId);

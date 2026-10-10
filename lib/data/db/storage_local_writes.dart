@@ -320,6 +320,17 @@ void _validateObservation({
   _boundedOrThrow(unit, kMaxObservationUnitLength, 'unit');
   _boundedOrThrow(sourceId, kMaxObservationSourceIdLength, 'sourceId');
   _boundedUtf8BytesOrThrow(raw, kMaxObservationRawLength, 'raw');
+  // Issue #1830: `raw` is stored as JSON text and the export decodes it;
+  // parse it here so no writer can store a value the export would crash on
+  // (the same boundary discipline as the valueNum check above). The empty
+  // string is rejected too: it is not JSON text and fails the same decode.
+  if (raw != null) {
+    try {
+      jsonDecode(raw);
+    } on FormatException {
+      throw ArgumentError.value(raw, 'raw', 'must be JSON text');
+    }
+  }
   if (intensity != null &&
       (intensity < kMinObservationIntensity || intensity > kMaxObservationIntensity)) {
     throw ArgumentError.value(intensity, 'intensity',
