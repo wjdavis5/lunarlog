@@ -276,17 +276,9 @@ class LocalPredictionProjectionPublisher
       );
       _retryAttempts.remove(profileId);
       _lastPublished[profileId] = projection;
-      // Issue #1860: the publish above can resolve after a retraction for
-      // this profile already completed (the profile archived mid-flight,
-      // or the prediction suppressed while this flush's RPC was in
-      // flight): the upsert would then have re-created the row the
-      // retraction deleted, and for an archive no further emission
-      // re-arms anything. Re-owe and re-run the retraction when the
-      // profile is gone or its current state is a suppression.
-      if (!_activeIds.contains(profileId) || _suppressed.contains(profileId)) {
-        _pendingRetraction.add(profileId);
-        unawaited(_flushRetraction(profileId));
-      }
+      // Issue #1860: see [_reRetractIfSuperseded] — the publish above can
+      // have landed after a retraction for this profile already completed.
+      _reRetractIfSuperseded(profileId);
     } catch (error, stackTrace) {
       // Issue LLA-062: a newer emission already superseded this attempt
       // (a fresher prediction re-armed [_pending], or the profile has
@@ -466,10 +458,22 @@ class LocalPredictionProjectionPublisher
     // or the regular debounced [_flush]) published it most recently.
     _lastPublished[profileId] = projection;
     // Issue #1860: same late-landing guard as [_flush]'s success path.
-    if (!_activeIds.contains(profileId) || _suppressed.contains(profileId)) {
-      _pendingRetraction.add(profileId);
-      unawaited(_flushRetraction(profileId));
+    _reRetractIfSuperseded(profileId);
+  }
+
+  /// Issue #1860: a publish can resolve after a retraction for this profile
+  /// already completed (the profile archived mid-flight, or the prediction
+  /// suppressed while the publish's RPC was in flight): the upsert would
+  /// then have re-created the row the retraction deleted, and for an
+  /// archive no further emission re-arms anything. Re-owe and re-run the
+  /// retraction when the profile is gone or its current state is a
+  /// suppression.
+  void _reRetractIfSuperseded(String profileId) {
+    if (_activeIds.contains(profileId) && !_suppressed.contains(profileId)) {
+      return;
     }
+    _pendingRetraction.add(profileId);
+    unawaited(_flushRetraction(profileId));
   }
 
   @override
