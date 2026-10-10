@@ -5,8 +5,8 @@
 // this; `site.yml` files or refreshes a single rolling issue when it fails
 // (the #707 pattern), rather than one issue per run.
 //
-// Until issue #1104 adds the outbound medical sources there are no external
-// links, so this is a deliberate no-op that exits 0.
+// The first outbound links are the /learn article sources (issue #1811),
+// rendered from the #1103 literacy export.
 //
 //   node scripts/check-external-links.mjs
 

@@ -77,7 +77,7 @@ universal-link routes.
   Worker's source plus its `deno test` suite (still run by `ci.yml`'s
   `edge-functions` job). `site/src/content/literacy/articles.json` is the
   #1103 literacy export, checked byte for byte by
-  `test/tool/export_literacy_test.dart`; it is not rendered yet (#1104).
+  `test/tool/export_literacy_test.dart`; rendered at `/learn` (issue #1811).
   `site/src/content/help-cards/cards.json` is the #1106 help-cards export
   (`dart run tool/export_help_cards.dart`, freshness-checked by
   `test/tool/export_help_cards_test.dart`); the how-to guides render it
@@ -108,7 +108,7 @@ universal-link routes.
   scrolling region by `astro.config.mjs`, and when a link or button
   that stands on its own is under 44 px tall at 390 px), `check:lighthouse` (`@lhci/cli` budgets:
   accessibility 100, performance and best-practices >= 95), and
-  `check:external-links` (outbound links; a no-op until #1104).
+  `check:external-links` (outbound links; the `/learn` article sources are the first, issue #1811).
 - **Headers.** `site/public/_headers` carries the strict, third-party-free
   response headers (CSP, HSTS, `X-Frame-Options: DENY`, no-referrer,
   nosniff, deny-by-default Permissions-Policy). Workers Static Assets applies
