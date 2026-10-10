@@ -181,11 +181,14 @@ function fixtureEnvelope(method: string, request: Record<string, unknown>): unkn
   // and the button's two labels are tested against the real compiled
   // module in today-page-today-log.test.tsx.)
   const nothingToday = method === 'todayLog' && (request['entry'] ?? null) === null;
-  const wanted = suppressed
-    ? 'predict.suppressed-lifecycle'
-    : nothingToday
-      ? 'todayLog.no-entry'
-      : undefined;
+  const wanted =
+    method === 'cycleRecap'
+      ? 'cycleRecap.completed-cycle'
+      : suppressed
+        ? 'predict.suppressed-lifecycle'
+        : nothingToday
+          ? 'todayLog.no-entry'
+          : undefined;
   const candidates = fixtureCases.filter((fixture) => fixture.method === method);
   const match =
     (wanted !== undefined
@@ -254,6 +257,14 @@ describe('TodayPage — the profile home (issue #1253)', () => {
     renderHome();
     await screen.findByRole('heading', { name: 'Maya' });
     expect(screen.getByText(messages['bbtChartEmptyTitle'] ?? 'missing')).toBeInTheDocument();
+  });
+
+  // The recap card rides the same domain call pattern as the estimate and
+  // history (issue #1796); the fake module answers the completed-cycle case.
+  it('renders the recap card from the domain module', async () => {
+    renderHome();
+    await screen.findByRole('heading', { name: 'Maya' });
+    expect(screen.getByTestId('cycle-recap-card')).toBeInTheDocument();
   });
 
   // First-run orientation (issue #1795): a signed-in account with no
