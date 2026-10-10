@@ -71,7 +71,7 @@ void main() {
     test('Day 1 during episode -> earlyFollicular', () {
       final today = LocalDate(2026, 9, 1);
       final pred = buildPrediction(today: today, duringEpisode: true);
-      final info = deriveSubphase(prediction: pred, today: today);
+      final info = deriveSubphase(prediction: pred);
 
       expect(info.subphase, CycleSubphase.earlyFollicular);
       expect(info.cycleDay, 1);
@@ -85,7 +85,7 @@ void main() {
     test('Day 4 during episode -> earlyFollicular', () {
       final today = LocalDate(2026, 9, 4);
       final pred = buildPrediction(today: today, duringEpisode: true);
-      final info = deriveSubphase(prediction: pred, today: today);
+      final info = deriveSubphase(prediction: pred);
 
       expect(info.subphase, CycleSubphase.earlyFollicular);
       expect(info.cycleDay, 4);
@@ -94,7 +94,7 @@ void main() {
     test('Day 8 post-menses -> lateFollicular', () {
       final today = LocalDate(2026, 9, 8);
       final pred = buildPrediction(today: today);
-      final info = deriveSubphase(prediction: pred, today: today);
+      final info = deriveSubphase(prediction: pred);
 
       expect(info.subphase, CycleSubphase.lateFollicular);
       expect(info.cycleDay, 8);
@@ -104,7 +104,7 @@ void main() {
     test('Day 14 near estimated ovulation -> ovulation', () {
       final today = LocalDate(2026, 9, 14);
       final pred = buildPrediction(today: today);
-      final info = deriveSubphase(prediction: pred, today: today);
+      final info = deriveSubphase(prediction: pred);
 
       expect(info.subphase, CycleSubphase.ovulation);
       expect(info.cycleDay, 14);
@@ -114,7 +114,7 @@ void main() {
     test('Day 18 post-ovulation -> earlyLuteal', () {
       final today = LocalDate(2026, 9, 18);
       final pred = buildPrediction(today: today);
-      final info = deriveSubphase(prediction: pred, today: today);
+      final info = deriveSubphase(prediction: pred);
 
       expect(info.subphase, CycleSubphase.earlyLuteal);
       expect(info.cycleDay, 18);
@@ -124,7 +124,7 @@ void main() {
     test('Day 22 mid luteal -> midLuteal', () {
       final today = LocalDate(2026, 9, 22);
       final pred = buildPrediction(today: today);
-      final info = deriveSubphase(prediction: pred, today: today);
+      final info = deriveSubphase(prediction: pred);
 
       expect(info.subphase, CycleSubphase.midLuteal);
       expect(info.cycleDay, 22);
@@ -134,7 +134,7 @@ void main() {
     test('Day 27 premenstrual -> lateLuteal', () {
       final today = LocalDate(2026, 9, 27);
       final pred = buildPrediction(today: today);
-      final info = deriveSubphase(prediction: pred, today: today);
+      final info = deriveSubphase(prediction: pred);
 
       expect(info.subphase, CycleSubphase.lateLuteal);
       expect(info.cycleDay, 27);
@@ -144,7 +144,7 @@ void main() {
     test('Overdue cycle (Day 32) -> lateLuteal with honest hedged notice', () {
       final today = LocalDate(2026, 10, 2);
       final pred = buildPrediction(today: today);
-      final info = deriveSubphase(prediction: pred, today: today);
+      final info = deriveSubphase(prediction: pred);
 
       expect(info.subphase, CycleSubphase.lateLuteal);
       expect(info.isHedged, isTrue);
@@ -158,7 +158,7 @@ void main() {
         today: today,
         tier: CycleConfidence.learning,
       );
-      final info = deriveSubphase(prediction: pred, today: today);
+      final info = deriveSubphase(prediction: pred);
 
       expect(info.isHedged, isTrue);
       expect(info.hedgedNotice, contains('estimated from your cycle average'));
@@ -265,11 +265,11 @@ void main() {
         () {
       final today = onCycleDay(35);
       expectLateLutealRunningLong(
-        deriveSubphase(prediction: computed(today: today), today: today),
+        deriveSubphase(prediction: computed(today: today)),
         cycleDay: 35,
       );
       expectLateLutealRunningLong(
-        deriveSubphase(prediction: provisional(today: today), today: today),
+        deriveSubphase(prediction: provisional(today: today)),
         cycleDay: 35,
       );
     });
@@ -282,7 +282,7 @@ void main() {
       expect(prediction.estimatedNextStart, LocalDate(2026, 11, 23));
 
       expectLateLutealRunningLong(
-        deriveSubphase(prediction: prediction, today: today),
+        deriveSubphase(prediction: prediction),
         cycleDay: 70,
       );
     });
@@ -294,7 +294,6 @@ void main() {
       expectLateLutealRunningLong(
         deriveSubphase(
           prediction: computed(today: today, skipped: true),
-          today: today,
         ),
         cycleDay: 35,
       );
@@ -305,7 +304,6 @@ void main() {
       final today = onCycleDay(35);
       final info = deriveSubphase(
         prediction: provisional(today: today, skipped: true),
-        today: today,
       );
 
       expectLateLutealRunningLong(info, cycleDay: 35);
@@ -323,10 +321,9 @@ void main() {
       for (var cycleDay = 1; cycleDay <= 70; cycleDay++) {
         final today = onCycleDay(cycleDay);
         final plain =
-            deriveSubphase(prediction: computed(today: today), today: today);
+            deriveSubphase(prediction: computed(today: today));
         final skipped = deriveSubphase(
           prediction: computed(today: today, skipped: true),
-          today: today,
         );
         final reason = 'cycle day $cycleDay';
 
@@ -354,7 +351,7 @@ void main() {
       for (var cycleDay = 1; cycleDay <= 70; cycleDay++) {
         final today = onCycleDay(cycleDay);
         final info =
-            deriveSubphase(prediction: computed(today: today), today: today);
+            deriveSubphase(prediction: computed(today: today));
         final reason = 'cycle day $cycleDay';
         // Past day 28 the model stays in late luteal and stretches it to
         // today.
@@ -385,7 +382,6 @@ void main() {
           final today = onCycleDay(cycleDay);
           final info = deriveSubphase(
             prediction: computed(today: today, skipped: skipped),
-            today: today,
           );
           final reason = 'cycle day $cycleDay, skipped: $skipped';
 
@@ -452,7 +448,6 @@ void main() {
         final ovulation = estimate.addDays(-kDefaultLutealPhaseDays);
         final info = deriveSubphase(
           prediction: fromLengths(lengths, ovulation),
-          today: ovulation,
         );
         expect(info.subphase, CycleSubphase.ovulation, reason: reason);
         expect(info.startDate, ovulation.addDays(-1), reason: reason);
