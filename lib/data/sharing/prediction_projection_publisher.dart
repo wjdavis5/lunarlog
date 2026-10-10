@@ -101,6 +101,14 @@ class LocalPredictionProjectionPublisher
   // payload — always republishes rather than being deduped against a
   // snapshot the server no longer holds.
   final Map<String, PredictionProjection> _lastPublished = {};
+  // Issue #1860: profiles whose newest emission is a suppression. Unlike
+  // [_pendingRetraction], this survives the retraction's own completion, so
+  // a publish that lands after a completed retraction can tell it must
+  // re-retract rather than leave the resurrected row in place.
+  final Set<String> _suppressed = {};
+  // Issue #1860: the cold-start sweep of connected-but-inactive profiles
+  // runs once per publisher instance (see [_onProfilesChanged]).
+  bool _sweptInactiveConnections = false;
   // Issue LLA-105: coalesces concurrent outgoingConnectedProfileIds()
   // lookups (e.g. several profiles' debounced flushes landing in the same
   // tick, which the LLA-070 date-rollover ticker makes more likely) into
@@ -126,6 +134,7 @@ class LocalPredictionProjectionPublisher
       _retryAttempts.remove(id);
       _generation.remove(id);
       _lastPublished.remove(id);
+      _suppressed.remove(id);
       // Issue #1727: a profile that leaves the active set (archived, or
       // otherwise gone from the watch) must have its published
       // server-side projection retracted — nothing server-side clears it
@@ -142,12 +151,47 @@ class LocalPredictionProjectionPublisher
     for (final id in _pendingRetraction.toList()) {
       if (!activeIds.contains(id)) unawaited(_flushRetraction(id));
     }
+    // Issue #1860: the departure branch above only catches a profile that
+    // leaves while this publisher is running. One archived while the app
+    // was closed (or by another device) is simply absent from the first
+    // emission, and nothing server-side clears its snapshot, so the first
+    // signed-in emission sweeps the outgoing connections for it. (Signed
+    // out, the sweep waits for a later emission — no account, no server
+    // calls.)
+    if (!_sweptInactiveConnections && _isSignedIn()) {
+      _sweptInactiveConnections = true;
+      unawaited(_retractInactiveConnected());
+    }
     for (final id in activeIds) {
       _predictionSubs.putIfAbsent(
         id,
         () => _predictionFor(id)
             .listen((prediction) => _onPrediction(id, prediction)),
       );
+    }
+  }
+
+  /// Issue #1860: the cold-start half of the retraction sweep — every
+  /// connected profile that is not in the active set owes a retraction
+  /// (its published snapshot is serving a profile that is out of everyday
+  /// use, and nothing server-side clears it while the connection stays
+  /// active). The departure branch in [_onProfilesChanged] only sees a
+  /// profile that leaves while this publisher is running; this catches one
+  /// archived while the app was closed, or by another device. Best-effort:
+  /// a failed lookup leaves the flag clear so the next profiles emission
+  /// retries.
+  Future<void> _retractInactiveConnected() async {
+    if (_disposed) return;
+    try {
+      final connected = await _connectedProfileIds();
+      if (_disposed) return;
+      for (final profileId in connected) {
+        if (_activeIds.contains(profileId)) continue;
+        _pendingRetraction.add(profileId);
+        unawaited(_flushRetraction(profileId));
+      }
+    } catch (_) {
+      _sweptInactiveConnections = false;
     }
   }
 
@@ -168,6 +212,9 @@ class LocalPredictionProjectionPublisher
         _pending.remove(profileId);
         _pendingRetraction.remove(profileId);
         _retryAttempts.remove(profileId);
+        // Issue #1860: the newest state is no longer a suppression, so a
+        // late-landing publish must not re-retract over it.
+        _suppressed.remove(profileId);
         return;
       case PredictionsSuppressed():
       case PredictionsDisabled():
@@ -182,10 +229,14 @@ class LocalPredictionProjectionPublisher
         _retryAttempts.remove(profileId);
         _lastPublished.remove(profileId);
         _pendingRetraction.add(profileId);
+        // Issue #1860: remembered past the retraction's completion so a
+        // publish still in flight cannot silently resurrect the row.
+        _suppressed.add(profileId);
         unawaited(_flushRetraction(profileId));
         return;
       case ActivePrediction():
         _pendingRetraction.remove(profileId);
+        _suppressed.remove(profileId);
         _pending[profileId] = prediction;
         _retryAttempts.remove(profileId);
         _debounceTimers[profileId] =
@@ -225,6 +276,9 @@ class LocalPredictionProjectionPublisher
       );
       _retryAttempts.remove(profileId);
       _lastPublished[profileId] = projection;
+      // Issue #1860: see [_reRetractIfSuperseded] — the publish above can
+      // have landed after a retraction for this profile already completed.
+      _reRetractIfSuperseded(profileId);
     } catch (error, stackTrace) {
       // Issue LLA-062: a newer emission already superseded this attempt
       // (a fresher prediction re-armed [_pending], or the profile has
@@ -363,14 +417,23 @@ class LocalPredictionProjectionPublisher
   @override
   Future<void> republishConnected() async {
     if (_disposed || !_isSignedIn()) return;
+    final Set<String> connected;
     try {
-      final connected = await _connectedProfileIds();
-      for (final profileId in connected) {
-        if (_disposed) return;
-        await _publishCurrent(profileId);
-      }
+      connected = await _connectedProfileIds();
     } catch (_) {
-      // Best-effort (see above).
+      // Best-effort (see above): the stream-driven path still publishes.
+      return;
+    }
+    for (final profileId in connected) {
+      if (_disposed) return;
+      try {
+        await _publishCurrent(profileId);
+      } catch (_) {
+        // Issue #1860: one profile's failure (a rejected publish, a
+        // stream error) must not starve every later profile on every
+        // resume; the regular stream-driven path retries it on the next
+        // emission.
+      }
     }
   }
 
@@ -394,6 +457,23 @@ class LocalPredictionProjectionPublisher
     // published payload regardless of which path (this explicit refresh,
     // or the regular debounced [_flush]) published it most recently.
     _lastPublished[profileId] = projection;
+    // Issue #1860: same late-landing guard as [_flush]'s success path.
+    _reRetractIfSuperseded(profileId);
+  }
+
+  /// Issue #1860: a publish can resolve after a retraction for this profile
+  /// already completed (the profile archived mid-flight, or the prediction
+  /// suppressed while the publish's RPC was in flight): the upsert would
+  /// then have re-created the row the retraction deleted, and for an
+  /// archive no further emission re-arms anything. Re-owe and re-run the
+  /// retraction when the profile is gone or its current state is a
+  /// suppression.
+  void _reRetractIfSuperseded(String profileId) {
+    if (_activeIds.contains(profileId) && !_suppressed.contains(profileId)) {
+      return;
+    }
+    _pendingRetraction.add(profileId);
+    unawaited(_flushRetraction(profileId));
   }
 
   @override
