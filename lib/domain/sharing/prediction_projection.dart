@@ -87,8 +87,8 @@ class PredictionProjection {
   /// reusing [CycleConfidence] rather than inventing a second vocabulary.
   /// `null` when the field is absent from the payload (an older snapshot,
   /// or one published before this field existed) — never a guessed
-  /// default. See the library doc comment for why this currently never
-  /// crosses the wire in production.
+  /// default. Issue #593 widened the server's payload allowlist so this
+  /// round-trips to a recipient's device (see the library doc comment).
   final CycleConfidence? confidenceTier;
 
   /// The server's derived-phase key allowlist, in wire order.
