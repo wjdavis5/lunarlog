@@ -512,6 +512,23 @@ class HealthConnectAdapter(context: Context) {
                 if (decision != "allowed") {
                     result.success(decision)
                 } else {
+                    // Issue #1876: replacing the bound profile drops the
+                    // displaced profile's read position, as its own
+                    // `unbind` would have. Only `unbind` used to drop it,
+                    // so a process killed between the Dart-side binding
+                    // write and the coordinator's `onUnbound` left the
+                    // old change token behind — and binding that profile
+                    // again later started from it instead of the clean
+                    // full read every re-bind is documented to make
+                    // (Issue #1610). Re-asserting the same binding
+                    // (Issue #1212) is not a displacement.
+                    val displaced = storedBoundProfileId
+                    if (displaced != null && displaced != g.profileId) {
+                        prefs.edit()
+                            .remove(changesTokenKey(displaced))
+                            .remove(reachedPastKey(displaced))
+                            .apply()
+                    }
                     prefs.edit().putString(BOUND_PROFILE_KEY, g.profileId).apply()
                     // Issue #993: a first-ever bind during this session
                     // arms the periodic background-import job (KEEP policy,
@@ -1599,7 +1616,26 @@ class HealthConnectAdapter(context: Context) {
             val token = decoded?.token
                 ?: prefs.getString(changesTokenKey(profileId), null)
             if (token != null) {
-                val page = client.getChanges(token)
+                val page = try {
+                    client.getChanges(token)
+                } catch (e: SecurityException) {
+                    // A revoked read permission is not a bad token: the
+                    // caller's handler reports it as permissionDenied, and
+                    // the token stays for when access returns.
+                    throw e
+                } catch (e: Exception) {
+                    // Issue #1882: a token Health Connect throws on (the
+                    // prefs of another install, carried over by a
+                    // device-to-device transfer, or a store it no longer
+                    // matches) would fail every pass identically, forever.
+                    // Drop it and recover with the whole-range read a
+                    // first import uses, the same recovery the
+                    // expired-token case below makes.
+                    prefs.edit().remove(changesTokenKey(profileId)).apply()
+                    return readRangePage(
+                        client, profileId, startMs, endMs, pageSize,
+                        HealthImportCursor.FLOW, null)
+                }
                 if (page.changesTokenExpired) {
                     // Health Connect tokens expire after 30 days: clear the
                     // stale anchor and recover with the same full-range read

@@ -715,13 +715,19 @@ enum HealthKitChannelHandler {
   /// queue), so no lock is needed.
   static var pendingBackgroundImportTrigger = false
 
-  /// The read types background delivery is enabled for: exactly the two
-  /// types the import reads (Issues #217/#458) — deliberately NOT the
-  /// write types and NOT Apple's computed cycle-deviation types (the
-  /// background path is import-only, and a computed type is never written
-  /// by any path).
+  /// The read types background delivery is enabled for: exactly the types
+  /// the import reads on this platform (Issues #217/#458) — deliberately
+  /// NOT the write types and NOT Apple's computed cycle-deviation types
+  /// (the background path is import-only, and a computed type is never
+  /// written by any path).
+  ///
+  /// Issue #1878: only menstrual flow. The iOS import reads nothing else —
+  /// [readMenstrualFlowPage] queries this one type, and its payload maps
+  /// only flow intensities — so an observer for intermenstrual bleeding,
+  /// which this app itself writes (so every spotting change fired it),
+  /// woke the app for a pass that could never find anything to import.
   static var backgroundReadTypes: [HKCategoryType] {
-    [menstrualFlowType, intermenstrualBleedingType]
+    [menstrualFlowType]
   }
 
   /// The observer queries currently registered for the read types, keyed
@@ -756,6 +762,23 @@ enum HealthKitChannelHandler {
     }
   }
 
+  /// Issue #1878: whether the dropped read type's delivery has been turned
+  /// off in this process. One attempt per process is enough — the
+  /// registration it cleans up is persistent, so a later process tries
+  /// again — and the call is best-effort, silently ignoring a failure
+  /// because nothing depends on the answer.
+  private static var droppedReadDeliveryDisabled = false
+
+  /// Turns background delivery back off for intermenstrual bleeding: a
+  /// build before Issue #1878 enabled it, and this build registers no
+  /// observer for it (see [backgroundReadTypes]), so leaving it on would
+  /// wake the app for a spotting change the import can never read.
+  private static func disableDroppedReadDeliveryOnce() {
+    guard !droppedReadDeliveryDisabled else { return }
+    droppedReadDeliveryDisabled = true
+    store.disableBackgroundDelivery(for: intermenstrualBleedingType) { _, _ in }
+  }
+
   /// Registers the observer query and enables immediate background
   /// delivery for each read type — called from
   /// `didInitializeImplicitFlutterEngine` (at app start, only when a
@@ -776,6 +799,11 @@ enum HealthKitChannelHandler {
   static func registerBackgroundImportTriggerIfBound() {
     guard HKHealthStore.isHealthDataAvailable() else { return }
     guard storedBoundProfileId != nil else { return }
+    // Issue #1878: a build before this one enabled background delivery
+    // for intermenstrual bleeding, which the import does not read and
+    // this build registers no observer for — so a spotting change could
+    // still wake the app for nothing.
+    disableDroppedReadDeliveryOnce()
     for type in backgroundReadTypes {
       guard registeredObserverQueries[type] == nil else {
         // Issue #1212: this type already has its one query for this
@@ -881,6 +909,17 @@ enum HealthKitChannelHandler {
       guard decision == "allowed" else {
         result(decision)
         return
+      }
+      // Issue #1876: replacing the bound profile drops the displaced
+      // profile's import anchor, as its own `unbind` would have. Only
+      // `unbind` used to drop it, so a process killed between the
+      // Dart-side binding write and the coordinator's `onUnbound` left
+      // the old anchor behind — and binding that profile again later
+      // started from it instead of the clean full read every re-bind is
+      // documented to make (Issue #1610). Re-asserting the same binding
+      // (Issue #1212) is not a displacement and keeps the anchor.
+      if let displaced = storedBoundProfileId, displaced != g.profileId {
+        dropStoredImportAnchor(displaced)
       }
       UserDefaults.standard.set(g.profileId, forKey: boundProfileKey)
       // Issue #993: a first-ever bind during this session starts the

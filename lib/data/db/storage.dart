@@ -70,6 +70,7 @@ import 'package:drift/drift.dart';
 import 'package:lunarlog/domain/activity/merge_events.dart';
 import 'package:lunarlog/domain/health/health_import_declined.dart';
 import 'package:lunarlog/domain/health/health_import_deletions.dart';
+import 'package:lunarlog/domain/health/health_import_whole_read.dart';
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
 import 'package:lunarlog/domain/logging/day_entry_policy.dart';
@@ -108,6 +109,7 @@ part 'app_settings_storage.dart';
 part 'health_device_storage.dart';
 part 'health_import_declined_storage.dart';
 part 'health_import_deletions_storage.dart';
+part 'health_import_whole_read_storage.dart';
 part 'storage_local_writes.dart';
 part 'storage_queries.dart';
 part 'storage_remote_apply.dart';
@@ -163,6 +165,7 @@ class LunarLogStorage
         LunarLogStorageAppSettings,
         LunarLogStorageHealthImportDeclined,
         LunarLogStorageHealthImportDeletions,
+        LunarLogStorageHealthImportWholeRead,
         LunarLogStorageLocalWrites,
         LunarLogStorageSyncMetadata,
         LunarLogStorageHealthDevice,
@@ -184,6 +187,7 @@ class LunarLogStorage
         HealthDeviceStore,
         ImportedDataPurgeStore,
         HealthImportDeclinedStore,
+        HealthImportWholeReadStore,
         DayEntriesRepositoryStore,
         ObservationsRepositoryStore,
         ActivityFeedStore,

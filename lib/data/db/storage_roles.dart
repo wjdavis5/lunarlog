@@ -496,6 +496,7 @@ abstract interface class DayEntriesRepositoryStore
         MergeEventStore,
         AppSettingsStore,
         HealthImportDeclinedStore,
+        HealthImportWholeReadStore,
         HealthImportDeletionStore {}
 
 /// The `day_entries`/`observations` surface
