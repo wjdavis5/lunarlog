@@ -10,6 +10,7 @@ import '../../domain/insights/symptom_trends.dart';
 import '../../domain/models/local_date.dart';
 import '../content/cycle_literacy_library_screen.dart';
 import '../l10n/dates.dart' as dates;
+import '../logging/day_sheet.dart' show localizedFlowLabel;
 import '../theme/lunarlog_colors.dart';
 
 class SymptomTrendsSection extends StatelessWidget {
@@ -105,7 +106,7 @@ class SymptomTrendsSection extends StatelessWidget {
               subtitle: Text(
                 l10n.symptomTrendsFlowSubtitle(
                   report.flowPattern!.typicalPeakDay,
-                  report.flowPattern!.typicalPeakFlow.name,
+                  localizedFlowLabel(report.flowPattern!.typicalPeakFlow, l10n),
                 ),
               ),
             ),

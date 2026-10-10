@@ -237,9 +237,20 @@ export const symptomPatternSchema = z.object({
   meetsThreshold: z.boolean(),
 });
 
+/**
+ * The flow levels `typicalPeakFlow` can carry (issue #1822): the facade
+ * sends the `FlowLevel` wire value, and the calculator only ever picks
+ * among the four bleed levels
+ * (lib/domain/insights/cycle_insights_calculator.dart's `_buildFlowPattern`),
+ * so the insights flow line can label it from the same catalogue the day
+ * editor uses. `test/domain/web_domain_fixtures_test.dart` fails if the
+ * two lists drift.
+ */
+export const flowPatternPeakFlowSchema = z.enum(['light', 'medium', 'heavy', 'super_heavy']);
+
 export const flowPatternSchema = z.object({
   flowByCycleDay: z.record(z.string(), z.record(z.string(), z.number().int())),
-  typicalPeakFlow: z.string(),
+  typicalPeakFlow: flowPatternPeakFlowSchema,
   typicalPeakDay: z.number().int(),
 });
 

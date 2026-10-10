@@ -163,6 +163,43 @@ void main() {
     );
   });
 
+  // Issue #1822: `insights` answers its flow pattern's typical peak as a
+  // `FlowLevel` wire value, and `_buildFlowPattern`
+  // (lib/domain/insights/cycle_insights_calculator.dart) only ever picks
+  // among the four bleed levels - so the web subtitle's schema must list
+  // exactly those. A level missing from the schema makes the insights card
+  // throw for a report whose peak is that level, fixture or no fixture.
+  test('flowPatternPeakFlowSchema lists exactly the bleed flow levels', () {
+    final schemasSource =
+        File('webapp/src/domain/schemas.ts').readAsStringSync();
+    final match = RegExp(
+      r'flowPatternPeakFlowSchema\s*=\s*z\.enum\(\[([^\]]*)\]',
+    ).firstMatch(schemasSource);
+    expect(
+      match,
+      isNotNull,
+      reason: 'webapp/src/domain/schemas.ts no longer carries '
+          '`flowPatternPeakFlowSchema = z.enum([...])`. If it moved or was '
+          'renamed, point this test at the new shape.',
+    );
+    final schemaValues = RegExp(r"'([^']+)'")
+        .allMatches(match!.group(1)!)
+        .map((m) => m.group(1)!)
+        .toSet();
+    final dartValues = {
+      for (final level in FlowLevel.values)
+        if (isBleed(level)) level.toDb(),
+    };
+    expect(
+      schemaValues,
+      dartValues,
+      reason: 'The peak-flow values the web subtitle can label '
+          '(webapp/src/domain/schemas.ts) and the levels `_buildFlowPattern` '
+          'picks among (lib/domain/insights/cycle_insights_calculator.dart) '
+          'have drifted. Update both sides in the same change.',
+    );
+  });
+
   // Issue #1272: the facade serialises `TrendDirection` by `.name`
   // (`tool/web_domain/facade.dart`'s `insightsReportToJson`), and the web
   // client parses every insights response with `symptomPatternSchema`'s

@@ -498,6 +498,25 @@ List<Map<String, Object?>> _insightCases() {
       if (cycleDay == 2) 'cramps',
     ],
   );
+  // Issue #1822: the typical peak resolves to `superHeavy` - the one flow
+  // level whose wire value differs from its Dart enum name - so the
+  // committed fixture pins the facade's wire serialisation, not just its
+  // shape. Each cycle's first bleed day is super heavy; the rest are light.
+  final superHeavyPeak = <Map<String, Object?>>[];
+  for (var cycle = 0; cycle < 4; cycle++) {
+    final start = _addDays(today, -84 + cycle * 28);
+    for (var day = 0; day < 4; day++) {
+      final date = _addDays(start, day);
+      superHeavyPeak.add(
+        _entry(
+          id: 'entry-profile-1-$cycle-$day',
+          localDate: date,
+          flow: day == 0 ? 'super_heavy' : 'light',
+          updatedAt: '${date}T12:00:00.000Z',
+        ),
+      );
+    }
+  }
   return [
     _case('insights.patterns-and-cramps', 'insights', {
       'today': today,
@@ -508,6 +527,11 @@ List<Map<String, Object?>> _insightCases() {
       'today': today,
       'tz': 'UTC',
       'entries': threeCycles,
+    }),
+    _case('insights.super-heavy-peak', 'insights', {
+      'today': today,
+      'tz': 'UTC',
+      'entries': superHeavyPeak,
     }),
   ];
 }

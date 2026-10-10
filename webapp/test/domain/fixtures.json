@@ -7258,6 +7258,283 @@
     }
   },
   {
+    "name": "insights.super-heavy-peak",
+    "method": "insights",
+    "request": {
+      "today": "2026-09-30",
+      "tz": "UTC",
+      "entries": [
+        {
+          "id": "entry-profile-1-0-0",
+          "profileId": "profile-1",
+          "localDate": "2026-07-08",
+          "tz": "UTC",
+          "flow": "super_heavy",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-07-08T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-0-1",
+          "profileId": "profile-1",
+          "localDate": "2026-07-09",
+          "tz": "UTC",
+          "flow": "light",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-07-09T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-0-2",
+          "profileId": "profile-1",
+          "localDate": "2026-07-10",
+          "tz": "UTC",
+          "flow": "light",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-07-10T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-0-3",
+          "profileId": "profile-1",
+          "localDate": "2026-07-11",
+          "tz": "UTC",
+          "flow": "light",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-07-11T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-1-0",
+          "profileId": "profile-1",
+          "localDate": "2026-08-05",
+          "tz": "UTC",
+          "flow": "super_heavy",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-08-05T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-1-1",
+          "profileId": "profile-1",
+          "localDate": "2026-08-06",
+          "tz": "UTC",
+          "flow": "light",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-08-06T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-1-2",
+          "profileId": "profile-1",
+          "localDate": "2026-08-07",
+          "tz": "UTC",
+          "flow": "light",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-08-07T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-1-3",
+          "profileId": "profile-1",
+          "localDate": "2026-08-08",
+          "tz": "UTC",
+          "flow": "light",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-08-08T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-2-0",
+          "profileId": "profile-1",
+          "localDate": "2026-09-02",
+          "tz": "UTC",
+          "flow": "super_heavy",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-09-02T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-2-1",
+          "profileId": "profile-1",
+          "localDate": "2026-09-03",
+          "tz": "UTC",
+          "flow": "light",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-09-03T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-2-2",
+          "profileId": "profile-1",
+          "localDate": "2026-09-04",
+          "tz": "UTC",
+          "flow": "light",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-09-04T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-2-3",
+          "profileId": "profile-1",
+          "localDate": "2026-09-05",
+          "tz": "UTC",
+          "flow": "light",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-09-05T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-3-0",
+          "profileId": "profile-1",
+          "localDate": "2026-09-30",
+          "tz": "UTC",
+          "flow": "super_heavy",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-09-30T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-3-1",
+          "profileId": "profile-1",
+          "localDate": "2026-10-01",
+          "tz": "UTC",
+          "flow": "light",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-10-01T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-3-2",
+          "profileId": "profile-1",
+          "localDate": "2026-10-02",
+          "tz": "UTC",
+          "flow": "light",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-10-02T12:00:00.000Z"
+        },
+        {
+          "id": "entry-profile-1-3-3",
+          "profileId": "profile-1",
+          "localDate": "2026-10-03",
+          "tz": "UTC",
+          "flow": "light",
+          "tags": [],
+          "note": null,
+          "notePrivate": false,
+          "pms": false,
+          "source": "manual",
+          "sourceId": null,
+          "importId": null,
+          "updatedAt": "2026-10-03T12:00:00.000Z"
+        }
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "data": {
+        "symptomPatterns": [],
+        "flowPattern": {
+          "flowByCycleDay": {
+            "1": {
+              "superHeavy": 3
+            },
+            "2": {
+              "light": 3
+            },
+            "3": {
+              "light": 3
+            },
+            "4": {
+              "light": 3
+            }
+          },
+          "typicalPeakFlow": "super_heavy",
+          "typicalPeakDay": 1
+        },
+        "crampPrediction": null,
+        "analyzedCycleCount": 3,
+        "hasEnoughData": true
+      }
+    }
+  },
+  {
     "name": "bbtChart.points-by-cycle",
     "method": "bbtChart",
     "request": {
