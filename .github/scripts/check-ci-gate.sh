@@ -4,10 +4,11 @@
 # Shared by ios-release.yml and play-store-release.yml (Issue #498).
 #
 # Gates release workflows on the successful completion of required CI check runs
-# (Database tests (pgTAP), Edge Functions (deno test), and the post-#644 sharded
-# successors of the old "Analyze, test, build web" monolith: Verify (codegen,
-# analyze, web build), Test (shard 0|1|2), and Quality gate (coverage floor +
-# CRAP)).
+# (Database tests (pgTAP), Edge Functions (deno test), Web app (lint, typecheck,
+# unit, build, e2e) - required since the browser client's launch, issue #1258 -
+# and the post-#644 sharded successors of the old "Analyze, test, build web"
+# monolith: Verify (codegen, analyze, web build), Test (shard 0|1|2), and
+# Quality gate (coverage floor + CRAP)).
 # Fails closed unless all required checks on the target commit have completed
 # with a 'success' conclusion.
 #
@@ -15,7 +16,7 @@
 #   COMMIT_SHA             Commit SHA to verify. Defaults to git rev-parse HEAD.
 #   GITHUB_REPOSITORY      GitHub repository (owner/repo). Defaults to 'wjdavis5/lunarlog'.
 #   GH_TOKEN               GitHub API token (used by `gh api` or curl).
-#   REQUIRED_CHECKS        Comma-separated list of required check run names.
+#   REQUIRED_CHECKS        '|'-separated list of required check run names.
 #                          Defaults to (current ci.yml job names, post-#644
 #                          sharded layout):
 #                            "Database tests (pgTAP)|Edge Functions (deno test)|Verify (codegen, analyze, web build)|Web app (lint, typecheck, unit, build, e2e)|Test (shard 0)|Test (shard 1)|Test (shard 2)|Quality gate (coverage floor + CRAP)"

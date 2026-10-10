@@ -48,6 +48,18 @@ describe('subjectInviteAvailable', () => {
     expect(subjectInviteAvailable(profile({ relationship: 'partner' }), today)).toBe(false);
   });
 
+  it('counts the calendar year locally, the way the app does (issue #1835 review item)', () => {
+    // Both moments are local-calendar facts by construction, so the case is
+    // real in every runner zone: 2027-01-01 00:30 local is 19 local years
+    // after 2008, and 2026-12-31 23:30 local is 18. The UTC-year arithmetic
+    // this replaced read one of them the other way in any non-UTC zone.
+    const localNewYear = new Date(2027, 0, 1, 0, 30);
+    expect(subjectInviteAvailable(profile({ birth_year: 2008 }), localNewYear)).toBe(false);
+
+    const localOldYearEnd = new Date(2026, 11, 31, 23, 30);
+    expect(subjectInviteAvailable(profile({ birth_year: 2008 }), localOldYearEnd)).toBe(true);
+  });
+
   it('is never offered for the profile someone keeps for herself, minor or not', () => {
     expect(subjectInviteAvailable(profile({ relationship: 'self' }), today)).toBe(false);
     expect(

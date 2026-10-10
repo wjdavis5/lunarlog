@@ -1417,11 +1417,13 @@ mixin LunarLogStorageLocalWrites
   }
 
   /// Tombstones the observation [id]: sets `deleted_at` (and bumps
-  /// `updated_at`), clears every payload column (`category` included —
-  /// review finding: no longer the exception to this list — `code`,
+  /// `updated_at`), clears every payload column (`category` included -
+  /// review finding: no longer the exception to this list - `code`,
   /// `value_num`, `value_text`, `unit`, `intensity`, `excluded` reset to
-  /// false, `source_id`, `raw`, `observed_at`) — `local_date`/`tz` are
-  /// kept, mirroring the server's `observations_tombstone_payload_check`
+  /// false, `raw`, `observed_at`); `source_id` and `import_id` deliberately
+  /// survive, so a deleted row stays recognisable to a future re-import
+  /// (issue #159, see the inline note below) - `local_date`/`tz` are kept,
+  /// mirroring the server's `observations_tombstone_payload_check`
   /// exactly. Marks the row dirty. Idempotent: re-deleting a tombstone does
   /// nothing. No-op when [id] is not held locally.
   Future<void> softDeleteObservation(String id) async {

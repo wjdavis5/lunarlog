@@ -4,10 +4,13 @@
  * date-bounds rule every day-entry write path shares, including the
  * server's own `sync_push` checks (`20260919160000_day_entry_date_bounds.sql`).
  *
- * Until #1251 compiles `lib/domain` to JavaScript, this module is the web
- * client's validation stopgap; when the compiled module lands, the day
- * editor calls it through the same two-case result and this file is deleted
- * in favour of the real thing. The rules are deliberately identical:
+ * The compiled module landed (issue #1251): the day page prefers it and
+ * falls back to this port only when the artifact is missing, while the save
+ * plan's own gate (`payloads.ts`'s `buildSavePlan`) calls this port directly
+ * - so this file is a load-bearing second implementation of the same rule,
+ * not a stopgap, and the two must stay in step (this port's own tests and
+ * the parity fixtures are what hold them together). The rules are
+ * deliberately identical:
  *
  *  - a date more than one calendar day after `today` fails (`futureDate`).
  *    The tolerated extra day absorbs time-zone travel: a user whose local

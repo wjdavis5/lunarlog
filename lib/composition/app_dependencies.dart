@@ -923,9 +923,10 @@ HealthImportSeams? buildHealthImportSeams({
 }
 
 /// Constructs the device-local computed-cycle-deviation insight service
-/// (Issue #799, deferred from #217), or null when health sync is gated off —
-/// the same gate and wired platforms as [buildHealthImportSeams]'s import
-/// service. It shares that service's read port, so the "Apple Health
+/// (Issue #799, deferred from #217), or null when health sync is gated off -
+/// the same gate as [buildHealthImportSeams]'s import service, but iOS only:
+/// the snapshot is HealthKit's own computed deviation types, so Android has
+/// nothing to read. It shares that service's read port, so the "Apple Health
 /// noticed…" snapshot is read over exactly the same guarded channel; it
 /// never gains a write surface.
 HealthDeviationInsights? buildHealthDeviationInsights({
@@ -937,8 +938,10 @@ HealthDeviationInsights? buildHealthDeviationInsights({
   required bool minorBindingAllowed,
 }) {
   if (!AppConfig.hasHealthSync) return null;
-  final importPlatform = _healthImportPlatforms[defaultTargetPlatform];
-  if (kIsWeb || importPlatform == null) return null;
+  // iOS only: the snapshot is HealthKit's own computed deviation types, so
+  // Android has nothing to read (the builder used to run there too, ending
+  // every import in a not-implemented channel call that was swallowed).
+  if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return null;
   final binding = HealthSyncBinding(settings);
   return LocalHealthDeviationService(
     source: createHealthImportSource(

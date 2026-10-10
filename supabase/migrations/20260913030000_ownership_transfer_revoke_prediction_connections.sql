@@ -1,4 +1,4 @@
--- Migration: 20260912120000_ownership_transfer_revoke_prediction_connections.sql
+-- Migration: 20260913030000_ownership_transfer_revoke_prediction_connections.sql
 -- Issue #496: accept_ownership_transfer must revoke active prediction
 -- connections and pending invites for the profile.
 --

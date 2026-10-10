@@ -2,8 +2,8 @@
 ///
 /// The widget reads a shared container — the iOS App Group's
 /// `UserDefaults` suite, or Android's `HomeWidgetPreferences`
-/// SharedPreferences — that lives **outside the app's encrypted Drift
-/// store**. This port exists so everything above it (the state publisher,
+/// SharedPreferences - that lives **outside the app's Drift store**, and
+/// outside the OS at-rest protection that covers it. This port exists so everything above it (the state publisher,
 /// the executor, the Settings UI) is pure Dart against an interface; the
 /// only concrete `home_widget`-touching implementation is
 /// `lib/data/widget/home_widget_data_store.dart`, a platform adapter kept
