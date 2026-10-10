@@ -35,9 +35,7 @@ P1, deepen the differentiator.
 
 P2, quality.
 
-- #1792 Account and auth UI tests.
-- #1793 Insights UI tests.
-- #1794 Prediction core tests.
+- #1792, #1793, and #1794 were closed on 2026-10-10. Verification found the areas already carry behavior tests, so the units were retired instead of written. The review's correction paragraph has the details.
 - Documentation truth. This run fixes the drift list in the review.
 
 P2, web client.
@@ -76,9 +74,9 @@ P3 and deferred, with reasons.
 | App Store Connect key | #1261 | P1 | Owner |
 | Guardian lens | #850 | P1 | Agent after the owner's go |
 | Teen privacy | #1048 | P1 | Owner decision |
-| Account UI tests | #1792 | P2 | Agent |
-| Insights UI tests | #1793 | P2 | Agent |
-| Prediction core tests | #1794 | P2 | Agent |
+| Account UI tests | #1792 | P2 | Closed, already covered |
+| Insights UI tests | #1793 | P2 | Closed, already covered |
+| Prediction core tests | #1794 | P2 | Closed, already covered |
 | Documentation truth | this run's drift fixes | P2 | Agent |
 | Web onboarding | #1795 | P2 | Agent, owner adjusts the flow |
 | Web insights | #1796 | P3 | Agent |
