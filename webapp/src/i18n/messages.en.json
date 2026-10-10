@@ -416,6 +416,7 @@
   "reminderSectionCycle": "Your cycle",
   "reminderSectionBirthControl": "Your birth control",
   "reminderSectionOther": "Other reminders",
+  "reminderLoadFailed": "Couldn't load your reminders.",
   "reminderKindPeriodStartingSoon": "Period starting soon",
   "reminderKindPeriodStartingSoonSubtitle": "An earlier heads-up than the due reminder",
   "reminderKindPeriodDue": "Period due",

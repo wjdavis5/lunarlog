@@ -2620,6 +2620,12 @@ abstract class AppLocalizations {
   /// **'Other reminders'**
   String get reminderSectionOther;
 
+  /// Reminder settings error copy when the per-profile config load fails (issue #1828); the retry button re-runs the load.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load your reminders.'**
+  String get reminderLoadFailed;
+
   /// The period-starting-soon reminder's settings row title (Issue #178; Clue catalogue item 1).
   ///
   /// In en, this message translates to:

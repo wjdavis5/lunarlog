@@ -44,6 +44,7 @@ import 'package:lunarlog/domain/notifications/scheduling.dart'
     show resolveReminderText;
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/components/list_section_header.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
@@ -60,8 +61,7 @@ typedef ReminderTimePicker = Future<TimeOfDay?> Function(
 Future<TimeOfDay?> _defaultTimePicker(
   BuildContext context,
   TimeOfDay initialTime,
-) =>
-    showTimePicker(context: context, initialTime: initialTime);
+) => showTimePicker(context: context, initialTime: initialTime);
 
 /// The lead-days choices the screen offers (the planner clamps to the
 /// same bounds; the UI simply never offers out-of-range values).
@@ -88,42 +88,39 @@ const List<ReminderKind> kCycleGroupKinds = [
 /// daily check-in both map onto the existing daily log nudge.
 const List<ReminderKind> kOtherGroupKinds = [ReminderKind.log];
 
-
 /// Localized label for each kind. A map (not a switch) keeps the
 /// per-kind complexity out of the CRAP gate's reach — one literal per
 /// kind, exercised exhaustively by the reminder settings screen tests —
 /// the same shape [birthControlChoiceLabels] uses.
 Map<ReminderKind, String> _kindLabels(AppLocalizations l10n) => {
-      ReminderKind.periodStartingSoon: l10n.reminderKindPeriodStartingSoon,
-      ReminderKind.upcoming: l10n.reminderKindPeriodDue,
-      ReminderKind.pms: l10n.reminderKindPmsWatch,
-      ReminderKind.late: l10n.reminderKindPeriodLate,
-      ReminderKind.fertileWindowSoon: l10n.reminderKindFertileWindowSoon,
-      ReminderKind.cycleStatisticChange: l10n.reminderKindCycleStats,
-      ReminderKind.log: l10n.reminderKindLogNudge,
-      ReminderKind.birthControlPill: l10n.reminderKindBirthControlPill,
-      ReminderKind.birthControlPatch: l10n.reminderKindBirthControlPatch,
-      ReminderKind.birthControlRing: l10n.reminderKindBirthControlRing,
-      ReminderKind.birthControlShot: l10n.reminderKindBirthControlShot,
-    };
+  ReminderKind.periodStartingSoon: l10n.reminderKindPeriodStartingSoon,
+  ReminderKind.upcoming: l10n.reminderKindPeriodDue,
+  ReminderKind.pms: l10n.reminderKindPmsWatch,
+  ReminderKind.late: l10n.reminderKindPeriodLate,
+  ReminderKind.fertileWindowSoon: l10n.reminderKindFertileWindowSoon,
+  ReminderKind.cycleStatisticChange: l10n.reminderKindCycleStats,
+  ReminderKind.log: l10n.reminderKindLogNudge,
+  ReminderKind.birthControlPill: l10n.reminderKindBirthControlPill,
+  ReminderKind.birthControlPatch: l10n.reminderKindBirthControlPatch,
+  ReminderKind.birthControlRing: l10n.reminderKindBirthControlRing,
+  ReminderKind.birthControlShot: l10n.reminderKindBirthControlShot,
+};
 
 /// Localized subtitle for each kind (see [_kindLabels] for the map
 /// rationale).
 Map<ReminderKind, String> _kindSubtitles(AppLocalizations l10n) => {
-      ReminderKind.periodStartingSoon:
-          l10n.reminderKindPeriodStartingSoonSubtitle,
-      ReminderKind.upcoming: l10n.reminderKindPeriodDueSubtitle,
-      ReminderKind.pms: l10n.reminderKindPmsWatchSubtitle,
-      ReminderKind.late: l10n.reminderKindPeriodLateSubtitle,
-      ReminderKind.fertileWindowSoon: l10n.reminderKindFertileWindowSoonSubtitle,
-      ReminderKind.cycleStatisticChange: l10n.reminderKindCycleStatsSubtitle,
-      ReminderKind.log: l10n.reminderKindLogNudgeSubtitle,
-      ReminderKind.birthControlPill: l10n.reminderKindBirthControlPillSubtitle,
-      ReminderKind.birthControlPatch:
-          l10n.reminderKindBirthControlPatchSubtitle,
-      ReminderKind.birthControlRing: l10n.reminderKindBirthControlRingSubtitle,
-      ReminderKind.birthControlShot: l10n.reminderKindBirthControlShotSubtitle,
-    };
+  ReminderKind.periodStartingSoon: l10n.reminderKindPeriodStartingSoonSubtitle,
+  ReminderKind.upcoming: l10n.reminderKindPeriodDueSubtitle,
+  ReminderKind.pms: l10n.reminderKindPmsWatchSubtitle,
+  ReminderKind.late: l10n.reminderKindPeriodLateSubtitle,
+  ReminderKind.fertileWindowSoon: l10n.reminderKindFertileWindowSoonSubtitle,
+  ReminderKind.cycleStatisticChange: l10n.reminderKindCycleStatsSubtitle,
+  ReminderKind.log: l10n.reminderKindLogNudgeSubtitle,
+  ReminderKind.birthControlPill: l10n.reminderKindBirthControlPillSubtitle,
+  ReminderKind.birthControlPatch: l10n.reminderKindBirthControlPatchSubtitle,
+  ReminderKind.birthControlRing: l10n.reminderKindBirthControlRingSubtitle,
+  ReminderKind.birthControlShot: l10n.reminderKindBirthControlShotSubtitle,
+};
 
 String _kindLabel(AppLocalizations l10n, ReminderKind kind) =>
     _kindLabels(l10n)[kind]!;
@@ -137,20 +134,18 @@ String _kindSubtitle(AppLocalizations l10n, ReminderKind kind) =>
 /// plan nothing and the settings row says so. The pill needs no anchor —
 /// while the method is in effect every day is a dose day.
 bool _birthControlKindNeedsStartDate(ReminderKind kind) => switch (kind) {
-      ReminderKind.birthControlPatch ||
-      ReminderKind.birthControlRing ||
-      ReminderKind.birthControlShot =>
-        true,
-      ReminderKind.birthControlPill ||
-      ReminderKind.upcoming ||
-      ReminderKind.periodStartingSoon ||
-      ReminderKind.pms ||
-      ReminderKind.fertileWindowSoon ||
-      ReminderKind.late ||
-      ReminderKind.cycleStatisticChange ||
-      ReminderKind.log =>
-        false,
-    };
+  ReminderKind.birthControlPatch ||
+  ReminderKind.birthControlRing ||
+  ReminderKind.birthControlShot => true,
+  ReminderKind.birthControlPill ||
+  ReminderKind.upcoming ||
+  ReminderKind.periodStartingSoon ||
+  ReminderKind.pms ||
+  ReminderKind.fertileWindowSoon ||
+  ReminderKind.late ||
+  ReminderKind.cycleStatisticChange ||
+  ReminderKind.log => false,
+};
 
 /// The profile's birth-control method in effect today, from its raw
 /// `profile_modes` state. A malformed effective date (storage validates
@@ -266,6 +261,12 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
   /// explainer row — the "Your Birth Control" group renders.
   BirthControlState? _birthControlState;
 
+  /// Whether the last load for [_loadedForId] failed (issue #1828). The body
+  /// renders [InlineError] with a retry while this is true, and [build]'s
+  /// re-kick condition reads it so a persistent failure does not re-run the
+  /// load on every rebuild.
+  bool _loadFailed = false;
+
   @override
   void initState() {
     super.initState();
@@ -286,22 +287,36 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
     _loadedForId = profile.id;
     _config = null;
     _birthControlState = null;
+    _loadFailed = false;
     unawaited(() async {
-      final results =
-          await Future.wait([service.load(profile.id), modes.find(profile.id)]);
-      if (!mounted) return;
-      setState(() {
-        final row = results[1] as ProfileLifecycleMode?;
-        _birthControlState = row == null
-            ? null
-            : (
-                method: row.birthControlMethod,
-                startedOn: row.birthControlStartedOn,
-                stoppedOn: row.birthControlStoppedOn,
-              );
-        _config = (results[0] as ReminderConfig?) ??
-            ReminderConfig.fromMode(profile.mode);
-      });
+      // Issue #1828: a failed load must surface, not spin forever. The
+      // catch records the failure for the body's InlineError; build's
+      // re-kick condition also reads it so a persistent failure does not
+      // re-run the load on every rebuild.
+      try {
+        final results = await Future.wait([
+          service.load(profile.id),
+          modes.find(profile.id),
+        ]);
+        if (!mounted) return;
+        setState(() {
+          final row = results[1] as ProfileLifecycleMode?;
+          _birthControlState = row == null
+              ? null
+              : (
+                  method: row.birthControlMethod,
+                  startedOn: row.birthControlStartedOn,
+                  stoppedOn: row.birthControlStoppedOn,
+                );
+          _config =
+              (results[0] as ReminderConfig?) ??
+              ReminderConfig.fromMode(profile.mode);
+        });
+      } catch (error) {
+        debugPrint('lunarlog reminders: load failed (${error.runtimeType})');
+        if (!mounted) return;
+        setState(() => _loadFailed = true);
+      }
     }());
   }
 
@@ -342,12 +357,14 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
       _timeOfDay(config.typeConfig(kind).timeOfDayMinutes),
     );
     if (picked == null) return;
-    _update(config.withTypeConfig(
-      kind,
-      config.typeConfig(kind).copyWith(
-            timeOfDayMinutes: picked.hour * 60 + picked.minute,
-          ),
-    ));
+    _update(
+      config.withTypeConfig(
+        kind,
+        config
+            .typeConfig(kind)
+            .copyWith(timeOfDayMinutes: picked.hour * 60 + picked.minute),
+      ),
+    );
   }
 
   /// Opens the per-type notification text editor (Issue #184) and applies
@@ -363,15 +380,17 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
       typeConfig: typeConfig,
     );
     if (result == null) return;
-    _update(config.withTypeConfig(
-      kind,
-      typeConfig.copyWith(
-        customTitle: result.title,
-        customBody: result.body,
-        clearCustomTitle: result.title == null,
-        clearCustomBody: result.body == null,
+    _update(
+      config.withTypeConfig(
+        kind,
+        typeConfig.copyWith(
+          customTitle: result.title,
+          customBody: result.body,
+          clearCustomTitle: result.title == null,
+          clearCustomBody: result.body == null,
+        ),
       ),
-    ));
+    );
   }
 
   Future<void> _pickQuietBoundary({required bool start}) async {
@@ -381,13 +400,15 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
     final initial = start ? quiet.startMinutes : quiet.endMinutes;
     final picked = await widget.timePicker(context, _timeOfDay(initial));
     if (picked == null) return;
-    _update(config.copyWith(
-      quietHours: _withQuietBoundary(
-        quiet,
-        start: start,
-        minutes: picked.hour * 60 + picked.minute,
+    _update(
+      config.copyWith(
+        quietHours: _withQuietBoundary(
+          quiet,
+          start: start,
+          minutes: picked.hour * 60 + picked.minute,
+        ),
       ),
-    ));
+    );
   }
 
   static TimeOfDay _timeOfDay(int minutes) =>
@@ -399,17 +420,17 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
     QuietHours quiet, {
     required bool start,
     required int minutes,
-  }) =>
-      QuietHours(
-        startMinutes: start ? minutes : quiet.startMinutes,
-        endMinutes: start ? quiet.endMinutes : minutes,
-      );
+  }) => QuietHours(
+    startMinutes: start ? minutes : quiet.startMinutes,
+    endMinutes: start ? quiet.endMinutes : minutes,
+  );
 
   @override
   Widget build(BuildContext context) {
     final profiles = context.watch<ProfileController>().activeProfiles;
     final profile = _resolve(profiles);
-    if (profile != null && (profile.id != _loadedForId || _config == null)) {
+    if (profile != null &&
+        (profile.id != _loadedForId || (_config == null && !_loadFailed))) {
       _ensureLoaded(profile);
     }
     return Scaffold(
@@ -435,7 +456,24 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
       );
     }
     final config = _config;
-    if (config == null) return const Center(child: CircularProgressIndicator());
+    if (config == null) {
+      if (_loadFailed) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: InlineError(
+              key: const ValueKey('reminder-load-error'),
+              message: AppLocalizations.of(context).reminderLoadFailed,
+              onRetry: () {
+                _ensureLoaded(profile);
+                setState(() {});
+              },
+            ),
+          ),
+        );
+      }
+      return const Center(child: CircularProgressIndicator());
+    }
     final l10n = AppLocalizations.of(context);
     return ListView(
       children: [
@@ -462,15 +500,14 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
     String header,
     List<ReminderKind> kinds,
     ReminderConfig config,
-  ) =>
-      [
-        ListSectionHeader(title: header),
-        for (final kind in kinds) ...[
-          _typeTile(kind, config),
-          ..._optionTiles(kind, config),
-          const Divider(),
-        ],
-      ];
+  ) => [
+    ListSectionHeader(title: header),
+    for (final kind in kinds) ...[
+      _typeTile(kind, config),
+      ..._optionTiles(kind, config),
+      const Divider(),
+    ],
+  ];
 
   /// The rows under a reminder type's switch: how far ahead (where the
   /// type has a forward anchor), how often (the log nudge), what time and
@@ -502,7 +539,10 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
   /// profile settings swaps the row the next time the screen is opened,
   /// while the planner re-routes the armed reminders at the coordinator's
   /// next replan.
-  List<Widget> _birthControlGroup(AppLocalizations l10n, ReminderConfig config) {
+  List<Widget> _birthControlGroup(
+    AppLocalizations l10n,
+    ReminderConfig config,
+  ) {
     final method = _birthControlMethodInEffect(
       _birthControlState,
       LocalDate.today(),
@@ -583,16 +623,20 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
       title: Text(_kindLabel(l10n, kind)),
       subtitle: Text(subtitleOverride ?? _kindSubtitle(l10n, kind)),
       value: typeConfig.enabled,
-      onChanged: (on) => _update(config.withTypeConfig(
-        kind,
-        typeConfig.copyWith(
-          enabled: on,
-          anchorDate:
-              (on && kind == ReminderKind.log && typeConfig.anchorDate == null)
-                  ? LocalDate.today()
-                  : null,
+      onChanged: (on) => _update(
+        config.withTypeConfig(
+          kind,
+          typeConfig.copyWith(
+            enabled: on,
+            anchorDate:
+                (on &&
+                    kind == ReminderKind.log &&
+                    typeConfig.anchorDate == null)
+                ? LocalDate.today()
+                : null,
+          ),
         ),
-      )),
+      ),
     );
   }
 
@@ -603,20 +647,18 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
   /// birth-control cadences (anchored on the method's own due dates, not
   /// ahead of them) have nothing to lead.
   static bool _hasLead(ReminderKind kind) => switch (kind) {
-        ReminderKind.upcoming ||
-        ReminderKind.periodStartingSoon ||
-        ReminderKind.pms ||
-        ReminderKind.fertileWindowSoon =>
-          true,
-        ReminderKind.late ||
-        ReminderKind.cycleStatisticChange ||
-        ReminderKind.log ||
-        ReminderKind.birthControlPill ||
-        ReminderKind.birthControlPatch ||
-        ReminderKind.birthControlRing ||
-        ReminderKind.birthControlShot =>
-          false,
-      };
+    ReminderKind.upcoming ||
+    ReminderKind.periodStartingSoon ||
+    ReminderKind.pms ||
+    ReminderKind.fertileWindowSoon => true,
+    ReminderKind.late ||
+    ReminderKind.cycleStatisticChange ||
+    ReminderKind.log ||
+    ReminderKind.birthControlPill ||
+    ReminderKind.birthControlPatch ||
+    ReminderKind.birthControlRing ||
+    ReminderKind.birthControlShot => false,
+  };
 
   Widget _leadTile(ReminderKind kind, ReminderConfig config) {
     final typeConfig = config.typeConfig(kind);
@@ -638,10 +680,9 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
         ],
         onChanged: (days) {
           if (days != null) {
-            _update(config.withTypeConfig(
-              kind,
-              typeConfig.copyWith(leadDays: days),
-            ));
+            _update(
+              config.withTypeConfig(kind, typeConfig.copyWith(leadDays: days)),
+            );
           }
         },
       ),
@@ -658,20 +699,19 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
         value: typeConfig.cadence,
         items: [
           for (final cadence in ReminderCadence.values)
-            DropdownMenuItem(
-              value: cadence,
-              child: Text(cadence.label),
-            ),
+            DropdownMenuItem(value: cadence, child: Text(cadence.label)),
         ],
         onChanged: (cadence) {
           if (cadence != null) {
-            _update(config.withTypeConfig(
-              kind,
-              typeConfig.copyWith(
-                cadence: cadence,
-                anchorDate: LocalDate.today(),
+            _update(
+              config.withTypeConfig(
+                kind,
+                typeConfig.copyWith(
+                  cadence: cadence,
+                  anchorDate: LocalDate.today(),
+                ),
               ),
-            ));
+            );
           }
         },
       ),
@@ -683,8 +723,7 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
     return ListTile(
       key: ValueKey('reminder-time-${kind.name}'),
       title: Text(AppLocalizations.of(context).reminderTimeLabel),
-      trailing: Text(
-          _timeOfDay(typeConfig.timeOfDayMinutes).format(context)),
+      trailing: Text(_timeOfDay(typeConfig.timeOfDayMinutes).format(context)),
       onTap: () => _pickTime(kind),
     );
   }
@@ -702,9 +741,11 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
     return ListTile(
       key: ValueKey('reminder-text-${kind.name}'),
       title: Text(l10n.reminderTextTileTitle),
-      subtitle: Text(hasCustom
-          ? resolveReminderText(typeConfig).title
-          : l10n.reminderTextTileDefaultSubtitle),
+      subtitle: Text(
+        hasCustom
+            ? resolveReminderText(typeConfig).title
+            : l10n.reminderTextTileDefaultSubtitle,
+      ),
       onTap: () => _editText(kind),
     );
   }
@@ -716,12 +757,13 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
       SwitchListTile(
         key: const ValueKey('reminder-quiet-switch'),
         title: Text(AppLocalizations.of(context).reminderQuietHoursTitle),
-        subtitle: Text(
-            AppLocalizations.of(context).reminderQuietHoursSubtitle),
+        subtitle: Text(AppLocalizations.of(context).reminderQuietHoursSubtitle),
         value: quiet != null,
-        onChanged: (on) => _update(on
-            ? config.copyWith(quietHours: kDefaultQuietHours)
-            : config.copyWith(clearQuietHours: true)),
+        onChanged: (on) => _update(
+          on
+              ? config.copyWith(quietHours: kDefaultQuietHours)
+              : config.copyWith(clearQuietHours: true),
+        ),
       ),
       if (quiet != null) ...[
         ListTile(

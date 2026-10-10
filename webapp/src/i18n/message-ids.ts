@@ -419,6 +419,7 @@ export const MESSAGE_IDS = [
   "reminderSectionCycle",
   "reminderSectionBirthControl",
   "reminderSectionOther",
+  "reminderLoadFailed",
   "reminderKindPeriodStartingSoon",
   "reminderKindPeriodStartingSoonSubtitle",
   "reminderKindPeriodDue",

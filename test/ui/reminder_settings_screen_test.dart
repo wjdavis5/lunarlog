@@ -80,10 +80,34 @@ Profile _profile(String id, String name) => Profile(
   updatedAt: DateTime.utc(2026, 1, 1),
 );
 
+/// A settings store whose reminder-config reads fail on demand (issue
+/// #1828), so the screen's load-failure path can be driven from a test
+/// without breaking the unrelated keys the profile controller reads.
+class _FlakySettingsStore implements SettingsStore {
+  bool failReminderReads = false;
+  final Map<String, String> _values = {};
+
+  @override
+  Future<String?> get(String key) async {
+    if (failReminderReads && key.startsWith('reminder')) {
+      throw StateError('settings read failed');
+    }
+    return _values[key];
+  }
+
+  @override
+  Future<void> set(String key, String value) async {
+    _values[key] = value;
+  }
+
+  @override
+  Stream<String?> watch(String key) => Stream<String?>.value(_values[key]);
+}
+
 Future<void> _pump(
   WidgetTester tester,
   List<Profile> profiles,
-  FakeSettingsStore store, {
+  SettingsStore store, {
   ReminderTimePicker? timePicker,
   ProfileLifecycleMode? modeRow,
   NotificationPermissionState? permission,
@@ -386,11 +410,12 @@ void main() {
       // The three groups are headed by the shared section title, the one
       // Settings and Care notes use, not a style of this screen's own.
       expect(find.byType(ListSectionHeader), findsNWidgets(3));
-      for (final title in ['Your cycle', 'Your birth control', 'Other reminders']) {
-        expect(
-          find.widgetWithText(ListSectionHeader, title),
-          findsOneWidget,
-        );
+      for (final title in [
+        'Your cycle',
+        'Your birth control',
+        'Other reminders',
+      ]) {
+        expect(find.widgetWithText(ListSectionHeader, title), findsOneWidget);
       }
     });
 
@@ -477,10 +502,7 @@ void main() {
         await tester.pumpAndSettle();
       }
 
-      expect(
-        find.text('Days before estimated fertile window'),
-        findsOneWidget,
-      );
+      expect(find.text('Days before estimated fertile window'), findsOneWidget);
       expect(find.text('Days before estimated PMS window'), findsOneWidget);
       expect(
         find.text('Days before estimated start'),
@@ -979,8 +1001,10 @@ void main() {
     await _pump(tester, [_profile('alice', 'Alice')], store);
 
     await _scrollTo(tester, const ValueKey('reminder-text-upcoming'));
-    expect(_textTileSubtitle(tester, ReminderKind.upcoming),
-        'Using the default text');
+    expect(
+      _textTileSubtitle(tester, ReminderKind.upcoming),
+      'Using the default text',
+    );
 
     await tester.tap(find.byKey(const ValueKey('reminder-text-upcoming')));
     await tester.pumpAndSettle();
@@ -1007,9 +1031,11 @@ void main() {
 
     // Empty fields show exactly what the OS will present: the defaults.
     Text previewTitle() => tester.widget<Text>(
-        find.byKey(const ValueKey('reminder-text-preview-title')));
+      find.byKey(const ValueKey('reminder-text-preview-title')),
+    );
     Text previewBody() => tester.widget<Text>(
-        find.byKey(const ValueKey('reminder-text-preview-body')));
+      find.byKey(const ValueKey('reminder-text-preview-body')),
+    );
     expect(previewTitle().data, kReminderTitle);
     expect(previewBody().data, kReminderBody);
 
@@ -1020,8 +1046,11 @@ void main() {
     );
     await tester.pump();
     expect(previewTitle().data, 'Heads up');
-    expect(previewBody().data, kReminderBody,
-        reason: 'the untouched half keeps its default');
+    expect(
+      previewBody().data,
+      kReminderBody,
+      reason: 'the untouched half keeps its default',
+    );
 
     await tester.enterText(
       find.byKey(const ValueKey('reminder-text-body-field')),
@@ -1032,8 +1061,11 @@ void main() {
     expect(previewBody().data, 'Nothing to see here.');
 
     // The preview never shows anything beyond the two fields.
-    expect(find.text('Alice'), findsNothing,
-        reason: 'no profile name in the editor');
+    expect(
+      find.text('Alice'),
+      findsNothing,
+      reason: 'no profile name in the editor',
+    );
   });
 
   testWidgets('issue #184: saving persists custom text for that type only '
@@ -1057,11 +1089,13 @@ void main() {
     await tester.pumpAndSettle();
 
     final stored = await service.load('alice');
-    expect(stored!.upcoming.customTitle, 'Tea time',
-        reason: 'saved trimmed');
+    expect(stored!.upcoming.customTitle, 'Tea time', reason: 'saved trimmed');
     expect(stored.upcoming.customBody, 'Bring the blue bottle.');
-    expect(stored.late.customTitle, isNull,
-        reason: 'editing one type never touches another');
+    expect(
+      stored.late.customTitle,
+      isNull,
+      reason: 'editing one type never touches another',
+    );
     expect(stored.log.customTitle, isNull);
     expect(stored.pms.customTitle, isNull);
 
@@ -1078,7 +1112,8 @@ void main() {
       'alice',
       ReminderConfig.standard.copyWith(
         upcoming: ReminderTypeConfig.upcoming.copyWith(
-            customTitle: 'Alice-only title'),
+          customTitle: 'Alice-only title',
+        ),
       ),
     );
     final alice = _profile('alice', 'Alice');
@@ -1087,8 +1122,10 @@ void main() {
     await _pump(tester, [alice, bea], store);
 
     await _scrollTo(tester, const ValueKey('reminder-text-upcoming'));
-    expect(_textTileSubtitle(tester, ReminderKind.upcoming),
-        'Alice-only title');
+    expect(
+      _textTileSubtitle(tester, ReminderKind.upcoming),
+      'Alice-only title',
+    );
 
     await _scrollToTop(tester);
     await tester.tap(find.byKey(const ValueKey('reminder-profile-dropdown')));
@@ -1097,26 +1134,36 @@ void main() {
     await tester.pumpAndSettle();
 
     await _scrollTo(tester, const ValueKey('reminder-text-upcoming'));
-    expect(_textTileSubtitle(tester, ReminderKind.upcoming),
-        'Using the default text',
-        reason: 'Bea never configured custom text');
+    expect(
+      _textTileSubtitle(tester, ReminderKind.upcoming),
+      'Using the default text',
+      reason: 'Bea never configured custom text',
+    );
     final beaConfig = await service.load('bea');
-    expect(beaConfig, isNull,
-        reason: 'switching profiles stored nothing for Bea');
-    expect((await service.load('alice'))!.upcoming.customTitle,
-        'Alice-only title',
-        reason: 'the switch never disturbed Alice text');
+    expect(
+      beaConfig,
+      isNull,
+      reason: 'switching profiles stored nothing for Bea',
+    );
+    expect(
+      (await service.load('alice'))!.upcoming.customTitle,
+      'Alice-only title',
+      reason: 'the switch never disturbed Alice text',
+    );
   });
 
-  testWidgets('issue #184: reset to default clears the custom text on save',
-      (tester) async {
+  testWidgets('issue #184: reset to default clears the custom text on save', (
+    tester,
+  ) async {
     final store = FakeSettingsStore();
     final service = ReminderConfigService(store);
     await service.save(
       'alice',
       ReminderConfig.standard.copyWith(
-        upcoming: ReminderTypeConfig.upcoming
-            .copyWith(customTitle: 'Old title', customBody: 'Old body'),
+        upcoming: ReminderTypeConfig.upcoming.copyWith(
+          customTitle: 'Old title',
+          customBody: 'Old body',
+        ),
       ),
     );
     await _pump(tester, [_profile('alice', 'Alice')], store);
@@ -1128,9 +1175,13 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('reminder-text-reset')));
     await tester.pumpAndSettle();
     Text previewTitle() => tester.widget<Text>(
-        find.byKey(const ValueKey('reminder-text-preview-title')));
-    expect(previewTitle().data, kReminderTitle,
-        reason: 'reset shows the default in the live preview');
+      find.byKey(const ValueKey('reminder-text-preview-title')),
+    );
+    expect(
+      previewTitle().data,
+      kReminderTitle,
+      reason: 'reset shows the default in the live preview',
+    );
 
     await tester.tap(find.byKey(const ValueKey('reminder-text-save')));
     await tester.pumpAndSettle();
@@ -1275,5 +1326,31 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_timeLabel(tester, ReminderKind.upcoming), '9:00 AM');
+  });
+
+  // Issue #1828: a failed config load must surface with a retry, not spin
+  // forever. The flaky store fails the first load; Retry succeeds once it
+  // recovers.
+  testWidgets('a failed load shows an inline error and Retry recovers', (
+    tester,
+  ) async {
+    final store = _FlakySettingsStore()..failReminderReads = true;
+    // Two profiles so the loaded state includes the switcher dropdown,
+    // which only renders when there is more than one.
+    await _pump(tester, [_profile('p1', 'Maya'), _profile('p2', 'Ada')], store);
+
+    expect(find.byKey(const ValueKey('reminder-load-error')), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('Retry'), findsOneWidget);
+
+    store.failReminderReads = false;
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('reminder-load-error')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('reminder-profile-dropdown')),
+      findsOneWidget,
+    );
   });
 }
