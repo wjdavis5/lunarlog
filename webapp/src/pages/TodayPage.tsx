@@ -28,6 +28,7 @@ import {
   profileModeFromDb,
   showsFertileWindow,
   withClockInputs,
+  type GuardianLens,
 } from '../lib/profiles/profile-views';
 import {
   readTodayLog,
@@ -139,16 +140,24 @@ export function TodayPage() {
       callerRoleFor(synced.data ?? emptySyncedData(), active.id, me) ?? 'viewer',
     );
 
-  // Who sees the card. A guardian's page says nothing of what was logged
-  // (the app's lens rule, guardianLensFor); the person the profile is
-  // about sees it. Until the account id has loaded there is no telling the
-  // two apart, so nothing is shown rather than shown to the wrong reader.
-  const todayLogView: TodayLogCardView =
+  // The caller's lens on the active profile: the app's own rule
+  // (guardianLensFor), decided from the same membership row the role is.
+  // Until the account id has loaded there is no telling a subject from a
+  // guardian, so it stays unknown and the lens-gated surfaces show nothing
+  // rather than something to the wrong reader.
+  const activeLens: GuardianLens | null =
     active === null || me === null
+      ? null
+      : guardianLensFor(synced.data ?? emptySyncedData(), active.id, me);
+
+  // Who sees the today-log card. A guardian's page says nothing of what was
+  // logged; the person the profile is about sees it.
+  const todayLogView: TodayLogCardView =
+    active === null || activeLens === null
       ? { kind: 'none' }
       : todayLogCardView({
           log: todayLog,
-          lens: guardianLensFor(synced.data ?? emptySyncedData(), active.id, me),
+          lens: activeLens,
           canLog: canLogActive,
         });
 
@@ -230,7 +239,13 @@ export function TodayPage() {
       )}
 
       {active !== null ? (
-        <ProfileHome profileId={active.id} todayIso={todayIso} todayLogView={todayLogView} />
+        <ProfileHome
+          key={active.id}
+          profileId={active.id}
+          lens={activeLens}
+          todayIso={todayIso}
+          todayLogView={todayLogView}
+        />
       ) : null}
     </main>
   );
@@ -239,6 +254,8 @@ export function TodayPage() {
 /** One active profile's home: status card, today's log, month calendar, history. */
 function ProfileHome(props: {
   profileId: string;
+  /** The caller's lens on this profile (issue #1818); null until known. */
+  lens: GuardianLens | null;
   todayIso: string;
   todayLogView: TodayLogCardView;
 }) {
@@ -292,11 +309,17 @@ function ProfileHome(props: {
     }
   }, [inputs, props.todayIso, tz, bbtObservations]);
 
-  // The recap card (issue #1796): shown for the just-closed cycle until
-  // dismissed for the session (the web keeps no seen-cycle record), with the
-  // phone's irregular-framing rule deciding whether it speaks in ranges.
+  // The recap card (issue #1796): subject-facing only (issue #1818 - the
+  // phone's `_recapSection` returns nothing under the guardian lens), shown
+  // for the just-closed cycle until dismissed for the session (the web
+  // keeps no seen-cycle record), with the phone's irregular-framing rule
+  // deciding whether it speaks in ranges. The dismissal is scoped to this
+  // profile and cycle (issue #1819): the module store is keyed by both, and
+  // this state holds the dismissed cycle start rather than a boolean, so a
+  // later cycle - and, via the key on this component, the next profile -
+  // still shows its own recap.
   const recap = domain?.recap ?? null;
-  const [recapDismissedNow, setRecapDismissedNow] = useState(false);
+  const [dismissedNow, setDismissedNow] = useState<string | null>(null);
   const irregularFraming =
     profile === undefined
       ? false
@@ -343,13 +366,16 @@ function ProfileHome(props: {
 
   return (
     <div className="home-stack">
-      {recap !== null && !recapDismissedNow && !recapDismissed(recap.cycleStart) ? (
+      {recap !== null &&
+      props.lens === 'subject' &&
+      dismissedNow !== recap.cycleStart &&
+      !recapDismissed(props.profileId, recap.cycleStart) ? (
         <RecapCard
           recap={recap}
           irregularFraming={irregularFraming}
           onDismiss={() => {
-            dismissRecap(recap.cycleStart);
-            setRecapDismissedNow(true);
+            dismissRecap(props.profileId, recap.cycleStart);
+            setDismissedNow(recap.cycleStart);
           }}
         />
       ) : null}

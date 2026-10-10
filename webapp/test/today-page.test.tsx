@@ -79,7 +79,7 @@ function modeRow(profileId: string, mode: string): ProfileModeRow {
   };
 }
 
-function guardianRow(profileId: string): ProfileGuardianRow {
+function guardianRow(profileId: string, isSubject = false): ProfileGuardianRow {
   return {
     // One membership row per profile. A shared id collapsed the three rows
     // into one when merged, leaving two profiles with no membership.
@@ -88,6 +88,9 @@ function guardianRow(profileId: string): ProfileGuardianRow {
     user_id: UID,
     role: 'primary_guardian',
     status: 'accepted',
+    // The server's subject marker (issue #1818): rows without it read as
+    // the guardian lens, as the phone's guardianLensFor does.
+    is_subject: isSubject,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     server_version: 2,
@@ -145,7 +148,11 @@ const syncedFixture = (): SyncedData =>
     care_notes: [],
     visit_prep_items: [],
     profile_tag_registry: [],
-    profile_guardians: [guardianRow(RICH_ID), guardianRow(PREGNANT_ID), guardianRow(TEEN_ID)],
+    profile_guardians: [
+      guardianRow(RICH_ID, true),
+      guardianRow(PREGNANT_ID),
+      guardianRow(TEEN_ID),
+    ],
     guardian_notes: [],
   });
 
@@ -267,6 +274,63 @@ describe('TodayPage — the profile home (issue #1253)', () => {
     renderHome();
     await screen.findByRole('heading', { name: 'Maya' });
     expect(screen.getByTestId('cycle-recap-card')).toBeInTheDocument();
+  });
+
+  // Issue #1818: the phone hides the recap from guardians entirely
+  // (`_recapSection` returns nothing under the guardian lens); the web used
+  // to show it to whoever was viewing. Priya's membership carries no
+  // is_subject marker, so this account sees her profile as a guardian.
+  it('hides the recap from a guardian', async () => {
+    renderHome();
+    await screen.findByRole('heading', { name: 'Maya' });
+    expect(screen.getByTestId('cycle-recap-card')).toBeInTheDocument();
+
+    fireEvent.change(
+      screen.getByLabelText(messages['webHomeProfileSwitcherLabel'] ?? 'missing'),
+      { target: { value: PREGNANT_ID } },
+    );
+    await screen.findByRole('heading', { name: 'Priya' });
+    expect(screen.queryByTestId('cycle-recap-card')).not.toBeInTheDocument();
+  });
+
+  // Issue #1819: a dismissal is scoped to its profile and cycle. This
+  // fixture's two subject profiles share one cycle start (the fake module
+  // answers the same completed-cycle recap for both), which used to share
+  // one dismissal.
+  it('scopes a recap dismissal to its profile', async () => {
+    vi.mocked(useSyncedData).mockImplementation(() =>
+      syncedResult(
+        mergeSyncedData(emptySyncedData(), {
+          profiles: [profileRow(RICH_ID, 'Maya', 0), profileRow(PREGNANT_ID, 'Priya', 1)],
+          day_entries: [],
+          observations: [],
+          profile_modes: [modeRow(PREGNANT_ID, 'pregnancy')],
+          cycle_overrides: [],
+          care_notes: [],
+          visit_prep_items: [],
+          profile_tag_registry: [],
+          profile_guardians: [guardianRow(RICH_ID, true), guardianRow(PREGNANT_ID, true)],
+          guardian_notes: [],
+        }),
+      ),
+    );
+    renderHome();
+    await screen.findByRole('heading', { name: 'Maya' });
+    fireEvent.click(
+      screen.getByRole('button', { name: messages['cycleRecapDismissLabel'] ?? 'missing' }),
+    );
+    expect(screen.queryByTestId('cycle-recap-card')).not.toBeInTheDocument();
+
+    const switcher = screen.getByLabelText(
+      messages['webHomeProfileSwitcherLabel'] ?? 'missing',
+    );
+    fireEvent.change(switcher, { target: { value: PREGNANT_ID } });
+    await screen.findByRole('heading', { name: 'Priya' });
+    expect(screen.getByTestId('cycle-recap-card')).toBeInTheDocument();
+
+    fireEvent.change(switcher, { target: { value: RICH_ID } });
+    await screen.findByRole('heading', { name: 'Maya' });
+    expect(screen.queryByTestId('cycle-recap-card')).not.toBeInTheDocument();
   });
 
   // First-run orientation (issue #1795): a signed-in account with no
