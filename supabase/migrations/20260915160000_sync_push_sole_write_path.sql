@@ -1,7 +1,7 @@
 -- Migration: 20260915160000_sync_push_sole_write_path.sql
 --
--- Issue #201 (P3): day_entries was the one client-writable table in this
--- schema still directly reachable via PostgREST -- `initial_sync_schema.sql`
+-- Issue #201 (P3): day_entries was directly reachable via PostgREST --
+-- `initial_sync_schema.sql`
 -- grants `select, insert` and a column-scoped `update` on it to
 -- `authenticated`, and the guardian RLS policies (`multi_guardian_schema.sql`)
 -- let any accepted guardian use that grant. Every invariant sync_push
@@ -12,10 +12,11 @@
 -- write data they could not otherwise write (every column CHECK, the unique
 -- live index, the attribution trigger and the server_version trigger still
 -- applied regardless of write path), so this was an untested correctness
--- surface, not a security hole -- but every other client-writable table in
--- this schema (`profile_guardians`, `guardian_invitations`,
--- `ownership_transfers`, `notification_outbox`) already has NO client write
--- grant at all; day_entries was the one exception.
+-- surface, not a security hole. Day_entries was not the only table a client
+-- could write directly -- `profiles`, `observations`, `import_jobs`, and
+-- `notification_preferences` keep direct grants of their own (2026-10-10
+-- review correction) -- but it was the one whose cross-row invariants lived
+-- only in the RPC, which is what this migration closes for it.
 --
 -- Decision (D-31 recommended this, option (a) of the issue's two-option
 -- tradeoff): REVOKE the direct grants and make `sync_push` the sole write
