@@ -38,41 +38,87 @@ set -euo pipefail
 # are different first-two-words, and stripped comments can no longer
 # contribute any words at all.
 #
-# Still a text-pattern heuristic, not a real SQL parser or a query against
-# the target tables' actual row counts (a string literal containing "--" or
-# "/*" is not specially handled, the same limitation the original grep
-# had, and a column literally named "type" can still false-positive an
-# ALTER TABLE statement, same as before) -- it fails closed on the pattern
-# either way, deliberately, same as before.
+# Strings, quoted identifiers, and dollar-quoted bodies are opaque (issue
+# #1833): the stripper walks each line as characters and tracks a
+# single-quoted string (with `''` doubling and `E'...'`/`U&'...'` backslash
+# escapes), a double-quoted identifier (with `""` doubling), a dollar-quoted
+# body (`$tag$...$tag$`, including `$$`), and a block comment (nestable, as
+# Postgres allows). The content of those regions is dropped rather than
+# printed, so a `--` inside a literal no longer truncates the line, a `;`
+# inside one no longer splits a statement, and a "DROP TABLE" inside one is
+# not a statement at all. This is still a text-pattern heuristic, not a
+# parser: a column literally named "type" can still false-positive an ALTER
+# TABLE statement, and a string form the walker does not know (an exotic
+# escape syntax) can desync it for the rest of the file, so the review step
+# stays a human's, not the script's.
 
+# The character walker (issue #1833). States persist across lines: in_single
+# with esc (an E'...'/U&'...' string), in_double, dollar (the open tag), and
+# in_block (the nesting depth). Only code characters reach `out`; every
+# quoted or commented region is dropped.
 strip_comments() {
   awk '
+    BEGIN { in_block = 0; in_single = 0; esc = 0; in_double = 0; dollar = ""; sq = "\047"; dq = "\042" }
     {
       line = $0
       out = ""
-      while (1) {
-        if (incomment) {
-          close_at = index(line, "*/")
-          if (close_at == 0) { line = ""; break }
-          line = substr(line, close_at + 2)
-          incomment = 0
+      i = 1
+      n = length(line)
+      while (i <= n) {
+        if (in_block > 0) {
+          two = substr(line, i, 2)
+          if (two == "*/") { in_block--; i += 2; continue }
+          if (two == "/*") { in_block++; i += 2; continue }
+          i++
           continue
         }
-        dash_at = index(line, "--")
-        block_at = index(line, "/*")
-        if (dash_at == 0 && block_at == 0) {
-          out = out line
-          break
-        }
-        if (block_at > 0 && (dash_at == 0 || block_at < dash_at)) {
-          out = out substr(line, 1, block_at - 1)
-          line = substr(line, block_at + 2)
-          incomment = 1
+        if (in_single) {
+          c = substr(line, i, 1)
+          if (esc && c == "\134") { i += 2; continue }
+          if (c == sq) {
+            if (substr(line, i + 1, 1) == sq) { i += 2; continue }
+            in_single = 0
+            esc = 0
+          }
+          i++
           continue
         }
-        out = out substr(line, 1, dash_at - 1)
-        line = ""
-        break
+        if (in_double) {
+          if (substr(line, i, 1) == dq) {
+            if (substr(line, i + 1, 1) == dq) { i += 2; continue }
+            in_double = 0
+          }
+          i++
+          continue
+        }
+        if (dollar != "") {
+          if (substr(line, i, length(dollar)) == dollar) { i += length(dollar); dollar = ""; continue }
+          i++
+          continue
+        }
+        two = substr(line, i, 2)
+        if (two == "--") break
+        if (two == "/*") { in_block = 1; i += 2; continue }
+        c = substr(line, i, 1)
+        if (c == sq) { in_single = 1; i++; continue }
+        if ((c == "E" || c == "e") && substr(line, i + 1, 1) == sq) { in_single = 1; esc = 1; i += 2; continue }
+        if ((c == "U" || c == "u") && substr(line, i + 1, 1) == "&" && substr(line, i + 2, 1) == sq) {
+          in_single = 1
+          esc = 1
+          i += 3
+          continue
+        }
+        if (c == dq) { in_double = 1; i++; continue }
+        if (c == "$") {
+          rest = substr(line, i)
+          if (match(rest, /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/)) {
+            dollar = substr(rest, 1, RLENGTH)
+            i += RLENGTH
+            continue
+          }
+        }
+        out = out c
+        i++
       }
       print out
     }
@@ -99,7 +145,10 @@ while IFS= read -r statement; do
       fi
       ;;
   esac
-done < <(strip_comments | tr '\n' ' ' | tr ';' '\n')
+# The trailing `printf '\n'` (issue #1833): a final statement with no `;`
+# would otherwise be dropped, because `read` at EOF without a trailing
+# newline returns nonzero and skips the loop body.
+done < <(strip_comments | tr '\n' ' ' | tr ';' '\n'; printf '\n')
 
 if [ -n "$reasons" ]; then
   printf '%s' "$reasons"

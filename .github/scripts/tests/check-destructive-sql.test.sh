@@ -89,4 +89,37 @@ assert_destructive "a destructive statement later in a multi-statement file is c
   $'CREATE TABLE public.a (id int);\nDROP TABLE public.b;' \
   "DROP TABLE"
 
+# --- issue #1833: literals, identifiers, and bodies are opaque --------------
+
+assert_destructive "a -- inside a string literal no longer hides a following DROP TABLE" \
+  $'INSERT INTO public.t (name) VALUES (\'a--b\'); DROP TABLE public.widgets;' \
+  "DROP TABLE"
+
+assert_safe "a ; and DROP TABLE inside a string literal is not a statement" \
+  $'INSERT INTO public.t (name) VALUES (\'a; DROP TABLE public.widgets;\');\nSELECT 1;'
+
+assert_safe "a ; inside a double-quoted identifier no longer splits a statement" \
+  'CREATE TABLE public."a; DROP TABLE widgets" (id int);'
+
+assert_safe "a DROP TABLE inside a dollar-quoted body is not a top-level statement" \
+  $'CREATE FUNCTION public.f() RETURNS void AS $$\n  DROP TABLE public.widgets;\n$$ LANGUAGE sql;'
+
+assert_destructive "a real DROP TABLE after a dollar-quoted body is still caught" \
+  $'CREATE FUNCTION public.f() RETURNS void AS $$ SELECT 1; $$ LANGUAGE sql;\nDROP TABLE public.widgets;' \
+  "DROP TABLE"
+
+assert_safe "an unquoted -- is a real comment: the rest of the line is comment text" \
+  'INSERT INTO public.t (name) VALUES (x--y); DROP TABLE public.widgets;'
+
+assert_safe "a nested block comment hides the DROP TABLE inside it" \
+  $'/* outer /* inner */ DROP TABLE public.widgets */\nSELECT 1;'
+
+assert_destructive "a DROP TABLE after a closed block comment on the same line is caught" \
+  '/* note */ DROP TABLE public.widgets;' \
+  "DROP TABLE"
+
+assert_destructive "a trailing statement without a semicolon is still caught" \
+  'DROP TABLE public.widgets' \
+  "DROP TABLE"
+
 print_summary "check-destructive-sql.test.sh"
