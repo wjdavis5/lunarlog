@@ -30,6 +30,7 @@ import {
   exportDocumentSchema,
   insightsReportSchema,
   inviteLinkSchema,
+  phaseInsightsSchema,
   predictionSchema,
   todayLogSchema,
   type BbtChart,
@@ -39,6 +40,7 @@ import {
   type ExportDocument,
   type InsightsReport,
   type InviteLink,
+  type PhaseInsights,
   type Prediction,
   type TodayLog,
 } from './schemas';
@@ -233,6 +235,15 @@ export function bbtChart(module: DomainModule, request: BbtChartRequest): BbtCha
  */
 export function cycleRecap(module: DomainModule, request: PredictRequest): CycleRecap | null {
   return callDomain(module, 'cycleRecap', request, cycleRecapResponseSchema).recap;
+}
+
+/**
+ * The phase card's payload (issue #1796): the open cycle's current subphase,
+ * or null with `basis` naming why (no active prediction, or a
+ * non-statistical one that has no ovulatory subphase).
+ */
+export function phaseInsights(module: DomainModule, request: PredictRequest): PhaseInsights {
+  return callDomain(module, 'phaseInsights', request, phaseInsightsSchema);
 }
 
 export function validateDayEntryDate(

@@ -60,6 +60,7 @@ library;
 import 'dart:convert';
 
 import 'package:lunarlog/domain/birth_control.dart';
+import 'package:lunarlog/domain/content/cycle_literacy_library.dart';
 import 'package:lunarlog/domain/export/account_export.dart';
 import 'package:lunarlog/domain/insights/bbt_chart.dart';
 import 'package:lunarlog/domain/insights/cramp_prediction.dart';
@@ -82,6 +83,7 @@ import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/domain/episodes/episodes.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
+import 'package:lunarlog/domain/prediction/cycle_subphase.dart';
 import 'package:lunarlog/domain/prediction/forecast.dart';
 import 'package:lunarlog/domain/prediction/pms.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
@@ -119,6 +121,7 @@ String handleFacadeCall(String method, String requestJson) {
       'insights' => insightsFromJson(decoded),
       'bbtChart' => bbtChartFromJson(decoded),
       'cycleRecap' => cycleRecapFromJson(decoded),
+      'phaseInsights' => phaseInsightsFromJson(decoded),
       'calendarForecast' => calendarForecastFromJson(decoded),
       'validateDayEntryDate' => validateDayEntryDateFromJson(decoded),
       'buildExport' => buildExportFromJson(decoded),
@@ -598,6 +601,86 @@ Map<String, Object?> cycleRecapToJson(CycleRecap recap) => {
   'crampCycleDays': recap.crampCycleDays == null
       ? null
       : [...recap.crampCycleDays!],
+};
+
+// ---------------------------------------------------------------------------
+// phaseInsights
+// ---------------------------------------------------------------------------
+
+/// `phaseInsights` (issue #1796): the open cycle's current hormonal subphase,
+/// as the Analysis tab's phase card reads it (`deriveSubphase`). The card's
+/// display strings - the subphase name, its hormonal summary, what to track,
+/// the hedged notice, the explainer, the day-range text - are the domain's
+/// own, carried here like the insights and recap payloads.
+///
+/// Request keys: the same set `predict` takes.
+/// Response `data`: `{"phase": null, "basis": null}` when the prediction is
+/// not active; `{"phase": null, "basis": <name>}` when it is active but
+/// non-statistical (a pack-driven or hormonal prediction has no ovulatory
+/// subphase - issue #1118 - and the web renders the basis's own copy); else
+/// `{"phase": {...}, "basis": "statistical"}` with the subphase's facts and
+/// display strings, the cycle day and range, the dates, the hedge, and the
+/// source provenance.
+Map<String, Object?> phaseInsightsFromJson(Map<String, Object?> request) {
+  final today = _requireToday(request);
+  _configureTimeZone(_requireTimeZone(request));
+  final entries = _requireEntries(request);
+  final prediction = _resolvePrediction(
+    entries: entries,
+    today: today,
+    omittedCycleStarts: _optionalDates(
+      request['omittedCycleStarts'],
+      'omittedCycleStarts',
+    ),
+    facts: _optionalFacts(request['facts']),
+    birthControlState: _optionalBirthControl(request['birthControl']),
+    lifecycleMode: LifecycleMode.fromDb(
+      _optionalString(request['lifecycleMode']),
+    ),
+    predictionsEnabled: _optionalBool(
+      request['predictionsEnabled'],
+      defaultValue: true,
+    ),
+  );
+  if (prediction is! ActivePrediction) {
+    return {'phase': null, 'basis': null};
+  }
+  final basis = prediction.basis.name;
+  if (prediction.basis != PredictionBasis.statistical) {
+    return {'phase': null, 'basis': basis};
+  }
+  return {
+    'phase': phaseInfoToJson(
+      deriveSubphase(prediction: prediction, today: today),
+    ),
+    'basis': basis,
+  };
+}
+
+/// Serializes a [CycleSubphaseInfo]. Every field is the model's own; the
+/// day-range text and the subphase's display strings are carried so the web
+/// renders them rather than re-deriving Dart string logic, and the primary
+/// article's title comes from the bundled library so the web can label its
+/// link without carrying the library itself.
+Map<String, Object?> phaseInfoToJson(CycleSubphaseInfo info) => {
+  'subphase': info.subphase.id,
+  'displayName': info.subphase.displayName,
+  'hormonalSummary': info.subphase.hormonalSummary,
+  'whatToTrack': info.subphase.whatToTrack,
+  'primaryArticleId': info.subphase.primaryArticleId,
+  'primaryArticleTitle':
+      CycleLiteracyLibrary.getArticleById(info.subphase.primaryArticleId)?.title,
+  'cycleDay': info.cycleDay,
+  'startCycleDay': info.startCycleDay,
+  'endCycleDay': info.endCycleDay,
+  'cycleDayRangeText': info.cycleDayRangeText,
+  'startDate': info.startDate.iso,
+  'endDate': info.endDate.iso,
+  'isHedged': info.isHedged,
+  'hedgedNotice': info.hedgedNotice,
+  'biologicalExplainer': info.biologicalExplainer,
+  'source': info.source,
+  'reviewDate': info.reviewDate,
 };
 
 // ---------------------------------------------------------------------------

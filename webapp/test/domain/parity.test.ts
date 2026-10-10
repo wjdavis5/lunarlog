@@ -32,6 +32,7 @@ import {
   exportDocumentSchema,
   insightsReportSchema,
   inviteLinkSchema,
+  phaseInsightsSchema,
   predictionSchema,
   todayLogSchema,
 } from '../../src/domain/schemas';
@@ -55,6 +56,7 @@ const schemas: Record<string, z.ZodType<unknown>> = {
   insights: insightsReportSchema,
   bbtChart: bbtChartSchema,
   cycleRecap: cycleRecapResponseSchema,
+  phaseInsights: phaseInsightsSchema,
   calendarForecast: calendarForecastSchema,
   validateDayEntryDate: dateValidationSchema,
   buildExport: exportDocumentSchema,

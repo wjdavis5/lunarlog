@@ -47,6 +47,7 @@ void main() {
     ..._insightCases(),
     ..._bbtChartCases(),
     ..._cycleRecapCases(),
+    ..._phaseInsightsCases(),
     ..._calendarForecastCases(),
     ..._validateDateCases(),
     ..._exportCases(),
@@ -599,6 +600,52 @@ List<Map<String, Object?>> _cycleRecapCases() {
       'entries': entries,
     }),
     _case('cycleRecap.thin-record', 'cycleRecap', {
+      'today': today,
+      'tz': 'UTC',
+      'entries': thin,
+    }),
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// phaseInsights
+// ---------------------------------------------------------------------------
+
+/// The phase card's payload (issue #1796): an active statistical cycle (a
+/// subphase with its display strings), a pack-driven prediction (no
+/// ovulatory subphase - issue #1118 - so `phase` is null and `basis` names
+/// the reason), and a one-cycle record where no prediction is active yet.
+List<Map<String, Object?>> _phaseInsightsCases() {
+  const today = '2026-09-30';
+  final regular = _cycleEntries(
+    cycleLengths: const [28, 28, 28, 28, 28, 28, 28],
+    firstStart: _addDays(today, -196),
+  );
+  final packUser = _cycleEntries(
+    cycleLengths: const [28, 28, 28],
+    firstStart: _addDays(today, -90),
+  );
+  final thin = _cycleEntries(
+    cycleLengths: const [28],
+    firstStart: _addDays(today, -10),
+  );
+  return [
+    _case('phaseInsights.statistical-cycle', 'phaseInsights', {
+      'today': today,
+      'tz': 'UTC',
+      'entries': regular,
+    }),
+    _case('phaseInsights.pack-driven', 'phaseInsights', {
+      'today': today,
+      'tz': 'UTC',
+      'entries': packUser,
+      'birthControl': {
+        'method': 'pill',
+        'startedOn': _addDays(today, -20),
+        'stoppedOn': null,
+      },
+    }),
+    _case('phaseInsights.thin-record', 'phaseInsights', {
       'today': today,
       'tz': 'UTC',
       'entries': thin,
