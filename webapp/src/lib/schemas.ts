@@ -11,8 +11,7 @@ import { ULID_PATTERN } from './ulid';
  * picked up here when the UI needs it.
  *
  * Issue #1252 extends the catalogue to every synced table the data layer
- * reads (`sync_pull`'s eleven keys plus `guardian_notes` and `settings`,
- * which ride direct RLS-scoped selects) and pins the push-payload shapes
+ * reads (`sync_pull`'s eleven keys) and pins the push-payload shapes
  * the server accepts — the same shapes `sync_push`'s derived key
  * allowlists admit and `supabase/tests/seed_sync_push_sample_test.sql`
  * replays against the live RPC.
@@ -187,23 +186,6 @@ export type VisitPrepItemRow = z.infer<typeof visitPrepItemSchema>;
 
 export const visitPrepItemListSchema = z.array(visitPrepItemSchema);
 
-/** One `guardian_notes` row (dated, author-scoped; issue #801). */
-export const guardianNoteSchema = z.object({
-  id: ulidId,
-  profile_id: ulidId,
-  local_date: z.string(),
-  tz: z.string(),
-  body: z.string(),
-  created_at: timestamp,
-  updated_at: timestamp,
-  deleted_at: timestamp.nullable(),
-  server_version: z.number(),
-});
-
-export type GuardianNoteRow = z.infer<typeof guardianNoteSchema>;
-
-export const guardianNoteListSchema = z.array(guardianNoteSchema);
-
 /** One `profile_guardians` row — the one synced row whose id is a UUID
  * (gen_random_uuid, 20260904010000), not a ULID. */
 export const profileGuardianSchema = z.object({
@@ -245,21 +227,8 @@ export type ProfileTagRegistryRow = z.infer<typeof profileTagRegistrySchema>;
 
 export const profileTagRegistryListSchema = z.array(profileTagRegistrySchema);
 
-/** One per-user `settings` row (direct RLS-scoped select; not in sync_pull). */
-export const settingSchema = z.object({
-  user_id: z.string(),
-  key: z.string(),
-  value: z.string(),
-  updated_at: timestamp,
-  server_version: z.number(),
-});
-
-export type SettingRow = z.infer<typeof settingSchema>;
-
-export const settingListSchema = z.array(settingSchema);
-
 /**
- * One wake signal from `public.sync_signals` — the only table the Realtime
+ * One wake signal from `public.sync_signals` - the only table the Realtime
  * publication carries (20260905100000). Content-free by construction:
  * which profile changed and when, nothing else (KTD2).
  */

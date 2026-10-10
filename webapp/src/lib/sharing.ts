@@ -684,32 +684,6 @@ export async function fetchActiveTransfer(
 /** PostgREST's default row cap per response — anything past it paginates. */
 const PAGE_SIZE = 500;
 
-/**
- * A paginated full read of `guardian_notes` for `profileId` (live rows
- * only). PostgREST caps a response at its max-rows setting, so pages are
- * looped until a short page arrives (issue #1252's pagination rule, applied
- * to the notes this slice reads).
- */
-export async function fetchGuardianNotes(
-  client: AppSupabaseClient,
-  profileId: string,
-): Promise<GuardianNoteRow[]> {
-  const rows: GuardianNoteRow[] = [];
-  for (let offset = 0; ; offset += PAGE_SIZE) {
-    const { data, error, status } = await client
-      .from('guardian_notes')
-      .select('id, profile_id, local_date, tz, body, logged_by_user_id, updated_at')
-      .eq('profile_id', profileId)
-      .is('deleted_at', null)
-      .order('updated_at', { ascending: true })
-      .range(offset, offset + PAGE_SIZE - 1);
-    if (error !== null) throw await failureFor(client, error, false, status);
-    const page = z.array(guardianNoteRowSchema).parse(data);
-    rows.push(...page);
-    if (page.length < PAGE_SIZE) return rows;
-  }
-}
-
 /** One local date's live guardian notes for `profileId`, paginated. */
 export async function fetchGuardianNotesForDate(
   client: AppSupabaseClient,
