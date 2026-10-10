@@ -565,7 +565,7 @@ Map<String, Object?> _bbtRow(
   'unit': unit,
   'source': 'manual',
   if (excluded) 'excluded': true,
-  if (deletedAt != null) 'deletedAt': deletedAt,
+  'deletedAt': ?deletedAt,
 };
 
 // ---------------------------------------------------------------------------
