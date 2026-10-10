@@ -46,19 +46,27 @@ set -euo pipefail
 # Postgres allows). The content of those regions is dropped rather than
 # printed, so a `--` inside a literal no longer truncates the line, a `;`
 # inside one no longer splits a statement, and a "DROP TABLE" inside one is
-# not a statement at all. This is still a text-pattern heuristic, not a
-# parser: a column literally named "type" can still false-positive an ALTER
-# TABLE statement, and a string form the walker does not know (an exotic
-# escape syntax) can desync it for the rest of the file, so the review step
-# stays a human's, not the script's.
+# not a statement at all. One dollar-quoted body is not opaque (issue
+# #1850): the one a `DO` statement opens, because a `DO` block RUNS when the
+# migration applies -- its body stays visible to the per-`;` statement
+# check, so a `DROP TABLE` that is its own statement inside it is caught.
+# This is still a text-pattern heuristic, not a parser: a column literally
+# named "type" can still false-positive an ALTER TABLE statement, and a
+# string form the walker does not know (an exotic escape syntax) can desync
+# it for the rest of the file, so the review step stays a human's, not the
+# script's.
 
 # The character walker (issue #1833). States persist across lines: in_single
-# with esc (an E'...'/U&'...' string), in_double, dollar (the open tag), and
-# in_block (the nesting depth). Only code characters reach `out`; every
-# quoted or commented region is dropped.
+# with esc (an E'...'/U&'...' string), in_double, dollar (the open tag),
+# in_block (the nesting depth), and visible_dollar (issue #1850: a dollar
+# body opened by a `DO` statement, whose characters are printed instead of
+# dropped). `pending` is the visible text of the current statement so far --
+# reset on every visible `;` -- which is what tells a `DO` apart from a
+# `CREATE FUNCTION`. Only code characters reach `out`; every quoted or
+# commented region is dropped (or, for a visible dollar body, printed).
 strip_comments() {
   awk '
-    BEGIN { in_block = 0; in_single = 0; esc = 0; in_double = 0; dollar = ""; sq = "\047"; dq = "\042" }
+    BEGIN { in_block = 0; in_single = 0; esc = 0; in_double = 0; dollar = ""; visible_dollar = 0; pending = ""; sq = "\047"; dq = "\042" }
     {
       line = $0
       out = ""
@@ -92,7 +100,18 @@ strip_comments() {
           continue
         }
         if (dollar != "") {
-          if (substr(line, i, length(dollar)) == dollar) { i += length(dollar); dollar = ""; continue }
+          if (substr(line, i, length(dollar)) == dollar) {
+            if (visible_dollar) { out = out dollar; pending = pending dollar }
+            i += length(dollar); dollar = ""; visible_dollar = 0; continue
+          }
+          if (visible_dollar) {
+            ch = substr(line, i, 1)
+            out = out ch
+            pending = pending ch
+            if (ch == ";") pending = ""
+            i++
+            continue
+          }
           i++
           continue
         }
@@ -113,11 +132,24 @@ strip_comments() {
           rest = substr(line, i)
           if (match(rest, /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/)) {
             dollar = substr(rest, 1, RLENGTH)
+            # Issue #1850: a dollar quote that opens a DO statement is not
+            # opaque. `pending` is the statement text so far; when it is
+            # exactly `DO` (optionally with its LANGUAGE clause), the body
+            # is printed as it is read, so the per-; statement check runs on
+            # what the block would run.
+            probe = pending
+            gsub(/[ \t\r]+/, " ", probe)
+            gsub(/^ +/, "", probe)
+            gsub(/ +$/, "", probe)
+            visible_dollar = (tolower(probe) ~ /^do( language [a-z0-9_]+)?$/) ? 1 : 0
+            if (visible_dollar) { out = out dollar; pending = pending dollar }
             i += RLENGTH
             continue
           }
         }
         out = out c
+        pending = pending c
+        if (c == ";") pending = ""
         i++
       }
       print out
