@@ -6888,6 +6888,8 @@
               3
             ],
             "trend": "stable",
+            "trendDisplayName": "Consistent",
+            "timingSummary": "Most common on Cycle Days 2, 3",
             "meetsThreshold": true
           },
           {
@@ -6901,6 +6903,8 @@
               1
             ],
             "trend": "stable",
+            "trendDisplayName": "Consistent",
+            "timingSummary": "Most common on Cycle Day 1",
             "meetsThreshold": true
           }
         ],
@@ -6933,6 +6937,7 @@
           ],
           "observedCycleCount": 4,
           "totalCyclesAnalyzed": 4,
+          "summaryText": "Likely on Cycle Days 2, 3",
           "disclaimer": "Cramp estimates are based on your past logged tags, not medical diagnosis. Individual cycle timing and physical sensations may naturally vary."
         },
         "analyzedCycleCount": 4,
@@ -7212,6 +7217,8 @@
               2
             ],
             "trend": "insufficientData",
+            "trendDisplayName": "Gathering data",
+            "timingSummary": "Most common on Cycle Day 2",
             "meetsThreshold": true
           }
         ],
@@ -7242,6 +7249,7 @@
           ],
           "observedCycleCount": 3,
           "totalCyclesAnalyzed": 3,
+          "summaryText": "Likely on Cycle Day 2",
           "disclaimer": "Cramp estimates are based on your past logged tags, not medical diagnosis. Individual cycle timing and physical sensations may naturally vary."
         },
         "analyzedCycleCount": 3,
