@@ -248,6 +248,14 @@ describe('TodayPage — the profile home (issue #1253)', () => {
     );
   });
 
+  // The BBT chart section rides the same domain call pattern as the
+  // estimate and history (issue #1796).
+  it('renders the BBT chart section from the domain module', async () => {
+    renderHome();
+    await screen.findByRole('heading', { name: 'Maya' });
+    expect(screen.getByText(messages['bbtChartEmptyTitle'] ?? 'missing')).toBeInTheDocument();
+  });
+
   // First-run orientation (issue #1795): a signed-in account with no
   // profiles gets one short welcome before the compact empty state.
   describe('first-run orientation (issue #1795)', () => {
