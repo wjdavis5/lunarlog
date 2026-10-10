@@ -340,6 +340,40 @@ export const cycleRecapResponseSchema = z.object({
   recap: cycleRecapSchema.nullable(),
 });
 
+/**
+ * The phase card's payload (issue #1796), the `phaseInsights` method's
+ * response: the open cycle's current hormonal subphase with the domain's own
+ * display strings, or null when no ovulatory subphase applies. `basis` names
+ * why: `statistical` is the normal case; a non-statistical basis (a
+ * pack-driven or hormonal prediction, issue #1118) means the web renders the
+ * basis's own copy instead of a subphase.
+ */
+export const phaseInsightsSchema = z.object({
+  phase: z
+    .object({
+      subphase: z.string(),
+      displayName: z.string(),
+      hormonalSummary: z.string(),
+      whatToTrack: z.string(),
+      primaryArticleId: z.string(),
+      cycleDay: z.number().int(),
+      startCycleDay: z.number().int(),
+      endCycleDay: z.number().int(),
+      cycleDayRangeText: z.string(),
+      startDate: isoDate,
+      endDate: isoDate,
+      isHedged: z.boolean(),
+      hedgedNotice: z.string().nullable(),
+      biologicalExplainer: z.string(),
+      source: z.string(),
+      reviewDate: isoDate,
+    })
+    .nullable(),
+  basis: z.string().nullable(),
+});
+
+export type PhaseInsights = z.infer<typeof phaseInsightsSchema>;
+
 export const dateValidationSchema = z.object({
   status: z.enum(['valid', 'futureDate', 'beforeBirthYear']),
 });
