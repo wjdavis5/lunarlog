@@ -108,6 +108,33 @@ assert_destructive "a real DROP TABLE after a dollar-quoted body is still caught
   $'CREATE FUNCTION public.f() RETURNS void AS $$ SELECT 1; $$ LANGUAGE sql;\nDROP TABLE public.widgets;' \
   "DROP TABLE"
 
+# --- issue #1850: a DO block runs during db push, so it is scanned ----------
+
+assert_destructive "a DROP TABLE inside a DO block is caught (the block runs at push time)" \
+  $'DO $$\nBEGIN\n  PERFORM 1;\n  DROP TABLE public.widgets;\nEND\n$$;' \
+  "DROP TABLE"
+
+assert_destructive "a DO LANGUAGE plpgsql block is caught the same way" \
+  $'DO LANGUAGE plpgsql $$\nBEGIN\n  PERFORM 1;\n  DROP TABLE public.widgets;\nEND\n$$;' \
+  "DROP TABLE"
+
+assert_destructive "an ALTER TABLE ... DROP COLUMN inside a DO block is caught" \
+  $'DO $$\nBEGIN\n  PERFORM 1;\n  ALTER TABLE public.widgets DROP COLUMN color;\nEND\n$$;' \
+  "DROP COLUMN"
+
+assert_safe "a DO block with no destructive statement is not flagged" \
+  $'DO $$\nBEGIN\n  PERFORM 1;\nEND\n$$;'
+
+assert_safe "a DO block does not swallow the statement after it" \
+  $'DO $$\nBEGIN\n  PERFORM 1;\nEND\n$$;\nSELECT 1;'
+
+assert_destructive "a DROP TABLE after a DO block is still caught" \
+  $'DO $$\nBEGIN\n  PERFORM 1;\nEND\n$$;\nDROP TABLE public.widgets;' \
+  "DROP TABLE"
+
+assert_safe 'a tagged DO body ($body$) is handled like the untagged one' \
+  $'DO $body$\nBEGIN\n  PERFORM 1;\nEND\n$body$;'
+
 assert_safe "an unquoted -- is a real comment: the rest of the line is comment text" \
   'INSERT INTO public.t (name) VALUES (x--y); DROP TABLE public.widgets;'
 
