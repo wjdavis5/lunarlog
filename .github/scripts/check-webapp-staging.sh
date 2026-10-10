@@ -313,15 +313,18 @@ check_once() {
   # is set (the app.lunarlog.app run): /privacy.html's permanent 301 to the
   # apex policy, the self-unregistering service worker at the old Flutter
   # registration path, and the Clear-Site-Data wipe on the shell (#1248:
-  # "storage" and "cache" -- never "cookies", which would clear the refresh
-  # cookie every page load).
+  # "storage" only -- never "cache" (issue #1397: it would re-download
+  # every hashed asset on every page load) or "cookies" (which would clear
+  # the refresh cookie every page load)).
   if [ "${WEBAPP_CHECK_RETIREMENT:-0}" = '1' ]; then
     problems="${problems}$(expect_status "$privacy_redirect" 301 "$PRIVACY_URL")"
     problems="${problems}$(expect_header_prefix "$privacy_redirect" location 'https://lunarlog.app/privacy' "$PRIVACY_URL")"
     problems="${problems}$(expect_status "$flutter_sw" 200 "$FLUTTER_SW_URL")"
     problems="${problems}$(expect_header_prefix "$flutter_sw" content-type application/javascript "$FLUTTER_SW_URL")"
     problems="${problems}$(expect_header_contains "$root" clear-site-data '"storage"' "$ROOT_URL")"
-    problems="${problems}$(expect_header_contains "$root" clear-site-data '"cache"' "$ROOT_URL")"
+    if printf '%s' "$(header_value "$root" clear-site-data)" | grep -q '"cache"'; then
+      problems="${problems}$ROOT_URL: clear-site-data includes \"cache\" -- it would re-download every hashed asset on every page load (#1397). "
+    fi
     if printf '%s' "$(header_value "$root" clear-site-data)" | grep -q 'cookies'; then
       problems="${problems}$ROOT_URL: clear-site-data includes \"cookies\" -- it would clear the refresh cookie every page load (#1248). "
     fi

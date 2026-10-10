@@ -93,11 +93,15 @@ async function serve(request: Request, env: Env, authDeps?: AuthDeps): Promise<R
   }
   // On the app shell, wipe whatever the previous web client left at rest:
   // "storage" clears localStorage, IndexedDB, Cache Storage and service
-  // worker registrations; "cache" the HTTP cache. Deliberately NOT
-  // "cookies" — this client's only credential, the rotating __Host- refresh
-  // cookie, must survive its own page loads (#1248/#1258).
+  // worker registrations, which is everything the retired Flutter build
+  // left (#1248). Deliberately NOT "cache" (issue #1397): the migration
+  // does not need the browser's HTTP cache - the React client's assets are
+  // content-hashed, so stale Flutter-era entries can never be served - and
+  // "cache" would re-download every asset on every full page load. And
+  // deliberately NOT "cookies": this client's only credential, the rotating
+  // __Host- refresh cookie, must survive its own page loads (#1258).
   if ((response.headers.get('content-type') ?? '').includes('text/html')) {
-    response.headers.set('clear-site-data', '"cache", "storage"');
+    response.headers.set('clear-site-data', '"storage"');
   }
   return response;
 }

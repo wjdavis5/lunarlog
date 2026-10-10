@@ -156,8 +156,9 @@ of `app.lunarlog.app` from the Flutter build's `lunarlog-app` Pages project
 happened on 2026-10-03 (#1258); the workflow's Pages-retirement and
 cutover-probe steps were removed in #1624, so a deploy now only deploys the
 Worker and smoke-checks both origins. The Worker also performs the #1248 retirement
-duties on the production origin: `Clear-Site-Data: "cache", "storage"` on
-the app shell (never `"cookies"` — the refresh cookie must survive), a
+duties on the production origin: `Clear-Site-Data: "storage"` on
+the app shell (never `"cache"` (issue #1397: it would re-download every
+hashed asset on every page load) or `"cookies"` - the refresh cookie must survive), a
 301 from `/privacy.html` to the apex policy, and a self-unregistering
 service worker at the old `/flutter_service_worker.js` path. Until the `CLOUDFLARE_*` secrets are
 present the deploy steps warn and skip, like `site-deploy.yml`.
