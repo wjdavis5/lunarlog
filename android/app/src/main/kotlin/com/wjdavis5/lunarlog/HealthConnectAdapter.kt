@@ -130,28 +130,32 @@ class HealthConnectAdapter(context: Context) {
     private fun perWritePermissionKey(permission: String): String =
         PERMISSION_REQUESTED_TYPE_PREFIX + permission
 
-    // Whether any per-permission marker exists at all. Absent alongside the
-    // install-wide marker means this install's write sheet predates this
-    // tracking (or its only write grant arrived through Health Connect's
-    // own settings), so [seedAskedWritePermissions] records the current
-    // list once: that sheet carried every type the build that launched it
-    // listed, and the ones this build adds must not be read as asked.
+    // Whether any per-permission marker exists at all. Absent alongside
+    // [WRITE_REQUEST_LAUNCHED_KEY] means this install's write sheet
+    // predates this tracking, so [seedAskedWritePermissions] records the
+    // current list once: that sheet carried every type the build that
+    // launched it listed, and the ones this build adds must not be read as
+    // asked. A marker set only by an observed settings grant is not this
+    // state — [writeRequestLaunched] is what gates the seed (Issue #1881).
     private fun writePermissionMarkersExist(): Boolean =
         prefs.all.keys.any { it.startsWith(PERMISSION_REQUESTED_TYPE_PREFIX) }
 
     // One-time migration into the per-permission markers (Issue #1590): an
-    // install whose only "asked" evidence is the install-wide marker had
-    // every permission of its build's list on that sheet. Recording the
-    // current list here — before any type is added — is what lets a later
-    // build tell a newly added type from these.
+    // install that LAUNCHED a write sheet before this tracking had every
+    // permission of its build's list on that sheet. Recording the current
+    // list here — before any type is added — is what lets a later build
+    // tell a newly added type from these.
     //
-    // A phone that skips the build that first runs this cannot be told from
-    // one that ran it: the install-wide marker predates the type list, and
-    // no build recorded one. Such a phone treats the type as already asked;
-    // the alternative (treating the marker as proving nothing) would put
-    // the permissions the person already declined back in front of her.
+    // Issue #1881: gated on [writeRequestLaunched], not on the install-wide
+    // marker — a write granted in Health Connect's own settings sets that
+    // marker with no sheet ever shown, and seeding from it marked types the
+    // person was never asked about as asked, so the screen could never
+    // offer them again. A pre-#1590 install that launched its sheet is
+    // indistinguishable from one that only observed a grant, so both are
+    // offered the types once more; that sheet's launch records them and
+    // settles the question.
     private fun seedAskedWritePermissions() {
-        if (!writesEverRequested()) return
+        if (!writeRequestLaunched()) return
         if (writePermissionMarkersExist()) return
         markWritePermissionsAsked(writePermissions)
     }
@@ -172,10 +176,13 @@ class HealthConnectAdapter(context: Context) {
 
     // Issue #1590: whether [permission] has ever been carried by a request
     // this install launched — "asked". A permission that is granted never
-    // reaches this question: the caller excludes granted ones first.
+    // reaches this question: the caller excludes granted ones first. The
+    // fallback is the lazy form of the seed, gated the same way: a launched
+    // write sheet, never merely a grant observed in Health Connect's own
+    // settings (Issue #1881).
     private fun writePermissionAsked(permission: String): Boolean =
         markerSetByThisInstall(perWritePermissionKey(permission)) ||
-            (writesEverRequested() && !writePermissionMarkersExist())
+            (writeRequestLaunched() && !writePermissionMarkersExist())
 
     // Issue #1515: there are two requests, so there are two things to have
     // been asked. Whether this install has put the WRITE permissions in
@@ -188,6 +195,15 @@ class HealthConnectAdapter(context: Context) {
     // writes — which would stop the write pass before its own request.
     private fun writesEverRequested(): Boolean =
         markerSetByThisInstall(PERMISSION_REQUESTED_KEY)
+
+    // Issue #1881: whether this install has actually LAUNCHED the write
+    // sheet, as opposed to [writesEverRequested] — which a write granted in
+    // Health Connect's own settings also sets, with no sheet ever shown.
+    // Only a launched sheet proves it carried every write type the
+    // launching build listed, which is the premise of the per-permission
+    // seed.
+    private fun writeRequestLaunched(): Boolean =
+        markerSetByThisInstall(WRITE_REQUEST_LAUNCHED_KEY)
 
     // Whether this install has launched a permission request at all —
     // either one. Both carry the reads (the write path's sheet has always
@@ -1492,6 +1508,14 @@ class HealthConnectAdapter(context: Context) {
             if (askedMarker != null) {
                 prefs.edit().putLong(askedMarker, installStamp).apply()
             }
+            // Issue #1881: a LAUNCHED write sheet, kept apart from
+            // [PERMISSION_REQUESTED_KEY] — an observed settings grant sets
+            // that marker with no sheet ever shown, while only a launch
+            // proves a sheet carried every write type the launching build
+            // listed (the seed's premise).
+            if (askedMarker == PERMISSION_REQUESTED_KEY) {
+                prefs.edit().putLong(WRITE_REQUEST_LAUNCHED_KEY, installStamp).apply()
+            }
         }
     }
 
@@ -2110,6 +2134,15 @@ class HealthConnectAdapter(context: Context) {
         // unbind: it describes the OS permission for this install, not the
         // binding.
         const val PERMISSION_REQUESTED_KEY = "lunarlog.health.permissionRequested"
+
+        // Issue #1881: set once this install has LAUNCHED the write sheet
+        // (either write-path request), stamped like the marker above. Kept
+        // apart from [PERMISSION_REQUESTED_KEY], which a write granted in
+        // Health Connect's own settings also sets: only a launch proves a
+        // sheet carried every write type the launching build listed, which
+        // is the premise of the adapter's per-permission seed.
+        const val WRITE_REQUEST_LAUNCHED_KEY =
+            "lunarlog.health.writeRequestLaunched"
 
         // Issue #1590: the per-write-permission asked markers, one key per
         // permission string this install has carried in a launched request
