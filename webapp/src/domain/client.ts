@@ -22,6 +22,7 @@
 import {
   bbtChartSchema,
   calendarForecastSchema,
+  cycleRecapResponseSchema,
   cycleHistoryViewSchema,
   dateValidationSchema,
   domainErrorSchema,
@@ -33,6 +34,7 @@ import {
   todayLogSchema,
   type BbtChart,
   type CalendarForecast,
+  type CycleRecap,
   type CycleHistoryView,
   type ExportDocument,
   type InsightsReport,
@@ -222,6 +224,15 @@ export interface BbtChartRequest {
  */
 export function bbtChart(module: DomainModule, request: BbtChartRequest): BbtChart {
   return callDomain(module, 'bbtChart', request, bbtChartSchema);
+}
+
+/**
+ * The cycle-end recap (issue #1796): the facts the app's recap card reads,
+ * or null when no cycle has completed yet. The web keeps no previous-
+ * snapshot state, so the change facts arrive as the no-snapshot case.
+ */
+export function cycleRecap(module: DomainModule, request: PredictRequest): CycleRecap | null {
+  return callDomain(module, 'cycleRecap', request, cycleRecapResponseSchema).recap;
 }
 
 export function validateDayEntryDate(

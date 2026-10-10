@@ -297,6 +297,49 @@ export const bbtChartSchema = z.object({
 
 export type BbtChart = z.infer<typeof bbtChartSchema>;
 
+/**
+ * The cycle-end recap (issue #1796), the `cycleRecap` method's response: the
+ * facts the app's recap card reads, or null when no cycle has completed. The
+ * device-local pieces (the seen-cycle key and the previous-statistics
+ * snapshot) are not part of the wire shape; the web keeps nothing, so the
+ * change flags read as the model's no-snapshot case. Confidence tiers map to
+ * the catalogue through `tierLabelId`, like the status card's chip.
+ */
+export const cycleRecapSchema = z.object({
+  cycleNumber: z.number().int(),
+  cycleStart: isoDate,
+  previousCycleStart: isoDate.nullable(),
+  cycleLengthDays: z.number().int(),
+  previousCycleLengthDays: z.number().int().nullable(),
+  lengthChangeDays: z.number().int().nullable(),
+  bleedDayCountDelta: z.number().int().nullable(),
+  hasEstimate: z.boolean(),
+  confidence: z.enum(['high', 'learning', 'irregular', 'provisional']),
+  meanCycleLengthDays: z.number().nullable(),
+  meanPeriodLengthDays: z.number().nullable(),
+  spreadDays: z.number().nullable(),
+  usableCycleCount: z.number().int().nullable(),
+  statisticChange: z.boolean(),
+  tierChanged: z.boolean(),
+  previousConfidence: z.enum(['high', 'learning', 'irregular', 'provisional']).nullable(),
+  meanCycleShiftDays: z.number().int().nullable(),
+  meanPeriodShiftDays: z.number().int().nullable(),
+  recurringSymptoms: z.array(
+    z.object({
+      tag: z.string(),
+      cycleDays: z.array(z.number().int()),
+    }),
+  ),
+  crampCycleDays: z.array(z.number().int()).nullable(),
+});
+
+export type CycleRecap = z.infer<typeof cycleRecapSchema>;
+
+/** The `cycleRecap` envelope: `recap` is null until a cycle has completed. */
+export const cycleRecapResponseSchema = z.object({
+  recap: cycleRecapSchema.nullable(),
+});
+
 export const dateValidationSchema = z.object({
   status: z.enum(['valid', 'futureDate', 'beforeBirthYear']),
 });
