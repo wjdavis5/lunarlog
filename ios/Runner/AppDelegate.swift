@@ -906,11 +906,17 @@ enum HealthKitChannelHandler {
       result(nil)
 
     case "consumePendingBackgroundImportTrigger":
-      // Issue #993: the Dart coordinator's startup pull — whether a
+      // Issue #993: the Dart coordinator's startup pull - whether a
       // trigger fired before its listener registered. Unguarded like
       // `isAvailable`: it reads and clears this handler's own boolean
-      // latch, touching no health data and no health API.
-      result(pendingBackgroundImportTrigger)
+      // latch, touching no health data and no health API. The clear is
+      // the contract (health_background_import_trigger.dart: "Asks the
+      // native side whether a trigger fired before [listen] ran and
+      // clears that latch"): a pull that left it set would fire a
+      // phantom pass on any later pull in the same process.
+      let pending = pendingBackgroundImportTrigger
+      pendingBackgroundImportTrigger = false
+      result(pending)
 
     case "requestWriteAuthorization":
       guard let g = args.flatMap(GuardArgs.init) else {
