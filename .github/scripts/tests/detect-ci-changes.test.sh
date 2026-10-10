@@ -82,9 +82,20 @@ assert_contains "Flutter app sets edge_functions=false" "$flutter_output" "edge_
 # ---------------------------------------------------------------------------
 # Case 7: Release guard scripts changes
 # ---------------------------------------------------------------------------
-guards_output="$(run_detect ".github/scripts/check-ci-gate.sh")"
+# A generic release-guard script runs the guard suites only, and stays out
+# of the Flutter suites.
+guards_output="$(run_detect ".github/scripts/check-release-gate.sh")"
 assert_contains "Scripts set release_guards=true" "$guards_output" "release_guards=true"
 assert_contains "Scripts set app_flutter=false" "$guards_output" "app_flutter=false"
+
+# check-ci-gate.sh is the exception: release_required_checks_docs_test.dart
+# reads it (it pins REQUIRED_CHECKS against AGENTS.md), so an edit to it must
+# run the Flutter suite too. The Case 19 dynamic scan demands the same
+# mapping; before issue #1791's fix the two cases contradicted each other and
+# the suite was red whenever it ran.
+ci_gate_output="$(run_detect ".github/scripts/check-ci-gate.sh")"
+assert_contains "check-ci-gate.sh sets release_guards=true" "$ci_gate_output" "release_guards=true"
+assert_contains "check-ci-gate.sh sets app_flutter=true" "$ci_gate_output" "app_flutter=true"
 
 # ---------------------------------------------------------------------------
 # Case 8: CI workflow definition changes (.github/workflows/ci.yml)
