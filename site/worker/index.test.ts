@@ -77,14 +77,12 @@ Deno.test("/invite: serves invite.html without redirect and preserves query stri
   const body = await res.text();
   assertStringIncludes(body, "You have a lunarlog invitation");
   assertStringIncludes(body, "Open in lunarlog");
-  // Issue #1279: the web-app redemption link (issue #1255) is withheld until
-  // #1258 serves the React client at app.lunarlog.app — that origin is still
-  // the Flutter web build, which rejects https invite links, so the button
-  // silently dropped the code. Re-adding it means updating this pin,
-  // site/scripts/invite-page.test.mjs, and
-  // test/domain/sharing/link_artifacts_test.dart in the same change.
-  assertNotMatch(body, /Open in the web app/);
-  assertNotMatch(body, /app\.lunarlog\.app/);
+  // Issue #1255: the web-app redemption link ships on the neutral page, now
+  // that the React client at app.lunarlog.app serves /invite (the #1258
+  // cutover; the twin pins live in site/scripts/invite-page.test.mjs and
+  // test/domain/sharing/link_artifacts_test.dart).
+  assertStringIncludes(body, "Open in the web app");
+  assertStringIncludes(body, "app.lunarlog.app/invite");
 });
 
 Deno.test("/invite/*: serves invite.html for subpaths", async () => {
