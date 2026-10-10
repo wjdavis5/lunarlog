@@ -300,6 +300,14 @@ describe('TodayPage — the profile home (issue #1253)', () => {
     });
   });
 
+  // The symptom-trends section rides the same domain call pattern as the
+  // estimate and history (issue #1796).
+  it('renders the symptom-trends section from the domain module', async () => {
+    renderHome();
+    await screen.findByRole('heading', { name: 'Maya' });
+    expect(screen.getByText(messages['symptomTrendsTitle'] ?? 'missing')).toBeInTheDocument();
+  });
+
   it('renders the estimate card from the domain module for the first profile', async () => {
     renderHome();
     // The status card carries the active profile's name as its heading and
