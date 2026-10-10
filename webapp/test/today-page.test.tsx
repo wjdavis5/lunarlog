@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createAppQueryClient } from '../src/lib/queries';
+import { resetFirstRunForTests } from '../src/lib/first-run';
 import { AppIntlProvider } from '../src/i18n/i18n';
 import messages from '../src/i18n/messages.en.json';
 import { TodayPage } from '../src/pages/TodayPage';
@@ -148,6 +149,17 @@ const syncedFixture = (): SyncedData =>
     guardian_notes: [],
   });
 
+// The shape the module mock answers with; the real hook carries more query
+// fields, and the page reads only these four.
+function syncedResult(data: SyncedData): ReturnType<typeof useSyncedData> {
+  return {
+    data,
+    isError: false,
+    isPending: false,
+    isLoading: false,
+  } as unknown as ReturnType<typeof useSyncedData>;
+}
+
 // The fake module answers with the committed parity fixtures — the exact
 // envelopes the compiled Dart engine produces. A pregnancy life-stage
 // request resolves to the suppressed fixture, the way the real engine
@@ -214,7 +226,11 @@ function renderHome(initialPath = '/') {
 describe('TodayPage — the profile home (issue #1253)', () => {
   beforeEach(() => {
     vi.mocked(useHasSyncSession).mockReturnValue(true);
-    vi.mocked(useSyncedData).mockClear();
+    // Re-establish the default snapshot every case: a case that swaps in
+    // emptySyncedData() must not leak into the next one (mockClear clears
+    // calls, not the implementation).
+    vi.mocked(useSyncedData).mockImplementation(() => syncedResult(syncedFixture()));
+    resetFirstRunForTests();
     (window as unknown as { lunarlogDomain?: unknown }).lunarlogDomain = fakeDomainModule;
   });
 
@@ -230,6 +246,58 @@ describe('TodayPage — the profile home (issue #1253)', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
       messages['webWelcomeTitle'] ?? 'missing',
     );
+  });
+
+  // First-run orientation (issue #1795): a signed-in account with no
+  // profiles gets one short welcome before the compact empty state.
+  describe('first-run orientation (issue #1795)', () => {
+    beforeEach(() => {
+      vi.mocked(useSyncedData).mockReturnValue(syncedResult(emptySyncedData()));
+    });
+
+    it('orients a new account and links to the profile picker', () => {
+      renderHome();
+      expect(screen.getByText(messages['webFirstRunTitle'] ?? 'missing')).toBeInTheDocument();
+      expect(screen.getByText(messages['webFirstRunBody'] ?? 'missing')).toBeInTheDocument();
+      expect(
+        screen.getByText(messages['webFirstRunDataLine'] ?? 'missing'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: messages['webFirstRunCreateAction'] ?? 'missing' }),
+      ).toHaveAttribute('href', '/profiles');
+    });
+
+    it('Continue dismisses to the compact empty state', () => {
+      renderHome();
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: messages['webFirstRunContinueAction'] ?? 'missing',
+        }),
+      );
+      expect(
+        screen.queryByText(messages['webFirstRunTitle'] ?? 'missing'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText(messages['profilePickerEmptyTitle'] ?? 'missing'),
+      ).toBeInTheDocument();
+    });
+
+    it('a dismissed card stays dismissed when the page mounts again in the session', () => {
+      renderHome();
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: messages['webFirstRunContinueAction'] ?? 'missing',
+        }),
+      );
+      cleanup();
+      renderHome();
+      expect(
+        screen.queryByText(messages['webFirstRunTitle'] ?? 'missing'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText(messages['profilePickerEmptyTitle'] ?? 'missing'),
+      ).toBeInTheDocument();
+    });
   });
 
   it('renders the estimate card from the domain module for the first profile', async () => {

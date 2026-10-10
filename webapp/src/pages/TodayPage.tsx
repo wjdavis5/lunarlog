@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 
 import { useT } from '../i18n/t';
@@ -6,6 +6,7 @@ import { calendarForecast, cycleHistory, getDomainModule, predict } from '../dom
 import type { ForecastDayCell } from '../domain/schemas';
 import { emptySyncedData } from '../lib/domain';
 import { browserTimeZone, todayInBrowserZone } from '../lib/day/day-entry-policy';
+import { firstRunSeen, markFirstRunSeen } from '../lib/first-run';
 import { spottingIsosFor } from '../lib/profiles/calendar-cells';
 import {
   callerRoleFor,
@@ -29,6 +30,7 @@ import {
   useSyncSignalsRefetch,
 } from '../lib/queries';
 import type { DayEntryRow } from '../lib/schemas';
+import { FirstRunCard } from './FirstRunCard';
 import { ProfileHomeCalendar } from './ProfileHomeCalendar';
 import { ProfileHomeComparison, ProfileHomeHistory } from './ProfileHomeHistory';
 import { ProfileHomeStatus } from './ProfileHomeStatus';
@@ -51,6 +53,10 @@ export function TodayPage() {
   const signedIn = useHasSyncSession();
   const synced = useSyncedData();
   const me = useCurrentUserId(signedIn).data ?? null;
+
+  // First-run orientation (issue #1795): a module-scoped session flag, so a
+  // dismiss survives client-side navigation; a reload is a new session.
+  const [firstRunDismissed, setFirstRunDismissed] = useState(() => firstRunSeen());
 
   useEffect(() => {
     document.title = t('gateLockScreenAppTitle');
@@ -185,6 +191,13 @@ export function TodayPage() {
             </Link>
           ) : null}
         </div>
+      ) : !firstRunDismissed ? (
+        <FirstRunCard
+          onContinue={() => {
+            markFirstRunSeen();
+            setFirstRunDismissed(true);
+          }}
+        />
       ) : (
         <section className="card">
           <p className="card-title">{t('profilePickerEmptyTitle')}</p>
