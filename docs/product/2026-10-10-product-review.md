@@ -45,7 +45,7 @@ The marketing site is an Astro build with zero client JavaScript and strict resp
 
 Measured on 2026-10-10. The Flutter suite runs about 8,550 tests. CI enforces a 90 percent coverage floor and a CRAP gate at 10, and the latest merged run passed at 95.68 percent. The pgTAP suite covers 83 files and 2,819 assertions. The web client carries 52 unit test files, six end-to-end specs including the storage-empty spec, and a Deno-tested auth worker.
 
-The thin spots are narrow but real. `test/ui/account` holds 2 files against 17 source files. `test/ui/insights` holds 3 files with no unit tests. `test/domain/prediction` holds 2 files for the core estimate logic. The widget area carries about 58 tests. The issues filed with this review name these areas.
+An earlier draft of this review called the account, insights, and prediction areas thin. It counted files in the narrow directories `test/ui/account`, `test/ui/insights`, and `test/domain/prediction`. That count was wrong about the repo's layout. The UI and domain tests live flat in `test/ui/` and `test/domain/`, and spot-checking every screen and boundary case the resulting issues named found existing behavior tests in `test/ui/account_test.dart`, `test/ui/account_deletion_test.dart`, `test/ui/analysis_tab_test.dart`, `test/ui/cycle_comparison_test.dart`, `test/domain/prediction_test.dart`, and elsewhere. Issues #1792 through #1794 were closed on 2026-10-10 with that evidence, and no replacement thin-spot claim is made here.
 
 ## Release and operations state
 
