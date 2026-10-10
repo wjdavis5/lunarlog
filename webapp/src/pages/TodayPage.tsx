@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router';
 
 import { useT } from '../i18n/t';
 import {
+  bbtChart,
   calendarForecast,
   cycleHistory,
   getDomainModule,
@@ -12,6 +13,7 @@ import {
 import type { ForecastDayCell } from '../domain/schemas';
 import { emptySyncedData } from '../lib/domain';
 import { browserTimeZone, todayInBrowserZone } from '../lib/day/day-entry-policy';
+import { bbtObservationRows } from '../lib/profiles/bbt-inputs';
 import { firstRunSeen, markFirstRunSeen } from '../lib/first-run';
 import { spottingIsosFor } from '../lib/profiles/calendar-cells';
 import {
@@ -36,6 +38,7 @@ import {
   useSyncSignalsRefetch,
 } from '../lib/queries';
 import type { DayEntryRow } from '../lib/schemas';
+import { BbtChart } from './BbtChart';
 import { FirstRunCard } from './FirstRunCard';
 import { ProfileHomeCalendar } from './ProfileHomeCalendar';
 import { ProfileHomeComparison, ProfileHomeHistory } from './ProfileHomeHistory';
@@ -241,6 +244,16 @@ function ProfileHome(props: {
     return profileDomainInputs(data, props.profileId);
   }, [synced.data, props.profileId, profile]);
 
+  // The BBT chart's own inputs (issue #1796): the profile's measurement
+  // rows in the request shape the facade resolves onto their days.
+  const bbtObservations = useMemo(
+    () =>
+      bbtObservationRows(
+        (synced.data?.observations ?? []).filter((row) => row.profile_id === props.profileId),
+      ),
+    [synced.data, props.profileId],
+  );
+
   // The domain module is synchronous and holds no state between calls;
   // memoising on the inputs keeps an 18-month history from recomputing
   // on every render (the parity suite times this shape at well under a
@@ -258,11 +271,15 @@ function ProfileHome(props: {
         history: cycleHistory(module, request),
         forecast: calendarForecast(module, request),
         insights: insights(module, request),
+        bbt: bbtChart(module, {
+          entries: inputs.entries,
+          observations: bbtObservations,
+        }),
       };
     } catch {
       return null;
     }
-  }, [inputs, props.todayIso, tz]);
+  }, [inputs, props.todayIso, tz, bbtObservations]);
 
   const entryByIso = useMemo(() => {
     const map = new Map<string, DayEntryRow>();
@@ -352,6 +369,7 @@ function ProfileHome(props: {
           <ProfileHomeHistory history={domain.history} />
           <ProfileHomeComparison history={domain.history} />
           <ProfileHomeInsights report={domain.insights} />
+          <BbtChart chart={domain.bbt} />
         </>
       ) : null}
     </div>
