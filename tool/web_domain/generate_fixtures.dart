@@ -46,6 +46,7 @@ void main() {
     ..._cycleHistoryCases(),
     ..._insightCases(),
     ..._bbtChartCases(),
+    ..._cycleRecapCases(),
     ..._calendarForecastCases(),
     ..._validateDateCases(),
     ..._exportCases(),
@@ -567,6 +568,43 @@ Map<String, Object?> _bbtRow(
   if (excluded) 'excluded': true,
   'deletedAt': ?deletedAt,
 };
+
+// ---------------------------------------------------------------------------
+// cycleRecap
+// ---------------------------------------------------------------------------
+
+/// The cycle-end recap (issue #1796): a five-cycle history where the cycle
+/// that just closed carries every fact (lengths, deltas, the estimate's
+/// means and confidence, the recurring symptoms, the cramp cluster), and the
+/// one-cycle record where no cycle has completed and the response is the
+/// null recap.
+List<Map<String, Object?>> _cycleRecapCases() {
+  const today = '2026-09-30';
+  final entries = _cycleEntries(
+    cycleLengths: const [28, 28, 28, 28, 28],
+    firstStart: _addDays(today, -140),
+    tagsForDay: (cycleIndex, cycleDay) => [
+      if (cycleDay == 2) 'cramps',
+      if (cycleDay == 3 && cycleIndex.isEven) 'cramps',
+    ],
+  );
+  final thin = _cycleEntries(
+    cycleLengths: const [28],
+    firstStart: _addDays(today, -10),
+  );
+  return [
+    _case('cycleRecap.completed-cycle', 'cycleRecap', {
+      'today': today,
+      'tz': 'UTC',
+      'entries': entries,
+    }),
+    _case('cycleRecap.thin-record', 'cycleRecap', {
+      'today': today,
+      'tz': 'UTC',
+      'entries': thin,
+    }),
+  ];
+}
 
 // ---------------------------------------------------------------------------
 // calendarForecast

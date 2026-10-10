@@ -64,6 +64,7 @@ import 'package:lunarlog/domain/export/account_export.dart';
 import 'package:lunarlog/domain/insights/bbt_chart.dart';
 import 'package:lunarlog/domain/insights/cramp_prediction.dart';
 import 'package:lunarlog/domain/insights/cycle_insights_calculator.dart';
+import 'package:lunarlog/domain/insights/cycle_recap.dart';
 import 'package:lunarlog/domain/insights/symptom_trends.dart';
 import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
 import 'package:lunarlog/domain/logging/day_entry_policy.dart';
@@ -117,6 +118,7 @@ String handleFacadeCall(String method, String requestJson) {
       'cycleHistory' => cycleHistoryFromJson(decoded),
       'insights' => insightsFromJson(decoded),
       'bbtChart' => bbtChartFromJson(decoded),
+      'cycleRecap' => cycleRecapFromJson(decoded),
       'calendarForecast' => calendarForecastFromJson(decoded),
       'validateDayEntryDate' => validateDayEntryDateFromJson(decoded),
       'buildExport' => buildExportFromJson(decoded),
@@ -515,6 +517,88 @@ Map<String, Object?> bbtChartDataToJson(BbtChartData chart) {
     'isEmpty': chart.isEmpty,
   };
 }
+
+// ---------------------------------------------------------------------------
+// cycleRecap
+// ---------------------------------------------------------------------------
+
+/// `cycleRecap` (issue #1796): the cycle-end recap the app offers when a new
+/// period start closes the previous cycle (`deriveCycleRecap`), in the form
+/// the card reads. The device-local pieces stay on the device: the
+/// previous-statistics snapshot is not accepted (the web keeps nothing, so
+/// the change facts read as the model's no-snapshot case), and the returned
+/// `CycleStatisticSnapshot` is not carried.
+///
+/// Request keys: the same set `insights` takes.
+/// Response `data`: `{"recap": null}` when fewer than two episodes exist,
+/// else the recap's facts - cycle number and starts, lengths and deltas,
+/// the estimate's means, spread and confidence, the change flags, the
+/// recurring symptoms with their cycle days, and the cramp cluster days.
+Map<String, Object?> cycleRecapFromJson(Map<String, Object?> request) {
+  final today = _requireToday(request);
+  _configureTimeZone(_requireTimeZone(request));
+  final entries = _requireEntries(request);
+  final prediction = _resolvePrediction(
+    entries: entries,
+    today: today,
+    omittedCycleStarts: _optionalDates(
+      request['omittedCycleStarts'],
+      'omittedCycleStarts',
+    ),
+    facts: _optionalFacts(request['facts']),
+    birthControlState: _optionalBirthControl(request['birthControl']),
+    lifecycleMode: LifecycleMode.fromDb(
+      _optionalString(request['lifecycleMode']),
+    ),
+    predictionsEnabled: _optionalBool(
+      request['predictionsEnabled'],
+      defaultValue: true,
+    ),
+  );
+  final report = CycleInsightsCalculator.compute(
+    entries: entries,
+    episodes: deriveEpisodes(bleedDatesOf(entries)),
+    prediction: prediction is ActivePrediction ? prediction : null,
+  );
+  final recap = deriveCycleRecap(
+    entries: entries,
+    prediction: prediction,
+    report: report,
+    today: today,
+  );
+  return {'recap': recap == null ? null : cycleRecapToJson(recap)};
+}
+
+/// Serializes a [CycleRecap]. Every fact is the model's own field; the
+/// device-local `currentSnapshot` is deliberately not carried, so the change
+/// flags read as the no-snapshot case the model documents.
+Map<String, Object?> cycleRecapToJson(CycleRecap recap) => {
+  'cycleNumber': recap.cycleNumber,
+  'cycleStart': recap.cycleStart.iso,
+  'previousCycleStart': recap.previousCycleStart?.iso,
+  'cycleLengthDays': recap.cycleLengthDays,
+  'previousCycleLengthDays': recap.previousCycleLengthDays,
+  'lengthChangeDays': recap.lengthChangeDays,
+  'bleedDayCountDelta': recap.bleedDayCountDelta,
+  'hasEstimate': recap.hasEstimate,
+  'confidence': recap.confidence.name,
+  'meanCycleLengthDays': recap.meanCycleLengthDays,
+  'meanPeriodLengthDays': recap.meanPeriodLengthDays,
+  'spreadDays': recap.spreadDays,
+  'usableCycleCount': recap.usableCycleCount,
+  'statisticChange': recap.statisticChange,
+  'tierChanged': recap.tierChanged,
+  'previousConfidence': recap.previousConfidence?.name,
+  'meanCycleShiftDays': recap.meanCycleShiftDays,
+  'meanPeriodShiftDays': recap.meanPeriodShiftDays,
+  'recurringSymptoms': [
+    for (final symptom in recap.recurringSymptoms)
+      {'tag': symptom.tag, 'cycleDays': [...symptom.cycleDays]},
+  ],
+  'crampCycleDays': recap.crampCycleDays == null
+      ? null
+      : [...recap.crampCycleDays!],
+};
 
 // ---------------------------------------------------------------------------
 // validateDayEntryDate

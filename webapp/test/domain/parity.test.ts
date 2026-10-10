@@ -26,6 +26,7 @@ import { DomainCallError, callDomain } from '../../src/domain/client';
 import {
   bbtChartSchema,
   calendarForecastSchema,
+  cycleRecapResponseSchema,
   cycleHistoryViewSchema,
   dateValidationSchema,
   exportDocumentSchema,
@@ -53,6 +54,7 @@ const schemas: Record<string, z.ZodType<unknown>> = {
   cycleHistory: cycleHistoryViewSchema,
   insights: insightsReportSchema,
   bbtChart: bbtChartSchema,
+  cycleRecap: cycleRecapResponseSchema,
   calendarForecast: calendarForecastSchema,
   validateDayEntryDate: dateValidationSchema,
   buildExport: exportDocumentSchema,
