@@ -1131,11 +1131,15 @@ void main() {
             .hasMatch(kotlin),
         isTrue,
       );
-      // The one-time migration for an install whose sheet predates this
-      // tracking: its sheet carried every type that build listed. Also
+      // The one-time migration for an install whose write sheet predates
+      // this tracking: its sheet carried every type that build listed. Also
       // seeded from `permissionStatus`, which the write pass calls on every
       // pass, so an install that never opens the Health sync screen has its
-      // list recorded before a later build adds a type.
+      // list recorded before a later build adds a type. Issue #1881: gated
+      // on a LAUNCHED write sheet (writeRequestLaunched), not the
+      // install-wide marker — an observed settings grant sets that one with
+      // no sheet shown, and seeding from it marked types the person was
+      // never asked about as asked.
       expect(
         _between(kotlin, '"permissionStatus" ->', '"grantedWriteTypes" ->'),
         contains('seedAskedWritePermissions()'),
@@ -1145,18 +1149,41 @@ void main() {
         'private fun seedAskedWritePermissions()',
         'private fun markWritePermissionsAsked(',
       );
-      expect(seed, contains('if (!writesEverRequested()) return'));
+      expect(seed, contains('if (!writeRequestLaunched()) return'));
       expect(seed, contains('if (writePermissionMarkersExist()) return'));
       expect(seed, contains('markWritePermissionsAsked(writePermissions)'));
       // And the answer's "asked" is the marker, with that migration only
-      // while no per-type marker exists at all.
+      // while no per-type marker exists at all — the lazy fallback follows
+      // the same gate (Issue #1881).
       expect(
         RegExp(r'private fun writePermissionAsked\(permission: String\): Boolean =\s*'
                 r'markerSetByThisInstall\(perWritePermissionKey\(permission\)\) \|\|\s*'
-                r'\(writesEverRequested\(\) && !writePermissionMarkersExist\(\)\)')
+                r'\(writeRequestLaunched\(\) && !writePermissionMarkersExist\(\)\)')
             .hasMatch(kotlin),
         isTrue,
       );
+      // Issue #1881: the launch marker is its own thing, read in one
+      // helper and written by the launcher itself — after a launch that
+      // returned (Issue #1883), beside the install-wide marker, and only
+      // for the write sheet's own requests.
+      expect(
+        RegExp(r'private fun writeRequestLaunched\(\): Boolean =\s*'
+                r'markerSetByThisInstall\(WRITE_REQUEST_LAUNCHED_KEY\)')
+            .hasMatch(kotlin),
+        isTrue,
+      );
+      expect(
+        launcher,
+        contains('if (askedMarker == PERMISSION_REQUESTED_KEY) {'),
+      );
+      final asked =
+          launcher.indexOf('prefs.edit().putLong(askedMarker, installStamp)');
+      final launchRecorded = launcher.indexOf(
+        'prefs.edit().putLong(WRITE_REQUEST_LAUNCHED_KEY, installStamp)',
+      );
+      expect(launchRecorded, isNonNegative);
+      expect(launchRecorded, greaterThan(asked),
+          reason: 'the launch is recorded beside the sheet\'s own marker');
     });
 
     test('the never-asked query only looks, and seeds the migration', () {
