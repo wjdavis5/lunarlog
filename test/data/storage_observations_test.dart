@@ -330,9 +330,12 @@ void main() {
     test('accepts a raw payload of multi-byte characters at exactly the '
         'UTF-8 byte bound', () async {
       final dayEntryId = await entryId();
-      // 4 bytes each; kMaxObservationRawLength is divisible by 4.
+      // 4 bytes each; kMaxObservationRawLength is divisible by 4. The value
+      // must be JSON text (the write boundary parses it, issue #1830), so
+      // the emoji run sits inside a JSON string and the wrapper costs 8
+      // ASCII bytes.
       expect(kMaxObservationRawLength % 4, 0);
-      final raw = '💙' * (kMaxObservationRawLength ~/ 4);
+      final raw = '{"a":"${'💙' * ((kMaxObservationRawLength - 8) ~/ 4)}"}';
       final observation = await storage.upsertObservation(
         dayEntryId: dayEntryId,
         profileId: 'p1',
