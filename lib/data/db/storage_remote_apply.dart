@@ -1219,6 +1219,9 @@ mixin LunarLogStorageRemoteApply
     // Issue #1652: and the memory of what its imports declined, for the
     // same reason.
     await _forgetHealthImportDeclined(db, profileId);
+    // Issue #1876: and the whole-read obligation a purge left behind — a
+    // profile this device no longer reads for owes nothing.
+    await _forgetHealthImportWholeRead(db, profileId);
   }
 
   /// Issue #522: applies a `deleted_profiles` row — the narrow tombstone a
@@ -1342,6 +1345,12 @@ mixin LunarLogStorageRemoteApply
           // would owe a whole read for a record this purge took away.
           await _forgetHealthImportDeclined(db, profileId, ofStore);
         }
+        // Issue #1876: and the store's unchanged records must be offered
+        // to the merge again — an anchored or changes read never returns
+        // them — so the next pass reads the whole history. Beside the
+        // memories above, in this same transaction: a crash before the
+        // next pass cannot lose the obligation.
+        await _rememberHealthImportWholeRead(db, profileId, stamp);
         // Issue #907: only when nothing live remains for the profile.
         await _clearCycleFactsIfProfileEmpty(profileId);
       });

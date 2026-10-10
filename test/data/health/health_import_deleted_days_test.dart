@@ -56,10 +56,17 @@ class _Platform implements HealthPlatformStore {
 
 /// The health store: whatever [samples] holds is what every read returns,
 /// as a whole-history read does. [incremental] makes it answer as a changes
-/// read instead (Issue #1683's changes-pass case).
+/// read instead (Issue #1683's changes-pass case). [anchored] models a
+/// committed read position: an anchored or changes read then returns only
+/// records that changed, which is none of [samples] — the state a purge
+/// leaves behind (Issue #1876).
 class _Store implements HealthImportSource {
   List<HealthFlowSample> samples = [];
   bool incremental = false;
+  bool anchored = false;
+
+  /// Whether each read asked for the whole history, one entry per call.
+  final List<bool> wholeHistorySeen = [];
 
   @override
   Future<HealthReadResult> readMenstrualFlowPage(
@@ -69,12 +76,21 @@ class _Store implements HealthImportSource {
     required int pageSize,
     String? cursor,
     bool wholeHistory = false,
-  }) async =>
-      HealthReadResult.samples(
-        samples,
-        incremental: incremental,
-        commitToken: incremental ? 'changes' : 'whole',
+  }) async {
+    wholeHistorySeen.add(wholeHistory);
+    if (anchored && !wholeHistory) {
+      return HealthReadResult.samples(
+        const [],
+        incremental: true,
+        commitToken: 'changes',
       );
+    }
+    return HealthReadResult.samples(
+      samples,
+      incremental: incremental,
+      commitToken: incremental ? 'changes' : 'whole',
+    );
+  }
 
   @override
   Future<HealthDeviationReadResult> readCycleDeviations(
@@ -264,6 +280,33 @@ void main() {
     final day = (await days.find(_profileId, flowDate))!;
     expect(day.flow, FlowLevel.light);
     expect(day.sourceId, 'rec-2');
+  });
+
+  // Issue #1876: "Remove imported data" is a clean slate for the store,
+  // but the store's unchanged records are exactly the ones an anchored or
+  // changes read will not return — so the next pass must read the whole
+  // history, or the purged days stay gone.
+  test('a purge makes the next import read the whole history, and the '
+      'store\'s unchanged day comes back', () async {
+    await import.importNow();
+    expect((await days.find(_profileId, flowDate))!.flow, FlowLevel.heavy);
+
+    // The read position is committed: an anchored read now returns only
+    // changed records, which this store models as none.
+    store.anchored = true;
+
+    await db.storage.applyLocalImportedDataPurge(
+      profileId: _profileId,
+      source: 'healthkit',
+    );
+    expect(await days.find(_profileId, flowDate), isNull);
+
+    store.wholeHistorySeen.clear();
+    final summary = await import.importNow();
+
+    expect(store.wholeHistorySeen, [true]);
+    expect(summary.daysWritten, 1);
+    expect((await days.find(_profileId, flowDate))!.flow, FlowLevel.heavy);
   });
 
   // The day sheet removes one entry from a day by saving the day with the
