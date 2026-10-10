@@ -1139,6 +1139,52 @@ void main() {
     });
   });
 
+  test('issue #1873: a failed publishNow clears the dedupe cache so the '
+      'next identical emission republishes', () async {
+    final profiles = StreamController<List<Profile>>(sync: true);
+    final predictions = <String, StreamController<CyclePrediction>>{};
+    final service = _FakeService(connectedProfileIds: {'p1'});
+    final today = LocalDate(2026, 8, 30);
+
+    final publisher = LocalPredictionProjectionPublisher(
+      activeProfiles: profiles.stream,
+      predictionFor: (id) => predictions
+          .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
+          .stream,
+      service: service,
+      isSignedIn: () => true,
+      debounce: Duration.zero,
+    );
+    publisher.start();
+    addTearDown(() async {
+      await publisher.dispose();
+      await profiles.close();
+      for (final c in predictions.values) {
+        await c.close();
+      }
+    });
+
+    profiles.add([_profile('p1')]);
+    predictions['p1']!.add(_active(today));
+    await pumpEventQueue();
+    expect(service.publishedFor, ['p1']);
+
+    // The explicit refresh fails - the shape of a just-created connection
+    // whose best-effort first publish hit a rejection.
+    service.publishError = StateError('rejected');
+    service.remainingFailures = 1;
+    await publisher.publishNow('p1');
+    service.publishError = null;
+
+    // The same unchanged projection re-emits (an unrelated settings edit);
+    // without the cache clear it would be deduped against a server
+    // snapshot the refresh may no longer correspond to.
+    predictions['p1']!.add(_active(today));
+    await pumpEventQueue();
+    expect(service.publishedFor, ['p1', 'p1'],
+        reason: 'the failed refresh must not leave a stale dedupe hit');
+  });
+
   group('issue #1860: retraction robustness', () {
     test('the first profiles emission retracts a connected profile that is '
         'not in the active set (archived while the app was closed)',
