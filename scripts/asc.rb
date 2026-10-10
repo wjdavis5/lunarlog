@@ -70,7 +70,14 @@ def get(path)
   uri = URI("https://api.appstoreconnect.apple.com#{path}")
   req = Net::HTTP::Get.new(uri, 'Authorization' => "Bearer #{jwt}")
   res = Net::HTTP.start(uri.host, uri.port, use_ssl: true, read_timeout: 60) { |h| h.request(req) }
-  [res.code.to_i, (res.body.to_s.empty? ? {} : (JSON.parse(res.body) rescue {}))]
+  body = res.body.to_s
+  return [res.code.to_i, {}] if body.empty?
+  # Issue #1834: a body that is not JSON is a failed answer, not an empty
+  # one - mapping it to {} let callers read "none attached" or "no builds"
+  # out of a broken response.
+  [res.code.to_i, JSON.parse(body)]
+rescue JSON::ParserError => e
+  abort("GET #{path} returned a non-JSON body (HTTP #{res.code.to_i}): #{e.message}")
 end
 
 def builds(limit = 5)
@@ -105,9 +112,11 @@ def print_version
   puts "  #{a['versionString']}  state=#{a['appStoreState']}  release=#{a['releaseType']}"
 
   code, full = get("/v1/appStoreVersions/#{v['id']}?include=build")
+  abort("version detail query failed: HTTP #{code}") unless code == 200
   attached = full.dig('data', 'relationships', 'build', 'data')
   if attached
-    _, bd = get("/v1/builds/#{attached['id']}")
+    code, bd = get("/v1/builds/#{attached['id']}")
+    abort("build detail query failed: HTTP #{code}") unless code == 200
     ba = bd.dig('data', 'attributes') || {}
     puts "  attached build: #{ba['version']} (#{ba['processingState']})"
   else
@@ -115,7 +124,15 @@ def print_version
   end
 
   code, _ = get("/v1/appStoreVersions/#{v['id']}/appStoreVersionSubmission")
-  puts "  submitted for review: #{code == 200 ? 'YES' : 'no'}"
+  # Issue #1834: 404 is the API's own "nothing submitted"; anything else
+  # (an expired key's 401, a 5xx) is an unknown answer, never a reassuring
+  # "no" from a check that exists to be trusted.
+  case code
+  when 200 then puts '  submitted for review: YES'
+  when 404 then puts '  submitted for review: no'
+  else
+    puts "  submitted for review: unknown (HTTP #{code})"
+  end
 end
 
 case ARGV[0]
