@@ -389,7 +389,17 @@ CycleHistoryView deriveCycleHistory({
   required LocalDate today,
   Set<LocalDate> omittedCycleStarts = const {},
 }) {
-  final sorted = [...episodes]..sort();
+  // Issue #1855 (LLA-071 parity): a future-dated stored episode (a restored
+  // export, a multi-timezone edit, or a device clock rollback) must not
+  // anchor the open cycle or enter the stats — `computePrediction` filters
+  // the same way (prediction.dart's LLA-071 comment), and this view's own
+  // contract says the two can never disagree. The row itself stays in
+  // storage; it simply does not exist yet from this computation's point of
+  // view.
+  final sorted = [
+    for (final episode in [...episodes]..sort())
+      if (!episode.start.isAfter(today)) episode,
+  ];
   if (sorted.isEmpty) {
     return const CycleHistoryView(
       items: [],
