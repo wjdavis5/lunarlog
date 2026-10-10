@@ -347,7 +347,14 @@ class LocalPredictionProjectionPublisher
       if (!connected.contains(profileId)) return;
       await _publishCurrent(profileId);
     } catch (_) {
-      // Best-effort (see above).
+      // Best-effort (see above). Issue #1873: a failed explicit refresh (a
+      // just-created connection's first publish) must not leave the dedupe
+      // cache claiming the server already holds this payload - a revoke
+      // and re-invite can delete the row while [_lastPublished] still
+      // holds the identical projection, and the next unchanged emission
+      // would then be deduped against a snapshot the server no longer
+      // holds. Clearing it forces the next flush to publish.
+      _lastPublished.remove(profileId);
     }
   }
 
