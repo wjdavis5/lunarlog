@@ -3,8 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CURSOR_LOOKBACK,
   emptySyncedData,
-  fetchGuardianNotes,
-  fetchSettings,
   getSyncedDataCache,
   learnClockOffset,
   learnedClockOffsetMs,
@@ -45,45 +43,6 @@ type RpcHandler = (
   name: string,
   params: Record<string, unknown>,
 ) => Promise<{ data: unknown; error: { message: string } | null }>;
-
-interface RangeCall {
-  table: string;
-  eqColumn?: string;
-  eqValue?: string;
-  from: number;
-  to: number;
-}
-
-function fakeSelectClient(
-  pages: Map<string, { data: unknown[]; error: { message: string } | null }[]>,
-) {
-  const ranges: RangeCall[] = [];
-  const from = vi.fn().mockImplementation((table: string) => {
-    const builder = {
-      select: vi.fn().mockReturnThis(),
-      order: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockImplementation((column: string, value: string) => {
-        builder.lastEq = { column, value };
-        return builder;
-      }),
-      range: vi.fn().mockImplementation((from: number, to: number) => {
-        const queue = pages.get(table) ?? [];
-        const page = queue.shift() ?? { data: [], error: null };
-        ranges.push({
-          table,
-          eqColumn: builder.lastEq?.column,
-          eqValue: builder.lastEq?.value,
-          from,
-          to,
-        });
-        return page;
-      }),
-      lastEq: undefined as { column: string; value: string } | undefined,
-    };
-    return builder;
-  });
-  return { client: { from } as unknown as AppSupabaseClient, from, ranges };
-}
 
 function fakeRpcClient(handler: RpcHandler) {
   const calls: { name: string; params: Record<string, unknown> }[] = [];
@@ -682,96 +641,6 @@ describe('the learned server-clock offset (issue #1283)', () => {
     // browser whose clock reads ten minutes slow.
     const stamp = Date.parse(payload.updated_at);
     expect(Math.abs(stamp - (Date.now() + 10 * 60_000))).toBeLessThan(30_000);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Direct RLS-scoped selects (settings, guardian_notes)
-// ---------------------------------------------------------------------------
-
-describe('fetchSettings (issue #1252)', () => {
-  it('pages past PostgREST’s 1,000-row cap', async () => {
-    const fullPage = Array.from({ length: 1_000 }, (_, i) => ({
-      user_id: 'u',
-      key: `k${String(i).padStart(4, '0')}`,
-      value: 'v',
-      updated_at: '2026-09-01T00:00:00Z',
-      server_version: i,
-    }));
-    const tail = [
-      {
-        user_id: 'u',
-        key: 'zzz',
-        value: 'v',
-        updated_at: '2026-09-01T00:00:00Z',
-        server_version: 1,
-      },
-    ];
-    const { client, ranges } = fakeSelectClient(
-      new Map([
-        [
-          'settings',
-          [
-            { data: fullPage, error: null },
-            { data: tail, error: null },
-          ],
-        ],
-      ]),
-    );
-    const rows = await fetchSettings(client);
-    expect(rows).toHaveLength(1_001);
-    expect(ranges).toEqual([
-      { table: 'settings', from: 0, to: 999 },
-      { table: 'settings', from: 1_000, to: 1_999 },
-    ]);
-  });
-
-  it('surfaces a PostgREST error', async () => {
-    const { client } = fakeSelectClient(
-      new Map([['settings', [{ data: [], error: { message: 'permission denied' } }]]]),
-    );
-    await expect(fetchSettings(client)).rejects.toThrow('permission denied');
-  });
-});
-
-describe('fetchGuardianNotes (issue #1252)', () => {
-  it('selects guardian_notes scoped to a profile when one is given', async () => {
-    const { client, ranges } = fakeSelectClient(
-      new Map([['guardian_notes', [{ data: [], error: null }]]]),
-    );
-    await fetchGuardianNotes(client, { profileId: ULID_A });
-    expect(ranges[0]?.table).toBe('guardian_notes');
-    expect(ranges[0]?.eqColumn).toBe('profile_id');
-    expect(ranges[0]?.eqValue).toBe(ULID_A);
-  });
-
-  it('pages when a profile’s notes exceed the cap', async () => {
-    const fullPage = Array.from({ length: 1_000 }, (_, i) => ({
-      id: `${ULID_A}`,
-      user_id: 'u',
-      profile_id: ULID_A,
-      local_date: '2026-09-14',
-      tz: 'UTC',
-      body: `note ${i}`,
-      created_at: '2026-09-01T00:00:00Z',
-      updated_at: '2026-09-01T00:00:00Z',
-      deleted_at: null,
-      server_version: i,
-    }));
-    const { client, ranges } = fakeSelectClient(
-      new Map([
-        [
-          'guardian_notes',
-          [
-            { data: fullPage, error: null },
-            { data: [], error: null },
-          ],
-        ],
-      ]),
-    );
-    const rows = await fetchGuardianNotes(client);
-    expect(rows).toHaveLength(1_000);
-    expect(ranges).toHaveLength(2);
   });
 });
 

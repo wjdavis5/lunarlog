@@ -153,7 +153,6 @@ const syncedFixture = (): SyncedData =>
       guardianRow(PREGNANT_ID),
       guardianRow(TEEN_ID),
     ],
-    guardian_notes: [],
   });
 
 // The shape the module mock answers with; the real hook carries more query
@@ -314,7 +313,6 @@ describe('TodayPage — the profile home (issue #1253)', () => {
           visit_prep_items: [],
           profile_tag_registry: [],
           profile_guardians: [guardianRow(RICH_ID, true), guardianRow(PREGNANT_ID, true)],
-          guardian_notes: [],
         }),
       ),
     );

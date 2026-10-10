@@ -2,8 +2,6 @@ import { describe, expect, it, afterEach } from 'vitest';
 
 import { createSupabaseClient, type AppSupabaseClient } from '../../src/lib/supabase';
 import {
-  fetchGuardianNotes,
-  fetchSettings,
   newCareNotePayload,
   newCycleOverridePayload,
   newDayEntryPayload,
@@ -16,6 +14,7 @@ import {
   pushSyncBatch,
 } from '../../src/lib/domain';
 import { setProfileArchived, updateProfile } from '../../src/lib/profiles/profile-actions';
+import { fetchGuardianNotesForDate } from '../../src/lib/sharing';
 import type { ProfileRow } from '../../src/lib/schemas';
 
 /**
@@ -480,10 +479,10 @@ suite('web data layer against the live local stack (issue #1252)', () => {
     expect(view.care_notes[0]?.body).toBe('Heat pad helps.');
     expect(view.visit_prep_items[0]?.is_checked).toBe(true);
 
-    // guardian_notes and settings ride their direct RLS-scoped selects.
-    const notes = await fetchGuardianNotes(owner, { profileId: profile.id });
+    // guardian_notes is not in sync_pull; the notes surface reads it back
+    // per profile and date through sharing.ts's RLS-scoped select.
+    const notes = await fetchGuardianNotesForDate(owner, profile.id, day);
     expect(notes.map((row) => row.body)).toContain('Write down sleep hours for the past week');
-    expect(await fetchSettings(owner)).toEqual([]);
   }, 30_000);
 
   it('a private day note arrives masked for every non-subject guardian (the sync_pull read path)', async () => {

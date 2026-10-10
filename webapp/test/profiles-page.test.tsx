@@ -118,7 +118,6 @@ const syncedFixture = (): SyncedData =>
     profile_guardians: Object.entries(callerRoles).map(([profileId, role]) =>
       guardianRow(profileId, role),
     ),
-    guardian_notes: [],
   });
 
 /** The fake client: captures every rpc, answers the consent read with no record. */

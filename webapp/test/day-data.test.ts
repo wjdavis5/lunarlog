@@ -103,7 +103,6 @@ function syncedData(rows: Partial<SyncedData>): SyncedData {
     visit_prep_items: [],
     profile_tag_registry: [],
     profile_guardians: rows.profile_guardians ?? [],
-    guardian_notes: [],
   };
 }
 

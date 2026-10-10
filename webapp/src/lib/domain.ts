@@ -2,26 +2,22 @@ import {
   careNoteListSchema,
   cycleOverrideListSchema,
   dayEntryListSchema,
-  guardianNoteListSchema,
   observationListSchema,
   profileGuardianListSchema,
   profileListSchema,
   profileModeListSchema,
   profileTagRegistryListSchema,
-  settingListSchema,
   syncPushResultSchema,
   syncSignalSchema,
   visitPrepItemListSchema,
   type CareNoteRow,
   type CycleOverrideRow,
   type DayEntryRow,
-  type GuardianNoteRow,
   type ObservationRow,
   type ProfileGuardianRow,
   type ProfileRow,
   type ProfileModeRow,
   type ProfileTagRegistryRow,
-  type SettingRow,
   type SyncPushResult,
   type VisitPrepItemRow,
 } from './schemas';
@@ -61,10 +57,10 @@ import { newUlid } from './ulid';
  *   `day_entries` passes the guardian RLS policy but returns an unmasked
  *   private note — so the RLS-scoped select is not a safe substitute for
  *   that table.
- * - Two synced tables are not in `sync_pull`'s response and keep the
- *   app's own direct RLS-scoped select, paged past PostgREST's cap:
- *   `guardian_notes` (the phones pull it the same way) and `settings`
- *   (per-user rows; `settings_select_own` RLS).
+ * - Two synced tables are not in `sync_pull`'s response: `guardian_notes`
+ *   (read per profile and per date through `sharing.ts`'s RLS-scoped
+ *   selects - the path the notes surface uses) and `settings` (per-user
+ *   rows; nothing in this client reads them today).
  *
  * **Writes go exactly where the app's writes go:** `sync_push` for every
  * synced row — the sole write path since 20260915160000 revoked
@@ -99,12 +95,6 @@ import { newUlid } from './ulid';
 
 /** `sync_pull`'s per-table page cap (c_page_size in the RPC body). */
 export const SYNC_PULL_PAGE_SIZE = 500;
-
-/**
- * PostgREST's default per-response row cap — the limit the direct-select
- * reads page past with `.range()`.
- */
-export const POSTGREST_PAGE_SIZE = 1_000;
 
 /** Safety cap on pull rounds; unreachable in practice, a guard against a
  * paging bug spinning forever. */
@@ -273,7 +263,6 @@ export interface SyncedData {
   visit_prep_items: VisitPrepItemRow[];
   profile_tag_registry: ProfileTagRegistryRow[];
   profile_guardians: ProfileGuardianRow[];
-  guardian_notes: GuardianNoteRow[];
 }
 
 export function emptySyncedData(): SyncedData {
@@ -287,7 +276,6 @@ export function emptySyncedData(): SyncedData {
     visit_prep_items: [],
     profile_tag_registry: [],
     profile_guardians: [],
-    guardian_notes: [],
   };
 }
 
@@ -833,60 +821,6 @@ export function tombstonePayload(
 }
 
 // ---------------------------------------------------------------------------
-// Direct RLS-scoped selects for the tables sync_pull does not carry.
-// ---------------------------------------------------------------------------
-
-/**
- * Reads the caller's own `settings` rows — `settings_select_own` RLS
- * scopes the table to the signed-in user — paging past PostgREST's
- * 1,000-row response cap with `.range()`.
- */
-export async function fetchSettings(client: AppSupabaseClient): Promise<SettingRow[]> {
-  const rows: SettingRow[] = [];
-  for (let offset = 0; ; offset += POSTGREST_PAGE_SIZE) {
-    const { data, error } = await client
-      .from('settings')
-      .select('*')
-      .order('key')
-      .range(offset, offset + POSTGREST_PAGE_SIZE - 1);
-    if (error !== null) {
-      throw new Error(`settings select failed: ${error.message}`);
-    }
-    rows.push(...settingListSchema.parse(data));
-    if (data.length < POSTGREST_PAGE_SIZE) {
-      return rows;
-    }
-  }
-}
-
-/**
- * Reads every `guardian_notes` row on the profiles the caller guards — the
- * table's own guardian-scoped RLS scopes the select, the same path the
- * phones use for this table (it is not in sync_pull's response) — paged
- * past PostgREST's cap with `.range()`.
- */
-export async function fetchGuardianNotes(
-  client: AppSupabaseClient,
-  opts: { profileId?: string } = {},
-): Promise<GuardianNoteRow[]> {
-  const rows: GuardianNoteRow[] = [];
-  for (let offset = 0; ; offset += POSTGREST_PAGE_SIZE) {
-    let query = client.from('guardian_notes').select('*').order('id');
-    if (opts.profileId !== undefined) {
-      query = query.eq('profile_id', opts.profileId);
-    }
-    const { data, error } = await query.range(offset, offset + POSTGREST_PAGE_SIZE - 1);
-    if (error !== null) {
-      throw new Error(`guardian_notes select failed: ${error.message}`);
-    }
-    rows.push(...guardianNoteListSchema.parse(data));
-    if (data.length < POSTGREST_PAGE_SIZE) {
-      return rows;
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Live updates: public.sync_signals (the Realtime publication's only table)
 // ---------------------------------------------------------------------------
 
@@ -1194,7 +1128,6 @@ export function mergeSyncedData(base: SyncedData, incoming: SyncedData): SyncedD
     visit_prep_items: mergeById(base.visit_prep_items, incoming.visit_prep_items),
     profile_tag_registry: mergeById(base.profile_tag_registry, incoming.profile_tag_registry),
     profile_guardians: mergeById(base.profile_guardians, incoming.profile_guardians),
-    guardian_notes: mergeById(base.guardian_notes, incoming.guardian_notes),
   };
 }
 
@@ -1274,7 +1207,6 @@ export function filterToAcceptedMemberships(
     visit_prep_items: onAcceptedProfiles(data.visit_prep_items),
     profile_tag_registry: onAcceptedProfiles(data.profile_tag_registry),
     profile_guardians: onAcceptedProfiles(data.profile_guardians),
-    guardian_notes: onAcceptedProfiles(data.guardian_notes),
   };
 }
 

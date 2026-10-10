@@ -131,7 +131,6 @@ function synced(overrides: Partial<SyncedData> = {}): SyncedData {
     visit_prep_items: [],
     profile_tag_registry: [],
     profile_guardians: [guardianRow()],
-    guardian_notes: [],
     ...overrides,
   });
 }
