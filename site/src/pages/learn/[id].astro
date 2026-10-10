@@ -1,0 +1,67 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import "../../styles/guides.css";
+import articles from "../../content/literacy/articles.json";
+import { pageTitleForArticle } from "../../lib/article-titles.mjs";
+
+// Issue #1811: one page per exported article, generated at build time. The
+// text is the #1103 export's, verbatim - headings, paragraphs, and the
+// article's own source list. The export's freshness is pinned separately by
+// test/tool/export_literacy_test.dart, so nothing here re-checks the content.
+
+export function getStaticPaths() {
+  return articles.map((article) => ({
+    params: { id: article.id },
+    props: { article },
+  }));
+}
+
+const { article } = Astro.props;
+const pageTitle = pageTitleForArticle(article.title);
+---
+
+<BaseLayout title={pageTitle} description={article.summary}>
+  <article class="doc">
+    <h1 class="doc__title">{article.title}</h1>
+    <p class="doc__lede">{article.summary}</p>
+    <p>
+      <a href="/learn/">Cycle literacy</a> - {article.category.displayName},
+      about {article.readingTimeMinutes} min read
+    </p>
+    {
+      article.sections.map((section) => (
+        <section>
+          <h2>{section.heading}</h2>
+          {section.paragraphs.map((paragraph) => (
+            <p>{paragraph}</p>
+          ))}
+        </section>
+      ))
+    }
+    {
+      article.sources.length > 0 ? (
+        <section>
+          <h2>Sources</h2>
+          <ul>
+            {article.sources.map((source) => {
+              const label = `${source.publisherName}: ${source.title}${
+                source.identifier ? ` (${source.identifier})` : ""
+              }`;
+              return (
+                <li>
+                  {source.url ? (
+                    <a href={source.url} rel="noreferrer noopener">
+                      {label}
+                    </a>
+                  ) : (
+                    label
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null
+    }
+  </article>
+</BaseLayout>

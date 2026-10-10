@@ -1,5 +1,7 @@
 import type { APIRoute } from "astro";
 
+import articles from "../content/literacy/articles.json";
+
 // A plain `sitemap.xml` at the apex (issue #1099). Deliberately hand-rolled
 // rather than `@astrojs/sitemap`, which emits `sitemap-index.xml` +
 // `sitemap-0.xml`; the site has a fixed, tiny page list and the issue names
@@ -27,6 +29,9 @@ const PAGES = [
   "/guides/reading-estimates",
   "/guides/moving-your-data",
   "/guides/browser-version",
+  // The cycle-literacy library (issue #1811).
+  "/learn/",
+  ...articles.map((article) => `/learn/${article.id}`),
 ];
 
 export const GET: APIRoute = ({ site }) => {

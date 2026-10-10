@@ -1,0 +1,53 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+// Guide-list styles are shared with the guides (see styles/guides.css).
+import "../../styles/guides.css";
+import articles from "../../content/literacy/articles.json";
+
+// Issue #1811: the cycle-literacy library at /learn - the #1103 export
+// rendered at build time, grouped by the export's own categories. The
+// article text is the export's, verbatim; nothing here re-writes it, and
+// the export's own sources travel with each article page.
+
+const all = articles as {
+  id: string;
+  title: string;
+  summary: string;
+  category: { name: string; displayName: string };
+}[];
+const categories = [...new Set(all.map((article) => article.category.displayName))];
+---
+
+<BaseLayout
+  title="Cycle literacy"
+  description="Plain-language explanations of the menstrual cycle, symptoms, and what the numbers in lunarlog mean - the same library the app carries."
+>
+  <article class="doc">
+    <h1 class="doc__title">Cycle literacy</h1>
+    <p class="doc__lede">
+      The same plain-language library the app carries, on the web. Written
+      for households - the person tracking, and anyone helping care for
+      them. Every article names its sources.
+      <!-- cite: site/src/content/literacy/articles.json (the exported library this page renders); lib/domain/content (the app-side library it is exported from) -->
+    </p>
+    {
+      categories.map((category) => (
+        <section>
+          <h2>{category}</h2>
+          <ul class="guide-list">
+            {all
+              .filter((article) => article.category.displayName === category)
+              .map((article) => (
+                <li class="guide-list__item">
+                  <a class="guide-list__link" href={`/learn/${article.id}/`}>
+                    {article.title}
+                  </a>
+                  <p class="guide-list__description">{article.summary}</p>
+                </li>
+              ))}
+          </ul>
+        </section>
+      ))
+    }
+  </article>
+</BaseLayout>
