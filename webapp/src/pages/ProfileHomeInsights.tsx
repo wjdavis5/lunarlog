@@ -1,3 +1,4 @@
+import { FLOW_LABEL_IDS } from '../i18n/flow-labels';
 import { useT } from '../i18n/t';
 import { LABEL_COLON, LIST_SEPARATOR } from '../i18n/punctuation';
 import type { InsightsReport } from '../domain/schemas';
@@ -107,7 +108,7 @@ export function ProfileHomeInsights(props: { report: InsightsReport }) {
           {LABEL_COLON}
           {t('symptomTrendsFlowSubtitle', {
             day: report.flowPattern.typicalPeakDay,
-            flow: report.flowPattern.typicalPeakFlow,
+            flow: t(FLOW_LABEL_IDS[report.flowPattern.typicalPeakFlow]),
           })}
         </p>
       ) : null}

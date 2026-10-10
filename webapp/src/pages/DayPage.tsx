@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 
-import { useT, type TFunction } from '../i18n/t';
+import { FLOW_LABEL_IDS } from '../i18n/flow-labels';
+import { useT } from '../i18n/t';
 import { getSupabaseClient, type AppSupabaseClient } from '../lib/supabase';
 import {
   browserTimeZone,
@@ -28,7 +29,6 @@ import {
   LIFECYCLE_MODES,
   type CallerRole,
   type DayEdit,
-  type FlowLevel,
   type LoadedDayView,
   MAX_NOTE_LENGTH,
   type SavePlanField,
@@ -76,16 +76,6 @@ export function formatDayHeading(dateIso: string): string {
  * silently dropped; closing the tab with unsaved edits warns first. A
  * viewer gets the same day read-only.
  */
-
-const FLOW_LABEL_IDS: Record<FlowLevel, Parameters<TFunction>[0]> = {
-  none: 'flowLevelNone',
-  spotting: 'flowLevelSpotting',
-  not_bleeding: 'flowLevelNotBleeding',
-  light: 'flowLevelLight',
-  medium: 'flowLevelMedium',
-  heavy: 'flowLevelHeavy',
-  super_heavy: 'flowLevelSuperHeavy',
-};
 
 const LIFECYCLE_MODE_LABEL_IDS = {
   tracking: 'webDayModeTracking',

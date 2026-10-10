@@ -396,7 +396,7 @@ Map<String, Object?>? _flowPatternToJson(FlowPattern? pattern) {
           for (final flow in day.value.entries) flow.key.name: flow.value,
         },
     },
-    'typicalPeakFlow': pattern.typicalPeakFlow.name,
+    'typicalPeakFlow': pattern.typicalPeakFlow.toDb(),
     'typicalPeakDay': pattern.typicalPeakDay,
   };
 }

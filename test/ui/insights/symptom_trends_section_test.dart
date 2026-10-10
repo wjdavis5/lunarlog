@@ -106,7 +106,7 @@ void main() {
 
     // Flow pattern
     expect(find.byKey(const ValueKey('flow-pattern-card')), findsOneWidget);
-    expect(find.textContaining('Peak flow typically falls on Cycle Day 1 (heavy)'), findsOneWidget);
+    expect(find.textContaining('Peak flow typically falls on Cycle Day 1 (Heavy)'), findsOneWidget);
 
     // Library link button
     final libraryButton = find.byKey(const ValueKey('browse-cycle-library-button'));

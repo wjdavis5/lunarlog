@@ -108,8 +108,28 @@ describe('ProfileHomeInsights (issue #1796)', () => {
     expect(screen.getByTestId('flow-pattern')).toHaveTextContent(
       messages['symptomTrendsFlowSubtitle']
         ?.replace('{day}', '1')
-        .replace('{flow}', 'medium') ?? 'missing',
+        .replace('{flow}', 'Medium') ?? 'missing',
     );
+  });
+
+  // Issue #1822: the level arrives as its wire code and is labeled from the
+  // flow catalogue, never printed raw ("superHeavy").
+  it('labels the peak flow level instead of printing its wire code', () => {
+    renderInsights(
+      report({
+        flowPattern: {
+          flowByCycleDay: { '2': { super_heavy: 3 } },
+          typicalPeakFlow: 'super_heavy',
+          typicalPeakDay: 2,
+        },
+      }),
+    );
+    expect(screen.getByTestId('flow-pattern')).toHaveTextContent(
+      messages['symptomTrendsFlowSubtitle']
+        ?.replace('{day}', '2')
+        .replace('{flow}', 'Super heavy') ?? 'missing',
+    );
+    expect(screen.getByTestId('flow-pattern')).not.toHaveTextContent('super_heavy');
   });
 
   it('turns a tag code into the phone label treatment', () => {
