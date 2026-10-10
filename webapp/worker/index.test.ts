@@ -277,13 +277,16 @@ Deno.test(
 );
 
 Deno.test(
-  'HTML shells carry Clear-Site-Data cache+storage, never cookies (#1248)',
+  'HTML shells carry Clear-Site-Data storage, never cache or cookies (#1248, #1397)',
   async () => {
     const env: Env = { ASSETS: fakeAssets() };
     const res = await createWorker().fetch(new Request('https://app.lunarlog.app/'), env);
     const csd = res.headers.get('clear-site-data') ?? '';
     assertStringIncludes(csd, '"storage"');
-    assertStringIncludes(csd, '"cache"');
+    assertFalse(
+      csd.includes('"cache"'),
+      'cache would wipe the HTTP cache on every page load (issue #1397)',
+    );
     assertFalse(
       csd.includes('cookies'),
       'cookies would clear the refresh cookie every page load',

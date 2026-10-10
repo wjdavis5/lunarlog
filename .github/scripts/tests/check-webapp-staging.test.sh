@@ -79,13 +79,13 @@ EOF_X
 }
 
 # make_retirement_fixtures DIR -- make_fixtures plus the cutover header on
-# the shell: Clear-Site-Data carrying "cache" and "storage" but never
-# "cookies" (issue #1248).
+# the shell: Clear-Site-Data carrying "storage" but never "cache" (issue
+# #1397) or "cookies" (issue #1248).
 make_retirement_fixtures() {
   make_fixtures "$1"
   # Append the cutover header (portable: no sed -i, whose BSD form
   # differs, and no backslash-n-in-RHS GNU/BSD difference).
-  printf 'clear-site-data: "cache", "storage"
+  printf 'clear-site-data: "storage"
 ' >>"$1/root.headers"
 }
 
@@ -312,10 +312,18 @@ assert_contains "the missing clear-site-data is named" "$LAST_LOG" "clear-site-d
 
 # clear-site-data including cookies refuses (it would sign every page load out).
 make_retirement_fixtures "$WORK/retire-cookies"
-edit_fixture "$WORK/retire-cookies/root.headers" 's|^clear-site-data:.*|clear-site-data: "cache", "cookies", "storage"|'
+edit_fixture "$WORK/retire-cookies/root.headers" 's|^clear-site-data:.*|clear-site-data: "cookies", "storage"|'
 WEBAPP_CHECK_RETIREMENT=1 run_case "$WORK/retire-cookies"
 assert_exit "clear-site-data including cookies refuses" 1
 assert_contains "the cookies danger is named" "$LAST_LOG" "cookies"
+
+# clear-site-data including "cache" refuses (it would re-download every
+# hashed asset on every page load, issue #1397).
+make_retirement_fixtures "$WORK/retire-cache"
+edit_fixture "$WORK/retire-cache/root.headers" 's|^clear-site-data:.*|clear-site-data: "cache", "storage"|'
+WEBAPP_CHECK_RETIREMENT=1 run_case "$WORK/retire-cache"
+assert_exit "clear-site-data including cache refuses" 1
+assert_contains "the cache danger is named" "$LAST_LOG" '"cache"'
 
 # A privacy.html that 200s instead of 301ing refuses.
 make_retirement_fixtures "$WORK/retire-privacy-200"
