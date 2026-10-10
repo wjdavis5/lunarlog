@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "astro dev",
     "sync": "astro sync",
-    "build": "astro sync && astro check && astro build",
+    "build": "astro sync && astro check && astro build && node scripts/apply-web-app-down.mjs",
     "preview": "astro preview",
     "screenshots": "node scripts/screenshots.mjs",
     "check:html": "html-validate \"dist/**/*.html\"",

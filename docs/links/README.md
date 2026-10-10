@@ -54,7 +54,9 @@ repo config. Until then `www.lunarlog.app` is not attached to the Worker.
   to the React client's `/invite` accept flow at `app.lunarlog.app`, with
   the inline script rewriting both hrefs to carry the same code. The button
   was withheld between #1279 and the #1258 cutover, when that origin still
-  ran the Flutter web build.
+  ran the Flutter web build. The down build drops the button and its line
+  (`site/scripts/apply-web-app-down.mjs`), because no page in that variant
+  may link to the address.
 
 ## Privacy notes for the hoster
 
