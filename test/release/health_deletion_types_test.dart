@@ -799,6 +799,69 @@ void main() {
       expect(kotlin, contains('HealthImportCursor.reachedPastFromWire('));
     });
 
+    // Issues #1882/#1891: a token Health Connect rejects every time is
+    // dropped so the pass recovers; a transient failure is not, because
+    // dropping the token would lose every DeletionChange queued behind it
+    // (#1594) and force a full-history read. Only the same token failing
+    // twice in a row counts as rejected.
+    test('a rejected change token is dropped only after failing twice, and '
+        'a cancelled read keeps it', () {
+      final start = kotlin.indexOf('private suspend fun readSamples(');
+      final end = kotlin.indexOf('private suspend fun changesPage(');
+      expect(start, isNonNegative);
+      expect(end, greaterThan(start));
+      final read = kotlin.substring(start, end);
+      // Cancellation and a revoked permission both keep the token; a
+      // plain failure is handled after them.
+      final cancelled = read.indexOf('catch (e: CancellationException)');
+      final revoked = read.indexOf('catch (e: SecurityException)');
+      final failed = read.indexOf('catch (e: Exception)');
+      expect(cancelled, isNonNegative);
+      expect(revoked, greaterThan(cancelled));
+      expect(failed, greaterThan(revoked));
+      // The first failure on a token records it and rethrows...
+      final first =
+          read.indexOf('if (!changesTokenFailedBefore(profileId, token)) {');
+      expect(first, isNonNegative);
+      final noted = read.indexOf('noteChangesTokenFailure(profileId, token)');
+      expect(noted, greaterThan(first));
+      final rethrown = read.indexOf('throw e', noted);
+      expect(rethrown, greaterThan(noted));
+      // ...and only the second strike drops it and reads the whole range.
+      final drop = read.indexOf(
+        'prefs.edit().remove(changesTokenKey(profileId))',
+        rethrown,
+      );
+      expect(drop, greaterThan(rethrown));
+      expect(
+        'prefs.edit().remove(changesTokenKey(profileId))'.allMatches(read),
+        hasLength(3),
+        reason: 'the whole-history drop, the two-strike drop and the '
+            'expired-token drop',
+      );
+      expect(
+        'clearChangesTokenFailure(profileId)'.allMatches(read),
+        hasLength(2),
+        reason: 'the strike branch and the answered-token path',
+      );
+      expect(
+        read.lastIndexOf('clearChangesTokenFailure(profileId)'),
+        greaterThan(drop),
+        reason: 'a token that answered clears the strike',
+      );
+      // The memory is one string per profile: the token that last failed.
+      expect(
+        kotlin,
+        contains('"lunarlog.health.changesTokenFailure.\$profileId"'),
+      );
+      expect(
+        kotlin,
+        contains(
+          'prefs.getString(changesTokenFailureKey(profileId), null) == token',
+        ),
+      );
+    });
+
     // Issue #1559: Health Connect changes a record in place and keeps its
     // id. Without the record's own last-modified time the Dart merge
     // cannot tell the other app's correction from hers, and keeps hers.
