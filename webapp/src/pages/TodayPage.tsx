@@ -6,6 +6,7 @@ import {
   bbtChart,
   calendarForecast,
   cycleHistory,
+  cycleRecap,
   getDomainModule,
   insights,
   predict,
@@ -15,10 +16,12 @@ import { emptySyncedData } from '../lib/domain';
 import { browserTimeZone, todayInBrowserZone } from '../lib/day/day-entry-policy';
 import { bbtObservationRows } from '../lib/profiles/bbt-inputs';
 import { firstRunSeen, markFirstRunSeen } from '../lib/first-run';
+import { dismissRecap, recapDismissed } from '../lib/recap-dismiss';
 import { spottingIsosFor } from '../lib/profiles/calendar-cells';
 import {
   callerRoleFor,
   guardianLensFor,
+  irregularFramingInEffect,
   profileDomainInputs,
   profileListsFromSyncedData,
   profileModeFromDb,
@@ -45,6 +48,7 @@ import { ProfileHomeComparison, ProfileHomeHistory } from './ProfileHomeHistory'
 import { ProfileHomeInsights } from './ProfileHomeInsights';
 import { ProfileHomeStatus } from './ProfileHomeStatus';
 import { ProfileHomeTodayLog } from './ProfileHomeTodayLog';
+import { RecapCard } from './RecapCard';
 import { SignedOutHome } from './SignedOutHome';
 
 /**
@@ -275,11 +279,29 @@ function ProfileHome(props: {
           entries: inputs.entries,
           observations: bbtObservations,
         }),
+        recap: cycleRecap(module, request),
       };
     } catch {
       return null;
     }
   }, [inputs, props.todayIso, tz, bbtObservations]);
+
+  // The recap card (issue #1796): shown for the just-closed cycle until
+  // dismissed for the session (the web keeps no seen-cycle record), with the
+  // phone's irregular-framing rule deciding whether it speaks in ranges.
+  const recap = domain?.recap ?? null;
+  const [recapDismissedNow, setRecapDismissedNow] = useState(false);
+  const irregularFraming =
+    profile === undefined
+      ? false
+      : irregularFramingInEffect({
+          mode: profileModeFromDb(profile.mode),
+          stored: profile.irregular_framing ?? null,
+          tier:
+            domain !== null && domain.prediction.kind === 'active'
+              ? domain.prediction.tier
+              : null,
+        });
 
   const entryByIso = useMemo(() => {
     const map = new Map<string, DayEntryRow>();
@@ -315,6 +337,16 @@ function ProfileHome(props: {
 
   return (
     <div className="home-stack">
+      {recap !== null && !recapDismissedNow && !recapDismissed(recap.cycleStart) ? (
+        <RecapCard
+          recap={recap}
+          irregularFraming={irregularFraming}
+          onDismiss={() => {
+            dismissRecap(recap.cycleStart);
+            setRecapDismissedNow(true);
+          }}
+        />
+      ) : null}
       {domain === null ? (
         <section className="card">
           <p className="card-body">{t('overviewEstimateLoadError')}</p>
