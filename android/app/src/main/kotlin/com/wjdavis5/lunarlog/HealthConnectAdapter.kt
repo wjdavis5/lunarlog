@@ -621,23 +621,18 @@ class HealthConnectAdapter(context: Context) {
                         result.success("allowed")
                         return@launch
                     }
-                    // Off the channel's own call stack now, so a launch
-                    // that throws is answered here rather than by the
-                    // channel — as the failure it always was, not a crash.
-                    try {
-                        launchPermissionRequest(
-                            result,
-                            askedMarker = IMPORT_REQUEST_LAUNCHED_KEY,
-                            permissions = HealthPermissionState.importRequestPermissions(
-                                reads = readPermissions,
-                                pastData = pastDataPermissions(),
-                                launchedBefore = permissionEverRequested(),
-                            ),
-                        )
-                    } catch (e: Exception) {
-                        if (pendingAuthResult === result) pendingAuthResult = null
-                        result.error("writeFailed", e.message, null)
-                    }
+                    // The launch's own failure handling lives in
+                    // [launchPermissionRequest] (Issue #1883), so
+                    // nothing here catches it.
+                    launchPermissionRequest(
+                        result,
+                        askedMarker = IMPORT_REQUEST_LAUNCHED_KEY,
+                        permissions = HealthPermissionState.importRequestPermissions(
+                            reads = readPermissions,
+                            pastData = pastDataPermissions(),
+                            launchedBefore = permissionEverRequested(),
+                        ),
+                    )
                 }
             }
 
@@ -675,16 +670,11 @@ class HealthConnectAdapter(context: Context) {
                         result.success("permissionDenied")
                         return@launch
                     }
-                    try {
-                        launchPermissionRequest(
-                            result,
-                            askedMarker = null,
-                            permissions = pastDataPermissions(),
-                        )
-                    } catch (e: Exception) {
-                        if (pendingAuthResult === result) pendingAuthResult = null
-                        result.error("writeFailed", e.message, null)
-                    }
+                    launchPermissionRequest(
+                        result,
+                        askedMarker = null,
+                        permissions = pastDataPermissions(),
+                    )
                 }
             }
 
@@ -1471,11 +1461,11 @@ class HealthConnectAdapter(context: Context) {
 
     // Puts one Health Connect permission request in front of the person.
     // Shared by the write path's request and the import's (issue #1515) so
-    // the two cannot drift on the one-prompt-at-a-time rule or on
-    // remembering before launching; they differ only in which permissions
-    // they ask for and which asked-marker they set. The request for past
-    // data alone (issue #1573) sets none: [askedMarker] is null. Call only
-    // after [requestGuardAllows].
+    // the two cannot drift on the one-prompt-at-a-time rule, on remembering
+    // what was launched, or on how a launch that throws is answered (issue
+    // #1883); they differ only in which permissions they ask for and which
+    // asked-marker they set. The request for past data alone (issue #1573)
+    // sets none: [askedMarker] is null. Call only after [requestGuardAllows].
     private fun launchPermissionRequest(
         result: MethodChannel.Result,
         askedMarker: String?,
@@ -1493,22 +1483,32 @@ class HealthConnectAdapter(context: Context) {
             result.error(
                 "writeFailed", "no activity to host the permission prompt", null)
         } else {
-            // Issue #1590: and, per write permission the sheet carries,
-            // which ones have been asked about — stamped before launch
-            // like the marker above, so a type a later build adds is not
-            // read as one this request already offered. Only write
-            // permissions: what a read sheet carried says nothing about
-            // the writes (Issue #1515).
+            // Issue #1883: a launch that throws is answered here, as the
+            // failure it always was — the older result is released and
+            // the caller hears about it, rather than the exception
+            // reaching the channel with the pending slot still held.
+            try {
+                launcher.launch(permissions)
+            } catch (e: Exception) {
+                if (pendingAuthResult === result) pendingAuthResult = null
+                result.error("writeFailed", e.message, null)
+                return
+            }
+            // Issue #1590 / #1478: the ask is recorded once the launch
+            // returned — per write permission the sheet carries, and the
+            // install-wide marker. `launch` hands the request to the
+            // activity and returns before the sheet appears, so a process
+            // that dies behind the sheet has still recorded the ask; a
+            // launch that throws records nothing, because nothing was
+            // shown (Issue #1883) — stamping before the launch would have
+            // read as "denied" and left the writes unaskable from the
+            // app. Only write permissions are stamped per type: what a
+            // read sheet carried says nothing about the writes (Issue
+            // #1515).
             markWritePermissionsAsked(permissions)
-            // Issue #1478: remember that this install has put the
-            // request in front of the person, BEFORE launching it —
-            // the status reports "notAsked" only until this is set,
-            // and a request that is interrupted (the process dies
-            // behind the sheet) has still been asked.
             if (askedMarker != null) {
                 prefs.edit().putLong(askedMarker, installStamp).apply()
             }
-            launcher.launch(permissions)
         }
     }
 
