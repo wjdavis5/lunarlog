@@ -422,7 +422,9 @@ jobs:
       - name: Set up sentry-cli (checksum-verified download)
         # U5 (R15/R16/R17): warns and skips rather than failing the release
         # when the upload secrets are absent -- true for every build today,
-        # since issue #19 has not provisioned them yet. sentry-cli is
+        # since no SENTRY_AUTH_TOKEN exists on the repository (issue #19,
+        # closed 2026-09-26; SENTRY_ORG/SENTRY_PROJECT are configured).
+        # sentry-cli is
         # installed as a pinned, checksum-verified release binary, never
         # `curl | bash` (KTD10). The guard/download/verify logic is shared
         # with ios-release.yml via upload-sentry-symbols-setup.sh (tested in

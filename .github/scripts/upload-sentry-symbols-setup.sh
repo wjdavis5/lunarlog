@@ -16,8 +16,8 @@
 # Exit contract -- three outcomes, deliberately different, matching KTD10's
 # "warn-and-skip a hiccup, but fail loudly on a corrupted or tampered binary"
 # posture:
-#   - Any of the three secrets missing: prints a ::warning:: naming issue
-#     #19, leaves no ./sentry-cli file, and exits 0. A telemetry secret must
+#   - Any of the three secrets missing: prints a ::warning::, leaves
+#     no ./sentry-cli file, and exits 0. A telemetry secret must
 #     never fail a TestFlight/Play upload (R15).
 #   - The download itself fails (timeout, transient 5xx, connection refused,
 #     after the retries below are exhausted): prints a ::warning::, leaves no
@@ -50,7 +50,7 @@
 set -euo pipefail
 
 if [ -z "${SENTRY_AUTH_TOKEN:-}" ] || [ -z "${SENTRY_ORG:-}" ] || [ -z "${SENTRY_PROJECT:-}" ]; then
-  echo "::warning::Sentry symbol upload skipped -- SENTRY_AUTH_TOKEN/ORG/PROJECT not set (issue #19)."
+  echo "::warning::Sentry symbol upload skipped -- SENTRY_AUTH_TOKEN/ORG/PROJECT not set."
   exit 0
 fi
 

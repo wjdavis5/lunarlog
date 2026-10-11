@@ -189,26 +189,30 @@ passwordless email depends on custom SMTP above like every other email.
 
 ### Sentry
 
-Owned by issue #19 (`needs-human-review`, not yet done); the code side that
-depends on these (issue #7, U1-U7) lands inert until they exist — see that
-plan's "Hard dependency on issue #19" section.
+Owned by issue #19 (closed 2026-09-26): the project, DSN, and
+`SENTRY_ORG`/`SENTRY_PROJECT` secrets are configured, "Prevent storing of IP
+addresses" is on, the server-side scrubber is on, and the privacy smoke test
+was proven (PR #980). The one piece still open is `SENTRY_AUTH_TOKEN` for the
+symbol upload below; until it exists, both release workflows' symbol-upload
+steps warn and skip - they never fail a release.
 
-- [ ] Sentry project created; DSN stored as the `SENTRY_DSN` repository
-      secret and (locally) in `dart_defines.json`.
-- [ ] "Prevent storing of IP addresses" on (Project Settings → Security &
+- [x] Sentry project created; DSN stored as the `SENTRY_DSN` repository
+      secret and (locally) in `dart_defines.json` (2026-09-20).
+- [x] "Prevent storing of IP addresses" on (Project Settings → Security &
       Privacy).
-- [ ] Server-side data scrubbing on, with the default sensitive-field list
+- [x] Server-side data scrubbing on, with the default sensitive-field list
       plus `note`, `tags`, `display_name`, `local_date`, `email` (defense in
       depth behind the client allowlist in `lib/observability/scrub.dart`).
-- [ ] **Sentry symbol upload secrets** (issue #7 U5): `SENTRY_AUTH_TOKEN`,
-      `SENTRY_ORG`, `SENTRY_PROJECT` repository secrets.
+- [x] `SENTRY_ORG`, `SENTRY_PROJECT` repository secrets (configured
+      2026-09-20; issue #19 closed 2026-09-26).
+- [ ] **Sentry symbol upload secrets** (issue #7 U5): `SENTRY_AUTH_TOKEN`.
       `SENTRY_AUTH_TOKEN` must be an **organization auth token scoped to
       `project:releases` only** — not `project:write`, not `org:read`, and
       not a personal user token — owned by the maintainer account and
       rotated whenever repository access changes, matching every other
-      credential in this document. Without these three, both release
+      credential in this document. Without `SENTRY_AUTH_TOKEN`, both release
       workflows' symbol-upload steps warn and skip (they never fail the
-      release); with them, iOS `.dSYM` bundles and Android native `.so`
+      release); with it, iOS `.dSYM` bundles and Android native `.so`
       symbols upload automatically on every release build, plus — since
       issue #211 enabled R8 in `android/app/build.gradle.kts` and added
       `--obfuscate --split-debug-info` to the Play AAB build — the Android
@@ -293,10 +297,10 @@ bucket, and the two admin-facing emails
 - [ ] `SUPABASE_ACCESS_TOKEN` and `SUPABASE_DB_PASSWORD` (and
       `SUPABASE_PROJECT_REF`) set as environment secrets on `production`
       (`supabase-migrate.yml` runs `supabase link` + `db push` there).
-- [ ] `SENTRY_DSN` repository secret added.
-- [ ] `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` repository secrets
-      added (issue #7 U5; see the Sentry checklist above for the required
-      token scope).
+- [x] `SENTRY_DSN` repository secret added (2026-09-20).
+- [x] `SENTRY_ORG`, `SENTRY_PROJECT` repository secrets added (2026-09-20).
+- [ ] `SENTRY_AUTH_TOKEN` repository secret added (issue #7 U5; see the
+      Sentry checklist above for the required token scope).
 - [ ] `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_CLIENT_ID`, and
       `APPLE_PRIVATE_KEY` set as environment secrets on `production` (issue
       #17 — the `delete-account` Edge Function's Apple token revocation,
@@ -846,7 +850,7 @@ observation; record the date and build number next to it when it passes.
       database — never the fail-closed screen. Repeat for "Sign out
       everywhere" and confirm the other device's session ends within the JWT
       expiry window.
-- [ ] **Sentry smoke test (AE7; re-baselined for issue #7's U1/U2/U3).** In a
+- [x] **Sentry smoke test (AE7; re-baselined for issue #7's U1/U2/U3).** (Issue #19 closed 2026-09-26 as complete; the trigger and payload verification were proven in PR #980.) In a
       dev build with `SENTRY_DSN` set, navigate through a couple of screens
       (e.g. Profiles → Settings → Send feedback), then throw a deliberate
       test exception from a `lib/data` path and a UI path. In Sentry the
