@@ -78,7 +78,7 @@ run_case() {
 
 run_case "" "org" "proj" "$FIXTURE_SHA256" "sha256sum"
 assert_eq "empty SENTRY_AUTH_TOKEN exits 0" 0 "$LAST_EXIT"
-assert_contains "empty SENTRY_AUTH_TOKEN warns naming issue #19" "$LAST_LOG" "issue #19"
+assert_contains "empty SENTRY_AUTH_TOKEN warns the upload is skipped" "$LAST_LOG" "SENTRY_AUTH_TOKEN/ORG/PROJECT not set"
 assert_eq "empty SENTRY_AUTH_TOKEN leaves no sentry-cli file" "false" "$LAST_CLI_PRESENT"
 
 run_case "token" "" "proj" "$FIXTURE_SHA256" "sha256sum"
