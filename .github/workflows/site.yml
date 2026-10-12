@@ -262,7 +262,10 @@ jobs:
 
   external-links:
     name: Weekly external link check
-    if: github.event_name == 'schedule'
+    # The weekly schedule runs this; a manual dispatch reaches it too
+    # (issue #1899) so a merged link fix can be verified -- or re-verified --
+    # on a runner without waiting for the next Monday.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -291,7 +294,8 @@ jobs:
 
       - name: File or refresh the rolling issue
         # The #707 pattern: one issue that is refreshed on each failing run,
-        # never one per run. Only reached on a scheduled failure.
+        # never one per run. Only reached when this job fails (the weekly
+        # run, or a manual dispatch).
         if: failure()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
