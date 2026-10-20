@@ -1,7 +1,7 @@
 # LunarLog Privacy Policy
 
 **Effective Date:** September 7, 2026  
-**Last Updated:** October 20, 2026 - Section 4 discloses that Apple Health imports on iOS read intermenstrual-bleeding (spotting) records alongside menstrual flow, matching Android (Sections 4 and 10).
+**Last Updated:** October 20, 2026 - Section 4 discloses that Apple Health imports on iOS read flow and spotting records (Sections 4 and 10).
 
 LunarLog ("we", "our", or "the app") is a privacy-first menstrual cycle and symptom tracker built for families: an account syncs a profile across a guardian's own devices and lets it be shared with other guardians — co-parents, caregivers — each with their own role, so sync and multi-guardian collaboration are the product's priority, not a bolted-on option. We believe that reproductive and menstrual health data is deeply personal and sensitive. LunarLog is architected from the ground up to protect your privacy: your data is protected at rest by each device's own operating-system encryption (Section 1), nothing you log is uploaded until you sign in, and the app keeps logging, viewing, and predicting even when you have no network connection.
 
