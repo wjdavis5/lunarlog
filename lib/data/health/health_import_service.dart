@@ -1577,13 +1577,17 @@ class LocalHealthImportService
       // store's record may become adoptable later without the store
       // changing (she clears her flow). Remembered, so a later pass asks
       // the store for it again.
-      await _rememberDeclined(
-        profileId,
-        _daySource.toDb(),
-        desired.recordId,
-        HealthImportDeclinedKind.flow,
-        date,
-      );
+      // Suppressed for period fills that yielded to an existing real flow
+      // record (Issue #1879): the day already carries real flow data.
+      if (!_isPeriodFillYieldingToRealFlow(existing, desired)) {
+        await _rememberDeclined(
+          profileId,
+          _daySource.toDb(),
+          desired.recordId,
+          HealthImportDeclinedKind.flow,
+          date,
+        );
+      }
       await _remember(existing, desired, kept: true);
       return _MergeOutcome.keptManual;
     }
@@ -2002,6 +2006,7 @@ class LocalHealthImportService
   bool _mayAdopt(DayEntry existing, _DesiredSample desired) {
     final imported = existing.source == _daySource && existing.sourceId != null;
     if (!imported) return existing.flow == FlowLevel.none;
+    if (_isPeriodFillYieldingToRealFlow(existing, desired)) return false;
     return _storeChangedSince(existing, desired);
   }
 
@@ -2065,6 +2070,7 @@ class LocalHealthImportService
   }) async {
     final stored = existing.sourceId;
     if (existing.source != _daySource || stored == null) return;
+    if (_isPeriodFillYieldingToRealFlow(existing, desired)) return;
     final key = _recordKey(desired);
     if (stored == key) return;
     if (!kept && stored == desired.recordId) return;
@@ -2342,6 +2348,29 @@ String _recordIdOf(String? key) {
 /// The `#<yyyy-mm-dd>` an expanded period day carries at the end of its
 /// record id.
 final RegExp _kPeriodDaySegment = RegExp(r'#\d{4}-\d{2}-\d{2}$');
+
+/// Whether [key] carries a period day segment (`#<yyyy-mm-dd>`), marking a
+/// row written from a period record rather than an instantaneous flow record.
+bool _isPeriodDayKey(String? key) {
+  final id = key ?? '';
+  final at = id.lastIndexOf('@');
+  final withoutTime = at < 0 ? id : id.substring(0, at);
+  return _kPeriodDaySegment.hasMatch(withoutTime);
+}
+
+/// Whether [desired] is a period record fill that should yield to [existing]'s
+/// real flow record (Issue #1879).
+bool _isPeriodFillYieldingToRealFlow(
+  DayEntry existing,
+  _DesiredSample desired,
+) {
+  if (desired.value != HealthFlowValue.unspecified) return false;
+  if (existing.flow == FlowLevel.none) return false;
+  final stored = existing.sourceId;
+  if (stored == null) return false;
+  if (_isPeriodDayKey(stored)) return false;
+  return _recordIdOf(stored) != _recordIdOf(desired.recordId);
+}
 
 /// The moment an imported day's `sourceId` carries after its last `@`, or
 /// null when it carries none (an Apple Health sample's key, or a Health
