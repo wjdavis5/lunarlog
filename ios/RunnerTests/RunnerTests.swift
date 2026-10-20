@@ -407,6 +407,228 @@ class RunnerTests: XCTestCase {
       metadata: [HKMetadataKeyMenstrualCycleStart: true])
   }
 
+
+  // MARK: - Issue #1888: Intermenstrual bleeding (spotting) read and multi-stage paging
+
+  /// Issue #1888: An imported intermenstrual bleeding sample maps to kind "intermenstrualBleeding"
+  /// with recordId equal to sample UUID, startMs, endMs, and no flow intensity key.
+  func testPagePayloadIntermenstrualBleedingSample() {
+    let sample = Self.intermenstrualBleedingSample()
+    let payload = HealthKitChannelHandler.pagePayload(
+      samples: [sample],
+      deletedObjects: [],
+      newAnchor: nil,
+      pageSize: 500,
+      incremental: false,
+      ownBundleId: nil)
+    let samples = payload["samples"] as? [[String: Any]]
+    XCTAssertEqual(samples?.count, 1)
+    XCTAssertEqual(samples?.first?["recordId"] as? String, sample.uuid.uuidString)
+    XCTAssertEqual(samples?.first?["kind"] as? String, "intermenstrualBleeding")
+    XCTAssertNil(samples?.first?["flow"], "intermenstrual bleeding has no flow intensity")
+    XCTAssertNotNil(samples?.first?["startMs"])
+    XCTAssertNotNil(samples?.first?["endMs"])
+  }
+
+  /// Issue #1888: An intermenstrual bleeding sample written by lunarlog itself is dropped by the
+  /// echo filter, while a sample from another app is preserved.
+  func testPagePayloadDropsIntermenstrualBleedingOwnWrites() {
+    let sample = Self.intermenstrualBleedingSample()
+    let otherApp = pagePayloadCount(
+      sample, ownBundleId: "com.another.health-app")
+    XCTAssertEqual(otherApp, 1, "another app's bundle id keeps the spotting sample")
+    let ownSource = pagePayloadCount(
+      sample, ownBundleId: sample.sourceRevision.source.bundleIdentifier)
+    XCTAssertEqual(ownSource, 0, "the sample's own source drops the spotting sample")
+  }
+
+  /// Issue #1888: When the menstrual flow query is exhausted (count < pageSize), the page
+  /// transitions to stage .spotting with nextCursor, carrying forward the new flow anchor.
+  func testMultiStageCursorTransitionFlowToSpotting() {
+    let anchor = HKQueryAnchor(fromValue: 101)
+    let payload = HealthKitChannelHandler.pagePayload(
+      samples: [],
+      deletedObjects: [],
+      newAnchor: anchor,
+      pageSize: 500,
+      incremental: false,
+      ownBundleId: nil,
+      stage: .flow,
+      flowAnchor: anchor,
+      spottingAnchor: nil,
+      passHadSamples: false)
+
+    XCTAssertNil(payload["commitToken"])
+    guard let nextCursor = payload["nextCursor"] as? String else {
+      XCTFail("Expected nextCursor transitioning to spotting stage")
+      return
+    }
+    guard let decoded = HealthKitChannelHandler.decodeAnchorPayload(nextCursor) else {
+      XCTFail("Expected valid decoded cursor")
+      return
+    }
+    XCTAssertEqual(decoded.stage, .spotting)
+    XCTAssertNotNil(decoded.flowAnchor)
+    XCTAssertNil(decoded.spottingAnchor)
+    XCTAssertFalse(decoded.passHadSamples)
+  }
+
+  /// Issue #1888: When the spotting query is exhausted, the pass terminates (nextCursor == nil)
+  /// and commits both flow and spotting anchors.
+  func testMultiStageCursorSpottingExhaustionTerminates() {
+    let flowAnchor = HKQueryAnchor(fromValue: 101)
+    let spottingAnchor = HKQueryAnchor(fromValue: 202)
+    let payload = HealthKitChannelHandler.pagePayload(
+      samples: [],
+      deletedObjects: [],
+      newAnchor: spottingAnchor,
+      pageSize: 500,
+      incremental: true,
+      ownBundleId: nil,
+      stage: .spotting,
+      flowAnchor: flowAnchor,
+      spottingAnchor: spottingAnchor,
+      passHadSamples: false)
+
+    XCTAssertNil(payload["nextCursor"])
+    guard let commitToken = payload["commitToken"] as? String else {
+      XCTFail("Expected commitToken on incremental pass completion")
+      return
+    }
+    guard let decoded = HealthKitChannelHandler.decodeAnchorPayload(commitToken) else {
+      XCTFail("Expected valid decoded commitToken")
+      return
+    }
+    XCTAssertEqual(decoded.stage, .spotting)
+    XCTAssertNotNil(decoded.flowAnchor)
+    XCTAssertNotNil(decoded.spottingAnchor)
+  }
+
+  /// Issue #1888: Legacy stored anchor payloads (which only carried "anchor" for flow)
+  /// decode flowAnchor and leave spottingAnchor as nil. Starting an incremental page from it
+  /// begins at stage .flow with flowAnchor set and spottingAnchor nil, so the subsequent
+  /// spotting pass will do a clean full read of spotting history without requiring a manual reset.
+  func testLegacyAnchorUpgradeDecoding() {
+    let anchor = HKQueryAnchor(fromValue: 42)
+    guard let legacyCursor = HealthKitChannelHandler.cursorString(for: anchor) else {
+      XCTFail("Failed to serialize anchor")
+      return
+    }
+    let json: [String: Any] = [
+      "anchor": legacyCursor,
+      "incremental": true,
+    ]
+    let jsonData = try! JSONSerialization.data(withJSONObject: json)
+    let legacyPayload = HealthKitChannelHandler.encodeCursorData(jsonData)
+
+    guard let decoded = HealthKitChannelHandler.decodeAnchorPayload(legacyPayload) else {
+      XCTFail("Failed to decode legacy payload")
+      return
+    }
+    XCTAssertEqual(decoded.stage, .flow)
+    XCTAssertTrue(decoded.incremental)
+    XCTAssertNotNil(decoded.flowAnchor)
+    XCTAssertNil(decoded.spottingAnchor)
+
+    HealthKitChannelHandler.storeImportAnchor(anchorProfileA, legacyPayload)
+    let startPage = HealthKitChannelHandler.startingPage(
+      profileId: anchorProfileA, cursor: nil, wholeHistory: false)
+    XCTAssertEqual(startPage.stage, .flow)
+    XCTAssertTrue(startPage.incremental)
+    XCTAssertNotNil(startPage.flowAnchor)
+    XCTAssertNil(startPage.spottingAnchor)
+  }
+
+  /// Issue #1888, #1650, #1905: An empty whole-history pass (no flow samples, no spotting samples)
+  /// does not commit an anchor on either stage, protecting past history when read access is denied.
+  func testTwoStageEmptyWholeHistoryDoesNotCommit() {
+    let flowAnchor = HKQueryAnchor(fromValue: 1)
+    let spottingAnchor = HKQueryAnchor(fromValue: 2)
+
+    // Stage 1 (flow) empty:
+    let stage1 = HealthKitChannelHandler.pagePayload(
+      samples: [],
+      deletedObjects: [],
+      newAnchor: flowAnchor,
+      pageSize: 500,
+      incremental: false,
+      ownBundleId: nil,
+      stage: .flow,
+      flowAnchor: flowAnchor,
+      spottingAnchor: nil,
+      passHadSamples: false)
+    XCTAssertNil(stage1["commitToken"])
+    let nextCursor = stage1["nextCursor"] as? String
+    XCTAssertNotNil(nextCursor)
+
+    // Stage 2 (spotting) empty:
+    let stage2 = HealthKitChannelHandler.pagePayload(
+      samples: [],
+      deletedObjects: [],
+      newAnchor: spottingAnchor,
+      pageSize: 500,
+      incremental: false,
+      ownBundleId: nil,
+      stage: .spotting,
+      flowAnchor: flowAnchor,
+      spottingAnchor: spottingAnchor,
+      passHadSamples: false)
+    XCTAssertNil(stage2["nextCursor"])
+    XCTAssertNil(stage2["commitToken"], "empty whole history read must not commit anchor (#1650, #1888, #1905)")
+  }
+
+  /// Issue #1888: A whole-history pass with no flow samples but with foreign spotting samples
+  /// carries passHadSamples and commits an anchor once the spotting stage finishes.
+  func testTwoStageWholeHistoryWithSpottingDataCommits() {
+    let flowAnchor = HKQueryAnchor(fromValue: 1)
+    let spottingAnchor = HKQueryAnchor(fromValue: 2)
+    let sample = Self.intermenstrualBleedingSample()
+
+    // Stage 1 (flow) empty:
+    let stage1 = HealthKitChannelHandler.pagePayload(
+      samples: [],
+      deletedObjects: [],
+      newAnchor: flowAnchor,
+      pageSize: 500,
+      incremental: false,
+      ownBundleId: nil,
+      stage: .flow,
+      flowAnchor: flowAnchor,
+      spottingAnchor: nil,
+      passHadSamples: false)
+    XCTAssertNil(stage1["commitToken"])
+    guard let nextCursor = stage1["nextCursor"] as? String,
+          let decodedCursor = HealthKitChannelHandler.decodeAnchorPayload(nextCursor) else {
+      XCTFail("Expected valid nextCursor")
+      return
+    }
+
+    // Stage 2 (spotting) has sample:
+    let stage2 = HealthKitChannelHandler.pagePayload(
+      samples: [sample],
+      deletedObjects: [],
+      newAnchor: spottingAnchor,
+      pageSize: 500,
+      incremental: false,
+      ownBundleId: "com.another.health-app",
+      stage: decodedCursor.stage,
+      flowAnchor: decodedCursor.flowAnchor,
+      spottingAnchor: spottingAnchor,
+      passHadSamples: decodedCursor.passHadSamples)
+    XCTAssertNil(stage2["nextCursor"])
+    XCTAssertNotNil(stage2["commitToken"], "whole history pass with spotting samples must commit anchor (#1888)")
+  }
+
+  /// One in-memory intermenstrual-bleeding (spotting) sample for testing.
+  private static func intermenstrualBleedingSample() -> HKCategorySample {
+    HKCategorySample(
+      type: HKObjectType.categoryType(forIdentifier: .intermenstrualBleeding)!,
+      value: HKCategoryValue.notApplicable.rawValue,
+      start: Date(timeIntervalSince1970: 1_784_016_000),
+      end: Date(timeIntervalSince1970: 1_784_016_000),
+      metadata: nil)
+  }
+
   private func pagePayloadCount(
     _ sample: HKCategorySample,
     ownBundleId: String?

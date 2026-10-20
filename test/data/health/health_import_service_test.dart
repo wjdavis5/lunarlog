@@ -479,6 +479,7 @@ HealthFlowSample _bleedingSample({
   required String id,
   required String startIso,
   Duration? offset,
+  String? tzName,
 }) {
   final start = DateTime.parse(startIso);
   return HealthFlowSample(
@@ -487,6 +488,7 @@ HealthFlowSample _bleedingSample({
     start: start,
     end: start,
     offset: offset,
+    tzName: tzName,
   );
 }
 
@@ -1892,6 +1894,34 @@ void main() {
       // No IANA name exists on a Health Connect record; the row carries the
       // record's fixed offset instead.
       expect(row.tz, 'UTC-04:00');
+    });
+
+    test(
+        'an intermenstrual-bleeding record becomes a spotting observation '
+        'with apple_health provenance (issue #1888)', () async {
+      await bind();
+      source.result = HealthReadResult.samples([
+        _bleedingSample(
+          id: 'apple-spot',
+          startIso: '2026-09-10T15:00:00Z',
+          tzName: 'America/New_York',
+        ),
+      ]);
+      final summary = await build(
+        importPlatform: HealthImportPlatform.appleHealth,
+      ).importNow();
+
+      expect(summary.samplesRead, 1);
+      expect(summary.spottingDaysWritten, 1);
+      expect(observations.saved, hasLength(1));
+      final observation = observations.saved.single;
+      expect(observation.category, ObservationCategory.spotting);
+      expect(observation.code, 'spotting');
+      expect(observation.source, ObservationSource.appleHealth);
+      expect(observation.sourceId, 'apple-spot');
+      expect(observation.localDate, LocalDate(2026, 9, 10));
+      expect(dayEntries.saved, hasLength(1));
+      expect(dayEntries.saved.single.sourceId, isNull);
     });
 
     test('an intermenstrual-bleeding record becomes a spotting observation '
