@@ -55,16 +55,18 @@ const description =
       <h2>From Apple Health or Health Connect</h2>
       <!-- cite: lib/data/health/health_import_service.dart (the first import is
            user-initiated; the whole available history read a page at a time, issue
-           #992; on Android the read covers menstrual-flow AND intermenstrual-bleeding
-           records — Health Connect's READ_MENSTRUATION and READ_INTERMENSTRUAL_BLEEDING,
-           issue #1180 — and hand-logged values are never overwritten; own writes
+           #992; on both iOS and Android the read covers menstrual-flow AND
+           intermenstrual-bleeding records — Health Connect's READ_MENSTRUATION and
+           READ_INTERMENSTRUAL_BLEEDING, issue #1180; Apple Health's
+           HKCategoryTypeIdentifierMenstrualFlow and HKCategoryTypeIdentifierIntermenstrualBleeding,
+           issue #1908 — and hand-logged values are never overwritten; own writes
            excluded by source; provenance stamped; "Bound. Two entry points." — since
            #993 the same import also runs prompt-free in the background, iOS observer +
            Android worker, #153 guard and the #1491 read-side probe inside importInBackground);
            PRIVACY.md §4 health paragraph. -->
       <p>
-        On iPhone, lunarlog can read menstrual-flow history from Apple
-        Health; on Android, flow and spotting history from Health Connect.
+        On iPhone (Apple Health) and Android (Health Connect), lunarlog
+        can read flow and spotting history.
         You start the first import yourself from Settings; once a profile
         is bound and that first import has completed, the same import also
         keeps itself current in the background — Apple Health tells

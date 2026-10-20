@@ -125,9 +125,8 @@ const deleteAccountUrl = "/delete-account";
       <h3>Can I bring data in from Clue or my health app?</h3>
       <!-- cite: PRIVACY.md §7/§4 and docs/ops/play-health-declaration.md (the first
            Apple Health / Health Connect import is user-initiated, full history — it
-           reads menstrual-flow records on iOS and, on Android, menstrual-flow AND
-           intermenstrual-bleeding records (Health Connect's READ_MENSTRUATION and
-           READ_INTERMENSTRUAL_BLEEDING,
+           reads menstrual-flow and intermenstrual-bleeding records on both iOS and
+           Android (Health Connect's READ_MENSTRUATION and READ_INTERMENSTRUAL_BLEEDING,
            android/app/src/main/AndroidManifest.xml), as far back as the health store
            has them, per issue #992, and never overwrites a hand-logged value; spotting
            is half of the Android read, so the type axis must not be narrowed again —
@@ -137,10 +136,10 @@ const deleteAccountUrl = "/delete-account";
            the background axis must not be denied again either); bulk Clue import
            (issue #167/#172). -->
       <p>
-        Yes. You can import history from Clue, and import your menstrual-flow
-        history from Apple Health on iPhone — or your flow and spotting
-        history from Health Connect on Android — whenever you choose, as far
-        back as your health app has it. Imports never overwrite a value you
+        Yes. You can import history from Clue, and import your flow and
+        spotting history from Apple Health on iPhone — or your flow and
+        spotting history from Health Connect on Android — whenever you choose,
+        as far back as your health app has it. Imports never overwrite a value you
         logged by hand. You start the first import yourself; only once a
         profile is bound and that first import has completed does the same
         import also keep itself current in the background — Apple Health

@@ -80,7 +80,7 @@
 	     describes the read the code performs, and PRIVACY.md carries the
 	     matching disclosure. -->
 	<key>NSHealthShareUsageDescription</key>
-	<string>lunarlog reads menstrual flow and Apple's own computed cycle-deviation summaries from Apple Health only when you choose to import into the profile you have bound to this device, so you can bring in history you recorded elsewhere and see Apple's cycle observations. Nothing is read automatically, and only samples in the date range you import are read.</string>
+	<string>lunarlog reads menstrual flow, intermenstrual bleeding (spotting), and Apple's own computed cycle-deviation summaries from Apple Health only for the profile you bind to this device in Settings, so you can bring in history you recorded elsewhere and see Apple's cycle observations.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>lunarlog writes the bound profile's period, symptom, and mood data to Apple Health, only for the one profile you choose in Settings.</string>
 	<!-- Issue #207: required by image_picker_ios the moment a gallery source
