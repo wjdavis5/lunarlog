@@ -504,6 +504,105 @@ class RunnerTests: XCTestCase {
     XCTAssertNotNil(decoded.spottingAnchor)
   }
 
+  /// Issue #1913: On an incremental pass upgrading from a legacy flow-only anchor
+  /// (spottingAnchor == nil), an empty spotting stage must NOT commit a spotting
+  /// anchor. Committing an anchor at the store's current position would permanently
+  /// cut off older spotting from other apps once spotting read permission is granted.
+  /// The commit token commits flowAnchor and omits spottingAnchor.
+  func testMultiStageCursorSpottingExhaustionWithEmptySpottingStageLegacyAnchor() {
+    let flowAnchor = HKQueryAnchor(fromValue: 101)
+    let newSpottingAnchor = HKQueryAnchor(fromValue: 202)
+    let payload = HealthKitChannelHandler.pagePayload(
+      samples: [],
+      deletedObjects: [],
+      newAnchor: newSpottingAnchor,
+      pageSize: 500,
+      incremental: true,
+      ownBundleId: nil,
+      stage: .spotting,
+      flowAnchor: flowAnchor,
+      spottingAnchor: nil,
+      passHadSamples: false)
+
+    XCTAssertNil(payload["nextCursor"])
+    guard let commitToken = payload["commitToken"] as? String else {
+      XCTFail("Expected commitToken on incremental pass completion")
+      return
+    }
+    guard let decoded = HealthKitChannelHandler.decodeAnchorPayload(commitToken) else {
+      XCTFail("Expected valid decoded commitToken")
+      return
+    }
+    XCTAssertEqual(decoded.stage, .spotting)
+    XCTAssertNotNil(decoded.flowAnchor, "flowAnchor must be retained")
+    XCTAssertNil(decoded.spottingAnchor, "spottingAnchor must be omitted on empty read from nil anchor (#1913)")
+  }
+
+  /// Issue #1913: On a whole-history pass where flow was allowed (passHadSamples == true)
+  /// but spotting was declined (spottingAnchor == nil and empty spotting stage),
+  /// spottingAnchor must NOT be committed even though passHadSamples is true.
+  /// The commit token commits flowAnchor and omits spottingAnchor.
+  func testMultiStageCursorSpottingExhaustionWithEmptySpottingStageAndFlowSamples() {
+    let flowAnchor = HKQueryAnchor(fromValue: 101)
+    let newSpottingAnchor = HKQueryAnchor(fromValue: 202)
+    let payload = HealthKitChannelHandler.pagePayload(
+      samples: [],
+      deletedObjects: [],
+      newAnchor: newSpottingAnchor,
+      pageSize: 500,
+      incremental: false,
+      ownBundleId: nil,
+      stage: .spotting,
+      flowAnchor: flowAnchor,
+      spottingAnchor: nil,
+      passHadSamples: true)
+
+    XCTAssertNil(payload["nextCursor"])
+    guard let commitToken = payload["commitToken"] as? String else {
+      XCTFail("Expected commitToken on pass completion when flow had samples")
+      return
+    }
+    guard let decoded = HealthKitChannelHandler.decodeAnchorPayload(commitToken) else {
+      XCTFail("Expected valid decoded commitToken")
+      return
+    }
+    XCTAssertEqual(decoded.stage, .spotting)
+    XCTAssertNotNil(decoded.flowAnchor, "flowAnchor must be retained")
+    XCTAssertNil(decoded.spottingAnchor, "spottingAnchor must be omitted on empty read from nil anchor (#1913)")
+  }
+
+  /// Issue #1913: When spotting started from a nil anchor and DOES return foreign
+  /// spotting samples, both flow and spotting anchors are committed.
+  func testMultiStageCursorSpottingExhaustionWithForeignSamplesFromNilAnchorCommitsBoth() {
+    let flowAnchor = HKQueryAnchor(fromValue: 101)
+    let newSpottingAnchor = HKQueryAnchor(fromValue: 202)
+    let sample = Self.intermenstrualBleedingSample()
+    let payload = HealthKitChannelHandler.pagePayload(
+      samples: [sample],
+      deletedObjects: [],
+      newAnchor: newSpottingAnchor,
+      pageSize: 500,
+      incremental: true,
+      ownBundleId: "com.another.app",
+      stage: .spotting,
+      flowAnchor: flowAnchor,
+      spottingAnchor: nil,
+      passHadSamples: false)
+
+    XCTAssertNil(payload["nextCursor"])
+    guard let commitToken = payload["commitToken"] as? String else {
+      XCTFail("Expected commitToken on pass completion")
+      return
+    }
+    guard let decoded = HealthKitChannelHandler.decodeAnchorPayload(commitToken) else {
+      XCTFail("Expected valid decoded commitToken")
+      return
+    }
+    XCTAssertEqual(decoded.stage, .spotting)
+    XCTAssertNotNil(decoded.flowAnchor, "flowAnchor must be retained")
+    XCTAssertNotNil(decoded.spottingAnchor, "spottingAnchor must be committed when foreign samples are present")
+  }
+
   /// Issue #1888: Legacy stored anchor payloads (which only carried "anchor" for flow)
   /// decode flowAnchor and leave spottingAnchor as nil. Starting an incremental page from it
   /// begins at stage .flow with flowAnchor set and spottingAnchor nil, so the subsequent
