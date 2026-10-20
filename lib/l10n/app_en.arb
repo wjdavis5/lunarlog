@@ -4306,6 +4306,14 @@
     "@sharingNotificationPreferencesLoadError": {
       "description": "Issue #1004 (tranche 1): inline error when notification preferences fail to load."
     },
+    "sharingNotificationPreferencesNotificationsDeniedHint": "Notifications are off for lunarlog, so these alerts can't arrive",
+    "@sharingNotificationPreferencesNotificationsDeniedHint": {
+      "description": "Issue #1923: warning banner content on NotificationPreferencesScreen when caregiver alerts are on but device notifications are denied."
+    },
+    "sharingNotificationPreferencesTurnOnNotifications": "Turn on notifications",
+    "@sharingNotificationPreferencesTurnOnNotifications": {
+      "description": "Issue #1923: action button on the notifications-denied banner on NotificationPreferencesScreen."
+    },
     "sharingNotificationPreferencesDiscretion": "Alerts never show what was logged - just a generic reminder to open lunarlog.",
     "@sharingNotificationPreferencesDiscretion": {
       "description": "Issue #1004 (tranche 1): discretion note at the top of notification preferences."

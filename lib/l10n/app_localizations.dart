@@ -5240,6 +5240,18 @@ abstract class AppLocalizations {
   /// **'Could not load your notification settings.'**
   String get sharingNotificationPreferencesLoadError;
 
+  /// Issue #1923: warning banner content on NotificationPreferencesScreen when caregiver alerts are on but device notifications are denied.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications are off for lunarlog, so these alerts can\'t arrive'**
+  String get sharingNotificationPreferencesNotificationsDeniedHint;
+
+  /// Issue #1923: action button on the notifications-denied banner on NotificationPreferencesScreen.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on notifications'**
+  String get sharingNotificationPreferencesTurnOnNotifications;
+
   /// Issue #1004 (tranche 1): discretion note at the top of notification preferences.
   ///
   /// In en, this message translates to:

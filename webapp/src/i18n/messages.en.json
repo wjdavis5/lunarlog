@@ -852,6 +852,8 @@
   "sharingNotificationPreferencesDigestTimeTitle": "Digest time",
   "sharingNotificationPreferencesDigestTimeSubtitle": "When daily digests are delivered in your time zone",
   "sharingNotificationPreferencesLoadError": "Could not load your notification settings.",
+  "sharingNotificationPreferencesNotificationsDeniedHint": "Notifications are off for lunarlog, so these alerts can't arrive",
+  "sharingNotificationPreferencesTurnOnNotifications": "Turn on notifications",
   "sharingNotificationPreferencesDiscretion": "Alerts never show what was logged - just a generic reminder to open lunarlog.",
   "sharingNotificationPreferencesNotifyOnLog": "Notify me when {profileName} logs an entry",
   "sharingNotificationPreferencesCycleStartOnly": "Only notify on cycle start",

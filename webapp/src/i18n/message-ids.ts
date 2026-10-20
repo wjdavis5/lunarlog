@@ -855,6 +855,8 @@ export const MESSAGE_IDS = [
   "sharingNotificationPreferencesDigestTimeTitle",
   "sharingNotificationPreferencesDigestTimeSubtitle",
   "sharingNotificationPreferencesLoadError",
+  "sharingNotificationPreferencesNotificationsDeniedHint",
+  "sharingNotificationPreferencesTurnOnNotifications",
   "sharingNotificationPreferencesDiscretion",
   "sharingNotificationPreferencesNotifyOnLog",
   "sharingNotificationPreferencesCycleStartOnly",
