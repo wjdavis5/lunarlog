@@ -1402,6 +1402,7 @@ void main() {
         RegExp(r'permissions = HealthPermissionState\.importRequestPermissions\(\s*'
                 r'reads = readPermissions,\s*'
                 r'pastData = pastDataPermissions\(\),\s*'
+                r'backgroundRead = backgroundReadPermissions\(\),\s*'
                 r'launchedBefore = permissionEverRequested\(\),\s*\)')
             .hasMatch(importRequest),
         isTrue,
@@ -1498,10 +1499,11 @@ void main() {
       expect(launcher, contains('launcher.launch(permissions)'));
       expect(
         'launchPermissionRequest('.allMatches(kotlin),
-        hasLength(5),
+        hasLength(6),
         reason: 'the declaration, the two requests, the request for past '
-            'data (Issue #1573), and the request for a never-asked type '
-            '(Issue #1590): nothing else raises a Health Connect sheet',
+            'data (Issue #1573), the request for a never-asked type '
+            '(Issue #1590), and the request for background data '
+            '(Issue #1880): nothing else raises a Health Connect sheet',
       );
     });
 

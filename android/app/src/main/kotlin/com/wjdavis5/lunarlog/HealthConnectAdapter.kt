@@ -585,12 +585,7 @@ class HealthConnectAdapter(context: Context) {
                 launchPermissionRequest(
                     result,
                     askedMarker = PERMISSION_REQUESTED_KEY,
-                    permissions = HealthPermissionState.writeRequestPermissions(
-                        all = allPermissions,
-                        pastData = pastDataPermissions(),
-                        backgroundRead = backgroundReadPermissions(),
-                        launchedBefore = permissionEverRequested(),
-                    ),
+                    permissions = allPermissions,
                 )
             }
 
@@ -718,62 +713,6 @@ class HealthConnectAdapter(context: Context) {
                 // "Access past data" switch at all. Only looks: no
                 // request, no marker. Null when it cannot tell.
                 result.success(pastDataOfferedOrNull())
-            }
-
-            "requestBackgroundReadAccess" -> {
-                // Issue #1880: Health Connect's own prompt for the one
-                // permission that lets background imports run
-                // ("Access data in the background"), raised only by a tap on
-                // the Health sync screen.
-                //
-                // It carries no write and neither record read, so neither
-                // asked-marker is set (#1478, #1515): what this sheet was
-                // answered says nothing about either of them. Health
-                // Connect drops a request, showing nothing, once a
-                // permission in it has been declined twice; the caller
-                // reads the granted set afterwards and does not trust the
-                // answer given here.
-                if (!requestGuardAllows(call.method, args, result)) return
-                val client = healthConnectClient()
-                if (client == null || !backgroundReadOffered()) {
-                    result.success("unavailable")
-                    return
-                }
-                CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
-                    val granted = try {
-                        client.permissionController.getGrantedPermissions()
-                    } catch (e: Exception) {
-                        emptySet()
-                    }
-                    if (!HealthPermissionState.backgroundReadMayAsk(granted, importReadPermissions)) {
-                        result.success("permissionDenied")
-                        return@launch
-                    }
-                    launchPermissionRequest(
-                        result,
-                        askedMarker = null,
-                        permissions = backgroundReadPermissions(),
-                    )
-                }
-            }
-
-            "backgroundReadSwitchOffered" -> {
-                // Issue #1880: whether this Health Connect has the
-                // "Access data in the background" switch at all. Only looks: no
-                // request, no marker. Null when it cannot tell.
-                result.success(backgroundReadOfferedOrNull())
-            }
-
-            "importBackgroundReadGranted" -> {
-                // Issue #1880: whether "Access data in the background" is granted.
-                val client = healthConnectClient()
-                if (client == null) {
-                    result.success(false)
-                    return
-                }
-                CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
-                    result.success(backgroundReadGranted(client))
-                }
             }
 
             "importPermissionStatus" -> {
@@ -1012,6 +951,62 @@ class HealthConnectAdapter(context: Context) {
                     // No Health Connect settings UI to open — nothing to do.
                 }
                 result.success(null)
+            }
+
+            "requestBackgroundReadAccess" -> {
+                // Issue #1880: Health Connect's own prompt for the one
+                // permission that lets background imports run
+                // ("Access data in the background"), raised only by a tap on
+                // the Health sync screen.
+                //
+                // It carries no write and neither record read, so neither
+                // asked-marker is set (#1478, #1515): what this sheet was
+                // answered says nothing about either of them. Health
+                // Connect drops a request, showing nothing, once a
+                // permission in it has been declined twice; the caller
+                // reads the granted set afterwards and does not trust the
+                // answer given here.
+                if (!requestGuardAllows(call.method, args, result)) return
+                val client = healthConnectClient()
+                if (client == null || !backgroundReadOffered()) {
+                    result.success("unavailable")
+                    return
+                }
+                CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
+                    val granted = try {
+                        client.permissionController.getGrantedPermissions()
+                    } catch (e: Exception) {
+                        emptySet()
+                    }
+                    if (!HealthPermissionState.backgroundReadMayAsk(granted, importReadPermissions)) {
+                        result.success("permissionDenied")
+                        return@launch
+                    }
+                    launchPermissionRequest(
+                        result,
+                        askedMarker = null,
+                        permissions = backgroundReadPermissions(),
+                    )
+                }
+            }
+
+            "backgroundReadSwitchOffered" -> {
+                // Issue #1880: whether this Health Connect has the
+                // "Access data in the background" switch at all. Only looks: no
+                // request, no marker. Null when it cannot tell.
+                result.success(backgroundReadOfferedOrNull())
+            }
+
+            "importBackgroundReadGranted" -> {
+                // Issue #1880: whether "Access data in the background" is granted.
+                val client = healthConnectClient()
+                if (client == null) {
+                    result.success(false)
+                    return
+                }
+                CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
+                    result.success(backgroundReadGranted(client))
+                }
             }
 
             "writeMenstrualFlow" -> {
