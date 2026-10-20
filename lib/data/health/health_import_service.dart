@@ -1036,12 +1036,12 @@ class LocalHealthImportService
   ) async {
     final token = run.commitToken;
     if (summary.isBlocked || token == null) return;
-    // Issue #1650: an empty whole-history read must not commit a position.
-    // If read access was off, Apple Health returns empty results. Committing
-    // would prevent old data from being imported once permission is granted.
-    if (!run.accumulator.incremental &&
-        run.accumulator.samplesRead == 0 &&
-        run.accumulator.deletedRecordIds.isEmpty) {
+    // Issue #1650, #1905: an empty whole-history read must not commit a
+    // position. If read access was off, Apple Health returns empty results
+    // (or only lunarlog's own deleted samples, since HKDeletedObject carries no
+    // source filter). Committing would prevent old data from being imported
+    // once permission is granted.
+    if (!run.accumulator.incremental && run.accumulator.samplesRead == 0) {
       return;
     }
     await _source.commitImport(facts, token);
