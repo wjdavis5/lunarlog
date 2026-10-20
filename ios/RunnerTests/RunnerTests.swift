@@ -603,6 +603,134 @@ class RunnerTests: XCTestCase {
     XCTAssertNotNil(decoded.spottingAnchor, "spottingAnchor must be committed when foreign samples are present")
   }
 
+  /// Issue #1919: Multi-page spotting pass starting from nil anchor where all samples
+  /// are echoes must NOT commit spottingAnchor on the final page.
+  func testMultiPageSpottingWithOnlyEchoSamplesOmitsSpottingAnchor() {
+    let flowAnchor = HKQueryAnchor(fromValue: 101)
+    let spottingPage1Anchor = HKQueryAnchor(fromValue: 201)
+    let spottingPage2Anchor = HKQueryAnchor(fromValue: 202)
+    let sample = Self.intermenstrualBleedingSample()
+    let ownBundleId = sample.sourceRevision.source.bundleIdentifier
+
+    // Page 1 of spotting: 500 echo samples (>= pageSize) starting from spottingAnchor == nil
+    let page1 = HealthKitChannelHandler.pagePayload(
+      samples: Array(repeating: sample, count: 500),
+      deletedObjects: [],
+      newAnchor: spottingPage1Anchor,
+      pageSize: 500,
+      incremental: true,
+      ownBundleId: ownBundleId,
+      stage: .spotting,
+      flowAnchor: flowAnchor,
+      spottingAnchor: nil,
+      passHadSamples: false)
+
+    XCTAssertNil(page1["commitToken"])
+    guard let nextCursor = page1["nextCursor"] as? String else {
+      XCTFail("Expected nextCursor on full page")
+      return
+    }
+    guard let decodedPage1 = HealthKitChannelHandler.decodeAnchorPayload(nextCursor) else {
+      XCTFail("Expected valid nextCursor")
+      return
+    }
+    XCTAssertEqual(decodedPage1.stage, .spotting)
+    XCTAssertTrue(decodedPage1.spottingStartedFromNil)
+    XCTAssertFalse(decodedPage1.spottingHadSamples)
+
+    // Page 2 of spotting: 10 echo samples (< pageSize) using nextCursor's state
+    let page2 = HealthKitChannelHandler.pagePayload(
+      samples: Array(repeating: sample, count: 10),
+      deletedObjects: [],
+      newAnchor: spottingPage2Anchor,
+      pageSize: 500,
+      incremental: decodedPage1.incremental,
+      ownBundleId: ownBundleId,
+      stage: decodedPage1.stage,
+      flowAnchor: decodedPage1.flowAnchor,
+      spottingAnchor: decodedPage1.spottingAnchor,
+      passHadSamples: decodedPage1.passHadSamples,
+      spottingHadSamples: decodedPage1.spottingHadSamples,
+      spottingStartedFromNil: decodedPage1.spottingStartedFromNil)
+
+    XCTAssertNil(page2["nextCursor"])
+    guard let commitToken = page2["commitToken"] as? String else {
+      XCTFail("Expected commitToken on final page")
+      return
+    }
+    guard let decodedFinal = HealthKitChannelHandler.decodeAnchorPayload(commitToken) else {
+      XCTFail("Expected valid commitToken")
+      return
+    }
+    XCTAssertEqual(decodedFinal.stage, .spotting)
+    XCTAssertNotNil(decodedFinal.flowAnchor, "flowAnchor must be retained")
+    XCTAssertNil(decodedFinal.spottingAnchor, "spottingAnchor must be omitted when only echoes were seen across multiple pages (#1919)")
+  }
+
+  /// Issue #1919: Multi-page spotting pass starting from nil anchor where page 1 has a foreign sample
+  /// commits spottingAnchor on the final page.
+  func testMultiPageSpottingWithForeignSampleOnPage1CommitsSpottingAnchor() {
+    let flowAnchor = HKQueryAnchor(fromValue: 101)
+    let spottingPage1Anchor = HKQueryAnchor(fromValue: 201)
+    let spottingPage2Anchor = HKQueryAnchor(fromValue: 202)
+    let sample = Self.intermenstrualBleedingSample()
+    let ownBundleId = "com.different.app"
+
+    // Page 1 of spotting: 500 foreign samples (>= pageSize) starting from spottingAnchor == nil
+    let page1 = HealthKitChannelHandler.pagePayload(
+      samples: Array(repeating: sample, count: 500),
+      deletedObjects: [],
+      newAnchor: spottingPage1Anchor,
+      pageSize: 500,
+      incremental: true,
+      ownBundleId: ownBundleId,
+      stage: .spotting,
+      flowAnchor: flowAnchor,
+      spottingAnchor: nil,
+      passHadSamples: false)
+
+    XCTAssertNil(page1["commitToken"])
+    guard let nextCursor = page1["nextCursor"] as? String else {
+      XCTFail("Expected nextCursor on full page")
+      return
+    }
+    guard let decodedPage1 = HealthKitChannelHandler.decodeAnchorPayload(nextCursor) else {
+      XCTFail("Expected valid nextCursor")
+      return
+    }
+    XCTAssertEqual(decodedPage1.stage, .spotting)
+    XCTAssertTrue(decodedPage1.spottingStartedFromNil)
+    XCTAssertTrue(decodedPage1.spottingHadSamples)
+
+    // Page 2 of spotting: 0 samples (< pageSize)
+    let page2 = HealthKitChannelHandler.pagePayload(
+      samples: [],
+      deletedObjects: [],
+      newAnchor: spottingPage2Anchor,
+      pageSize: 500,
+      incremental: decodedPage1.incremental,
+      ownBundleId: ownBundleId,
+      stage: decodedPage1.stage,
+      flowAnchor: decodedPage1.flowAnchor,
+      spottingAnchor: decodedPage1.spottingAnchor,
+      passHadSamples: decodedPage1.passHadSamples,
+      spottingHadSamples: decodedPage1.spottingHadSamples,
+      spottingStartedFromNil: decodedPage1.spottingStartedFromNil)
+
+    XCTAssertNil(page2["nextCursor"])
+    guard let commitToken = page2["commitToken"] as? String else {
+      XCTFail("Expected commitToken on final page")
+      return
+    }
+    guard let decodedFinal = HealthKitChannelHandler.decodeAnchorPayload(commitToken) else {
+      XCTFail("Expected valid commitToken")
+      return
+    }
+    XCTAssertEqual(decodedFinal.stage, .spotting)
+    XCTAssertNotNil(decodedFinal.flowAnchor)
+    XCTAssertNotNil(decodedFinal.spottingAnchor, "spottingAnchor must be committed when foreign samples were seen on earlier page (#1919)")
+  }
+
   /// Issue #1888: Legacy stored anchor payloads (which only carried "anchor" for flow)
   /// decode flowAnchor and leave spottingAnchor as nil. Starting an incremental page from it
   /// begins at stage .flow with flowAnchor set and spottingAnchor nil, so the subsequent
