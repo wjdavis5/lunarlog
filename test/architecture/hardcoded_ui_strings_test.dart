@@ -174,6 +174,8 @@ const Map<String, List<String>> _helperCopyFileLiterals = {
     'health-sync-import-summary',
     'health-sync-import-open-settings',
     'health-sync-import-allow-past-data',
+    'health-sync-background-open-settings',
+    'health-sync-allow-background-read',
     'health-sync-store-deleted-confirm',
     'health-sync-store-deleted-offer',
     'health-sync-store-deleted-keep',

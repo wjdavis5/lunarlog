@@ -315,22 +315,77 @@ class HealthPermissionStateTest {
     }
 
     @Test
-    fun `the import's sheet carries past data only when neither sheet has been raised before`() {
+    fun `the import's sheet carries past data and background read only when neither sheet has been raised before`() {
         val reads = setOf(readHistory, readMenstruation, readSpotting, readBackground)
         val pastData = setOf(readHistory)
+        val backgroundRead = setOf(readBackground)
         assertEquals(
             reads,
-            HealthPermissionState.importRequestPermissions(reads, pastData, launchedBefore = false),
+            HealthPermissionState.importRequestPermissions(
+                reads,
+                pastData,
+                backgroundRead,
+                launchedBefore = false,
+            ),
         )
         assertEquals(
-            setOf(readMenstruation, readSpotting, readBackground),
-            HealthPermissionState.importRequestPermissions(reads, pastData, launchedBefore = true),
+            setOf(readMenstruation, readSpotting),
+            HealthPermissionState.importRequestPermissions(
+                reads,
+                pastData,
+                backgroundRead,
+                launchedBefore = true,
+            ),
         )
-        // A phone with no such switch has nothing to leave out.
-        val noSwitch = reads - readHistory
+        // A phone with no such switches has nothing to leave out.
+        val noSwitch = reads - readHistory - readBackground
         assertEquals(
             noSwitch,
-            HealthPermissionState.importRequestPermissions(noSwitch, emptySet(), launchedBefore = true),
+            HealthPermissionState.importRequestPermissions(
+                noSwitch,
+                emptySet(),
+                emptySet(),
+                launchedBefore = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `the write sheet carries past data and background read only when neither sheet has been raised before`() {
+        val all = writes + setOf(readHistory, readMenstruation, readSpotting, readBackground)
+        val pastData = setOf(readHistory)
+        val backgroundRead = setOf(readBackground)
+        assertEquals(
+            all,
+            HealthPermissionState.writeRequestPermissions(
+                all,
+                pastData,
+                backgroundRead,
+                launchedBefore = false,
+            ),
+        )
+        assertEquals(
+            writes + setOf(readMenstruation, readSpotting),
+            HealthPermissionState.writeRequestPermissions(
+                all,
+                pastData,
+                backgroundRead,
+                launchedBefore = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `backgroundReadMayAsk requires all import reads granted`() {
+        val importReads = setOf(readMenstruation, readSpotting)
+        assertFalse(HealthPermissionState.backgroundReadMayAsk(emptySet(), importReads))
+        assertFalse(HealthPermissionState.backgroundReadMayAsk(setOf(readMenstruation), importReads))
+        assertTrue(HealthPermissionState.backgroundReadMayAsk(importReads, importReads))
+        assertTrue(
+            HealthPermissionState.backgroundReadMayAsk(
+                importReads + writes + setOf(readHistory),
+                importReads,
+            ),
         )
     }
 

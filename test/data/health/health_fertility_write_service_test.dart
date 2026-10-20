@@ -141,6 +141,20 @@ class _FakePlatform implements HealthPlatformStore {
       throw StateError('a write pass must never ask about read access');
 
   @override
+  Future<bool> backgroundReadSwitchOffered() =>
+      throw StateError('a write pass must never ask about read access');
+
+  @override
+  Future<bool> backgroundReadGranted() =>
+      throw StateError('a write pass must never ask about read access');
+
+  @override
+  Future<HealthPlatformResult> requestBackgroundReadAccess(
+    HealthGuardFacts facts,
+  ) =>
+      throw StateError('a write pass must never ask about read access');
+
+  @override
   Future<void> openPermissionSettings() async {}
 
   @override

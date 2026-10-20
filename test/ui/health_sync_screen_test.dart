@@ -339,6 +339,11 @@ class _ScriptedProbe implements HealthPermissionProbe {
     this.neverAskedTypes = const {},
     this.neverAskedThrows = false,
     this.writeTypeRequestThrows = false,
+    this.backgroundReadOffered = false,
+    this.backgroundReadOfferedThrows = false,
+    this.backgroundRead = false,
+    this.backgroundReadThrows = false,
+    this.backgroundReadRequestThrows = false,
   });
 
   @override
@@ -423,6 +428,43 @@ class _ScriptedProbe implements HealthPermissionProbe {
   @override
   Future<void> openPermissionSettings() async {
     settingsOpened++;
+  }
+
+  bool backgroundReadOffered;
+  final bool backgroundReadOfferedThrows;
+  bool backgroundRead;
+  final bool backgroundReadThrows;
+  final bool backgroundReadRequestThrows;
+  int backgroundReadOfferedProbes = 0;
+  int backgroundReadProbes = 0;
+  int backgroundReadRequests = 0;
+  final List<HealthGuardFacts> backgroundReadRequestCalls = [];
+
+  void Function()? onBackgroundReadRequest;
+
+  @override
+  Future<bool> backgroundReadSwitchOffered() async {
+    backgroundReadOfferedProbes++;
+    if (backgroundReadOfferedThrows) throw StateError('boom');
+    return backgroundReadOffered;
+  }
+
+  @override
+  Future<bool> backgroundReadGranted() async {
+    backgroundReadProbes++;
+    if (backgroundReadThrows) throw StateError('boom');
+    return backgroundRead;
+  }
+
+  @override
+  Future<HealthPlatformResult> requestBackgroundReadAccess(
+    HealthGuardFacts facts,
+  ) async {
+    backgroundReadRequests++;
+    backgroundReadRequestCalls.add(facts);
+    if (backgroundReadRequestThrows) throw StateError('boom');
+    onBackgroundReadRequest?.call();
+    return const HealthPlatformResult.allowed();
   }
 }
 
@@ -4154,6 +4196,10 @@ void main() {
           // Issue #1590: and which write types no sheet has asked about,
           // so a type an app update added is asked for once.
           'neverAskedWriteTypes',
+          // Issue #1880: and whether the background read switch is offered
+          // and granted.
+          'backgroundReadSwitchOffered',
+          'importBackgroundReadGranted',
         ],
       );
     });
@@ -4375,6 +4421,241 @@ void main() {
       );
 
       expect(probe.writeTypeRequests, 1);
+    });
+  });
+
+  // Issue #1880: Health Connect background read request and status.
+  group('Issue #1880 background read request and status', () {
+    const allowButtonKey = ValueKey('health-sync-allow-background-read');
+    const settingsButtonKey = ValueKey('health-sync-background-open-settings');
+
+    Future<HealthSyncBinding> boundBinding() async {
+      final binding = HealthSyncBinding(FakeSettingsStore());
+      await binding.bind(
+        profile: profiles.firstWhere((p) => p.id == 'eligible'),
+        signedInUserId: 'u1',
+        ownerUserId: 'u1',
+        minorBindingAllowed: false,
+      );
+      return binding;
+    }
+
+    Future<void> pumpAndroid(
+      WidgetTester tester, {
+      required HealthSyncBinding binding,
+      required HealthPermissionProbe permissionProbe,
+      bool writeEnabled = true,
+    }) =>
+        pumpScreen(
+          tester,
+          binding: binding,
+          permissionProbe: permissionProbe,
+          writeEnabled: writeEnabled,
+          storePlatform: HealthImportPlatform.healthConnect,
+          viewport: const Size(800, 2400),
+        );
+
+    Future<void> leaveAndComeBack(WidgetTester tester) async {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('shows background read hint and allows granting via sheet',
+        (tester) async {
+      final probe = _ScriptedProbe(
+        readAccessDisclosed: true,
+        write: HealthPermissionStatus.granted,
+        read: HealthPermissionStatus.granted,
+        backgroundReadOffered: true,
+        backgroundRead: false,
+      );
+      probe.onBackgroundReadRequest = () {
+        probe.backgroundRead = true;
+      };
+
+      await pumpAndroid(
+        tester,
+        binding: await boundBinding(),
+        permissionProbe: probe,
+      );
+
+      final l10n = AppLocalizationsEn();
+      expect(find.text(l10n.healthSyncImportBackgroundDataOff), findsOneWidget);
+      expect(find.byKey(allowButtonKey), findsOneWidget);
+      expect(probe.backgroundReadRequests, 0);
+
+      await tester.tap(find.byKey(allowButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(probe.backgroundReadRequests, 1);
+      final call = probe.backgroundReadRequestCalls.single;
+      expect(call.profile.id, 'eligible');
+      expect(find.text(l10n.healthSyncImportBackgroundDataOff), findsNothing);
+      expect(find.byKey(allowButtonKey), findsNothing);
+    });
+
+    testWidgets('when request is declined, offers settings and clears on resume',
+        (tester) async {
+      final probe = _ScriptedProbe(
+        readAccessDisclosed: true,
+        write: HealthPermissionStatus.granted,
+        read: HealthPermissionStatus.granted,
+        backgroundReadOffered: true,
+        backgroundRead: false,
+      );
+
+      await pumpAndroid(
+        tester,
+        binding: await boundBinding(),
+        permissionProbe: probe,
+      );
+
+      final l10n = AppLocalizationsEn();
+      expect(find.text(l10n.healthSyncImportBackgroundDataOff), findsOneWidget);
+      expect(find.byKey(allowButtonKey), findsOneWidget);
+
+      await tester.tap(find.byKey(allowButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(probe.backgroundReadRequests, 1);
+      expect(find.text(l10n.healthSyncImportBackgroundDataStillOff), findsOneWidget);
+      expect(find.byKey(settingsButtonKey), findsOneWidget);
+      expect(find.byKey(allowButtonKey), findsNothing);
+
+      await tester.tap(find.byKey(settingsButtonKey));
+      await tester.pump();
+      expect(probe.settingsOpened, 1);
+
+      await leaveAndComeBack(tester);
+      expect(find.text(l10n.healthSyncImportBackgroundDataStillOff), findsOneWidget);
+
+      probe.backgroundRead = true;
+      await leaveAndComeBack(tester);
+      expect(find.text(l10n.healthSyncImportBackgroundDataStillOff), findsNothing);
+      expect(find.byKey(settingsButtonKey), findsNothing);
+    });
+
+    testWidgets('hint does not appear when already granted', (tester) async {
+      final probe = _ScriptedProbe(
+        readAccessDisclosed: true,
+        write: HealthPermissionStatus.granted,
+        read: HealthPermissionStatus.granted,
+        backgroundReadOffered: true,
+        backgroundRead: true,
+      );
+
+      await pumpAndroid(
+        tester,
+        binding: await boundBinding(),
+        permissionProbe: probe,
+      );
+
+      expect(find.byKey(allowButtonKey), findsNothing);
+      expect(find.byKey(settingsButtonKey), findsNothing);
+    });
+
+    testWidgets('hint does not appear when switch is not offered', (tester) async {
+      final probe = _ScriptedProbe(
+        readAccessDisclosed: true,
+        write: HealthPermissionStatus.granted,
+        read: HealthPermissionStatus.granted,
+        backgroundReadOffered: false,
+        backgroundRead: false,
+      );
+
+      await pumpAndroid(
+        tester,
+        binding: await boundBinding(),
+        permissionProbe: probe,
+      );
+
+      expect(find.byKey(allowButtonKey), findsNothing);
+      expect(find.byKey(settingsButtonKey), findsNothing);
+    });
+
+    testWidgets('hint does not appear when reading is not granted', (tester) async {
+      final probe = _ScriptedProbe(
+        readAccessDisclosed: true,
+        write: HealthPermissionStatus.granted,
+        read: HealthPermissionStatus.denied,
+        backgroundReadOffered: true,
+        backgroundRead: false,
+      );
+
+      await pumpAndroid(
+        tester,
+        binding: await boundBinding(),
+        permissionProbe: probe,
+      );
+
+      expect(find.byKey(allowButtonKey), findsNothing);
+      expect(find.byKey(settingsButtonKey), findsNothing);
+    });
+
+    testWidgets('gracefully handles backgroundReadOffered throwing',
+        (tester) async {
+      final probe = _ScriptedProbe(
+        readAccessDisclosed: true,
+        write: HealthPermissionStatus.granted,
+        read: HealthPermissionStatus.granted,
+        backgroundReadOfferedThrows: true,
+      );
+
+      await pumpAndroid(
+        tester,
+        binding: await boundBinding(),
+        permissionProbe: probe,
+      );
+
+      expect(find.byKey(allowButtonKey), findsNothing);
+      expect(find.byKey(settingsButtonKey), findsNothing);
+    });
+
+    testWidgets('gracefully handles backgroundRead throws',
+        (tester) async {
+      final probe = _ScriptedProbe(
+        readAccessDisclosed: true,
+        write: HealthPermissionStatus.granted,
+        read: HealthPermissionStatus.granted,
+        backgroundReadOffered: true,
+        backgroundReadThrows: true,
+      );
+
+      await pumpAndroid(
+        tester,
+        binding: await boundBinding(),
+        permissionProbe: probe,
+      );
+
+      final l10n = AppLocalizationsEn();
+      expect(find.text(l10n.healthSyncImportBackgroundDataOff), findsOneWidget);
+      expect(find.byKey(allowButtonKey), findsOneWidget);
+    });
+
+    testWidgets('gracefully handles backgroundReadRequest throwing',
+        (tester) async {
+      final probe = _ScriptedProbe(
+        readAccessDisclosed: true,
+        write: HealthPermissionStatus.granted,
+        read: HealthPermissionStatus.granted,
+        backgroundReadOffered: true,
+        backgroundRead: false,
+        backgroundReadRequestThrows: true,
+      );
+
+      await pumpAndroid(
+        tester,
+        binding: await boundBinding(),
+        permissionProbe: probe,
+      );
+
+      final l10n = AppLocalizationsEn();
+      await tester.tap(find.byKey(allowButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text(l10n.healthSyncImportBackgroundDataStillOff), findsOneWidget);
+      expect(find.byKey(settingsButtonKey), findsOneWidget);
     });
   });
 

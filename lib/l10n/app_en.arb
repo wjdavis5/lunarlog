@@ -6992,6 +6992,18 @@
     "@healthSyncImportOlderDataHidden": {
       "description": "Issue #1557: a line under the result of an import from Health Connect that brought days in, or that asked only for what changed, while Health Connect's 'Access past data' switch was off for lunarlog. Older days may be there and were not read. Shown with an Open Settings button. The quoted name is Health Connect's own label for the switch (Android 15)."
     },
+    "healthSyncImportAllowBackgroundData": "Allow access in the background",
+    "@healthSyncImportAllowBackgroundData": {
+      "description": "Issue #1880: button on the Health sync screen when reading is allowed but Health Connect's 'Access data in the background' permission is off. Tapping it raises Health Connect's own prompt for that one permission."
+    },
+    "healthSyncImportBackgroundDataStillOff": "\"Access data in the background\" is still off. You can turn it on for lunarlog in Health Connect.",
+    "@healthSyncImportBackgroundDataStillOff": {
+      "description": "Issue #1880: shown after 'Allow access in the background' was tapped and the switch is still off, either because she declined or because Health Connect dropped the request without showing it. Shown with an Open Settings button."
+    },
+    "healthSyncImportBackgroundDataOff": "Health Connect keeps the import current in the background only when \"Access data in the background\" is on for lunarlog.",
+    "@healthSyncImportBackgroundDataOff": {
+      "description": "Issue #1880: a line on the Health sync screen under permission status when reading is allowed but Health Connect's 'Access data in the background' permission is off."
+    },
     "healthSyncImportNothingSinceLast": "Nothing new to import from {source} since the last import.",
     "@healthSyncImportNothingSinceLast": {
       "description": "Issue #1523: the result of a repeat import that asked the health store only for what changed since the previous import and got nothing back. Says nothing about access or about whether anything was ever tracked, since an earlier import already ran. {source} is the store's mid-sentence name ('Health Connect', 'the Health app').",
