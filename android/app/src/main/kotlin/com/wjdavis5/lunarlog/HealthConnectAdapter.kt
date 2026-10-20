@@ -586,7 +586,12 @@ class HealthConnectAdapter(context: Context) {
                 launchPermissionRequest(
                     result,
                     askedMarker = PERMISSION_REQUESTED_KEY,
-                    permissions = allPermissions,
+                    permissions = HealthPermissionState.writeRequestPermissions(
+                        all = allPermissions,
+                        pastData = pastDataPermissions(),
+                        backgroundRead = backgroundReadPermissions(),
+                        launchedBefore = permissionEverRequested(),
+                    ),
                 )
             }
 

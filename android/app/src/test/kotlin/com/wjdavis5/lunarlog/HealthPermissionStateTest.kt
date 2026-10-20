@@ -373,6 +373,17 @@ class HealthPermissionStateTest {
                 launchedBefore = true,
             ),
         )
+        // A phone with no such switches has nothing to leave out.
+        val noSwitch = all - readHistory - readBackground
+        assertEquals(
+            noSwitch,
+            HealthPermissionState.writeRequestPermissions(
+                noSwitch,
+                emptySet(),
+                emptySet(),
+                launchedBefore = true,
+            ),
+        )
     }
 
     @Test
