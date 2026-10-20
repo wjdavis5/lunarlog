@@ -45,6 +45,8 @@ const List<String> _forbiddenWriteSurface = [
   'requestImportAuthorization',
   // Issue #1573: the prompt for past data, raised only by a tap.
   'requestPastDataAccess',
+  // Issue #1880: the prompt for background data, raised only by a tap.
+  'requestBackgroundReadAccess',
   'bindProfile',
   'unbindProfile',
 ];
