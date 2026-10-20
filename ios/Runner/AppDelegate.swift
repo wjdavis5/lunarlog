@@ -1908,7 +1908,19 @@ enum HealthKitChannelHandler {
     if samples.count >= pageSize {
       payload["nextCursor"] = anchorPayload
     } else {
-      payload["commitToken"] = anchorPayload
+      // Issue #1650: an empty whole-history read (not incremental, no samples,
+      // and no deleted objects) must not commit an anchor. When HealthKit read
+      // access is denied, HealthKit silently returns an empty result with a new
+      // anchor at the store's present position. If committed, turning read access
+      // on later would only read changes after that position, leaving all prior
+      // history unimported forever. Omitting commitToken leaves the stored position
+      // unset so subsequent passes continue reading whole history until access is
+      // granted or real data arrives.
+      if !incremental && samples.isEmpty && deletedObjects.isEmpty {
+        // Do not advance/commit anchor on empty whole-history read.
+      } else {
+        payload["commitToken"] = anchorPayload
+      }
     }
     return payload
   }

@@ -205,8 +205,7 @@ class _FakeSource implements HealthImportSource {
     HealthGuardFacts facts, {
     required DateTime start,
     required DateTime end,
-  }) async =>
-      const HealthDeviationReadResult.unavailable();
+  }) async => const HealthDeviationReadResult.unavailable();
 
   int commitCalls = 0;
   final List<String> committedTokens = [];
@@ -298,9 +297,7 @@ class _FakeDayEntries
   void Function()? onAfterFind;
 
   @override
-  Future<Map<String, DateTime>> deletedHealthRecords(
-    String profileId,
-  ) async {
+  Future<Map<String, DateTime>> deletedHealthRecords(String profileId) async {
     if (_reads++ > 0) deletedRecords.addAll(deletedMidPass);
     return {...deletedRecords};
   }
@@ -440,8 +437,9 @@ class _FakeObservations implements ObservationsRepository {
   }
 
   @override
-  Future<List<Observation>> listForProfile(String profileId) async =>
-      [for (final rows in byDay.values) ...rows];
+  Future<List<Observation>> listForProfile(String profileId) async => [
+    for (final rows in byDay.values) ...rows,
+  ];
 
   @override
   Future<List<Observation>> listForDayEntry(String dayEntryId) async =>
@@ -450,8 +448,7 @@ class _FakeObservations implements ObservationsRepository {
   @override
   Future<List<Observation>> listForDayEntryWithLegacyAlias(
     String dayEntryId,
-  ) async =>
-      byDay[dayEntryId] ?? const [];
+  ) async => byDay[dayEntryId] ?? const [];
 
   @override
   dynamic noSuchMethod(Invocation invocation) =>
@@ -634,41 +631,42 @@ void main() {
     },
   );
 
-  test(
-    'issue #1701: a binding switched while the pass reads does not earn '
-    'the new binding a completed first import',
-    () async {
-      await bind();
-      source.result = const HealthReadResult.samples([]);
-      final gate = Completer<void>();
-      source.firstReadGate = gate;
+  test('issue #1701: a binding switched while the pass reads does not earn '
+      'the new binding a completed first import', () async {
+    await bind();
+    source.result = const HealthReadResult.samples([]);
+    final gate = Completer<void>();
+    source.firstReadGate = gate;
 
-      final service = build();
-      final pass = service.importNow();
-      // Hold the pass inside its read — the window in which the Health
-      // sync screen's profile tiles stay live for a re-bind.
-      await pumpEventQueue();
+    final service = build();
+    final pass = service.importNow();
+    // Hold the pass inside its read — the window in which the Health
+    // sync screen's profile tiles stay live for a re-bind.
+    await pumpEventQueue();
 
-      final switched = await binding.bind(
-        profile: _otherProfile(),
-        signedInUserId: _ownerId,
-        ownerUserId: _ownerId,
-        minorBindingAllowed: false,
-      );
-      expect(switched.isAllowed, isTrue);
-      gate.complete();
-      final summary = await pass;
-      expect(summary.isBlocked, isFalse,
-          reason: 'the pass itself completed for the profile it read for');
+    final switched = await binding.bind(
+      profile: _otherProfile(),
+      signedInUserId: _ownerId,
+      ownerUserId: _ownerId,
+      minorBindingAllowed: false,
+    );
+    expect(switched.isAllowed, isTrue);
+    gate.complete();
+    final summary = await pass;
+    expect(
+      summary.isBlocked,
+      isFalse,
+      reason: 'the pass itself completed for the profile it read for',
+    );
 
-      expect(
-        await binding.hasCompletedFirstImport(),
-        isFalse,
-        reason: 'the finishing pass read for the old profile; its consent '
-            'must not open the new binding\'s background gate',
-      );
-    },
-  );
+    expect(
+      await binding.hasCompletedFirstImport(),
+      isFalse,
+      reason:
+          'the finishing pass read for the old profile; its consent '
+          'must not open the new binding\'s background gate',
+    );
+  });
 
   // Issue #1515. The tap import used to ask through the write path's
   // request, which on Android carries every permission — so someone who had
@@ -703,18 +701,20 @@ void main() {
       expect(platform.writeAuthCalls, 0);
     });
 
-    test('a refused request ends the pass before any read, as before',
-        () async {
-      await bind();
-      platform.authResult = const HealthPlatformPermissionDenied();
+    test(
+      'a refused request ends the pass before any read, as before',
+      () async {
+        await bind();
+        platform.authResult = const HealthPlatformPermissionDenied();
 
-      final summary = await build().importNow();
+        final summary = await build().importNow();
 
-      expect(summary.blocked, isA<HealthPlatformPermissionDenied>());
-      expect(platform.importAuthCalls, 1);
-      expect(platform.writeAuthCalls, 0);
-      expect(source.calls, 0);
-    });
+        expect(summary.blocked, isA<HealthPlatformPermissionDenied>());
+        expect(platform.importAuthCalls, 1);
+        expect(platform.writeAuthCalls, 0);
+        expect(source.calls, 0);
+      },
+    );
 
     test('a guard refusal raises neither request', () async {
       settings.setSilently(SettingsKeys.healthStoreProfileId, 'someone-else');
@@ -736,78 +736,76 @@ void main() {
     });
   });
 
-  test(
-    'issue #1212: a background pass fired while an importNow pass runs '
-    'queues behind it — the passes never interleave',
-    () async {
-      await bind();
-      // Issue #1215: with no completed first import, a background pass is
-      // a silent no-op before the serialization tail is ever reached — the
-      // gate has its own tests. This test pins #1212's overlap contract
-      // (two passes never interleave), so the gate is open before the
-      // overlap starts.
-      await binding.markFirstImportCompleted(_profileId);
-      // One page serving both entry points: a flow day plus an
-      // intermenstrual-bleeding record for the SAME date. Two passes
-      // merging that page concurrently is exactly the overlap the issue
-      // describes — each `_mergeSpotting` reads then saves across an
-      // await, so interleaved passes could each see no spotting and each
-      // save one.
-      source.result = HealthReadResult.samples([
-        _sample(
-          id: 'hk-flow',
-          flow: HealthFlowValue.medium,
-          startIso: '2026-09-10T04:00:00Z',
-        ),
-        _bleedingSample(
-          id: 'hk-spotting',
-          startIso: '2026-09-10T05:00:00Z',
-          offset: const Duration(hours: -4),
-        ),
-      ]);
-      final gate = Completer<void>();
-      source.firstReadGate = gate;
+  test('issue #1212: a background pass fired while an importNow pass runs '
+      'queues behind it — the passes never interleave', () async {
+    await bind();
+    // Issue #1215: with no completed first import, a background pass is
+    // a silent no-op before the serialization tail is ever reached — the
+    // gate has its own tests. This test pins #1212's overlap contract
+    // (two passes never interleave), so the gate is open before the
+    // overlap starts.
+    await binding.markFirstImportCompleted(_profileId);
+    // One page serving both entry points: a flow day plus an
+    // intermenstrual-bleeding record for the SAME date. Two passes
+    // merging that page concurrently is exactly the overlap the issue
+    // describes — each `_mergeSpotting` reads then saves across an
+    // await, so interleaved passes could each see no spotting and each
+    // save one.
+    source.result = HealthReadResult.samples([
+      _sample(
+        id: 'hk-flow',
+        flow: HealthFlowValue.medium,
+        startIso: '2026-09-10T04:00:00Z',
+      ),
+      _bleedingSample(
+        id: 'hk-spotting',
+        startIso: '2026-09-10T05:00:00Z',
+        offset: const Duration(hours: -4),
+      ),
+    ]);
+    final gate = Completer<void>();
+    source.firstReadGate = gate;
 
-      final service = build();
-      final nowPass = service.importNow();
-      // Let pass 1 reach (and hold inside) its first read.
+    final service = build();
+    final nowPass = service.importNow();
+    // Let pass 1 reach (and hold inside) its first read.
+    await pumpEventQueue();
+
+    final backgroundPass = service.importInBackground();
+    // Pass 2 resolves its binding, passes the guard, probes the
+    // permission — and then must WAIT at `_runPass`'s tail: its read has
+    // not started even once the event queue has fully drained.
+    for (var i = 0; i < 3; i++) {
       await pumpEventQueue();
+    }
+    expect(
+      source.calls,
+      1,
+      reason:
+          'the background pass must not read while the '
+          'user-initiated pass is mid-flight',
+    );
 
-      final backgroundPass = service.importInBackground();
-      // Pass 2 resolves its binding, passes the guard, probes the
-      // permission — and then must WAIT at `_runPass`'s tail: its read has
-      // not started even once the event queue has fully drained.
-      for (var i = 0; i < 3; i++) {
-        await pumpEventQueue();
-      }
-      expect(
-        source.calls,
-        1,
-        reason: 'the background pass must not read while the '
-            'user-initiated pass is mid-flight',
-      );
+    gate.complete();
+    final summaries = await Future.wait([nowPass, backgroundPass]);
 
-      gate.complete();
-      final summaries = await Future.wait([nowPass, backgroundPass]);
-
-      // Both passes ran, strictly one after the other.
-      expect(source.calls, 2);
-      expect(summaries[0].daysWritten, 1);
-      expect(summaries[0].spottingDaysWritten, 1);
-      // Pass 2 saw pass 1's rows: the day is already imported and the
-      // spotting observation already exists — nothing new written.
-      expect(summaries[1].daysUnchanged, 1);
-      expect(summaries[1].spottingDaysWritten, 0);
-      // The duplicate the issue describes never materializes: exactly one
-      // spotting observation for the day despite two passes.
-      expect(
-        observations.saved
-            .where((o) => o.category == ObservationCategory.spotting)
-            .toList(),
-        hasLength(1),
-      );
-    },
-  );
+    // Both passes ran, strictly one after the other.
+    expect(source.calls, 2);
+    expect(summaries[0].daysWritten, 1);
+    expect(summaries[0].spottingDaysWritten, 1);
+    // Pass 2 saw pass 1's rows: the day is already imported and the
+    // spotting observation already exists — nothing new written.
+    expect(summaries[1].daysUnchanged, 1);
+    expect(summaries[1].spottingDaysWritten, 0);
+    // The duplicate the issue describes never materializes: exactly one
+    // spotting observation for the day despite two passes.
+    expect(
+      observations.saved
+          .where((o) => o.category == ObservationCategory.spotting)
+          .toList(),
+      hasLength(1),
+    );
+  });
 
   test(
     'a fresh in-window sample creates a healthkit-provenance day entry',
@@ -900,37 +898,36 @@ void main() {
     expect(dayEntries.saved, isEmpty);
   });
 
+  test('the full-history query window runs from 1970 to tomorrow, one day of '
+      'slack either side', () async {
+    await bind();
+    await build().importNow();
+    // Lower bound is the first day of kHealthImportEarliestYear minus a
+    // day; upper bound is today + 2 (exclusive end). Issue #992 removed
+    // the 30-day cap, so a 2026-08-16 sample now imports.
+    expect(source.lastStart, DateTime.utc(1969, 12, 31));
+    expect(source.lastEnd, DateTime.utc(2026, 9, 17));
+    expect(source.lastPageSize, kHealthImportPageSize);
+    expect(source.lastCursor, isNull);
+  });
+
   test(
-    'the full-history query window runs from 1970 to tomorrow, one day of '
-    'slack either side',
+    'a sample from before the old 30-day window now imports (Issue #992)',
     () async {
       await bind();
-      await build().importNow();
-      // Lower bound is the first day of kHealthImportEarliestYear minus a
-      // day; upper bound is today + 2 (exclusive end). Issue #992 removed
-      // the 30-day cap, so a 2026-08-16 sample now imports.
-      expect(source.lastStart, DateTime.utc(1969, 12, 31));
-      expect(source.lastEnd, DateTime.utc(2026, 9, 17));
-      expect(source.lastPageSize, kHealthImportPageSize);
-      expect(source.lastCursor, isNull);
+      source.result = HealthReadResult.samples([
+        _sample(
+          id: 'hk-old',
+          flow: HealthFlowValue.heavy,
+          // 15:00Z is 10:00 in America/New_York, so the civil date is the 15th.
+          startIso: '2024-01-15T15:00:00Z',
+        ),
+      ]);
+      final summary = await build().importNow();
+      expect(summary.daysWritten, 1);
+      expect(dayEntries.saved.single.localDate, LocalDate(2024, 1, 15));
     },
   );
-
-  test('a sample from before the old 30-day window now imports (Issue #992)',
-      () async {
-    await bind();
-    source.result = HealthReadResult.samples([
-      _sample(
-        id: 'hk-old',
-        flow: HealthFlowValue.heavy,
-        // 15:00Z is 10:00 in America/New_York, so the civil date is the 15th.
-        startIso: '2024-01-15T15:00:00Z',
-      ),
-    ]);
-    final summary = await build().importNow();
-    expect(summary.daysWritten, 1);
-    expect(dayEntries.saved.single.localDate, LocalDate(2024, 1, 15));
-  });
 
   test('a hand-logged flow is never overwritten', () async {
     await bind();
@@ -1092,52 +1089,52 @@ void main() {
       required FlowLevel flow,
       required String? sourceId,
       DayEntrySource source = DayEntrySource.healthkit,
-    }) =>
-        DayEntry(
-          id: 'imported-1',
-          profileId: _profileId,
-          localDate: LocalDate(2026, 9, 10),
-          tz: _tz,
-          flow: flow,
-          tags: const ['cramps'],
-          source: source,
-          sourceId: sourceId,
-          updatedAt: DateTime.utc(2026, 9, 12, 8),
-        );
+    }) => DayEntry(
+      id: 'imported-1',
+      profileId: _profileId,
+      localDate: LocalDate(2026, 9, 10),
+      tz: _tz,
+      flow: flow,
+      tags: const ['cramps'],
+      source: source,
+      sourceId: sourceId,
+      updatedAt: DateTime.utc(2026, 9, 12, 8),
+    );
 
     HealthReadResult store(
       String id,
       HealthFlowValue flow, {
       DateTime? modifiedAt,
-    }) =>
-        HealthReadResult.samples([
-          _sample(
-            id: id,
-            flow: flow,
-            startIso: '2026-09-10T04:00:00Z',
-            modifiedAt: modifiedAt,
-          ),
-        ]);
+    }) => HealthReadResult.samples([
+      _sample(
+        id: id,
+        flow: flow,
+        startIso: '2026-09-10T04:00:00Z',
+        modifiedAt: modifiedAt,
+      ),
+    ]);
 
-    test('the import, her correction, and the import again, start to finish',
-        () async {
-      await bind();
-      source.result = store('rec-1', HealthFlowValue.heavy);
-      await build().importNow();
-      final written = dayEntries.live[day]!;
-      expect(written.flow, FlowLevel.heavy);
-      expect(written.sourceId, 'rec-1');
+    test(
+      'the import, her correction, and the import again, start to finish',
+      () async {
+        await bind();
+        source.result = store('rec-1', HealthFlowValue.heavy);
+        await build().importNow();
+        final written = dayEntries.live[day]!;
+        expect(written.flow, FlowLevel.heavy);
+        expect(written.sourceId, 'rec-1');
 
-      // What the day sheet saves: her flow, the row's provenance kept.
-      dayEntries.live[day] = written.copyWith(flow: FlowLevel.light);
-      dayEntries.saved.clear();
+        // What the day sheet saves: her flow, the row's provenance kept.
+        dayEntries.live[day] = written.copyWith(flow: FlowLevel.light);
+        dayEntries.saved.clear();
 
-      final summary = await build().importNow();
-      expect(summary.daysKeptManual, 1);
-      expect(summary.daysWritten, 0);
-      expect(dayEntries.saved, isEmpty, reason: 'nothing to write at all');
-      expect(dayEntries.live[day]!.flow, FlowLevel.light);
-    });
+        final summary = await build().importNow();
+        expect(summary.daysKeptManual, 1);
+        expect(summary.daysWritten, 0);
+        expect(dayEntries.saved, isEmpty, reason: 'nothing to write at all');
+        expect(dayEntries.live[day]!.flow, FlowLevel.light);
+      },
+    );
 
     test('the same, on Health Connect', () async {
       await bind();
@@ -1179,18 +1176,23 @@ void main() {
       expect(dayEntries.saved, isEmpty);
     });
 
-    test('a new record for the day is adopted, and the rest of the day kept',
-        () async {
-      await bind();
-      dayEntries.live[day] = imported(flow: FlowLevel.light, sourceId: 'rec-1');
-      source.result = store('rec-2', HealthFlowValue.medium);
-      final summary = await build().importNow();
-      expect(summary.daysWritten, 1);
-      final row = dayEntries.saved.single;
-      expect(row.flow, FlowLevel.medium);
-      expect(row.sourceId, 'rec-2');
-      expect(row.tags, ['cramps']);
-    });
+    test(
+      'a new record for the day is adopted, and the rest of the day kept',
+      () async {
+        await bind();
+        dayEntries.live[day] = imported(
+          flow: FlowLevel.light,
+          sourceId: 'rec-1',
+        );
+        source.result = store('rec-2', HealthFlowValue.medium);
+        final summary = await build().importNow();
+        expect(summary.daysWritten, 1);
+        final row = dayEntries.saved.single;
+        expect(row.flow, FlowLevel.medium);
+        expect(row.sourceId, 'rec-2');
+        expect(row.tags, ['cramps']);
+      },
+    );
 
     // The first review's finding. The row's `updatedAt` moves on any edit,
     // so it cannot say whether the store's change came before or after hers.
@@ -1226,8 +1228,9 @@ void main() {
       expect(dayEntries.saved.single.sourceId, 'rec-2');
 
       // She corrects it; the store still holds rec-2.
-      dayEntries.live[day] =
-          dayEntries.live[day]!.copyWith(flow: FlowLevel.light);
+      dayEntries.live[day] = dayEntries.live[day]!.copyWith(
+        flow: FlowLevel.light,
+      );
       dayEntries.saved.clear();
       expect((await build().importNow()).daysKeptManual, 1);
       expect(dayEntries.saved, isEmpty);
@@ -1256,8 +1259,11 @@ void main() {
           );
           final summary = await build(importPlatform: hc).importNow();
           final row = dayEntries.saved.single;
-          expect(row.sourceId, keyAt('rec-1', modifiedAt),
-              reason: '$modifiedAt');
+          expect(
+            row.sourceId,
+            keyAt('rec-1', modifiedAt),
+            reason: '$modifiedAt',
+          );
           expect(
             row.flow,
             adopted ? FlowLevel.heavy : FlowLevel.light,
@@ -1282,8 +1288,11 @@ void main() {
         source.result = store('rec-1', HealthFlowValue.heavy, modifiedAt: t0);
         final summary = await build(importPlatform: hc).importNow();
         expect(summary.daysUnchanged, 1);
-        expect(dayEntries.saved, isEmpty,
-            reason: 'no burst of writes on the first pass after an update');
+        expect(
+          dayEntries.saved,
+          isEmpty,
+          reason: 'no burst of writes on the first pass after an update',
+        );
       });
     });
 
@@ -1307,8 +1316,7 @@ void main() {
 
     // A row the spotting import created to hang an observation on has this
     // store's `source` and no `sourceId`. A flow on it is one she logged.
-    test('a flow she logged on a spotting-only imported day is hers',
-        () async {
+    test('a flow she logged on a spotting-only imported day is hers', () async {
       await bind();
       dayEntries.live[day] = imported(
         flow: FlowLevel.light,
@@ -1375,58 +1383,55 @@ void main() {
       DayEntrySource source = DayEntrySource.manual,
       String? sourceId,
       List<String> tags = const [],
-    }) =>
-        DayEntry(
-          id: 'live-1',
-          profileId: _profileId,
-          localDate: LocalDate(2026, 9, 10),
-          tz: _tz,
-          flow: flow,
-          tags: tags,
-          source: source,
-          sourceId: sourceId,
-          updatedAt: DateTime.utc(2026, 9, 13),
-        );
+    }) => DayEntry(
+      id: 'live-1',
+      profileId: _profileId,
+      localDate: LocalDate(2026, 9, 10),
+      tz: _tz,
+      flow: flow,
+      tags: tags,
+      source: source,
+      sourceId: sourceId,
+      updatedAt: DateTime.utc(2026, 9, 13),
+    );
 
     Observation spotting({
       required String id,
       ObservationSource source = ObservationSource.appleHealth,
       String? sourceId = 'hk-spot',
-    }) =>
-        Observation(
-          id: id,
-          dayEntryId: 'live-1',
-          profileId: _profileId,
-          localDate: LocalDate(2026, 9, 10),
-          tz: _tz,
-          category: ObservationCategory.spotting,
-          code: ObservationCategory.spotting.wireCode,
-          source: source,
-          sourceId: sourceId,
-          updatedAt: deletedAt,
-        );
+    }) => Observation(
+      id: id,
+      dayEntryId: 'live-1',
+      profileId: _profileId,
+      localDate: LocalDate(2026, 9, 10),
+      tz: _tz,
+      category: ObservationCategory.spotting,
+      code: ObservationCategory.spotting.wireCode,
+      source: source,
+      sourceId: sourceId,
+      updatedAt: deletedAt,
+    );
 
     HealthReadResult store(
       String id, {
       DateTime? modifiedAt,
       HealthFlowValue flow = HealthFlowValue.heavy,
-    }) =>
-        HealthReadResult.samples([
-          _sample(
-            id: id,
-            flow: flow,
-            startIso: '2026-09-10T04:00:00Z',
-            modifiedAt: modifiedAt,
-          ),
-        ]);
+    }) => HealthReadResult.samples([
+      _sample(
+        id: id,
+        flow: flow,
+        startIso: '2026-09-10T04:00:00Z',
+        modifiedAt: modifiedAt,
+      ),
+    ]);
 
     HealthReadResult storeSpotting() => HealthReadResult.samples([
-          _bleedingSample(
-            id: 'hk-spot',
-            startIso: '2026-09-10T04:00:00Z',
-            offset: Duration.zero,
-          ),
-        ]);
+      _bleedingSample(
+        id: 'hk-spot',
+        startIso: '2026-09-10T04:00:00Z',
+        offset: Duration.zero,
+      ),
+    ]);
 
     test('stays deleted while the store holds the same record, pass after '
         'pass', () async {
@@ -1442,16 +1447,18 @@ void main() {
       expect(dayEntries.forgotten, isEmpty);
     });
 
-    test('comes back when the store has a different record for the day',
-        () async {
-      await bind();
-      sheDeleted('rec-1');
-      source.result = store('rec-2');
-      final summary = await build().importNow();
-      expect(summary.daysWritten, 1);
-      expect(dayEntries.saved.single.sourceId, 'rec-2');
-      expect(dayEntries.saved.single.flow, FlowLevel.heavy);
-    });
+    test(
+      'comes back when the store has a different record for the day',
+      () async {
+        await bind();
+        sheDeleted('rec-1');
+        source.result = store('rec-2');
+        final summary = await build().importNow();
+        expect(summary.daysWritten, 1);
+        expect(dayEntries.saved.single.sourceId, 'rec-2');
+        expect(dayEntries.saved.single.flow, FlowLevel.heavy);
+      },
+    );
 
     test('Health Connect: the same record, unchanged, stays deleted; '
         'changed since, it comes back', () async {
@@ -1461,10 +1468,7 @@ void main() {
       sheDeleted(keyAt('rec-1', t0), source: 'health_connect');
 
       source.result = store('rec-1', modifiedAt: t0);
-      expect(
-        (await build(importPlatform: hc).importNow()).daysKeptManual,
-        1,
-      );
+      expect((await build(importPlatform: hc).importNow()).daysKeptManual, 1);
       expect(dayEntries.saved, isEmpty);
 
       source.result = store('rec-1', modifiedAt: later);
@@ -1489,8 +1493,11 @@ void main() {
         source.result = store('rec-1', modifiedAt: modifiedAt);
         final summary = await build(importPlatform: hc).importNow();
         expect(summary.daysWritten, comesBack ? 1 : 0, reason: '$modifiedAt');
-        expect(dayEntries.saved, comesBack ? hasLength(1) : isEmpty,
-            reason: '$modifiedAt');
+        expect(
+          dayEntries.saved,
+          comesBack ? hasLength(1) : isEmpty,
+          reason: '$modifiedAt',
+        );
       }
     });
 
@@ -1505,17 +1512,22 @@ void main() {
     // that has no live row for that reason, and was not in that reading:
     // writing it would undo a deletion made a moment ago. So it is read
     // again before a day with no live row is written.
-    test('a day she deletes while the pass is running is not written back',
-        () async {
-      await bind();
-      dayEntries.deletedMidPass[healthImportDeletionId('healthkit', 'rec-1')] =
-          deletedAt;
-      source.result = store('rec-1');
-      final summary = await build().importNow();
-      expect(summary.daysWritten, 0);
-      expect(summary.daysKeptManual, 1);
-      expect(dayEntries.saved, isEmpty);
-    });
+    test(
+      'a day she deletes while the pass is running is not written back',
+      () async {
+        await bind();
+        dayEntries.deletedMidPass[healthImportDeletionId(
+              'healthkit',
+              'rec-1',
+            )] =
+            deletedAt;
+        source.result = store('rec-1');
+        final summary = await build().importNow();
+        expect(summary.daysWritten, 0);
+        expect(summary.daysKeptManual, 1);
+        expect(dayEntries.saved, isEmpty);
+      },
+    );
 
     // Issue #1587 item 4: the first look at the date and the write are a
     // few awaits apart, with the memory read in between; she can hand-log
@@ -1617,8 +1629,7 @@ void main() {
     // nothing. If the row is gone by the next pass (deleted on another
     // device, which this phone does not remember), her own earlier
     // deletion of that record still stands.
-    test('what a failed pass saw does not carry into the next one',
-        () async {
+    test('what a failed pass saw does not carry into the next one', () async {
       await bind();
       sheDeleted('rec-1');
       dayEntries.live[day] = liveRow(
@@ -1782,8 +1793,7 @@ void main() {
       expect(withData.daysWritten, 1);
     });
 
-    test('an incremental pass that does bring days back says so too',
-        () async {
+    test('an incremental pass that does bring days back says so too', () async {
       await bind();
       source.pages = [
         HealthReadResult.samples(
@@ -1805,8 +1815,7 @@ void main() {
       expect(summary.daysWritten, 1);
     });
 
-    test('a read the store refuses is never reported as incremental',
-        () async {
+    test('a read the store refuses is never reported as incremental', () async {
       await bind();
       source.result = const HealthReadResult.permissionDenied();
       final denied = await build().importNow();
@@ -1838,30 +1847,32 @@ void main() {
   });
 
   group('Issue #458 Health Connect', () {
-    test('imports write health_connect provenance and the clientRecordId',
-        () async {
-      await bind();
-      source.result = HealthReadResult.samples([
-        _offsetSample(
-          id: 'hc-1',
-          flow: HealthFlowValue.medium,
-          startIso: '2026-09-10T15:00:00Z',
-        ),
-      ]);
-      final summary = await build(
-        importPlatform: HealthImportPlatform.healthConnect,
-      ).importNow();
+    test(
+      'imports write health_connect provenance and the clientRecordId',
+      () async {
+        await bind();
+        source.result = HealthReadResult.samples([
+          _offsetSample(
+            id: 'hc-1',
+            flow: HealthFlowValue.medium,
+            startIso: '2026-09-10T15:00:00Z',
+          ),
+        ]);
+        final summary = await build(
+          importPlatform: HealthImportPlatform.healthConnect,
+        ).importNow();
 
-      expect(summary.daysWritten, 1);
-      final row = dayEntries.saved.single;
-      expect(row.source, DayEntrySource.healthConnect);
-      expect(row.sourceId, 'hc-1');
-      // The runner reports the platform the Settings copy names.
-      expect(
-        build(importPlatform: HealthImportPlatform.healthConnect).platform,
-        HealthImportPlatform.healthConnect,
-      );
-    });
+        expect(summary.daysWritten, 1);
+        final row = dayEntries.saved.single;
+        expect(row.source, DayEntrySource.healthConnect);
+        expect(row.sourceId, 'hc-1');
+        // The runner reports the platform the Settings copy names.
+        expect(
+          build(importPlatform: HealthImportPlatform.healthConnect).platform,
+          HealthImportPlatform.healthConnect,
+        );
+      },
+    );
 
     test('the record\'s own zoneOffset resolves the civil date, not the '
         'device zone', () async {
@@ -1874,9 +1885,8 @@ void main() {
           startIso: '2026-09-15T02:00:00Z',
         ),
       ]);
-      await build(
-        importPlatform: HealthImportPlatform.healthConnect,
-      ).importNow();
+      await build(importPlatform: HealthImportPlatform.healthConnect)
+          .importNow();
       final row = dayEntries.saved.single;
       expect(row.localDate, LocalDate(2026, 9, 14));
       // No IANA name exists on a Health Connect record; the row carries the
@@ -1955,8 +1965,7 @@ void main() {
       expect(observations.saved, isEmpty);
     });
 
-    test('a re-import of the same intermenstrual record is a no-op',
-        () async {
+    test('a re-import of the same intermenstrual record is a no-op', () async {
       await bind();
       source.result = HealthReadResult.samples([
         _bleedingSample(
@@ -1965,9 +1974,8 @@ void main() {
           offset: const Duration(hours: -4),
         ),
       ]);
-      await build(
-        importPlatform: HealthImportPlatform.healthConnect,
-      ).importNow();
+      await build(importPlatform: HealthImportPlatform.healthConnect)
+          .importNow();
       expect(observations.saved, hasLength(1));
 
       // A second pass sees the existing health_connect spotting row.
@@ -1979,18 +1987,20 @@ void main() {
       expect(observations.saved, hasLength(1));
     });
 
-    test('an intermenstrual sample with no offset is skipped, not guessed',
-        () async {
-      await bind();
-      source.result = HealthReadResult.samples([
-        _bleedingSample(id: 'hc-no-zone', startIso: '2026-09-10T15:00:00Z'),
-      ]);
-      final summary = await build(
-        importPlatform: HealthImportPlatform.healthConnect,
-      ).importNow();
-      expect(summary.samplesWithoutZone, 1);
-      expect(observations.saved, isEmpty);
-    });
+    test(
+      'an intermenstrual sample with no offset is skipped, not guessed',
+      () async {
+        await bind();
+        source.result = HealthReadResult.samples([
+          _bleedingSample(id: 'hc-no-zone', startIso: '2026-09-10T15:00:00Z'),
+        ]);
+        final summary = await build(
+          importPlatform: HealthImportPlatform.healthConnect,
+        ).importNow();
+        expect(summary.samplesWithoutZone, 1);
+        expect(observations.saved, isEmpty);
+      },
+    );
   });
 
   // Issue #1556: a source that records a period as one start-to-end record
@@ -2014,13 +2024,13 @@ void main() {
     // Sep 10–12 2026 at a fixed −04:00: the start instant is the 10th's
     // local midnight, the end instant the 12th's last second.
     HealthReadResult threeDayPeriod() => HealthReadResult.samples([
-          _periodSample(
-            id: 'hc-period',
-            startIso: '2026-09-10T04:00:00Z',
-            endIso: '2026-09-13T03:59:59Z',
-            modifiedAt: changedAt,
-          ),
-        ]);
+      _periodSample(
+        id: 'hc-period',
+        startIso: '2026-09-10T04:00:00Z',
+        endIso: '2026-09-13T03:59:59Z',
+        modifiedAt: changedAt,
+      ),
+    ]);
 
     test('a period-only source imports its span as bleed days', () async {
       await bind();
@@ -2032,11 +2042,14 @@ void main() {
       expect(summary.daysWritten, 3);
       expect(dayEntries.saved, hasLength(3));
       final byDate = {for (final day in dayEntries.saved) day.localDate: day};
-      expect(byDate.keys, containsAll([
-        LocalDate(2026, 9, 10),
-        LocalDate(2026, 9, 11),
-        LocalDate(2026, 9, 12),
-      ]));
+      expect(
+        byDate.keys,
+        containsAll([
+          LocalDate(2026, 9, 10),
+          LocalDate(2026, 9, 11),
+          LocalDate(2026, 9, 12),
+        ]),
+      );
       for (final day in dayEntries.saved) {
         // The chosen level (health_flow_mapping.dart's
         // kPeriodRecordImportFlowLevel): the weakest real bleed level, so
@@ -2059,19 +2072,23 @@ void main() {
       expect(summary.samplesRead, 1);
     });
 
-    test('a second import of the same period record brings nothing new',
-        () async {
-      await bind();
-      source.result = threeDayPeriod();
-      final service = build(importPlatform: HealthImportPlatform.healthConnect);
-      await service.importNow();
-      expect(dayEntries.saved, hasLength(3));
+    test(
+      'a second import of the same period record brings nothing new',
+      () async {
+        await bind();
+        source.result = threeDayPeriod();
+        final service = build(
+          importPlatform: HealthImportPlatform.healthConnect,
+        );
+        await service.importNow();
+        expect(dayEntries.saved, hasLength(3));
 
-      final second = await service.importNow();
-      expect(second.daysWritten, 0);
-      expect(second.daysUnchanged, 3);
-      expect(dayEntries.saved, hasLength(3));
-    });
+        final second = await service.importNow();
+        expect(second.daysWritten, 0);
+        expect(second.daysUnchanged, 3);
+        expect(dayEntries.saved, hasLength(3));
+      },
+    );
 
     test('deleting one day of the span keeps it deleted while the other '
         'days stay live, and forgets nothing', () async {
@@ -2085,7 +2102,12 @@ void main() {
       dayEntries.deletedRecords[healthImportDeletionId(
         'health_connect',
         dayKey(11),
-      )] = DateTime.utc(2026, 9, 13, 8);
+      )] = DateTime.utc(
+        2026,
+        9,
+        13,
+        8,
+      );
       dayEntries.live.remove('2026-09-11');
 
       // The next pass sees the 10th and 12th live. Their rows name their
@@ -2096,10 +2118,16 @@ void main() {
       expect(summary.daysKeptManual, 1);
       expect(summary.daysUnchanged, 2);
       expect(dayEntries.live.keys, isNot(contains('2026-09-11')));
-      expect(dayEntries.saved, hasLength(3),
-          reason: 'the deleted day is not written back');
-      expect(dayEntries.forgotten, isEmpty,
-          reason: 'a sibling day naming the same record does not undo it');
+      expect(
+        dayEntries.saved,
+        hasLength(3),
+        reason: 'the deleted day is not written back',
+      );
+      expect(
+        dayEntries.forgotten,
+        isEmpty,
+        reason: 'a sibling day naming the same record does not undo it',
+      );
     });
 
     test('a span written by the previous build re-keys every day on its '
@@ -2108,16 +2136,18 @@ void main() {
       // Before Issue #1682 every day of the span shared the record's key.
       final shared = 'hc-period@$changedMs';
       for (var day = 10; day <= 12; day++) {
-        await dayEntries.save(DayEntry(
-          id: 'old-$day',
-          profileId: _profileId,
-          localDate: LocalDate(2026, 9, day),
-          tz: 'UTC-04:00',
-          flow: FlowLevel.light,
-          source: DayEntrySource.healthConnect,
-          sourceId: shared,
-          updatedAt: DateTime.utc(2026, 9, 13),
-        ));
+        await dayEntries.save(
+          DayEntry(
+            id: 'old-$day',
+            profileId: _profileId,
+            localDate: LocalDate(2026, 9, day),
+            tz: 'UTC-04:00',
+            flow: FlowLevel.light,
+            source: DayEntrySource.healthConnect,
+            sourceId: shared,
+            updatedAt: DateTime.utc(2026, 9, 13),
+          ),
+        );
       }
       dayEntries.saved.clear();
 
@@ -2130,28 +2160,30 @@ void main() {
       expect(
         {for (final day in dayEntries.live.values) day.sourceId},
         {dayKey(10), dayKey(11), dayKey(12)},
-        reason: 'each row takes its own day key, so the days the server '
+        reason:
+            'each row takes its own day key, so the days the server '
             'rejected before can now be pushed',
       );
     });
 
-    test('a day she corrected keeps her flow while the span re-keys',
-        () async {
+    test('a day she corrected keeps her flow while the span re-keys', () async {
       await bind();
       final shared = 'hc-period@$changedMs';
       for (var day = 10; day <= 12; day++) {
-        await dayEntries.save(DayEntry(
-          id: 'old-$day',
-          profileId: _profileId,
-          localDate: LocalDate(2026, 9, day),
-          tz: 'UTC-04:00',
-          // The 11th is hers: a hand edit keeps the row's provenance but
-          // changes the flow.
-          flow: day == 11 ? FlowLevel.heavy : FlowLevel.light,
-          source: DayEntrySource.healthConnect,
-          sourceId: shared,
-          updatedAt: DateTime.utc(2026, 9, 13),
-        ));
+        await dayEntries.save(
+          DayEntry(
+            id: 'old-$day',
+            profileId: _profileId,
+            localDate: LocalDate(2026, 9, day),
+            tz: 'UTC-04:00',
+            // The 11th is hers: a hand edit keeps the row's provenance but
+            // changes the flow.
+            flow: day == 11 ? FlowLevel.heavy : FlowLevel.light,
+            source: DayEntrySource.healthConnect,
+            sourceId: shared,
+            updatedAt: DateTime.utc(2026, 9, 13),
+          ),
+        );
       }
       dayEntries.saved.clear();
 
@@ -2163,10 +2195,16 @@ void main() {
       expect(summary.daysKeptManual, 1);
       expect(summary.daysUnchanged, 2);
       final corrected = dayEntries.live['2026-09-11']!;
-      expect(corrected.flow, FlowLevel.heavy,
-          reason: 'the store did not change the record, so this is her edit');
-      expect(corrected.sourceId, dayKey(11),
-          reason: 'and the row still takes its own day key');
+      expect(
+        corrected.flow,
+        FlowLevel.heavy,
+        reason: 'the store did not change the record, so this is her edit',
+      );
+      expect(
+        corrected.sourceId,
+        dayKey(11),
+        reason: 'and the row still takes its own day key',
+      );
     });
 
     test('a both-types source yields one entry per day with the flow '
@@ -2204,34 +2242,36 @@ void main() {
       expect(byDate[LocalDate(2026, 9, 12)]!.sourceId, dayKey(12));
     });
 
-    test('a spotting record on a day inside the span coexists with the '
-        'period day — they are different rows, nothing double counts',
-        () async {
-      await bind();
-      source.result = HealthReadResult.samples([
-        _periodSample(
-          id: 'hc-period',
-          startIso: '2026-09-10T04:00:00Z',
-          endIso: '2026-09-13T03:59:59Z',
-        ),
-        _bleedingSample(
-          id: 'hc-spot-11',
-          startIso: '2026-09-11T15:00:00Z',
-          offset: const Duration(hours: -4),
-        ),
-      ]);
-      final summary = await build(
-        importPlatform: HealthImportPlatform.healthConnect,
-      ).importNow();
+    test(
+      'a spotting record on a day inside the span coexists with the '
+      'period day — they are different rows, nothing double counts',
+      () async {
+        await bind();
+        source.result = HealthReadResult.samples([
+          _periodSample(
+            id: 'hc-period',
+            startIso: '2026-09-10T04:00:00Z',
+            endIso: '2026-09-13T03:59:59Z',
+          ),
+          _bleedingSample(
+            id: 'hc-spot-11',
+            startIso: '2026-09-11T15:00:00Z',
+            offset: const Duration(hours: -4),
+          ),
+        ]);
+        final summary = await build(
+          importPlatform: HealthImportPlatform.healthConnect,
+        ).importNow();
 
-      // Three bleed days AND the one spotting observation: a period record
-      // never suppresses an intermenstrual record, and a spotting record
-      // never becomes a second flow day.
-      expect(summary.daysWritten, 3);
-      expect(summary.spottingDaysWritten, 1);
-      expect(observations.saved.single.localDate, LocalDate(2026, 9, 11));
-      expect(observations.saved.single.sourceId, 'hc-spot-11');
-    });
+        // Three bleed days AND the one spotting observation: a period record
+        // never suppresses an intermenstrual record, and a spotting record
+        // never becomes a second flow day.
+        expect(summary.daysWritten, 3);
+        expect(summary.spottingDaysWritten, 1);
+        expect(observations.saved.single.localDate, LocalDate(2026, 9, 11));
+        expect(observations.saved.single.sourceId, 'hc-spot-11');
+      },
+    );
 
     test('a hand-logged day inside the span is never overwritten', () async {
       await bind();
@@ -2279,52 +2319,55 @@ void main() {
       expect(dayEntries.saved, isEmpty);
     });
 
-    test('the end instant resolves in its own zone: on a DST-transition '
-        'span the end offset, not the start offset, places the last day',
-        () async {
-      await bind();
-      // US DST ended 2025-11-02 (the suite's clock sits at 2026-09-15, so
-      // the span must lie before it). The end instant is Nov 3's last
-      // second at −05:00; resolved in the start zone (−04:00) it would land
-      // on Nov 4 and add a day that never existed.
-      source.result = HealthReadResult.samples([
-        _periodSample(
-          id: 'hc-period',
-          startIso: '2025-11-02T04:00:00Z',
-          endIso: '2025-11-04T04:59:59Z',
-          offset: const Duration(hours: -4),
-          endOffset: const Duration(hours: -5),
-        ),
-      ]);
-      await build(
-        importPlatform: HealthImportPlatform.healthConnect,
-      ).importNow();
+    test(
+      'the end instant resolves in its own zone: on a DST-transition '
+      'span the end offset, not the start offset, places the last day',
+      () async {
+        await bind();
+        // US DST ended 2025-11-02 (the suite's clock sits at 2026-09-15, so
+        // the span must lie before it). The end instant is Nov 3's last
+        // second at −05:00; resolved in the start zone (−04:00) it would land
+        // on Nov 4 and add a day that never existed.
+        source.result = HealthReadResult.samples([
+          _periodSample(
+            id: 'hc-period',
+            startIso: '2025-11-02T04:00:00Z',
+            endIso: '2025-11-04T04:59:59Z',
+            offset: const Duration(hours: -4),
+            endOffset: const Duration(hours: -5),
+          ),
+        ]);
+        await build(importPlatform: HealthImportPlatform.healthConnect)
+            .importNow();
 
-      final dates = dayEntries.saved.map((day) => day.localDate).toList();
-      expect(dates, [LocalDate(2025, 11, 2), LocalDate(2025, 11, 3)]);
-      final last = dayEntries.saved.last;
-      expect(last.tz, 'UTC-05:00');
-    });
+        final dates = dayEntries.saved.map((day) => day.localDate).toList();
+        expect(dates, [LocalDate(2025, 11, 2), LocalDate(2025, 11, 3)]);
+        final last = dayEntries.saved.last;
+        expect(last.tz, 'UTC-05:00');
+      },
+    );
 
-    test('a span longer than any real period is counted, never expanded',
-        () async {
-      await bind();
-      // ~5 months: Health Connect itself refuses to store a period record
-      // longer than 31 days of elapsed time, so this is a corrupt record
-      // (kMaxPeriodRecordSpanDays bounds the expansion).
-      source.result = HealthReadResult.samples([
-        _periodSample(
-          id: 'hc-period',
-          startIso: '2026-01-01T05:00:00Z',
-          endIso: '2026-06-01T05:00:00Z',
-        ),
-      ]);
-      final summary = await build(
-        importPlatform: HealthImportPlatform.healthConnect,
-      ).importNow();
-      expect(summary.samplesUnsupported, 1);
-      expect(dayEntries.saved, isEmpty);
-    });
+    test(
+      'a span longer than any real period is counted, never expanded',
+      () async {
+        await bind();
+        // ~5 months: Health Connect itself refuses to store a period record
+        // longer than 31 days of elapsed time, so this is a corrupt record
+        // (kMaxPeriodRecordSpanDays bounds the expansion).
+        source.result = HealthReadResult.samples([
+          _periodSample(
+            id: 'hc-period',
+            startIso: '2026-01-01T05:00:00Z',
+            endIso: '2026-06-01T05:00:00Z',
+          ),
+        ]);
+        final summary = await build(
+          importPlatform: HealthImportPlatform.healthConnect,
+        ).importNow();
+        expect(summary.samplesUnsupported, 1);
+        expect(dayEntries.saved, isEmpty);
+      },
+    );
 
     test('an end before the start is counted, never expanded', () async {
       await bind();
@@ -2383,28 +2426,30 @@ void main() {
       expect(dayEntries.saved.single.localDate, LocalDate(2026, 9, 14));
     });
 
-    test('a sample with a recorded tzName still uses that zone, even when a '
-        'device offset also rides along (the #180 contract is unchanged)',
-        () async {
-      await bind();
-      source.result = HealthReadResult.samples([
-        HealthFlowSample(
-          recordId: 'hk-tz-wins',
-          flow: HealthFlowValue.light,
-          start: DateTime.parse('2026-09-15T02:00:00Z'),
-          end: DateTime.parse('2026-09-15T02:00:00Z'),
-          tzName: 'America/New_York',
-          offset: const Duration(hours: 9),
-          offsetInferred: true,
-        ),
-      ]);
-      final summary = await build().importNow();
+    test(
+      'a sample with a recorded tzName still uses that zone, even when a '
+      'device offset also rides along (the #180 contract is unchanged)',
+      () async {
+        await bind();
+        source.result = HealthReadResult.samples([
+          HealthFlowSample(
+            recordId: 'hk-tz-wins',
+            flow: HealthFlowValue.light,
+            start: DateTime.parse('2026-09-15T02:00:00Z'),
+            end: DateTime.parse('2026-09-15T02:00:00Z'),
+            tzName: 'America/New_York',
+            offset: const Duration(hours: 9),
+            offsetInferred: true,
+          ),
+        ]);
+        final summary = await build().importNow();
 
-      expect(summary.samplesFromRecordedZone, 1);
-      expect(summary.samplesFromDeviceZone, 0);
-      expect(dayEntries.saved.single.localDate, LocalDate(2026, 9, 14));
-      expect(dayEntries.saved.single.tz, 'America/New_York');
-    });
+        expect(summary.samplesFromRecordedZone, 1);
+        expect(summary.samplesFromDeviceZone, 0);
+        expect(dayEntries.saved.single.localDate, LocalDate(2026, 9, 14));
+        expect(dayEntries.saved.single.tz, 'America/New_York');
+      },
+    );
 
     test('the summary counts recorded-zone, device-zone and unplaceable rows '
         'separately', () async {
@@ -2440,26 +2485,21 @@ void main() {
         'returned, and a null cursor ends the pass', () async {
       await bind();
       source.pages = [
-        HealthReadResult.samples(
-          [
-            _sample(
-              id: 'p1',
-              flow: HealthFlowValue.light,
-              startIso: '2026-09-09T04:00:00Z',
-            ),
-          ],
-          nextCursor: 'cursor-2',
-        ),
+        HealthReadResult.samples([
+          _sample(
+            id: 'p1',
+            flow: HealthFlowValue.light,
+            startIso: '2026-09-09T04:00:00Z',
+          ),
+        ], nextCursor: 'cursor-2'),
         const HealthReadResult.samples([], nextCursor: 'cursor-3'),
-        HealthReadResult.samples(
-          [
-            _sample(
-              id: 'p3',
-              flow: HealthFlowValue.medium,
-              startIso: '2026-09-10T04:00:00Z',
-            ),
-          ],
-        ),
+        HealthReadResult.samples([
+          _sample(
+            id: 'p3',
+            flow: HealthFlowValue.medium,
+            startIso: '2026-09-10T04:00:00Z',
+          ),
+        ]),
       ];
       final summary = await build().importNow();
 
@@ -2472,41 +2512,40 @@ void main() {
       expect(summary.pageLimitReached, isFalse);
     });
 
-    test('a page with no samples but a live cursor continues the pass',
-        () async {
-      await bind();
-      source.pages = [
-        // Every raw sample on this page was our own write, so it filtered
-        // to nothing — but the page advanced, so the loop must continue.
-        const HealthReadResult.samples([], nextCursor: 'cursor-2'),
-        HealthReadResult.samples([
-          _sample(
-            id: 'later',
-            flow: HealthFlowValue.heavy,
-            startIso: '2026-09-10T04:00:00Z',
-          ),
-        ]),
-      ];
-      final summary = await build().importNow();
-      expect(summary.pagesRead, 2);
-      expect(summary.daysWritten, 1);
-      expect(dayEntries.saved.single.sourceId, 'later');
-    });
+    test(
+      'a page with no samples but a live cursor continues the pass',
+      () async {
+        await bind();
+        source.pages = [
+          // Every raw sample on this page was our own write, so it filtered
+          // to nothing — but the page advanced, so the loop must continue.
+          const HealthReadResult.samples([], nextCursor: 'cursor-2'),
+          HealthReadResult.samples([
+            _sample(
+              id: 'later',
+              flow: HealthFlowValue.heavy,
+              startIso: '2026-09-10T04:00:00Z',
+            ),
+          ]),
+        ];
+        final summary = await build().importNow();
+        expect(summary.pagesRead, 2);
+        expect(summary.daysWritten, 1);
+        expect(dayEntries.saved.single.sourceId, 'later');
+      },
+    );
 
     test('the highest intensity wins even when the samples land on '
         'different pages', () async {
       await bind();
       source.pages = [
-        HealthReadResult.samples(
-          [
-            _sample(
-              id: 'light-page',
-              flow: HealthFlowValue.light,
-              startIso: '2026-09-10T04:00:00Z',
-            ),
-          ],
-          nextCursor: 'cursor-2',
-        ),
+        HealthReadResult.samples([
+          _sample(
+            id: 'light-page',
+            flow: HealthFlowValue.light,
+            startIso: '2026-09-10T04:00:00Z',
+          ),
+        ], nextCursor: 'cursor-2'),
         HealthReadResult.samples([
           _sample(
             id: 'heavy-page',
@@ -2558,16 +2597,13 @@ void main() {
     test('onProgress reports the running counts after each page', () async {
       await bind();
       source.pages = [
-        HealthReadResult.samples(
-          [
-            _sample(
-              id: 'a',
-              flow: HealthFlowValue.light,
-              startIso: '2026-09-09T04:00:00Z',
-            ),
-          ],
-          nextCursor: 'cursor-2',
-        ),
+        HealthReadResult.samples([
+          _sample(
+            id: 'a',
+            flow: HealthFlowValue.light,
+            startIso: '2026-09-09T04:00:00Z',
+          ),
+        ], nextCursor: 'cursor-2'),
         HealthReadResult.samples([
           _sample(
             id: 'b',
@@ -2642,32 +2678,35 @@ void main() {
       expect(dayEntries.saved, isEmpty);
     });
 
-    test('the first completed importNow opens the gate (issue #1215)',
-        () async {
-      await bind();
-      // A first import that completes — even over an empty store — is the
-      // consent the gate reads.
-      await build().importNow();
+    test(
+      'the first completed importNow opens the gate (issue #1215)',
+      () async {
+        await bind();
+        // A first import that completes — even over an empty store — is the
+        // consent the gate reads.
+        await build().importNow();
 
-      await build().importInBackground();
-      expect(
-        platform.importPermissionStatusCalls,
-        1,
-        reason: 'the gate opened past the consent check, all the way to '
-            'the probe',
-      );
+        await build().importInBackground();
+        expect(
+          platform.importPermissionStatusCalls,
+          1,
+          reason:
+              'the gate opened past the consent check, all the way to '
+              'the probe',
+        );
 
-      source.result = HealthReadResult.samples([
-        _sample(
-          id: 'bg-after-first',
-          flow: HealthFlowValue.light,
-          startIso: '2026-09-11T12:00:00Z',
-        ),
-      ]);
-      final second = await build().importInBackground();
-      expect(second.daysWritten, 1);
-      expect(dayEntries.saved.single.sourceId, 'bg-after-first');
-    });
+        source.result = HealthReadResult.samples([
+          _sample(
+            id: 'bg-after-first',
+            flow: HealthFlowValue.light,
+            startIso: '2026-09-11T12:00:00Z',
+          ),
+        ]);
+        final second = await build().importInBackground();
+        expect(second.daysWritten, 1);
+        expect(dayEntries.saved.single.sourceId, 'bg-after-first');
+      },
+    );
 
     test('a first import that was blocked before its read never opens '
         'the gate (issue #1215)', () async {
@@ -2725,8 +2764,7 @@ void main() {
       expect(platform.authCalls, 0);
     });
 
-    test('a not-granted OS permission ends the pass before any read',
-        () async {
+    test('a not-granted OS permission ends the pass before any read', () async {
       await bind();
       await completeFirstImport();
       platform.importPermissionStatusResult = HealthPermissionStatus.notAsked;
@@ -2757,36 +2795,37 @@ void main() {
     // Connect but not write to it got a working Import button and a
     // background import that never ran. It is gated on the read-side
     // probe now; the write probe is the write path's alone.
-    test('reads on, writes off: a background pass imports (issue #1491)',
-        () async {
-      await bind();
-      await completeFirstImport();
-      platform.importPermissionStatusResult = HealthPermissionStatus.granted;
-      platform.permissionStatusResult = HealthPermissionStatus.denied;
-      source.result = HealthReadResult.samples([
-        _offsetSample(
-          id: 'bg-reads-only',
-          flow: HealthFlowValue.medium,
-          startIso: '2026-09-12T12:00:00Z',
-        ),
-      ]);
+    test(
+      'reads on, writes off: a background pass imports (issue #1491)',
+      () async {
+        await bind();
+        await completeFirstImport();
+        platform.importPermissionStatusResult = HealthPermissionStatus.granted;
+        platform.permissionStatusResult = HealthPermissionStatus.denied;
+        source.result = HealthReadResult.samples([
+          _offsetSample(
+            id: 'bg-reads-only',
+            flow: HealthFlowValue.medium,
+            startIso: '2026-09-12T12:00:00Z',
+          ),
+        ]);
 
-      final summary = await build(
-        importPlatform: HealthImportPlatform.healthConnect,
-      ).importInBackground();
+        final summary = await build(
+          importPlatform: HealthImportPlatform.healthConnect,
+        ).importInBackground();
 
-      expect(summary.blocked, isNull);
-      expect(summary.daysWritten, 1);
-      expect(dayEntries.saved.single.sourceId, 'bg-reads-only');
-      expect(dayEntries.saved.single.source, DayEntrySource.healthConnect);
-      // Still prompt-free.
-      expect(platform.bindCalls, 0);
-      expect(platform.authCalls, 0);
-    });
+        expect(summary.blocked, isNull);
+        expect(summary.daysWritten, 1);
+        expect(dayEntries.saved.single.sourceId, 'bg-reads-only');
+        expect(dayEntries.saved.single.source, DayEntrySource.healthConnect);
+        // Still prompt-free.
+        expect(platform.bindCalls, 0);
+        expect(platform.authCalls, 0);
+      },
+    );
 
     test('the read-side probe decides, whatever the write probe says: '
-        'anything but granted stops before any read (issue #1491)',
-        () async {
+        'anything but granted stops before any read (issue #1491)', () async {
       await bind();
       await completeFirstImport();
       source.result = HealthReadResult.samples([
@@ -2883,27 +2922,29 @@ void main() {
       expect(dayEntries.saved, isEmpty);
     });
 
-    test('the Health Connect provenance rides the background merge too',
-        () async {
-      await bind();
-      await completeFirstImport();
-      source.result = HealthReadResult.samples([
-        _offsetSample(
-          id: 'bg-hc-1',
-          flow: HealthFlowValue.light,
-          startIso: '2026-09-11T12:00:00Z',
-        ),
-      ]);
-      final summary = await build(
-        importPlatform: HealthImportPlatform.healthConnect,
-      ).importInBackground();
+    test(
+      'the Health Connect provenance rides the background merge too',
+      () async {
+        await bind();
+        await completeFirstImport();
+        source.result = HealthReadResult.samples([
+          _offsetSample(
+            id: 'bg-hc-1',
+            flow: HealthFlowValue.light,
+            startIso: '2026-09-11T12:00:00Z',
+          ),
+        ]);
+        final summary = await build(
+          importPlatform: HealthImportPlatform.healthConnect,
+        ).importInBackground();
 
-      expect(summary.daysWritten, 1);
-      expect(dayEntries.saved.single.source, DayEntrySource.healthConnect);
-      expect(dayEntries.saved.single.sourceId, 'bg-hc-1');
-      expect(platform.bindCalls, 0);
-      expect(platform.authCalls, 0);
-    });
+        expect(summary.daysWritten, 1);
+        expect(dayEntries.saved.single.source, DayEntrySource.healthConnect);
+        expect(dayEntries.saved.single.sourceId, 'bg-hc-1');
+        expect(platform.bindCalls, 0);
+        expect(platform.authCalls, 0);
+      },
+    );
   });
 
   // Issue #1573: the Health sync screen's button raises Health Connect's
@@ -2919,16 +2960,21 @@ void main() {
       expect(source.pastDataRequests, isEmpty);
     });
 
-    test('the prompt is raised for the bound profile, and a grant is yes',
-        () async {
-      await bind();
-      source.onPastDataRequest = () => platform.reachesPastData = true;
+    test(
+      'the prompt is raised for the bound profile, and a grant is yes',
+      () async {
+        await bind();
+        source.onPastDataRequest = () => platform.reachesPastData = true;
 
-      expect(await build().requestPastDataAccess(), isTrue);
-      expect(source.pastDataRequests.single.profile.id, _profileId);
-      expect(platform.authCalls, 0,
-          reason: 'neither of the two other requests is raised');
-    });
+        expect(await build().requestPastDataAccess(), isTrue);
+        expect(source.pastDataRequests.single.profile.id, _profileId);
+        expect(
+          platform.authCalls,
+          0,
+          reason: 'neither of the two other requests is raised',
+        );
+      },
+    );
 
     test('the port answering allowed is not a grant: Health Connect drops a '
         'twice-declined request and answers the same', () async {
@@ -2958,16 +3004,13 @@ void main() {
   group('commitImport (Issue #1560)', () {
     test('commits position once after days are stored', () async {
       await bind();
-      source.result = HealthReadResult.samples(
-        [
-          _offsetSample(
-            id: 'hc-1',
-            flow: HealthFlowValue.medium,
-            startIso: '2026-09-10T12:00:00Z',
-          ),
-        ],
-        commitToken: 'commit-token-abc',
-      );
+      source.result = HealthReadResult.samples([
+        _offsetSample(
+          id: 'hc-1',
+          flow: HealthFlowValue.medium,
+          startIso: '2026-09-10T12:00:00Z',
+        ),
+      ], commitToken: 'commit-token-abc');
 
       final summary = await build().importNow();
 
@@ -2976,53 +3019,53 @@ void main() {
       expect(source.committedTokens, ['commit-token-abc']);
     });
 
-    test('multi-page read commits only the token from the final page', () async {
-      await bind();
-      source.pages = [
-        HealthReadResult.samples(
-          [
-            _offsetSample(
-              id: 'hc-1',
-              flow: HealthFlowValue.medium,
-              startIso: '2026-09-10T12:00:00Z',
-            ),
-          ],
-          nextCursor: 'cursor-page-2',
-          commitToken: 'intermediate-token',
-        ),
-        HealthReadResult.samples(
-          [
-            _offsetSample(
-              id: 'hc-2',
-              flow: HealthFlowValue.light,
-              startIso: '2026-09-11T12:00:00Z',
-            ),
-          ],
-          nextCursor: null,
-          commitToken: 'final-commit-token',
-        ),
-      ];
+    test(
+      'multi-page read commits only the token from the final page',
+      () async {
+        await bind();
+        source.pages = [
+          HealthReadResult.samples(
+            [
+              _offsetSample(
+                id: 'hc-1',
+                flow: HealthFlowValue.medium,
+                startIso: '2026-09-10T12:00:00Z',
+              ),
+            ],
+            nextCursor: 'cursor-page-2',
+            commitToken: 'intermediate-token',
+          ),
+          HealthReadResult.samples(
+            [
+              _offsetSample(
+                id: 'hc-2',
+                flow: HealthFlowValue.light,
+                startIso: '2026-09-11T12:00:00Z',
+              ),
+            ],
+            nextCursor: null,
+            commitToken: 'final-commit-token',
+          ),
+        ];
 
-      final summary = await build().importNow();
+        final summary = await build().importNow();
 
-      expect(summary.daysWritten, 2);
-      expect(source.commitCalls, 1);
-      expect(source.committedTokens, ['final-commit-token']);
-    });
+        expect(summary.daysWritten, 2);
+        expect(source.commitCalls, 1);
+        expect(source.committedTokens, ['final-commit-token']);
+      },
+    );
 
     test('a merge that throws never commits the position', () async {
       await bind();
       dayEntries.saveError = StateError('disk I/O error');
-      source.result = HealthReadResult.samples(
-        [
-          _offsetSample(
-            id: 'hc-1',
-            flow: HealthFlowValue.medium,
-            startIso: '2026-09-10T12:00:00Z',
-          ),
-        ],
-        commitToken: 'commit-token-abc',
-      );
+      source.result = HealthReadResult.samples([
+        _offsetSample(
+          id: 'hc-1',
+          flow: HealthFlowValue.medium,
+          startIso: '2026-09-10T12:00:00Z',
+        ),
+      ], commitToken: 'commit-token-abc');
 
       expect(() => build().importNow(), throwsA(isA<StateError>()));
       expect(source.commitCalls, 0);
@@ -3031,16 +3074,13 @@ void main() {
     test('a blocked pass never commits the position', () async {
       await bind();
       source.pages = [
-        HealthReadResult.samples(
-          [
-            _offsetSample(
-              id: 'hc-1',
-              flow: HealthFlowValue.medium,
-              startIso: '2026-09-10T12:00:00Z',
-            ),
-          ],
-          nextCursor: 'cursor-page-2',
-        ),
+        HealthReadResult.samples([
+          _offsetSample(
+            id: 'hc-1',
+            flow: HealthFlowValue.medium,
+            startIso: '2026-09-10T12:00:00Z',
+          ),
+        ], nextCursor: 'cursor-page-2'),
         const HealthReadResult.failed('store error'),
       ];
 
@@ -3065,6 +3105,41 @@ void main() {
       expect(summary.daysWritten, 1);
       expect(source.commitCalls, 0);
     });
+
+    test(
+      'issue #1650: an empty whole-history pass does not call commitImport',
+      () async {
+        await bind();
+        source.result = const HealthReadResult.samples(
+          [],
+          commitToken: 'anchor-token-empty',
+          incremental: false,
+        );
+
+        final summary = await build().importNow();
+
+        expect(summary.samplesRead, 0);
+        expect(source.commitCalls, 0);
+      },
+    );
+
+    test(
+      'an empty incremental pass calls commitImport to advance position',
+      () async {
+        await bind();
+        source.result = const HealthReadResult.samples(
+          [],
+          commitToken: 'anchor-token-idle',
+          incremental: true,
+        );
+
+        final summary = await build().importNow();
+
+        expect(summary.samplesRead, 0);
+        expect(source.commitCalls, 1);
+        expect(source.committedTokens, ['anchor-token-idle']);
+      },
+    );
   });
 
   // Issue #1652. The merge declines a store record over her own value, and
@@ -3209,10 +3284,9 @@ void main() {
         importPlatform: HealthImportPlatform.healthConnect,
       ).importNow();
       expect(first.daysKeptManual, 1);
-      expect(
-        dayEntries.declinedRecords.keys,
-        [healthImportDeclinedId('health_connect', 'hc-period#2026-09-10')],
-      );
+      expect(dayEntries.declinedRecords.keys, [
+        healthImportDeclinedId('health_connect', 'hc-period#2026-09-10'),
+      ]);
 
       // The store reports the period record deleted, by its bare id.
       source.result = HealthReadResult.samples(
@@ -3220,9 +3294,8 @@ void main() {
         deletedRecordIds: const ['hc-period'],
         incremental: true,
       );
-      await build(
-        importPlatform: HealthImportPlatform.healthConnect,
-      ).importNow();
+      await build(importPlatform: HealthImportPlatform.healthConnect)
+          .importNow();
 
       expect(dayEntries.declinedRecords, isEmpty);
     });
@@ -3311,8 +3384,7 @@ void main() {
   // whole history: an anchored or changes read never returns a record
   // that did not change, so the purged days would stay gone.
   group('issue #1876: a purge owes a whole-history read', () {
-    test('the owed whole read is sent, and settled once it finishes',
-        () async {
+    test('the owed whole read is sent, and settled once it finishes', () async {
       await bind();
       dayEntries.wholeReadOwedFlag = true;
 
@@ -3360,40 +3432,58 @@ void main() {
       updatedAt: DateTime.utc(2026, 9, 1, 8),
     );
 
-    test('a shared period key is re-keyed per day, without a re-read', () async {
-      await bind();
-      dayEntries.live['2026-09-10'] =
-          importedDay('2026-09-10', 'hc-period@111');
-      dayEntries.live['2026-09-11'] =
-          importedDay('2026-09-11', 'hc-period@111');
-      dayEntries.live['2026-09-12'] =
-          importedDay('2026-09-12', 'hc-period@111');
-      // A record only one day carries is not shared: left as it is.
-      dayEntries.live['2026-09-13'] =
-          importedDay('2026-09-13', 'hc-single@222');
+    test(
+      'a shared period key is re-keyed per day, without a re-read',
+      () async {
+        await bind();
+        dayEntries.live['2026-09-10'] = importedDay(
+          '2026-09-10',
+          'hc-period@111',
+        );
+        dayEntries.live['2026-09-11'] = importedDay(
+          '2026-09-11',
+          'hc-period@111',
+        );
+        dayEntries.live['2026-09-12'] = importedDay(
+          '2026-09-12',
+          'hc-period@111',
+        );
+        // A record only one day carries is not shared: left as it is.
+        dayEntries.live['2026-09-13'] = importedDay(
+          '2026-09-13',
+          'hc-single@222',
+        );
 
-      source.result = const HealthReadResult.samples([]);
-      await build(
-        importPlatform: HealthImportPlatform.healthConnect,
-      ).importNow();
+        source.result = const HealthReadResult.samples([]);
+        await build(importPlatform: HealthImportPlatform.healthConnect)
+            .importNow();
 
-      expect(dayEntries.live['2026-09-10']!.sourceId,
-          'hc-period#2026-09-10@111');
-      expect(dayEntries.live['2026-09-11']!.sourceId,
-          'hc-period#2026-09-11@111');
-      expect(dayEntries.live['2026-09-12']!.sourceId,
-          'hc-period#2026-09-12@111');
-      expect(dayEntries.live['2026-09-13']!.sourceId, 'hc-single@222');
-      expect(dayEntries.saved, hasLength(3),
-          reason: 'only the three shared days are rewritten');
+        expect(
+          dayEntries.live['2026-09-10']!.sourceId,
+          'hc-period#2026-09-10@111',
+        );
+        expect(
+          dayEntries.live['2026-09-11']!.sourceId,
+          'hc-period#2026-09-11@111',
+        );
+        expect(
+          dayEntries.live['2026-09-12']!.sourceId,
+          'hc-period#2026-09-12@111',
+        );
+        expect(dayEntries.live['2026-09-13']!.sourceId, 'hc-single@222');
+        expect(
+          dayEntries.saved,
+          hasLength(3),
+          reason: 'only the three shared days are rewritten',
+        );
 
-      // Idempotent: nothing is shared any more, nothing is written.
-      dayEntries.saved.clear();
-      await build(
-        importPlatform: HealthImportPlatform.healthConnect,
-      ).importNow();
-      expect(dayEntries.saved, isEmpty);
-    });
+        // Idempotent: nothing is shared any more, nothing is written.
+        dayEntries.saved.clear();
+        await build(importPlatform: HealthImportPlatform.healthConnect)
+            .importNow();
+        expect(dayEntries.saved, isEmpty);
+      },
+    );
 
     test('a day logged by hand, and an import from another source, are '
         'left alone', () async {
@@ -3418,9 +3508,8 @@ void main() {
       );
 
       source.result = const HealthReadResult.samples([]);
-      await build(
-        importPlatform: HealthImportPlatform.healthConnect,
-      ).importNow();
+      await build(importPlatform: HealthImportPlatform.healthConnect)
+          .importNow();
 
       expect(dayEntries.live['2026-09-10']!.sourceId, isNull);
       expect(dayEntries.live['2026-09-11']!.sourceId, 'hk-shared@111');
@@ -3441,8 +3530,10 @@ void main() {
         sourceId: 'hc-period@111',
         updatedAt: DateTime.utc(2026, 9, 1, 8),
       );
-      dayEntries.live['2026-09-11'] =
-          importedDay('2026-09-11', 'hc-period@111');
+      dayEntries.live['2026-09-11'] = importedDay(
+        '2026-09-11',
+        'hc-period@111',
+      );
 
       // The store changed the record (modifiedAt 222), and the read also
       // reports an unrelated deleted id, so the scan loads its rows before
@@ -3462,14 +3553,17 @@ void main() {
         incremental: true,
       );
 
-      await build(
-        importPlatform: HealthImportPlatform.healthConnect,
-      ).importNow();
+      await build(importPlatform: HealthImportPlatform.healthConnect)
+          .importNow();
 
       final ms = changed.millisecondsSinceEpoch;
-      expect(dayEntries.live['2026-09-10']!.flow, FlowLevel.light,
-          reason: 'the store change the merge adopted must survive the '
-              're-key');
+      expect(
+        dayEntries.live['2026-09-10']!.flow,
+        FlowLevel.light,
+        reason:
+            'the store change the merge adopted must survive the '
+            're-key',
+      );
       expect(
         dayEntries.live['2026-09-10']!.sourceId,
         'hc-period#2026-09-10@$ms',
@@ -3500,17 +3594,19 @@ void main() {
         ),
       ]);
 
-      await build(
-        importPlatform: HealthImportPlatform.healthConnect,
-      ).importNow();
+      await build(importPlatform: HealthImportPlatform.healthConnect)
+          .importNow();
 
       final ms = changed.millisecondsSinceEpoch;
       expect(
         dayEntries.live['2026-09-10']!.sourceId,
         'hc-period#2026-09-10@$ms',
       );
-      expect(dayEntries.live['2026-09-11'], isNull,
-          reason: 'the shortened record no longer covers it');
+      expect(
+        dayEntries.live['2026-09-11'],
+        isNull,
+        reason: 'the shortened record no longer covers it',
+      );
       expect(dayEntries.live['2026-09-12'], isNull);
     });
   });
