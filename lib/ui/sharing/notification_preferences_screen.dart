@@ -31,7 +31,7 @@ const int _kDefaultQuietEndMinutes = 7 * 60; // 07:00
 const int _kDefaultDigestMinutes = 8 * 60; // 08:00
 
 /// Issue #1629: When any caregiver alert is enabled but OS notifications are
-/// denied/off, surface the warning banner with an actionable "Turn on reminders"
+/// denied/off, surface the warning banner with an actionable "Turn on notifications"
 /// button so a guardian on a new phone, after a reinstall, or after an earlier
 /// Deny is not left wondering why alerts never arrive.
 class _CaregiverNotificationsOffBanner extends StatefulWidget {
