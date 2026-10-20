@@ -143,7 +143,7 @@ void main() {
         swift,
         contains(
           'let toRead: Set<HKObjectType> = Set(\n'
-          '        [menstrualFlowType as HKObjectType]\n'
+          '        [menstrualFlowType as HKObjectType, intermenstrualBleedingType as HKObjectType]\n'
           '          + deviationReadTypes.map { \$0 as HKObjectType })',
         ),
       );

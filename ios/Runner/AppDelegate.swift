@@ -716,18 +716,13 @@ enum HealthKitChannelHandler {
   static var pendingBackgroundImportTrigger = false
 
   /// The read types background delivery is enabled for: exactly the types
-  /// the import reads on this platform (Issues #217/#458) — deliberately
-  /// NOT the write types and NOT Apple's computed cycle-deviation types
-  /// (the background path is import-only, and a computed type is never
-  /// written by any path).
-  ///
-  /// Issue #1878: only menstrual flow. The iOS import reads nothing else —
-  /// [readMenstrualFlowPage] queries this one type, and its payload maps
-  /// only flow intensities — so an observer for intermenstrual bleeding,
-  /// which this app itself writes (so every spotting change fired it),
-  /// woke the app for a pass that could never find anything to import.
+  /// the import reads on this platform (Issues #217/#458/#1888) —
+  /// menstrual flow and intermenstrual bleeding. Deliberately NOT the
+  /// write types and NOT Apple's computed cycle-deviation types (the
+  /// background path is import-only, and a computed type is never written
+  /// by any path).
   static var backgroundReadTypes: [HKCategoryType] {
-    [menstrualFlowType]
+    [menstrualFlowType, intermenstrualBleedingType]
   }
 
   /// The observer queries currently registered for the read types, keyed
@@ -762,23 +757,6 @@ enum HealthKitChannelHandler {
     }
   }
 
-  /// Issue #1878: whether the dropped read type's delivery has been turned
-  /// off in this process. One attempt per process is enough — the
-  /// registration it cleans up is persistent, so a later process tries
-  /// again — and the call is best-effort, silently ignoring a failure
-  /// because nothing depends on the answer.
-  private static var droppedReadDeliveryDisabled = false
-
-  /// Turns background delivery back off for intermenstrual bleeding: a
-  /// build before Issue #1878 enabled it, and this build registers no
-  /// observer for it (see [backgroundReadTypes]), so leaving it on would
-  /// wake the app for a spotting change the import can never read.
-  private static func disableDroppedReadDeliveryOnce() {
-    guard !droppedReadDeliveryDisabled else { return }
-    droppedReadDeliveryDisabled = true
-    store.disableBackgroundDelivery(for: intermenstrualBleedingType) { _, _ in }
-  }
-
   /// Registers the observer query and enables immediate background
   /// delivery for each read type — called from
   /// `didInitializeImplicitFlutterEngine` (at app start, only when a
@@ -799,11 +777,6 @@ enum HealthKitChannelHandler {
   static func registerBackgroundImportTriggerIfBound() {
     guard HKHealthStore.isHealthDataAvailable() else { return }
     guard storedBoundProfileId != nil else { return }
-    // Issue #1878: a build before this one enabled background delivery
-    // for intermenstrual bleeding, which the import does not read and
-    // this build registers no observer for — so a spotting change could
-    // still wake the app for nothing.
-    disableDroppedReadDeliveryOnce()
     for type in backgroundReadTypes {
       guard registeredObserverQueries[type] == nil else {
         // Issue #1212: this type already has its one query for this
@@ -991,7 +964,7 @@ enum HealthKitChannelHandler {
       // simply smaller there. The one system sheet covers both the write
       // types and the read types.
       let toRead: Set<HKObjectType> = Set(
-        [menstrualFlowType as HKObjectType]
+        [menstrualFlowType as HKObjectType, intermenstrualBleedingType as HKObjectType]
           + deviationReadTypes.map { $0 as HKObjectType })
       Task {
         do {
@@ -1793,6 +1766,69 @@ enum HealthKitChannelHandler {
   /// dropped. The device's UTC offset at the sample's instant is sent as
   /// `zoneOffsetSeconds` and flagged `zoneOffsetInferred`, so Dart places the
   /// row and reports it honestly as inferred from this phone's zone.
+  /// Issue #1888: the two read stages for iOS HealthKit import.
+  /// HealthKit anchored object queries run per-sample-type, so the import
+  /// queries menstrualFlow first and then intermenstrualBleeding (spotting).
+  enum ImportStage: String {
+    case flow = "flow"
+    case spotting = "spotting"
+  }
+
+  struct StartingPage {
+    let stage: ImportStage
+    let incremental: Bool
+    let flowAnchor: HKQueryAnchor?
+    let spottingAnchor: HKQueryAnchor?
+    let passHadSamples: Bool
+
+    var anchor: HKQueryAnchor? {
+      switch stage {
+      case .flow: return flowAnchor
+      case .spotting: return spottingAnchor
+      }
+    }
+  }
+
+  /// Reads ONE page of samples in `[start, end]` (Issues #217/#458/#992/#1888)
+  /// and returns the page map Dart's `decodeHealthReadResult` parses.
+  ///
+  /// **Multi-stage query (Issue #1888).** An `HKAnchoredObjectQuery` queries
+  /// exactly one `HKSampleType`. The import queries `menstrualFlowType`
+  /// first (stage `.flow`). When that type is exhausted, it transitions to
+  /// `intermenstrualBleedingType` (stage `.spotting`). When both types are
+  /// exhausted, the pass terminates.
+  ///
+  /// **The pass's starting point (Issue #1610, #1888).** On a pass's first page
+  /// (`cursor == nil`) the profile's stored anchor — if one is committed —
+  /// is where the read starts, which makes the whole pass an incremental
+  /// one: every page of it reports what was deleted since the last import.
+  /// `wholeHistory: true` on a first page drops the stored anchor and reads
+  /// from the beginning instead (mirroring HealthImportCursor.startsOver
+  /// and the Kotlin half's token drop); the position is rebuilt only when
+  /// that read's last page is committed, so a pass that ends early is
+  /// followed by another whole-history read. A later page starts from the
+  /// anchor its cursor carries. Anything unreadable starts over the same
+  /// way a full read does, never a crash.
+  ///
+  /// **Echo prevention is mandatory here.** A sample lunarlog itself wrote
+  /// (#193) comes back with `sourceRevision.source.bundleIdentifier` equal to
+  /// this app's bundle id; re-importing it would duplicate every entry and
+  /// loop the write and read directions, so any such sample is dropped before
+  /// it reaches Dart. A page whose samples are ALL our own writes still
+  /// carries its `nextCursor` (the page itself advanced), so Dart does not
+  /// mistake it for exhaustion.
+  ///
+  /// The sample's own IANA zone rides `HKMetadataKeyTimeZone`; Dart resolves
+  /// the civil date from it (day_boundary.dart's #180 contract) — never from
+  /// the device's current zone. `HKMetadataKeyExternalUUID` is passed through
+  /// for diagnostics. A sample whose value is not a known flow intensity is
+  /// skipped rather than guessed.
+  ///
+  /// Issue #902: a sample with no `HKMetadataKeyTimeZone` (which is every
+  /// menstruation sample logged by hand in Apple's own Health app) is not
+  /// dropped. The device's UTC offset at the sample's instant is sent as
+  /// `zoneOffsetSeconds` and flagged `zoneOffsetInferred`, so Dart places the
+  /// row and reports it honestly as inferred from this phone's zone.
   static func readMenstrualFlowPage(
     profileId: String,
     start: Date,
@@ -1803,10 +1839,12 @@ enum HealthKitChannelHandler {
   ) async throws -> [String: Any] {
     let startPage = startingPage(
       profileId: profileId, cursor: cursor, wholeHistory: wholeHistory)
+    let sampleType: HKCategoryType =
+      startPage.stage == .flow ? menstrualFlowType : intermenstrualBleedingType
     let predicate = HKQuery.predicateForSamples(
       withStart: start, end: end, options: [])
     let page = try await anchoredQuery(
-      ofType: menstrualFlowType,
+      ofType: sampleType,
       predicate: predicate,
       anchor: startPage.anchor,
       limit: pageSize)
@@ -1816,7 +1854,11 @@ enum HealthKitChannelHandler {
       newAnchor: page.newAnchor,
       pageSize: pageSize,
       incremental: startPage.incremental,
-      ownBundleId: Bundle.main.bundleIdentifier)
+      ownBundleId: Bundle.main.bundleIdentifier,
+      stage: startPage.stage,
+      flowAnchor: startPage.stage == .flow ? page.newAnchor : startPage.flowAnchor,
+      spottingAnchor: startPage.stage == .spotting ? page.newAnchor : startPage.spottingAnchor,
+      passHadSamples: startPage.passHadSamples)
   }
 
   /// Where a read starts: the cursor's anchor on a later page, or — on a
@@ -1829,12 +1871,22 @@ enum HealthKitChannelHandler {
     profileId: String,
     cursor: String?,
     wholeHistory: Bool
-  ) -> (anchor: HKQueryAnchor?, incremental: Bool) {
+  ) -> StartingPage {
     if let cursor {
       guard let decoded = decodeAnchorPayload(cursor) else {
-        return (nil, false)
+        return StartingPage(
+          stage: .flow,
+          incremental: false,
+          flowAnchor: nil,
+          spottingAnchor: nil,
+          passHadSamples: false)
       }
-      return (decoded.anchor, decoded.incremental)
+      return StartingPage(
+        stage: decoded.stage,
+        incremental: decoded.incremental,
+        flowAnchor: decoded.flowAnchor,
+        spottingAnchor: decoded.spottingAnchor,
+        passHadSamples: decoded.passHadSamples)
     }
     if wholeHistory {
       // The whole-history read starts over and stays over until its last
@@ -1842,18 +1894,38 @@ enum HealthKitChannelHandler {
       // next pass a changes pass, and a changes read never returns a
       // record that did not change.
       dropStoredImportAnchor(profileId)
-      return (nil, false)
+      return StartingPage(
+        stage: .flow,
+        incremental: false,
+        flowAnchor: nil,
+        spottingAnchor: nil,
+        passHadSamples: false)
     }
     guard let stored = storedImportAnchor(profileId) else {
-      return (nil, false)
+      return StartingPage(
+        stage: .flow,
+        incremental: false,
+        flowAnchor: nil,
+        spottingAnchor: nil,
+        passHadSamples: false)
     }
     guard let decoded = decodeAnchorPayload(stored) else {
       // A position this build cannot read is no position: drop it so the
       // next commit writes a fresh one instead of leaving the wreck.
       dropStoredImportAnchor(profileId)
-      return (nil, false)
+      return StartingPage(
+        stage: .flow,
+        incremental: false,
+        flowAnchor: nil,
+        spottingAnchor: nil,
+        passHadSamples: false)
     }
-    return (decoded.anchor, true)
+    return StartingPage(
+      stage: .flow,
+      incremental: true,
+      flowAnchor: decoded.flowAnchor,
+      spottingAnchor: decoded.spottingAnchor,
+      passHadSamples: false)
   }
 
   /// One page's wire payload from its raw query results — pure, so the
@@ -1863,8 +1935,10 @@ enum HealthKitChannelHandler {
   /// HealthKit may have more waiting behind the new anchor, so the anchor
   /// rides `nextCursor` — with the pass's mode inside it, so the mode is
   /// one answer for all of a pass's pages. A short (or empty) page means
-  /// the anchored query is exhausted: no cursor — the property the Dart
-  /// loop relies on to terminate — and, Issue #1560's shape, the anchor
+  /// the anchored query for this stage is exhausted.
+  /// If `stage == .flow`, it transitions to `stage == .spotting` via `nextCursor`.
+  /// If `stage == .spotting`, the pass is complete: no cursor — the property
+  /// the Dart loop relies on to terminate — and, Issue #1560's shape, the anchor
   /// rides `commitToken` for Dart to commit only after the days are stored
   /// (`commitImport`). A page whose anchor cannot be serialized carries
   /// neither, so the position is simply not advanced.
@@ -1888,7 +1962,11 @@ enum HealthKitChannelHandler {
     newAnchor: HKQueryAnchor?,
     pageSize: Int,
     incremental: Bool,
-    ownBundleId: String?
+    ownBundleId: String?,
+    stage: ImportStage = .spotting,
+    flowAnchor: HKQueryAnchor? = nil,
+    spottingAnchor: HKQueryAnchor? = nil,
+    passHadSamples: Bool = false
   ) -> [String: Any] {
     var sampleMaps: [[String: Any]] = []
     for case let sample as HKCategorySample in samples {
@@ -1896,33 +1974,53 @@ enum HealthKitChannelHandler {
         sampleMaps.append(entry)
       }
     }
+    let currentPassHadSamples = passHadSamples || !sampleMaps.isEmpty
     var payload: [String: Any] = ["samples": sampleMaps]
     if incremental {
       payload["incremental"] = true
     }
     payload["deletedRecordIds"] = deletedObjects.map { $0.uuid.uuidString }
-    guard
-      let anchorPayload = encodeAnchorPayload(
-        newAnchor, incremental: incremental)
-    else { return payload }
+
+    let resolvedFlowAnchor = flowAnchor ?? (stage == .flow ? newAnchor : nil)
+    let resolvedSpottingAnchor = spottingAnchor ?? (stage == .spotting ? newAnchor : nil)
+
     if samples.count >= pageSize {
-      payload["nextCursor"] = anchorPayload
+      payload["nextCursor"] = encodeAnchorPayload(
+        stage: stage,
+        flowAnchor: resolvedFlowAnchor,
+        spottingAnchor: resolvedSpottingAnchor,
+        incremental: incremental,
+        passHadSamples: currentPassHadSamples)
+    } else if stage == .flow {
+      // Issue #1888: flow exhausted -> transition to spotting stage.
+      payload["nextCursor"] = encodeAnchorPayload(
+        stage: .spotting,
+        flowAnchor: resolvedFlowAnchor,
+        spottingAnchor: resolvedSpottingAnchor,
+        incremental: incremental,
+        passHadSamples: currentPassHadSamples)
     } else {
+      // Spotting exhausted -> pass is complete.
       // Issue #1650, #1905: an empty whole-history read (not incremental,
-      // no foreign samples) must not commit an anchor. When HealthKit read
-      // access is denied, HealthKit silently returns an empty result with a new
-      // anchor at the store's present position. HKDeletedObject carries no
-      // source filter, so lunarlog's own deleted writes are reported even when
+      // no foreign samples across the whole pass) must not commit an anchor.
+      // When HealthKit read access is denied, HealthKit silently returns an empty
+      // result with a new anchor at the store's present position. HKDeletedObject
+      // carries no source filter, so lunarlog's own deleted writes are reported even when
       // read access is off; counting deletions would treat an empty read as
       // non-empty and commit the anchor anyway. If committed, turning read access
       // on later would only read changes after that position, leaving all prior
       // history unimported forever. Omitting commitToken leaves the stored position
       // unset so subsequent passes continue reading whole history until access is
       // granted or real data arrives.
-      if !incremental && samples.isEmpty {
+      if !incremental && !currentPassHadSamples {
         // Do not advance/commit anchor on empty whole-history read.
       } else {
-        payload["commitToken"] = anchorPayload
+        payload["commitToken"] = encodeAnchorPayload(
+          stage: .spotting,
+          flowAnchor: resolvedFlowAnchor,
+          spottingAnchor: resolvedSpottingAnchor,
+          incremental: incremental,
+          passHadSamples: currentPassHadSamples)
       }
     }
     return payload
@@ -1982,10 +2080,30 @@ enum HealthKitChannelHandler {
     {
       return nil
     }
+    if sample.categoryType == intermenstrualBleedingType {
+      var entry: [String: Any] = [
+        "kind": "intermenstrualBleeding",
+        "recordId": sample.uuid.uuidString,
+        "startMs": Int64(sample.startDate.timeIntervalSince1970 * 1000.0),
+        "endMs": Int64(sample.endDate.timeIntervalSince1970 * 1000.0),
+      ]
+      if let tz = sample.metadata?[HKMetadataKeyTimeZone] as? String {
+        entry["tzName"] = tz
+      } else {
+        entry["zoneOffsetSeconds"] =
+          TimeZone.current.secondsFromGMT(for: sample.startDate)
+        entry["zoneOffsetInferred"] = true
+      }
+      if let external = sample.metadata?[HKMetadataKeyExternalUUID] as? String {
+        entry["externalUuid"] = external
+      }
+      return entry
+    }
     guard let flow = MenstrualFlowRawValue(rawValue: sample.value) else {
       return nil
     }
     var entry: [String: Any] = [
+      "kind": "menstrualFlow",
       "recordId": sample.uuid.uuidString,
       "flow": flow.wire,
       "startMs": Int64(sample.startDate.timeIntervalSince1970 * 1000.0),
@@ -2027,41 +2145,81 @@ enum HealthKitChannelHandler {
     return encodeCursorData(data)
   }
 
-  // MARK: - Issue #1610: the anchor + pass-mode payload
+  // MARK: - Issue #1610, #1888: the anchor + pass-mode payload
 
-  /// Serializes a page's anchor and whether its pass is an incremental one
-  /// into the opaque string Dart passes back as the next page's cursor, and
-  /// the same shape `commitImport` stores as the profile's position. The
-  /// cursor lives only inside one pass (Dart holds it in memory between
-  /// pages) and the stored payload only until the next commit, so there is
-  /// no legacy shape to keep reading.
+  /// Serializes a page's anchor state into the opaque string Dart passes back
+  /// as the next page's cursor, and the same shape `commitImport` stores as
+  /// the profile's position.
   static func encodeAnchorPayload(
-    _ anchor: HKQueryAnchor?, incremental: Bool
+    stage: ImportStage = .flow,
+    flowAnchor: HKQueryAnchor?,
+    spottingAnchor: HKQueryAnchor?,
+    incremental: Bool,
+    passHadSamples: Bool = false
   ) -> String? {
-    guard let anchorString = cursorString(for: anchor) else { return nil }
-    let json: [String: Any] = [
-      "anchor": anchorString,
+    let flowAnchorString = cursorString(for: flowAnchor)
+    let spottingAnchorString = cursorString(for: spottingAnchor)
+    if flowAnchorString == nil && spottingAnchorString == nil {
+      return nil
+    }
+    var json: [String: Any] = [
+      "stage": stage.rawValue,
       "incremental": incremental,
+      "passHadSamples": passHadSamples,
     ]
+    if let flowAnchorString {
+      json["flowAnchor"] = flowAnchorString
+      json["anchor"] = flowAnchorString
+    }
+    if let spottingAnchorString {
+      json["spottingAnchor"] = spottingAnchorString
+    }
     guard let data = try? JSONSerialization.data(withJSONObject: json) else {
       return nil
     }
     return encodeCursorData(data)
   }
 
-  /// The inverse of [encodeAnchorPayload]; nil when the payload is absent,
-  /// malformed, or its archived anchor is not one this build understands —
-  /// treated as "no position" everywhere it is consulted, never a crash.
+  /// Compatibility overload for single-anchor callers / tests.
+  static func encodeAnchorPayload(
+    _ anchor: HKQueryAnchor?, incremental: Bool
+  ) -> String? {
+    encodeAnchorPayload(
+      stage: .spotting,
+      flowAnchor: anchor,
+      spottingAnchor: anchor,
+      incremental: incremental,
+      passHadSamples: false)
+  }
+
+  /// Decodes an anchor payload; nil when absent, malformed, or carries no
+  /// valid anchor this build understands.
   static func decodeAnchorPayload(
     _ payload: String?
-  ) -> (anchor: HKQueryAnchor?, incremental: Bool)? {
+  ) -> (
+    stage: ImportStage,
+    incremental: Bool,
+    flowAnchor: HKQueryAnchor?,
+    spottingAnchor: HKQueryAnchor?,
+    passHadSamples: Bool
+  )? {
     guard let data = decodeCursorData(payload) else { return nil }
     guard
       let json = try? JSONSerialization.jsonObject(with: data)
-        as? [String: Any],
-      let anchor = decodeAnchor(json["anchor"] as? String)
+        as? [String: Any]
     else { return nil }
-    return (anchor, (json["incremental"] as? Bool) == true)
+    let stageString = json["stage"] as? String
+    let stage = stageString.flatMap(ImportStage.init) ?? .flow
+    let incremental = (json["incremental"] as? Bool) == true
+    let passHadSamples = (json["passHadSamples"] as? Bool) == true
+    let flowAnchorString = (json["flowAnchor"] as? String) ?? (json["anchor"] as? String)
+    let spottingAnchorString = json["spottingAnchor"] as? String
+    let flowAnchor = decodeAnchor(flowAnchorString)
+    let spottingAnchor = decodeAnchor(spottingAnchorString)
+    if flowAnchor == nil && spottingAnchor == nil {
+      return nil
+    }
+    return (stage, incremental, flowAnchor, spottingAnchor, passHadSamples)
   }
 
   /// Base64 without line wrapping — separated from the anchor archive so the
