@@ -2242,6 +2242,74 @@ void main() {
       expect(byDate[LocalDate(2026, 9, 12)]!.sourceId, dayKey(12));
     });
 
+    test('an imported flow record day inside the span is not downgraded by '
+        'a period record on a later changes page (Issue #1879)', () async {
+      await bind();
+      // On an earlier pass, a medium flow record was imported for Sep 11.
+      await dayEntries.save(
+        DayEntry(
+          id: 'day-11',
+          profileId: _profileId,
+          localDate: LocalDate(2026, 9, 11),
+          tz: 'UTC-04:00',
+          flow: FlowLevel.medium,
+          source: DayEntrySource.healthConnect,
+          sourceId: 'hc-flow-11@1000',
+          updatedAt: DateTime.utc(2026, 9, 11),
+        ),
+      );
+      dayEntries.saved.clear();
+
+      // On a later changes page, another app writes or changes a period record
+      // covering Sep 10-12, but the unchanged flow record is not on this page.
+      source.result = threeDayPeriod();
+      final summary = await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importNow();
+
+      // Sep 10 and 12 are written as period fills; Sep 11 keeps its imported
+      // medium flow record without downgrade or re-keying to the period day key.
+      expect(summary.daysWritten, 2);
+      expect(summary.daysKeptManual, 1);
+      final keptDay = dayEntries.live['2026-09-11']!;
+      expect(keptDay.flow, FlowLevel.medium);
+      expect(keptDay.sourceId, 'hc-flow-11@1000');
+      expect(
+        dayEntries.declinedRecords,
+        isEmpty,
+        reason: 'a suppressed period fill does not clutter declined records',
+      );
+    });
+
+    test('an imported light flow record inside the span keeps its real flow '
+        'sourceId and is not re-keyed to the period (Issue #1879)', () async {
+      await bind();
+      await dayEntries.save(
+        DayEntry(
+          id: 'day-11',
+          profileId: _profileId,
+          localDate: LocalDate(2026, 9, 11),
+          tz: 'UTC-04:00',
+          flow: FlowLevel.light,
+          source: DayEntrySource.healthConnect,
+          sourceId: 'hc-flow-11@1000',
+          updatedAt: DateTime.utc(2026, 9, 11),
+        ),
+      );
+      dayEntries.saved.clear();
+
+      source.result = threeDayPeriod();
+      final summary = await build(
+        importPlatform: HealthImportPlatform.healthConnect,
+      ).importNow();
+
+      expect(summary.daysWritten, 2);
+      expect(summary.daysUnchanged, 1);
+      final keptDay = dayEntries.live['2026-09-11']!;
+      expect(keptDay.flow, FlowLevel.light);
+      expect(keptDay.sourceId, 'hc-flow-11@1000');
+    });
+
     test(
       'a spotting record on a day inside the span coexists with the '
       'period day — they are different rows, nothing double counts',
