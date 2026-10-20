@@ -1780,6 +1780,26 @@ enum HealthKitChannelHandler {
     let flowAnchor: HKQueryAnchor?
     let spottingAnchor: HKQueryAnchor?
     let passHadSamples: Bool
+    let spottingHadSamples: Bool
+    let spottingStartedFromNil: Bool
+
+    init(
+      stage: ImportStage,
+      incremental: Bool,
+      flowAnchor: HKQueryAnchor?,
+      spottingAnchor: HKQueryAnchor?,
+      passHadSamples: Bool,
+      spottingHadSamples: Bool = false,
+      spottingStartedFromNil: Bool = false
+    ) {
+      self.stage = stage
+      self.incremental = incremental
+      self.flowAnchor = flowAnchor
+      self.spottingAnchor = spottingAnchor
+      self.passHadSamples = passHadSamples
+      self.spottingHadSamples = spottingHadSamples
+      self.spottingStartedFromNil = spottingStartedFromNil
+    }
 
     var anchor: HKQueryAnchor? {
       switch stage {
@@ -1875,7 +1895,9 @@ enum HealthKitChannelHandler {
       stage: startPage.stage,
       flowAnchor: startPage.stage == .flow ? page.newAnchor : startPage.flowAnchor,
       spottingAnchor: startPage.spottingAnchor,
-      passHadSamples: startPage.passHadSamples)
+      passHadSamples: startPage.passHadSamples,
+      spottingHadSamples: startPage.spottingHadSamples,
+      spottingStartedFromNil: startPage.spottingStartedFromNil)
   }
 
   /// Issue #1909: every flow sample the store holds for the days that
@@ -1958,7 +1980,9 @@ enum HealthKitChannelHandler {
         incremental: decoded.incremental,
         flowAnchor: decoded.flowAnchor,
         spottingAnchor: decoded.spottingAnchor,
-        passHadSamples: decoded.passHadSamples)
+        passHadSamples: decoded.passHadSamples,
+        spottingHadSamples: decoded.spottingHadSamples,
+        spottingStartedFromNil: decoded.spottingStartedFromNil)
     }
     if wholeHistory {
       // The whole-history read starts over and stays over until its last
@@ -1971,7 +1995,9 @@ enum HealthKitChannelHandler {
         incremental: false,
         flowAnchor: nil,
         spottingAnchor: nil,
-        passHadSamples: false)
+        passHadSamples: false,
+        spottingHadSamples: false,
+        spottingStartedFromNil: true)
     }
     guard let stored = storedImportAnchor(profileId) else {
       return StartingPage(
@@ -1979,7 +2005,9 @@ enum HealthKitChannelHandler {
         incremental: false,
         flowAnchor: nil,
         spottingAnchor: nil,
-        passHadSamples: false)
+        passHadSamples: false,
+        spottingHadSamples: false,
+        spottingStartedFromNil: true)
     }
     guard let decoded = decodeAnchorPayload(stored) else {
       // A position this build cannot read is no position: drop it so the
@@ -1990,14 +2018,18 @@ enum HealthKitChannelHandler {
         incremental: false,
         flowAnchor: nil,
         spottingAnchor: nil,
-        passHadSamples: false)
+        passHadSamples: false,
+        spottingHadSamples: false,
+        spottingStartedFromNil: true)
     }
     return StartingPage(
       stage: .flow,
       incremental: true,
       flowAnchor: decoded.flowAnchor,
       spottingAnchor: decoded.spottingAnchor,
-      passHadSamples: false)
+      passHadSamples: false,
+      spottingHadSamples: false,
+      spottingStartedFromNil: decoded.spottingAnchor == nil)
   }
 
   /// One page's wire payload from its raw query results — pure, so the
@@ -2038,7 +2070,9 @@ enum HealthKitChannelHandler {
     stage: ImportStage = .spotting,
     flowAnchor: HKQueryAnchor? = nil,
     spottingAnchor: HKQueryAnchor? = nil,
-    passHadSamples: Bool = false
+    passHadSamples: Bool = false,
+    spottingHadSamples: Bool = false,
+    spottingStartedFromNil: Bool = false
   ) -> [String: Any] {
     var sampleMaps: [[String: Any]] = []
     for case let sample as HKCategorySample in samples {
@@ -2047,6 +2081,8 @@ enum HealthKitChannelHandler {
       }
     }
     let currentPassHadSamples = passHadSamples || !sampleMaps.isEmpty
+    let effectiveSpottingStartedFromNil = spottingStartedFromNil || (stage == .spotting && spottingAnchor == nil)
+    let currentSpottingHadSamples = spottingHadSamples || (stage == .spotting && !sampleMaps.isEmpty)
     var payload: [String: Any] = ["samples": sampleMaps]
     if incremental {
       payload["incremental"] = true
@@ -2062,7 +2098,9 @@ enum HealthKitChannelHandler {
         flowAnchor: resolvedFlowAnchor,
         spottingAnchor: resolvedSpottingAnchor,
         incremental: incremental,
-        passHadSamples: currentPassHadSamples)
+        passHadSamples: currentPassHadSamples,
+        spottingHadSamples: currentSpottingHadSamples,
+        spottingStartedFromNil: effectiveSpottingStartedFromNil)
     } else if stage == .flow {
       // Issue #1888: flow exhausted -> transition to spotting stage.
       payload["nextCursor"] = encodeAnchorPayload(
@@ -2070,7 +2108,9 @@ enum HealthKitChannelHandler {
         flowAnchor: resolvedFlowAnchor,
         spottingAnchor: resolvedSpottingAnchor,
         incremental: incremental,
-        passHadSamples: currentPassHadSamples)
+        passHadSamples: currentPassHadSamples,
+        spottingHadSamples: false,
+        spottingStartedFromNil: resolvedSpottingAnchor == nil)
     } else {
       // Spotting exhausted -> pass is complete.
       // Issue #1650, #1905: an empty whole-history read (not incremental,
@@ -2087,12 +2127,12 @@ enum HealthKitChannelHandler {
       if !incremental && !currentPassHadSamples {
         // Do not advance/commit anchor on empty whole-history read.
       } else {
-        // Issue #1913: When the spotting stage started from a nil anchor and
-        // returned no foreign samples, omit spottingAnchor from the commit
-        // token and keep the flow anchor, so the next pass reads spotting from
+        // Issue #1913, #1919: When the spotting stage started from a nil anchor and
+        // returned no foreign samples across all its pages, omit spottingAnchor from
+        // the commit token and keep the flow anchor, so the next pass reads spotting from
         // the beginning again.
         let finalSpottingAnchor: HKQueryAnchor?
-        if stage == .spotting && flowAnchor != nil && spottingAnchor == nil && sampleMaps.isEmpty {
+        if stage == .spotting && flowAnchor != nil && effectiveSpottingStartedFromNil && !currentSpottingHadSamples {
           finalSpottingAnchor = nil
         } else {
           finalSpottingAnchor = resolvedSpottingAnchor
@@ -2237,7 +2277,9 @@ enum HealthKitChannelHandler {
     flowAnchor: HKQueryAnchor?,
     spottingAnchor: HKQueryAnchor?,
     incremental: Bool,
-    passHadSamples: Bool = false
+    passHadSamples: Bool = false,
+    spottingHadSamples: Bool = false,
+    spottingStartedFromNil: Bool = false
   ) -> String? {
     let flowAnchorString = cursorString(for: flowAnchor)
     let spottingAnchorString = cursorString(for: spottingAnchor)
@@ -2249,6 +2291,12 @@ enum HealthKitChannelHandler {
       "incremental": incremental,
       "passHadSamples": passHadSamples,
     ]
+    if spottingHadSamples {
+      json["spottingHadSamples"] = true
+    }
+    if spottingStartedFromNil {
+      json["spottingStartedFromNil"] = true
+    }
     if let flowAnchorString {
       json["flowAnchor"] = flowAnchorString
       json["anchor"] = flowAnchorString
@@ -2283,7 +2331,9 @@ enum HealthKitChannelHandler {
     incremental: Bool,
     flowAnchor: HKQueryAnchor?,
     spottingAnchor: HKQueryAnchor?,
-    passHadSamples: Bool
+    passHadSamples: Bool,
+    spottingHadSamples: Bool,
+    spottingStartedFromNil: Bool
   )? {
     guard let data = decodeCursorData(payload) else { return nil }
     guard
@@ -2294,14 +2344,16 @@ enum HealthKitChannelHandler {
     let stage = stageString.flatMap(ImportStage.init) ?? .flow
     let incremental = (json["incremental"] as? Bool) == true
     let passHadSamples = (json["passHadSamples"] as? Bool) == true
-    let flowAnchorString = (json["flowAnchor"] as? String) ?? (json["anchor"] as? String)
+    let spottingHadSamples = (json["spottingHadSamples"] as? Bool) == true
     let spottingAnchorString = json["spottingAnchor"] as? String
-    let flowAnchor = decodeAnchor(flowAnchorString)
     let spottingAnchor = decodeAnchor(spottingAnchorString)
+    let spottingStartedFromNil = (json["spottingStartedFromNil"] as? Bool) ?? (spottingAnchor == nil)
+    let flowAnchorString = (json["flowAnchor"] as? String) ?? (json["anchor"] as? String)
+    let flowAnchor = decodeAnchor(flowAnchorString)
     if flowAnchor == nil && spottingAnchor == nil {
       return nil
     }
-    return (stage, incremental, flowAnchor, spottingAnchor, passHadSamples)
+    return (stage, incremental, flowAnchor, spottingAnchor, passHadSamples, spottingHadSamples, spottingStartedFromNil)
   }
 
   /// Base64 without line wrapping — separated from the anchor archive so the
