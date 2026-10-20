@@ -256,10 +256,10 @@ email capture (the site collects nothing).
 - claim: Clue imports are stamped as imported from Clue, so imported history stays distinguishable.
   page: /import
   ships: lib/data/import/clue_importer.dart (source 'clue_import'); PRIVACY.md (§2.A import provenance)
-- claim: Apple Health (iPhone) imports read menstrual-flow history, and Health Connect (Android) imports read flow and spotting history — the whole history the store holds, a page at a time.
+- claim: Both Apple Health (iPhone) and Health Connect (Android) imports read flow and spotting history — the whole history the store holds, a page at a time.
   page: /import
-  ships: lib/data/health/health_import_service.dart (whole-history pages, issue #992); android/app/src/main/AndroidManifest.xml (READ_INTERMENSTRUAL_BLEEDING); PRIVACY.md (§4 health paragraph)
-  issue: #1180
+  ships: lib/data/health/health_import_service.dart (whole-history pages, issues #992, #1908); android/app/src/main/AndroidManifest.xml (READ_INTERMENSTRUAL_BLEEDING); ios/Runner/AppDelegate.swift (intermenstrualBleedingType); PRIVACY.md (§4 health paragraph)
+  issue: #1908
 - claim: A value you logged by hand is never overwritten by an import.
   page: /import
   ships: lib/data/health/health_import_service.dart (additive rule); lib/data/import/clue_importer.dart (same rule); PRIVACY.md (§4)

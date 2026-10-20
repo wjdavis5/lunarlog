@@ -107,8 +107,9 @@
 		flow and spotting records, written into the OS HealthKit store on
 		this device), and #217 the user-initiated menstrual-flow import
 		(#781's owner decision reversing the earlier write-only posture).
-		The import reads menstrual flow over the whole available
-		history (paged, issue #992), and (issue #799) Apple's four
+		The import reads menstrual flow and intermenstrual bleeding over
+		the whole available history (paged, issues #992, #1908), and (issue #799)
+		Apple's four
 		computed cycle-deviation types as a read-only insight over a
 		bounded six-month window; both only on an explicit Settings
 		action and only for the bound profile. Samples this app itself
