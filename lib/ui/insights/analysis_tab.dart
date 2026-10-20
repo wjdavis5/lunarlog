@@ -900,6 +900,9 @@ class _AnalysisTabState extends State<AnalysisTab>
     final range =
         '${_formatDate(fertile.windowStart)} – ${_formatDate(fertile.windowEnd)}';
     if (!copy.showsTierCaption) return range;
+    // Issue #1520: omit top tier ("High confidence") from the fertile window
+    // row to avoid reading as contraceptive reliability above the disclaimer.
+    if (fertile.tier == CycleConfidence.high) return range;
     return '${tierLabel(l10n, fertile.tier)} ($range)';
   }
 
@@ -908,8 +911,8 @@ class _AnalysisTabState extends State<AnalysisTab>
   String _formatDate(LocalDate date) =>
       dates.formatLocalDateMonthDayYear(date);
 
-  // Issue #143 review / Issue #836: the fertile-window row's value ("High confidence
-  // (August 16, 2026 – August 22, 2026)") and large Dynamic Type scales cause
+  // Issue #143 review / Issue #836 / Issue #1520: the fertile-window row's value
+  // and large Dynamic Type scales cause
   // horizontal overflow or mid-word breaks if forced into a side-by-side Row.
   // When text scale is large (> 1.2) or constraints are narrow (< 320), the
   // row stacks vertically so label and value have full width to wrap naturally.

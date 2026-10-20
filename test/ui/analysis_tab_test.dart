@@ -690,7 +690,8 @@ void main() {
       // same inputs.
       expect(
         textAt(tester, 'analysis-fertile-window'),
-        'High confidence (September 15, 2026 – September 21, 2026)',
+        // Issue #1520: high confidence tier is omitted on the fertile window row
+        'September 15, 2026 – September 21, 2026',
       );
       expect(textAt(tester, 'analysis-fertile-disclaimer'), kFertileDisclaimer);
 
@@ -717,8 +718,25 @@ void main() {
       );
       expect(
         textAt(tester, 'analysis-fertile-window'),
-        'High confidence (October 15, 2026 – October 21, 2026)',
+        'October 15, 2026 – October 21, 2026',
       );
+
+      await h.dispose();
+    });
+
+    testWidgets(
+        'issue #1520: uncertain tier shows the tier-name prefix on the fertile '
+        'window row, while high confidence shows dates alone', (tester) async {
+      final h = Harness(tester);
+      await h.pump(starts: kRegularLongOpenStarts, today: kRegularLongOpenToday);
+
+      expect(
+        find.byKey(const ValueKey('analysis-fertile-window')),
+        findsOneWidget,
+      );
+      final text = textAt(tester, 'analysis-fertile-window');
+      expect(text, startsWith('Learning ('));
+      expect(text, contains(' – '));
 
       await h.dispose();
     });
