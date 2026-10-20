@@ -82,6 +82,8 @@ typedef _Access = ({
   HealthPermissionStatus? read,
   Set<String>? grantedWriteTypes,
   Set<String>? neverAskedWriteTypes,
+  bool backgroundReadOffered,
+  bool backgroundReadGranted,
 });
 
 /// The human name of [platform]'s health store for titles and headings.
@@ -283,6 +285,20 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// first ask still owns (`notAsked`) from the ones it does not.
   HealthPermissionStatus? _writeStatus;
 
+  /// Whether this phone's Health Connect has the background-read switch at
+  /// all (Issue #1880).
+  bool _backgroundReadOffered = false;
+
+  /// Whether "Access data in the background" is granted (Issue #1880).
+  bool _backgroundReadGranted = false;
+
+  /// The request for background data was raised and the switch is still
+  /// off (Issue #1880): declined, or dropped after two declines.
+  bool _backgroundReadStillOff = false;
+
+  /// The store's prompt for background data is up.
+  bool _askingForBackgroundRead = false;
+
   /// Whether this visit has already raised the sheet for the never-asked
   /// types (Issue #1590). Once per visit: the per-type answers are read
   /// again afterwards, and a person who answers sees no second sheet;
@@ -324,6 +340,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
     if (state != AppLifecycleState.resumed) return;
     unawaited(_refreshPermissionStatus());
     unawaited(_recheckPastData());
+    unawaited(_recheckBackgroundRead());
   }
 
   /// Issue #1573: the result says "Access past data" is still off and
@@ -359,6 +376,21 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
     }
   }
 
+  /// Issue #1880: re-checks whether Health Connect background access was
+  /// granted in settings while the app was backgrounded.
+  Future<void> _recheckBackgroundRead() async {
+    final probe = widget.permissionProbe;
+    if (probe == null || !_isHealthConnect || !_backgroundReadStillOff) {
+      return;
+    }
+    final granted = await _probeBackgroundReadGranted(probe);
+    if (!mounted || !granted || !_backgroundReadStillOff) return;
+    setState(() {
+      _backgroundReadGranted = true;
+      _backgroundReadStillOff = false;
+    });
+  }
+
   Future<void> _refreshPermissionStatus() async {
     if (_loading) return;
     final access = await _readAccess();
@@ -370,6 +402,8 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
       access.state == _accessState &&
       access.write == _writeStatus &&
       access.read == _readStatus &&
+      access.backgroundReadOffered == _backgroundReadOffered &&
+      access.backgroundReadGranted == _backgroundReadGranted &&
       _sameSet(access.grantedWriteTypes, _grantedWriteTypes) &&
       _sameSet(access.neverAskedWriteTypes, _neverAskedWriteTypes);
 
@@ -386,6 +420,8 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
     _readStatus = access.read;
     _grantedWriteTypes = access.grantedWriteTypes;
     _neverAskedWriteTypes = access.neverAskedWriteTypes;
+    _backgroundReadOffered = access.backgroundReadOffered;
+    _backgroundReadGranted = access.backgroundReadGranted;
   }
 
   /// Loads the bound profile id, every non-archived profile, and each
@@ -462,6 +498,8 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
         read: null,
         grantedWriteTypes: null,
         neverAskedWriteTypes: null,
+        backgroundReadOffered: false,
+        backgroundReadGranted: false,
       );
     }
     try {
@@ -477,12 +515,18 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
           write == HealthPermissionStatus.denied) {
         neverAsked = await _neverAskedOrNull(probe);
       }
+      final bgOffered = await _probeBackgroundReadSwitchOffered(probe);
+      final bgGranted = bgOffered
+          ? await _probeBackgroundReadGranted(probe)
+          : false;
       return (
         state: state,
         write: write,
         read: read,
         grantedWriteTypes: granted,
         neverAskedWriteTypes: neverAsked,
+        backgroundReadOffered: bgOffered,
+        backgroundReadGranted: bgGranted,
       );
     } catch (_) {
       return (
@@ -491,6 +535,8 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
         read: null,
         grantedWriteTypes: null,
         neverAskedWriteTypes: null,
+        backgroundReadOffered: false,
+        backgroundReadGranted: false,
       );
     }
   }
@@ -504,6 +550,89 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
     } catch (_) {
       return null;
     }
+  }
+
+  Future<bool> _probeBackgroundReadSwitchOffered(HealthPermissionProbe probe) async {
+    try {
+      return await probe.backgroundReadSwitchOffered();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> _probeBackgroundReadGranted(HealthPermissionProbe probe) async {
+    try {
+      return await probe.backgroundReadGranted();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Issue #1880: raises Health Connect's own prompt for background read.
+  Future<void> _allowBackgroundRead() async {
+    final probe = widget.permissionProbe;
+    if (probe == null || _askingForBackgroundRead) return;
+    final facts = _boundGuardFacts();
+    if (facts == null) return;
+    setState(() => _askingForBackgroundRead = true);
+    var granted = false;
+    try {
+      final res = await probe.requestBackgroundReadAccess(facts);
+      if (res is HealthPlatformAllowed) {
+        granted = await probe.backgroundReadGranted();
+      }
+    } catch (_) {
+      // Left as not granted: settings route is offered instead.
+    }
+    if (!mounted) return;
+    setState(() {
+      _askingForBackgroundRead = false;
+      _backgroundReadGranted = granted;
+      _backgroundReadStillOff = !granted;
+    });
+  }
+
+  /// Issue #1880: shows the background reading prompt when reading is allowed
+  /// but "Access data in the background" is off.
+  List<Widget> _backgroundReadHint(AppLocalizations l10n) {
+    if (!_isHealthConnect ||
+        _readStatus != HealthPermissionStatus.granted ||
+        !_backgroundReadOffered ||
+        _backgroundReadGranted) {
+      return const [];
+    }
+    return [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: Text(
+          _backgroundReadStillOff
+              ? l10n.healthSyncImportBackgroundDataStillOff
+              : l10n.healthSyncImportBackgroundDataOff,
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: _backgroundReadButton(l10n),
+        ),
+      ),
+    ];
+  }
+
+  Widget _backgroundReadButton(AppLocalizations l10n) {
+    if (_backgroundReadStillOff) {
+      return TextButton(
+        key: const ValueKey('health-sync-background-open-settings'),
+        onPressed: () => widget.permissionProbe?.openPermissionSettings(),
+        child: Text(l10n.healthSyncPermissionOpenSettings),
+      );
+    }
+    return TextButton(
+      key: const ValueKey('health-sync-allow-background-read'),
+      onPressed: _askingForBackgroundRead ? null : _allowBackgroundRead,
+      child: Text(l10n.healthSyncImportAllowBackgroundData),
+    );
   }
 
   /// The guard facts for the currently bound profile, or null when no bound
@@ -739,6 +868,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
             title: Text(l10n.healthSyncPermissionOpenSettings),
             onTap: () => widget.permissionProbe?.openPermissionSettings(),
           ),
+        ..._backgroundReadHint(l10n),
       ],
     );
   }
@@ -883,6 +1013,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
     _importSummary = null;
     _importFailed = false;
     _pastDataStillOff = false;
+    _backgroundReadStillOff = false;
     // The offer belongs to the binding too; the load that follows a
     // change reads it again.
     _storeDeleted = const HealthStoreDeletedOffer();

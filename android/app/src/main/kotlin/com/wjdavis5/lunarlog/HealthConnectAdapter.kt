@@ -389,6 +389,26 @@ class HealthConnectAdapter(context: Context) {
     // ran for a person who allowed reading and not writing.
     private val statusPermissions = writePermissions
 
+    // Whether this phone's Health Connect has the background-read switch at
+    // all (Issue #1880). Where it does not, the permission can never be
+    // granted, so the Health sync screen must not offer it, and no request
+    // may carry a permission string this Health Connect does not know.
+    private fun backgroundReadOffered(): Boolean = backgroundReadOfferedOrNull() == true
+
+    // The same question for the screen, which has a third answer: null
+    // when the probe failed. "Cannot tell" must not be shown as "this
+    // phone has no such switch"; for a request sheet it still counts as
+    // not offered ([backgroundReadOffered]).
+    private fun backgroundReadOfferedOrNull(): Boolean? = try {
+        isAvailable() &&
+            HealthConnectClient.getOrCreate(contextApp).features
+                .getFeatureStatus(
+                    HealthConnectFeatures.FEATURE_READ_HEALTH_DATA_IN_BACKGROUND,
+                ) == HealthConnectFeatures.FEATURE_STATUS_AVAILABLE
+    } catch (_: Exception) {
+        null
+    }
+
     // The background-read permission, only where it can actually be
     // granted. connect-client 1.1.0 has no `isFeatureAvailable` — the
     // availability check is the feature status (getFeatureStatus against
@@ -397,20 +417,12 @@ class HealthConnectAdapter(context: Context) {
     // Connect or any probe failure answers empty: the failure mode is
     // deliberately fail-to-not-request, because asking for an
     // unrequestable permission string would poison the whole sheet.
-    private fun backgroundReadPermissions(): Set<String> = try {
-        val offered = isAvailable() &&
-            HealthConnectClient.getOrCreate(contextApp).features
-                .getFeatureStatus(
-                    HealthConnectFeatures.FEATURE_READ_HEALTH_DATA_IN_BACKGROUND,
-                ) == HealthConnectFeatures.FEATURE_STATUS_AVAILABLE
-        if (offered) {
+    private fun backgroundReadPermissions(): Set<String> =
+        if (backgroundReadOffered()) {
             setOf(HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND)
         } else {
             emptySet()
         }
-    } catch (_: Exception) {
-        emptySet()
-    }
 
     // Whether this phone's Health Connect has the "Access past data"
     // switch at all (Issue #1573). Where it does not, the permission can
@@ -573,7 +585,12 @@ class HealthConnectAdapter(context: Context) {
                 launchPermissionRequest(
                     result,
                     askedMarker = PERMISSION_REQUESTED_KEY,
-                    permissions = allPermissions,
+                    permissions = HealthPermissionState.writeRequestPermissions(
+                        all = allPermissions,
+                        pastData = pastDataPermissions(),
+                        backgroundRead = backgroundReadPermissions(),
+                        launchedBefore = permissionEverRequested(),
+                    ),
                 )
             }
 
@@ -647,6 +664,7 @@ class HealthConnectAdapter(context: Context) {
                         permissions = HealthPermissionState.importRequestPermissions(
                             reads = readPermissions,
                             pastData = pastDataPermissions(),
+                            backgroundRead = backgroundReadPermissions(),
                             launchedBefore = permissionEverRequested(),
                         ),
                     )
@@ -700,6 +718,62 @@ class HealthConnectAdapter(context: Context) {
                 // "Access past data" switch at all. Only looks: no
                 // request, no marker. Null when it cannot tell.
                 result.success(pastDataOfferedOrNull())
+            }
+
+            "requestBackgroundReadAccess" -> {
+                // Issue #1880: Health Connect's own prompt for the one
+                // permission that lets background imports run
+                // ("Access data in the background"), raised only by a tap on
+                // the Health sync screen.
+                //
+                // It carries no write and neither record read, so neither
+                // asked-marker is set (#1478, #1515): what this sheet was
+                // answered says nothing about either of them. Health
+                // Connect drops a request, showing nothing, once a
+                // permission in it has been declined twice; the caller
+                // reads the granted set afterwards and does not trust the
+                // answer given here.
+                if (!requestGuardAllows(call.method, args, result)) return
+                val client = healthConnectClient()
+                if (client == null || !backgroundReadOffered()) {
+                    result.success("unavailable")
+                    return
+                }
+                CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
+                    val granted = try {
+                        client.permissionController.getGrantedPermissions()
+                    } catch (e: Exception) {
+                        emptySet()
+                    }
+                    if (!HealthPermissionState.backgroundReadMayAsk(granted, importReadPermissions)) {
+                        result.success("permissionDenied")
+                        return@launch
+                    }
+                    launchPermissionRequest(
+                        result,
+                        askedMarker = null,
+                        permissions = backgroundReadPermissions(),
+                    )
+                }
+            }
+
+            "backgroundReadSwitchOffered" -> {
+                // Issue #1880: whether this Health Connect has the
+                // "Access data in the background" switch at all. Only looks: no
+                // request, no marker. Null when it cannot tell.
+                result.success(backgroundReadOfferedOrNull())
+            }
+
+            "importBackgroundReadGranted" -> {
+                // Issue #1880: whether "Access data in the background" is granted.
+                val client = healthConnectClient()
+                if (client == null) {
+                    result.success(false)
+                    return
+                }
+                CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
+                    result.success(backgroundReadGranted(client))
+                }
             }
 
             "importPermissionStatus" -> {
@@ -2049,6 +2123,17 @@ class HealthConnectAdapter(context: Context) {
             false
         }
 
+    // Issue #1880: whether "Access data in the background"
+    // (READ_HEALTH_DATA_IN_BACKGROUND) is granted. Only looks: no request,
+    // no marker. A Health Connect that will not answer is a no.
+    private suspend fun backgroundReadGranted(client: HealthConnectClient): Boolean =
+        try {
+            client.permissionController.getGrantedPermissions()
+                .contains(HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND)
+        } catch (e: Exception) {
+            false
+        }
+
     // Issue #1549, at the start of a pass. A whole-range read made while
     // "Access past data" was off never saw the older data, and the
     // change token it minted means every later pass asks only for what
@@ -2533,23 +2618,58 @@ internal object HealthPermissionState {
         granted.containsAll(importReads)
 
     /**
-     * What the import's own request asks for (Issue #1573). Everything in
-     * `reads` when this install has raised neither of its two sheets
-     * before (`launchedBefore` false). After that, `reads` without "Access
-     * past data" (`pastData`): both sheets carry it, so it has by then
-     * been offered, and the way to it is the screen's button, which asks
-     * for it alone.
+     * Whether the Health sync screen's button may raise the request for
+     * "Access data in the background" alone (Issue #1880): only for
+     * someone the import can already read for, that is with every record
+     * read in `importReads` granted.
+     *
+     * The check is made here too so that the rule does not rest on the
+     * screen. With no record read granted and neither request ever launched,
+     * a grant on this sheet would be the first permission the app holds, and
+     * [remembersWritesAsked] would take it for proof that the write sheet
+     * had been shown.
+     */
+    fun backgroundReadMayAsk(granted: Set<String>, importReads: Set<String>): Boolean =
+        granted.containsAll(importReads)
+
+    /**
+     * What the write path's request asks for (Issue #1880). Everything in
+     * `all` when this install has raised neither of its two sheets before
+     * (`launchedBefore` false). After that, `all` without "Access past data"
+     * (`pastData`) and background read (`backgroundRead`): both sheets carry
+     * them initially, so they have by then been offered, and each has its
+     * own dedicated request path.
      *
      * Health Connect drops a whole request, unseen, once any permission in
-     * it has been declined twice. Left on this sheet, a past-data
-     * permission declined once here and once from the button would stop the
-     * import ever asking for a record read again.
+     * it has been declined twice. Left on this sheet, an extra declined twice
+     * on another sheet would stop the write path ever asking for write
+     * permissions.
+     */
+    fun writeRequestPermissions(
+        all: Set<String>,
+        pastData: Set<String>,
+        backgroundRead: Set<String> = emptySet(),
+        launchedBefore: Boolean,
+    ): Set<String> = if (launchedBefore) all - pastData - backgroundRead else all
+
+    /**
+     * What the import's own request asks for (Issues #1573, #1880). Everything
+     * in `reads` when this install has raised neither of its two sheets
+     * before (`launchedBefore` false). After that, `reads` without "Access
+     * past data" (`pastData`) and background read (`backgroundRead`): both
+     * sheets carry them, so they have by then been offered, and each has its
+     * own dedicated request path.
+     *
+     * Health Connect drops a whole request, unseen, once any permission in
+     * it has been declined twice. Left on this sheet, an extra permission
+     * declined twice would stop the import ever asking for a record read again.
      */
     fun importRequestPermissions(
         reads: Set<String>,
         pastData: Set<String>,
+        backgroundRead: Set<String> = emptySet(),
         launchedBefore: Boolean,
-    ): Set<String> = if (launchedBefore) reads - pastData else reads
+    ): Set<String> = if (launchedBefore) reads - pastData - backgroundRead else reads
 }
 
 /**

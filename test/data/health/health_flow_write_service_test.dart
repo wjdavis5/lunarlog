@@ -265,6 +265,26 @@ class _FakePlatform implements HealthPlatformStore {
     return true;
   }
 
+  @override
+  Future<bool> backgroundReadSwitchOffered() async {
+    readAccessDisclosedReads++;
+    return true;
+  }
+
+  @override
+  Future<bool> backgroundReadGranted() async {
+    readAccessDisclosedReads++;
+    return true;
+  }
+
+  @override
+  Future<HealthPlatformResult> requestBackgroundReadAccess(
+    HealthGuardFacts facts,
+  ) async {
+    readAccessDisclosedReads++;
+    return const HealthPlatformAllowed();
+  }
+
   /// Issue #1515: the import's own request. The write pass has its own
   /// ([requestWriteAuthorization]); counted so a test can prove it never
   /// raises this one instead.

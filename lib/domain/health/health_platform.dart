@@ -335,6 +335,24 @@ abstract interface class HealthPermissionProbe {
   /// limit (HealthKit) answers true.
   Future<bool> importReachesPastData();
 
+  /// Whether the phone's health store has a switch for background reading
+  /// at all (Issue #1880). Android only: HealthKit has no such switch and
+  /// answers false.
+  Future<bool> backgroundReadSwitchOffered();
+
+  /// Whether background reading (READ_HEALTH_DATA_IN_BACKGROUND) is granted
+  /// (Issue #1880). Android only: HealthKit has no such permission and
+  /// answers false.
+  Future<bool> backgroundReadGranted();
+
+  /// Raises Health Connect's own prompt for background reading and nothing
+  /// else (Issue #1880), from a tap on the Health sync screen. Guarded
+  /// like every other health-API touch. Android only: HealthKit has no such
+  /// permission and answers unavailable.
+  Future<HealthPlatformResult> requestBackgroundReadAccess(
+    HealthGuardFacts facts,
+  );
+
   /// Opens this platform's settings screen where the operator can change
   /// the health permission: the iOS Settings app for this app, or Health
   /// Connect's permission activity on Android. Best effort.

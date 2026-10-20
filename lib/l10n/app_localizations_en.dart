@@ -5421,6 +5421,18 @@ class AppLocalizationsEn extends AppLocalizations {
       'Health Connect hides older data from lunarlog unless \"Access past data\" is on for it.';
 
   @override
+  String get healthSyncImportAllowBackgroundData =>
+      'Allow access in the background';
+
+  @override
+  String get healthSyncImportBackgroundDataStillOff =>
+      '\"Access data in the background\" is still off. You can turn it on for lunarlog in Health Connect.';
+
+  @override
+  String get healthSyncImportBackgroundDataOff =>
+      'Health Connect keeps the import current in the background only when \"Access data in the background\" is on for lunarlog.';
+
+  @override
   String healthSyncImportNothingSinceLast(String source) {
     return 'Nothing new to import from $source since the last import.';
   }

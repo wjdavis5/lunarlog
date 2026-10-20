@@ -669,6 +669,51 @@ class MethodChannelHealthPlatform
     if (!readAccessDisclosed) return const HealthPlatformResult.unavailable();
     return _invokeGuarded(HealthChannelMethods.requestPastDataAccess, facts);
   }
+
+  /// Issue #1880: whether this phone's Health Connect has the background-read
+  /// switch. A store that does not disclose read access has no such
+  /// switch, so nothing is sent and the answer is false.
+  /// A probe that fails is "cannot tell", which is true here: the screen
+  /// then names the switch and offers the way to it.
+  @override
+  Future<bool> backgroundReadSwitchOffered() async {
+    if (!readAccessDisclosed) return false;
+    try {
+      final raw = await channel
+          .invokeMethod<Object?>(HealthChannelMethods.backgroundReadSwitchOffered);
+      return raw != false;
+    } on PlatformException {
+      return true;
+    } on MissingPluginException {
+      return true;
+    }
+  }
+
+  /// Issue #1880: whether Health Connect's background-read permission is
+  /// granted. HealthKit has no such permission and answers false.
+  @override
+  Future<bool> backgroundReadGranted() async {
+    if (!readAccessDisclosed) return false;
+    try {
+      final raw = await channel
+          .invokeMethod<Object?>(HealthChannelMethods.importBackgroundReadGranted);
+      return raw == true;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  /// Issue #1880: Health Connect's prompt for background read alone,
+  /// guarded like every other health-API touch. Never sent to Swift.
+  @override
+  Future<HealthPlatformResult> requestBackgroundReadAccess(
+    HealthGuardFacts facts,
+  ) async {
+    if (!readAccessDisclosed) return const HealthPlatformResult.unavailable();
+    return _invokeGuarded(HealthChannelMethods.requestBackgroundReadAccess, facts);
+  }
 }
 
 /// The default [HealthPlatformStore] for platforms with no native half
@@ -825,6 +870,18 @@ class UnsupportedHealthPlatform
 
   @override
   Future<HealthPlatformResult> requestPastDataAccess(
+    HealthGuardFacts facts,
+  ) async =>
+      const HealthPlatformResult.unavailable();
+
+  @override
+  Future<bool> backgroundReadSwitchOffered() async => false;
+
+  @override
+  Future<bool> backgroundReadGranted() async => false;
+
+  @override
+  Future<HealthPlatformResult> requestBackgroundReadAccess(
     HealthGuardFacts facts,
   ) async =>
       const HealthPlatformResult.unavailable();

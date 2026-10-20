@@ -8518,6 +8518,24 @@ abstract class AppLocalizations {
   /// **'Health Connect hides older data from lunarlog unless \"Access past data\" is on for it.'**
   String get healthSyncImportOlderDataHidden;
 
+  /// Issue #1880: button on the Health sync screen when reading is allowed but Health Connect's 'Access data in the background' permission is off. Tapping it raises Health Connect's own prompt for that one permission.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow access in the background'**
+  String get healthSyncImportAllowBackgroundData;
+
+  /// Issue #1880: shown after 'Allow access in the background' was tapped and the switch is still off, either because she declined or because Health Connect dropped the request without showing it. Shown with an Open Settings button.
+  ///
+  /// In en, this message translates to:
+  /// **'\"Access data in the background\" is still off. You can turn it on for lunarlog in Health Connect.'**
+  String get healthSyncImportBackgroundDataStillOff;
+
+  /// Issue #1880: a line on the Health sync screen under permission status when reading is allowed but Health Connect's 'Access data in the background' permission is off.
+  ///
+  /// In en, this message translates to:
+  /// **'Health Connect keeps the import current in the background only when \"Access data in the background\" is on for lunarlog.'**
+  String get healthSyncImportBackgroundDataOff;
+
   /// Issue #1523: the result of a repeat import that asked the health store only for what changed since the previous import and got nothing back. Says nothing about access or about whether anything was ever tracked, since an earlier import already ran. {source} is the store's mid-sentence name ('Health Connect', 'the Health app').
   ///
   /// In en, this message translates to:

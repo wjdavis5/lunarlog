@@ -1396,6 +1396,43 @@ void main() {
           ['requestPastDataAccess', 'pastDataSwitchOffered'],
         );
       });
+
+      test('Issue #1880: backgroundReadSwitchOffered, backgroundReadGranted, requestBackgroundReadAccess', () async {
+        // Undisclosed platform (iOS / unsupported) sends nothing
+        final undisclosed = makeUndisclosed();
+        expect(await undisclosed.backgroundReadSwitchOffered(), isFalse);
+        expect(await undisclosed.backgroundReadGranted(), isFalse);
+        expect(
+          await undisclosed.requestBackgroundReadAccess(_facts()),
+          isA<HealthPlatformUnavailable>(),
+        );
+        expect(calls, isEmpty);
+
+        // Disclosed platform (Android)
+        nextResult = true;
+        expect(await makePlatform().backgroundReadSwitchOffered(), isTrue);
+        expect(calls.last.method, 'backgroundReadSwitchOffered');
+
+        nextResult = false;
+        expect(await makePlatform().backgroundReadSwitchOffered(), isFalse);
+
+        nextResult = true;
+        expect(await makePlatform().backgroundReadGranted(), isTrue);
+        expect(calls.last.method, 'importBackgroundReadGranted');
+
+        nextResult = false;
+        expect(await makePlatform().backgroundReadGranted(), isFalse);
+
+        nextResult = 'allowed';
+        final authRes = await makePlatform().requestBackgroundReadAccess(_facts());
+        expect(authRes, isA<HealthPlatformAllowed>());
+        expect(calls.last.method, 'requestBackgroundReadAccess');
+
+        // Error handling
+        nextError = PlatformException(code: 'anything');
+        expect(await makePlatform().backgroundReadSwitchOffered(), isTrue); // cannot tell is true
+        expect(await makePlatform().backgroundReadGranted(), isFalse);
+      });
     });
 
     test('the platform fact is readable through the probe the screen holds',

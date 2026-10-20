@@ -33,6 +33,9 @@
 /// | `commitImport` | guard + `commitToken` | result string |
 /// | `pastDataSwitchOffered` (Android only) | none | `bool` |
 /// | `requestPastDataAccess` (Android only) | guard args | result string |
+/// | `backgroundReadSwitchOffered` (Android only) | none | `bool` |
+/// | `requestBackgroundReadAccess` (Android only) | guard args | result string |
+/// | `importBackgroundReadGranted` (Android only) | none | `bool` |
 /// | `readCycleDeviations` (iOS only) | guard + `startMs` + `endMs` + `kinds` (list of wire names) | a `List` of deviation maps, or a result string |
 ///
 /// *Page result* (`readMenstrualFlowPage`, Issue #992): a `Map` with
@@ -237,6 +240,21 @@ abstract final class HealthChannelMethods {
   /// else (Issue #1573), raised by a tap on the Health sync screen.
   /// **Android only:** HealthKit has no such limit.
   static const requestPastDataAccess = 'requestPastDataAccess';
+
+  /// Whether this phone's Health Connect has the "Access data in the background"
+  /// switch at all (Issue #1880): a `bool`. **Android only**, and it only
+  /// looks.
+  static const backgroundReadSwitchOffered = 'backgroundReadSwitchOffered';
+
+  /// Health Connect's own prompt for "Access data in the background" and
+  /// nothing else (Issue #1880), raised by a tap on the Health sync screen.
+  /// **Android only:** HealthKit has no such limit.
+  static const requestBackgroundReadAccess = 'requestBackgroundReadAccess';
+
+  /// Whether Health Connect's "Access data in the background" permission is
+  /// granted (Issue #1880): a `bool`. **Android only:** HealthKit has no
+  /// such limit, and this name is never sent to Swift.
+  static const importBackgroundReadGranted = 'importBackgroundReadGranted';
 
   /// The computed cycle-deviation read (Issue #799). Its success result is
   /// a `List` of deviation maps rather than a result string — see
