@@ -282,9 +282,10 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(payload["deletedRecordIds"] as? [String], [])
   }
 
-  /// Issue #1650: an empty whole-history page must not carry a commitToken even
+  /// Issue #1650, #1905: an empty whole-history page must not carry a commitToken even
   /// when an anchor is returned. If read access was off, HealthKit silently returns
-  /// empty with an anchor; committing it would leave past history unimported once
+  /// empty with an anchor (or with only lunarlog's own deleted writes, which cannot
+  /// be source-filtered); committing it would leave past history unimported once
   /// access is enabled.
   func testPagePayloadEmptyWholeHistoryWithAnchorEmitsNoCommitToken() {
     let anchor = HKQueryAnchor(fromValue: 42)
@@ -297,7 +298,7 @@ class RunnerTests: XCTestCase {
       ownBundleId: nil)
     XCTAssertEqual((payload["samples"] as? [[String: Any]])?.count, 0)
     XCTAssertNil(payload["nextCursor"])
-    XCTAssertNil(payload["commitToken"], "empty whole history read must not commit anchor (#1650)")
+    XCTAssertNil(payload["commitToken"], "empty whole history read must not commit anchor (#1650, #1905)")
   }
 
   /// In contrast, an empty incremental page DOES carry commitToken to advance

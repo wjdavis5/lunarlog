@@ -3192,6 +3192,25 @@ void main() {
     );
 
     test(
+      'issue #1905: a whole-history pass with deleted records but no samples '
+      'does not call commitImport',
+      () async {
+        await bind();
+        source.result = const HealthReadResult.samples(
+          [],
+          deletedRecordIds: ['lunarlog-deleted-sample-uuid'],
+          commitToken: 'anchor-token-empty-with-deletions',
+          incremental: false,
+        );
+
+        final summary = await build().importNow();
+
+        expect(summary.samplesRead, 0);
+        expect(source.commitCalls, 0);
+      },
+    );
+
+    test(
       'an empty incremental pass calls commitImport to advance position',
       () async {
         await bind();

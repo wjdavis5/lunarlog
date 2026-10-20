@@ -1908,15 +1908,18 @@ enum HealthKitChannelHandler {
     if samples.count >= pageSize {
       payload["nextCursor"] = anchorPayload
     } else {
-      // Issue #1650: an empty whole-history read (not incremental, no samples,
-      // and no deleted objects) must not commit an anchor. When HealthKit read
+      // Issue #1650, #1905: an empty whole-history read (not incremental,
+      // no foreign samples) must not commit an anchor. When HealthKit read
       // access is denied, HealthKit silently returns an empty result with a new
-      // anchor at the store's present position. If committed, turning read access
+      // anchor at the store's present position. HKDeletedObject carries no
+      // source filter, so lunarlog's own deleted writes are reported even when
+      // read access is off; counting deletions would treat an empty read as
+      // non-empty and commit the anchor anyway. If committed, turning read access
       // on later would only read changes after that position, leaving all prior
       // history unimported forever. Omitting commitToken leaves the stored position
       // unset so subsequent passes continue reading whole history until access is
       // granted or real data arrives.
-      if !incremental && samples.isEmpty && deletedObjects.isEmpty {
+      if !incremental && samples.isEmpty {
         // Do not advance/commit anchor on empty whole-history read.
       } else {
         payload["commitToken"] = anchorPayload
