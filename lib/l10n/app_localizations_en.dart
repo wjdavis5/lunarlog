@@ -3386,6 +3386,14 @@ class AppLocalizationsEn extends AppLocalizations {
       'Could not load your notification settings.';
 
   @override
+  String get sharingNotificationPreferencesNotificationsDeniedHint =>
+      'Notifications are off for lunarlog, so these alerts can\'t arrive';
+
+  @override
+  String get sharingNotificationPreferencesTurnOnNotifications =>
+      'Turn on notifications';
+
+  @override
   String get sharingNotificationPreferencesDiscretion =>
       'Alerts never show what was logged - just a generic reminder to open lunarlog.';
 

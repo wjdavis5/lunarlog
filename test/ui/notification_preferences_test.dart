@@ -769,7 +769,16 @@ void main() {
         expect(
           find.descendant(
             of: find.byKey(banner),
-            matching: find.text('Reminders need notifications turned on'),
+            matching: find.text(
+              "Notifications are off for lunarlog, so these alerts can't arrive",
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(banner),
+            matching: find.text('Turn on notifications'),
           ),
           findsOneWidget,
         );

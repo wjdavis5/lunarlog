@@ -78,7 +78,9 @@ class _CaregiverNotificationsOffBannerState
     return MaterialBanner(
       key: const ValueKey('caregiver-notifications-off'),
       leading: const Icon(Icons.notifications_off_outlined),
-      content: Text(l10n.overviewReminderHint),
+      content: Text(
+        l10n.sharingNotificationPreferencesNotificationsDeniedHint,
+      ),
       actions: [
         if (request == null && ensurePush == null)
           const SizedBox.shrink()
@@ -86,7 +88,7 @@ class _CaregiverNotificationsOffBannerState
           TextButton(
             key: const ValueKey('caregiver-notifications-off-action'),
             onPressed: _requesting ? null : () => _ask(request, ensurePush),
-            child: Text(l10n.overviewTurnOnReminders),
+            child: Text(l10n.sharingNotificationPreferencesTurnOnNotifications),
           ),
       ],
     );
