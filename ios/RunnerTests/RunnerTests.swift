@@ -282,6 +282,40 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(payload["deletedRecordIds"] as? [String], [])
   }
 
+  /// Issue #1650: an empty whole-history page must not carry a commitToken even
+  /// when an anchor is returned. If read access was off, HealthKit silently returns
+  /// empty with an anchor; committing it would leave past history unimported once
+  /// access is enabled.
+  func testPagePayloadEmptyWholeHistoryWithAnchorEmitsNoCommitToken() {
+    let anchor = HKQueryAnchor(fromValue: 42)
+    let payload = HealthKitChannelHandler.pagePayload(
+      samples: [],
+      deletedObjects: [],
+      newAnchor: anchor,
+      pageSize: 500,
+      incremental: false,
+      ownBundleId: nil)
+    XCTAssertEqual((payload["samples"] as? [[String: Any]])?.count, 0)
+    XCTAssertNil(payload["nextCursor"])
+    XCTAssertNil(payload["commitToken"], "empty whole history read must not commit anchor (#1650)")
+  }
+
+  /// In contrast, an empty incremental page DOES carry commitToken to advance
+  /// position after an idle sync.
+  func testPagePayloadEmptyIncrementalWithAnchorCarriesCommitToken() {
+    let anchor = HKQueryAnchor(fromValue: 42)
+    let payload = HealthKitChannelHandler.pagePayload(
+      samples: [],
+      deletedObjects: [],
+      newAnchor: anchor,
+      pageSize: 500,
+      incremental: true,
+      ownBundleId: nil)
+    XCTAssertEqual((payload["samples"] as? [[String: Any]])?.count, 0)
+    XCTAssertNil(payload["nextCursor"])
+    XCTAssertNotNil(payload["commitToken"], "incremental read can advance anchor when empty")
+  }
+
   /// An incremental page says so and carries the deleted ids — an empty
   /// list when HealthKit reported none — even on the empty page that means
   /// the store has nothing new. (`HKDeletedObject` has no public

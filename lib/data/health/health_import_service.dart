@@ -111,7 +111,10 @@ import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/util/timezone.dart' show fixedOffsetZoneName;
 
 import 'health_flow_mapping.dart'
-    show flowLevelFromHealthValue, healthFlowValueRank, kPeriodRecordImportFlowLevel;
+    show
+        flowLevelFromHealthValue,
+        healthFlowValueRank,
+        kPeriodRecordImportFlowLevel;
 
 // The service takes its collaborators as constructor parameters that are
 // not initializing formals (private finals via the initializer list), the
@@ -185,8 +188,11 @@ class _Window {
   /// The zone-free absolute query lower bound (~1970), widened by a day so
   /// a sample in any zone is returned. The precise civil filter happens in
   /// the page resolver against each sample's own zone.
-  DateTime get queryStart => DateTime.utc(from.year, from.month, from.day)
-      .subtract(const Duration(days: 1));
+  DateTime get queryStart => DateTime.utc(
+    from.year,
+    from.month,
+    from.day,
+  ).subtract(const Duration(days: 1));
 
   /// The absolute query upper bound: tomorrow's UTC civil date (today + 2,
   /// so today in any zone is included).
@@ -378,9 +384,11 @@ class _PeriodSpan {
 
   /// How many civil dates the span covers, start and end inclusive.
   int get days =>
-      DateTime.utc(end.year, end.month, end.day)
-          .difference(DateTime.utc(start.year, start.month, start.day))
-          .inDays +
+      DateTime.utc(
+        end.year,
+        end.month,
+        end.day,
+      ).difference(DateTime.utc(start.year, start.month, start.day)).inDays +
       1;
 
   /// Whether [date] is one of the civil dates the span covers (Issue
@@ -440,14 +448,14 @@ _PeriodExpansion _expandPeriodSample(
 ) {
   final span = _periodSpan(sample);
   if (span == null) return const _PeriodExpansion(withoutZone: 1);
-  if (span.end.isBefore(span.start) ||
-      span.days > kMaxPeriodRecordSpanDays) {
+  if (span.end.isBefore(span.start) || span.days > kMaxPeriodRecordSpanDays) {
     return const _PeriodExpansion(unsupported: 1);
   }
   // A record with no id names no row; nothing could be cleared by it.
   if (sample.recordId.isNotEmpty) periods[sample.recordId] = span;
-  final endTz =
-      span.endZone == span.startZone ? null : fixedOffsetZoneName(span.endZone);
+  final endTz = span.endZone == span.startZone
+      ? null
+      : fixedOffsetZoneName(span.endZone);
   final placed = _fillPeriodDays(span, endTz, sample, byDate, from, to);
   if (placed) countZone(sample);
   return const _PeriodExpansion();
@@ -470,8 +478,7 @@ bool _fillPeriodDays(
   LocalDate to,
 ) {
   var placed = false;
-  for (var date = span.start; !date.isAfter(span.end); date =
-      date.addDays(1)) {
+  for (var date = span.start; !date.isAfter(span.end); date = date.addDays(1)) {
     if (date.isBefore(from) || date.isAfter(to)) continue;
     placed = true;
     if (byDate.containsKey(date)) continue;
@@ -642,27 +649,25 @@ class LocalHealthImportService
   /// The `day_entries.source` this platform's imports carry.
   DayEntrySource get _daySource =>
       _importPlatform == HealthImportPlatform.healthConnect
-          ? DayEntrySource.healthConnect
-          : DayEntrySource.healthkit;
+      ? DayEntrySource.healthConnect
+      : DayEntrySource.healthkit;
 
   /// The `observations.source` this platform's imports carry.
   ObservationSource get _observationSource =>
       _importPlatform == HealthImportPlatform.healthConnect
-          ? ObservationSource.healthConnect
-          : ObservationSource.appleHealth;
+      ? ObservationSource.healthConnect
+      : ObservationSource.appleHealth;
 
   @override
   Future<HealthImportSummary> importNow({
     void Function(HealthImportProgress progress)? onProgress,
-  }) =>
-      _userPass(onProgress);
+  }) => _userPass(onProgress);
 
   @override
   Future<HealthImportSummary> removeDaysDeletedInStore(
     HealthStoreDeletedOffer offer, {
     void Function(HealthImportProgress progress)? onProgress,
-  }) =>
-      _userPass(onProgress, remove: offer.recordIds);
+  }) => _userPass(onProgress, remove: offer.recordIds);
 
   /// Read only. The list is brought down to what rows still name by
   /// the passes ([_noteStoreDeleted]), which run one at a time; a write
@@ -674,10 +679,7 @@ class LocalHealthImportService
     if (bound == null) return const HealthStoreDeletedOffer();
     final waiting = await _binding.storeDeletedRecordIds();
     if (waiting.isEmpty) return const HealthStoreDeletedOffer();
-    final found = await _storeDeleted(
-      bound.profile.id,
-      waiting,
-    );
+    final found = await _storeDeleted(bound.profile.id, waiting);
     return HealthStoreDeletedOffer(
       days: found.dates.length,
       recordIds: found.recordIds,
@@ -717,9 +719,7 @@ class LocalHealthImportService
       minorBindingAllowed: _minorBindingAllowed,
     );
     if (!check.isAllowed) {
-      return HealthImportSummary(
-        blocked: HealthPlatformResult.refused(check),
-      );
+      return HealthImportSummary(blocked: HealthPlatformResult.refused(check));
     }
 
     // Keep the native-side binding mirror in step, then prompt through the
@@ -778,9 +778,7 @@ class LocalHealthImportService
       minorBindingAllowed: _minorBindingAllowed,
     );
     if (!check.isAllowed) {
-      return HealthImportSummary(
-        blocked: HealthPlatformResult.refused(check),
-      );
+      return HealthImportSummary(blocked: HealthPlatformResult.refused(check));
     }
 
     // Issue #1215: the first import is the person's to start. Until one
@@ -842,8 +840,7 @@ class LocalHealthImportService
     ({Profile profile, HealthGuardFacts facts}) bound,
     void Function(HealthImportProgress progress)? onProgress, {
     Set<String>? remove,
-  }) =>
-      _queued(() => _runPassSteps(bound, onProgress, remove: remove));
+  }) => _queued(() => _runPassSteps(bound, onProgress, remove: remove));
 
   /// Runs [body] when everything queued before it has finished, and
   /// holds what is queued after it until it has.
@@ -1006,10 +1003,18 @@ class LocalHealthImportService
     );
     var removedCount = 0;
     if (remove != null) {
-      removedCount =
-          await _removeStoreDeleted(bound.profile.id, remove, scanner);
+      removedCount = await _removeStoreDeleted(
+        bound.profile.id,
+        remove,
+        scanner,
+      );
     }
-    return (stopped: null, run: whole, removed: removedCount, found: wholeFound);
+    return (
+      stopped: null,
+      run: whole,
+      removed: removedCount,
+      found: wholeFound,
+    );
   }
 
   /// Whether [accumulator] contains flow or spotting on any of [deletedDates]
@@ -1031,6 +1036,14 @@ class LocalHealthImportService
   ) async {
     final token = run.commitToken;
     if (summary.isBlocked || token == null) return;
+    // Issue #1650: an empty whole-history read must not commit a position.
+    // If read access was off, Apple Health returns empty results. Committing
+    // would prevent old data from being imported once permission is granted.
+    if (!run.accumulator.incremental &&
+        run.accumulator.samplesRead == 0 &&
+        run.accumulator.deletedRecordIds.isEmpty) {
+      return;
+    }
     await _source.commitImport(facts, token);
   }
 
@@ -1075,9 +1088,11 @@ class LocalHealthImportService
       accumulator.incremental |= read.incremental;
       accumulator.noteDeleted(read);
       accumulator.addPage(
-        await _resolvePageOffThread(
-          (samples: read.samples, from: window.from, to: window.to),
-        ),
+        await _resolvePageOffThread((
+          samples: read.samples,
+          from: window.from,
+          to: window.to,
+        )),
       );
       onProgress?.call(accumulator.progress);
       final next = read.nextCursor;
@@ -1111,7 +1126,8 @@ class LocalHealthImportService
     final early = run.earlySummary;
     if (early != null && early.isBlocked) return early;
     return HealthImportSummary(
-      blocked: run.lateBlocked ??
+      blocked:
+          run.lateBlocked ??
           const HealthPlatformResult.failed('the read did not finish'),
     );
   }
@@ -1120,7 +1136,10 @@ class LocalHealthImportService
   /// [_readPages].
   _PageRun _outcomeRun(_Accumulator accumulator, HealthReadResult read) {
     if (accumulator.pagesRead == 0) {
-      return _PageRun(accumulator: accumulator, earlySummary: _blockedFor(read));
+      return _PageRun(
+        accumulator: accumulator,
+        earlySummary: _blockedFor(read),
+      );
     }
     return _PageRun(
       accumulator: accumulator,
@@ -1222,12 +1241,12 @@ class LocalHealthImportService
   /// early, or a phone that is switched off, loses none: the store says
   /// a record was deleted once, and never again.
   _ImportedRowScanner _scanner(String profileId) => _ImportedRowScanner(
-        dayEntries: _dayEntries,
-        observations: _observations,
-        profileId: profileId,
-        daySource: _daySource,
-        isImportedSpotting: _isImportedSpotting,
-      );
+    dayEntries: _dayEntries,
+    observations: _observations,
+    profileId: profileId,
+    daySource: _daySource,
+    isImportedSpotting: _isImportedSpotting,
+  );
 
   Future<_StoreDeleted> _noteStoreDeleted(
     String profileId,
@@ -1257,9 +1276,7 @@ class LocalHealthImportService
   /// Brings the list down to the records a row still names. After the
   /// merge, because the merge gives a day whose record was replaced its
   /// new record, and such a day is not waiting for any answer.
-  Future<void> _trimStoreDeleted(
-    _ImportedRowScanner scanner,
-  ) async {
+  Future<void> _trimStoreDeleted(_ImportedRowScanner scanner) async {
     final waiting = await _binding.storeDeletedRecordIds();
     if (waiting.isEmpty) return;
     final found = await scanner.find(waiting);
@@ -1277,8 +1294,7 @@ class LocalHealthImportService
   Future<_StoreDeleted> _storeDeleted(
     String profileId,
     Set<String> recordIds,
-  ) =>
-      _scanner(profileId).find(recordIds);
+  ) => _scanner(profileId).find(recordIds);
 
   bool _isImportedSpotting(Observation entry) =>
       entry.source == _observationSource &&
@@ -1575,11 +1591,7 @@ class LocalHealthImportService
     // `copyWith` preserves tags/note/PMS; provenance flips to this platform
     // so the write path never echoes this value back into the OS store.
     await _dayEntries.save(
-      existing.copyWith(
-        flow: desired.flow,
-        source: _daySource,
-        sourceId: key,
-      ),
+      existing.copyWith(flow: desired.flow, source: _daySource, sourceId: key),
     );
     await _forgetDeclinedForDate(
       profileId,
@@ -1670,7 +1682,8 @@ class LocalHealthImportService
       if (record.isEmpty || group.length < 2) continue;
       for (final row in group) {
         final ms = _recordTimeMs(row.sourceId);
-        final key = _periodDayRecordId(record, row.localDate) +
+        final key =
+            _periodDayRecordId(record, row.localDate) +
             (ms == null ? '' : '@$ms');
         if (row.sourceId == key) continue;
         await _dayEntries.save(row.copyWith(sourceId: key));
@@ -1763,8 +1776,7 @@ class LocalHealthImportService
     final row = await _dayEntries.find(profileId, record.date);
     return switch (record.kind) {
       HealthImportDeclinedKind.flow => _flowRecordAdoptable(row),
-      HealthImportDeclinedKind.spotting =>
-        (await _liveSpotting(row)).isEmpty,
+      HealthImportDeclinedKind.spotting => (await _liveSpotting(row)).isEmpty,
     };
   }
 
@@ -1988,8 +2000,7 @@ class LocalHealthImportService
   /// observation on (this store's `source`, no `sourceId`). The import
   /// fills such a day in only when it has no flow.
   bool _mayAdopt(DayEntry existing, _DesiredSample desired) {
-    final imported =
-        existing.source == _daySource && existing.sourceId != null;
+    final imported = existing.source == _daySource && existing.sourceId != null;
     if (!imported) return existing.flow == FlowLevel.none;
     return _storeChangedSince(existing, desired);
   }
@@ -2122,9 +2133,7 @@ class LocalHealthImportService
   /// The live spotting observations on [day]; none when there is no day.
   Future<List<Observation>> _liveSpotting(DayEntry? day) async {
     if (day == null) return const [];
-    final existing = await _observations.listForDayEntryWithLegacyAlias(
-      day.id,
-    );
+    final existing = await _observations.listForDayEntryWithLegacyAlias(day.id);
     return [
       for (final observation in existing)
         if (observation.category == ObservationCategory.spotting) observation,
@@ -2166,18 +2175,17 @@ class LocalHealthImportService
     String profileId,
     LocalDate date,
     _SpottingSample sample,
-  ) =>
-      _dayEntries.save(
-        DayEntry(
-          id: '',
-          profileId: profileId,
-          localDate: date,
-          tz: sample.tz,
-          flow: FlowLevel.none,
-          source: _daySource,
-          updatedAt: _now(),
-        ),
-      );
+  ) => _dayEntries.save(
+    DayEntry(
+      id: '',
+      profileId: profileId,
+      localDate: date,
+      tz: sample.tz,
+      flow: FlowLevel.none,
+      source: _daySource,
+      updatedAt: _now(),
+    ),
+  );
 
   /// The pass-blocking outcome of [result], or null when it was allowed.
   static HealthPlatformResult? _notAllowed(HealthPlatformResult result) =>
@@ -2231,15 +2239,15 @@ class _StoreDeleted {
 
   /// The dates those rows are on: what she is told and asked about.
   Set<LocalDate> get dates => {
-        for (final day in days) day.localDate,
-        for (final entry in spotting) entry.localDate,
-      };
+    for (final day in days) day.localDate,
+    for (final entry in spotting) entry.localDate,
+  };
 
   /// The deleted records the rows name.
   Set<String> get recordIds => {
-        for (final day in days) _recordIdOf(day.sourceId),
-        for (final entry in spotting) entry.sourceId!,
-      };
+    for (final day in days) _recordIdOf(day.sourceId),
+    for (final entry in spotting) entry.sourceId!,
+  };
 }
 
 /// Scans the profile's imported rows by the record their `sourceId` names:
