@@ -9,8 +9,13 @@ import 'package:lunarlog/domain/notifications/notification_preferences.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/l10n/app_localizations_en.dart';
+import 'package:lunarlog/app_lifecycle.dart'
+    show RequestNotificationPermissionCallback;
+import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/ui/l10n/notification_preferences_failure_copy.dart';
+import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:lunarlog/ui/sharing/notification_preferences_screen.dart';
+import 'package:provider/provider.dart';
 
 import '../support/fake_notification_preferences_service.dart';
 
@@ -576,8 +581,10 @@ void main() {
       WidgetTester tester,
       NotificationPreferencesService service, {
       void Function()? onEnsure,
+      NotificationPermissionState? permission,
+      Future<void> Function()? requestPermission,
     }) async {
-      await tester.pumpWidget(MaterialApp(
+      Widget child = MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         home: NotificationPreferencesScreen(
@@ -589,7 +596,24 @@ void main() {
                   onEnsure();
                 },
         ),
-      ));
+      );
+      final providers = [
+        if (permission != null)
+          ChangeNotifierProvider<NotificationPermissionState>.value(
+            value: permission,
+          ),
+        if (requestPermission != null)
+          Provider<RequestNotificationPermissionCallback>.value(
+            value: RequestNotificationPermissionCallback(requestPermission),
+          ),
+      ];
+      if (providers.isNotEmpty) {
+        child = MultiProvider(
+          providers: providers,
+          child: child,
+        );
+      }
+      await tester.pumpWidget(child);
       await tester.pumpAndSettle();
     }
 
@@ -714,6 +738,135 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(service.stored['profile-1']?.alertOnLog, isTrue);
+    });
+
+    group('caregiver notifications off banner (issue #1629)', () {
+      const banner = ValueKey('caregiver-notifications-off');
+      const action = ValueKey('caregiver-notifications-off-action');
+
+      testWidgets(
+          'when alerts are stored as enabled and notifications are denied, '
+          'the banner is displayed and its button asks for permission',
+          (tester) async {
+        final service = FakeNotificationPreferencesService()
+          ..seed('profile-1', const CaregiverAlertPreferences(alertOnLog: true));
+        final permission = NotificationPermissionState(
+          NotificationAvailability.denied,
+        );
+        addTearDown(permission.dispose);
+        var asked = 0;
+        await pumpScreen(
+          tester,
+          service,
+          permission: permission,
+          requestPermission: () async {
+            asked++;
+            permission.update(NotificationAvailability.available);
+          },
+        );
+
+        expect(find.byKey(banner), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byKey(banner),
+            matching: find.text('Reminders need notifications turned on'),
+          ),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.byKey(action));
+        await tester.pumpAndSettle();
+
+        expect(asked, 1);
+        expect(find.byKey(banner), findsNothing);
+      });
+
+      testWidgets(
+          'when alerts are all off and notifications are denied, the banner is hidden',
+          (tester) async {
+        final service = FakeNotificationPreferencesService();
+        final permission = NotificationPermissionState(
+          NotificationAvailability.denied,
+        );
+        addTearDown(permission.dispose);
+        await pumpScreen(
+          tester,
+          service,
+          permission: permission,
+        );
+
+        expect(find.byKey(banner), findsNothing);
+      });
+
+      testWidgets(
+          'when alerts are on but notifications are available, the banner is hidden',
+          (tester) async {
+        final service = FakeNotificationPreferencesService()
+          ..seed('profile-1', const CaregiverAlertPreferences(alertOnLog: true));
+        final permission = NotificationPermissionState(
+          NotificationAvailability.available,
+        );
+        addTearDown(permission.dispose);
+        await pumpScreen(
+          tester,
+          service,
+          permission: permission,
+        );
+
+        expect(find.byKey(banner), findsNothing);
+      });
+
+      testWidgets(
+          'toggling an alert on when notifications are denied reveals the banner; '
+          'toggling it off hides it again', (tester) async {
+        final service = FakeNotificationPreferencesService();
+        final permission = NotificationPermissionState(
+          NotificationAvailability.denied,
+        );
+        addTearDown(permission.dispose);
+        await pumpScreen(
+          tester,
+          service,
+          permission: permission,
+        );
+
+        expect(find.byKey(banner), findsNothing);
+
+        await tester.tap(find.byKey(const ValueKey('alert-on-log-toggle')));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(banner), findsOneWidget);
+
+        await tester.tap(find.byKey(const ValueKey('alert-on-log-toggle')));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(banner), findsNothing);
+      });
+
+      testWidgets(
+          'when no requestPermission callback is provided, tapping the banner '
+          'falls back to calling ensurePushRegistration', (tester) async {
+        final service = FakeNotificationPreferencesService()
+          ..seed('profile-1', const CaregiverAlertPreferences(alertOnLog: true));
+        final permission = NotificationPermissionState(
+          NotificationAvailability.denied,
+        );
+        addTearDown(permission.dispose);
+        var ensureCalls = 0;
+        await pumpScreen(
+          tester,
+          service,
+          permission: permission,
+          onEnsure: () => ensureCalls++,
+        );
+
+        expect(find.byKey(banner), findsOneWidget);
+
+        await tester.tap(find.byKey(action));
+        await tester.pumpAndSettle();
+
+        expect(ensureCalls, 1);
+      });
     });
   });
 }

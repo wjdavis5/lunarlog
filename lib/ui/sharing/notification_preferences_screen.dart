@@ -8,8 +8,13 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/app_lifecycle.dart'
+    show RequestNotificationPermissionCallback;
+import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/notification_preferences_failure_copy.dart';
+import 'package:lunarlog/ui/overview/notification_permission_state.dart';
+import 'package:provider/provider.dart';
 
 import '../../domain/models/profile.dart';
 import '../../domain/notifications/notification_preferences.dart';
@@ -24,6 +29,69 @@ const int _kDefaultQuietEndMinutes = 7 * 60; // 07:00
 /// Mirrors the server-side digest fallback (08:00 local) shown in the UI
 /// before the guardian picks an explicit time (Issue #125).
 const int _kDefaultDigestMinutes = 8 * 60; // 08:00
+
+/// Issue #1629: When any caregiver alert is enabled but OS notifications are
+/// denied/off, surface the warning banner with an actionable "Turn on reminders"
+/// button so a guardian on a new phone, after a reinstall, or after an earlier
+/// Deny is not left wondering why alerts never arrive.
+class _CaregiverNotificationsOffBanner extends StatefulWidget {
+  const _CaregiverNotificationsOffBanner({
+    this.ensurePushRegistration,
+  });
+
+  final Future<void> Function()? ensurePushRegistration;
+
+  @override
+  State<_CaregiverNotificationsOffBanner> createState() =>
+      _CaregiverNotificationsOffBannerState();
+}
+
+class _CaregiverNotificationsOffBannerState
+    extends State<_CaregiverNotificationsOffBanner> {
+  bool _requesting = false;
+
+  Future<void> _ask(
+    RequestNotificationPermissionCallback? request,
+    Future<void> Function()? ensurePush,
+  ) async {
+    setState(() => _requesting = true);
+    try {
+      if (request != null) {
+        await request();
+      } else if (ensurePush != null) {
+        await ensurePush();
+      }
+    } finally {
+      if (mounted) setState(() => _requesting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final availability = context.watch<NotificationPermissionState?>()?.value;
+    if (availability != NotificationAvailability.denied) {
+      return const SizedBox.shrink();
+    }
+    final l10n = AppLocalizations.of(context);
+    final request = context.read<RequestNotificationPermissionCallback?>();
+    final ensurePush = widget.ensurePushRegistration;
+    return MaterialBanner(
+      key: const ValueKey('caregiver-notifications-off'),
+      leading: const Icon(Icons.notifications_off_outlined),
+      content: Text(l10n.overviewReminderHint),
+      actions: [
+        if (request == null && ensurePush == null)
+          const SizedBox.shrink()
+        else
+          TextButton(
+            key: const ValueKey('caregiver-notifications-off-action'),
+            onPressed: _requesting ? null : () => _ask(request, ensurePush),
+            child: Text(l10n.overviewTurnOnReminders),
+          ),
+      ],
+    );
+  }
+}
 
 class NotificationPreferencesScreen extends StatefulWidget {
   const NotificationPreferencesScreen({
@@ -369,7 +437,15 @@ class _NotificationPreferencesScreenState
     if (!_loaded) {
       return const Center(child: CircularProgressIndicator());
     }
-    return _buildSettingsList(context);
+    return Column(
+      children: [
+        if (_prefs.hasAnyAlert)
+          _CaregiverNotificationsOffBanner(
+            ensurePushRegistration: widget.ensurePushRegistration,
+          ),
+        Expanded(child: _buildSettingsList(context)),
+      ],
+    );
   }
 
   Widget _buildSettingsList(BuildContext context) {
