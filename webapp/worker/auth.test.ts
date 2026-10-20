@@ -382,6 +382,58 @@ Deno.test(
   },
 );
 
+Deno.test(
+  'otp send treats otp_disabled on sign-in (create_user false) as success (issue #1346, R6/AE3)',
+  async () => {
+    const { deps } = fakeDeps(
+      () =>
+        new Response(
+          JSON.stringify({
+            code: 422,
+            error_code: 'otp_disabled',
+            msg: 'Signups not allowed for otp',
+          }),
+          { status: 422, headers: { 'content-type': 'application/json' } },
+        ),
+    );
+    const response = await handleAuthRequest(
+      post('/auth/otp/send', { email: 'unknown@example.com', create_user: false }),
+      ENV,
+      deps,
+    );
+
+    assertEquals(response?.status, 200);
+    const json = await response?.json();
+    assertEquals(json, { ok: true });
+    assertEquals(
+      response?.headers.get('set-cookie'),
+      `${PKCE_COOKIE}=verifier-abc; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600`,
+    );
+  },
+);
+
+Deno.test('otp send forwards otp_disabled when create_user is true (issue #1346)', async () => {
+  const { deps } = fakeDeps(
+    () =>
+      new Response(
+        JSON.stringify({
+          code: 422,
+          error_code: 'otp_disabled',
+          msg: 'Signups not allowed for otp',
+        }),
+        { status: 422, headers: { 'content-type': 'application/json' } },
+      ),
+  );
+  const response = await handleAuthRequest(
+    post('/auth/otp/send', { email: 'unknown@example.com', create_user: true }),
+    ENV,
+    deps,
+  );
+
+  assertEquals(response?.status, 422);
+  assertEquals(await errorOf(response), 'otp_disabled');
+});
+
 Deno.test('otp verify validates the type allowlist and returns the session', async () => {
   const { deps, calls } = fakeDeps();
   const ok = await handleAuthRequest(

@@ -289,7 +289,26 @@ async function startPkceEmailFlow(
     headers: upstreamHeaders(request, deps.publishableKey),
     body: JSON.stringify(body),
   });
-  if (!response.ok) return upstreamError(response);
+  if (!response.ok) {
+    const code = await upstreamErrorCode(response);
+    // Known and unknown emails get one response (R6, AE3; issue #1346):
+    // when signing in with an emailed code or link (create_user false),
+    // GoTrue rejects an unregistered email with 422 otp_disabled.
+    // Matching native app (supabase_auth_providers.dart:529), treat that
+    // as success so known and unknown addresses receive the same response
+    // and cannot be enumerated, setting the PKCE cookie and letting the
+    // client proceed to the "Check your inbox" screen.
+    if (body.create_user === false && code === 'otp_disabled') {
+      return jsonResponse(
+        { ok: true },
+        {
+          'cache-control': 'no-store',
+          'set-cookie': buildPkceCookie(verifier, recovery, next),
+        },
+      );
+    }
+    return errorResponse(response.status, code);
+  }
   return jsonResponse(
     { ok: true },
     {
