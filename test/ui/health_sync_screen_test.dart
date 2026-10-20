@@ -4593,6 +4593,30 @@ void main() {
       expect(find.byKey(settingsButtonKey), findsNothing);
     });
 
+    testWidgets(
+        'does not show background read hint or button when no profile is bound',
+        (tester) async {
+      final probe = _ScriptedProbe(
+        readAccessDisclosed: true,
+        write: HealthPermissionStatus.granted,
+        read: HealthPermissionStatus.granted,
+        backgroundReadOffered: true,
+        backgroundRead: false,
+      );
+
+      await pumpAndroid(
+        tester,
+        binding: HealthSyncBinding(FakeSettingsStore()),
+        permissionProbe: probe,
+      );
+
+      final l10n = AppLocalizationsEn();
+      expect(find.text(l10n.healthSyncImportBackgroundDataOff), findsNothing);
+      expect(find.byKey(allowButtonKey), findsNothing);
+      expect(find.byKey(settingsButtonKey), findsNothing);
+      expect(probe.backgroundReadRequests, 0);
+    });
+
     testWidgets('gracefully handles backgroundReadOffered throwing',
         (tester) async {
       final probe = _ScriptedProbe(
