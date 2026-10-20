@@ -240,4 +240,20 @@ void main() {
     final swift = File('ios/Runner/AppDelegate.swift').readAsStringSync();
     expect(swift, contains('HKMetadataKeyMenstrualCycleStart: '));
   });
+
+  test('ios/Runner/Info.plist NSHealthUpdateUsageDescription discloses all written categories', () {
+    final plist = File('ios/Runner/Info.plist').readAsStringSync();
+    expect(plist, contains('<key>NSHealthUpdateUsageDescription</key>'));
+    final match = RegExp(
+      r'<key>NSHealthUpdateUsageDescription</key>\s*<string>([^<]+)</string>',
+    ).firstMatch(plist);
+    expect(match, isNotNull);
+    final desc = match!.group(1)!;
+    expect(desc, contains('period'));
+    expect(desc, contains('symptom'));
+    expect(desc, contains('mood'));
+    expect(desc, contains('cervical mucus'));
+    expect(desc, contains('ovulation test'));
+    expect(desc, contains('basal body temperature'));
+  });
 }
