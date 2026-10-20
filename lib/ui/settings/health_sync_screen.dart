@@ -596,6 +596,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen>
   /// but "Access data in the background" is off.
   List<Widget> _backgroundReadHint(AppLocalizations l10n) {
     if (!_isHealthConnect ||
+        _boundGuardFacts() == null ||
         _readStatus != HealthPermissionStatus.granted ||
         !_backgroundReadOffered ||
         _backgroundReadGranted) {
