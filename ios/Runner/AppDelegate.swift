@@ -1848,8 +1848,25 @@ enum HealthKitChannelHandler {
       predicate: predicate,
       anchor: startPage.anchor,
       limit: pageSize)
+    var allSamples = page.samples
+    // Issue #1909: the changed samples alone do not say what a day
+    // holds. Dart takes the heaviest flow it is given for a date, so
+    // a lighter sample added by another app to a day that already had a
+    // heavier one used to make the day lighter until a whole-range read.
+    // Read the whole of every day this page touches.
+    if startPage.incremental && startPage.stage == .flow {
+      let touched = try await flowSamplesOfTouchedDays(
+        samples: page.samples,
+        ownBundleId: Bundle.main.bundleIdentifier)
+      var seenUuids = Set(allSamples.map { $0.uuid })
+      for sample in touched {
+        if seenUuids.insert(sample.uuid).inserted {
+          allSamples.append(sample)
+        }
+      }
+    }
     return pagePayload(
-      samples: page.samples,
+      samples: allSamples,
       deletedObjects: page.deletedObjects,
       newAnchor: page.newAnchor,
       pageSize: pageSize,
@@ -1859,6 +1876,61 @@ enum HealthKitChannelHandler {
       flowAnchor: startPage.stage == .flow ? page.newAnchor : startPage.flowAnchor,
       spottingAnchor: startPage.stage == .spotting ? page.newAnchor : startPage.spottingAnchor,
       passHadSamples: startPage.passHadSamples)
+  }
+
+  /// Issue #1909: every flow sample the store holds for the days that
+  /// [samples] touches, so that Dart decides those days from all of
+  /// their samples. A changes page carries only what was written since
+  /// the last import; a sample that did not change is absent from it and
+  /// still counts.
+  static func flowSamplesOfTouchedDays(
+    samples: [HKSample],
+    ownBundleId: String?
+  ) async throws -> [HKSample] {
+    let foreignSamples = samples.compactMap { sample -> HKCategorySample? in
+      guard let catSample = sample as? HKCategorySample,
+            catSample.categoryType == menstrualFlowType,
+            catSample.sourceRevision.source.bundleIdentifier != ownBundleId else {
+        return nil
+      }
+      return catSample
+    }
+    let dates = Set(foreignSamples.map { sample -> HealthTouchedCivilDate in
+      let tz: TimeZone
+      if let tzStr = sample.metadata?[HKMetadataKeyTimeZone] as? String,
+         let parsed = TimeZone(identifier: tzStr) {
+        tz = parsed
+      } else {
+        tz = TimeZone.current
+      }
+      return HealthTouchedDays.civilDate(for: sample.startDate, timeZone: tz)
+    })
+    guard !dates.isEmpty else { return [] }
+
+    var found: [HKSample] = []
+    for (windowStart, windowEnd) in HealthTouchedDays.windows(for: dates) {
+      let predicate = HKQuery.predicateForSamples(
+        withStart: windowStart, end: windowEnd, options: [])
+      let returned = try await querySamples(ofType: menstrualFlowType, predicate: predicate)
+      for sample in returned {
+        guard let catSample = sample as? HKCategorySample,
+              catSample.sourceRevision.source.bundleIdentifier != ownBundleId else {
+          continue
+        }
+        let tz: TimeZone
+        if let tzStr = catSample.metadata?[HKMetadataKeyTimeZone] as? String,
+           let parsed = TimeZone(identifier: tzStr) {
+          tz = parsed
+        } else {
+          tz = TimeZone.current
+        }
+        let sampleDate = HealthTouchedDays.civilDate(for: catSample.startDate, timeZone: tz)
+        if dates.contains(sampleDate) {
+          found.append(catSample)
+        }
+      }
+    }
+    return found
   }
 
   /// Where a read starts: the cursor's anchor on a later page, or — on a
@@ -2336,6 +2408,82 @@ enum HealthKitChannelHandler {
             message: "save failed: \(error.localizedDescription)",
             details: nil))
       }
+    }
+  }
+}
+
+
+/// Issue #1909: a Gregorian civil date representation for matching touched days.
+struct HealthTouchedCivilDate: Hashable, Comparable {
+  let year: Int
+  let month: Int
+  let day: Int
+
+  static func < (lhs: HealthTouchedCivilDate, rhs: HealthTouchedCivilDate) -> Bool {
+    if lhs.year != rhs.year { return lhs.year < rhs.year }
+    if lhs.month != rhs.month { return lhs.month < rhs.month }
+    return lhs.day < rhs.day
+  }
+}
+
+/// Issue #1909: which days a set of HealthKit samples falls on, and what time
+/// ranges to read from the store to see each of those days whole. Free of real
+/// store dependencies so that it is directly unit-testable.
+struct HealthTouchedDays {
+  /// How far apart two days may be and still be read in one request (31 days).
+  static let maxGapDays: Int = 31
+
+  /// The civil date a sample falls on, using its own recorded time zone,
+  /// or device time zone if none was recorded.
+  static func civilDate(for date: Date, timeZone: TimeZone) -> HealthTouchedCivilDate {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = timeZone
+    let comps = calendar.dateComponents([.year, .month, .day], from: date)
+    return HealthTouchedCivilDate(
+      year: comps.year ?? 1970,
+      month: comps.month ?? 1,
+      day: comps.day ?? 1
+    )
+  }
+
+  /// Time ranges that between them hold every instant that can fall on
+  /// one of [dates], whatever offset a record there carries. Days no
+  /// more than [maxGapDays] apart share a range.
+  ///
+  /// A day begins up to eighteen hours before its UTC midnight (offset
+  /// +18:00, the widest there is) and ends up to eighteen hours after
+  /// the next one (-18:00), so each range is widened by that much at both ends.
+  static func windows(for dates: Set<HealthTouchedCivilDate>) -> [(Date, Date)] {
+    guard !dates.isEmpty else { return [] }
+    let sorted = dates.sorted()
+    var utcCal = Calendar(identifier: .gregorian)
+    utcCal.timeZone = TimeZone(secondsFromGMT: 0)!
+
+    var ranges: [(HealthTouchedCivilDate, HealthTouchedCivilDate)] = []
+    for date in sorted {
+      if let last = ranges.last {
+        let lastDate = utcCal.date(from: DateComponents(year: last.1.year, month: last.1.month, day: last.1.day))!
+        let currDate = utcCal.date(from: DateComponents(year: date.year, month: date.month, day: date.day))!
+        let diff = utcCal.dateComponents([.day], from: lastDate, to: currDate).day ?? 0
+        if diff <= maxGapDays {
+          ranges[ranges.count - 1] = (last.0, date)
+        } else {
+          ranges.append((date, date))
+        }
+      } else {
+        ranges.append((date, date))
+      }
+    }
+
+    return ranges.compactMap { (first, last) -> (Date, Date)? in
+      guard let firstDate = utcCal.date(from: DateComponents(year: first.year, month: first.month, day: first.day)),
+            let lastDate = utcCal.date(from: DateComponents(year: last.year, month: last.month, day: last.day))
+      else { return nil }
+      // -18 hours before first UTC midnight
+      let from = firstDate.addingTimeInterval(-18.0 * 3600.0)
+      // +18 hours after next UTC midnight (24 + 18 = 42 hours after lastDate 00:00)
+      let to = lastDate.addingTimeInterval(42.0 * 3600.0)
+      return (from, to)
     }
   }
 }
