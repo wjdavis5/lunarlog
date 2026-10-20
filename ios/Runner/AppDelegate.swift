@@ -2132,7 +2132,7 @@ enum HealthKitChannelHandler {
         // the commit token and keep the flow anchor, so the next pass reads spotting from
         // the beginning again.
         let finalSpottingAnchor: HKQueryAnchor?
-        if stage == .spotting && effectiveSpottingStartedFromNil && !currentSpottingHadSamples {
+        if stage == .spotting && flowAnchor != nil && effectiveSpottingStartedFromNil && !currentSpottingHadSamples {
           finalSpottingAnchor = nil
         } else {
           finalSpottingAnchor = resolvedSpottingAnchor
