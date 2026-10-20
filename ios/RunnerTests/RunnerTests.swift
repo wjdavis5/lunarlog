@@ -642,4 +642,83 @@ class RunnerTests: XCTestCase {
       ownBundleId: ownBundleId)
     return (payload["samples"] as? [[String: Any]])?.count
   }
+  // MARK: - Issue #1909: HealthTouchedDays tests
+
+  func testHealthTouchedCivilDateCalculation() {
+    // 2026-09-11 03:30:00 UTC
+    let date = Date(timeIntervalSince1970: 1789183800)
+    let utc = TimeZone(secondsFromGMT: 0)!
+    let west4 = TimeZone(secondsFromGMT: -4 * 3600)!
+    let east9 = TimeZone(secondsFromGMT: 9 * 3600)!
+
+    // In UTC, it is Sep 11
+    let dUtc = HealthTouchedDays.civilDate(for: date, timeZone: utc)
+    XCTAssertEqual(dUtc.year, 2026)
+    XCTAssertEqual(dUtc.month, 9)
+    XCTAssertEqual(dUtc.day, 11)
+
+    // In UTC-4, 03:30 UTC is 23:30 on Sep 10
+    let dWest = HealthTouchedDays.civilDate(for: date, timeZone: west4)
+    XCTAssertEqual(dWest.year, 2026)
+    XCTAssertEqual(dWest.month, 9)
+    XCTAssertEqual(dWest.day, 10)
+
+    // In UTC+9, 03:30 UTC is 12:30 on Sep 11
+    let dEast = HealthTouchedDays.civilDate(for: date, timeZone: east9)
+    XCTAssertEqual(dEast.year, 2026)
+    XCTAssertEqual(dEast.month, 9)
+    XCTAssertEqual(dEast.day, 11)
+  }
+
+  func testHealthTouchedDaysWindowsEmpty() {
+    let windows = HealthTouchedDays.windows(for: [])
+    XCTAssertTrue(windows.isEmpty)
+  }
+
+  func testHealthTouchedDaysWindowsSingleDay() {
+    let date = HealthTouchedCivilDate(year: 2026, month: 9, day: 10)
+    let windows = HealthTouchedDays.windows(for: [date])
+    XCTAssertEqual(windows.count, 1)
+
+    // 2026-09-09 06:00:00 UTC to 2026-09-11 18:00:00 UTC
+    // 2026-09-09 06:00:00 UTC = 1788933600
+    // 2026-09-11 18:00:00 UTC = 1789149600
+    guard let window = windows.first else { return }
+    XCTAssertEqual(window.0.timeIntervalSince1970, 1788933600)
+    XCTAssertEqual(window.1.timeIntervalSince1970, 1789149600)
+  }
+
+  func testHealthTouchedDaysWindowsCloseDaysGrouped() {
+    let d1 = HealthTouchedCivilDate(year: 2026, month: 9, day: 10)
+    let d2 = HealthTouchedCivilDate(year: 2026, month: 9, day: 12)
+    let d3 = HealthTouchedCivilDate(year: 2026, month: 10, day: 13)
+
+    // 12th of September to 13th of October is 31 days -> 1 request
+    let windows = HealthTouchedDays.windows(for: [d1, d2, d3])
+    XCTAssertEqual(windows.count, 1)
+
+    guard let window = windows.first else { return }
+    // Starts at 2026-09-09 06:00:00 UTC = 1788933600
+    // Ends at 2026-10-14 18:00:00 UTC = 1791991200
+    XCTAssertEqual(window.0.timeIntervalSince1970, 1788933600)
+    XCTAssertEqual(window.1.timeIntervalSince1970, 1791991200)
+  }
+
+  func testHealthTouchedDaysWindowsFarDaysSeparated() {
+    let d1 = HealthTouchedCivilDate(year: 2026, month: 9, day: 10)
+    let d2 = HealthTouchedCivilDate(year: 2026, month: 9, day: 12)
+    let d3 = HealthTouchedCivilDate(year: 2026, month: 10, day: 14)
+
+    // 12th of September to 14th of October is 32 days -> 2 requests
+    let windows = HealthTouchedDays.windows(for: [d1, d2, d3])
+    XCTAssertEqual(windows.count, 2)
+
+    // First window: Sep 10 to Sep 12 -> 2026-09-09 06:00 to 2026-09-13 18:00 UTC
+    XCTAssertEqual(windows[0].0.timeIntervalSince1970, 1788933600)
+    XCTAssertEqual(windows[0].1.timeIntervalSince1970, 1789322400)
+
+    // Second window: Oct 14 -> 2026-10-13 06:00 to 2026-10-15 18:00 UTC
+    XCTAssertEqual(windows[1].0.timeIntervalSince1970, 1791861600)
+    XCTAssertEqual(windows[1].1.timeIntervalSince1970, 1792077600)
+  }
 }
