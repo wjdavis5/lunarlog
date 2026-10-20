@@ -498,7 +498,7 @@ void main() {
         kotlin,
         contains('private val allPermissions = writePermissions + readPermissions'),
       );
-      expect(kotlin, contains('permissions = allPermissions'));
+      expect(kotlin, contains('all = allPermissions'));
     });
 
     test('"never asked" is told apart from "denied" by remembering the '
@@ -1438,10 +1438,18 @@ void main() {
       );
     });
 
-    test('the write path\'s request is unchanged: everything, on one sheet',
+    test('the write path\'s request asks for all permissions, dropping past data and background read after first launch',
         () {
       expect(writeRequest, contains('launchPermissionRequest('));
-      expect(writeRequest, contains('permissions = allPermissions'));
+      expect(
+        RegExp(r'permissions = HealthPermissionState\.writeRequestPermissions\(\s*'
+                r'all = allPermissions,\s*'
+                r'pastData = pastDataPermissions\(\),\s*'
+                r'backgroundRead = backgroundReadPermissions\(\),\s*'
+                r'launchedBefore = permissionEverRequested\(\),\s*\)')
+            .hasMatch(writeRequest),
+        isTrue,
+      );
       expect(writeRequest, isNot(contains('permissions = readPermissions')));
     });
 
