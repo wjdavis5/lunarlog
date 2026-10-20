@@ -1874,7 +1874,7 @@ enum HealthKitChannelHandler {
       ownBundleId: Bundle.main.bundleIdentifier,
       stage: startPage.stage,
       flowAnchor: startPage.stage == .flow ? page.newAnchor : startPage.flowAnchor,
-      spottingAnchor: startPage.stage == .spotting ? page.newAnchor : startPage.spottingAnchor,
+      spottingAnchor: startPage.spottingAnchor,
       passHadSamples: startPage.passHadSamples)
   }
 
@@ -2053,8 +2053,8 @@ enum HealthKitChannelHandler {
     }
     payload["deletedRecordIds"] = deletedObjects.map { $0.uuid.uuidString }
 
-    let resolvedFlowAnchor = flowAnchor ?? (stage == .flow ? newAnchor : nil)
-    let resolvedSpottingAnchor = spottingAnchor ?? (stage == .spotting ? newAnchor : nil)
+    let resolvedFlowAnchor = stage == .flow ? (newAnchor ?? flowAnchor) : flowAnchor
+    let resolvedSpottingAnchor = stage == .spotting ? (newAnchor ?? spottingAnchor) : spottingAnchor
 
     if samples.count >= pageSize {
       payload["nextCursor"] = encodeAnchorPayload(
@@ -2087,10 +2087,20 @@ enum HealthKitChannelHandler {
       if !incremental && !currentPassHadSamples {
         // Do not advance/commit anchor on empty whole-history read.
       } else {
+        // Issue #1913: When the spotting stage started from a nil anchor and
+        // returned no foreign samples, omit spottingAnchor from the commit
+        // token and keep the flow anchor, so the next pass reads spotting from
+        // the beginning again.
+        let finalSpottingAnchor: HKQueryAnchor?
+        if stage == .spotting && flowAnchor != nil && spottingAnchor == nil && sampleMaps.isEmpty {
+          finalSpottingAnchor = nil
+        } else {
+          finalSpottingAnchor = resolvedSpottingAnchor
+        }
         payload["commitToken"] = encodeAnchorPayload(
           stage: .spotting,
           flowAnchor: resolvedFlowAnchor,
-          spottingAnchor: resolvedSpottingAnchor,
+          spottingAnchor: finalSpottingAnchor,
           incremental: incremental,
           passHadSamples: currentPassHadSamples)
       }
