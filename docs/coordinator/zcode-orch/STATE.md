@@ -18,3 +18,8 @@ Migrated 2026-09-15 from the flat claude-orch state (see PROCESS.md for why).
 #710 (#713), #583 (#717), #400 (#719), #175 (#720), #137 (#727), #99 (#728), #693 (#731), #165 (#732), sibling rescue #268+#271 (#714), #215 (#734), #121 (#740), #460 (#741), #42 (#742), #130 (#743, post-integration), #174 (#744), #226 (#745, post-ratchet-fix), #102 (#746), #184 (#747), #241 (#749), #257 P0 (#750), #181 (#751), #170 (#752); syncs #711 #715 #716 #722 #729 #737 (identity migration).
 
 2026-09-22: flash-session wave merged #967 #981 #983 #989 #990 #1007 #1059 #1063 (+parallel #1046 won #1022). In progress: none. Queue: see log.
+
+## 2026-11-08 session (triage + one implementation)
+- Resolved: #1927 (closed; macOS capacity, main proven green at b38ef09c), #1930 via PR #1931 (merged 4b775c31), dependabot #1928 (merged b38ef09c).
+- With the owner: #1929 (needs-human-review — approve migrate run 38065716532 before it auto-fails ~2026-11-09 15:57Z; ~11 commits of migrations pending since 2026-10-05).
+- Backlog: no claimable issues remain (needs-human-review / decision-gated / deferred #161 only).
