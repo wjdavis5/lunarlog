@@ -176,14 +176,36 @@ jobs:
         run: npm run build
 
       - name: Verify the public/ files were copied verbatim
-        # site/public/ is copied into dist/ by the build; the AASA, the invite
-        # page, and the strict `_headers` file must survive unchanged (the
-        # AASA/invite content is also pinned by
-        # test/domain/sharing/link_artifacts_test.dart).
+        # site/public/ is copied into dist/ by the build; the AASA and the
+        # strict `_headers` file must survive unchanged in every mode, and
+        # the invite page must too on a live build (the AASA/invite content
+        # is also pinned by test/domain/sharing/link_artifacts_test.dart).
+        #
+        # The invite page is mode-aware (issues #1655 and #1930): a down
+        # build (LUNARLOG_WEB_APP_LIVE=false — every Dependabot and fork
+        # run, where secrets read as empty) legitimately rewrites
+        # dist/invite.html, because `npm run build` ends with
+        # scripts/apply-web-app-down.mjs dropping the web-app
+        # paragraph/button — so the byte-identity cmp below could never
+        # pass there. In that mode the transform's own --check mode
+        # asserts its postcondition instead: no app.lunarlog.app mention,
+        # and the custom-scheme button (id="open-in-app" / lunarlog://invite)
+        # and the install steps still present. A live build (or an unset
+        # flag) keeps the exact cmp — the invite page's inline script and
+        # style are hash-pinned by the invite Worker's CSP, so anything
+        # that rewrites the page on its way out must fail.
         working-directory: site
+        env:
+          # The same expression the build step above uses, so this step's
+          # mode can never disagree with the mode the page was built in.
+          LUNARLOG_WEB_APP_LIVE: ${{ secrets.SUPABASE_URL != '' && 'true' || 'false' }}
         run: |
           cmp dist/.well-known/apple-app-site-association public/.well-known/apple-app-site-association
-          cmp dist/invite.html public/invite.html
+          if [ "$LUNARLOG_WEB_APP_LIVE" = "false" ]; then
+            node scripts/apply-web-app-down.mjs --check
+          else
+            cmp dist/invite.html public/invite.html
+          fi
           cmp dist/_headers public/_headers
 
       - name: Validate the built HTML
