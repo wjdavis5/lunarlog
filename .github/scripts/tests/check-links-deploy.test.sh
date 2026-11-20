@@ -756,7 +756,7 @@ assert_contains "site.yml's screenshot step forces the material_fonts re-downloa
 
 site_package="$(cat "$SITE_PACKAGE_JSON")"
 assert_contains "site/package.json pins Astro exactly" "$site_package" '"astro": "7.3.5"'
-assert_contains "site/package.json pins @lhci/cli exactly" "$site_package" '"@lhci/cli": "0.15.1"'
+assert_contains "site/package.json pins @lhci/cli exactly" "$site_package" '"@lhci/cli": "0.16.0"'
 assert_contains "site/package.json pins axe-core exactly" "$site_package" '"axe-core": "4.13.0"'
 assert_contains "the build script runs astro check" "$site_package" "astro check"
 
