@@ -27,6 +27,23 @@ const HTTP_LINK = /https?:\/\/[^\s"'<>()]+/gi;
 // of through the redirect chain -- see `checkExternalLinks`.
 const DOI_HOSTS = new Set(["doi.org", "dx.doi.org"]);
 const CHECK_TIMEOUT_MS = 20_000;
+// Crossref retry policy (issue #1934): a 429 is rate limiting and 408/5xx are
+// transient -- none of them is a verdict on the reference -- so those answers
+// are retried with bounded exponential backoff, up to CROSSREF_RETRIES
+// retries after the first attempt.
+const CROSSREF_RETRIES = 3;
+const CROSSREF_RETRY_BASE_MS = 1_000;
+// Crossref's polite pool: a User-Agent that identifies the project, with a
+// URL where their etiquette asks for a contact address (there is no public
+// support address to name yet -- issue #1100).
+const CROSSREF_USER_AGENT =
+  "lunarlog-site-link-check (https://github.com/wjdavis5/lunarlog)";
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function isCrossrefRetryable(status) {
+  return status === 429 || status === 408 || status >= 500;
+}
 
 async function walk(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -67,12 +84,21 @@ export function doiFromUrl(url) {
 // answer about the client, not about the reference; a dead reference is a
 // 404. The stable, bot-friendly existence check for a DOI is its
 // registration: the Crossref REST API answers 200 for a registered DOI and
-// 404 for one that is not, from any IP (issue #1899). Everything else is
+// 404 for one that is not, from any IP (issue #1899). That oracle can throttle
+// its callers, though -- a weekly run was failed by a bare `Crossref HTTP
+// 429` on the registered NEJM DOI -- so a 429/408/5xx answer is retried with
+// bounded exponential backoff, a still-throttled check is reported as
+// rate-limited rather than broken, and the Crossref request carries a
+// polite-pool User-Agent (issue #1934). Everything else is
 // checked by request as before: HEAD, then GET only when HEAD is
 // inconclusive -- a server that rejects HEAD with 405 is fine.
 export async function checkExternalLinks(
   links,
-  { fetchImpl = fetch, timeoutMs = CHECK_TIMEOUT_MS } = {},
+  {
+    fetchImpl = fetch,
+    timeoutMs = CHECK_TIMEOUT_MS,
+    sleepImpl = sleep,
+  } = {},
 ) {
   const failures = [];
 
@@ -80,19 +106,33 @@ export async function checkExternalLinks(
     const doi = doiFromUrl(url);
     if (doi !== null) {
       const endpoint = `https://api.crossref.org/works/${doi}`;
+      const maxAttempts = 1 + CROSSREF_RETRIES;
       let response;
       try {
-        response = await fetchImpl(endpoint, {
-          redirect: "follow",
-          signal: AbortSignal.timeout(timeoutMs),
-          headers: { "User-Agent": "lunarlog-site-link-check" },
-        });
+        for (let attempt = 1; ; attempt += 1) {
+          response = await fetchImpl(endpoint, {
+            redirect: "follow",
+            signal: AbortSignal.timeout(timeoutMs),
+            headers: { "User-Agent": CROSSREF_USER_AGENT },
+          });
+          // A 429/408/5xx says the oracle is throttled or briefly unwell,
+          // not that the reference is dead: back off exponentially and ask
+          // again (issue #1934). Any other answer -- a 404 above all -- is
+          // the verdict on the first attempt.
+          if (attempt >= maxAttempts || !isCrossrefRetryable(response.status)) break;
+          await sleepImpl(CROSSREF_RETRY_BASE_MS * 2 ** (attempt - 1));
+        }
       } catch (error) {
         failures.push(`${url}: ${error.message}`);
         return;
       }
       if (response.status === 404) {
         failures.push(`${url}: DOI not found (Crossref 404)`);
+      } else if (response.status === 429) {
+        // Still throttled after every retry: name rate limiting distinctly,
+        // so the run log separates "the check was throttled" from "the
+        // reference is broken" (issue #1934).
+        failures.push(`${url}: Crossref rate-limited (HTTP 429) after ${maxAttempts} attempts`);
       } else if (response.status >= 400) {
         failures.push(`${url}: Crossref HTTP ${response.status}`);
       }
