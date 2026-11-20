@@ -23,3 +23,9 @@ Migrated 2026-09-15 from the flat claude-orch state (see PROCESS.md for why).
 - Resolved: #1927 (closed; macOS capacity, main proven green at b38ef09c), #1930 via PR #1931 (merged 4b775c31), dependabot #1928 (merged b38ef09c).
 - With the owner: #1929 (needs-human-review — approve migrate run 38065716532 before it auto-fails ~2026-11-09 15:57Z; ~11 commits of migrations pending since 2026-10-05).
 - Backlog: no claimable issues remain (needs-human-review / decision-gated / deferred #161 only).
+
+## 2026-11-20 session
+- Merged: #1935 (3b0ac032), #1933 with pin-guard lockstep 191c7f36 (3e8b41fa), #1934 via PR #1937 (5579bd7c).
+- Filed #1936 (stale claim on #551, owner to answer release-or-keep).
+- With the owner: #1929 (migrations frozen since 2026-10-05 — dispatch + two approvals, or ask a coordinator to collapse the gates), #1936, and the standing needs-human-review set.
+- Eligible queue: empty (deferred #161 only). Flash-model subagent dispatch still broken host-side (reasoning-tier selection); general-purpose + coordinator review used instead.
