@@ -29,3 +29,8 @@ Migrated 2026-09-15 from the flat claude-orch state (see PROCESS.md for why).
 - Filed #1936 (stale claim on #551, owner to answer release-or-keep).
 - With the owner: #1929 (migrations frozen since 2026-10-05 — dispatch + two approvals, or ask a coordinator to collapse the gates), #1936, and the standing needs-human-review set.
 - Eligible queue: empty (deferred #161 only). Flash-model subagent dispatch still broken host-side (reasoning-tier selection); general-purpose + coordinator review used instead.
+
+## 2026-11-20 device-test session (evening)
+- Device pass on the owner's Pixel 8 Pro: everything green except #600 (deep link no-op) — see log.md for the full matrix.
+- #1939 filed → PR #1940 merged (69aea39b): settings launch moved to a first-party platform channel. Full button-path verification needs a lock-less device/emulator (owner's phone has a screen lock); action resolution + startup + channel wiring are proven.
+- Device left with the merged-main non-QA debug build, fresh data, gate engaged.
