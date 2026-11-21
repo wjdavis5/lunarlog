@@ -80,6 +80,9 @@ dependencies:
   # Issue #534: the lock screen's "Open device settings" action (no
   # existing dependency could deep-link to the OS settings app) —
   # `app_settings` was checked first and was not already a dependency.
+  # #1939: iOS only now — Android opens settings through the first-party
+  # lunarlog/device_settings channel, because url_launcher VIEWs intent://
+  # URIs as data and cannot launch a settings action.
   url_launcher: ^6.3.0
   # Issue #5, U7: caregiver push alerts. Initialized only from AppConfig's
   # FirebaseOptions (KTD6) - no google-services.json/GoogleService-Info.plist

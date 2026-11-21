@@ -44,6 +44,16 @@ class MainActivity : FlutterFragmentActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             HealthConnectAdapter.CHANNEL_NAME
         ).setMethodCallHandler(HealthConnectAdapter(this)::handle)
+        // Issue #1939: the "lunarlog/device_settings" channel — opens the
+        // device's Security settings (with an App-info fallback) through a
+        // real action intent. url_launcher cannot do this: it VIEWs the
+        // intent:// URI as data, which made the lock screen's affordance a
+        // no-op on real Android (#600 device-test pass, Pixel 8 Pro /
+        // Android 17). See DeviceSettingsAdapter.kt for the full story.
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            DeviceSettingsAdapter.CHANNEL_NAME
+        ).setMethodCallHandler(DeviceSettingsAdapter(this)::handle)
         // Issue #993: the background-import worker reaches Dart through the
         // main engine's messenger. Cleared in onDestroy so a worker tick
         // that lands during teardown finds no engine and no-ops.
