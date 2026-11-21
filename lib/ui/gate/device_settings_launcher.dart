@@ -3,58 +3,90 @@
 /// has no screen lock at all, so `local_auth` can never present a prompt,
 /// and the operator otherwise has no way to know where to go fix that.
 ///
-/// Neither `app_settings` nor `url_launcher` was a dependency of this repo
-/// before this issue. `app_settings` was checked first and is not present,
-/// so this uses `url_launcher` instead — a very common, well-maintained
-/// package already pulled in transitively by nothing else here (see the
-/// `pubspec.yaml` comment next to it).
+/// How each platform gets there:
+///
+/// - **iOS** launches the `app-settings:` system scheme through
+///   [safeLaunchUrl] (`url_launcher`) — unchanged; the iOS plugin handles
+///   schemes via `canOpenURL` and works.
+/// - **Android** cannot use `url_launcher` for this (issue #1939). A
+///   settings screen is reached by an *action* intent
+///   (`android.settings.SECURITY_SETTINGS`), not a URL, and
+///   `url_launcher_android` 6.3.33 (`UrlLauncher.java`) builds
+///   `new Intent(ACTION_VIEW).setData(Uri.parse(url))` — the raw
+///   `intent://#Intent;…;end` string becomes VIEW *data* (no
+///   `Intent.parseUri` anywhere in the plugin), and nothing on stock
+///   Android VIEW-handles `intent:`-scheme data. Verified on-device on a
+///   Pixel 8 Pro / Android 17 during the #600 device-test pass
+///   (2026-11-20): the plugin's exact intent shape answered "unable to
+///   resolve" while the bare action resolves fine — so the launch
+///   mechanism was the broken half. The Android branch therefore calls
+///   the first-party `lunarlog/device_settings` platform channel (the
+///   `lunarlog/health`/`lunarlog/privacy` precedent), whose Kotlin half
+///   (`DeviceSettingsAdapter.kt`, registered from `MainActivity`)
+///   `startActivity()`s the real action intent and falls back — only on
+///   `ActivityNotFoundException` — to this app's own App-info page
+///   (`APPLICATION_DETAILS_SETTINGS` + `context.packageName`), which
+///   always exists and is one tap from Security settings on every skin.
+///
+/// The pre-#1939 code also never noticed failure: a failed launch is a
+/// `false` *return* from the launch path, not a throw, and only throws
+/// reached the fallback — so the broken intent launch fell through
+/// silently, with no fallback, breadcrumb, or Sentry event. Both now do:
+/// a `false` from the channel (both native attempts found no handler) and
+/// a channel throw reach the same breadcrumb + Sentry path.
+///
+/// Never throws: every platform call is best-effort, matching
+/// `applyPlatformPrivacyProtections`'s posture in `gate_controller.dart` —
+/// a failed settings launch must never crash the lock screen the operator
+/// is trying to get past. A failure is recorded as a breadcrumb and sent
+/// to Sentry (type name / message only).
 library;
 
 import 'dart:async';
 
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/ui/components/safe_launch_url.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:url_launcher/url_launcher.dart' show LaunchMode;
 
 /// Injectable seam for [LockScreen]'s `openDeviceSettings` field, so tests
-/// substitute a fake and never touch `url_launcher`'s platform channel —
-/// same pattern as `AccountSection`'s `appleAuthorizationCodeRequest`.
+/// substitute a fake and never touch a platform channel — same pattern as
+/// `AccountSection`'s `appleAuthorizationCodeRequest`.
 typedef DeviceSettingsLauncher = Future<void> Function();
 
-/// Resolves this app's Android package name for the App-info fallback
-/// intent. Real implementation reads `package_info_plus`.
-typedef PackageNameProvider = Future<String> Function();
+/// The first-party channel the Android branch opens device settings
+/// through, answered by `DeviceSettingsAdapter.kt` and registered from
+/// `MainActivity.configureFlutterEngine` beside the health channel (the
+/// `lunarlog/health`/`lunarlog/privacy` naming precedent).
+const String kDeviceSettingsChannelName = 'lunarlog/device_settings';
 
-/// The platform-settings schemes this file opens. Deliberately *not*
-/// [kDefaultLaunchSchemes] (http/https/mailto/tel): device settings are
-/// reached by a fixed system scheme, never a URL a user supplied, so the
-/// allowlist is narrowed to exactly what this feature needs.
+/// The one method on [kDeviceSettingsChannelName]: open Security settings,
+/// natively falling back to this app's App-info page when the action has
+/// no handler on this skin. Answers whether anything opened.
+const String _kOpenSecuritySettingsMethod = 'openSecuritySettings';
+
+/// Injectable seam for that channel call — the same shape as the health
+/// adapters' injected platform seams, so [openDeviceSettingsWith] stays
+/// fully unit-testable and never touches a real [MethodChannel] under
+/// `flutter test`.
+typedef AndroidSecuritySettingsOpener = Future<bool> Function();
+
+/// The platform-settings scheme this file opens. Deliberately *not*
+/// [kDefaultLaunchSchemes] (http/https/mailto/tel): the only url_launcher
+/// launch left here is the iOS `app-settings:` system scheme — Android
+/// goes through [kDeviceSettingsChannelName] instead — and the allowlist
+/// stays narrowed to exactly what this feature needs.
 const Set<String> _deviceSettingsLaunchSchemes = <String>{
   'app-settings',
-  'intent',
 };
-
-/// The Android intent URI for the Security settings screen
-/// (`android.provider.Settings.ACTION_SECURITY_SETTINGS`), where the
-/// screen-lock/passcode setup lives on stock Android.
-const String kAndroidSecuritySettingsIntent =
-    'intent://#Intent;action=android.settings.SECURITY_SETTINGS;end';
 
 /// The iOS `UIApplicationOpenSettingsURLString` scheme — opens this app's
 /// own page in the Settings app with no extra entitlement or Info.plist
 /// declaration (a system scheme, not a third-party app's).
 const String kIosAppSettingsUrl = 'app-settings:';
-
-/// The App-info fallback intent for [packageName] — see
-/// [openDeviceSettingsWith] for why it exists.
-String androidAppDetailsIntent(String packageName) =>
-    'intent://#Intent;'
-    'action=android.settings.APPLICATION_DETAILS_SETTINGS;'
-    'package=$packageName;end';
 
 Future<bool> _launchUrl(
   Uri url, {
@@ -65,8 +97,13 @@ Future<bool> _launchUrl(
   allowedSchemes: _deviceSettingsLaunchSchemes,
 );
 
-Future<String> _packageName() async =>
-    (await PackageInfo.fromPlatform()).packageName;
+/// The production [AndroidSecuritySettingsOpener]: one
+/// `openSecuritySettings` invocation on [kDeviceSettingsChannelName]. A
+/// `null` answer reads as `false` — nothing opened.
+Future<bool> _openSecuritySettingsViaChannel() async =>
+    await const MethodChannel(kDeviceSettingsChannelName)
+        .invokeMethod<bool>(_kOpenSecuritySettingsMethod) ??
+    false;
 
 /// Real implementation, wired as [LockScreen]'s default. Only resolves the
 /// platform defaults and delegates to [openDeviceSettingsWith], which holds
@@ -77,7 +114,7 @@ Future<void> defaultOpenDeviceSettings({BreadcrumbLog? breadcrumbLog}) =>
     openDeviceSettingsWith(
       breadcrumbLog: breadcrumbLog ?? defaultBreadcrumbLog,
       launch: _launchUrl,
-      packageName: _packageName,
+      openSecuritySettings: _openSecuritySettingsViaChannel,
       platform: defaultTargetPlatform,
       isWeb: kIsWeb,
     );
@@ -85,30 +122,21 @@ Future<void> defaultOpenDeviceSettings({BreadcrumbLog? breadcrumbLog}) =>
 /// The behaviour behind [defaultOpenDeviceSettings], with every platform
 /// dependency injected.
 ///
-/// iOS: launches [kIosAppSettingsUrl].
+/// iOS: launches [kIosAppSettingsUrl] through [launch].
 ///
-/// Android: there is no single plain-URL scheme for "Security > screen
-/// lock" the way there is for notification settings, but
-/// `url_launcher_android` can launch an `intent://` URI directly. This
-/// tries [kAndroidSecuritySettingsIntent] first; some OEM skins don't
-/// expose that screen under this exact action, so a failed launch falls
-/// back to this app's own "App info" page
-/// (`ACTION_APPLICATION_DETAILS_SETTINGS`), which always exists and gets
-/// the operator one tap from Security settings regardless of skin. The
-/// package name comes from [packageName] (`package_info_plus` in
-/// production) rather than a hardcoded `applicationId`.
+/// Android: calls [openSecuritySettings] — the `lunarlog/device_settings`
+/// channel in production, which `startActivity()`s the SECURITY_SETTINGS
+/// action and falls back natively (only on `ActivityNotFoundException`) to
+/// this app's own App-info page. A `false` return means even the fallback
+/// found no handler; a throw means the channel itself failed. **Both**
+/// reach the breadcrumb + Sentry path in [_openAndroidSecuritySettings]
+/// (issue #1939: a failed launch used to be a silent `false`).
 ///
 /// Web and every other platform: no-op — there is no gate there.
-///
-/// Never throws: every platform call is best-effort, matching
-/// `applyPlatformPrivacyProtections`'s posture in `gate_controller.dart` —
-/// a failed settings launch must never crash the lock screen the operator
-/// is trying to get past. A failure is recorded as a breadcrumb and sent
-/// to Sentry (type name only).
 Future<void> openDeviceSettingsWith({
   required BreadcrumbLog breadcrumbLog,
   required LaunchUrlFn launch,
-  required PackageNameProvider packageName,
+  required AndroidSecuritySettingsOpener openSecuritySettings,
   required TargetPlatform platform,
   required bool isWeb,
 }) async {
@@ -119,7 +147,7 @@ Future<void> openDeviceSettingsWith({
       return;
     }
     if (platform != TargetPlatform.android) return;
-    await _openAndroidSecuritySettings(breadcrumbLog, launch, packageName);
+    await _openAndroidSecuritySettings(breadcrumbLog, openSecuritySettings);
   } catch (error, stackTrace) {
     breadcrumbLog.record('gate', error.runtimeType.toString());
     unawaited(Sentry.captureException(error, stackTrace: stackTrace));
@@ -128,22 +156,28 @@ Future<void> openDeviceSettingsWith({
 
 Future<void> _openAndroidSecuritySettings(
   BreadcrumbLog log,
-  LaunchUrlFn launch,
-  PackageNameProvider packageName,
+  AndroidSecuritySettingsOpener openSecuritySettings,
 ) async {
+  final bool opened;
   try {
-    await launch(
-      Uri.parse(kAndroidSecuritySettingsIntent),
-      mode: LaunchMode.externalApplication,
-    );
-  } catch (_) {
-    // Some OEM skins don't expose SECURITY_SETTINGS under this exact
-    // action — fall back to this app's own settings page, which always
-    // exists and is one tap from Security settings on every skin.
+    opened = await openSecuritySettings();
+  } catch (error, stackTrace) {
+    // The channel itself failed (not merely answered `false`). Issue
+    // #1939's rule: a throw and a `false` get the same treatment — plus
+    // the exception details for Sentry.
     log.record('gate', 'AndroidSecuritySettingsUnavailable');
-    await launch(
-      Uri.parse(androidAppDetailsIntent(await packageName())),
-      mode: LaunchMode.externalApplication,
+    unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+    return;
+  }
+  if (!opened) {
+    // The native half tried SECURITY_SETTINGS and its App-info fallback
+    // and neither resolved — there is nothing left to attempt, so record
+    // it and tell Sentry. Issue #1939: this used to flow through
+    // silently, because a failed launch was a `false` return, not a
+    // throw, and only throws reached the failure path.
+    log.record('gate', 'AndroidSecuritySettingsUnavailable');
+    unawaited(
+      Sentry.captureMessage('gate: AndroidSecuritySettingsUnavailable'),
     );
   }
 }

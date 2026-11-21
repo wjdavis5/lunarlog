@@ -8,8 +8,10 @@
 /// motivated this seam is `docs/web/xss-surface-review.md`.
 ///
 /// Today the only caller is `lib/ui/gate/device_settings_launcher.dart`,
-/// which opens fixed *platform* settings schemes (`app-settings:`/`intent:`)
-/// and therefore passes its own allowlist. The default allowlist is the
+/// which opens the fixed *platform* settings scheme (`app-settings:`, the
+/// iOS path — Android opens settings through the first-party
+/// `lunarlog/device_settings` channel since #1939) and therefore passes its
+/// own allowlist. The default allowlist is the
 /// web/mail/phone set a deliberate "open this" affordance could legitimately
 /// carry; a caller that needs another scheme must widen it explicitly here,
 /// in review, rather than silently.
